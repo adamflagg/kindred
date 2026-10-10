@@ -43,8 +43,8 @@ export function formatPileMoment(iso: string): string {
 
 const applications = (n: number) => `${String(n)} application${n === 1 ? '' : 's'}`
 
-/** The held pile in words (§S5 A2), now the toolbar lead's title: "applications" are requests, one per camper
- * requesting aid (N5). */
+/** The held pile in words (§S5 A2), now the pile's title in the Season tab row (ScenarioPile): "applications" are
+ * requests, one per camper requesting aid (N5). */
 export function pillWords(snapshot: ApiAidScenarioSnapshot | null): string {
   if (snapshot === null) return 'No applications held yet'
   const held = `${applications(snapshot.requests)} · as of ${formatPileMoment(snapshot.taken_at)}`
@@ -53,8 +53,8 @@ export function pillWords(snapshot: ApiAidScenarioSnapshot | null): string {
     : held
 }
 
-/** The toolbar's lead (scenarios-2): "56 held" with its moment apart, so the moment reads muted. The full sentence
- * (pillWords, "held until the rules are approved" included) is the lead's title. */
+/** The pile's lead in the Season tab row (ScenarioPile; toolbar fit E): "56 held" with its moment apart, so the
+ * moment reads muted. The full sentence (pillWords, "held until the rules are approved" included) is its title. */
 export function leadWords(snapshot: ApiAidScenarioSnapshot | null): {
   readonly held: string
   readonly when: string | null

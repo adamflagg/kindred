@@ -4,7 +4,7 @@ import type { ComponentProps } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { campToday } from '../../kit/dates'
-import { ScenarioControls } from './ScenarioControls'
+import { ScenarioControls, ScenarioPile } from './ScenarioControls'
 
 type Props = ComponentProps<typeof ScenarioControls>
 
@@ -31,10 +31,7 @@ function setup(over: Partial<Props> = {}) {
     panel: 'sandbox',
     compareCount: 0,
     onPanel: vi.fn(),
-    pill: '180 applications · as of Feb 3, 2:10 pm',
-    lead: { held: '180 held', when: 'Feb 3, 2:10 pm' },
     nothingNew: null,
-    onUpdate: vi.fn(),
     price: { kind: 'all' },
     onPrice: vi.fn(),
     start: [
@@ -80,26 +77,15 @@ describe('the control line (§S5 A; scenarios-2): one kit toolbar row', () => {
     expect(screen.getByTestId('aid-toolbar').className).not.toMatch(/flex-wrap/)
   })
 
-  it('leads with "‹n› held" and its moment, the full pile sentence as the title, and Update Applications last', async () => {
-    const props = setup()
-    const lead = screen.getByText('180 held')
-    expect(lead.closest('[title]')).toHaveAttribute(
-      'title',
-      '180 applications · as of Feb 3, 2:10 pm'
-    )
-    expect(screen.getByText('· Feb 3, 2:10 pm')).toBeInTheDocument()
-    const buttons = within(screen.getByTestId('aid-toolbar')).getAllByRole('button')
-    expect(buttons.at(-1)).toHaveTextContent('Update Applications')
-    await userEvent.click(buttons.at(-1)!)
-    expect(props.onUpdate).toHaveBeenCalledOnce()
-  })
-
-  it('leads with the plain words when nothing is held', () => {
-    setup({
-      lead: { held: 'No applications held yet', when: null },
-      pill: 'No applications held yet',
-    })
-    expect(screen.getByText('No applications held yet')).toBeInTheDocument()
+  // Owner, 10-10 (toolbar fit E): the pile and Update Applications sit in the Season tab row, next to Approve….
+  it('holds no pile lead and no Update Applications: they moved to the tab row (owner, toolbar fit E)', () => {
+    setup()
+    const bar = screen.getByTestId('aid-toolbar')
+    expect(within(bar).queryByRole('button', { name: 'Update Applications' })).toBeNull()
+    // no "‹n› held" lead (Price ▾'s "All held" is a choice, not the pile)
+    expect(bar.textContent).not.toMatch(/\d+ held|No applications held/)
+    // Sandbox | Compare leads the row now
+    expect(within(bar).getAllByRole('button')[0]).toHaveTextContent('Sandbox')
   })
 
   it('puts "Nothing new since" in the status slot, and an error as one amber status', () => {
@@ -324,15 +310,14 @@ describe('the control line (§S5 A; scenarios-2): one kit toolbar row', () => {
     expect(box()).toHaveValue('Minimum $125 only') // once typed, the person's name stands
   })
 
-  it('keeps Update Applications last in Compare too, after the compare tools, with the four-option refusal as status', () => {
+  it('ends Compare on the compare tools, with the four-option refusal as status', () => {
     setup({
       panel: 'compare',
       compareTools: <button type="button">Print</button>,
       refused: 'Four kept options are already columns: uncheck one to add C.',
     })
     const buttons = within(screen.getByTestId('aid-toolbar')).getAllByRole('button')
-    expect(buttons.at(-2)).toHaveTextContent('Print')
-    expect(buttons.at(-1)).toHaveTextContent('Update Applications')
+    expect(buttons.at(-1)).toHaveTextContent('Print')
     expect(screen.getByText(/Four kept options are already columns/)).toHaveClass('text-amber-700')
     expect(screen.queryByRole('button', { name: 'Keep…' })).toBeNull()
   })
@@ -351,7 +336,7 @@ describe('the control line (§S5 A; scenarios-2): one kit toolbar row', () => {
     )
   })
 
-  it('puts Update Applications after Keep… in the sandbox', () => {
+  it('ends the sandbox on Discard Changes, then Keep…', () => {
     setup({
       keep: { enabled: true, prefill: 'x', nextCode: 'C', figure: '' },
       changes: '2 changes',
@@ -359,7 +344,7 @@ describe('the control line (§S5 A; scenarios-2): one kit toolbar row', () => {
     const buttons = within(screen.getByTestId('aid-toolbar'))
       .getAllByRole('button')
       .map((b) => b.textContent)
-    expect(buttons.slice(-3)).toEqual(['Discard Changes', 'Keep…', 'Update Applications'])
+    expect(buttons.slice(-2)).toEqual(['Discard Changes', 'Keep…'])
   })
 
   it('disables Keep… with no change, and shows a refusal as one amber line', () => {
@@ -390,22 +375,70 @@ describe('the pricing mode (Posted ▾)', () => {
     expect(screen.getByRole('button', { name: /^Posted:/ })).toHaveTextContent('No postings')
   })
 
-  // Coordinator, 10-10: with Posted ▾ the one-row toolbar has no slack, so From ▾ is capped (measured at 1440 with a
-  // long kept name and "No postings": "1 change" stays whole). A cut name reads whole in the title.
-  it('caps From ▾ so the change count always fits, the full name in its title', () => {
+  // Owner, 10-10 (toolbar fit E): with the pile in the tab row the toolbar has room, so From ▾ is back on the kit's
+  // 220px face (the #3138 156px cap is gone). A cut name still reads whole in the title.
+  it("gives From ▾ the kit's 220px face, no tighter cap, the full name in its title", () => {
     const long = 'Rules v3 as they were before the late-season review'
     setup({
       posted: 'none',
       chips: [{ code: 'B', name: long, loaded: true }],
     })
     const from = screen.getByRole('button', { name: /^From:/ })
-    // the face must shrink inside the cap, or it overflows onto ✎ instead of cutting its name
-    expect(from.parentElement).toHaveClass('max-w-[156px]', '[&>button]:min-w-0')
+    expect(from).toHaveClass('max-w-[220px]')
+    expect(from.parentElement?.className ?? '').not.toMatch(/max-w-/)
     expect(from).toHaveAttribute('title', expect.stringContaining(`B · ${long}`))
   })
 
   it('shows no Posted ▾ before anything is posted: the two modes price alike', () => {
     setup({ posted: null })
     expect(screen.queryByRole('button', { name: /^Posted:/ })).toBeNull()
+  })
+})
+
+// Owner, 10-10 (toolbar fit E): the pile's words and Update Applications, drawn in the Season tab row.
+describe("the pile (ScenarioPile): the tab row's lead and Update Applications", () => {
+  it('reads "‹n› held" and its moment, the full pile sentence as the title, then Update Applications', async () => {
+    const onUpdate = vi.fn()
+    render(
+      <ScenarioPile
+        pill="180 applications · as of Feb 3, 2:10 pm"
+        lead={{ held: '180 held', when: 'Feb 3, 2:10 pm' }}
+        onUpdate={onUpdate}
+      />
+    )
+    expect(screen.getByText('180 held').closest('[title]')).toHaveAttribute(
+      'title',
+      '180 applications · as of Feb 3, 2:10 pm'
+    )
+    expect(screen.getByText('· Feb 3, 2:10 pm')).toBeInTheDocument()
+    const update = screen.getByRole('button', { name: 'Update Applications' })
+    expect(update).toBeEnabled()
+    await userEvent.click(update)
+    expect(onUpdate).toHaveBeenCalledOnce()
+  })
+
+  it('reads the plain words when nothing is held', () => {
+    render(
+      <ScenarioPile
+        pill="No applications held yet"
+        lead={{ held: 'No applications held yet', when: null }}
+        onUpdate={vi.fn()}
+      />
+    )
+    expect(screen.getByText('No applications held yet')).toBeInTheDocument()
+    expect(screen.queryByText(/^·/)).toBeNull()
+  })
+
+  it("keeps the pile on one line at the toolbar's type size, the moment muted", () => {
+    render(
+      <ScenarioPile
+        pill="180 applications · as of Feb 3, 2:10 pm"
+        lead={{ held: '180 held', when: 'Feb 3, 2:10 pm' }}
+        onUpdate={vi.fn()}
+      />
+    )
+    const lead = screen.getByText('180 held').closest('[title]')
+    expect(lead).toHaveClass('font-semibold', 'whitespace-nowrap', 'text-[12.5px]')
+    expect(screen.getByText('· Feb 3, 2:10 pm')).toHaveClass('text-muted-foreground', 'font-normal')
   })
 })

@@ -4,7 +4,7 @@
  */
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useReducer } from 'react'
+import { useReducer, useState, type ReactNode } from 'react'
 import { MemoryRouter, useLocation } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -19,6 +19,7 @@ import type {
   ApiAidScenarioResults,
   ApiAidScenarioWorkspace,
 } from '../../../../types/api-types'
+import { SeasonTabRowContext } from '../seasonTabRow'
 import { compareOut, OPTIONS, results, scenarioDraft, workspace } from './scenarioFixtures'
 import { ScenariosTab } from './ScenariosTab'
 
@@ -130,6 +131,20 @@ function Where() {
   return null
 }
 
+/** The Season page's tab row, as AidSeasonPage builds it: its right-hand slot takes the pile (owner, toolbar fit E). */
+function TabRow({ children }: { children: ReactNode }) {
+  const [slot, setSlot] = useState<HTMLElement | null>(null)
+  return (
+    <SeasonTabRowContext.Provider value={slot}>
+      <nav data-testid="tab-row">
+        <span ref={setSlot} className="contents" />
+        <button type="button">Approve…</button>
+      </nav>
+      {children}
+    </SeasonTabRowContext.Provider>
+  )
+}
+
 function renderAt(search = '', ws: Partial<ApiAidScenarioWorkspace> = {}) {
   read = {
     data: workspace({ last_rules_version: 3, locked_sections: [], ...ws }),
@@ -138,7 +153,9 @@ function renderAt(search = '', ws: Partial<ApiAidScenarioWorkspace> = {}) {
   }
   render(
     <MemoryRouter initialEntries={[`/aid/season/scenarios${search}`]}>
-      <ScenariosTab />
+      <TabRow>
+        <ScenariosTab />
+      </TabRow>
       <Where />
     </MemoryRouter>
   )
@@ -192,10 +209,35 @@ describe('the control line (§S5 A)', () => {
     expect(work.update).toHaveBeenCalledOnce()
   })
 
+  // Owner, 10-10 (toolbar fit E): the pile and Update Applications move to the tab row's right, before Approve….
+  it('puts the pile and Update Applications in the Season tab row, before Approve…, and not in the toolbar', () => {
+    renderAt()
+    const row = screen.getByTestId('tab-row')
+    const bar = screen.getByTestId('aid-toolbar')
+    expect(within(row).getByText('420 held')).toBeInTheDocument()
+    expect(within(bar).queryByText('420 held')).toBeNull()
+    expect(within(bar).queryByRole('button', { name: 'Update Applications' })).toBeNull()
+    expect(
+      within(row)
+        .getAllByRole('button')
+        .map((b) => b.textContent)
+    ).toEqual(['Update Applications', 'Approve…'])
+  })
+
+  it('keeps the pile in the tab row in Compare too', () => {
+    renderAt('?panel=compare')
+    expect(
+      within(screen.getByTestId('tab-row')).getByRole('button', { name: 'Update Applications' })
+    ).toBeInTheDocument()
+  })
+
   it('says nothing new since the pile, after an update that found nothing', () => {
     work.nothingNew = true
     renderAt()
-    expect(screen.getByText('Nothing new since Jan 12, 10:00 am')).toBeInTheDocument()
+    // the status stays in the toolbar's status slot, with the change count's other words (toolbar fit E)
+    expect(
+      within(screen.getByTestId('aid-toolbar')).getByText('Nothing new since Jan 12, 10:00 am')
+    ).toBeInTheDocument()
   })
 
   it('prices both the sandbox and Compare on Price ▾ (N6)', async () => {
