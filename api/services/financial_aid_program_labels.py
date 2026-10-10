@@ -45,3 +45,14 @@ def words_over(rules_labels: Mapping[str, str]) -> dict[str, str]:
     if "bmitzvah" not in labels:
         labels["bmitzvah"] = labels.get(RULES_KEY_ALIASES["bmitzvah"], BMITZVAH_FALLBACK)
     return labels
+
+
+def section_words(programs: Mapping[str, object] | None) -> dict[str, str]:
+    """`program_labels` from a `programs` section's JSON content (program key -> profile), as the approved read
+    carries it; None (the section isn't approved) names only the families."""
+    labels = {
+        key: str(profile["label"])
+        for key, profile in (programs or {}).items()
+        if isinstance(profile, Mapping) and "label" in profile
+    }
+    return words_over(labels)

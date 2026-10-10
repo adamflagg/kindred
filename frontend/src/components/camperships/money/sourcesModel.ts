@@ -2,7 +2,8 @@
  * Money › Funders' words, choices and edit bodies (spec §8.1; D58, D88, D100, D105, D159, D160;
  * money-v2.html Sources; Decisions P-12 to P-14, ruling H). Pure. The registry is the server's; the
  * screen names its values and builds the bodies the routes take. Program words are the shared family words
- * the approved read sends (`programWords`, through `programLabel`); a source family shows as the server's key in words (`keyWords`); the
+ * the approved read sends (`requests/programLabel`'s `programWords`, shown through `programLabel`); a source family
+ * shows as the server's key in words (`keyWords`); the
  * funder-naming `source_family` Literal is never spelled out here (P-12).
  */
 import type {
@@ -99,7 +100,7 @@ export function incentiveWords(row: ApiAidSourceRow): '' | 'incentive' | 'need-b
   return row.incentive === true ? 'incentive' : 'need-based'
 }
 
-/** "Summer Sessions, Family Camp Weekends" in the rules' words, or "" when it names none. */
+/** "At Camp, Family Camp" in the shared program words (`names`), or "" when it names none. */
 export function programWords(
   programs: readonly string[],
   names: Readonly<Record<string, string>>
