@@ -10,6 +10,7 @@ import {
   candidateSessions,
   needsSessionPick,
   pickedSession,
+  sessionOptions,
   placementFor,
   stillNeedsCamper,
   suggestionCell,
@@ -108,6 +109,35 @@ describe('placeModel', () => {
     }
     expect(pickedSession(need, 2000002, '')).toBeNull()
     expect(needsSessionPick(need, 2000002, '')).toBe(true)
+  })
+
+  // Scan of #3136: both In-Training sessions read "SCIT" in Camperships, so in this picker two options that would
+  // read the same show their full CampMinder names instead.
+  it('names the Session options short, but in full wherever two would read the same', () => {
+    expect(
+      sessionOptions([
+        { session_cm_id: 1000107, name: 'Counselor In-Training', session_type: 'scit' },
+        { session_cm_id: 1000108, name: 'Specialist In-Training', session_type: 'scit' },
+        {
+          session_cm_id: 1000103,
+          name: 'All-Gender Cabin-Session 2 (7th & 8th grades)',
+          session_type: 'ag',
+        },
+      ])
+    ).toEqual([
+      { value: '1000107', label: 'Counselor In-Training', title: 'Counselor In-Training' },
+      { value: '1000108', label: 'Specialist In-Training', title: 'Specialist In-Training' },
+      {
+        value: '1000103',
+        label: 'AG 2 (7-8)',
+        title: 'All-Gender Cabin-Session 2 (7th & 8th grades)',
+      },
+    ])
+    expect(
+      sessionOptions([
+        { session_cm_id: 1000107, name: 'Counselor In-Training', session_type: 'scit' },
+      ])[0]?.label
+    ).toBe('SCIT')
   })
 
   it('places on the session picked, over the suggestion', () => {

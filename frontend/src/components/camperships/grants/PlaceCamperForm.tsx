@@ -15,6 +15,7 @@ import {
   needsSessionPick,
   pickedSession,
   placedGrantWords,
+  sessionOptions,
   placementFor,
   stillNeedsCamper,
   SUGGESTS_CONFIRMS,
@@ -103,13 +104,9 @@ export function PlaceCamperForm({
   const session = person === '' ? null : pickedSession(need, Number(person), sessionPick)
   // Owner 2026-10-10: no guessed session. Two or more and no suggestion: "Pick a session", and Place waits.
   const waiting = person !== '' && needsSessionPick(need, Number(person), sessionPick)
-  const sessionOptions: Array<AidPickerOption<string>> = [
+  const sessionChoices: Array<AidPickerOption<string>> = [
     ...(waiting ? [{ value: '', label: 'Pick a session' }] : []),
-    ...sessions.map((s) => ({
-      value: String(s.session_cm_id),
-      label: aidSessionName(s.name, s.session_type) || s.name,
-      title: s.name,
-    })),
+    ...sessionOptions(sessions),
   ]
   const [onlySession] = sessions
 
@@ -175,7 +172,7 @@ export function PlaceCamperForm({
                   label="Session"
                   size="field"
                   value={String(session ?? '')}
-                  options={sessionOptions}
+                  options={sessionChoices}
                   onChange={setSessionPick}
                   className="w-full max-w-72 [&>button]:w-full"
                 />

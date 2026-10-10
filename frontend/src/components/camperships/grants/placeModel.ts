@@ -165,6 +165,21 @@ export function needsSessionPick(
   )
 }
 
+/**
+ * The Session picker's options: each session in its Camperships short form, the full name as its title. Two that
+ * would read the same (Counselor and Specialist In-Training both read "SCIT") show their full CampMinder names.
+ */
+export function sessionOptions(
+  sessions: readonly ApiAidCandidateSession[]
+): Array<{ value: string; label: string; title: string }> {
+  const short = sessions.map((s) => aidSessionName(s.name, s.session_type) || s.name)
+  return sessions.map((s, i) => {
+    const label = short[i] ?? s.name
+    const shared = short.filter((other) => other === label).length > 1
+    return { value: String(s.session_cm_id), label: shared ? s.name : label, title: s.name }
+  })
+}
+
 function suggestedSession(need: ApiAidNeedsCamper, personCmId: number): number | null {
   const s = need.suggestion
   return s !== null && s.person_cm_id === personCmId && s.session_cm_id > 0 ? s.session_cm_id : null
