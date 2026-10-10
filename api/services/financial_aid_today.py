@@ -23,6 +23,7 @@ from api.schemas.financial_aid_grants import GrantorOut, GrantorsResponse, Grant
 from api.schemas.financial_aid_surfaces import (
     TodayKey,
     TodayLineOut,
+    TodayNextUpOut,
     TodayReasonOut,
     TodayResponse,
 )
@@ -37,6 +38,7 @@ from api.services.financial_aid_queues import UNRECONCILED, UNTICKED_LABELS, off
 from api.services.financial_aid_rules_service import RulesNotFoundError, RulesVersion
 from api.services.financial_aid_to_place_service import NO_OPEN_LINES, OpenToPlace, ToPlaceCounts, open_to_place
 from bunking.financial_aid.decisions.pricing import NO_APPROVED_RULES
+from bunking.financial_aid.decisions.rounds import DecisionEvent
 from bunking.financial_aid.rules.schema import AidRules
 
 CASEWORK_LINES: Final[tuple[TodayKey, ...]] = (
@@ -59,6 +61,14 @@ FINANCE_LINES: Final[tuple[TodayKey, ...]] = (
     "equity_field_never_true",
 )
 WAITING_TOO_LONG_DAYS: Final = 14  # §6.4: "how many over 14 days"
+# Spec 2026-10-10 §5.2 (owner ruling 11, "fixed val"): a line past its threshold jumps to the top of Today. Code, not
+# settings: a change is a small PR.
+TODAY_OVERDUE_DAYS: Final[Mapping[TodayKey, int]] = {
+    "needs_offer": 10,
+    "waiting_on_family": WAITING_TOO_LONG_DAYS,
+    "pending_approval": 3,
+}
+NEXT_UP_CAP: Final = 8  # enough households to fill a wide Next up cell; the client shows only whole chips (§5.5)
 
 
 @dataclass(frozen=True)
@@ -75,6 +85,9 @@ class TodayInputs:
     never_true_labels: Mapping[str, str] = field(default_factory=dict)  # each such field's equity criterion label
     to_place: OpenToPlace | None = None  # casework: Money › To place's open lines; None: not read
     needs_group: Sequence[str] = ()  # finance: descriptions with a live line this season that need a group (D100)
+    pending_since: Mapping[tuple[str, int], date] = field(
+        default_factory=dict
+    )  # finance: (request, round) -> the day its award was keyed for approval
 
 
 def _families(rows: Iterable[GridRowOut]) -> int:
@@ -111,6 +124,8 @@ def _line(
     over_14_days: int | None = None,
     largest_gap: float | None = None,
     listed: bool = False,
+    overdue: bool = False,
+    next_up: list[TodayNextUpOut] | None = None,
 ) -> TodayLineOut:
     """A line counting grid rows: families and requests. `listed` lines that are no Requests view name their
     request ids, so Open › shows exactly what was counted (D21; plan review I4)."""
@@ -125,6 +140,8 @@ def _line(
         over_14_days=over_14_days,
         largest_gap=largest_gap,
         request_ids=[row.request_id for row in rows] if listed else [],
+        overdue=overdue,
+        next_up=next_up or [],
     )
 
 
@@ -135,6 +152,65 @@ def _in(rows: Sequence[GridRowOut], queue: QueueOut) -> list[GridRowOut]:
 def _waiting_since(row: GridRowOut) -> date | None:
     days = [r.posted_on for r in row.rounds if r.status == "posted" and not r.accepted and not r.clawed_back]
     return min((d for d in days if d is not None), default=None)
+
+
+def _asked_since(row: GridRowOut) -> date | None:
+    """Needs an offer's clock: the oldest ask among the rounds the queue holds."""
+    return min((r.asked_on for r in offer_rounds(row) if r.asked_on is not None), default=None)
+
+
+def _pending_since(row: GridRowOut, keyed: Mapping[tuple[str, int], date]) -> date | None:
+    """Pending approval's clock: when the oldest of the row's pending rounds was keyed for approval."""
+    return min(
+        (
+            keyed[(row.request_id, r.round)]
+            for r in row.rounds
+            if r.status == "pending_approval" and (row.request_id, r.round) in keyed
+        ),
+        default=None,
+    )
+
+
+def _first_ask(row: GridRowOut) -> date:
+    """A line with no clock orders its households by the request's first ask (date.max when none is dated)."""
+    return min((r.asked_on for r in row.rounds if r.asked_on is not None), default=date.max)
+
+
+def _next_up(
+    rows: Sequence[GridRowOut], today: date, since: Callable[[GridRowOut], date | None] | None
+) -> list[TodayNextUpOut]:
+    """Each household once, at its oldest request, oldest first (ties by household id), capped. With no clock the
+    order is the first ask and `days` is None."""
+    best: dict[int, tuple[date, GridRowOut]] = {}
+    for row in rows:
+        when = (since(row) if since else None) or _first_ask(row)
+        held = best.get(row.household_cm_id)
+        if held is None or when < held[0]:
+            best[row.household_cm_id] = (when, row)
+    ordered = sorted(best.values(), key=lambda pair: (pair[0], pair[1].household_cm_id))[:NEXT_UP_CAP]
+    out: list[TodayNextUpOut] = []
+    for when, row in ordered:
+        offers = offer_rounds(row)
+        rnd = offers[0] if offers else (max(row.rounds, key=lambda r: r.round) if row.rounds else None)
+        out.append(
+            TodayNextUpOut(
+                household_cm_id=row.household_cm_id,
+                label=row.household_label or row.family_name,
+                tiebreak=row.household_label_tiebreak,
+                days=(today - when).days if since is not None and when != date.max else None,
+                camper_name=row.camper_name,
+                session_name=row.session_name,
+                session_type=row.session_type,
+                round=rnd.round if rnd is not None else None,
+                ask=rnd.ask if rnd is not None else None,
+            )
+        )
+    return out
+
+
+def _overdue(key: TodayKey, oldest_days: int | None) -> bool:
+    limit = TODAY_OVERDUE_DAYS.get(key)
+    return limit is not None and oldest_days is not None and oldest_days > limit
 
 
 def _unreconciled(row: GridRowOut) -> set[str]:
@@ -218,6 +294,9 @@ def _casework(inputs: TodayInputs) -> list[TodayLineOut]:
     holds = _in(rows, "holds")
     waiting = _in(rows, "waiting_on_family")
     since = [d for d in (_waiting_since(row) for row in waiting) if d is not None]
+    asked = [d for d in (_asked_since(row) for row in needs_offer) if d is not None]
+    offer_oldest = (inputs.today - min(asked)).days if asked else None
+    waiting_oldest = (inputs.today - min(since)).days if since else None
     unreconciled = _in(rows, "not_reconciled")
     gaps = [gap for row in unreconciled for gap in _disagreements(row)]
     needs_camper = inputs.grants.needs_camper
@@ -230,15 +309,23 @@ def _casework(inputs: TodayInputs) -> list[TodayLineOut]:
             "needs_offer",
             needs_offer,
             reasons=_reasons((f"r{r.round}", row.household_cm_id) for row in needs_offer for r in offer_rounds(row)),
+            oldest_days=offer_oldest,
+            overdue=_overdue("needs_offer", offer_oldest),
+            next_up=_next_up(needs_offer, inputs.today, _asked_since),
         ),
         "holds": _line(
-            "holds", holds, reasons=_reasons((h.code, row.household_cm_id) for row in holds for h in row.holds)
+            "holds",
+            holds,
+            reasons=_reasons((h.code, row.household_cm_id) for row in holds for h in row.holds),
+            next_up=_next_up(holds, inputs.today, None),
         ),
         "waiting_on_family": _line(
             "waiting_on_family",
             waiting,
-            oldest_days=(inputs.today - min(since)).days if since else None,
+            oldest_days=waiting_oldest,
             over_14_days=sum(1 for d in since if (inputs.today - d).days > WAITING_TOO_LONG_DAYS),
+            overdue=_overdue("waiting_on_family", waiting_oldest),
+            next_up=_next_up(waiting, inputs.today, _waiting_since),
         ),
         "not_reconciled": _line(
             "not_reconciled",
@@ -250,6 +337,7 @@ def _casework(inputs: TodayInputs) -> list[TodayLineOut]:
             # D150, unchanged by D162: the largest disagreement between a Posted figure and CampMinder. Direction (b)'s
             # money has no Posted figure to disagree with, so it adds no gap.
             largest_gap=max(gaps) if gaps else None,
+            next_up=_next_up(unreconciled, inputs.today, None),
         ),
         "to_reverse": _line("to_reverse", _in(rows, "to_reverse")),
         "session_not_settled": _line("session_not_settled", _in(rows, "session_not_settled")),
@@ -296,11 +384,20 @@ def _finance(inputs: TodayInputs) -> list[TodayLineOut]:
         (Decimal(str(r.pending_approval)) for row in pending for r in row.rounds if r.pending_approval is not None),
         Decimal(0),
     )
+    keyed = [d for d in (_pending_since(row, inputs.pending_since) for row in pending) if d is not None]
+    pending_oldest = (inputs.today - min(keyed)).days if keyed else None
     intake_codes = (FLAG_AWAITING_RULES, NO_APPROVED_RULES)
     intake = [row for row in rows if any(h.code in intake_codes for h in row.holds)]
     sections = sorted(inputs.draft_sections or [])
     lines = {
-        "pending_approval": _line("pending_approval", pending, amount=money(pending_amount)),
+        "pending_approval": _line(
+            "pending_approval",
+            pending,
+            amount=money(pending_amount),
+            oldest_days=pending_oldest,
+            overdue=_overdue("pending_approval", pending_oldest),
+            next_up=_next_up(pending, inputs.today, lambda row: _pending_since(row, inputs.pending_since)),
+        ),
         "rules_sections": TodayLineOut(
             key="rules_sections",
             families=None,
@@ -326,6 +423,17 @@ def _finance(inputs: TodayInputs) -> list[TodayLineOut]:
         ),
     }
     return [lines[key] for key in FINANCE_LINES]
+
+
+def pending_since(events: Iterable[DecisionEvent]) -> dict[tuple[str, int], date]:
+    """(request, round) -> the camp-time day of the latest award keyed for approval (D79's needs_approval)."""
+    out: dict[tuple[str, int], datetime] = {}
+    for e in events:
+        if e.kind == "award" and e.needs_approval:
+            key = (e.request_id, e.round)
+            if key not in out or e.created > out[key]:
+                out[key] = e.created
+    return {key: when.astimezone(CAMP_TZ).date() for key, when in out.items()}
 
 
 def build_today(inputs: TodayInputs, *, casework: bool, finance: bool) -> TodayResponse:
@@ -402,7 +510,16 @@ class TodayService:
             return TodayResponse(year=year, casework=None, finance=None)
         shared = OneGrantsLoad(self._grants, year)
         decisions = FinancialAidDecisionsService(self._store, self._pricing, shared.register, clock=self._clock)
-        season, (grants, register), grantors, draft, (unclassified, needs_group), never_labels = await asyncio.gather(
+        # asyncio.gather types six awaitables at most, so the events ride a task of their own.
+        events_read = asyncio.ensure_future(self._store.fetch_decision_events(year) if finance else _no_events())
+        (
+            season,
+            (grants, register),
+            grantors,
+            draft,
+            (unclassified, needs_group),
+            never_labels,
+        ) = await asyncio.gather(
             decisions.season(year),
             shared.read(),
             # Retired grantors too: hidden from pickers, never from the grants that named them.
@@ -411,6 +528,7 @@ class TodayService:
             _descriptions(self._ledger, year) if finance else _no_descriptions(),
             _never_true(self._intake, year) if finance and self._intake is not None else _no_fields(),
         )
+        events = await events_read
         season = await decisions.with_unticked(season)
         rows = [decisions.row_of(season, ({}, {}), request_id) for request_id in season.priced]
         open_lines = await open_to_place(season, self._to_place) if casework and self._to_place is not None else None
@@ -427,8 +545,13 @@ class TodayService:
             never_true_labels=never_labels,
             to_place=open_lines,
             needs_group=needs_group,
+            pending_since=pending_since(events),
         )
         return build_today(inputs, casework=casework, finance=finance)
+
+
+async def _no_events() -> list[DecisionEvent]:
+    return []
 
 
 async def _no_grantors() -> GrantorsResponse:
