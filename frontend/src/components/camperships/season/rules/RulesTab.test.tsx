@@ -703,3 +703,26 @@ describe("Rules when the dashboard's season can't be read (503)", () => {
     expect(screen.queryByRole('button', { name: 'Unlock…' })).toBeNull()
   })
 })
+
+// ux3 chrome-7: the rhythm under the chapter bar follows the kit (.cf-grp-lbl margin 10px 0 6px,
+// .cf-chap padding 9px 14px and margin-bottom 8px): label → first chapter 6px, chapter → chapter 8px,
+// last chapter → the next group label 18px (8 + 10), so 'Awards' → first chapter head reads 16px.
+describe('Rules chapter rhythm (ux3 chrome-7)', () => {
+  it('spaces the group label 6px over its chapters, chapters 8px apart and groups 18px apart', () => {
+    granted = FINANCE
+    renderAt('/aid/season/rules')
+    const label = screen.getByText('Awards', { selector: 'div' })
+    expect(label).toHaveClass('mb-1.5')
+    const chapters = label.nextElementSibling as HTMLElement
+    expect(chapters).toHaveClass('space-y-2')
+    expect(label.parentElement?.parentElement).toHaveClass('space-y-[18px]')
+  })
+
+  it('pads each chapter card 9px top and bottom, as .cf-chap', () => {
+    granted = FINANCE
+    renderAt('/aid/season/rules')
+    const chapter = document.querySelector('[data-chapter="1"]') as HTMLElement
+    expect(chapter).toHaveClass('py-[9px]')
+    expect(chapter).not.toHaveClass('py-3')
+  })
+})

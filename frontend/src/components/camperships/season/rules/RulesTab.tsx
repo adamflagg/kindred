@@ -694,55 +694,59 @@ function ChaptersBody({
       <ApprovePanel />
       <UnlockPanel />
       <SeasonNotice />
-      <div className="space-y-3">
+      <div className="space-y-[18px]">
         {(['Awards', 'Setup'] as const).map((group) => (
-          <div key={group} className="space-y-3">
-            <div className={`${CS_META} font-bold`}>{group}</div>
-            {CHAPTERS.filter((c) => c.group === group).map((chapter) => {
-              const sections = sectionsOf(chapter)
-              const listed = sections
-                .flatMap((s) => shownOf(s)?.issues ?? [])
-                .filter((i) => !isNote(i))
-              const errors = listed.filter((i) => i.severity === 'error').length
-              return (
-                <Chapter
-                  key={chapter.n}
-                  chapter={chapter}
-                  open={open.includes(chapter.n)}
-                  summary={chapterSummary(chapter, statuses, listed.length, errors)}
-                  onToggle={() =>
-                    writeOpen(toggleChapter(open, chapter.n).split(',').filter(Boolean).map(Number))
+          <div key={group}>
+            <div className={`${CS_META} mb-1.5 font-bold`}>{group}</div>
+            <div className="space-y-2">
+              {CHAPTERS.filter((c) => c.group === group).map((chapter) => {
+                const sections = sectionsOf(chapter)
+                const listed = sections
+                  .flatMap((s) => shownOf(s)?.issues ?? [])
+                  .filter((i) => !isNote(i))
+                const errors = listed.filter((i) => i.severity === 'error').length
+                return (
+                  <Chapter
+                    key={chapter.n}
+                    chapter={chapter}
+                    open={open.includes(chapter.n)}
+                    summary={chapterSummary(chapter, statuses, listed.length, errors)}
+                    onToggle={() =>
+                      writeOpen(
+                        toggleChapter(open, chapter.n).split(',').filter(Boolean).map(Number)
+                      )
+                    }
+                    onJumpGrid={
+                      chapter.key === 'awards'
+                        ? () => {
+                            if (!open.includes(1)) writeOpen([...open, 1].sort((a, b) => a - b))
+                            document
+                              .getElementById('card-tiergrid')
+                              ?.scrollIntoView({ block: 'start' })
+                          }
+                        : undefined
+                    }
+                  >
+                    {chapter.cards.map((card) =>
+                      card === 'tiergrid'
+                        ? gridCard()
+                        : card === 'programs_costs'
+                          ? programsCostsCard()
+                          : sectionCard(card)
+                    )}
+                  </Chapter>
+                )
+              })}
+              {group === 'Setup' && (
+                <BudgetPointer
+                  href={budgetHref}
+                  draftPill={
+                    budgetDraft && budget !== undefined ? budget.status.pill.toLowerCase() : null
                   }
-                  onJumpGrid={
-                    chapter.key === 'awards'
-                      ? () => {
-                          if (!open.includes(1)) writeOpen([...open, 1].sort((a, b) => a - b))
-                          document
-                            .getElementById('card-tiergrid')
-                            ?.scrollIntoView({ block: 'start' })
-                        }
-                      : undefined
-                  }
-                >
-                  {chapter.cards.map((card) =>
-                    card === 'tiergrid'
-                      ? gridCard()
-                      : card === 'programs_costs'
-                        ? programsCostsCard()
-                        : sectionCard(card)
-                  )}
-                </Chapter>
-              )
-            })}
-            {group === 'Setup' && (
-              <BudgetPointer
-                href={budgetHref}
-                draftPill={
-                  budgetDraft && budget !== undefined ? budget.status.pill.toLowerCase() : null
-                }
-                errors={budgetErrors}
-              />
-            )}
+                  errors={budgetErrors}
+                />
+              )}
+            </div>
           </div>
         ))}
       </div>
