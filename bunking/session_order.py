@@ -8,9 +8,10 @@ its parent session. Quest next, then TLI, then SCIT (SIT and CIT) and, then FC b
               day (the sync's own priority, pocketbase/sync/sessions.go sortSessionsByPriority: duration desc, then
               name), a main before an embedded before an AG on a tie. An AG session with its parent in the list sits
               right under that parent.
-  then        quests, TLI, SCIT, the teen program (Teen Winter Retreat, after SCIT), B*Mitzvah and Hebrew, family
-              school, Family Camp by its number (unnumbered family sessions by date after the numbered ones), adult
-              weekends, anything else.
+  then        quests, TLI, SCIT, the teen program (Teen Winter Retreat, after SCIT), B*Mitzvah and Hebrew (each by
+              the number in its name, Year N / Hebrew N, then date; coordinator 2026-10-10), family school, Family
+              Camp by its number (unnumbered family sessions by date after the numbered ones), adult weekends,
+              anything else.
 
 Pure. The frontend mirror is `frontend/src/utils/sessionOrder.ts`; both run `tests/fixtures/session_order_cases.json`
 (test_session_order.py here, sessionOrder.test.ts there), so a change to one without the other fails a test.
@@ -54,7 +55,13 @@ KIND_ORDER: Final[tuple[tuple[str, ...], ...]] = (
 )
 _SUMMER_TYPE_RANK: Final = {"main": 0, "embedded": 1, "ag": 2}
 _NO_DATE: Final = "9999-99-99"
-_FAMILY_NUMBER = re.compile(r"family camp\s+(\d+)", re.IGNORECASE)
+# The kinds that list by a number in the name before the start date (owner: "FC by number"; coordinator 2026-10-10
+# for B*Mitzvah and Hebrew, which the owner gave no rule: Year 1 before Year 2, Hebrew 1 before Hebrew 2).
+_NUMBER_IN_NAME: Final = {
+    "family": re.compile(r"family camp\s+(\d+)", re.IGNORECASE),
+    "bmitzvah": re.compile(r"\byear\s+(\d+)", re.IGNORECASE),
+    "hebrew": re.compile(r"\bhebrew\s+(\d+)", re.IGNORECASE),
+}
 _UNNUMBERED: Final = 10**6
 
 
@@ -85,7 +92,7 @@ def _days(session: SessionLike) -> int:
 def _key(session: SessionLike) -> tuple[int, int, str, int, int, str, int]:
     t = session.session_type.strip().lower()
     number = _UNNUMBERED
-    if t == "family" and (m := _FAMILY_NUMBER.search(session.name)) is not None:
+    if (pattern := _NUMBER_IN_NAME.get(t)) is not None and (m := pattern.search(session.name)) is not None:
         number = int(m.group(1))
     return (
         _kind(t),

@@ -114,6 +114,26 @@ def test_a_session_with_no_dates_goes_last_in_its_kind() -> None:
     assert names(sessions) == ["Dated", "Undated"]
 
 
+def test_a_numbered_b_mitzvah_or_hebrew_program_goes_by_its_number_before_its_start_date() -> None:
+    """Coordinator (2026-10-10), for the pools the owner gave no rule: a number in the name (Year N, Hebrew N) sorts
+    first, then start date, so Year 1 reads before Year 2 though Year 2 starts first, and Hebrew 1 before Hebrew 2."""
+    sessions = [
+        S(1, "B*Mitzvah Program Year 2 - San Francisco", "bmitzvah", "2027-08-27", "2028-05-26"),
+        S(2, "B*Mitzvah Program Year 2 - East Bay", "bmitzvah", "2027-08-27", "2028-05-26"),
+        S(3, "B*Mitzvah Program Year 1 - San Francisco", "bmitzvah", "2027-08-29", "2028-05-28"),
+        S(4, "B*Mitzvah Program Year 1 - East Bay", "bmitzvah", "2027-08-29", "2028-05-28"),
+        S(5, "Hebrew 2 - Wednesdays", "hebrew", "2027-01-09", "2027-03-27"),
+        S(6, "Hebrew 1 - Wednesdays", "hebrew", "2027-10-09", "2027-12-04"),
+    ]
+    assert session_order(sessions) == [4, 3, 2, 1, 6, 5]
+
+
+def test_a_number_in_a_quest_name_is_not_an_order_number() -> None:
+    """Only Family Camp, B*Mitzvah and Hebrew go by a number in the name: a quest's "H20" is part of its name."""
+    sessions = [S(1, "Quest H20", "quest", "2027-07-05", "2027-07-24"), S(2, "Rock Quest", "quest", "2027-06-14")]
+    assert session_order(sessions) == [2, 1]
+
+
 FIXTURE = Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "session_order_cases.json"
 
 

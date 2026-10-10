@@ -199,10 +199,50 @@
       "start_date": "",
       "end_date": "",
       "parent_cm_id": 0
+    },
+    {
+      "cm_id": 926,
+      "name": "B*Mitzvah Program Year 2 - East Bay",
+      "session_type": "bmitzvah",
+      "start_date": "2027-08-27",
+      "end_date": "2028-05-26",
+      "parent_cm_id": 0
+    },
+    {
+      "cm_id": 927,
+      "name": "B*Mitzvah Program Year 1 - San Francisco",
+      "session_type": "bmitzvah",
+      "start_date": "2027-08-29",
+      "end_date": "2028-05-28",
+      "parent_cm_id": 0
+    },
+    {
+      "cm_id": 928,
+      "name": "B*Mitzvah Program Year 1 - East Bay",
+      "session_type": "bmitzvah",
+      "start_date": "2027-08-29",
+      "end_date": "2028-05-28",
+      "parent_cm_id": 0
+    },
+    {
+      "cm_id": 929,
+      "name": "Hebrew 2 - Wednesdays",
+      "session_type": "hebrew",
+      "start_date": "2027-01-09",
+      "end_date": "2027-03-27",
+      "parent_cm_id": 0
+    },
+    {
+      "cm_id": 930,
+      "name": "Hebrew 1 - Wednesdays",
+      "session_type": "hebrew",
+      "start_date": "2027-10-09",
+      "end_date": "2027-12-04",
+      "parent_cm_id": 0
     }
   ],
   "order": [
-    904, 907, 909, 905, 920, 908, 903, 906, 925, 910, 911, 912, 913, 914, 901, 921, 923, 922, 916,
-    915, 902, 918, 917, 919, 924
+    904, 907, 909, 905, 920, 908, 903, 906, 925, 910, 911, 912, 913, 914, 901,
+    928, 927, 926, 921, 930, 929, 923, 922, 916, 915, 902, 918, 917, 919, 924
   ]
 }

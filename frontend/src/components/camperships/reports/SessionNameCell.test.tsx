@@ -103,6 +103,12 @@ describe('SessionNameCell', () => {
     expect(cell.querySelector('svg')).not.toBeNull()
   })
 
+  it('shortens a family name ending in a named weekend to that weekend when it does not fit (final mock NAMED_WEEKENDS)', () => {
+    room = 140
+    render(<SessionNameCell name="JFAM Winter Family Camp" sessionType="family" />)
+    expect(screen.getByText('Winter Family Camp')).toBeInTheDocument()
+  })
+
   it('draws no house for a session that is not Family Camp', () => {
     const { container } = render(<SessionNameCell name="Session 2" sessionType="main" />)
     expect(container.querySelector('svg')).toBeNull()

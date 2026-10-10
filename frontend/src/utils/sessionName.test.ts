@@ -677,11 +677,10 @@ describe('sessionName — #2790 short vocabulary', () => {
     ['Family Camp 5: JFAM Weekend (w/ kids 10 and under)', 'Family Camp 5'],
     ['Family Camp 10: Labor Day Weekend', 'Family Camp 10'],
     ['Family Camp 3', 'Family Camp 3'],
-    // Un-numbered names stay as short does today, except a named weekend's prefix: the final mock's NAMED_WEEKENDS
-    // rule (cs-final.js sessForm, ux3 statistics-12) shortens a name ending in one to that name, so it fits a cell.
+    // Un-numbered names stay as short does today.
     ['Ready, Set, Camp', 'Ready, Set, Camp'],
     ['Winter Family Camp', 'Winter Family Camp'],
-    ['JFAM Winter Family Camp', 'Winter Family Camp'],
+    ['JFAM Winter Family Camp', 'JFAM Winter Family Camp'],
     ['Spring Family Camp', 'Spring Family Camp'],
   ])('Family Camp short carries no subtitle: %j → %s', (name, expected) => {
     expect(sessionName(name, 'family', 'short')).toBe(expected)

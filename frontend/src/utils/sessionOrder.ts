@@ -9,8 +9,9 @@
  *   summer  main, embedded and AG by start date, longer first on a tie (the sync's own priority,
  *           pocketbase/sync/sessions.go sortSessionsByPriority), main before embedded before AG; an AG session with
  *           its parent in the list sits right under it.
- *   then    quest, TLI, SCIT, the teen program (after SCIT), B*Mitzvah, Hebrew, family school, Family Camp by its
- *           number (unnumbered family sessions by date after the numbered), adult weekends, anything else.
+ *   then    quest, TLI, SCIT, the teen program (after SCIT), B*Mitzvah and Hebrew (each by the number in its name,
+ *           Year N / Hebrew N, then date; coordinator 10-10), family school, Family Camp by its number (unnumbered
+ *           family sessions by date after the numbered), adult weekends, anything else.
  *
  * For a list of anything that names a session, `orderSessions(items, read)`; whatever subset is in play is ordered.
  */
@@ -42,7 +43,15 @@ const KIND_ORDER: ReadonlyArray<readonly string[]> = [
 const SUMMER_TYPE_RANK: Readonly<Record<string, number>> = { main: 0, embedded: 1, ag: 2 }
 const NO_DATE = '9999-99-99'
 const UNNUMBERED = 1_000_000
-const FAMILY_NUMBER = /family camp\s+(\d+)/i
+/**
+ * The kinds that list by a number in the name before the start date (owner: "FC by number"; coordinator 10-10 for
+ * B*Mitzvah and Hebrew, which the owner gave no rule: Year 1 before Year 2, Hebrew 1 before Hebrew 2).
+ */
+const NUMBER_IN_NAME: Readonly<Record<string, RegExp>> = {
+  family: /family camp\s+(\d+)/i,
+  bmitzvah: /\byear\s+(\d+)/i,
+  hebrew: /\bhebrew\s+(\d+)/i,
+}
 const DAY = /^\d{4}-\d{2}-\d{2}/
 
 const typeOf = (s: SessionOrderInput) => s.session_type.trim().toLowerCase()
@@ -70,7 +79,7 @@ const cmp = (a: string | number, b: string | number) => (a < b ? -1 : a > b ? 1 
 function compare(a: SessionOrderInput, b: SessionOrderInput): number {
   const key = (s: SessionOrderInput) => {
     const type = typeOf(s)
-    const numbered = type === 'family' ? FAMILY_NUMBER.exec(s.name) : null
+    const numbered = NUMBER_IN_NAME[type]?.exec(s.name) ?? null
     return [
       kindOf(type),
       numbered?.[1] === undefined ? UNNUMBERED : Number(numbered[1]),

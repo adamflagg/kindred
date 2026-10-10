@@ -11,3 +11,18 @@ export function aidSessionName(name: string, sessionType: string | undefined): s
   const family = sessionType === 'family' || /^Family Camp \d/.test(name)
   return sessionName(name, family ? 'family' : sessionType, family ? 'tiny' : 'short')
 }
+
+/** The unnumbered weekends the Camperships cell shortens a longer name to (the final mocks' NAMED_WEEKENDS). */
+const NAMED_WEEKENDS = ['Winter Family Camp', 'Ready, Set, Camp'] as const
+
+/**
+ * The Camperships session cell's SHORT form (SessionNameCell; ux3 statistics-12): `sessionName`'s short form,
+ * except that a family name ENDING in a named weekend ("JFAM Winter Family Camp") is that weekend, as the final
+ * mock's sessForm draws it, so it fits a one-line cell. Camperships only (coordinator 10-10): the app-wide `short`
+ * keeps #2790's rule that an un-numbered family name stays whole.
+ */
+export function aidCellShortName(name: string, sessionType: string): string {
+  const named =
+    sessionType === 'family' ? NAMED_WEEKENDS.find((weekend) => name.endsWith(weekend)) : undefined
+  return named ?? sessionName(name, sessionType, 'short')
+}

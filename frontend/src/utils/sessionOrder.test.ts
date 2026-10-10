@@ -58,6 +58,28 @@ describe('sessionOrderIds', () => {
   })
 })
 
+describe('sessionOrderIds — numbered programs (coordinator 10-10)', () => {
+  it('lists a B*Mitzvah or Hebrew program by the number in its name, then start date', () => {
+    const sessions = [
+      S(1, 'B*Mitzvah Program Year 2 - San Francisco', 'bmitzvah', '2027-08-27', '2028-05-26'),
+      S(2, 'B*Mitzvah Program Year 2 - East Bay', 'bmitzvah', '2027-08-27', '2028-05-26'),
+      S(3, 'B*Mitzvah Program Year 1 - San Francisco', 'bmitzvah', '2027-08-29', '2028-05-28'),
+      S(4, 'B*Mitzvah Program Year 1 - East Bay', 'bmitzvah', '2027-08-29', '2028-05-28'),
+      S(5, 'Hebrew 2 - Wednesdays', 'hebrew', '2027-01-09', '2027-03-27'),
+      S(6, 'Hebrew 1 - Wednesdays', 'hebrew', '2027-10-09', '2027-12-04'),
+    ]
+    expect(sessionOrderIds(sessions)).toEqual([4, 3, 2, 1, 6, 5])
+  })
+
+  it('reads no order number in a quest name', () => {
+    const sessions = [
+      S(1, 'Quest H20', 'quest', '2027-07-05', '2027-07-24'),
+      S(2, 'Rock Quest', 'quest', '2027-06-14'),
+    ]
+    expect(sessionOrderIds(sessions)).toEqual([2, 1])
+  })
+})
+
 describe('orderSessions', () => {
   it('orders any list through a reader that names each item as a session', () => {
     const rows = [

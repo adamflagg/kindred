@@ -94,7 +94,11 @@ def test_percent_of_ask_incl_grants_adds_each_grant_to_both_sides() -> None:
     assert "adds outside grants and fully funded rounds to both sides" in BY_KEY["pct_of_ask"].text
     text = BY_KEY["pct_of_ask_with_grants"].text
     assert "each grant counts on both sides" in text
-    assert "never passes 100%" in text
+    # Coordinator (2026-10-10): the note promises no ceiling (an award above its ask can still pass 100%); it says what
+    # the grants do, and that a funder-paid round's money is not added to the asks a second time.
+    assert "a grant larger than the ask doesn't push the share past it" in text
+    assert "never passes 100%" not in text
+    assert "already in the asks" in text
 
 
 def test_awarded_says_live_for_the_request_standing_never_included() -> None:

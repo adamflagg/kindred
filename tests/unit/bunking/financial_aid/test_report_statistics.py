@@ -308,9 +308,18 @@ def test_an_outside_funded_rounds_own_money_counts_as_grants_on_percent_of_ask_w
     table = statistics(requests, RULES, table="camp", round_=1)
     two = _tier(table.rows, 2)
     assert (two.amount, two.pct_of_ask) == (Decimal(500), Decimal("50.0"))
-    # Owner Q9 (2026-10-10): (500 + 2,000) ÷ (1,000 + 2,000 + 2,000).
-    assert (two.grants, two.pct_of_ask_with_grants) == (Decimal(2000), Decimal("50.0"))
-    assert (table.total.grants, table.total.pct_of_ask_with_grants) == (Decimal(2000), Decimal("50.0"))
+    # Owner Q9 (2026-10-10) puts only the request-level grants in the denominator too: a funder-paid round's ask is
+    # already there, so its money is not counted twice. (500 + 2,000) ÷ (1,000 + 2,000).
+    assert (two.grants, two.pct_of_ask_with_grants) == (Decimal(2000), Decimal("83.3"))
+    assert (table.total.grants, table.total.pct_of_ask_with_grants) == (Decimal(2000), Decimal("83.3"))
+
+
+def test_a_request_a_funder_pays_in_full_reads_100_percent_of_ask_with_grants() -> None:
+    """Owner Q9 as the coordinator settled it (2026-10-10): the funder-paid round's ask is in the denominator once and
+    its money in the numerator once, so a request a funder pays in full is fully covered, never diluted to 50%."""
+    requests = [req("reqliam00000001", rnd(1, ask="2000", outside_budget=True, outside_posted="2000"))]
+    table = statistics(requests, RULES, table="camp", round_=1)
+    assert (table.total.grants, table.total.pct_of_ask_with_grants) == (Decimal(2000), Decimal("100.0"))
 
 
 def test_an_outside_funded_rounds_decided_money_counts_only_on_the_decided_basis() -> None:
@@ -323,7 +332,7 @@ def test_an_outside_funded_rounds_decided_money_counts_only_on_the_decided_basis
     posted = _tier(statistics(requests, RULES, table="camp", round_=1).rows, 2)
     both = _tier(statistics(requests, RULES, table="camp", round_=1, basis="posted_and_decided").rows, 2)
     assert (posted.grants, posted.pct_of_ask_with_grants) == (Decimal(0), Decimal("16.7"))
-    assert (both.grants, both.pct_of_ask_with_grants, both.decided) == (Decimal(2000), Decimal("50.0"), Decimal(0))
+    assert (both.grants, both.pct_of_ask_with_grants, both.decided) == (Decimal(2000), Decimal("83.3"), Decimal(0))
 
 
 def test_an_outside_funded_rounds_money_leaves_with_a_clawback_or_a_cancellation() -> None:

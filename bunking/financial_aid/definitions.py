@@ -469,8 +469,9 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
             "% of ask incl. grants: awarded $ plus the counting outside grants placed on the live requests and the "
             "money of the rounds an outside funder pays in full, ÷ the "
             "live requests' asks, including rounds an outside funder pays in full (outside-funded asks stay in its "
-            "denominator, unlike % of ask), plus those same grants: each grant counts on both sides, so the figure reads as a "
-            "share and never passes 100%. It is the 2026 sheet's total % of ask granted. Round 1 and All rounds only: a grant belongs to the request, not to a round. "
+            "denominator, unlike % of ask), plus the outside grants: each grant counts on both sides, so a grant larger "
+            "than the ask doesn't push the share past it. A funder-paid round's money is not added again: its ask is "
+            "already in the asks. It is the 2026 sheet's total % of ask granted. Round 1 and All rounds only: a grant belongs to the request, not to a round. "
             'With "include not yet offered" on, the awarded $ is Posted + Decided, and the column reads "% of ask incl. '
             'grants (posted + decided)".'
         ),
