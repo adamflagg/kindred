@@ -12,12 +12,11 @@ import {
   cellHref,
   cellValue,
   confirmedHref,
-  confirmedWords,
   NO_POOL,
   TOTAL_POOL,
   type BudgetRow,
 } from './budgetModel'
-import type { Preview } from './planModel'
+import { moved, type Preview } from './planModel'
 
 export interface RoundPart {
   readonly round: 1 | 2 | 3
@@ -153,72 +152,173 @@ export function roundLegend(card: PoolCardModel): string[] | null {
   return card.parts.map((part) => `Round ${String(part.round)} ${formatMoney(part.committed)}`)
 }
 
-export interface RoundLine {
-  readonly round: number
-  readonly committed: number | null
-  readonly parts: Array<{ label: string; note: string; words: string; href: string | null }>
-  readonly confirmed: { words: string; href: string | null } | null
-}
-
 const words = (row: BudgetRow, column: 'posted' | 'accepted' | 'needs_offer') => {
   const money = formatMoney(cellValue(row, column))
   const count = cellCount(row, column)
   return count === null ? money : `${String(count.requests)} · ${money}`
 }
 
+/** One figure of the ledger: its words, where it opens (null: nothing), and the amber/title a Not yet confirmed carries. */
+export interface LedgerFigure {
+  readonly words: string
+  readonly href: string | null
+  readonly amber?: boolean
+  readonly title?: string
+}
+
+export interface LedgerRow {
+  readonly key: string
+  readonly kind: 'pool' | 'round' | 'nopool' | 'foot'
+  /** The pool this row belongs to (the toggle's key); '*' on the foot. */
+  readonly pool: string
+  readonly label: string
+  readonly title?: string
+  readonly committed: number | null
+  readonly posted: LedgerFigure
+  readonly accepted: LedgerFigure
+  readonly needsOffer: LedgerFigure
+  /** Null where the row has no Round 3 to hold one. */
+  readonly pending: LedgerFigure | null
+  /** Null on a round with nothing posted and nothing unconfirmed (an empty cell). */
+  readonly unconfirmed: LedgerFigure | null
+}
+
+const holdsMoney = (value: number | null | undefined) =>
+  value !== null && value !== undefined && toCents(value) !== 0
+
+/** The five What-is-committed figures of one row; `links` is false on the totals and No pool, which open nothing. */
+function ledgerRow(
+  row: BudgetRow,
+  kind: LedgerRow['kind'],
+  view: AidView,
+  opts: { links: boolean; pending: boolean; who: string; title?: string }
+): LedgerRow {
+  const href = (r: BudgetRow, column: 'posted' | 'accepted' | 'needs_offer') =>
+    opts.links ? cellHref(r, column, view, null) : null
+  const count = row.cell.pending_approval_count
+  const pending = opts.pending
+    ? {
+        words: `${count == null ? '' : `${String(count.requests)} · `}${formatMoney(row.cell.pending_approval)}`,
+        href: href({ ...row, kind: 'pending' }, 'needs_offer'),
+      }
+    : null
+  const unc = row.cell.unconfirmed
+  const amount = unc == null ? null : unc.amount
+  const empty = kind === 'round' && !holdsMoney(amount) && !holdsMoney(cellValue(row, 'posted'))
+  const amber = holdsMoney(amount) && (amount ?? 0) > 0
+  const where = row.kind === 'round' ? `Round ${String(row.round)}` : 'rounds'
+  return {
+    key: row.key,
+    kind,
+    pool: row.pool,
+    label: row.label,
+    ...(opts.title === undefined ? {} : { title: opts.title }),
+    committed: row.cell.committed ?? null,
+    posted: { words: formatMoney(cellValue(row, 'posted')), href: href(row, 'posted') },
+    accepted: { words: formatMoney(cellValue(row, 'accepted')), href: href(row, 'accepted') },
+    needsOffer: { words: words(row, 'needs_offer'), href: href(row, 'needs_offer') },
+    pending,
+    unconfirmed: empty
+      ? null
+      : {
+          words: unc == null ? (view.asOf.kind === 'past' ? '—' : '$0') : formatMoney(unc.amount),
+          href: opts.links ? confirmedHref(row, view) : null,
+          ...(amber
+            ? {
+                amber: true,
+                title: `${formatMoney(amount)} of ${opts.who}'s posted ${where} isn't in CampMinder's camp aid yet. Remaining still subtracts all of Posted.`,
+              }
+            : {}),
+        },
+  }
+}
+
+const hasPending = (pool: ApiAidBudgetPool) =>
+  pool.rounds.some((r) => r.round === 3 || holdsMoney(r.pending_approval))
+
 /**
- * The folded rounds table (§5.2 D): Round · Committed · What is committed. Every figure links as today's cellHref:
- * Posted and Accepted open All on the round's figure; Needs an offer and Pending approval their views, live only.
- * Pending approval shows on Round 3 and on any round where it is above $0 (D79).
+ * The ruled ledger (rounds-1, -2, -3): each pool as a row that opens into its rounds, a muted No pool row when money
+ * sits there, then the season (or the one pool, "<Pool> only") in the green band. Every row carries the five
+ * What-is-committed figures; a pool's and a round's link, a total's and No pool's do not. Allocated and Remaining are
+ * the cards', never a round's (§8.1).
  */
-export function roundLines(budget: ApiAidBudget, poolKey: string, view: AidView): RoundLine[] {
-  const rows = budgetRows(budget, {
-    pool: poolKey === TOTAL_POOL ? null : poolKey,
-    folded: new Set(),
-  })
-  const scoped = rows.filter((r) => r.pool === poolKey)
-  return scoped
-    .filter((r) => r.kind === 'round')
-    .map((row) => {
-      const pending = scoped.find((r) => r.kind === 'pending' && r.round === row.round)
-      const parts = [
-        {
-          label: 'Posted',
-          note: 'budget_posted',
-          words: formatMoney(cellValue(row, 'posted')),
-          href: cellHref(row, 'posted', view, null),
-        },
-        {
-          label: 'of it accepted',
-          note: 'accepted',
-          words: formatMoney(cellValue(row, 'accepted')),
-          href: cellHref(row, 'accepted', view, null),
-        },
-        {
-          label: 'needs an offer',
-          note: 'needs_offer',
-          words: words(row, 'needs_offer'),
-          href: cellHref(row, 'needs_offer', view, null),
-        },
-      ]
-      if (row.round === 3 || pending !== undefined) {
-        const target = pending ?? { ...row, kind: 'pending' as const }
-        const count = target.cell.pending_approval_count
-        parts.push({
-          label: 'pending approval',
-          note: 'pending_approval',
-          words: `${count == null ? '' : `${String(count.requests)} · `}${formatMoney(target.cell.pending_approval)}`,
-          href: cellHref(target, 'needs_offer', view, null),
+export function ledgerRows(
+  budget: ApiAidBudget,
+  pool: string | null,
+  view: AidView,
+  open: ReadonlySet<string>
+): LedgerRow[] {
+  const out: LedgerRow[] = []
+  for (const card of poolCards(budget, pool)) {
+    const model = budget.pools.find((p) => p.pool === card.key)
+    if (model === undefined) continue
+    const rows = budgetRows(budget, { pool: card.key, folded: new Set() })
+    const total = rows.find((r) => r.kind === 'pool')
+    if (total === undefined) continue
+    out.push(
+      ledgerRow(total, 'pool', view, { links: true, pending: hasPending(model), who: card.label })
+    )
+    if (!open.has(card.key)) continue
+    for (const row of rows.filter((r) => r.kind === 'round')) {
+      out.push(
+        ledgerRow(row, 'round', view, {
+          links: true,
+          pending: row.round === 3 || holdsMoney(row.cell.pending_approval),
+          who: card.label,
         })
-      }
-      const confirmed = confirmedWords(row)
-      return {
-        round: row.round ?? 0,
-        committed: row.cell.committed ?? null,
-        parts,
-        confirmed: confirmed === null ? null : { words: confirmed, href: confirmedHref(row, view) },
-      }
-    })
+      )
+    }
+  }
+  const none = budget.pools.find((p) => p.pool === NO_POOL)
+  if (pool === null && none !== undefined && noPoolCommitted(budget) !== null) {
+    out.push(
+      ledgerRow(
+        {
+          key: 'nopool',
+          kind: 'pool',
+          pool: NO_POOL,
+          poolLabel: none.label,
+          label: none.label,
+          round: null,
+          cell: none.total,
+        },
+        'nopool',
+        view,
+        {
+          links: false,
+          pending: hasPending(none),
+          who: 'No pool',
+          title:
+            'No pool: a program the rules give no pool. No allocation of its own; its money counts in the season total only',
+        }
+      )
+    )
+  }
+  const scope = pool === null ? budget.total : budget.pools.find((p) => p.pool === pool)
+  if (scope !== undefined) {
+    out.push(
+      ledgerRow(
+        {
+          key: 'total',
+          kind: 'total',
+          pool: TOTAL_POOL,
+          poolLabel: scope.label,
+          label: pool === null ? 'Season total' : `${scope.label} only`,
+          round: null,
+          cell: scope.total,
+        },
+        'foot',
+        view,
+        {
+          links: false,
+          pending: hasPending(scope),
+          who: pool === null ? 'the season' : scope.label,
+          title: pool === null ? 'Every pool, No pool included' : 'This page shows one pool',
+        }
+      )
+    )
+  }
+  return out
 }
 
 export const BUDGET_CSV_HEADERS = [
@@ -293,5 +393,15 @@ export function withPreview(
           remaining: shown.remaining,
           overShare: toCents(shown.remaining) < 0,
         }
+  })
+}
+
+/** Whether the typed plan moves any Allocated from the read's (the one amber "preview" pill says so, rounds-13). */
+export function previewMoves(budget: ApiAidBudget, preview: Preview | null): boolean {
+  if (preview === null) return false
+  if (moved(budget.total.total.allocated, preview.total.allocated)) return true
+  return budget.pools.some((p) => {
+    const shown = preview.pools[p.pool]
+    return shown !== undefined && moved(p.total.allocated, shown.allocated)
   })
 }

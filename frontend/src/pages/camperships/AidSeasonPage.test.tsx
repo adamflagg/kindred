@@ -54,7 +54,6 @@ vi.mock('../../hooks/camperships/useAidRulesWrites', () => ({
 }))
 vi.mock('../../components/camperships/season/RoundsBudgetTab', () => ({
   RoundsBudgetTab: () => <div>Rounds and budget body</div>,
-  RoundsBudgetScope: () => <span>Scope stub</span>,
   RoundsBudgetCsv: () => <button type="button">Download CSV</button>,
 }))
 vi.mock('../../components/camperships/season/HistoryTab', () => ({
@@ -203,18 +202,16 @@ describe('the tab bar right side (spec §4; Review Focus 5)', () => {
     }
   )
 
-  it('puts the scope first and Download CSV last on Rounds & budget only (Task 38)', () => {
+  it('puts Download CSV last on Rounds & budget only (the one-pool chip moved to the Budget heading, rounds-15)', () => {
     granted = FINANCE
     renderAt('/aid/season/rounds-budget')
     const nav = screen.getByRole('navigation')
     const right = [...nav.querySelectorAll('button, span')]
     const names = right.map((el) => el.textContent)
-    expect(names.indexOf('Scope stub')).toBeGreaterThan(-1)
-    expect(names.indexOf('Scope stub')).toBeLessThan(names.indexOf('Approve…'))
+    expect(names).not.toContain('Scope stub')
     expect(names.indexOf('Approve…')).toBeLessThan(names.indexOf('Download CSV'))
     cleanup()
     renderAt('/aid/season/history')
-    expect(screen.queryByText('Scope stub')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Download CSV' })).toBeNull()
   })
 

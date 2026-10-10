@@ -1,34 +1,37 @@
 /** Rounds & budget's fold lines and their URL state (spec §5.2 F, G). Pure; the server did every sum. */
 import type { ApiAidBudget, ApiAidBudgetPool, ApiAidRoundCounts } from '../../../types/api-types'
 import { formatMoney } from '../kit/money'
+import { demandMoney } from './demandModel'
 import { scopePool } from './budgetModel'
 
-export type FoldLineKey = 'how' | 'stands' | 'below' | 'demand' | 'types' | 'notes'
+export type FoldLineKey = 'stands' | 'below' | 'demand' | 'types'
 export const lineKey = (key: FoldLineKey) => `lines:${key}`
+/** Where each round stands starts open (owner, 10-09: "open actually by default"); the other three start closed. */
+export const DEFAULT_OPEN_LINES: readonly string[] = [lineKey('stands')]
 
-/** `?open=budget,pool_a,lines:how` (D15, replaced). Today's `?fold=` is ignored and dropped on the next write. */
+/** `?open=pool_a,lines:stands` (D15, replaced). Today's `?fold=` is ignored and dropped on the next write. */
 export function parseOpenKeys(raw: string | null): ReadonlySet<string> {
   return new Set((raw ?? '').split(',').filter((key) => key !== ''))
 }
 
-export function toggleOpenKey(open: ReadonlySet<string>, key: string): string | null {
+/** What is open: the defaults until the first toggle writes `?open=`, which is then the whole state ("" = all closed). */
+export function openKeys(raw: string | null, defaults: Iterable<string>): ReadonlySet<string> {
+  return raw === null ? new Set(defaults) : parseOpenKeys(raw)
+}
+
+/** The next `?open=` value, the whole state: "" when everything is closed. */
+export function toggleOpenKey(open: ReadonlySet<string>, key: string): string {
   const next = new Set(open)
   if (next.has(key)) next.delete(key)
   else next.add(key)
-  return next.size === 0 ? null : [...next].join(',')
+  return [...next].join(',')
 }
 
-export const howLabel = (version: number | null) =>
-  version === null ? 'How the rules count' : `How rules v${String(version)} count`
 export const HOW_SUMMARY =
   'counts when offered · each pool keeps its own Remaining · only the total is a cap'
-export const HOW_BODY =
-  'Counts when offered: a round counts against Remaining once it is decided (Needs an offer), posted, or keyed for ' +
-  'approval; Accepted is shown, never subtracted. Each pool keeps its own Remaining: money left in one pool never ' +
-  'moves to another on its own; finance moves it by changing the program split (Edit Plan…). Only the total is a ' +
-  "cap: a program's share is finance's guess at its need, so a pool past it reads amber, and only the season's total " +
-  'below $0 reads red. Round 3 is whatever is left in the pool.'
-export const HOW_NO_RULES = 'No approved rules: no total, no program split, nothing allocated.'
+/** The Budget heading's description (rounds-5): the rules version, then how they count. */
+export const budgetDescription = (version: number | null) =>
+  version === null ? HOW_SUMMARY : `rules v${String(version)} · ${HOW_SUMMARY}`
 
 const req = (n: number) => `${String(n)} req`
 const sum = (
@@ -68,8 +71,8 @@ export function belowSummary(budget: ApiAidBudget, pool: string | null): string 
 export function demandSummary(scope: ApiAidBudgetPool): string {
   const d = scope.demand
   return (
-    `Round 2 asks so far ${formatMoney(d.round2_asked)} (${req(d.round2_asks?.requests ?? 0)}) · ` +
-    `Round 1 unmet ask ${formatMoney(d.round1_unmet)} (${req(d.round1_unmet_requests?.requests ?? 0)})`
+    `Round 2 asks so far ${demandMoney(d.round2_asked)} (${req(d.round2_asks?.requests ?? 0)}) · ` +
+    `Round 1 unmet ask ${demandMoney(d.round1_unmet)} (${req(d.round1_unmet_requests?.requests ?? 0)})`
   )
 }
 
@@ -81,5 +84,3 @@ export function typesSummary(scope: ApiAidBudgetPool): string {
     )
     .join(' · ')
 }
-
-export const notesLabel = (count: number) => `Notes 1–${String(count)}`

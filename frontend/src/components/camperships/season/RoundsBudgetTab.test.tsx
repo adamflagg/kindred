@@ -1,6 +1,6 @@
 /**
- * Season › Rounds & budget on screen (spec §5; budget-v9.html): the Budget card, a card per pool, the No pool card and
- * the fold lines, with the scope and CSV on the tab bar's right. The reads and the notes are mocked; the figures are
+ * Season › Rounds & budget on screen (spec §5; final design, layout C): the Budget heading, a strip of compact cards
+ * (a pool each, the season in the band), ONE ruled table, four folding sections, with the CSV on the tab bar's right. The reads and the notes are mocked; the figures are
  * budgetFixtures' invented season.
  */
 import { cleanup, render, screen, within } from '@testing-library/react'
@@ -12,7 +12,7 @@ import type { ApiAidBudget, ApiAidRulesDraft } from '../../../types/api-types'
 import { BUDGET, pastBudget, pastBudgetUnmasked, poolOverShare } from './budgetFixtures'
 import { rulesDraft } from './rules/rulesFixtures'
 import { SeasonChromeContext } from './seasonChrome'
-import { RoundsBudgetCsv, RoundsBudgetScope, RoundsBudgetTab } from './RoundsBudgetTab'
+import { RoundsBudgetCsv, RoundsBudgetTab } from './RoundsBudgetTab'
 
 let read: { data: ApiAidBudget | undefined; isLoading: boolean; error: Error | null }
 vi.mock('../../../hooks/camperships/useAidBudget', () => ({ useAidBudget: () => read }))
@@ -21,12 +21,12 @@ vi.mock('../../../hooks/camperships/useAidDefinitions', () => ({
     notes: [],
     numberOf: (key: string) =>
       ({
-        allocated: 1,
-        budget_posted: 2,
-        remaining: 6,
-        round2_asks: 8,
-        round1_unmet: 9,
-        unconfirmed: 10,
+        rounds_allocated: 1,
+        rounds_committed: 2,
+        rounds_posted: 3,
+        rounds_needs_offer: 4,
+        rounds_remaining: 5,
+        rounds_below_the_line: 6,
       })[key] ?? null,
     isPending: false,
     error: null,
@@ -111,57 +111,138 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers())
 
 describe('Rounds & budget (spec §5)', () => {
-  it('leads with the Budget card, then one card per pool, the No pool card, then the fold lines', () => {
+  it('leads with the Budget heading, the strip of cards (pools, then the Season), ONE ruled table, then the sections', () => {
     renderAt('/aid/season/rounds-budget')
     const order = [...document.querySelectorAll('[data-testid]')]
       .map((el) => el.getAttribute('data-testid'))
       .filter((id) =>
         [
-          'budget-card',
+          'budget-head',
           'pool-card-pool_a',
           'pool-card-pool_b',
-          'no-pool-card',
+          'season-card',
+          'rounds-table',
           'fold-lines',
         ].includes(id ?? '')
       )
     expect(order).toEqual([
-      'budget-card',
+      'budget-head',
       'pool-card-pool_a',
       'pool-card-pool_b',
-      'no-pool-card',
+      'season-card',
+      'rounds-table',
       'fold-lines',
     ])
+    // Pool cards open nothing and No pool is a muted table row, never a card (rounds-1, -18)
+    expect(screen.queryByTestId('no-pool-card')).toBeNull()
+    expect(document.querySelector('[data-ledger="nopool"]')).not.toBeNull()
   })
 
-  it('opens a card and a fold line into ?open=, replacing the entry; an old ?fold= is ignored and dropped', async () => {
+  it('draws the ruled table with five What-is-committed columns, rounds under each open pool, the season in the band (rounds-1, -2, -3)', () => {
+    renderAt('/aid/season/rounds-budget')
+    const table = screen.getByTestId('rounds-table')
+    expect(
+      within(table)
+        .getAllByRole('columnheader')
+        .map((h) => h.textContent)
+    ).toEqual([
+      '',
+      'What is committed2',
+      'Pool · round',
+      'Committed2',
+      'Posted3',
+      'Accepted',
+      'Needs an offer4',
+      'Pending approval4',
+      'Not yet confirmed3',
+    ])
+    // pools open by default: each pool, its three rounds, No pool, the Season total
+    expect(
+      [...table.querySelectorAll('tbody tr')].map((tr) => tr.getAttribute('data-ledger'))
+    ).toEqual([
+      'pool',
+      'round',
+      'round',
+      'round',
+      'pool',
+      'round',
+      'round',
+      'round',
+      'nopool',
+      'foot',
+    ])
+    expect(within(table).getByText('Season total')).toBeInTheDocument()
+  })
+
+  it('folds a pool with its caret and still has the season row (never an empty table)', async () => {
+    vi.useRealTimers()
+    renderAt('/aid/season/rounds-budget')
+    await userEvent.click(screen.getByRole('button', { name: /Pool A/ }))
+    expect(document.querySelectorAll('[data-pool="pool_a"]')).toHaveLength(1)
+    expect(document.querySelectorAll('tr[data-round]')).toHaveLength(3)
+    expect(within(screen.getByTestId('rounds-table')).getByText('Season total')).toBeInTheDocument()
+  })
+
+  it('writes the whole fold state to ?open=, replacing the entry; an old ?fold= is ignored and dropped', async () => {
     vi.useRealTimers()
     renderAt('/aid/season/rounds-budget?fold=pool_a')
     await userEvent.click(screen.getByRole('button', { name: /Pool A/ }))
-    expect(screen.getByTestId('where')).toHaveTextContent('open=pool_a')
-    expect(screen.getByTestId('where')).not.toHaveTextContent('fold=')
-    expect(screen.getByTestId('where')).toHaveAttribute('data-nav', 'REPLACE')
+    const where = screen.getByTestId('where')
+    expect(new URLSearchParams(where.textContent).get('open')).toBe('pool_b,lines:stands')
+    expect(where).not.toHaveTextContent('fold=')
+    expect(where).toHaveAttribute('data-nav', 'REPLACE')
   })
 
-  it('folds each of the six lines closed by default, each with its summary', () => {
+  it('puts the four sections under the table: Where each round stands OPEN, the other three closed, each with its summary', () => {
     renderAt('/aid/season/rounds-budget')
     const lines = screen.getByTestId('fold-lines')
-    for (const label of [
-      'How rules v3 count',
-      'Where each round stands',
-      'Shown, not counted against the budget',
-      'Demand still to come',
-      'In the budget, by decision type',
-      'Notes 1–13',
-    ]) {
-      expect(within(lines).getByRole('button', { name: new RegExp(label) })).toBeInTheDocument()
-    }
-    expect(within(lines).getByText('what each figure means')).toBeInTheDocument()
+    const state = (label: string) =>
+      within(lines)
+        .getByRole('button', { name: new RegExp(label) })
+        .getAttribute('aria-expanded')
+    expect(state('Where each round stands')).toBe('true')
+    expect(state('Shown, not counted')).toBe('false')
+    expect(state('Demand still to come')).toBe('false')
+    expect(state('In the budget, by decision type')).toBe('false')
+    expect(
+      within(lines).getByText(/^needs an offer 13 req · pending approval 1 req/)
+    ).toBeInTheDocument()
+    // How the rules count and the Notes are not fold lines any more (rounds-5)
+    expect(within(lines).queryByRole('button', { name: /How rules/ })).toBeNull()
+    expect(within(lines).queryByRole('button', { name: /Notes/ })).toBeNull()
   })
 
-  it('on a one-pool page hides the Budget card and says "All pools · the whole season" in the opened strip', () => {
-    renderAt('/aid/season/rounds-budget?pool=pool_a&open=lines:stands')
-    expect(screen.queryByTestId('budget-card')).toBeNull()
-    expect(screen.getByText('All pools · the whole season')).toBeInTheDocument()
+  it('shows where each round stands as a ruled Round × stage table, Pending approval only on Round 3 (rounds-6)', () => {
+    renderAt('/aid/season/rounds-budget')
+    const lines = screen.getByTestId('fold-lines')
+    const table = within(lines).getAllByRole('table')[0]!
+    expect(
+      within(table)
+        .getAllByRole('columnheader')
+        .map((h) => h.textContent)
+    ).toEqual(['Round', 'Needs an offer', 'Posted', 'Accepted', 'Held', 'Pending approval'])
+    expect(within(table).getAllByRole('row')).toHaveLength(4)
+  })
+
+  it('gives the Budget heading the rules version and how the rules count (rounds-5)', () => {
+    renderAt('/aid/season/rounds-budget')
+    expect(
+      within(screen.getByTestId('budget-head')).getByText(
+        'rules v3 · counts when offered · each pool keeps its own Remaining · only the total is a cap'
+      )
+    ).toBeInTheDocument()
+  })
+
+  it('on a one-pool page keeps the Budget heading with a removable chip, no Season card, and says "All pools · the whole season"', async () => {
+    vi.useRealTimers()
+    renderAt('/aid/season/rounds-budget?pool=pool_a')
+    expect(screen.getByTestId('budget-head')).toBeInTheDocument()
+    expect(screen.queryByTestId('season-card')).toBeNull()
+    expect(screen.getByText(/^All pools · the whole season · needs an offer/)).toBeInTheDocument()
+    expect(within(screen.getByTestId('rounds-table')).getByText('Pool A only')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Clear Pool A only' }))
+    expect(screen.getByTestId('where').textContent).toBe('')
+    expect(screen.getByTestId('season-card')).toBeInTheDocument()
   })
 
   it("keeps today's line for a pool the season does not have", () => {
@@ -169,11 +250,11 @@ describe('Rounds & budget (spec §5)', () => {
     expect(screen.getByText(/No pool "nope" in 2027's budget\./)).toBeInTheDocument()
   })
 
-  it('Edit Plan… is finance-only, live-only and needs approved rules (Review Focus 5)', () => {
+  it('Edit Plan… is finance-only and live-only, and also serves a season with no approved rules yet (it sets the first budget)', () => {
     granted = FINANCE
     renderAt('/aid/season/rounds-budget')
     expect(
-      within(screen.getByTestId('budget-card')).getByRole('button', { name: 'Edit Plan…' })
+      within(screen.getByTestId('budget-head')).getByRole('button', { name: 'Edit Plan…' })
     ).toBeInTheDocument()
     cleanup()
     granted = REGISTRAR
@@ -270,64 +351,88 @@ describe('Rounds & budget (spec §5)', () => {
     )
     const view = render(chromeAt(0))
     await userEvent.click(
-      within(screen.getByTestId('budget-card')).getByRole('button', { name: 'Edit Plan…' })
+      within(screen.getByTestId('budget-head')).getByRole('button', { name: 'Edit Plan…' })
     )
     expect(screen.getByLabelText('Total')).toBeInTheDocument()
     view.rerender(chromeAt(1))
     expect(screen.queryByLabelText('Total')).toBeNull()
   })
 
-  // Scan of #3042: the editor lives in the Budget card, which a one-pool page or a past date does not show; leaving
-  // for either closes the plan, so no card keeps a preview of typing nobody can see, Save, or Cancel.
-  it.each([
-    ['a one-pool page', '/aid/season/rounds-budget?pool=pool_a'],
-    ['a past date', '/aid/season/rounds-budget?as_of=2027-03-15'],
-  ])(
-    'closes Edit Plan… when Back leads to %s, and does not reopen it on Forward',
-    async (_, away) => {
-      granted = FINANCE
-      function Step() {
-        const navigate = useNavigate()
-        return (
-          <>
-            <button type="button" onClick={() => void navigate(-1)}>
-              Back
-            </button>
-            <button type="button" onClick={() => void navigate(1)}>
-              Forward
-            </button>
-          </>
-        )
-      }
-      render(
-        <MemoryRouter initialEntries={[away, '/aid/season/rounds-budget']} initialIndex={1}>
-          <RoundsBudgetTab />
-          <Step />
-        </MemoryRouter>
+  // Scan of #3042: a past date shows no editor; leaving for one closes the plan, so no card keeps a preview of typing
+  // nobody can save or cancel. (A one-pool page keeps the editor: the Budget heading stays there, rounds-15.)
+  it('closes Edit Plan… when Back leads to a past date, and does not reopen it on Forward', async () => {
+    granted = FINANCE
+    function Step() {
+      const navigate = useNavigate()
+      return (
+        <>
+          <button type="button" onClick={() => void navigate(-1)}>
+            Back
+          </button>
+          <button type="button" onClick={() => void navigate(1)}>
+            Forward
+          </button>
+        </>
       )
-      await userEvent.click(
-        within(screen.getByTestId('budget-card')).getByRole('button', { name: 'Edit Plan…' })
-      )
-      expect(screen.getByLabelText('Total')).toBeInTheDocument()
-      expect(screen.getAllByText('preview').length).toBeGreaterThan(0)
-      await userEvent.click(screen.getByRole('button', { name: 'Back' }))
-      expect(screen.queryByText('preview')).toBeNull()
-      await userEvent.click(screen.getByRole('button', { name: 'Forward' }))
-      expect(screen.getByTestId('budget-card')).toBeInTheDocument()
-      expect(screen.queryByLabelText('Total')).toBeNull()
-      expect(screen.queryByText('preview')).toBeNull()
     }
-  )
+    render(
+      <MemoryRouter
+        initialEntries={['/aid/season/rounds-budget?as_of=2027-03-15', '/aid/season/rounds-budget']}
+        initialIndex={1}
+      >
+        <RoundsBudgetTab />
+        <Step />
+      </MemoryRouter>
+    )
+    await userEvent.click(
+      within(screen.getByTestId('budget-head')).getByRole('button', { name: 'Edit Plan…' })
+    )
+    expect(screen.getByLabelText('Total')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Back' }))
+    expect(screen.queryByLabelText('Total')).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Forward' }))
+    expect(screen.getByTestId('budget-head')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Total')).toBeNull()
+    expect(screen.queryByText('preview')).toBeNull()
+  })
 
-  it("opens Edit Plan… from a one-pool page's nudge on All pools, and keeps it open there", async () => {
+  it('shows ONE amber preview pill once typing moves a figure, and marks the moved figures (rounds-13)', async () => {
+    vi.useRealTimers()
+    granted = FINANCE
+    draft = { ...rulesDraft(), budget_total_locked: false }
+    renderAt('/aid/season/rounds-budget')
+    await userEvent.click(
+      within(screen.getByTestId('budget-head')).getByRole('button', { name: 'Edit Plan…' })
+    )
+    // opened as the draft stands: nothing moved, so no pill and no amber mark yet
+    expect(screen.queryByText('preview')).toBeNull()
+    const total = screen.getByLabelText('Total')
+    await userEvent.clear(total)
+    await userEvent.type(total, '1010000')
+    expect(screen.getAllByText('preview')).toHaveLength(1)
+    expect(within(screen.getByTestId('budget-head')).getByText('preview')).toBeInTheDocument()
+    expect(document.querySelectorAll('[data-moved]').length).toBeGreaterThan(0)
+  })
+
+  it('Edit Plan… on a one-pool page edits in place and keeps the page on that pool', async () => {
     granted = FINANCE
     read = { data: poolOverShare(), isLoading: false, error: null }
     renderAt('/aid/season/rounds-budget?pool=pool_b')
     await userEvent.click(
-      within(screen.getByTestId('pool-card-pool_b')).getByRole('button', { name: 'Edit Plan…' })
+      within(screen.getByTestId('budget-head')).getByRole('button', { name: 'Edit Plan…' })
     )
-    expect(screen.getByTestId('where').textContent).toBe('')
+    expect(screen.getByTestId('where')).toHaveTextContent('pool=pool_b')
     expect(screen.getByLabelText('Total')).toBeInTheDocument()
+    expect(screen.getByTestId('pool-card-pool_b')).toBeInTheDocument()
+  })
+
+  it('draws a pool past its share as an amber pill on its card, with no Edit Plan… of its own', () => {
+    granted = FINANCE
+    read = { data: poolOverShare(), isLoading: false, error: null }
+    renderAt('/aid/season/rounds-budget')
+    const card = screen.getByTestId('pool-card-pool_b')
+    expect(within(card).getByText('over its share')).toBeInTheDocument()
+    expect(within(card).queryByRole('button')).toBeNull()
   })
 
   it('keeps Edit Plan… enabled after a posted round locks the budget total (owner 10-06 (b))', () => {
@@ -335,7 +440,7 @@ describe('Rounds & budget (spec §5)', () => {
     draft = { ...rulesDraft(), budget_total_locked: true }
     renderAt('/aid/season/rounds-budget')
     expect(
-      within(screen.getByTestId('budget-card')).getByRole('button', { name: 'Edit Plan…' })
+      within(screen.getByTestId('budget-head')).getByRole('button', { name: 'Edit Plan…' })
     ).toBeEnabled()
   })
 
@@ -361,19 +466,6 @@ describe('Rounds & budget (spec §5)', () => {
     expect(lines.at(-1)).toMatch(/^Link,http/)
   })
 
-  it("names the scope on the tab bar's right with All Pools ›", () => {
-    render(
-      <MemoryRouter initialEntries={['/aid/season/rounds-budget?pool=pool_b']}>
-        <RoundsBudgetScope />
-      </MemoryRouter>
-    )
-    expect(screen.getByText('Pool B')).toHaveProperty('tagName', 'B')
-    expect(screen.getByRole('link', { name: 'All Pools ›' })).toHaveAttribute(
-      'href',
-      '/aid/season/rounds-budget?year=2027'
-    )
-  })
-
   it("loading reads QueryGuard's words; a failed refetch keeps the figures", () => {
     read = { data: undefined, isLoading: true, error: null }
     renderAt('/aid/season/rounds-budget')
@@ -382,7 +474,7 @@ describe('Rounds & budget (spec §5)', () => {
     read = { data: BUDGET, isLoading: false, error: new Error('Failed to load Rounds & budget') }
     renderAt('/aid/season/rounds-budget')
     expect(screen.queryByText(/Failed to load/)).toBeNull()
-    expect(screen.getByTestId('budget-card')).toBeInTheDocument()
+    expect(screen.getByTestId('budget-head')).toBeInTheDocument()
   })
 })
 
@@ -400,8 +492,8 @@ describe('the fold lines carry what the table, strip and notes did (spec §5.2 F
   it('on a past date opens no queue view from the strip, and keeps the date on Posted', () => {
     read = { data: pastBudgetUnmasked(), isLoading: false, error: null }
     renderAt('/aid/season/rounds-budget?open=lines:stands&as_of=2027-03-15')
-    const round1 = within(screen.getByTestId('fold-lines')).getByText('Round 1').parentElement
-    if (round1 === null) throw new Error('no Round 1 line')
+    const round1 = document.querySelector('[data-stands-round="1"]')
+    if (!(round1 instanceof HTMLElement)) throw new Error('no Round 1 line')
     expect(within(round1).getByText('3 fam · 3 req')).toBeInTheDocument()
     expect(within(round1).queryByRole('link', { name: '3 fam · 3 req' })).toBeNull()
     expect(within(round1).getByRole('link', { name: '340 fam · 367 req' })).toBeInTheDocument()
@@ -415,12 +507,31 @@ describe('the fold lines carry what the table, strip and notes did (spec §5.2 F
       'outside_type:outside',
       'held',
     ])
-    expect(below('grants')).toHaveTextContent('Outside grants on requests (14 fam · 16 req)')
+    expect(below('grants')).toHaveTextContent('Outside grants on requests')
+    expect(within(below('grants')).getByText('14 fam · 16 req')).toBeInTheDocument()
     expect(within(below('grants')).getByText('$44,300')).toBeInTheDocument()
     expect(within(below('held')).getByRole('link', { name: '7 fam · 10 req' })).toHaveAttribute(
       'href',
       '/aid/requests?view=holds&year=2027'
     )
+  })
+
+  it('titles Shown, not counted, with the outside fund qualified and Held showing "—" for its unknown amount (rounds-7, m3)', () => {
+    renderAt('/aid/season/rounds-budget?open=lines:below')
+    const table = within(screen.getByTestId('fold-lines')).getAllByRole('table')[0]!
+    expect(
+      within(table)
+        .getAllByRole('columnheader')
+        .map((h) => h.textContent)
+    ).toEqual(['Line', 'Families · requests', 'Amount', 'Of it'])
+    expect(
+      within(below('outside_type:outside')).getByText(
+        "Funded outside the budget (outside the camp's budget)"
+      )
+    ).toBeInTheDocument()
+    expect(within(below('outside_type:outside')).getByText('$21,840 posted')).toBeInTheDocument()
+    expect(within(below('held')).getByText('—')).toBeInTheDocument()
+    expect(within(below('held')).getByText('amount unknown until resolved')).toBeInTheDocument()
   })
 
   it('scopes below the line to one pool', () => {
@@ -439,8 +550,57 @@ describe('the fold lines carry what the table, strip and notes did (spec §5.2 F
     expect(screen.queryByText(/asks, shown, never counted in Remaining/)).toBeNull()
   })
 
-  it('shows the budget by decision type, and none when the read has no lines', () => {
+  it('draws the Demand totals as two bold green-band rows, No pool described, closed by default (rounds-8, m4)', () => {
+    renderAt('/aid/season/rounds-budget')
+    expect(document.querySelector('[data-fold-line="demand"] table')).toBeNull()
+    cleanup()
+    renderAt('/aid/season/rounds-budget?open=lines:demand')
+    const totals = [...document.querySelectorAll('[data-total]')]
+    expect(totals.map((r) => r.querySelector('td')?.textContent)).toEqual([
+      'Total · Round 2 asks so far',
+      'Total · Round 1 unmet ask',
+    ])
+    expect(totals[0]?.querySelector('td')?.className).toMatch(/font-bold/)
+    cleanup()
+    // a No pool that holds some demand says what it is
+    read = {
+      data: {
+        ...BUDGET,
+        pools: BUDGET.pools.map((p) =>
+          p.pool === ''
+            ? {
+                ...p,
+                demand: {
+                  ...p.demand,
+                  round1_unmet: 8000,
+                  round1_unmet_requests: { families: 3, requests: 3 },
+                },
+              }
+            : p
+        ),
+      },
+      isLoading: false,
+      error: null,
+    }
+    renderAt('/aid/season/rounds-budget?open=lines:demand')
+    expect(screen.getByText('requests with no program yet')).toBeInTheDocument()
+  })
+
+  it('keeps the drill links on Round 2 request counts and Held counts in Demand (rounds-m3)', () => {
+    renderAt('/aid/season/rounds-budget?open=lines:demand')
+    const asks = document.querySelector('[data-demand-line="pool_a:round2_asks"]')
+    if (!(asks instanceof HTMLElement)) throw new Error('no Round 2 asks line')
+    expect(within(asks).getAllByRole('link').length).toBe(2)
+    expect(
+      within(asks)
+        .getAllByRole('link')
+        .map((a) => a.getAttribute('href'))
+    ).toContain('/aid/requests?view=holds&pool=pool_a&year=2027')
+  })
+
+  it('shows the budget by decision type under its own heading only, and none when the read has no lines', () => {
     renderAt('/aid/season/rounds-budget?open=lines:types')
+    expect(screen.getAllByText('In the budget, by decision type')).toHaveLength(1)
     expect(keys('data-type-line')).toEqual(['type:standard', 'type:appeal', 'type:none'])
     cleanup()
     read = {

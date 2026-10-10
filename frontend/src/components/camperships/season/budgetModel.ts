@@ -345,7 +345,7 @@ export function scopePool(budget: ApiAidBudget, pool: string | null): ApiAidBudg
 const OUTSIDE_AGGREGATE_LABEL = "Decision types that don't count toward the budget"
 
 const postedNote = (posted: number | null): string | null =>
-  posted === null ? null : `${formatMoney(posted)} of it posted`
+  posted === null ? null : `${formatMoney(posted)} posted`
 
 /**
  * Shown, never counted in Remaining: outside grants (on requests, and on no request for the
