@@ -70,81 +70,96 @@ export function ghostPct(card: PoolCardModel, fromCommitted: number | null): num
   return Math.min(100, (100 * fromCommitted) / base)
 }
 
-export interface LegendItem {
-  readonly round: 1 | 2 | 3
-  readonly text: string
-  readonly change: Change | null
-}
-
-export interface StripPool {
-  readonly card: PoolCardModel
-  readonly remainingChange: Change | null
+export interface SpendRow {
+  readonly key: string
+  readonly label: string
+  readonly round1: number
+  readonly round2: number
+  readonly round3: number
+  readonly spend: number
+  readonly remaining: number | null
+  /** A pool below $0 reads amber, the total below $0 red (footnote 2): the view picks the ink. */
+  readonly over: boolean
+  readonly vs: Change | null
+  /** The Remaining projected at the season's end, unrounded; null where the server sent none. */
+  readonly projected: number | null
+  /** The Used meter: a pool's bar and the dotted mark at the starting point; the total has neither. */
+  readonly card: PoolCardModel | null
   readonly ghostPct: number | null
-  readonly projected: string | null
-  readonly legend: readonly LegendItem[]
 }
 
-/** One cell per pool in the rules' order; money on no pool counts in the total, not as a cell. */
-export function stripPools(draft: Results, from: Results | null, locked: boolean): StripPool[] {
+/**
+ * The Spend table's rows (final mock; scenarios-3): one per pool in the rules' order, then the total. Money on no pool
+ * counts in the total, not as a row. The server did every sum; this reads them, and colours each Remaining change
+ * (green leaves more money, amber less).
+ */
+export function spendTable(
+  draft: Results,
+  from: Results | null
+): { pools: SpendRow[]; total: SpendRow } {
   const projected = new Map(
     (draft.projection?.pools ?? []).map((p) => [p.pool, p.remaining ?? null])
   )
-  return draft.pools
+  const pools = draft.pools
     .filter((pool) => pool.pool !== '')
-    .map((pool) => {
+    .map((pool): SpendRow => {
       const before = from?.pools.find((p) => p.pool === pool.pool) ?? null
       const card = poolCard(pool)
-      const legend: LegendItem[] = [
-        // N10: once Round 1 posts, posted Round 1 stands, so its change is left out.
-        {
-          round: 1,
-          text: `R1 ${formatWholeMoney(pool.round1)}`,
-          change: locked ? null : moneyChange(pool.round1, before?.round1, 'spend'),
-        },
-      ]
-      if (locked)
-        legend.push({
-          round: 2,
-          text: `R2 ${formatWholeMoney(pool.round2)}`,
-          change: moneyChange(pool.round2, before?.round2, 'spend'),
-        })
-      if (toCents(pool.round3) > 0)
-        legend.push({
-          round: 3,
-          text: `R3 ${formatWholeMoney(pool.round3)}`,
-          change: moneyChange(pool.round3, before?.round3, 'spend'),
-        })
-      const ahead = projected.get(pool.pool)
       return {
+        key: pool.pool,
+        label: pool.label,
+        round1: pool.round1,
+        round2: pool.round2,
+        round3: pool.round3,
+        spend: spent(pool),
+        remaining: pool.remaining ?? null,
+        over: card.overShare,
+        vs: moneyChange(pool.remaining, before?.remaining, 'remaining'),
+        projected: projected.get(pool.pool) ?? null,
         card,
-        remainingChange: moneyChange(pool.remaining, before?.remaining, 'remaining'),
         ghostPct: ghostPct(card, before === null ? null : spent(before)),
-        projected: ahead === undefined || ahead === null ? null : `projected ${roughly(ahead)}`,
-        legend,
       }
     })
-}
-
-export interface StripLead {
-  readonly remaining: number | null
-  readonly overBudget: boolean
-  readonly change: Change | null
-  readonly ofWords: string
-}
-
-/** The lead column (§S5 E; N1). `postedStands`: after the lock, the sandbox's Round 1 settings differ from the
- * rules in effect (DraftOut.differs_in), so its posted Round 1 stands (N10). */
-export function stripLead(draft: Results, from: Results | null, postedStands: boolean): StripLead {
   const remaining = draft.remaining ?? null
-  const n = draft.requests
-  return {
+  const total: SpendRow = {
+    key: 'total',
+    label: 'Total',
+    round1: draft.round1,
+    round2: draft.round2,
+    round3: draft.round3,
+    spend: spent(draft),
     remaining,
-    overBudget: remaining !== null && toCents(remaining) < 0,
-    change: moneyChange(remaining, from?.remaining, 'remaining'),
-    ofWords: `of ${formatWholeMoney(draft.allocated ?? draft.round1_allocated ?? null)} · ${
-      postedStands ? 'posted Round 1 stands' : `${String(n)} application${n === 1 ? '' : 's'}`
-    }`,
+    over: remaining !== null && toCents(remaining) < 0,
+    vs: moneyChange(remaining, from?.remaining, 'remaining'),
+    projected: draft.projection?.remaining ?? null,
+    card: null,
+    ghostPct: null,
   }
+  return { pools, total }
+}
+
+/** "$306k", the mock's `$k`: a projection to the nearest $1,000, shown after a "≈". */
+export function kilo(value: number): string {
+  const thousands = Math.round(Math.abs(value) / 1000)
+  return `${value < 0 && thousands > 0 ? MINUS : ''}$${thousands.toLocaleString('en-US')}k`
+}
+
+/** The heading line's muted words: "Remaining $243,550 of $1,000,000 · 56 applications held". After the lock, with
+ * Round 1 settings that differ from the rules in effect, posted Round 1 stands (N10) in place of the applications. */
+export function spendHeading(draft: Results, postedStands: boolean, pricedOn: string): string {
+  const budget = formatWholeMoney(draft.allocated ?? draft.round1_allocated ?? null)
+  return `Remaining ${formatWholeMoney(draft.remaining ?? null)} of ${budget} · ${
+    postedStands ? 'posted Round 1 stands' : pricedOn
+  }`
+}
+
+/** The Projected cells' title: what the figure is, or why there is none (too early, under 5% of last year's). */
+export function projectedTitle(draft: Results): string {
+  if (draft.projection === null || draft.projection === undefined) {
+    const early = projectionWords(null, false, draft.too_early)
+    return early === null ? 'No projection yet' : early.text
+  }
+  return `Projected Remaining: if the rest of the season's applications arrive like last year's (about ${String(Math.round(draft.projection.share * 100))}% are in by this week)`
 }
 
 /** The projection line (§S5 E; N8): muted, never coloured; dimmed after the lock; absent with neither a projection nor

@@ -10,8 +10,10 @@ import {
   poolCard,
   projectionWords,
   roughly,
-  stripLead,
-  stripPools,
+  kilo,
+  projectedTitle,
+  spendHeading,
+  spendTable,
 } from './spendModel'
 
 // results(r1): Pool A spends r1 − 50,000 in Round 1 + 20,500 + 950; Pool B 50,000; Remaining 1,000,000 − r1 − 21,450.
@@ -52,62 +54,97 @@ describe('changes against the starting point (§S5 E; N9: green leaves more mone
   })
 })
 
-describe('the pool cells (§S5 E)', () => {
-  it('draws the bar from the pool and marks where the starting point sat', () => {
-    const [a] = stripPools(DRAFT, FROM, false)
-    expect(a?.card).toEqual(poolCard(DRAFT.pools[0]!))
+describe('the Spend table (final mock: Pool · Round 1 · 2 · 3 · Spend · Remaining · vs · Projected · Used)', () => {
+  it('has one row per pool and a total, each with its rounds, spend and Remaining', () => {
+    const { pools, total } = spendTable(DRAFT, FROM)
+    expect(pools.map((p) => [p.key, p.label, p.round1, p.round2, p.round3, p.spend])).toEqual([
+      ['pool_a', 'Pool A', 685000, 20500, 950, 706450],
+      ['pool_b', 'Pool B', 50000, 0, 0, 50000],
+    ])
+    expect(pools[0]?.remaining).toBe(DRAFT.pools[0]?.remaining)
+    expect([total.label, total.round1, total.round2, total.round3, total.spend]).toEqual([
+      'Total',
+      735000,
+      20500,
+      950,
+      756450,
+    ])
+    expect(total.remaining).toBe(1000000 - 735000 - 21450)
+  })
+
+  it('draws each pool bar from the pool and marks where the starting point sat; the total has no bar', () => {
+    const { pools, total } = spendTable(DRAFT, FROM)
+    expect(pools[0]?.card).toEqual(poolCard(DRAFT.pools[0]!))
     // Pool A's committed: 685,000 + 21,450 = 706,450 now, 707,002 at the start; its scale is max(720,000, 706,450).
-    expect(a?.ghostPct).toBeCloseTo((100 * 707002) / 720000, 6)
+    expect(pools[0]?.ghostPct).toBeCloseTo((100 * 707002) / 720000, 6)
     expect(ghostPct(poolCard(DRAFT.pools[0]!), 706450.5)).toBeNull()
-    expect(a?.remainingChange).toEqual({ text: '+$552', tone: 'more' })
+    expect(pools[1]?.ghostPct).toBeNull()
+    expect(total.card).toBeNull()
   })
 
-  it('shows R1 with its change before the lock; after it R2 with its change and no R1 change (N10)', () => {
-    const [before] = stripPools(DRAFT, FROM, false)
-    expect(before?.legend.map((l) => [l.round, l.text, l.change?.text ?? null])).toEqual([
-      [1, 'R1 $685,000', '−$552'],
-      [3, 'R3 $950', null],
-    ])
-    const [after] = stripPools(DRAFT, FROM, true)
-    expect(after?.legend.map((l) => [l.round, l.change?.text ?? null])).toEqual([
-      [1, null],
-      [2, null],
-      [3, null],
-    ])
+  it('says each Remaining against the starting point, green for more and amber for less', () => {
+    const { pools, total } = spendTable(DRAFT, FROM)
+    expect(pools[0]?.vs).toEqual({ text: '+$552', tone: 'more' })
+    expect(pools[1]?.vs).toBeNull()
+    expect(total.vs).toEqual({ text: '+$552', tone: 'more' })
+    expect(spendTable(DRAFT, null).total.vs).toBeNull()
   })
 
-  it('says each pool’s projected Remaining, muted and rounded, and leaves No pool out of the cells', () => {
-    const pools = stripPools({ ...DRAFT, projection: PROJECTION }, FROM, false)
-    expect(pools.map((p) => [p.card.key, p.projected])).toEqual([
-      ['pool_a', 'projected $306,000'],
-      ['pool_b', null],
-    ])
+  it('marks a pool over its share, and the total over budget, separately', () => {
+    const over = {
+      ...DRAFT,
+      remaining: -50,
+      pools: [{ ...DRAFT.pools[0]!, remaining: -1017 }, DRAFT.pools[1]!],
+    }
+    const { pools, total } = spendTable(over, null)
+    expect([pools[0]?.over, pools[1]?.over, total.over]).toEqual([true, false, true])
+    expect(spendTable(DRAFT, null).total.over).toBe(false)
+  })
+
+  it('leaves No pool out of the rows (its money stays in the total)', () => {
     const withNoPool = {
       ...DRAFT,
       pools: [...DRAFT.pools, { ...DRAFT.pools[1]!, pool: '', label: 'No pool' }],
     }
-    expect(stripPools(withNoPool, null, false).map((p) => p.card.key)).toEqual(['pool_a', 'pool_b'])
+    expect(spendTable(withNoPool, null).pools.map((p) => p.key)).toEqual(['pool_a', 'pool_b'])
   })
 
-  it('marks a pool over its share, never the total', () => {
-    const over = { ...DRAFT, pools: [{ ...DRAFT.pools[0]!, remaining: -1017 }, DRAFT.pools[1]!] }
-    expect(stripPools(over, null, false)[0]?.card.overShare).toBe(true)
-  })
-})
-
-describe('the lead column (§S5 E; N1: Remaining leads)', () => {
-  it('leads with the total Remaining and its change, of the budget and the applications priced', () => {
-    expect(stripLead(DRAFT, FROM, false)).toEqual({
-      remaining: 1000000 - 735000 - 21450,
-      overBudget: false,
-      change: { text: '+$552', tone: 'more' },
-      ofWords: 'of $1,000,000 · 420 applications',
-    })
+  it('says each pool’s projected Remaining and the total’s, and none without a projection', () => {
+    const { pools, total } = spendTable({ ...DRAFT, projection: PROJECTION }, FROM)
+    expect(pools.map((p) => p.projected)).toEqual([305600, null])
+    expect(total.projected).toBe(120000)
+    expect(spendTable(DRAFT, FROM).total.projected).toBeNull()
   })
 
-  it('says posted Round 1 stands after the lock when Round 1 settings differ, and red below $0', () => {
-    expect(stripLead(DRAFT, null, true).ofWords).toBe('of $1,000,000 · posted Round 1 stands')
-    expect(stripLead({ ...DRAFT, remaining: -50 }, null, false).overBudget).toBe(true)
+  it('rounds a projection to $k for the table, with the minus sign', () => {
+    expect([kilo(305600), kilo(-12600), kilo(499), kilo(1111000)]).toEqual([
+      '$306k',
+      '\u2212$13k',
+      '$0k',
+      '$1,111k',
+    ])
+  })
+
+  it('heads the table with Remaining of the budget and what was priced', () => {
+    expect(spendHeading(DRAFT, false, '420 applications held')).toBe(
+      'Remaining $243,550 of $1,000,000 \u00b7 420 applications held'
+    )
+    expect(spendHeading(DRAFT, true, '420 applications held')).toBe(
+      'Remaining $243,550 of $1,000,000 \u00b7 posted Round 1 stands'
+    )
+  })
+
+  it('explains the projected figure in its title, from last year’s share', () => {
+    expect(projectedTitle({ ...DRAFT, projection: PROJECTION })).toBe(
+      "Projected Remaining: if the rest of the season's applications arrive like last year's (about 39% are in by this week)"
+    )
+    expect(
+      projectedTitle({
+        ...DRAFT,
+        too_early: { share: 0.03, through: '2027-01-05', basis_year: 2026 },
+      })
+    ).toMatch(/^Too early to project/)
+    expect(projectedTitle(DRAFT)).toBe('No projection yet')
   })
 })
 
@@ -216,7 +253,9 @@ describe('whole dollars everywhere the strip shows money (coordinator ruling 202
       round1_unmet: 50920.5,
       by_tier: [{ ...DRAFT.by_tier[0]!, round1: 535000.5 }, ...DRAFT.by_tier.slice(1)],
     }
-    expect(stripLead(fractional, null, false).ofWords).toBe('of $1,000,001 \u00b7 420 applications')
+    expect(spendHeading(fractional, false, '420 applications held')).toBe(
+      'Remaining $243,550 of $1,000,001 \u00b7 420 applications held'
+    )
     expect(belowParts(fractional, false)[2]).toEqual({
       lead: 'unmet ask ',
       figure: '$50,921',
@@ -224,9 +263,5 @@ describe('whole dollars everywhere the strip shows money (coordinator ruling 202
     })
     expect(belowRows(fractional, null, false)[2]).toMatchObject({ draft: '$50,921' })
     expect(byTierRows(fractional, null, false)[0]?.round1).toBe('$535,001')
-    const pool = { ...DRAFT.pools[0]!, round1: 685000.4 }
-    expect(
-      stripPools({ ...DRAFT, pools: [pool, DRAFT.pools[1]!] }, null, false)[0]?.legend[0]?.text
-    ).toBe('R1 $685,000')
   })
 })

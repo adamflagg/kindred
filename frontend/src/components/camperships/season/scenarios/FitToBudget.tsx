@@ -1,12 +1,14 @@
 import type { ApiAidScenarioFit } from '../../../../types/api-types'
-import { CS_BODY, CS_BTN, CS_BTN2, CS_SMALL } from '../../kit/csType'
+import { CS_BTN, CS_BTN2 } from '../../kit/csType'
 import { fitWords } from './scenarioModel'
-import { FIT_BOX } from './scenarioStyles'
+import { FIT_DONE, FIT_WARN } from './scenarioStyles'
+
+const FIT_TITLE = "Shifts every tier's Round 1 % by the same points until Round 1 uses the budget"
 
 /**
  * Fit to Budget, on the Tiers & Round 1 card's header (§S5 G). Its maths and route are unchanged (owner: "no changes
- * to the Fit work in this pass"). It is off after Round 1 posts, and while Price ▾ isn't "the applications held",
- * which it says beside it.
+ * to the Fit work in this pass"). Why it is off ("Off once Round 1 posts", "Fit uses every application held",
+ * "Nothing is held yet") is the disabled button's title alone, never a line beside it (scenarios-13).
  */
 export function FitToBudgetButton({
   disabled,
@@ -15,22 +17,29 @@ export function FitToBudgetButton({
   onFit,
 }: {
   disabled: boolean
-  /** Shown beside the button while it is off for a reason staff can change (Price ▾). */
+  /** Why it is off, for the title of the disabled button. */
   reason: string | null
   pending: boolean
   onFit: () => void
 }) {
   return (
-    <span className="ml-auto flex items-center gap-2">
-      {reason !== null && <span className={CS_SMALL}>{reason}</span>}
-      <button type="button" className={CS_BTN2} disabled={disabled || pending} onClick={onFit}>
-        Fit to Budget
-      </button>
-    </span>
+    <button
+      type="button"
+      className={`${CS_BTN2} ml-auto`}
+      disabled={disabled || pending}
+      title={disabled ? (reason ?? undefined) : FIT_TITLE}
+      onClick={onFit}
+    >
+      Fit to Budget
+    </button>
   )
 }
 
-/** Fit's answer, in a dashed box under the tiers line (§S5 G): Use It when it fits, and Not Now. */
+/**
+ * Fit's answer, ONE line in the done box (amber when it can't fit, or the draft moved), between the settings line and
+ * the grid (§S5 G): the words cut with an ellipsis, the tightest pool short beside them and in full in the title, then
+ * Use It when it fits and Not Now.
+ */
 export function FitAnswer({
   answer,
   stale,
@@ -46,25 +55,33 @@ export function FitAnswer({
   onDismiss: () => void
 }) {
   const words = fitWords(answer)
+  const pool = answer.results.pools.find((p) => p.pool === answer.tightest_pool)
+  const fits = !stale && answer.outcome === 'fits'
   return (
     <div
       data-testid="fit-answer"
-      className={`${FIT_BOX} ${CS_BODY} mt-2 flex flex-wrap items-center gap-2`}
+      data-tone={fits ? 'done' : 'warn'}
+      className={`${fits ? FIT_DONE : FIT_WARN} mt-1.5 mb-0.5`}
     >
       {stale ? (
-        <span className={CS_SMALL}>Your draft changed since: fit again.</span>
+        <span className="min-w-0 truncate">Your draft changed since: fit again.</span>
       ) : (
-        <>
-          <span>{words.headline}</span>
-          {words.pool !== null && <span className={CS_SMALL}>{words.pool}</span>}
-          {answer.outcome === 'fits' && (
-            <button type="button" className={CS_BTN} disabled={!canUse} onClick={onUse}>
-              Use It
-            </button>
+        <span className="min-w-0 truncate" title={words.pool ?? undefined}>
+          {words.headline}
+          {words.pool !== null && pool !== undefined && (
+            <>
+              {' '}
+              <span className="text-muted-foreground">Tightest pool: {pool.label}</span>
+            </>
           )}
-        </>
+        </span>
       )}
-      <button type="button" className={CS_BTN2} onClick={onDismiss}>
+      {fits && (
+        <button type="button" className={`${CS_BTN} ml-auto`} disabled={!canUse} onClick={onUse}>
+          Use It
+        </button>
+      )}
+      <button type="button" className={`${CS_BTN2} ${fits ? '' : 'ml-auto'}`} onClick={onDismiss}>
         Not Now
       </button>
     </div>

@@ -698,11 +698,19 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="scenario_spend",
         term="Spend",
         text=(
-            "Spend: what the applications priced would get under these settings, against the season's budget (set "
-            "with Edit Plan… on Rounds & budget). A what-if: nothing here touches a family, the rules or Rounds & "
-            "budget. Before Round 1, Rounds 2 and 3 are $0: no appeals exist yet, and Round 3 amounts are typed by "
-            "staff, so no formula prices them. Once a round posts, its posted amounts stand in every column; "
-            "settings change only what is not yet posted."
+            "Spend: what the applications priced would get under these settings. A what-if: nothing here touches a "
+            "family or the rules, and posted amounts always stand."
+        ),
+        spec="§7.4",
+        rulings=("D35", "D38"),
+    ),
+    # Scenarios' own Remaining (the shared `remaining` entry is Rounds & budget's formula and stays as it is).
+    Definition(
+        key="scenario_remaining",
+        term="Remaining",
+        text=(
+            "Remaining: the budget's Allocated \u2212 Committed, per pool and in total, as on Rounds & budget. A pool "
+            "below $0 reads amber; only the total below $0 reads red."
         ),
         spec="§7.4",
         rulings=("D35", "D38"),
@@ -711,14 +719,8 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="scenario_projected",
         term="Projected",
         text=(
-            "Projected: last year's arrival curve says what share of last year's applications had arrived by the "
-            "same point in the season, counted in weeks from the application deadline (from Jan 1 when last year's "
-            "had none). Every figure is divided by that share, as if the rest arrive like last year's and are priced "
-            "like those already in. Below 5% of last year's applications there is no projection: the line says it is "
-            "too early instead. A pool's 'projected' figure is its Remaining on that basis. Projected figures are "
-            "never amber or red: those colours read only real figures. Last year's curve is 2026's applications "
-            "workbook, loaded once as weekly shares; from the 2028 season on, the dashboard's own received dates "
-            "(2027's applications)."
+            "Projected: each figure \u00f7 the share of last year's applications in by this week. Under 5% it says too "
+            "early. Never amber or red."
         ),
         spec="§7.4",
         rulings=("D129", "D138"),
@@ -727,10 +729,8 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="scenario_below_the_line",
         term="Below the line",
         text=(
-            "Below the line, never counted in Remaining: held requests (no amount yet), the Round 1 unmet ask (what "
-            "families asked for above their Round 1), and, after Round 1, the appeals keyed so far. The number at "
-            "the minimum is shown beside them. This is not Rounds & budget's 'Shown, not counted', which lists "
-            "outside grants and money outside {camp}'s budget."
+            "Below the line: held requests, the Round 1 unmet ask and the appeals keyed so far: shown, never counted "
+            "in Remaining."
         ),
         spec="§7.4",
         rulings=("D35", "D38"),
@@ -805,7 +805,7 @@ SURFACES: Final[Mapping[str, tuple[str, ...]]] = {
         "past_date",
     ),
     # Scenarios addendum §S6: 1-4 in this order (Projected is note 3).
-    "season-scenarios": ("scenario_spend", "remaining", "scenario_projected", "scenario_below_the_line"),
+    "season-scenarios": ("scenario_spend", "scenario_remaining", "scenario_projected", "scenario_below_the_line"),
     "money-ledger": ("in_campminder_net", "outside_grants_ledger"),
     "money-to-place": ("not_yet_in_campminder", "to_place_suggestion", "placement_tick", "posted"),
     "money-sources": ("funder", "incentive", "reporting_group", "source_lines"),  # Money › Funders

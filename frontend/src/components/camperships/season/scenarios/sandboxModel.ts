@@ -313,6 +313,14 @@ export function keyLocked(key: string, locked: readonly string[]): boolean {
   return locked.includes(section)
 }
 
+/** A money box's text with thousands separators (scenarios-6: "35,000"): whole dollars only. A fractional, empty or
+ * half-typed figure shows as typed, and so does every box that is not money; typing strips the commas (`readFigure`). */
+export function boxText(key: string, raw: string): string {
+  const kind = kindOf(key)
+  if (kind !== 'money' && kind !== 'money?' && kind !== 'width') return raw
+  return /^\d{4,}$/.test(raw) ? Number(raw).toLocaleString('en-US') : raw
+}
+
 /** The read-only strip's current-year weight, following the typed prior-year weight (§S5 F3). */
 export function currentYearWords(document: Doc): string {
   const prior = Number(document.income.weights.prior_year)

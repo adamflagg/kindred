@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { SANDBOX_DOC } from './sandboxFixtures'
 import {
   CEILING,
+  INCOME_MONEY,
   DEPENDENTS,
   MINIMUM,
   PRIOR_WEIGHT,
@@ -11,6 +12,7 @@ import {
   TIER_WIDTH,
   applyEdits,
   bindingOf,
+  boxText,
   cellEditable,
   cardProblems,
   cellKey,
@@ -291,5 +293,24 @@ describe('a tier grid head reads as the pool its class belongs to (as the Rules 
 
   it('falls back to the class label when no pool uses it', () => {
     expect(poolHeadLabel('other', pooled)).toBe('Other')
+  })
+})
+
+describe('whole-dollar boxes show thousands separators (scenarios-6)', () => {
+  it('groups a whole-dollar figure by thousands, for the money boxes only', () => {
+    expect(boxText(TIER_WIDTH, '40000')).toBe('40,000')
+    expect(boxText(TIER_START, '1234567')).toBe('1,234,567')
+    expect(boxText(CEILING, '215000')).toBe('215,000')
+    expect(boxText(MINIMUM, '108')).toBe('108')
+    expect(boxText(INCOME_MONEY[0], '5000')).toBe('5,000')
+  })
+
+  it('leaves a fractional, empty or half-typed figure as typed, and every non-money box alone', () => {
+    expect(boxText(MINIMUM, '125.50')).toBe('125.50')
+    expect(boxText(CEILING, '')).toBe('')
+    expect(boxText(CEILING, '12a')).toBe('12a')
+    expect(boxText(TIER_COUNT, '1000')).toBe('1000')
+    expect(boxText(cellKey('r1', 'general', 3), '1000')).toBe('1000')
+    expect(boxText(PRIOR_WEIGHT, '1000')).toBe('1000')
   })
 })

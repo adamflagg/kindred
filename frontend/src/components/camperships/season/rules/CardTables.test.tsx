@@ -150,7 +150,17 @@ describe('the equity table (spec §6.2 E.3)', () => {
         { pool: 'pool_b', label: 'Pool B', equity_class: 'family' },
       ],
     })
-    expect(heads(screen.getByTestId('equity-table')).slice(-2)).toEqual(['Summer', 'Family'])
+    // owner B34 (final-v2): the weight columns are named as the pools, as the tier grid names them
+    expect(heads(screen.getByTestId('equity-table')).slice(-2)).toEqual(['Pool A', 'Pool B'])
+  })
+
+  it('falls back to the equity class’s own label when no pool pairs with it', () => {
+    tables({
+      section: 'equity',
+      content: EQUITY,
+      groups: [{ pool: 'pool_a', label: 'Pool A', equity_class: 'summer' }],
+    })
+    expect(heads(screen.getByTestId('equity-table')).slice(-2)).toEqual(['Pool A', 'Family'])
   })
 
   // Design language §8 and the mock's `.cf-rcard table`: a card-white table card, a light rule on every column.

@@ -202,45 +202,42 @@ def test_no_season_note_cites_another_note_by_number() -> None:
 
 
 def test_scenarios_numbers_spend_remaining_projected_and_below_the_line() -> None:
-    """Scenarios addendum §S6, §S11.8: Spend and Below the line are new and signed by the addendum's approval;
-    Remaining is the parent's entry, reused, so the two tabs share one definition. Projected joined in PR 11."""
+    """Scenarios addendum §S6, §S11.8; owner-approved final mock (ux3, 2026-10-09): one line each, the mock's words.
+    Season-scenarios has its own Remaining entry: Rounds & budget's `remaining` is a different formula and stays."""
     assert SURFACES["season-scenarios"] == (
         "scenario_spend",
-        "remaining",
+        "scenario_remaining",
         "scenario_projected",
         "scenario_below_the_line",
     )
-    spend, below = BY_KEY["scenario_spend"], BY_KEY["scenario_below_the_line"]
-    assert spend.text.startswith("Spend: what the applications priced would get under these settings")
-    assert "Once a round posts, its posted amounts stand in every column" in spend.text
-    assert below.text.startswith("Below the line, never counted in Remaining:")
-    assert "This is not Rounds & budget's 'Shown, not counted'" in below.text
+    assert BY_KEY["scenario_spend"].text == (
+        "Spend: what the applications priced would get under these settings. A what-if: nothing here touches a "
+        "family or the rules, and posted amounts always stand."
+    )
+    assert BY_KEY["scenario_remaining"].text == (
+        "Remaining: the budget's Allocated \u2212 Committed, per pool and in total, as on Rounds & budget. A pool "
+        "below $0 reads amber; only the total below $0 reads red."
+    )
+    assert BY_KEY["scenario_projected"].text == (
+        "Projected: each figure \u00f7 the share of last year's applications in by this week. Under 5% it says too "
+        "early. Never amber or red."
+    )
+    assert BY_KEY["scenario_below_the_line"].text == (
+        "Below the line: held requests, the Round 1 unmet ask and the appeals keyed so far: shown, never counted in "
+        "Remaining."
+    )
     # Disagreement 1: the registry admits a clean-spec section and D-numbers only; owner lines 666-685 are quoted in
     # the PR body.
-    assert (spend.spec, spend.rulings) == ("§7.4", ("D35", "D38"))
-    assert (below.spec, below.rulings) == ("§7.4", ("D35", "D38"))
-    projected = BY_KEY["scenario_projected"]
-    assert projected.text.startswith("Projected: last year's arrival curve says what share of last year's applications")
-    assert "Projected figures are never amber or red" in projected.text
-    assert (projected.spec, projected.rulings) == ("§7.4", ("D129", "D138"))
+    for key in ("scenario_spend", "scenario_remaining", "scenario_below_the_line"):
+        assert (BY_KEY[key].spec, BY_KEY[key].rulings) == ("§7.4", ("D35", "D38"))
+    assert (BY_KEY["scenario_projected"].spec, BY_KEY["scenario_projected"].rulings) == ("§7.4", ("D129", "D138"))
 
 
-def test_projected_says_where_weeks_count_from_and_which_season_first_uses_received_dates() -> None:
-    """Coordinator ruling (PR 11, 2026-10-07): the words match what the code does. A curve year with no approved
-    deadline lines up on Jan 1, and 2027 projects on 2026's workbook, so the dashboard's own received dates (2027's
-    applications) first serve the 2028 season."""
-    text = BY_KEY["scenario_projected"].text
-    assert "counted in weeks from the application deadline (from Jan 1 when last year's had none)." in text
-    assert text.endswith(
-        "Last year's curve is 2026's applications workbook, loaded once as weekly shares; from the 2028 season on, "
-        "the dashboard's own received dates (2027's applications)."
-    )
-
-
-def test_projected_says_there_is_no_projection_below_a_five_percent_share() -> None:
-    """Owner 10-07 (A10, "agree"): below 5% of last year's applications the line says it is too early instead."""
-    text = BY_KEY["scenario_projected"].text
-    assert "Below 5% of last year's applications there is no projection: the line says it is too early instead." in text
+def test_the_shared_remaining_note_is_untouched_by_the_scenarios_wording() -> None:
+    """Rounds & budget still reads the shared `remaining` entry, with its Posted − Needs an offer formula."""
+    assert "remaining" in SURFACES["season-rounds-budget"]
+    assert "scenario_remaining" not in SURFACES["season-rounds-budget"]
+    assert BY_KEY["remaining"].text.startswith("Remaining = Allocated \u2212 Posted \u2212 Needs an offer")
 
 
 def test_the_cost_note_says_an_ag_session_takes_its_parents_price() -> None:
