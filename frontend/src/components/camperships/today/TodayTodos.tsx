@@ -13,7 +13,7 @@ import { AidNameChips, type NameChip } from '../kit/NameChips'
 import { StatusPill } from '../kit/Pills'
 import { aidCellShortName } from '../kit/sessionShort'
 import { REQUEST_VIEWS } from '../requests/views'
-import { countWords, LINE_WORDS, type TodayKey } from './todayModel'
+import { countWords, LINE_WORDS, reasonWords, type TodayKey } from './todayModel'
 
 /** The lines whose next households a queue walk can step through (spec: the three casework queues with a Requests view). */
 // eslint-disable-next-line react-refresh/only-export-components -- constant shared with the Today pages
@@ -78,10 +78,20 @@ const wordsFor = (key: string): string =>
 const nextUpOf = (line: ApiAidTodayLine): readonly ApiAidTodayNextUp[] => line.next_up ?? []
 const namesOf = (line: ApiAidTodayLine): readonly string[] => line.names ?? []
 
+/** Lines whose reasons are named things (a rules section, an equity field): the name alone, no count. */
+const NAMED: readonly string[] = ['rules_sections', 'equity_field_never_true']
+
 const reasonsText = (line: ApiAidTodayLine): string =>
   (line.reasons ?? [])
-    .map((r) => (r.items > 0 ? `${r.label ?? r.code} ${String(r.items)}` : (r.label ?? r.code)))
+    .map((r) => {
+      const words = reasonWords(line.key, r)
+      return r.items > 0 && !NAMED.includes(line.key) ? `${words} ${String(r.items)}` : words
+    })
     .join(' · ')
+
+/** " household" is added only to a label that does not already say it ("Household 9100124"). */
+const householdWords = (label: string): string =>
+  /household/i.test(label) ? label : `${label} household`
 
 const householdHref = (id: number, view: AidView, extra: Record<string, string> = {}) =>
   aidHref(`/aid/households/${String(id)}`, view, extra)
@@ -112,8 +122,8 @@ function NextUpCell({ line, view }: { line: ApiAidTodayLine; view: AidView }) {
         href: householdHref(n.household_cm_id, view),
         title:
           days === null
-            ? `Open the ${label} household`
-            : `Open the ${label} household · waiting ${String(days)} days`,
+            ? `Open the ${householdWords(label)}`
+            : `Open the ${householdWords(label)} · waiting ${String(days)} days`,
       }
     })
     return <AidNameChips chips={chips} total={line.families ?? line.items} />
@@ -132,7 +142,13 @@ function Drawer({ line, view, slug }: { line: ApiAidTodayLine; view: AidView; sl
       <table className="w-full text-sm">
         <tbody>
           {entries.map((n) => {
-            const what = `${(n.camper_name ?? '').split(' ')[0] ?? ''} · ${aidCellShortName(n.session_name ?? '', n.session_type ?? '')} · R${String(n.round ?? '')}`
+            const what = [
+              (n.camper_name ?? '').split(' ')[0] ?? '',
+              aidCellShortName(n.session_name ?? '', n.session_type ?? ''),
+              n.round === null || n.round === undefined ? '' : `R${String(n.round)}`,
+            ]
+              .filter((part) => part !== '')
+              .join(' · ')
             const days = n.days ?? null
             const late = limit !== undefined && days !== null && days > limit
             return (
@@ -142,7 +158,7 @@ function Drawer({ line, view, slug }: { line: ApiAidTodayLine; view: AidView; sl
               >
                 <td className="py-0.5 pr-3">
                   <Link className={CS_LINK_SM} to={householdHref(n.household_cm_id, view)}>
-                    {n.label} household
+                    {householdWords(n.label)}
                   </Link>
                 </td>
                 <td className="py-0.5 pr-3" title={what}>
@@ -279,13 +295,15 @@ export function TodayTodos({
                   >
                     {ranked && (
                       <td className={`${TD} text-muted-foreground tabular-nums`}>
-                        {expandable && (
-                          <span className="inline-block w-3 text-[10px]">{isOpen ? '▾' : '▸'}</span>
-                        )}
                         {String(i + 1)}
                       </td>
                     )}
                     <td className={`${TD} font-bold whitespace-nowrap`} title={label}>
+                      {expandable && (
+                        <span className="mr-1 inline-block w-3 text-[10px]">
+                          {isOpen ? '▾' : '▸'}
+                        </span>
+                      )}
                       <span data-testid="todo-label">{label}</span>
                     </td>
                     <td className={`${TD} whitespace-nowrap tabular-nums`} title={countWords(line)}>

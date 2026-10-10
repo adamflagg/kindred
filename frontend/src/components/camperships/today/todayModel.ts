@@ -9,6 +9,8 @@ import type {
   ApiAidTodayStages,
 } from '../../../types/api-types'
 import type { HeroSegment, HeroTone } from '../kit/HeroBar'
+import { codeWords } from '../requests/attention'
+import { SECTION_TITLES, isRulesSection } from '../season/rules/rulesModel'
 
 export type TodayKey = ApiAidTodayLine['key']
 export type TodayPage = 'finance' | 'registrar' | 'development' | 'viewOnly' | 'none'
@@ -97,17 +99,20 @@ export const LINE_WORDS: Readonly<Record<TodayWordKey, string>> = {
   no_grantor: 'CampMinder descriptions no funder claims',
 }
 
-const UNIT: Record<ApiAidTodayLine['item_kind'], string> = {
-  requests: 'req',
-  grants: 'grants',
-  sections: 'sections',
-  descriptions: 'descriptions',
-  fields: 'fields',
-  lines: 'lines',
-  funders: 'funders',
+const UNIT: Record<ApiAidTodayLine['item_kind'], readonly [string, string]> = {
+  requests: ['req', 'req'],
+  grants: ['grant', 'grants'],
+  sections: ['section', 'sections'],
+  descriptions: ['description', 'descriptions'],
+  fields: ['field', 'fields'],
+  lines: ['line', 'lines'],
+  funders: ['funder', 'funders'],
 }
 export function countWords(line: ApiAidTodayLine): string {
-  const main = `${String(line.items)} ${UNIT[line.item_kind]}`
+  // Finance's synthetic Over budget line counts pools, not lines.
+  const [one, many] =
+    (line.key as string) === 'over_budget' ? ['pool', 'pools'] : UNIT[line.item_kind]
+  const main = `${String(line.items)} ${line.items === 1 ? one : many}`
   return line.families !== null && line.item_kind === 'requests'
     ? `${main} · ${String(line.families)} fam`
     : main
@@ -339,4 +344,40 @@ export function bandSentence(
     return parts.length > 0 ? parts.join(' · ') : none
   }
   return ''
+}
+
+/** Words for the reason codes Today's lines carry that the server sends without a label. */
+const REASON_WORDS: Readonly<Record<string, string>> = {
+  needs_camper: 'needs a camper',
+  not_posted: 'commitment not yet in CampMinder',
+  posted_then_reversed: 'posted, then reversed',
+  possible_match: 'possible match',
+  camper_cancelled: 'camper cancelled',
+  no_grantor: 'no grantor',
+  unclassified: 'unclassified',
+  needs_group: 'needs a group',
+  short: 'short',
+  over: 'over',
+  not_in_campminder: 'Missing in CM',
+  r1: 'R1',
+  r2: 'R2',
+  r3: 'R3',
+}
+const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1)
+
+/**
+ * A reason in staff words, never a code: the server's label when it sends one, else Today's own words, the Rules
+ * page's section titles (rules sections), or the Requests grid's hold and check words, which fall back to the
+ * code in sentence case.
+ */
+export function reasonWords(
+  lineKey: string,
+  reason: { readonly code: string; readonly label?: string | null | undefined }
+): string {
+  if (reason.label) return reason.label
+  const known = REASON_WORDS[reason.code]
+  if (known !== undefined) return sentence(known)
+  if (lineKey === 'rules_sections' && isRulesSection(reason.code))
+    return SECTION_TITLES[reason.code]
+  return codeWords(reason.code)
 }

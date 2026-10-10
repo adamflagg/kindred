@@ -4,11 +4,13 @@ import { BUDGET, REGISTRAR_TODAY, STAGES, line } from './todayFixtures'
 import {
   bandSentence,
   budgetSegments,
+  countWords,
   developmentSegments,
   offerShare,
   overPools,
   pickTodayPage,
   rankLines,
+  reasonWords,
   REGISTRAR_ORDER,
   registrarSegments,
   showRegistrarQueue,
@@ -220,5 +222,67 @@ describe('bandSentence (spec §3)', () => {
   it('development: singular wording for one funder record', () => {
     const t = { ...REGISTRAR_TODAY, development: [line('no_contact', 1, { item_kind: 'funders' })] }
     expect(bandSentence('development', t, undefined, null)).toBe('1 funder record needs a look')
+  })
+})
+
+const reason = (code: string, over: { label?: string; items?: number } = {}) => ({
+  code,
+  families: null,
+  items: over.items ?? 1,
+  ...(over.label === undefined ? {} : { label: over.label }),
+})
+
+describe('reasonWords: staff text never shows a snake_case code', () => {
+  it("uses the server's label when it sends one", () => {
+    expect(reasonWords('grants', reason('not_posted', { label: 'Not posted' }))).toBe('Not posted')
+  })
+  it.each([
+    ['needs_camper', 'Needs a camper'],
+    ['not_posted', 'Commitment not yet in CampMinder'],
+    ['posted_then_reversed', 'Posted, then reversed'],
+    ['possible_match', 'Possible match'],
+    ['camper_cancelled', 'Camper cancelled'],
+    ['no_grantor', 'No grantor'],
+    ['unclassified', 'Unclassified'],
+    ['needs_group', 'Needs a group'],
+    ['short', 'Short'],
+    ['over', 'Over'],
+    ['not_in_campminder', 'Missing in CM'],
+    ['r1', 'R1'],
+    ['r2', 'R2'],
+    ['r3', 'R3'],
+  ])('words the grant and source code %s', (code, words) => {
+    expect(reasonWords('grants', reason(code))).toBe(words)
+  })
+  it("reuses the Rules page's section titles for rules sections", () => {
+    expect(reasonWords('rules_sections', reason('award_tables'))).toBe('Round 1 award table')
+    expect(reasonWords('rules_sections', reason('quality_checks'))).toBe('Quality checks')
+  })
+  it("reuses the Requests grid's hold and check words for intake", () => {
+    expect(reasonWords('intake', reason('awaiting_approved_rules'))).toBe('Awaiting rules')
+  })
+  it('falls back to sentence case with spaces for anything unknown', () => {
+    expect(reasonWords('intake', reason('some_new_code'))).toBe('Some new code')
+  })
+})
+
+describe('countWords singulars', () => {
+  it.each([
+    ['sections', 1, '1 section'],
+    ['sections', 2, '2 sections'],
+    ['funders', 1, '1 funder'],
+    ['descriptions', 1, '1 description'],
+    ['grants', 1, '1 grant'],
+    ['grants', 4, '4 grants'],
+    ['fields', 1, '1 field'],
+    ['lines', 1, '1 line'],
+  ] as const)('%s x%i reads %s', (kind, n, words) => {
+    expect(countWords(line('intake', n, { item_kind: kind, families: null }))).toBe(words)
+  })
+  it('counts the synthetic over-budget line in pools', () => {
+    const over = (n: number) =>
+      line('intake', n, { key: 'over_budget' as never, item_kind: 'lines', families: null })
+    expect(countWords(over(1))).toBe('1 pool')
+    expect(countWords(over(2))).toBe('2 pools')
   })
 })

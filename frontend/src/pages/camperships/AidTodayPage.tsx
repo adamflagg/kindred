@@ -10,7 +10,6 @@ import { aidHref, type AidView } from '../../components/camperships/kit/asOf'
 import { CS_CARD_HEADING, CS_EMPTY, CS_META } from '../../components/camperships/kit/csType'
 import { AidCopyButton, AidCsvButton } from '../../components/camperships/kit/CsvButton'
 import {
-  countValue,
   moneyValue,
   textValue,
   type ReportColumn,
@@ -169,6 +168,8 @@ function FinanceBody({
   ]
   const registrar = showRegistrarQueue(today.finance) ? (today.casework ?? null) : null
   const queue = registrar === null ? null : rankLines(registrar, REGISTRAR_ORDER).top
+  // The meta counts every live casework line, not just the five the fold shows.
+  const queueLive = registrar === null ? [] : live(registrar)
 
   return (
     <>
@@ -217,7 +218,7 @@ function FinanceBody({
                 rest={queue}
                 view={view}
                 restTitle="The registrar's queue"
-                restMeta={`${String(live(queue).length)} waiting${overdueWords(overdueCount(queue))} · on the registrar, open to review`}
+                restMeta={`${String(queueLive.length)} waiting${overdueWords(overdueCount(queueLive))} · on the registrar, open to review`}
                 empty=""
               />
             )}
@@ -232,13 +233,12 @@ function FinanceBody({
 
 /** Sources grouped by reporting group: the table under Development's hero. Money and counts only, never a family. */
 function groupRows(sources: readonly ApiAidDevelopmentSource[]): ReportRow[] {
-  const groups = new Map<string, { total: number; outside: number; awards: number }>()
+  const groups = new Map<string, { total: number; outside: number }>()
   for (const s of sources) {
     const label = s.group_label === '' ? 'Needs a group' : s.group_label
-    const g = groups.get(label) ?? { total: 0, outside: 0, awards: 0 }
+    const g = groups.get(label) ?? { total: 0, outside: 0 }
     g.total += s.amount
     if (s.who_paid === 'another funder') g.outside += s.amount
-    g.awards += s.awards
     groups.set(label, g)
   }
   const rows = [...groups.entries()]
@@ -246,9 +246,9 @@ function groupRows(sources: readonly ApiAidDevelopmentSource[]): ReportRow[] {
     .map(([label, g]): ReportRow => ({
       key: label,
       kind: 'body',
-      cells: [textValue(label), moneyValue(g.total), moneyValue(g.outside), countValue(g.awards)],
+      cells: [textValue(label), moneyValue(g.total), moneyValue(g.outside)],
     }))
-  const sum = (pick: (g: { total: number; outside: number; awards: number }) => number) =>
+  const sum = (pick: (g: { total: number; outside: number }) => number) =>
     [...groups.values()].reduce((a, g) => a + pick(g), 0)
   return [
     ...rows,
@@ -259,7 +259,6 @@ function groupRows(sources: readonly ApiAidDevelopmentSource[]): ReportRow[] {
         textValue('Every group'),
         moneyValue(sum((g) => g.total)),
         moneyValue(sum((g) => g.outside)),
-        countValue(sum((g) => g.awards)),
       ],
     },
   ]
@@ -269,7 +268,6 @@ const GROUP_COLUMNS: readonly ReportColumn[] = [
   { key: 'group', header: 'Group', align: 'left' },
   { key: 'total', header: 'Total aid', width: 130 },
   { key: 'outside', header: 'From outside funders', width: 170 },
-  { key: 'awards', header: 'Awards', width: 100 },
 ]
 
 function ByGroup({ dev, view }: { dev: ApiAidDevelopment; view: AidView }) {

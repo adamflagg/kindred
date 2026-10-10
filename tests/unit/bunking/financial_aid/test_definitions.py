@@ -289,3 +289,15 @@ def test_each_today_surface_has_a_few_notes_and_no_internal_id(surface: str) -> 
     assert 1 <= len(keys) <= 6
     for key in keys:
         assert not re.search(r"\bD\d+\b|RPT-\d+", f"{BY_KEY[key].term} {BY_KEY[key].text}"), key
+
+
+def test_today_notes_cite_the_main_specs_today_section_and_its_rulings() -> None:
+    expected = {
+        "today_season_so_far": ("D24",),
+        "today_todos": ("D24",),
+        "today_remaining": ("D44", "D79"),
+        "today_aid_came_from": ("D87",),
+    }
+    for key, rulings in expected.items():
+        assert BY_KEY[key].spec == "§7.4", key
+        assert BY_KEY[key].rulings == rulings, key

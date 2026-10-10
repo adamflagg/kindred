@@ -18,6 +18,8 @@ import AidTodayPage from './AidTodayPage'
 let granted: string[] = []
 let todayState: 'ok' | 'loading' | 'error' = 'ok'
 let todayData: ApiAidToday = REGISTRAR_TODAY
+let budgetFails = false
+let developmentFails = false
 
 vi.mock('../../hooks/usePermissions', () => ({
   usePermissions: () => ({ hasPermission: (p: string) => granted.includes(p) }),
@@ -32,7 +34,10 @@ vi.mock('../../hooks/camperships/useAidToday', () => ({
         : { data: todayData, isLoading: false, error: null },
 }))
 vi.mock('../../hooks/camperships/useAidBudget', () => ({
-  useAidBudget: () => ({ data: BUDGET, isLoading: false, error: null }),
+  useAidBudget: () =>
+    budgetFails
+      ? { data: undefined, isLoading: false, error: new Error('budget down') }
+      : { data: BUDGET, isLoading: false, error: null },
 }))
 const DEVELOPMENT_READ = {
   year: 2027,
@@ -57,7 +62,10 @@ const DEVELOPMENT_READ = {
   ],
 } as unknown as ApiAidDevelopment
 vi.mock('../../hooks/camperships/useAidDevelopment', () => ({
-  useAidDevelopment: () => ({ data: DEVELOPMENT_READ, isLoading: false, error: null }),
+  useAidDevelopment: () =>
+    developmentFails
+      ? { data: undefined, isLoading: false, error: new Error('development down') }
+      : { data: DEVELOPMENT_READ, isLoading: false, error: null },
 }))
 vi.mock('../../components/camperships/shell/AidDefinitionNotes', () => ({
   AidDefinitionNotes: ({ surface }: { surface: string }) => <div>notes:{surface}</div>,
@@ -87,6 +95,8 @@ const DEVELOPMENT = ['financial_aid.summary', 'financial_aid.grantors']
 beforeEach(() => {
   granted = []
   todayState = 'ok'
+  budgetFails = false
+  developmentFails = false
   todayData = FINANCE_TODAY
 })
 
@@ -190,5 +200,43 @@ describe('AidTodayPage', () => {
     todayState = 'error'
     renderPage()
     expect(await screen.findByText(/Failed to load/i)).toBeInTheDocument()
+  })
+
+  it('a failed budget read blanks only the budget hero, not the to-dos', async () => {
+    granted = FINANCE
+    budgetFails = true
+    renderPage()
+    expect(await screen.findByText(/Failed to load the budget data/)).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Waiting on you' })).toBeInTheDocument()
+  })
+
+  it('a failed development read blanks only the development hero, not the upkeep list', async () => {
+    granted = DEVELOPMENT
+    developmentFails = true
+    renderPage()
+    expect(await screen.findByText(/Failed to load the funder totals data/)).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Funder upkeep' })).toBeInTheDocument()
+  })
+
+  it('the By reporting group table has no Awards column (it would double-count; the hero has the figure)', async () => {
+    granted = DEVELOPMENT
+    renderPage()
+    await screen.findByText('By reporting group')
+    const heads = screen.getAllByRole('columnheader').map((h) => h.textContent)
+    expect(heads.join('|')).toMatch(/Group/)
+    expect(heads.join('|')).toMatch(/Total aid/)
+    expect(heads.join('|')).toMatch(/From outside funders/)
+    expect(heads.some((h) => h.startsWith('Awards'))).toBe(false)
+    expect(screen.getByTestId('hero-figure')).toHaveTextContent('521')
+  })
+
+  it("the registrar fold's meta counts every live casework line, not just the five shown", async () => {
+    granted = FINANCE
+    todayData = { ...REGISTRAR_TODAY, finance: [line('pending_approval', 1)] }
+    renderPage()
+    // REGISTRAR_TODAY has ten casework lines, nine of them live; two are overdue.
+    expect(
+      await screen.findByText('9 waiting · 2 overdue · on the registrar, open to review')
+    ).toBeInTheDocument()
   })
 })
