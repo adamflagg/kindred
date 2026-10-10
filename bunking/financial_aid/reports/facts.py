@@ -164,16 +164,6 @@ class ReportRequest:
         asks = [facts.ask for n in rounds if (facts := self.round(n)) is not None and facts.ask is not None]
         return sum(asks, ZERO) if asks else None
 
-    def asked_capped(self, rounds: Iterable[int] = REPORT_ROUNDS) -> Decimal | None:
-        """`asked`, counted at most at the session cost (Rule M, owner 10-09: Statistics' Asked, as Development)."""
-        ask = self.asked(rounds)
-        return None if ask is None else capped_at_cost(ask, self.cost)
-
-    def is_ask_capped(self, rounds: Iterable[int] = REPORT_ROUNDS) -> bool:
-        """The asks on the rounds named add up to more than the priced session cost: "counted at the cost"."""
-        ask = self.asked(rounds)
-        return ask is not None and self.cost is not None and ask > self.cost
-
 
 def capped_at_cost(amount: Decimal, cost: Decimal | None) -> Decimal:
     """Rule M (owner 10-08, per request): `amount` counts at most the request's priced session cost. No cost known

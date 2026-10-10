@@ -9,7 +9,9 @@ The chips are an award table (None: All award tables, RPT-10) and a round (None:
   tier            the round's tier (at its lock, else the request's now; All rounds: Round 1's).
   apps            the population; `cancelled` counts the cancelled ones among them, the line beside apps (D131).
   asked           the population's asks on the chip's round(s), as keyed (D80); `asks` counts the requests with
-                  one, and the average ask divides by it.
+                  one, and the average ask divides by it. Rule M (owner 10-09): each request counts at most its
+                  priced session cost (no cost known: as typed), and `requests_capped` counts those above it.
+                  `live_asked` and `live_full_asked` (the % of ask denominators) stay as typed.
   amount          awarded (D80, Posted net of clawback, the camp's own money) on live requests; on the
                   "posted_and_decided" basis (D130) plus decided and not yet offered, broken out as `decided`.
   awarded         Posted alone (D80), on either basis: on "posted" it is `amount`; on "posted_and_decided" it is
@@ -47,7 +49,14 @@ from typing import Final, Literal
 
 from bunking.financial_aid.money import ZERO
 from bunking.financial_aid.reports.committee import RowKind
-from bunking.financial_aid.reports.facts import REPORT_ROUNDS, ReportRequest, average, in_round, in_table
+from bunking.financial_aid.reports.facts import (
+    REPORT_ROUNDS,
+    ReportRequest,
+    average,
+    capped_at_cost,
+    in_round,
+    in_table,
+)
 from bunking.financial_aid.rules import AidRules, round1_table, round2_table
 from bunking.financial_aid.rules.lookup import Round2TableNotListedError
 from bunking.financial_aid.scenarios.committee import fee_pct, pct, round2_max_pct
@@ -262,8 +271,8 @@ def _row(
         decided_count += "decided" in found
         ask = request.asked(rounds)  # bound every pass: the live branch below reads it too
         if request.counts_as_received and ask is not None:
-            asked += request.asked_capped(rounds) or ZERO  # Rule M (owner 10-09): at most the session's cost
-            capped += request.is_ask_capped(rounds)
+            asked += capped_at_cost(ask, request.cost)  # Rule M (owner 10-09): at most the session's cost
+            capped += request.cost is not None and ask > request.cost
         if not request.live:
             continue
         if ask is not None:
