@@ -210,6 +210,35 @@ def entry_of(record: Any) -> LogEntry | None:
     )
 
 
+def _positive_int(value: Any) -> int:
+    return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else 0
+
+
+def _placement_camper(
+    found: Subject | None, before: Mapping[str, Any] | None, after: Mapping[str, Any] | None
+) -> Subject | None:
+    """A camper's grant placement is about that camper: the register row it recorded names the camper, the session and
+    the requests it sits on. None for a household-level placement (no camper), which stays about the family."""
+    for snapshot in (after, before):
+        placement = (snapshot or {}).get("placement")
+        if not isinstance(placement, Mapping):
+            continue
+        person = _positive_int(placement.get("person_cm_id"))
+        household = _positive_int(placement.get("household_cm_id")) or (found.household_cm_id if found else 0)
+        if person == 0 or household == 0:
+            return None
+        requests = placement.get("requests")
+        first = requests[0] if isinstance(requests, list) and requests and isinstance(requests[0], Mapping) else {}
+        request_id = first.get("request_id")
+        return Subject(
+            household,
+            person,
+            request_id if isinstance(request_id, str) else "",
+            _positive_int(placement.get("session_cm_id")),
+        )
+    return None
+
+
 def row_subject(
     entry: LogEntry, subjects: Subjects, before: Mapping[str, Any] | None, after: Mapping[str, Any] | None
 ) -> Subject | None:
@@ -218,6 +247,10 @@ def row_subject(
     if ENTITY_KINDS.get(entry.entity) == "rules":
         return None
     found = subjects.of(entry.entity, entry.entity_id)
+    if entry.entity == AID_GRANT_PLACEMENTS:
+        camper = _placement_camper(found, before, after)
+        if camper is not None:
+            return camper
     if found is not None:
         return found
     for snapshot in (after, before):
@@ -319,6 +352,8 @@ def effect_words(effect: HistoryEffectOut | None) -> str:
         return "no approved rules price the season yet: nothing re-priced"
     if effect.to_version == effect.from_version:
         return f"v{effect.to_version} still prices the season: nothing re-priced"
+    if effect.repriced == 0:
+        return f"v{effect.to_version} now prices the season: nothing re-priced"
     repriced = _count(effect.repriced, "unsent request", "unsent requests")
     return f"v{effect.to_version} now prices the season · {repriced} re-priced"
 
