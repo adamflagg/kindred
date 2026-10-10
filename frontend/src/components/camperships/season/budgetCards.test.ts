@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { AidView } from '../kit/asOf'
-import { BUDGET, overBudget, poolOverShare } from './budgetFixtures'
+import { BUDGET, overBudget, pastBudget, poolOverShare } from './budgetFixtures'
 import {
   BUDGET_CSV_HEADERS,
   budgetBar,
@@ -9,8 +9,9 @@ import {
   noPoolCommitted,
   poolBar,
   poolCards,
+  ledgerRows,
+  previewMoves,
   roundLegend,
-  roundLines,
   shareCaption,
   withPreview,
 } from './budgetCards'
@@ -101,41 +102,120 @@ describe('the budget card (spec §5.2 A)', () => {
   })
 })
 
-describe('the rounds table (spec §5.2 D)', () => {
-  it('one line per round with Committed and what is committed, pending approval on Round 3', () => {
-    const lines = roundLines(BUDGET, 'pool_a', LIVE)
-    expect(lines.map((l) => [l.round, l.committed])).toEqual([
-      [1, 772640],
-      [2, 19720],
-      [3, 2750],
+describe('the ruled ledger: pools open into their rounds, the season in the band (spec §5.2 D; rounds-1, -2, -3)', () => {
+  const PAST: AidView = {
+    year: 2027,
+    asOf: { kind: 'past', date: '2027-03-15', axis: 'campminder' },
+  }
+  const rows = (open: string[] = ['pool_a'], pool: string | null = null, view = LIVE) =>
+    ledgerRows(BUDGET, pool, view, new Set(open))
+
+  it('lists each pool, its rounds only while open, then No pool and the Season total (never an empty table)', () => {
+    expect(rows().map((r) => [r.kind, r.label])).toEqual([
+      ['pool', 'Pool A'],
+      ['round', 'Round 1'],
+      ['round', 'Round 2'],
+      ['round', 'Round 3'],
+      ['pool', 'Pool B'],
+      ['nopool', 'No pool'],
+      ['foot', 'Season total'],
     ])
-    expect(lines[2]?.parts.map((p) => p.label)).toEqual([
-      'Posted',
-      'of it accepted',
-      'needs an offer',
-      'pending approval',
-    ])
-    expect(lines[0]?.parts.map((p) => p.label)).toEqual([
-      'Posted',
-      'of it accepted',
-      'needs an offer',
-    ])
-    expect(lines[0]?.confirmed?.words).toBe('4 not yet confirmed · $5,200')
+    expect(rows([]).map((r) => r.kind)).toEqual(['pool', 'pool', 'nopool', 'foot'])
   })
 
-  it("links each figure as today's cellHref does, and never per-round Allocated or Remaining", () => {
-    const [r1] = roundLines(BUDGET, 'pool_a', LIVE)
-    expect(r1?.parts[0]?.href).toBe('/aid/requests?pool=pool_a&posted=1&year=2027')
-    expect(JSON.stringify(r1)).not.toMatch(/allocated|remaining/i)
+  it('a one-pool page keeps that pool and its total reads "<Pool> only", with no No pool row', () => {
+    expect(rows(['pool_b'], 'pool_b').map((r) => [r.kind, r.label])).toEqual([
+      ['pool', 'Pool B'],
+      ['round', 'Round 1'],
+      ['round', 'Round 2'],
+      ['round', 'Round 3'],
+      ['foot', 'Pool B only'],
+    ])
   })
 
-  it('opens nothing on a past date for a queue figure', () => {
-    const past: AidView = {
-      year: 2027,
-      asOf: { kind: 'past', date: '2027-03-15', axis: 'campminder' },
+  it('splits what is committed into five figures per row, Pending approval on Round 3 only', () => {
+    const [pool, r1, , r3] = rows()
+    expect(r1?.committed).toBe(772640)
+    expect(r1?.posted).toMatchObject({
+      words: '$764,540',
+      href: '/aid/requests?pool=pool_a&posted=1&year=2027',
+    })
+    expect(r1?.accepted.words).toBe('$598,300')
+    expect(r1?.needsOffer.words).toBe('3 · $8,100')
+    expect(r1?.pending).toBeNull()
+    expect(r3?.pending).toMatchObject({ words: '1 · $650' })
+    expect(r3?.pending?.href).toContain('view=pending-approval')
+    expect(pool?.pending?.words).toBe('1 · $650')
+  })
+
+  it('Not yet confirmed is the amount alone, amber only above $0, linking to Not reconciled', () => {
+    const [, r1, r2] = rows()
+    expect(r1?.unconfirmed).toMatchObject({ words: '$5,200', amber: true })
+    expect(r1?.unconfirmed?.href).toContain('view=not-reconciled')
+    expect(r1?.unconfirmed?.title).toMatch(/isn't in CampMinder's camp aid yet/)
+    expect(r2?.unconfirmed).toMatchObject({ words: '$1,800', amber: true })
+    const b = rows().find((r) => r.label === 'Pool B')
+    expect(b?.unconfirmed?.amber).toBeFalsy()
+    expect(rows().at(-1)?.unconfirmed?.words).toBe('$7,000')
+  })
+
+  it('a total never links (the pool and round figures do), and No pool opens nothing', () => {
+    const all = rows()
+    const foot = all.at(-1)!
+    expect([
+      foot.posted.href,
+      foot.accepted.href,
+      foot.needsOffer.href,
+      foot.unconfirmed?.href,
+    ]).toEqual([null, null, null, null])
+    const none = all.find((r) => r.kind === 'nopool')!
+    expect(none.committed).toBe(1200)
+    expect(none.posted.href).toBeNull()
+  })
+
+  it('never carries Allocated or Remaining per round (§8.1)', () => {
+    for (const row of rows().filter((r) => r.kind === 'round')) {
+      expect(Object.keys(row).join(' ')).not.toMatch(/allocated|remaining/i)
     }
-    const [r1] = roundLines(BUDGET, 'pool_a', past)
-    expect(r1?.parts.find((p) => p.label === 'needs an offer')?.href).toBeNull()
+  })
+
+  it('on a past date opens no queue view, and a masked figure reads "—"', () => {
+    const [, r1] = ledgerRows(pastBudget(), null, PAST, new Set(['pool_a']))
+    expect(r1?.needsOffer.href).toBeNull()
+    expect(r1?.unconfirmed?.words).toBe('—')
+  })
+
+  it('has no No pool row when nothing sits there', () => {
+    const none = {
+      ...BUDGET,
+      pools: BUDGET.pools.map((p) =>
+        p.pool === '' ? { ...p, total: { ...p.total, committed: 0 } } : p
+      ),
+    }
+    expect(ledgerRows(none, null, LIVE, new Set()).some((r) => r.kind === 'nopool')).toBe(false)
+  })
+})
+
+describe('the preview pill (rounds-13)', () => {
+  it('is on only when the typed plan moves a pool or the total from the read', () => {
+    const same = {
+      pools: {
+        pool_a: { allocated: 900000, remaining: 119460 },
+        pool_b: { allocated: 100000, remaining: 86100 },
+      },
+      total: { allocated: 1000000, remaining: 100000 },
+    }
+    expect(previewMoves(BUDGET, same)).toBe(false)
+    expect(
+      previewMoves(BUDGET, {
+        ...same,
+        pools: { ...same.pools, pool_b: { allocated: 110000, remaining: 96100 } },
+      })
+    ).toBe(true)
+    expect(previewMoves(BUDGET, { ...same, total: { allocated: 1010000, remaining: 1 } })).toBe(
+      true
+    )
+    expect(previewMoves(BUDGET, null)).toBe(false)
   })
 })
 

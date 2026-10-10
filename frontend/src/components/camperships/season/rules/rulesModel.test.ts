@@ -228,6 +228,19 @@ describe('what a draft changed', () => {
   it('says the change in words, old → new', () => {
     if (change === undefined) throw new Error('fixture has no change')
     expect(changeWords(change)).toBe('General › Tiers › Tier 2 › Round 1 %: 60% → 55%')
+    // B34 (rounds-14): a screen that names the equity class by its pool words it "Camp & Quest › Tier 2 › …", never
+    // by the program ("Summer") and without the "Tiers" segment.
+    expect(
+      changeWords(change, {
+        section: 'award_tables',
+        pools: {},
+        programs: { general: 'Summer' },
+        decisionTypes: {},
+        criteria: {},
+        classLabel: () => 'Camp & Quest',
+        tierless: true,
+      })
+    ).toBe('Camp & Quest › Tier 2 › Round 1 %: 60% → 55%')
     expect(
       changeWords({
         path: ['bands'],

@@ -28,7 +28,7 @@ import {
 import { sectionChangeWords } from './approveWords'
 import { approvePrecondition } from './precondition'
 import { draftSections, sameSection, SECTION_ORDER } from './rulesDraft'
-import { rulesVocabulary, SECTION_TITLES, type RulesNames } from './rulesModel'
+import { groupWords, rulesVocabulary, SECTION_TITLES, type RulesNames } from './rulesModel'
 
 /** What a re-read found: the version now, and the ticked sections that moved and were unticked. */
 interface Recheck {
@@ -114,6 +114,8 @@ export function ApproveForm({
     void fetchFresh().then(
       (fresh) => {
         setSeen(fresh)
+        // Only the open section (Decision 17), not every changed one as the mocks draw it: approving the budget
+        // locks the season's total (#3094), and the owner has not ruled on pre-ticking more (coordinator, 10-10).
         // Not pre-ticked with errors: its box is disabled, but a ticked one would still be sent.
         const row = fresh.sections.find((s) => s.section === first)
         setTicked(
@@ -268,7 +270,14 @@ export function ApproveForm({
   const working = busy || approve.isPending
   // A change names its pools, programs and sessions as the Rules tab does, not by their keys and ids.
   const vocabulary = rulesVocabulary((section) => seen.document[section], sessions)
-  const namesFor = (section: ApiAidRulesSection): RulesNames => ({ section, ...vocabulary })
+  // A table or equity class reads as its pool ("Camp & Quest"), as the tier grid heads it (B34), never as a program.
+  const classLabel = groupWords(seen.groups ?? [], vocabulary)
+  const namesFor = (section: ApiAidRulesSection): RulesNames => ({
+    section,
+    ...vocabulary,
+    classLabel,
+    tierless: true,
+  })
 
   return (
     <div className={`${CS_CARD} space-y-2`} data-testid="approve-form">

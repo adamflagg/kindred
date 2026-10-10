@@ -9,7 +9,6 @@ import { Money } from '../../components/camperships/kit/MoneyText'
 import { HistoryTab } from '../../components/camperships/season/HistoryTab'
 import {
   RoundsBudgetCsv,
-  RoundsBudgetScope,
   RoundsBudgetTab,
 } from '../../components/camperships/season/RoundsBudgetTab'
 import { isRulesSection } from '../../components/camperships/season/rules/rulesModel'
@@ -91,7 +90,6 @@ export default function AidSeasonPage() {
     : 'budget'
   const right = (
     <>
-      {onRounds && <RoundsBudgetScope />}
       {!onRounds && asOf.kind === 'past' && (
         <span className={CS_SMALL}>
           {`This tab shows today. Rounds & budget can show ${formatLongDate(asOf.date)}.`}

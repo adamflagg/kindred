@@ -142,6 +142,55 @@ describe('Edit Plan… as an editor (design-language §24)', () => {
   })
 })
 
+describe('Edit Plan… editor as the final design draws it (rounds-12; §24)', () => {
+  it('is a titled panel: "Edit Plan · the rules draft\'s budget section"', () => {
+    render(<Harness />)
+    expect(screen.getByText("Edit Plan · the rules draft's budget section")).toBeInTheDocument()
+  })
+
+  it("titles the panel in the kit's panel-head grammar: 11px, 700, uppercase, muted (mock .cf-phead)", () => {
+    render(<Harness />)
+    const head = screen.getByText("Edit Plan · the rules draft's budget section")
+    expect(head).toHaveClass('uppercase', 'text-[11px]', 'font-bold', 'text-muted-foreground')
+  })
+
+  it('sets the split line as a result: 600, in the ok ink (mock .cf-res)', () => {
+    render(<Harness />)
+    const line = screen.getByText('sums to 100% · Pool A $900,000 · Pool B $100,000')
+    expect(line).toHaveClass('font-semibold', 'text-forest-800')
+  })
+
+  it('lays Total and Program split in the two-column grid, label then field', () => {
+    render(<Harness />)
+    const grid = screen.getByTestId('aid-editor-grid')
+    expect(grid).toHaveClass('grid-cols-[max-content_minmax(0,1fr)]')
+    expect(grid).not.toHaveClass('grid-cols-[max-content_minmax(0,1fr)_max-content_minmax(0,1fr)]')
+  })
+
+  it('draws the three shares as ONE joined field, a divider between pools', () => {
+    render(<Harness />)
+    const field = screen.getByTestId('aid-split-field')
+    expect(within(field).getByLabelText('Pool A')).toBeInTheDocument()
+    expect(within(field).getByLabelText('Pool B')).toBeInTheDocument()
+    expect(within(field).getAllByTestId('aid-split-divider')).toHaveLength(1)
+  })
+
+  it('keeps the split line on ONE line: truncated, with its whole words as the title', () => {
+    render(<Harness />)
+    const words = 'sums to 100% · Pool A $900,000 · Pool B $100,000'
+    const line = screen.getByText(words)
+    expect(line).toHaveClass('truncate')
+    expect(line).toHaveAttribute('title', words)
+  })
+
+  it('ends the button row with "saving prices nothing until it\'s approved"', () => {
+    render(<Harness />)
+    const row = screen.getByRole('button', { name: 'Save to Rules Draft' })
+      .parentElement as HTMLElement
+    expect(within(row).getByText("saving prices nothing until it's approved")).toBeInTheDocument()
+  })
+})
+
 describe('Edit Plan… (spec §5.2 B)', () => {
   it('shows Total $, Program split with a box per pool, the split words and No change yet', () => {
     render(<Harness />)

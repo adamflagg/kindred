@@ -19,7 +19,7 @@ Its request still counts in those figures' request counts, and in Pending approv
 Below the line, never in Remaining: held rounds (their count and ask), outside grants, and money on
 a decision type outside the camp's own budget. Forward demand (D82): Round 2 asks so far (count,
 total asked, total computed; held appeals' asks included) and Round 1 unmet ask, not yet appealed
-(§5.9). This year only (D46): no pace, no last year. A posted round whose money CampMinder has
+(§5.9), every ask at the D91 need cap (`reports.facts.round_ask_at_cost`, owner Q12). This year only (D46): no pace, no last year. A posted round whose money CampMinder has
 reversed (clawed_back, D54) counts nowhere: its money is back in Remaining.
 
 Money on a program the rules give no pool is counted in the total only, under "No pool": it has no
@@ -37,6 +37,7 @@ from typing import Final
 from bunking.financial_aid.decisions.pricing import PricedRequest, RoundView
 from bunking.financial_aid.decisions.rounds import ROUNDS
 from bunking.financial_aid.money import HUNDRED, ZERO
+from bunking.financial_aid.reports.facts import round_ask_at_cost
 from bunking.financial_aid.rules.schema import AidRules
 
 NO_POOL: Final = ""
@@ -387,18 +388,23 @@ class _Demand:
     seen: bool = False
 
 
-def _tally_demand(request: PricedRequest, demand: _Demand) -> None:
+def _tally_demand(request: PricedRequest, demand: _Demand, cost: Decimal | None = None) -> None:
     """D82. Round 2 asks so far, held appeals' asks included (computed leaves held ones out); else
     Round 1 unmet ask, not yet appealed (§5.9): ask − Round 1 on a decided or posted Round 1, or the
-    whole ask while Round 1 is held. It knows only the appeals keyed so far (a known gap, D82)."""
+    whole ask while Round 1 is held. It knows only the appeals keyed so far (a known gap, D82).
+
+    Every ask counts at the D91 need cap (owner Q12, 2026-10-10, as Statistics' after #3122): at most the session
+    `cost` less the awards posted before that round (`round_ask_at_cost`); no cost known: as typed."""
     r1, r2 = request.view(1), request.view(2)
     if r2 is not None and r2.ask is not None:
         if r2.clawed_back:
             return  # D54: a clawed-back round counts nowhere (and implies Round 1 was clawed back too)
         demand.seen = True
-        demand.asks2.add(request, r2.ask)
+        before = ZERO if r1 is None or r1.clawed_back else (r1.locked or ZERO)  # the POSTED Round 1 award (D47)
+        ask2 = round_ask_at_cost(r2.ask, cost, before)
+        demand.asks2.add(request, ask2)
         if r2.status == "held":
-            demand.held2.add(request, r2.ask)
+            demand.held2.add(request, ask2)
         if not r2.counts_toward_budget:
             # Deliberate for the full-cost fund too: it allows no appeal and pays the rest of the cost, so it leaves no unmet ask.
             return  # a non-counting round is not the camp's money: no forward demand
@@ -411,9 +417,10 @@ def _tally_demand(request: PricedRequest, demand: _Demand) -> None:
         return  # D54: a declined offer is not unmet ask
     if r1.status == "held":
         demand.seen = True
-        if r1.ask > 0:
-            demand.unmet1.add(request, r1.ask)
-            demand.held1.add(request, r1.ask)
+        ask1 = round_ask_at_cost(r1.ask, cost, ZERO)
+        if ask1 > 0:
+            demand.unmet1.add(request, ask1)
+            demand.held1.add(request, ask1)
     elif not r1.counts_toward_budget:
         # Deliberate for the full-cost fund too: it allows no appeal and pays the rest of the cost, so it leaves no unmet ask.
         return  # a non-counting round is not the camp's money: no unmet demand against it
@@ -421,7 +428,9 @@ def _tally_demand(request: PricedRequest, demand: _Demand) -> None:
         amount = r1.locked if r1.status == "posted" else r1.decided
         if amount is not None:
             demand.seen = True
-            gap = max(ZERO, r1.ask - amount)  # one family's overage never offsets another's unmet
+            gap = max(
+                ZERO, round_ask_at_cost(r1.ask, cost, ZERO) - amount
+            )  # one family's overage never offsets another's unmet
             if gap > 0:
                 demand.unmet1.add(request, gap)
 
@@ -515,6 +524,7 @@ def season_budget(
     not_demand: Collection[str] = frozenset(),
     ledger: Mapping[str, Mapping[int, RoundLedger]] | None = None,
     off_list: Collection[tuple[str, int]] = frozenset(),
+    costs: Mapping[str, Decimal] | None = None,
 ) -> SeasonBudget:
     """`outside_grants` is each request's counted outside grants (the grants register's shares,
     summed, a pays-after-camp-aid grant included, D143); `outside_grants_off_requests` the counted
@@ -522,7 +532,9 @@ def season_budget(
     they are live (owner ruling 2026-10-02: CampMinder cancelled them; `live` itself is not changed). `ledger` is each
     request's posted rounds against CampMinder's live net (`round_ledger`); None: no ledger read. `off_list` are the
     (request, round)s needing an offer that the Requests grid's Needs an offer list leaves out (D162 C2: CampMinder
-    already holds money for them): their money stays in Needs an offer, and they leave its counts."""
+    already holds money for them): their money stays in Needs an offer, and they leave its counts. `costs` is each
+    request's session cost, which caps its forward-demand asks at the D91 need (owner Q12); a request missing from it,
+    or None, counts its asks as typed."""
     allocated = allocations(rules) if rules is not None else {}
     shares = {key: pool.share_pct for key, pool in rules.budget.pools.items()} if rules is not None else {}
     labels = {key: pool.label for key, pool in rules.budget.pools.items()} if rules is not None else {}
@@ -549,7 +561,7 @@ def season_budget(
             if share > 0:
                 grant_requests[pool].add(request, ZERO)
             if request.live and request.request_id not in not_demand:
-                _tally_demand(request, demand[pool])
+                _tally_demand(request, demand[pool], costs.get(request.request_id) if costs else None)
     seen = (
         {pool for pool, _, _ in tallies}
         | {p for p, v in grants.items() if v}

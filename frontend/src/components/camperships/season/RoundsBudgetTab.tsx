@@ -15,37 +15,28 @@ import { aidHref, type AidView } from '../kit/asOf'
 import { campToday } from '../kit/dates'
 import { headingLines } from '../kit/report'
 import { AidCsvButton } from '../kit/CsvButton'
-import { CS_LINK, CS_PANEL, CS_PILL } from '../kit/csType'
+import { AidCards } from '../kit/Cards'
+import { CS_LINK, CS_PANEL } from '../kit/csType'
+import { AidDefinitionNotes } from '../shell/AidDefinitionNotes'
 import { scopePool, budgetCsvName } from './budgetModel'
-import { BUDGET_CSV_HEADERS, budgetCsvRows, noPoolCommitted, poolCards } from './budgetCards'
-import { BudgetCard } from './BudgetCard'
+import {
+  BUDGET_CSV_HEADERS,
+  budgetCsvRows,
+  ledgerRows,
+  poolCards,
+  previewMoves,
+} from './budgetCards'
+import { BudgetHead, SeasonCard } from './BudgetCard'
 import { EditPlan } from './EditPlan'
 import { BudgetFoldLines } from './BudgetFoldLines'
-import { parseOpenKeys, toggleOpenKey } from './foldLinesModel'
+import { DEFAULT_OPEN_LINES, openKeys, toggleOpenKey } from './foldLinesModel'
 import { draftPillWords, planOf, previewFigures, type TypedPlan } from './planModel'
-import { NoPoolCard, PoolCard } from './PoolCard'
+import { PoolCard } from './PoolCard'
+import { RoundsTable } from './RoundsTable'
+import { ROUNDS_NOTE_ALSO_BOLD, roundsNote } from './roundsNotes'
 import { useSeasonChrome } from './seasonChrome'
 
 const SURFACE = 'season-rounds-budget'
-
-/** "‹Pool› only · All Pools ›" on the tab bar's right (spec §4), only on a one-pool page. */
-export function RoundsBudgetScope() {
-  const year = useYear()
-  const asOf = useAidAsOf()
-  const [params] = useSearchParams()
-  const pool = params.get('pool')
-  const budget = useAidBudget().data
-  const scope = budget && pool !== null ? budget.pools.find((p) => p.pool === pool) : undefined
-  if (scope === undefined) return null
-  return (
-    <span className={CS_PANEL}>
-      <b>{scope.label}</b> only ·{' '}
-      <Link to={aidHref('/aid/season/rounds-budget', { year, asOf })} className={CS_LINK}>
-        All Pools ›
-      </Link>
-    </span>
-  )
-}
 
 /** Download CSV on the tab bar's right (spec §5.2 H): every pool, round and the total, whatever is folded. */
 export function RoundsBudgetCsv() {
@@ -85,7 +76,12 @@ function RoundsBudgetBody({ budget, view }: { budget: ApiAidBudget; view: AidVie
   const [params, setParams] = useSearchParams()
   const pool = params.get('pool')
   const openRaw = params.get('open')
-  const open = useMemo(() => parseOpenKeys(openRaw), [openRaw])
+  // Open by default: every pool (its rounds) and Where each round stands; the first toggle writes ?open= as the whole state.
+  const defaults = useMemo(
+    () => [...poolCards(budget, pool).map((card) => card.key), ...DEFAULT_OPEN_LINES],
+    [budget, pool]
+  )
+  const open = useMemo(() => openKeys(openRaw, defaults), [openRaw, defaults])
   const { numberOf } = useAidDefinitions(SURFACE)
   const { hasPermission } = usePermissions()
   const finance = hasPermission(Permission.FINANCIAL_AID_RULES)
@@ -93,13 +89,9 @@ function RoundsBudgetBody({ budget, view }: { budget: ApiAidBudget; view: AidVie
   const live = view.asOf.kind !== 'past'
   const { approving, locked, relocks } = useSeasonChrome()
   // Edit Plan… waits while the Approve panel is open, as Rules' Edit… does ("Approve or cancel first.").
-  const canPlan =
-    finance &&
-    live &&
-    budget.rules_version !== null &&
-    draft.data !== undefined &&
-    !approving &&
-    !locked
+  // It also serves a season with no approved rules yet, where the editor sets the first budget; the mock draws no such
+  // state (rounds-18), and the save is the Rules draft's own, which never needed approved rules (coordinator 10-10).
+  const canPlan = finance && live && draft.data !== undefined && !approving && !locked
   const [editing, setEditing] = useState(false)
   const [typed, setTyped] = useState<TypedPlan | null>(null)
   // Lock Again closes Edit Plan… (its Save would only meet the server's refusal); expiry leaves it open.
@@ -109,14 +101,12 @@ function RoundsBudgetBody({ budget, view }: { budget: ApiAidBudget; view: AidVie
     setEditing(false)
     setTyped(null)
   }
-  // The editor lives in the Budget card, which a one-pool page and a past date do not show: arriving at either closes
-  // the plan, or the pool cards would keep previewing typing nobody can see, save or cancel. Keyed on the arrival, not
-  // on the state, so the nudge's own step from a one-pool page to All pools keeps the editor it opens.
-  const where = `${pool ?? ''}|${String(live)}`
-  const [seenWhere, setSeenWhere] = useState(where)
-  if (seenWhere !== where) {
-    setSeenWhere(where)
-    if (editing && (pool !== null || !live)) {
+  // A past date shows no editor: arriving at one closes the plan, or the cards would keep previewing typing nobody can
+  // save or cancel. A one-pool page keeps it (the Budget heading stays there, the plan edits in place).
+  const [seenLive, setSeenLive] = useState(live)
+  if (seenLive !== live) {
+    setSeenLive(live)
+    if (editing && !live) {
       setEditing(false)
       setTyped(null)
     }
@@ -126,16 +116,18 @@ function RoundsBudgetBody({ budget, view }: { budget: ApiAidBudget; view: AidVie
   useEffect(() => {
     setParamsRef.current = setParams
   }, [setParams])
-  // A card or fold line is a view state, so it lives in the URL (D15), replaced rather than pushed.
+  const defaultsRef = useRef(defaults)
+  useEffect(() => {
+    defaultsRef.current = defaults
+  }, [defaults])
+  // A pool or section is a view state, so it lives in the URL (D15), replaced rather than pushed.
   const toggle = useCallback(
     (key: string) =>
       setParamsRef.current(
         (previous) => {
           const next = new URLSearchParams(previous)
           next.delete('fold') // today's ?fold= is retired
-          const value = toggleOpenKey(parseOpenKeys(previous.get('open')), key)
-          if (value === null) next.delete('open')
-          else next.set('open', value)
+          next.set('open', toggleOpenKey(openKeys(previous.get('open'), defaultsRef.current), key))
           return next
         },
         { replace: true }
@@ -169,79 +161,70 @@ function RoundsBudgetBody({ budget, view }: { budget: ApiAidBudget; view: AidVie
       : null
   const openEditor = () => {
     if (plan === null) return
-    if (pool !== null) {
-      setParamsRef.current(
-        (previous) => {
-          const next = new URLSearchParams(previous)
-          next.delete('pool')
-          return next
-        },
-        { replace: true }
-      )
-    }
     setTyped(plan.plan)
     setEditing(true)
   }
-  const cards = poolCards(budget, pool)
-  const none = pool === null ? noPoolCommitted(budget) : null
-  const scopedPills =
-    pool === null ? null : (
-      <>
-        {budget.rules_version === null && (
-          <span className={CS_PILL.amber}>no approved rules: nothing allocated yet</span>
-        )}
-        {!live && <span className={CS_PILL.muted}>past date: exact figures only</span>}
-      </>
+  const clearScope = () =>
+    setParamsRef.current(
+      (previous) => {
+        const next = new URLSearchParams(previous)
+        next.delete('pool')
+        return next
+      },
+      { replace: true }
     )
+  const cards = poolCards(budget, pool)
+  const ledger = ledgerRows(budget, pool, view, open)
   return (
-    <div className="space-y-3">
-      {pool === null && (
-        <BudgetCard
-          budget={budget}
-          view={view}
-          open={open}
-          onToggle={toggle}
-          numberOf={numberOf}
-          preview={preview}
-          editing={editing}
-          draftPill={draftPill}
-          canPlan={canPlan}
-          onEditPlan={openEditor}
-        >
-          {editing && draft.data !== undefined && plan !== null && typed !== null && (
-            <EditPlan
-              draft={draft.data}
-              pools={plan.pools}
-              opened={plan.plan}
-              typed={typed}
-              shareNote={numberOf('share')}
-              inEffectTotal={budget.rules_version === null ? null : budget.total.total.allocated}
-              onType={setTyped}
-              onClose={() => {
-                setEditing(false)
-                setTyped(null)
-              }}
-            />
-          )}
-        </BudgetCard>
+    <div>
+      <BudgetHead
+        budget={budget}
+        view={view}
+        editing={editing}
+        previewing={editing && previewMoves(budget, preview)}
+        draftPill={draftPill}
+        canPlan={canPlan}
+        onEditPlan={openEditor}
+        scope={pool === null ? null : scope.label}
+        onClearScope={clearScope}
+      />
+      {editing && draft.data !== undefined && plan !== null && typed !== null && (
+        <div className="mb-2">
+          <EditPlan
+            draft={draft.data}
+            pools={plan.pools}
+            opened={plan.plan}
+            typed={typed}
+            shareNote={roundsNote(numberOf, 'share')}
+            inEffectTotal={budget.rules_version === null ? null : budget.total.total.allocated}
+            onType={setTyped}
+            onClose={() => {
+              setEditing(false)
+              setTyped(null)
+            }}
+          />
+        </div>
       )}
-      {cards.map((card) => (
-        <PoolCard
-          key={card.key}
-          card={card}
-          budget={budget}
-          view={view}
-          open={open}
-          onToggle={toggle}
-          numberOf={numberOf}
-          preview={preview}
-          editing={editing}
-          canPlan={canPlan}
-          onEditPlan={openEditor}
-          scopedPills={scopedPills}
-        />
-      ))}
-      {none !== null && <NoPoolCard committed={none} />}
+      {cards.length > 0 && (
+        <AidCards count={Math.max(4, cards.length + (pool === null ? 1 : 0))}>
+          {cards.map((card) => (
+            <PoolCard
+              key={card.key}
+              card={card}
+              budget={budget}
+              view={view}
+              numberOf={numberOf}
+              preview={preview}
+            />
+          ))}
+          {pool === null && (
+            <SeasonCard budget={budget} view={view} numberOf={numberOf} preview={preview} />
+          )}
+        </AidCards>
+      )}
+      <div className="mt-2">
+        <RoundsTable rows={ledger} open={open} onToggle={toggle} numberOf={numberOf} />
+      </div>
       <BudgetFoldLines
         budget={budget}
         pool={pool}
@@ -250,13 +233,15 @@ function RoundsBudgetBody({ budget, view }: { budget: ApiAidBudget; view: AidVie
         onToggle={toggle}
         numberOf={numberOf}
       />
+      <AidDefinitionNotes surface={SURFACE} alsoBold={ROUNDS_NOTE_ALSO_BOLD} />
     </div>
   )
 }
 
 /**
- * Season › Rounds & budget (spec §5; budget-v9.html): lead with the budget and work down: total → pool shares → what
- * each round committed → Remaining. The definitions sit in the "Notes" fold line. A failed refetch keeps the figures.
+ * Season › Rounds & budget (spec §5; final design, layout C): the Budget heading, a strip of compact cards (a pool each,
+ * the season in the band), ONE ruled table (pools open into their rounds, the season in the band), four folding
+ * sections and the notes. A failed refetch keeps the figures.
  */
 export function RoundsBudgetTab() {
   const year = useYear()

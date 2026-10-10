@@ -180,7 +180,7 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
   const pricedOn = pricedOnFigures(figures, view.requestSet)
 
   return (
-    <div className="space-y-3">
+    <div className={view.panel === 'compare' ? 'space-y-2' : 'space-y-3'}>
       <MakeRulesDraftDialog
         code={promoting}
         names={names}

@@ -414,6 +414,39 @@ describe('approving sections (D39; Decision 17; owner ruling 2026-10-02)', () =>
     expect(within(form).queryByText(/once every section is approved/)).toBeNull()
   })
 
+  it('pre-ticks ONLY the open section, never every changed one (Decision 17; total locks on approval, #3094)', async () => {
+    const base = rulesDraft()
+    const drafted = base.sections.find((s) => s.section === 'award_tables')
+    server = [
+      {
+        ...base,
+        sections: base.sections.map((s) =>
+          s.section === 'awards' && drafted !== undefined ? { ...drafted, section: 'awards' } : s
+        ),
+      },
+    ]
+    renderAt('/aid/season/rules?section=award_tables')
+    await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
+    const form = screen.getByTestId('approve-form')
+    const open = await within(form).findByRole('checkbox', { name: 'Round 1 award table' })
+    const boxes = within(form).getAllByRole('checkbox')
+    expect(boxes.length).toBeGreaterThan(1)
+    expect(open).toBeChecked()
+    for (const box of boxes) if (box !== open) expect(box).not.toBeChecked()
+    expect(within(form).getByRole('button', { name: 'Approve 1 Section' })).toBeDisabled()
+  })
+
+  it('words a table change by its pool, never "Summer", and without "Tiers" (B34)', async () => {
+    const base = rulesDraft()
+    server = [{ ...base, groups: [{ pool: 'pool_a', label: 'Pool A', equity_class: 'general' }] }]
+    renderAt('/aid/season/rules?section=award_tables')
+    await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
+    const form = screen.getByTestId('approve-form')
+    await within(form).findByRole('checkbox', { name: 'Round 1 award table' })
+    expect(within(form).getByText('Pool A › Tier 2 › Round 1 %: 60% → 55%')).toBeInTheDocument()
+    expect(within(form).queryByText(/Tiers/)).toBeNull()
+  })
+
   it('Esc closes the Approve form without approving', async () => {
     renderAt('/aid/season/rules?section=award_tables')
     await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))

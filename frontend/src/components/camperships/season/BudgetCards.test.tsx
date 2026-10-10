@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { AidView } from '../kit/asOf'
-import { BudgetCard } from './BudgetCard'
+import { BudgetHead, SeasonCard } from './BudgetCard'
 import { BUDGET, overBudget, poolOverShare } from './budgetFixtures'
 import { poolCards } from './budgetCards'
 import { PoolCard } from './PoolCard'
@@ -12,61 +12,120 @@ import { PoolCard } from './PoolCard'
 const LIVE: AidView = { year: 2027, asOf: { kind: 'live' } }
 const N = (key: string) =>
   ({
-    allocated: 1,
-    budget_posted: 2,
-    accepted: 3,
-    needs_offer: 4,
-    pending_approval: 5,
-    remaining: 6,
-    below_the_line: 7,
-    share: 11,
-    committed: 12,
-    past_date: 13,
+    rounds_allocated: 1,
+    rounds_committed: 2,
+    rounds_posted: 3,
+    rounds_needs_offer: 4,
+    rounds_remaining: 5,
+    rounds_below_the_line: 6,
   })[key] ?? null
 
-function budgetCard(over: Partial<Parameters<typeof BudgetCard>[0]> = {}) {
+function head(over: Partial<Parameters<typeof BudgetHead>[0]> = {}) {
   return render(
     <MemoryRouter>
-      <BudgetCard
+      <BudgetHead
         budget={BUDGET}
         view={LIVE}
-        open={new Set()}
-        onToggle={vi.fn()}
-        numberOf={N}
-        preview={null}
         editing={false}
+        previewing={false}
         draftPill={null}
         canPlan
         onEditPlan={vi.fn()}
+        scope={null}
+        onClearScope={vi.fn()}
         {...over}
       />
     </MemoryRouter>
   )
 }
 
-describe('the Budget card (spec §5.2 A)', () => {
-  it('leads with Budget, 2027, the rules version, and Allocated (a link) · Committed · Remaining (bold)', () => {
-    budgetCard()
-    const card = screen.getByTestId('budget-card')
-    expect(within(card).getByRole('button', { name: /Budget, 2027/ })).toBeInTheDocument()
-    expect(within(card).getByText('rules v3')).toBeInTheDocument()
+function season(over: Partial<Parameters<typeof SeasonCard>[0]> = {}) {
+  return render(
+    <MemoryRouter>
+      <SeasonCard budget={BUDGET} view={LIVE} numberOf={N} preview={null} {...over} />
+    </MemoryRouter>
+  )
+}
+
+describe('the Budget heading (spec §5.2 A; rounds-5, -11, -13, -15)', () => {
+  it('reads Budget, 2027 with the rules version and how the rules count in its description', () => {
+    head()
+    const h = screen.getByTestId('budget-head')
+    expect(within(h).getByRole('heading', { name: 'Budget, 2027' })).toBeInTheDocument()
+    expect(
+      within(h).getByText(
+        'rules v3 · counts when offered · each pool keeps its own Remaining · only the total is a cap'
+      )
+    ).toBeInTheDocument()
+    expect(within(h).getByRole('button', { name: 'Edit Plan…' })).toBeInTheDocument()
+  })
+
+  it('draws the one-pool state as a removable "TBM only" chip, and ✕ clears it', async () => {
+    const onClearScope = vi.fn()
+    head({ scope: 'Pool B', onClearScope })
+    await userEvent.click(screen.getByRole('button', { name: 'Clear Pool B only' }))
+    expect(onClearScope).toHaveBeenCalledOnce()
+  })
+
+  it('with no approved rules: the amber pill, the description without a version, and no rules link', () => {
+    head({ budget: { ...BUDGET, rules_version: null } })
+    expect(screen.getByText('no approved rules: nothing allocated yet')).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'counts when offered · each pool keeps its own Remaining · only the total is a cap'
+      )
+    ).toBeInTheDocument()
+  })
+
+  it('on a past date says "past date: exact figures only"', () => {
+    head({
+      view: { year: 2027, asOf: { kind: 'past', date: '2027-03-15', axis: 'campminder' } },
+      canPlan: false,
+    })
+    expect(screen.getByText('past date: exact figures only')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Edit Plan…' })).toBeNull()
+  })
+
+  it('shows ONE amber preview pill while editing, in place of the rules draft pill', () => {
+    head({ editing: true, previewing: true, draftPill: 'rules draft v4: 1 budget change' })
+    expect(screen.getAllByText('preview')).toHaveLength(1)
+    expect(screen.queryByText(/rules draft v4/)).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Edit Plan…' })).toBeNull()
+  })
+
+  it('shows no preview pill while editing until a typed figure actually moves', () => {
+    head({ editing: true, previewing: false })
+    expect(screen.queryByText('preview')).toBeNull()
+  })
+
+  it('shows the rules draft pill when not editing', () => {
+    head({ draftPill: 'rules draft v4: 1 budget change' })
+    expect(screen.getByText('rules draft v4: 1 budget change')).toBeInTheDocument()
+  })
+})
+
+describe('the Season card (compact, in the green band)', () => {
+  it('leads with Season 100%, and Allocated (a link) · Committed · Remaining (bold)', () => {
+    season()
+    const card = screen.getByTestId('season-card')
+    expect(within(card).getByText('Season')).toBeInTheDocument()
+    expect(within(card).getByText('100%')).toBeInTheDocument()
     expect(within(card).getByRole('link', { name: '$1,000,000' })).toHaveAttribute(
       'href',
       '/aid/season/rules?version=3&section=budget&year=2027'
     )
-    expect(within(card).getByText('$848,710').closest('b')).toBeNull() // Committed: 834,140 + 13,920 + 650
     expect(within(card).getByTestId('budget-remaining').querySelector('b')).not.toBeNull()
   })
 
   it('reads the total below $0 as a red minus with a red "over budget" pill', () => {
-    budgetCard({ budget: overBudget() })
-    const remaining = screen.getByTestId('budget-remaining')
-    expect(within(remaining).getByText('−$8,366')).toHaveClass('text-red-700')
-    expect(within(remaining).getByText('over budget')).toHaveClass('bg-red-100')
+    season({ budget: overBudget() })
+    const card = screen.getByTestId('season-card')
+    expect(within(card).getByText('−$8,366')).toHaveClass('text-red-700')
+    expect(within(card).getByText('over budget')).toHaveClass('bg-red-100')
   })
 
-  it('with no approved rules: no fold, no bar, no Edit Plan…, "—" for Allocated and Remaining, the amber pill', () => {
-    budgetCard({
+  it('with no approved rules: "—" for Allocated and Remaining, a bare bar with its reason', () => {
+    season({
       budget: {
         ...BUDGET,
         rules_version: null,
@@ -75,152 +134,111 @@ describe('the Budget card (spec §5.2 A)', () => {
           total: { ...BUDGET.total.total, allocated: null, remaining: null },
         },
       },
-      canPlan: false,
     })
-    expect(screen.queryByRole('button', { name: /Budget, 2027/ })).toBeNull()
-    expect(screen.getByText('no approved rules: nothing allocated yet')).toBeInTheDocument()
-    expect(screen.queryByTestId('budget-bar')).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Edit Plan…' })).toBeNull()
+    const card = screen.getByTestId('season-card')
+    expect(within(card).queryByRole('link')).toBeNull()
+    expect(within(card).getByTestId('budget-remaining')).toHaveTextContent('—')
+    // the bare bar and both figures explain themselves
+    expect(
+      within(card).getAllByTitle(
+        'No approved rules: nothing is allocated until a budget section is approved'
+      )
+    ).toHaveLength(3)
   })
 
-  it('on a past date says "past date: exact figures only" with its note number', () => {
-    budgetCard({
-      view: { year: 2027, asOf: { kind: 'past', date: '2027-03-15', axis: 'campminder' } },
-      canPlan: false,
-    })
-    expect(screen.getByText(/past date: exact figures only/)).toHaveTextContent('13')
-  })
-
-  it('marks the preview and every moved figure while Edit Plan… is open', () => {
-    budgetCard({
-      editing: true,
-      preview: { pools: {}, total: { allocated: 1010000, remaining: 175140 } },
-    })
-    expect(screen.getByText('preview')).toBeInTheDocument()
+  it('marks every moved figure while Edit Plan… is open', () => {
+    season({ preview: { pools: {}, total: { allocated: 1010000, remaining: 175140 } } })
     expect(screen.getByText('$1,010,000')).toHaveAttribute('data-moved')
   })
 
-  it('opens the season-wide rounds table from its title', async () => {
-    const onToggle = vi.fn()
-    budgetCard({ onToggle })
-    await userEvent.click(screen.getByRole('button', { name: /Budget, 2027/ }))
-    expect(onToggle).toHaveBeenCalledWith('budget')
+  it('marks Allocated, Committed and Remaining with their notes', () => {
+    season()
+    const card = screen.getByTestId('season-card')
+    expect([...card.querySelectorAll('sup')].map((s) => s.textContent)).toEqual(['1', '2', '5'])
+  })
+
+  it('opens nothing: no button, no caret', () => {
+    season()
+    expect(within(screen.getByTestId('season-card')).queryByRole('button')).toBeNull()
   })
 })
 
-describe('a pool card (spec §5.2 C; §8.3)', () => {
-  it('reads a pool past its share in amber with "over its share" and, for finance live, an Edit Plan… nudge', async () => {
+describe('a pool card (compact; spec §5.2 C; §8.3)', () => {
+  const props = (card: ReturnType<typeof poolCards>[number], budget = BUDGET) => ({
+    card,
+    budget,
+    view: LIVE,
+    numberOf: N,
+    preview: null,
+  })
+
+  it('reads a pool past its share in amber with "over its share"', () => {
     const budget = poolOverShare()
     const [, b] = poolCards(budget, null)
-    const onEditPlan = vi.fn()
     render(
       <MemoryRouter>
-        <PoolCard
-          card={b!}
-          budget={budget}
-          view={LIVE}
-          open={new Set()}
-          onToggle={vi.fn()}
-          numberOf={N}
-          preview={null}
-          editing={false}
-          canPlan
-          onEditPlan={onEditPlan}
-          scopedPills={null}
-        />
+        <PoolCard {...props(b!, budget)} />
       </MemoryRouter>
     )
     const remaining = screen.getByTestId('pool-remaining')
     expect(within(remaining).getByText('−$1,200')).toHaveClass('text-amber-700')
-    expect(within(remaining).getByText('over its share')).toHaveClass('bg-amber-100')
-    await userEvent.click(within(remaining).getByRole('button', { name: 'Edit Plan…' }))
-    expect(onEditPlan).toHaveBeenCalled()
+    expect(within(screen.getByTestId('pool-card-pool_b')).getByText('over its share')).toHaveClass(
+      'bg-amber-100'
+    )
   })
 
-  it('draws its bar from the typed plan while Edit Plan… is open (spec §5.2 B)', () => {
-    const budget = poolOverShare() // pool_b: Allocated $100,000, Committed $101,200
-    const [, b] = poolCards(budget, null)
-    const props = {
-      card: b!,
-      budget,
-      view: LIVE,
-      open: new Set<string>(),
-      onToggle: vi.fn(),
-      numberOf: N,
-      canPlan: true,
-      onEditPlan: vi.fn(),
-      scopedPills: null,
-    }
-    const { unmount } = render(
+  it('names the pool and its share, with no "of the budget" and no fold', () => {
+    const [a] = poolCards(BUDGET, null)
+    render(
       <MemoryRouter>
-        <PoolCard {...props} preview={null} editing={false} />
+        <PoolCard {...props(a!)} />
       </MemoryRouter>
     )
-    expect(
-      within(screen.getByTestId('pool-bar-pool_b')).getByTestId('pool-bar-over')
-    ).toBeInTheDocument()
+    const card = screen.getByTestId('pool-card-pool_a')
+    expect(within(card).getByText('Pool A')).toBeInTheDocument()
+    expect(within(card).getByText('90%')).toBeInTheDocument()
+    expect(within(card).queryByRole('button')).toBeNull()
+  })
+
+  it('draws its meter from the typed plan while Edit Plan… is open (spec §5.2 B)', () => {
+    const budget = poolOverShare() // pool_b: Allocated $100,000, Committed $101,200
+    const [, b] = poolCards(budget, null)
+    const { unmount } = render(
+      <MemoryRouter>
+        <PoolCard {...props(b!, budget)} />
+      </MemoryRouter>
+    )
+    const stripes = () =>
+      [...screen.getByTestId('pool-card-pool_b').querySelectorAll('i')].filter((i) =>
+        i.className.includes('repeating-linear-gradient')
+      )
+    expect(stripes()).toHaveLength(1)
     unmount()
-    // The typed plan gives Pool B $110,000: $8,800 left, so the bar has no overage marker.
+    // The typed plan gives Pool B $110,000: $8,800 left, so the meter has no overage stripes.
     const preview = {
       pools: { pool_b: { allocated: 110000, remaining: 8800 } },
       total: { allocated: 1000000, remaining: 0 },
     }
     render(
       <MemoryRouter>
-        <PoolCard {...props} preview={preview} editing />
+        <PoolCard {...props(b!, budget)} preview={preview} />
       </MemoryRouter>
     )
-    expect(within(screen.getByTestId('pool-bar-pool_b')).queryByTestId('pool-bar-over')).toBeNull()
+    expect(stripes()).toHaveLength(0)
     expect(within(screen.getByTestId('pool-remaining')).getByText('$8,800')).toBeInTheDocument()
   })
 
-  it('legends each round committed, or says nothing committed yet', () => {
+  it('has a bare meter with its reason when nothing is allocated yet', () => {
     const [a] = poolCards(BUDGET, null)
     render(
       <MemoryRouter>
-        <PoolCard
-          card={{ ...a!, parts: [] }}
-          budget={BUDGET}
-          view={LIVE}
-          open={new Set()}
-          onToggle={vi.fn()}
-          numberOf={N}
-          preview={null}
-          editing={false}
-          canPlan={false}
-          onEditPlan={vi.fn()}
-          scopedPills={null}
-        />
+        <PoolCard {...props({ ...a!, allocated: null, remaining: null })} />
       </MemoryRouter>
     )
-    expect(screen.getByText('nothing committed yet')).toBeInTheDocument()
-  })
-
-  it('folds open to its rounds table: Round · Committed · What is committed, no per-round Remaining', () => {
-    const [a] = poolCards(BUDGET, null)
-    render(
-      <MemoryRouter>
-        <PoolCard
-          card={a!}
-          budget={BUDGET}
-          view={LIVE}
-          open={new Set(['pool_a'])}
-          onToggle={vi.fn()}
-          numberOf={N}
-          preview={null}
-          editing={false}
-          canPlan={false}
-          onEditPlan={vi.fn()}
-          scopedPills={null}
-        />
-      </MemoryRouter>
-    )
-    const table = screen.getByTestId('rounds-table')
     expect(
-      within(table)
-        .getAllByRole('columnheader')
-        .map((h) => h.textContent)
-    ).toEqual(['Round', 'Committed12', 'What is committed'])
-    expect(within(table).queryByText(/Remaining/)).toBeNull()
+      within(screen.getByTestId('pool-card-pool_a')).getByTitle(
+        'Pool A: no allocation yet, so nothing to measure against'
+      )
+    ).toBeInTheDocument()
   })
 })

@@ -372,6 +372,8 @@ export interface RulesVocabulary {
 /** The vocabulary, with the section the paths sit in: a key's meaning depends on its section. */
 export interface RulesNames extends RulesVocabulary {
   readonly section: ApiAidRulesSection
+  /** A round-1 table's change line leaves out its "Tiers" segment (the Approve panel's). */
+  readonly tierless?: boolean | undefined
 }
 
 const recordOf = (value: unknown): Record<string, unknown> => (isPlainObject(value) ? value : {})
@@ -754,8 +756,16 @@ export function changeWords(
   names?: RulesNames,
   format: typeof formatSetting = formatSetting
 ): string {
+  // The Approve panel words a round-1 table change "Camp & Quest › Tier 3 › Round 1 %": the pool (`classLabel`), with
+  // no "Tiers" segment (`tierless`; B34, rounds-14). The tier grid keeps its "› Tiers ›".
+  const tierless = names?.tierless === true && names.section === 'award_tables'
   const where = change.path
-    .map((_, index) => labelOf(change.path.slice(0, index + 1), names))
+    .map((_, index) =>
+      tierless && index === 1 && change.path[1] === 'tiers'
+        ? null
+        : labelOf(change.path.slice(0, index + 1), names)
+    )
+    .filter((part) => part !== null)
     .join(' › ')
   const show = (value: unknown) => format(value, change.path, names)
   if (change.kind === 'added') {

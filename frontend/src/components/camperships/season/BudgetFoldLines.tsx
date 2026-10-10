@@ -3,62 +3,171 @@ import { Link } from 'react-router'
 
 import type { ApiAidBudget } from '../../../types/api-types'
 import { countWords } from '../requests/views'
-import { DefRef } from '../kit/DefinitionNotes'
 import type { AidView } from '../kit/asOf'
-import { CS_BODY, CS_CARD, CS_LABEL, CS_MUTED, CS_SMALL } from '../kit/csType'
+import { CS_LINK_CELL } from '../kit/csType'
+import { TABLE_CARD } from '../kit/kitStyles'
 import { formatMoney } from '../kit/money'
-import { AidDefinitionNotes } from '../shell/AidDefinitionNotes'
-import { belowTheLine, budgetTypeLines, scopePool, stripRounds } from './budgetModel'
+import { AidSectionHead } from '../kit/SectionHead'
+import { noteMark } from './BudgetCard'
+import {
+  belowTheLine,
+  budgetTypeLines,
+  scopePool,
+  stripRounds,
+  type StripMeasure,
+} from './budgetModel'
 import { BudgetTypeLines } from './BudgetTypeLines'
 import { demandGroups } from './demandModel'
 import {
   belowSummary,
   demandSummary,
-  HOW_BODY,
-  HOW_NO_RULES,
-  HOW_SUMMARY,
-  howLabel,
   lineKey,
-  notesLabel,
   standsSummary,
   typesSummary,
   type FoldLineKey,
 } from './foldLinesModel'
 import { ForwardDemand } from './ForwardDemand'
+import { RG_TABLE, RG_TD, RG_TD_NUM, RG_TH, RG_TH_NUM } from './rules/gridStyles'
 
-const SURFACE = 'season-rounds-budget'
-const NOTES_COUNT = 13
+const STANDS_SCOPE = 'All pools · the whole season'
+const HELD_UNKNOWN = 'Amount unknown until each is resolved'
 
-function Line({
+/** A lower section: its heading row folds, its ruled table draws only when open (rounds-10: the heading is the kit's). */
+function Section({
   id,
-  label,
-  summary,
+  title,
+  note,
+  description,
   open,
   onToggle,
   children,
 }: {
   id: FoldLineKey
-  label: ReactNode
-  summary: string
+  title: string
+  note?: ReactNode
+  description: string
   open: boolean
   onToggle: () => void
   children: ReactNode
 }) {
   return (
-    <div data-fold-line={id} className="border-border border-b last:border-b-0">
-      <div className="grid grid-cols-[300px_minmax(0,1fr)] items-baseline gap-x-3 py-1.5">
-        <button type="button" className={`${CS_LABEL} text-left`} onClick={onToggle}>
-          {open ? '▾ ' : '▸ '}
-          {label}
-        </button>
-        <span className={CS_MUTED}>{summary}</span>
-      </div>
-      {open && <div className={`${CS_BODY} pb-2`}>{children}</div>}
+    <section data-fold-line={id}>
+      <AidSectionHead
+        title={title}
+        note={note}
+        description={description}
+        open={open}
+        onToggle={onToggle}
+      />
+      {open && children}
+    </section>
+  )
+}
+
+/** The stage columns of Where each round stands, in the mock's order; each count opens its rows. */
+const STAGES: ReadonlyArray<{ measure: StripMeasure; label: string }> = [
+  { measure: 'needs_offer', label: 'Needs an offer' },
+  { measure: 'posted', label: 'Posted' },
+  { measure: 'accepted', label: 'Accepted' },
+  { measure: 'held', label: 'Held' },
+  { measure: 'pending_approval', label: 'Pending approval' },
+]
+
+function StandsTable({ budget, view }: { budget: ApiAidBudget; view: AidView }) {
+  return (
+    <div className={TABLE_CARD}>
+      <table className={RG_TABLE}>
+        <thead>
+          <tr>
+            <th className={RG_TH}>Round</th>
+            {STAGES.map((stage) => (
+              <th key={stage.measure} className={RG_TH_NUM}>
+                {stage.label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {stripRounds(budget.strip, view).map((round) => (
+            <tr key={round.round} data-stands-round={round.round}>
+              <td className={RG_TD}>
+                <b>{`Round ${String(round.round)}`}</b>
+              </td>
+              {STAGES.map((stage) => {
+                const count = round.counts.find((c) => c.measure === stage.measure)
+                return (
+                  <td key={stage.measure} className={RG_TD_NUM}>
+                    {count === undefined ? null : count.href === null ? (
+                      countWords(count.count)
+                    ) : (
+                      <Link to={count.href} className={CS_LINK_CELL}>
+                        {countWords(count.count)}
+                      </Link>
+                    )}
+                  </td>
+                )
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }
 
-/** Everything else on the tab, one line each, closed by default (spec §5.2 F). */
+function BelowTable({
+  budget,
+  pool,
+  view,
+}: {
+  budget: ApiAidBudget
+  pool: string | null
+  view: AidView
+}) {
+  return (
+    <div className={TABLE_CARD}>
+      <table className={RG_TABLE}>
+        <thead>
+          <tr>
+            <th className={RG_TH}>Line</th>
+            <th className={RG_TH_NUM}>Families · requests</th>
+            <th className={RG_TH_NUM}>Amount</th>
+            <th className={RG_TH}>Of it</th>
+          </tr>
+        </thead>
+        <tbody>
+          {belowTheLine(budget, pool, view).map((line) => (
+            <tr key={line.key} data-below-line={line.key}>
+              <td className={RG_TD}>
+                {line.key.startsWith('outside_type:')
+                  ? `${line.label} (outside the camp's budget)`
+                  : line.label}
+              </td>
+              <td className={RG_TD_NUM}>
+                {line.count === null ? null : line.href === null ? (
+                  countWords(line.count)
+                ) : (
+                  <Link to={line.href} className={CS_LINK_CELL}>
+                    {countWords(line.count)}
+                  </Link>
+                )}
+              </td>
+              <td className={RG_TD_NUM} title={line.key === 'held' ? HELD_UNKNOWN : undefined}>
+                {line.amount === null ? '—' : formatMoney(line.amount)}
+              </td>
+              <td className={RG_TD}>{line.note}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+/**
+ * Everything below the ruled ledger (spec §5.2 F; kit §19): four sections, each a bold heading row with its summary right
+ * after it, folding onto a ruled table. Where each round stands starts open (owner, 10-09); the other three start closed.
+ */
 export function BudgetFoldLines({
   budget,
   pool,
@@ -76,132 +185,56 @@ export function BudgetFoldLines({
 }) {
   const scope = scopePool(budget, pool)
   if (scope === undefined) return null
-  const n = (key: string) => {
-    const at = numberOf(key)
-    return at === null ? null : <DefRef n={at} />
-  }
   const is = (key: FoldLineKey) => open.has(lineKey(key))
   const toggle = (key: FoldLineKey) => () => onToggle(lineKey(key))
-  const rules = budget.rules_version !== null
   const demand = demandGroups(budget, pool, view)
   const types = budgetTypeLines(budget, pool)
+  // A one-pool page names its pool on each pool-scoped summary (mock ?scope=tbm: "TBM · outside grants $800 · …").
+  const scoped = (words: string) => (pool === null ? words : `${scope.label} · ${words}`)
   return (
-    <section data-testid="fold-lines" className={CS_CARD}>
-      <Line
-        id="how"
-        label={
-          <>
-            {howLabel(budget.rules_version)}
-            {rules && n('share')}
-          </>
-        }
-        summary={rules ? HOW_SUMMARY : HOW_NO_RULES}
-        open={is('how')}
-        onToggle={toggle('how')}
-      >
-        {rules ? HOW_BODY : HOW_NO_RULES}
-      </Line>
-      <Line
+    <div data-testid="fold-lines">
+      <Section
         id="stands"
-        label="Where each round stands"
-        summary={standsSummary(budget.strip)}
+        title="Where each round stands"
+        description={`${pool === null ? '' : `${STANDS_SCOPE} · `}${standsSummary(budget.strip)}`}
         open={is('stands')}
         onToggle={toggle('stands')}
       >
-        {pool !== null && (
-          <div className={`${CS_SMALL} font-semibold`}>All pools · the whole season</div>
-        )}
-        {stripRounds(budget.strip, view).map((round) => (
-          <div key={round.round} className="flex flex-wrap items-baseline gap-x-2">
-            <b>{`Round ${String(round.round)}`}</b>
-            {round.counts.map((count, i) => (
-              <span key={count.measure} className="whitespace-nowrap">
-                {i > 0 && <span className="text-muted-foreground mr-2">·</span>}
-                <span className="text-muted-foreground">{count.label}</span>{' '}
-                {count.href === null ? (
-                  countWords(count.count)
-                ) : (
-                  <Link to={count.href} className="text-primary font-semibold hover:underline">
-                    {countWords(count.count)}
-                  </Link>
-                )}
-              </span>
-            ))}
-          </div>
-        ))}
-      </Line>
-      <Line
+        <StandsTable budget={budget} view={view} />
+      </Section>
+      <Section
         id="below"
-        label={
-          <>
-            Shown, not counted against the budget
-            {n('below_the_line')}
-          </>
-        }
-        summary={belowSummary(budget, pool)}
+        title="Shown, not counted"
+        note={noteMark(numberOf, 'below_the_line')}
+        description={scoped(belowSummary(budget, pool))}
         open={is('below')}
         onToggle={toggle('below')}
       >
-        {belowTheLine(budget, pool, view).map((line) => {
-          // Held carries a count and no amount (unknown until resolved); every other line is its dollars.
-          const alone = line.amount === null && line.count !== null
-          const figure = alone
-            ? countWords(line.count)
-            : line.amount !== null && formatMoney(line.amount)
-          return (
-            <div key={line.key} data-below-line={line.key} className="flex flex-wrap gap-x-2">
-              <span>
-                {!alone && line.count !== null
-                  ? `${line.label} (${countWords(line.count)})`
-                  : line.label}
-              </span>
-              {figure !== false && (
-                <span className="tabular-nums">
-                  {line.href === null ? (
-                    figure
-                  ) : (
-                    <Link to={line.href} className="text-primary font-semibold hover:underline">
-                      {figure}
-                    </Link>
-                  )}
-                </span>
-              )}
-              {line.note !== null && <span className="text-muted-foreground">{line.note}</span>}
-            </div>
-          )
-        })}
-      </Line>
+        <BelowTable budget={budget} pool={pool} view={view} />
+      </Section>
       {demand.length > 0 && (
-        <Line
+        <Section
           id="demand"
-          label="Demand still to come"
-          summary={demandSummary(scope)}
+          title="Demand still to come"
+          note={noteMark(numberOf, 'demand')}
+          description={scoped(demandSummary(scope))}
           open={is('demand')}
           onToggle={toggle('demand')}
         >
-          <ForwardDemand groups={demand} numberOf={numberOf} />
-        </Line>
+          <ForwardDemand groups={demand} view={view} />
+        </Section>
       )}
       {types.length > 0 && (
-        <Line
+        <Section
           id="types"
-          label="In the budget, by decision type"
-          summary={typesSummary(scope)}
+          title="In the budget, by decision type"
+          description={scoped(typesSummary(scope))}
           open={is('types')}
           onToggle={toggle('types')}
         >
           <BudgetTypeLines lines={types} />
-        </Line>
+        </Section>
       )}
-      <Line
-        id="notes"
-        label={notesLabel(NOTES_COUNT)}
-        summary="what each figure means"
-        open={is('notes')}
-        onToggle={toggle('notes')}
-      >
-        <AidDefinitionNotes surface={SURFACE} />
-      </Line>
-    </section>
+    </div>
   )
 }

@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react'
+
 import { CS_NOTES, CS_SUP } from './csType'
 
 import type { DefinitionNote } from './notesCap'
@@ -12,10 +14,13 @@ export type { DefinitionNote } from './notesCap'
 export function DefinitionNotes({
   notes,
   boldTerm = false,
+  alsoBold = [],
 }: {
   notes: readonly DefinitionNote[]
   /** Also bold a leading "Term:" on notes the server sends no matching term for (the Requests mock). */
   boldTerm?: boolean
+  /** Second terms a page's mock bolds inside a note ("… Accepted sits inside Posted"): the first use after the lead. */
+  alsoBold?: readonly string[]
 }) {
   if (notes.length === 0) return null
   return (
@@ -24,12 +29,35 @@ export function DefinitionNotes({
         <li key={note.n} className="flex gap-1.5">
           <span className="min-w-3 flex-none tabular-nums">{note.n}.</span>{' '}
           <span>
-            <NoteWords note={note} boldTerm={boldTerm} />
+            <NoteWords note={note} boldTerm={boldTerm} alsoBold={alsoBold} />
           </span>
         </li>
       ))}
     </ol>
   )
+}
+
+/** The words after a note's lead term, with the first use of each `alsoBold` term in bold. */
+function AlsoBold({ text, terms }: { text: string; terms: readonly string[] }) {
+  const hits = terms
+    .map((term) => ({ term, at: text.indexOf(term) }))
+    .filter((hit) => hit.at >= 0)
+    .sort((a, b) => a.at - b.at)
+  if (hits.length === 0) return <>{text}</>
+  const parts: ReactNode[] = []
+  let from = 0
+  for (const { term, at } of hits) {
+    if (at < from) continue
+    parts.push(
+      text.slice(from, at),
+      <b key={at} className="text-foreground font-semibold">
+        {term}
+      </b>
+    )
+    from = at + term.length
+  }
+  parts.push(text.slice(from))
+  return <>{parts}</>
 }
 
 /**
@@ -49,7 +77,15 @@ export function DefRef({ n, title }: { n: number; title?: string | undefined }) 
  * where a comma or "=" follows it ("Small groups show as they are, …", "Remaining = …"). A note the server
  * sends no term for bolds its "Term:" only under `boldTerm` (Requests); plain otherwise.
  */
-function NoteWords({ note, boldTerm }: { note: DefinitionNote; boldTerm: boolean }) {
+function NoteWords({
+  note,
+  boldTerm,
+  alsoBold,
+}: {
+  note: DefinitionNote
+  boldTerm: boolean
+  alsoBold: readonly string[]
+}) {
   const { term, text } = note
   if (term === undefined || !text.startsWith(term)) {
     return boldTerm ? <TermFirst text={text} /> : <>{text}</>
@@ -59,7 +95,7 @@ function NoteWords({ note, boldTerm }: { note: DefinitionNote; boldTerm: boolean
     return (
       <>
         <b className="text-foreground font-semibold">{`${term}:`}</b>
-        {text.slice(term.length + 1)}
+        <AlsoBold text={text.slice(term.length + 1)} terms={alsoBold} />
       </>
     )
   }
@@ -68,7 +104,7 @@ function NoteWords({ note, boldTerm }: { note: DefinitionNote; boldTerm: boolean
     return (
       <>
         <b className="text-foreground font-semibold">{term}</b>
-        {text.slice(term.length)}
+        <AlsoBold text={text.slice(term.length)} terms={alsoBold} />
       </>
     )
   }

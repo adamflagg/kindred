@@ -203,6 +203,13 @@ def need(request: ReportRequest) -> Decimal:
     return capped_at_cost(_uncapped_need(request) or ZERO, request.cost)
 
 
+def round_ask_at_cost(ask: Decimal, cost: Decimal | None, awarded_before: Decimal) -> Decimal:
+    """One round's ask at the D91 need cap (owner A2, 2026-10-09; Rounds & budget's forward demand, Q12, 2026-10-10):
+    at most the cost less the awards posted before the round, never below 0. No cost known: as typed. The single
+    statement of the math: Statistics' round chips (`capped_ask`) and the budget's Demand still to come both call it."""
+    return ask if cost is None else min(ask, max(ZERO, cost - awarded_before))
+
+
 def capped_ask(request: ReportRequest, round_: int | None, *, in_budget: bool = False) -> Decimal | None:
     """Every Statistics Asked figure (owner rulings A1, A2, A5, 2026-10-09). All rounds (`round_` None): need, at most
     the cost. Round n: that round's ask, at most the cost less the awards posted before round n (never below 0), so
@@ -218,7 +225,7 @@ def capped_ask(request: ReportRequest, round_: int | None, *, in_budget: bool = 
     if request.cost is None:
         return facts.ask
     before = sum((f.posted or ZERO for f in request.rounds if f.round < round_), ZERO)
-    return min(facts.ask, max(ZERO, request.cost - before))
+    return round_ask_at_cost(facts.ask, request.cost, before)
 
 
 def in_table(requests: Iterable[ReportRequest], table: str | None) -> list[ReportRequest]:

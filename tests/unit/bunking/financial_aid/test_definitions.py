@@ -82,29 +82,42 @@ def test_the_remaining_note_is_the_signed_formula() -> None:
     assert "Allocated − Posted − Needs an offer − Pending approval" in BY_KEY["remaining"].text
 
 
-def test_the_budget_surface_cites_the_budgets_own_posted() -> None:
-    """Plan review minor 6: on Rounds & budget, Posted is §5.3's (less clawed-back rounds), not §5.1's tick."""
-    assert "budget_posted" in SURFACES["season-rounds-budget"]
-    assert "posted" not in SURFACES["season-rounds-budget"]
-    assert BY_KEY["budget_posted"].spec == "§5.3"
-    assert BY_KEY["budget_posted"].term == "Posted"
+ROUNDS_NOTES = (
+    "rounds_allocated",
+    "rounds_committed",
+    "rounds_posted",
+    "rounds_needs_offer",
+    "rounds_remaining",
+    "rounds_below_the_line",
+)
 
 
-def test_rounds_and_budget_adds_forward_demand_and_the_confirmed_share_after_its_first_seven() -> None:
-    """Appended, so notes 1–7 keep their numbers; §5.9 (D82) and the owner's ⚠10 ruling (D59, D153)."""
-    keys = SURFACES["season-rounds-budget"]
-    assert keys[:7] == (
-        "allocated",
-        "budget_posted",
-        "accepted",
-        "needs_offer",
-        "pending_approval",
-        "remaining",
-        "below_the_line",
-    )
-    assert keys[7:10] == ("round2_asks", "round1_unmet", "unconfirmed")
-    assert "held appeals' asks included" in BY_KEY["round2_asks"].text
-    assert "oldest round first" in BY_KEY["unconfirmed"].text
+def test_rounds_and_budget_has_its_own_six_notes_and_shares_none_with_other_surfaces() -> None:
+    """Final design (rounds-4; kit §12: six at most, always shown): this surface owns its six entries, so wording them
+    for the page never edits the entries Requests, Scenarios and Reports share."""
+    assert SURFACES["season-rounds-budget"] == ROUNDS_NOTES
+    for key in ROUNDS_NOTES:
+        assert not any(key in keys for name, keys in SURFACES.items() if name != "season-rounds-budget")
+
+
+def test_each_rounds_and_budget_note_opens_with_its_bold_term_and_is_the_mocks_text() -> None:
+    texts = [BY_KEY[key].text for key in ROUNDS_NOTES]
+    assert texts == [
+        "Allocated: the approved total × the pool's share. A share is finance's guess at need, not a cap; Edit Plan… "
+        "moves money between pools. Round 3 is what's left.",
+        "Committed: Posted + Needs an offer + Pending approval, what Remaining takes away. Accepted sits inside "
+        "Posted and is never subtracted.",
+        "Posted: locked amounts of posted rounds, less clawbacks that posted. Not yet confirmed: the part "
+        "CampMinder's camp aid doesn't cover yet.",
+        "Needs an offer: decided, not yet posted. Pending approval: a Round 3 above the registrar's $300, waiting "
+        "for finance.",
+        "Remaining: Allocated − Committed, per pool and in total, never per round. A pool below $0 reads amber; "
+        "only the total below $0 reads red.",
+        "Below the line: shown, never counted in Remaining: outside grants, money outside the camp's budget, held "
+        "requests and demand still to come.",
+    ]
+    for key in ROUNDS_NOTES:
+        assert BY_KEY[key].text.startswith(f"{BY_KEY[key].term}:")
 
 
 def test_the_unconfirmed_note_cites_the_reconciliation_section() -> None:
@@ -134,28 +147,6 @@ def test_the_grants_note_defines_grants_applied_not_the_counted_total() -> None:
     assert d.term == "Grants applied"
     assert "beyond what was owed" in d.text
     assert "still owed after camp aid" in d.text
-
-
-SEASON_NOTES = (
-    "allocated",
-    "budget_posted",
-    "accepted",
-    "needs_offer",
-    "pending_approval",
-    "remaining",
-    "below_the_line",
-    "round2_asks",
-    "round1_unmet",
-    "unconfirmed",
-    "share",
-    "committed",
-    "past_date",
-)
-
-
-def test_rounds_and_budget_numbers_thirteen_notes_appending_share_committed_and_a_past_date() -> None:
-    """Spec §9.6 (owner 10-06): today's ten keep 1–10, the three new figures number 11–13."""
-    assert SURFACES["season-rounds-budget"] == SEASON_NOTES
 
 
 def test_allocated_is_per_pool_and_rounds_have_none() -> None:
@@ -197,13 +188,13 @@ def test_share_committed_and_a_past_date_say_the_specs_words() -> None:
 
 def test_no_season_note_cites_another_note_by_number() -> None:
     """§5.3: numbering is per surface, so "(note 6)" or "(note 11)" can't appear."""
-    for key in SEASON_NOTES:
+    for key in ROUNDS_NOTES:
         assert "(note" not in BY_KEY[key].text
 
 
 def test_scenarios_numbers_spend_remaining_projected_and_below_the_line() -> None:
     """Scenarios addendum §S6, §S11.8; owner-approved final mock (ux3, 2026-10-09): one line each, the mock's words.
-    Season-scenarios has its own Remaining entry: Rounds & budget's `remaining` is a different formula and stays."""
+    Season-scenarios has its own Remaining entry: the registry's long `remaining` is a different formula and stays."""
     assert SURFACES["season-scenarios"] == (
         "scenario_spend",
         "scenario_remaining",
@@ -234,9 +225,14 @@ def test_scenarios_numbers_spend_remaining_projected_and_below_the_line() -> Non
 
 
 def test_the_shared_remaining_note_is_untouched_by_the_scenarios_wording() -> None:
-    """Rounds & budget still reads the shared `remaining` entry, with its Posted − Needs an offer formula."""
-    assert "remaining" in SURFACES["season-rounds-budget"]
+    """Neither page's short wording leaks into the other, and the long `remaining` entry keeps its formula.
+
+    Rounds & budget now reads its own `rounds_remaining` (ux3 rounds-4, the mock's six notes), as Scenarios reads
+    `scenario_remaining`; no surface reads the long entry now, and it is unchanged (the §5.3 signed text).
+    """
+    assert "rounds_remaining" in SURFACES["season-rounds-budget"]
     assert "scenario_remaining" not in SURFACES["season-rounds-budget"]
+    assert "rounds_remaining" not in SURFACES["season-scenarios"]
     assert BY_KEY["remaining"].text.startswith("Remaining = Allocated \u2212 Posted \u2212 Needs an offer")
 
 

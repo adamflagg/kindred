@@ -501,7 +501,7 @@ describe('below the line (§5.3; D44, D121; read 3)', () => {
     expect(lines[0]?.count).toEqual({ families: 14, requests: 16 })
     expect(lines[0]?.href).toBeNull()
     expect(lines[2]?.count).toEqual({ families: 9, requests: 10 })
-    expect(lines[2]?.note).toBe('$21,840 of it posted')
+    expect(lines[2]?.note).toBe('$21,840 posted')
     expect(lines[2]?.href).toBeNull()
     expect(lines[3]?.count).toEqual({ families: 7, requests: 10 })
     expect(lines[3]?.note).toBe('amount unknown until resolved')
@@ -581,7 +581,7 @@ describe('below the line (§5.3; D44, D121; read 3)', () => {
     ])
     expect(lines[2]?.label).toBe("Decision types that don't count toward the budget")
     expect(lines[2]?.amount).toBe(21840)
-    expect(lines[2]?.note).toBe('$21,840 of it posted')
+    expect(lines[2]?.note).toBe('$21,840 posted')
     // Never both: with typed lines present there is no aggregate (the main fixture).
     expect(belowTheLine(BUDGET, null, LIVE).map((l) => l.key)).not.toContain('outside_budget')
   })

@@ -166,6 +166,16 @@ beforeEach(() => {
 })
 
 describe('the control line (§S5 A)', () => {
+  it('sits Compare 8px under the toolbar, as the mock draws it', () => {
+    renderAt('?panel=compare')
+    expect(screen.getByTestId('aid-toolbar').parentElement).toHaveClass('space-y-2')
+  })
+
+  it('keeps the Sandbox blocks 12px apart', () => {
+    renderAt()
+    expect(screen.getByTestId('aid-toolbar').parentElement).toHaveClass('space-y-3')
+  })
+
   it('says the held pile, or that nothing is held yet, and updates it only on the button', async () => {
     renderAt()
     // The lead is "420 held · Jan 12, 10:00 am"; the full sentence is its title (scenarios-2).

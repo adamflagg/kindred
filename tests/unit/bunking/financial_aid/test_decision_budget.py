@@ -162,6 +162,50 @@ def test_forward_demand_is_round_2_asks_so_far_and_round_1_unmet_not_yet_appeale
     assert budget.total.demand.round1_unmet == Decimal(1750)
 
 
+def test_forward_demand_caps_every_ask_at_the_session_cost_less_awards_posted_before_the_round() -> None:
+    """Owner Q12 (2026-10-10, number meaning), the D91 need cap Statistics got in #3122: a round's ask counts at most
+    cost - the awards posted before that round (never below 0). Costs: req-a..req-d 3,000; req-e has none priced."""
+    budget = season_budget(
+        [
+            # Round 1 ask 5,000 (a typo), award 1,000, cost 3,000: ask counts 3,000, so 2,000 unmet (not 4,000).
+            priced("req-a", 1, view(1, "posted", ask="5000", locked="1000")),
+            # Round 1 award already above the cost: nothing unmet.
+            priced("req-b", 2, view(1, "posted", ask="5000", locked="3500")),
+            # A held Round 1: its whole ask, capped at the cost.
+            priced("req-c", 3, view(1, "held", ask="9000")),
+            # Round 2 ask 2,500 on a 1,000 Round 1 award: only 2,000 of cost is left. A held one is capped the same.
+            priced(
+                "req-d",
+                4,
+                view(1, "posted", ask="4000", locked="1000"),
+                view(2, "held", ask="2500"),
+            ),
+            # Round 2 after a Round 1 award that already reached the cost: 0 left to ask for.
+            priced(
+                "req-f",
+                6,
+                view(1, "posted", ask="4000", locked="3000"),
+                view(2, "needs_offer", ask="700", decided="600"),
+            ),
+            # No cost known: counted as typed.
+            priced("req-e", 5, view(1, "posted", ask="7000", locked="1000")),
+        ],
+        RULES,
+        outside_grants={},
+        costs={rid: Decimal(3000) for rid in ("req-a", "req-b", "req-c", "req-d", "req-f")},
+    )
+    demand = pool_of(budget, "camp_pool").demand
+    assert demand.round1_unmet == Decimal(2000 + 0 + 3000 + 6000)
+    assert demand.round2_asked == Decimal(2000 + 0)
+    assert (demand.round2_asks, demand.round2_computed) == (Count(2, 2), Decimal(600))
+    assert budget.total.demand.round1_unmet == demand.round1_unmet
+
+
+def test_forward_demand_asks_are_counted_as_typed_when_no_costs_are_given() -> None:
+    budget = season_budget([priced("req-a", 1, view(1, "posted", ask="5000", locked="1000"))], RULES, outside_grants={})
+    assert pool_of(budget, "camp_pool").demand.round1_unmet == Decimal(4000)
+
+
 def test_counts_say_families_and_requests() -> None:
     budget = season_budget(
         [

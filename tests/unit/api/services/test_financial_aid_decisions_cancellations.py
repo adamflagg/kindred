@@ -407,7 +407,8 @@ def _today_is_after_the_fictional_dates(monkeypatch: pytest.MonkeyPatch) -> None
 
 async def _figures(service: FinancialAidDecisionsService) -> tuple[float | None, ...]:
     """The camp pool's Round 1 Needs an offer, the pool's Remaining (§8.1), Round 3 Pending approval, Round 1 unmet
-    ask (forward demand), and the Remaining line."""
+    ask (forward demand; Q12 2026-10-10: the 4,000 ask counts at the 2,000 cost, so 500 over Round 1's 1,500, was
+    2,500), and the Remaining line."""
     camp = next(p for p in (await service.budget(YEAR)).pools if p.pool == "camp_pool")
     r1, r3 = (next(c for c in camp.rounds if c.round == n) for n in (1, 3))
     line = next(p for p in (await service.remaining(YEAR)).pools if p.pool == "camp_pool")
@@ -441,7 +442,7 @@ async def test_the_registrar_cancels_in_kindred_with_a_reason_and_can_reopen() -
     _event(store, EMMA, 3, "award", amount=Decimal(900), needs_approval=True)
     service = _service(store)
     before = await _figures(service)
-    assert before == (1500.0, 397600.0, 900.0, 2500.0, 397600.0)
+    assert before == (1500.0, 397600.0, 900.0, 500.0, 397600.0)
     out = await service.set_cancellation(EMMA, CancellationIn(cancelled=True, reason="aid_not_enough"), ACTOR)
     assert (out.written, out.unchanged) == (1, 0)
     assert store.cancel_events[-1].in_kindred is True
@@ -478,7 +479,7 @@ async def test_a_campminder_cancellation_with_a_pending_round3_ask_drops_the_sam
     _event(store, EMMA, 3, "ask", amount=Decimal(900), effective_on=date(2027, 3, 1), statement_of_need="Job loss")
     _event(store, EMMA, 3, "award", amount=Decimal(900), needs_approval=True)
     service = _service(store)
-    assert await _figures(service) == (1500.0, 397600.0, 900.0, 2500.0, 397600.0)
+    assert await _figures(service) == (1500.0, 397600.0, 900.0, 500.0, 397600.0)
     _enrol(store, 32)
     assert await _figures(service) == (0.0, 400000.0, 0.0, 0.0, 400000.0)
 
@@ -796,7 +797,11 @@ async def test_round_2_asks_so_far_counts_an_active_request_and_leaves_out_both_
     active = FakeDecisionsStore()
     seed_request(active, EMMA)
     _appeal(active)
-    assert await _asked(active) == 900.0
+    # Q12 (2026-10-10): the ask counts at the D91 need cap: the 900 Round 2 ask over a 1,500 Round 1 award on a 2,000
+    # session counts 500 (was 900).
+    assert await _asked(active) == 500.0
+    # A past read can't price the request (no session cost: its Round 2 is not rebuilt), so it counts as typed, as
+    # Statistics' past reads do.
     assert await _asked(active, date(2027, 3, 8)) == 900.0
     by_campminder = FakeDecisionsStore()
     seed_request(by_campminder, EMMA)
@@ -818,7 +823,7 @@ async def test_a_campminder_cancellation_after_the_day_still_counts_that_days_ro
     seed_request(store, EMMA)
     _appeal(store)
     _enrol(store, 32, on=date(2027, 3, 10))
-    assert await _asked(store, date(2027, 3, 8)) == 900.0
+    assert await _asked(store, date(2027, 3, 8)) == 900.0  # a past read has no cost to cap at: as typed
     assert await _asked(store) == 0.0
 
 

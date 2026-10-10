@@ -252,6 +252,69 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         spec="§5.3",
         rulings=("D21", "D74"),
     ),
+    # Rounds & budget's own six notes (final design, rounds-4; kit §12: six at most, each a bold term, always shown).
+    # Condensed from the §5.3 entries above (allocated … committed), which keep the long signed text; no surface
+    # reads those now, as some Reports entries already sit unread.
+    Definition(
+        key="rounds_allocated",
+        term="Allocated",
+        text=(
+            "Allocated: the approved total × the pool's share. A share is finance's guess at need, not a cap; Edit "
+            "Plan… moves money between pools. Round 3 is what's left."
+        ),
+        spec="§5.3",
+        rulings=("D44", "D119"),
+    ),
+    Definition(
+        key="rounds_committed",
+        term="Committed",
+        text=(
+            "Committed: Posted + Needs an offer + Pending approval, what Remaining takes away. Accepted sits inside "
+            "Posted and is never subtracted."
+        ),
+        spec="§5.3",
+        rulings=("D44", "D53", "D79"),
+    ),
+    Definition(
+        key="rounds_posted",
+        term="Posted",
+        text=(
+            "Posted: locked amounts of posted rounds, less clawbacks that posted. Not yet confirmed: the part "
+            "CampMinder's camp aid doesn't cover yet."
+        ),
+        spec="§5.3",
+        rulings=("D44", "D51", "D54", "D59", "D153"),
+    ),
+    Definition(
+        key="rounds_needs_offer",
+        term="Needs an offer",
+        text=(
+            "Needs an offer: decided, not yet posted. Pending approval: a Round 3 above the registrar's $300, "
+            "waiting for finance."
+        ),
+        spec="§5.3",
+        rulings=("D42", "D44", "D51", "D79"),
+    ),
+    Definition(
+        key="rounds_remaining",
+        term="Remaining",
+        text=(
+            "Remaining: Allocated − Committed, per pool and in total, never per round. A pool below $0 reads amber; "
+            "only the total below $0 reads red."
+        ),
+        spec="§5.3",
+        rulings=("D44", "D53", "D74", "D79"),
+    ),
+    Definition(
+        key="rounds_below_the_line",
+        term="Below the line",
+        text=(
+            "Below the line: shown, never counted in Remaining: outside grants, money outside the camp's budget, held "
+            "requests and demand still to come."
+        ),
+        spec="§5.3",
+        rulings=("D44", "D82", "D121"),
+    ),
     # Reports (slice 4's back end, Part A): finance's report words (§5.6). "Awarded" labels money here only.
     Definition(
         key="apps",
@@ -789,20 +852,15 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
 SURFACES: Final[Mapping[str, tuple[str, ...]]] = {
     "requests": ("decided", "posted", "cm_check", "cost"),
     "household": ("cost", "decided", "grants", "family_share", "posted", "confirmation"),
+    # Rounds & budget's own six (final design): 1 Allocated (and Share), 2 Committed (Accepted), 3 Posted (Not yet
+    # confirmed), 4 Needs an offer (Pending approval), 5 Remaining, 6 Below the line (Shown, not counted, Demand).
     "season-rounds-budget": (
-        "allocated",
-        "budget_posted",
-        "accepted",
-        "needs_offer",
-        "pending_approval",
-        "remaining",
-        "below_the_line",
-        "round2_asks",
-        "round1_unmet",
-        "unconfirmed",
-        "share",
-        "committed",
-        "past_date",
+        "rounds_allocated",
+        "rounds_committed",
+        "rounds_posted",
+        "rounds_needs_offer",
+        "rounds_remaining",
+        "rounds_below_the_line",
     ),
     # Scenarios addendum §S6: 1-4 in this order (Projected is note 3).
     "season-scenarios": ("scenario_spend", "scenario_remaining", "scenario_projected", "scenario_below_the_line"),
