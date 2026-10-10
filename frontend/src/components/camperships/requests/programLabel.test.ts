@@ -181,6 +181,22 @@ describe('programRank (final audit M-E8: pool order, then the rules’ order ins
     expect(order).toEqual(['summer', 'quest', 'teen', 'tbm', 'bmitzvah', 'family_camp', 'other'])
   })
 
+  it('sends a program filed under a pool the rules do not list after every listed pool', () => {
+    const stray = {
+      ...rules,
+      sections: [
+        {
+          ...rules.sections[0]!,
+          content: { ...rules.sections[0]!.content, ghost: entry('removed_pool') },
+        },
+        rules.sections[1]!,
+      ],
+    }
+    const rank = programRank(stray)
+    expect(rank('ghost')).toBeGreaterThan(rank('family_camp'))
+    expect(rank('ghost')).toBeGreaterThan(rank('summer'))
+  })
+
   it('ranks every key alike while the rules have not loaded', () => {
     const rank = programRank(undefined)
     expect(rank('summer')).toBe(rank('family_camp'))

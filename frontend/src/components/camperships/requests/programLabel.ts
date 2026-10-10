@@ -116,7 +116,9 @@ export function programRank(rules: ApiAidApprovedRules | undefined): (program: s
   return (program) => {
     const known = programs.indexOf(program)
     const home = known === -1 ? FAMILY_POOLS[program] : filed[program]
-    const pool = home === undefined ? pools.length : Math.max(pools.indexOf(home), 0)
+    // A home the rules do not list ranks like no home: after every listed pool, never ahead of the first.
+    const at = home === undefined ? -1 : pools.indexOf(home)
+    const pool = at === -1 ? pools.length : at
     // Inside a pool the rules' programs keep the rules' order, and the unkeyed families follow them.
     return pool * 1000 + (known === -1 ? 999 : known)
   }
