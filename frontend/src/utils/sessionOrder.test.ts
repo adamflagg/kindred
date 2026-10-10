@@ -1,6 +1,8 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+
 import { describe, expect, it } from 'vitest'
 
-import fixture from './sessionOrder.fixture.json'
 import { orderSessions, sessionOrderIds, type SessionOrderInput } from './sessionOrder'
 
 const S = (
@@ -11,6 +13,11 @@ const S = (
   end_date = '',
   parent_cm_id = 0
 ): SessionOrderInput => ({ cm_id, name, session_type, start_date, end_date, parent_cm_id })
+
+// The shared contract: tests/unit/bunking/test_session_order.py holds bunking/session_order.py to the same fixture.
+const fixture = JSON.parse(
+  readFileSync(resolve(__dirname, '../../../tests/fixtures/session_order_cases.json'), 'utf-8')
+) as { sessions: SessionOrderInput[]; order: number[] }
 
 describe('sessionOrderIds', () => {
   it('matches the fixture the Python helper (bunking/session_order.py) also runs', () => {

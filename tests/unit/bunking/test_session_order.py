@@ -114,7 +114,7 @@ def test_a_session_with_no_dates_goes_last_in_its_kind() -> None:
     assert names(sessions) == ["Dated", "Undated"]
 
 
-FIXTURE = Path(__file__).resolve().parents[3] / "frontend" / "src" / "utils" / "sessionOrder.fixture.json"
+FIXTURE = Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "session_order_cases.json"
 
 
 def test_the_order_matches_the_fixture_the_frontend_mirror_also_runs() -> None:

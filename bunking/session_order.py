@@ -12,7 +12,7 @@ its parent session. Quest next, then TLI, then SCIT (SIT and CIT) and, then FC b
               school, Family Camp by its number (unnumbered family sessions by date after the numbered ones), adult
               weekends, anything else.
 
-Pure. The frontend mirror is `frontend/src/utils/sessionOrder.ts`; both run `frontend/src/utils/sessionOrder.fixture.json`
+Pure. The frontend mirror is `frontend/src/utils/sessionOrder.ts`; both run `tests/fixtures/session_order_cases.json`
 (test_session_order.py here, sessionOrder.test.ts there), so a change to one without the other fails a test.
 """
 

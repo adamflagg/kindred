@@ -4,7 +4,7 @@
  * parent session. Quest next, then TLI, then SCIT (SIT and CIT) and, then FC by number."
  *
  * A mirror of `bunking/session_order.py` (the server's, for tables and CSVs). Both run
- * `sessionOrder.fixture.json`, so a change to one without the other fails a test. Pure.
+ * `tests/fixtures/session_order_cases.json`, so a change to one without the other fails a test. Pure.
  *
  *   summer  main, embedded and AG by start date, longer first on a tie (the sync's own priority,
  *           pocketbase/sync/sessions.go sortSessionsByPriority), main before embedded before AG; an AG session with
