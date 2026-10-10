@@ -1,6 +1,5 @@
 /**
- * Compare prints alone (§S5 H; V F4): the app's own chrome (the nav, the Season bar, the cache line, the version
- * badge) stays off the paper while a compare is on screen, and only then, so every other page prints as it did.
+ * Compare prints alone (§S5 H; V F4): the app's own chrome (the nav, the Season bar, the cache line; the version is in the nav's user menu) stays off the paper while a compare is on screen, and only then, so every other page prints as it did.
  * Source-level: jsdom has no print media and no :has(), so the rule and its two ends are pinned by their literals.
  */
 import { readFileSync } from 'node:fs'
@@ -16,8 +15,8 @@ describe('Compare prints alone (V F4)', () => {
     )
   })
 
-  it('marks the nav, the Season bar, the cache line and the version badge as app chrome', () => {
-    expect(src('layouts/AppLayout.tsx').match(/data-app-chrome/g)).toHaveLength(4)
+  it('marks the nav (the version lives in its user menu), the Season bar and the cache line as app chrome', () => {
+    expect(src('layouts/AppLayout.tsx').match(/data-app-chrome/g)).toHaveLength(3)
   })
 
   it('marks the compare as the page that prints alone', () => {
