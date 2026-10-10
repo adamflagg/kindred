@@ -294,7 +294,7 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="pct_of_ask",
         term="% of ask",
         text=(
-            "% of ask: awarded $ ÷ the live requests' in-budget asks. Incl. grants adds outside grants and fully funded rounds to both sides (Round 1 and All rounds)."
+            "% of ask: awarded $ ÷ the live requests' in-budget asks. Asks are capped as Asked is. Incl. grants adds outside grants and fully funded rounds to both sides (Round 1 and All rounds)."
         ),
         spec="§5.6",
         rulings=("D80",),
