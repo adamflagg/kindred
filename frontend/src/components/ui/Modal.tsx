@@ -28,7 +28,10 @@ interface ModalProps {
    * the final mocks' `.cf-scrim`; every other caller keeps the blur.
    */
   plainBackdrop?: boolean
-  /** Opt in: no close X (Escape and the backdrop still close). The Camperships dialogs' mocks draw none. */
+  /**
+   * Opt in, `header` mode only: no close X (Escape and the backdrop still close). The Camperships dialogs' mocks
+   * draw none. A `title` or untitled modal keeps its X.
+   */
   hideCloseButton?: boolean
   /**
    * Fires when the leave transition COMPLETES (not when it is interrupted by

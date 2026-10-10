@@ -300,10 +300,6 @@ export function equalMatches(line: ApiAidToPlaceLine): ApiAidToPlaceCandidate[] 
   )
 }
 
-/**
- * The suggestion's evidence, one fact per line (§16: never a · chain that wraps): each of the server's
- * facts with a ✓; for equal matches, the two ○ facts that say why the dashboard doesn't choose.
- */
 /** Why a no-request line found nothing (mock `evid`), from the server's reason; none for a read without one. */
 function noRequestEvidence(line: ApiAidToPlaceLine): string[] {
   const why = line.no_request
@@ -315,6 +311,10 @@ function noRequestEvidence(line: ApiAidToPlaceLine): string[] {
   return [`○ ${first} has no application this season`]
 }
 
+/**
+ * The suggestion's evidence, one fact per line (§16: never a · chain that wraps): each of the server's
+ * facts with a ✓; for equal matches, the two ○ facts that say why the dashboard doesn't choose.
+ */
 export function evidenceLines(line: ApiAidToPlaceLine): string[] {
   if (line.suggestion !== null) return line.suggestion.evidence.map((e) => `✓ ${e.text}`)
   const tied = equalMatches(line)

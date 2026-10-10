@@ -99,8 +99,8 @@ function PanelHead({
  * - Middle: the requests it could belong to, each with what it still lacks ("not yet in CampMinder").
  * - Right: what Confirm does before the click (§4.10), one effect per line with ✓ ○ ⚠ and →, the
  *   refusal if any, the buttons and links.
- * An editor (Split…, Place on Another Request…, Reclassify…, Leave) opened from a row takes the whole
- * opened row, under the three panels (§24).
+ * An editor (Split…, Place on Another Request…, Reclassify…, Leave) opened from a row opens in the right
+ * panel, in place of what Confirm does, as the mock draws it (owner Q13, 10-09).
  * For casework, a line that stays open `PREVIEW_SETTLE_MS` asks the server afresh what Confirm would
  * do (P-4); Confirm sends that answer's lock. Until it answers, and for view-only staff, the read's
  * own preview shows.

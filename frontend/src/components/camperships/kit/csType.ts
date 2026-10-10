@@ -85,8 +85,9 @@ export const CS_PMETA = 'text-muted-foreground text-xs'
 /** cs-phead 11.5/17.25 700 muted, sentence case (the household receipt's head). */
 export const CS_PANEL_HEAD = 'text-muted-foreground text-[11.5px] leading-[1.5] font-bold'
 /**
- * The final mocks' `.cf-phead` (ux3 to-place-3): 11/15 700 uppercase, .05em. Where a mock draws it (To place's, Grants'
- * and Funders' opened rows and editors); Rules and Scenarios keep CS_PANEL_HEAD, their mocks draw none.
+ * The final mocks' `.cf-phead` (ux3 to-place-3): 11/15 700 uppercase, .05em. Where a mock draws it: To place's opened
+ * rows, and the editors that pass EditorForm `heading="phead"` (To place's, Grants' and Funders'). Grants' opened-row
+ * panels, Rules and Scenarios keep CS_PANEL_HEAD for now.
  */
 export const CS_PHEAD =
   'text-muted-foreground text-[11px] leading-[15px] font-bold tracking-[.05em] uppercase'
