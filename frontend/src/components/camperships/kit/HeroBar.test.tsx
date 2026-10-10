@@ -30,8 +30,27 @@ describe('AidHeroBar', () => {
   it('labels a segment inside only when it is wide enough', () => {
     wrap(<AidHeroBar segments={SEGS} labelMinPct={6} />)
     const [accepted, waiting] = screen.getAllByTestId('hero-seg')
-    expect(accepted).toHaveTextContent('318')
-    expect(waiting).toHaveTextContent('') // 9 of 358 is 2.5%
+    expect(accepted?.textContent).toBe('318')
+    expect(waiting?.textContent).toBe('') // 9 of 358 is 2.5%
+  })
+  it('labels at the threshold: just above shows the label, just below shows nothing', () => {
+    const pair: HeroSegment[] = [
+      { key: 'a', value: 7, label: 'Above', figure: '7', tone: 'done' },
+      { key: 'b', value: 93, label: 'Rest', figure: '93', tone: 'light' },
+    ]
+    const { unmount } = wrap(<AidHeroBar segments={pair} labelMinPct={6} />)
+    expect(screen.getAllByTestId('hero-seg')[0]?.textContent).toBe('7')
+    unmount()
+    wrap(
+      <AidHeroBar
+        segments={[
+          { ...pair[0]!, value: 5 },
+          { ...pair[1]!, value: 95 },
+        ]}
+        labelMinPct={6}
+      />
+    )
+    expect(screen.getAllByTestId('hero-seg')[0]?.textContent).toBe('')
   })
   it('makes a segment with an href a link', () => {
     wrap(<AidHeroBar segments={SEGS} />)
@@ -51,7 +70,7 @@ describe('AidHeroBar', () => {
         <AidHeroBar segments={SEGS} compact />
       </MemoryRouter>
     )
-    expect(screen.getAllByTestId('hero-seg')[0]).toHaveTextContent('')
+    for (const seg of screen.getAllByTestId('hero-seg')) expect(seg.textContent).toBe('')
   })
 })
 
