@@ -1089,8 +1089,10 @@ describe('grant placements as a compact table (history-2)', () => {
         'Counts in Round 2: known after Round 1 was posted, and these rules make an appeal subtract grants',
       ],
       ['—', true, 'Counts in no round: an incentive: never subtracted'],
-      [null, false, null],
+      ['—', true, 'Counts in no round: on no aid request'],
     ])
+    // A table with no round to name draws no column: every placement there sits on no request.
+    expect(first(compactGroups([placed(8)], LIVE).groups).rows[0]?.round).toBeNull()
   })
 
   it('reads the amount of a remove from before.placement when it is the only row', () => {

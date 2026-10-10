@@ -1001,6 +1001,19 @@ function compactRow(
   }
 }
 
+/**
+ * Once a placements table names any round, a placement on no aid request reads "—" there too, muted,
+ * rather than a blank cell. A table with no round to name keeps no column.
+ */
+function withNoRequestRounds(rows: CompactRow[]): CompactRow[] {
+  if (!rows.some((r) => r.roundTitle !== null)) return rows
+  return rows.map((r) =>
+    r.round === null
+      ? { ...r, round: '—', roundMuted: true, roundTitle: 'Counts in no round: on no aid request' }
+      : r
+  )
+}
+
 /** A grant placement's amount, as the log nested it under the register row it recorded. */
 function placementAmount(snapshot: Readonly<Record<string, unknown>> | null): unknown {
   const placement = snapshot?.['placement']
@@ -1045,7 +1058,7 @@ export function compactGroups(
     const [entity = '', action = ''] = key.split('|')
     if (members.length < (entity === PLACEMENTS ? 1 : COMPACT_AT)) continue
     members.forEach((m) => grouped.add(m))
-    const compact = members.map((m) => compactRow(m, view, sessions))
+    const compact = withNoRequestRounds(members.map((m) => compactRow(m, view, sessions)))
     const amounts = compact.map((c) => c.amount).filter((a): a is number => a !== null)
     groups.push({
       head:
