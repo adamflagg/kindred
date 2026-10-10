@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import UTC, date, datetime
+from decimal import Decimal
 from typing import Any, get_args
 
 import pytest
@@ -24,11 +25,22 @@ from api.schemas.financial_aid_grants import (
 )
 from api.schemas.financial_aid_intake import IssueOut
 from api.schemas.financial_aid_surfaces import TodayKey
+from api.services.camp_calendar import CAMP_TZ
 from api.services.financial_aid_grants_register import RegisterRow
 from api.services.financial_aid_intake_service import never_true_fields, never_true_labels
 from api.services.financial_aid_queues import row_queues
 from api.services.financial_aid_rules_service import RulesNotFoundError, RulesVersion
-from api.services.financial_aid_today import CASEWORK_LINES, FINANCE_LINES, TodayInputs, TodayService, build_today
+from api.services.financial_aid_today import (
+    CASEWORK_LINES,
+    FINANCE_LINES,
+    NEXT_UP_CAP,
+    TODAY_OVERDUE_DAYS,
+    TodayInputs,
+    TodayService,
+    build_today,
+    pending_since,
+)
+from bunking.financial_aid.decisions.rounds import DecisionEvent
 from bunking.financial_aid.rules.lifecycle import SectionStatus
 from tests.unit.api.services.decisions_fakes import T0, FakeDecisionsStore, FakeRules, approved, grant_row, seed_request
 from tests.unit.api.services.financial_aid_fakes import YEAR, fa_row, intake_rules
@@ -695,3 +707,168 @@ async def test_the_service_reads_labels_through_to_the_never_true_line() -> None
     out = await service.read(YEAR, casework=False, finance=True)
     reasons = _line(out.finance, "equity_field_never_true").reasons
     assert [(r.code, r.label) for r in reasons] == [("gov_subsidies", "Government subsidies")]
+
+
+# --- Today home page (spec 2026-10-10 §5.2, §5.5): overdue and next up ---------------------------------------------
+
+
+def test_overdue_thresholds_are_the_ruled_constants() -> None:
+    assert dict(TODAY_OVERDUE_DAYS) == {"needs_offer": 10, "waiting_on_family": 14, "pending_approval": 3}
+
+
+@pytest.mark.parametrize(("age", "overdue"), [(10, False), (11, True)])
+def test_needs_an_offer_is_overdue_only_past_ten_days(age: int, overdue: bool) -> None:
+    asked = date.fromordinal(TODAY.toordinal() - age)
+    rows = [_row("reqemma00000001", 1000001, _round(1, "needs_offer", decided=1500.0, asked_on=asked))]
+    line = _line(build_today(_inputs(rows), casework=True, finance=False).casework, "needs_offer")
+    assert (line.oldest_days, line.overdue) == (age, overdue)
+
+
+@pytest.mark.parametrize(("age", "overdue"), [(14, False), (15, True)])
+def test_waiting_on_the_family_is_overdue_only_past_fourteen_days(age: int, overdue: bool) -> None:
+    posted = date.fromordinal(TODAY.toordinal() - age)
+    rows = [_row("reqemma00000001", 1000001, _round(1, "posted", posted=1500.0, posted_on=posted))]
+    line = _line(build_today(_inputs(rows), casework=True, finance=False).casework, "waiting_on_family")
+    assert (line.oldest_days, line.overdue) == (age, overdue)
+
+
+@pytest.mark.parametrize(("age", "overdue"), [(3, False), (4, True)])
+def test_pending_approval_is_overdue_only_past_three_days(age: int, overdue: bool) -> None:
+    keyed = date.fromordinal(TODAY.toordinal() - age)
+    rows = [_row("reqemma00000001", 1000001, _round(3, "pending_approval", pending_approval=300.0))]
+    inputs = _inputs(rows, pending_since={("reqemma00000001", 3): keyed})
+    line = _line(build_today(inputs, casework=False, finance=True).finance, "pending_approval")
+    assert (line.oldest_days, line.overdue) == (age, overdue)
+
+
+def test_a_line_with_no_threshold_is_never_overdue() -> None:
+    rows = [_row("reqemma00000001", 1000001, _round(1, "held"), holds=[_hold("household_income_conflict")])]
+    line = _line(build_today(_inputs(rows), casework=True, finance=False).casework, "holds")
+    assert line.overdue is False
+
+
+def test_next_up_names_households_oldest_first_once_each() -> None:
+    """Review focus 1: a household with two waiting requests is one chip, at its oldest."""
+    old, mid, new = (date.fromordinal(TODAY.toordinal() - d) for d in (12, 9, 3))
+    rows = [
+        _row(
+            "reqliam00000001",
+            1000002,
+            _round(1, "needs_offer", decided=900.0, asked_on=mid),
+            family_name="Garcia",
+            camper_name="Liam Garcia",
+        ),
+        _row(
+            "reqemma00000001",
+            1000001,
+            _round(1, "needs_offer", decided=1500.0, asked_on=new),
+            family_name="Johnson",
+            camper_name="Emma Johnson",
+        ),
+        _row(
+            "reqsamu00000001",
+            1000001,
+            _round(1, "needs_offer", decided=1200.0, ask=1300.0, asked_on=old),
+            family_name="Johnson",
+            camper_name="Samuel Johnson",
+        ),
+    ]
+    line = _line(build_today(_inputs(rows), casework=True, finance=False).casework, "needs_offer")
+    assert [(n.household_cm_id, n.label, n.days, n.camper_name, n.round, n.ask) for n in line.next_up] == [
+        (1000001, "Johnson", 12, "Samuel Johnson", 1, 1300.0),
+        (1000002, "Garcia", 9, "Liam Garcia", 1, None),
+    ]
+
+
+def test_next_up_is_capped() -> None:
+    asked = date.fromordinal(TODAY.toordinal() - 2)
+    rows = [
+        _row(f"req{i:012d}", 1000001 + i, _round(1, "needs_offer", decided=100.0, asked_on=asked))
+        for i in range(NEXT_UP_CAP + 3)
+    ]
+    line = _line(build_today(_inputs(rows), casework=True, finance=False).casework, "needs_offer")
+    assert len(line.next_up) == NEXT_UP_CAP == 8
+    assert line.families == NEXT_UP_CAP + 3
+
+
+def test_a_household_level_row_is_named_by_its_household_label() -> None:
+    asked = date.fromordinal(TODAY.toordinal() - 1)
+    rows = [
+        _row(
+            "reqfc0000000001",
+            1000003,
+            _round(1, "needs_offer", decided=800.0, asked_on=asked),
+            family_name="Chen",
+            household_label="Olivia & Wei Chen",
+            household_label_tiebreak="FC2",
+        )
+    ]
+    line = _line(build_today(_inputs(rows), casework=True, finance=False).casework, "needs_offer")
+    assert (line.next_up[0].label, line.next_up[0].tiebreak) == ("Olivia & Wei Chen", "FC2")
+
+
+def test_a_line_with_no_clock_names_households_without_days() -> None:
+    rows = [
+        _row(
+            "reqemma00000001",
+            1000001,
+            _round(1, "held", asked_on=date(2031, 4, 1)),
+            holds=[_hold("household_income_conflict")],
+            family_name="Johnson",
+        ),
+    ]
+    line = _line(build_today(_inputs(rows), casework=True, finance=False).casework, "holds")
+    assert [(n.label, n.days) for n in line.next_up] == [("Johnson", None)]
+
+
+def test_grants_and_count_only_lines_carry_no_next_up() -> None:
+    lines = build_today(_inputs([]), casework=True, finance=True)
+    for key in ("grants", "to_place", "late_full_coverage", "duplicates", "to_reverse", "session_not_settled"):
+        assert _line(lines.casework, key).next_up == []
+    for key in ("rules_sections", "sources", "intake", "equity_field_never_true"):
+        assert _line(lines.finance, key).next_up == []
+
+
+@pytest.mark.asyncio
+async def test_finance_reads_when_each_pending_round_was_keyed() -> None:
+    store = FakeDecisionsStore()
+    request = seed_request(store, "reqemma00000001")
+    # Round 3's award needs approval, keyed 2031-04-15 (TODAY is 2031-04-20)
+    store.events.append(
+        DecisionEvent(
+            id="d1",
+            request_id=request.id,
+            round=3,
+            kind="award",
+            amount=Decimal(300),
+            created=datetime(2031, 4, 15, 17, tzinfo=UTC),
+            needs_approval=True,
+        )
+    )
+    today = await _service(store, _Grants(_grants(year=YEAR)), _Drafts(None), _Ledger()).read(
+        YEAR, casework=False, finance=True
+    )
+    assert (
+        _line(today.finance, "pending_approval").oldest_days == (T0.astimezone(CAMP_TZ).date() - date(2031, 4, 15)).days
+    )
+
+
+def test_pending_since_keeps_the_latest_keyed_award_in_camp_time() -> None:
+    early = DecisionEvent(
+        id="d1",
+        request_id="r1",
+        round=3,
+        kind="award",
+        created=datetime(2031, 4, 10, 18, tzinfo=UTC),
+        needs_approval=True,
+    )
+    late = DecisionEvent(
+        id="d2",
+        request_id="r1",
+        round=3,
+        kind="award",
+        created=datetime(2031, 4, 16, 3, tzinfo=UTC),
+        needs_approval=True,
+    )  # 03:00 UTC is still the 15th in camp time (America/Los_Angeles)
+    plain = DecisionEvent(id="d3", request_id="r2", round=1, kind="award", created=datetime(2031, 4, 1, tzinfo=UTC))
+    assert pending_since([early, late, plain]) == {("r1", 3): date(2031, 4, 15)}
