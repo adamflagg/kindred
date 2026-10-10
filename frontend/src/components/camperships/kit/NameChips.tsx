@@ -33,6 +33,8 @@ export function fitChips(
 const CHIP =
   'inline-flex h-[22px] flex-none items-baseline gap-1 whitespace-nowrap rounded-full border border-border bg-card px-2 text-[12px] leading-5 text-foreground hover:border-[color-mix(in_oklab,var(--color-primary)_45%,var(--color-border))]'
 
+/** The box must sit in a definite-width cell (as Today's table column does). Measuring un-hides every chip, which
+ *  would grow a shrink-to-fit parent and make the count oscillate. */
 export function AidNameChips({
   chips,
   total,
@@ -56,7 +58,12 @@ export function AidNameChips({
         total
       )
       // jsdom reports 0 widths and 0 room: treat an unmeasured box as roomy so tests read every chip
-      setShown(el.clientWidth === 0 ? chips.length : n)
+      const shownCount = el.clientWidth === 0 ? chips.length : n
+      // visibility is owned here, not by a React style prop, so a re-measure that keeps the count still re-hides
+      kids.forEach((k, i) => {
+        k.style.display = i < shownCount ? '' : 'none'
+      })
+      setShown(shownCount)
     }
     measure()
     const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure)
@@ -66,7 +73,7 @@ export function AidNameChips({
   const rest = total - Math.min(shown, chips.length)
   return (
     <span ref={box} className="flex min-w-0 items-center gap-1 overflow-hidden whitespace-nowrap">
-      {chips.map((c, i) => {
+      {chips.map((c) => {
         const inner = (
           <>
             {c.label}
@@ -83,13 +90,12 @@ export function AidNameChips({
             ) : null}
           </>
         )
-        const style = i < shown ? undefined : { display: 'none' }
         return c.href ? (
-          <Link key={c.key} data-chip to={c.href} title={c.title} className={CHIP} style={style}>
+          <Link key={c.key} data-chip to={c.href} title={c.title} className={CHIP}>
             {inner}
           </Link>
         ) : (
-          <span key={c.key} data-chip title={c.title} className={CHIP} style={style}>
+          <span key={c.key} data-chip title={c.title} className={CHIP}>
             {inner}
           </span>
         )

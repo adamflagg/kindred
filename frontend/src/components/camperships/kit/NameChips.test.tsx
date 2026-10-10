@@ -1,6 +1,6 @@
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { AidNameChips, fitChips } from './NameChips'
 
@@ -50,5 +50,63 @@ describe('AidNameChips', () => {
     expect(garcia).toHaveAttribute('title', 'Open the Garcia household · waiting 12 days')
     expect(garcia).toHaveTextContent('Garcia12d')
     expect(screen.getByTestId('chips-more')).toHaveTextContent('+3') // jsdom measures 0px: every chip fits, 5 − 2 = 3
+  })
+})
+
+describe('AidNameChips measured layout', () => {
+  let resizeCallback: (() => void) | undefined
+
+  beforeEach(() => {
+    // 210px room, 80px chips, 4px gap, 34px "+N" reserve: two chips fit (84 + 84 + 34 = 202), a third does not
+    vi.spyOn(Element.prototype, 'clientWidth', 'get').mockReturnValue(210)
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
+      width: 80,
+      height: 22,
+      top: 0,
+      left: 0,
+      right: 80,
+      bottom: 22,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    })
+    class FakeResizeObserver {
+      constructor(cb: () => void) {
+        resizeCallback = cb
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+    vi.stubGlobal('ResizeObserver', FakeResizeObserver)
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+    resizeCallback = undefined
+  })
+
+  it('keeps a chip hidden after a re-measure that leaves the count unchanged', () => {
+    const chips = [
+      { key: '1', label: 'Garcia', href: '/aid/households/1000002', title: 'Garcia' },
+      { key: '2', label: 'Chen', href: '/aid/households/1000003', title: 'Chen' },
+      { key: '3', label: 'Okafor', href: '/aid/households/1000004', title: 'Okafor' },
+    ]
+    const { container } = render(
+      <MemoryRouter>
+        <AidNameChips total={5} chips={chips} />
+      </MemoryRouter>
+    )
+    const els = () => [...container.querySelectorAll<HTMLElement>('[data-chip]')]
+    expect(els()[0]?.style.display).toBe('')
+    expect(els()[1]?.style.display).toBe('')
+    expect(els()[2]?.style.display).toBe('none')
+    expect(screen.getByTestId('chips-more')).toHaveTextContent('+3')
+
+    // the ResizeObserver fires again; the count stays 2, so React does not re-render
+    act(() => resizeCallback?.())
+    expect(els()[2]?.style.display).toBe('none')
+    expect(screen.getByTestId('chips-more')).toHaveTextContent('+3')
   })
 })
