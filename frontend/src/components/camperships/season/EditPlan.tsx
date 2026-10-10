@@ -1,5 +1,5 @@
 import { Lock } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 
 import { useAidSaveRulesSection } from '../../../hooks/camperships/useAidRulesWrites'
 import { useOverlayEscape } from '../../../hooks/useOverlayEscape'
@@ -13,6 +13,12 @@ import { savePrecondition } from './rules/precondition'
 import { useSeasonChrome } from './seasonChrome'
 import { planContent, planIssues, splitWords, type PlanPool, type TypedPlan } from './planModel'
 
+/** The Program split as ONE joined field (the mock's cf-splitf): each pool's share, a divider between pools. */
+const SPLIT_FIELD =
+  'bg-card border-border focus-within:border-primary/50 inline-flex h-[30px] items-center rounded-lg border pr-1 pl-2.5 text-sm whitespace-nowrap'
+const SPLIT_INPUT =
+  'border-border text-foreground h-6 w-[46px] border-0 border-b border-dashed bg-transparent px-0.5 text-right tabular-nums focus:border-primary focus:outline-none'
+
 const CONFLICT =
   'Someone else changed the rules draft since you opened this section. Nothing was saved; your typing is kept.'
 const LOCKED =
@@ -25,7 +31,7 @@ function lockedTotalText(raw: string): string {
 }
 
 /**
- * Edit Plan… (spec §5.2 B): the budget's total and program split, inline in the Budget card. Every card previews the
+ * Edit Plan… (spec §5.2 B): the budget's total and program split, a page-level panel under the Budget heading (final design, §24). Every card previews the
  * typed plan; Save writes the rules draft's budget section (prices nothing until approved). Finance, live only.
  */
 export function EditPlan({
@@ -102,11 +108,16 @@ export function EditPlan({
   const reason = [...issues, ...(error !== null ? [error] : [])].join(' · ')
   return (
     <EditorForm
-      className="mt-2"
+      title="Edit Plan · the rules draft's budget section"
       side={
         <div className="space-y-1">
           {totalLocked && <p className={CS_SMALL}>{LOCKED}</p>}
-          <p className={CS_SMALL}>{split ?? ''}</p>
+          {split !== null && (
+            // One line, ellipsised, the whole words as its title (the mock's cf-res).
+            <p className={`${CS_SMALL} truncate`} title={split}>
+              {split}
+            </p>
+          )}
         </div>
       }
       actions={
@@ -128,10 +139,13 @@ export function EditPlan({
               {reason}
             </span>
           )}
+          <span className={`${CS_SMALL} ml-auto min-w-0 truncate`}>
+            saving prices nothing until it&apos;s approved
+          </span>
         </EditorActions>
       }
     >
-      <EditorGrid>
+      <EditorGrid columns={2}>
         <EditorField label="Total">
           <span className="inline-flex items-center gap-1.5">
             {totalLocked ? null : '$'}
@@ -151,13 +165,16 @@ export function EditPlan({
           </span>
         </EditorField>
         <EditorField label={<>Program split{shareNote !== null && <DefRef n={shareNote} />}</>}>
-          <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
-            {pools.map((pool) => (
-              <span key={pool.key} className="inline-flex items-center gap-1.5">
-                <span className={CS_FGRID_LABEL}>{pool.label}</span>
+          <span data-testid="aid-split-field" className={SPLIT_FIELD}>
+            {pools.map((pool, i) => (
+              <Fragment key={pool.key}>
+                {i > 0 && (
+                  <span data-testid="aid-split-divider" className="bg-border mx-2.5 h-4 w-px" />
+                )}
+                <span className={`${CS_FGRID_LABEL} mr-1`}>{pool.label}</span>
                 <input
                   aria-label={pool.label}
-                  className={`${CS_FIELD} w-16 text-right tabular-nums`}
+                  className={SPLIT_INPUT}
                   value={typed.shares[pool.key] ?? ''}
                   onChange={(event) =>
                     onType({
@@ -166,8 +183,8 @@ export function EditPlan({
                     })
                   }
                 />
-                %
-              </span>
+                <span className="text-muted-foreground mr-0.5 ml-px">%</span>
+              </Fragment>
             ))}
           </span>
         </EditorField>

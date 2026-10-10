@@ -28,7 +28,7 @@ import {
 import { sectionChangeWords } from './approveWords'
 import { approvePrecondition } from './precondition'
 import { draftSections, sameSection, SECTION_ORDER } from './rulesDraft'
-import { rulesVocabulary, SECTION_TITLES, type RulesNames } from './rulesModel'
+import { groupWords, rulesVocabulary, SECTION_TITLES, type RulesNames } from './rulesModel'
 
 /** What a re-read found: the version now, and the ticked sections that moved and were unticked. */
 interface Recheck {
@@ -71,12 +71,9 @@ const reasonOf = (caught: unknown) => (caught instanceof Error ? caught.message 
  * - a failed read says so; the form stays, and Approve or Cancel are always there.
  */
 export function ApproveForm({
-  initial,
   onDone,
   onBusyChange,
 }: {
-  /** The section open when the form opened; read once, so browsing the list never re-ticks. */
-  initial: ApiAidRulesSection
   /** The approval's outcome, or null when cancelled. */
   onDone: (approved: Approved | null) => void
   /** Told when a submit starts and ends, so the page can keep the panel open through a tab switch. */
@@ -91,7 +88,6 @@ export function ApproveForm({
   const [recheck, setRecheck] = useState<Recheck | null>(null)
   // Busy from the click through every read and the write, until the form is done or refused.
   const [busy, setBusy] = useState(false)
-  const [first] = useState(initial)
   const alive = useRef(true)
   useEffect(() => {
     alive.current = true
@@ -114,15 +110,20 @@ export function ApproveForm({
     void fetchFresh().then(
       (fresh) => {
         setSeen(fresh)
-        // Not pre-ticked with errors: its box is disabled, but a ticked one would still be sent.
-        const row = fresh.sections.find((s) => s.section === first)
+        // The final design opens with every changed section checked, as both approved mocks do (the owner reads
+        // each line and unchecks what is not ready). Not one with errors: its box is disabled, but a ticked one
+        // would still be sent.
         setTicked(
-          new Set(draftSections(fresh).includes(first) && (row?.errors ?? 0) === 0 ? [first] : [])
+          new Set(
+            draftSections(fresh).filter(
+              (section) => (fresh.sections.find((s) => s.section === section)?.errors ?? 0) === 0
+            )
+          )
         )
       },
       (caught: unknown) => setError(`Couldn't load the rules draft: ${reasonOf(caught)}`)
     )
-  }, [fetchFresh, first])
+  }, [fetchFresh])
   useEffect(open, [open])
 
   if (seen === null) {
@@ -268,7 +269,14 @@ export function ApproveForm({
   const working = busy || approve.isPending
   // A change names its pools, programs and sessions as the Rules tab does, not by their keys and ids.
   const vocabulary = rulesVocabulary((section) => seen.document[section], sessions)
-  const namesFor = (section: ApiAidRulesSection): RulesNames => ({ section, ...vocabulary })
+  // A table or equity class reads as its pool ("Camp & Quest"), as the tier grid heads it (B34), never as a program.
+  const classLabel = groupWords(seen.groups ?? [], vocabulary)
+  const namesFor = (section: ApiAidRulesSection): RulesNames => ({
+    section,
+    ...vocabulary,
+    classLabel,
+    tierless: true,
+  })
 
   return (
     <div className={`${CS_CARD} space-y-2`} data-testid="approve-form">

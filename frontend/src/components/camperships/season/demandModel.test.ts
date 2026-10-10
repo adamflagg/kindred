@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { AidView } from '../kit/asOf'
 import { BUDGET, pastBudget, pastBudgetUnmasked } from './budgetFixtures'
-import { demandGroups } from './demandModel'
+import { demandGroups, heldWords, DEMAND_TITLES } from './demandModel'
 
 const LIVE: AidView = { year: 2027, asOf: { kind: 'live' } }
 const PAST: AidView = { year: 2027, asOf: { kind: 'past', date: '2027-03-15', axis: 'campminder' } }
@@ -21,6 +21,7 @@ describe('forward demand (§5.9, §7.2; D82)', () => {
     expect(poolA?.lines[0]).toEqual({
       key: 'round2_asks',
       label: 'Round 2 asks so far',
+      title: DEMAND_TITLES.round2_asks,
       requests: { families: 30, requests: 31 },
       asked: 33000,
       computed: 20500,
@@ -36,6 +37,7 @@ describe('forward demand (§5.9, §7.2; D82)', () => {
     expect(poolA?.lines[1]).toEqual({
       key: 'round1_unmet',
       label: 'Round 1 unmet ask, not yet appealed',
+      title: DEMAND_TITLES.round1_unmet,
       requests: { families: 40, requests: 44 },
       asked: null,
       computed: null,
@@ -103,5 +105,21 @@ describe('forward demand (§5.9, §7.2; D82)', () => {
     ])
     // A real zero still hides it.
     expect(demandGroups(BUDGET, null, LIVE).map((g) => g.label)).not.toContain('No pool')
+  })
+})
+
+describe('forward demand reads in whole dollars and says what its rows mean (rounds-4, rounds-17)', () => {
+  it('words the Held · asked cell in whole dollars', () => {
+    const [poolA] = demandGroups(BUDGET, null, LIVE)
+    const line = poolA?.lines[1]
+    expect(line).toBeDefined()
+    if (line === undefined) return
+    expect(heldWords({ ...line, heldAsked: 80905.45 })).toBe('4 fam · 7 req · $80,905')
+  })
+
+  it("gives each row its definition as a title, which says the ask is capped at the session's cost", () => {
+    expect(DEMAND_TITLES.round2_asks).toMatch(/held appeals' asks included/)
+    expect(DEMAND_TITLES.round1_unmet).toMatch(/floored at \$0/)
+    for (const title of Object.values(DEMAND_TITLES)) expect(title).toMatch(/cost/)
   })
 })

@@ -385,7 +385,7 @@ describe('approving sections (D39; Decision 17; owner ruling 2026-10-02)', () =>
   it('promises the season is priced only when EVERY section is ticked (owner 10-09)', async () => {
     const base = rulesDraft()
     const drafted = base.sections.find((s) => s.section === 'award_tables')
-    // a second section waits for approval, so ticking only the opened one is "some"
+    // a second section waits for approval too
     server = [
       {
         ...base,
@@ -400,18 +400,53 @@ describe('approving sections (D39; Decision 17; owner ruling 2026-10-02)', () =>
     await within(form).findByRole('checkbox', { name: 'Round 1 award table' })
     const boxes = within(form).getAllByRole('checkbox')
     expect(boxes.length).toBeGreaterThan(1)
-    // some ticked: the partial sentence, never the promise
+    // the final design starts with every changed section checked: the promise
+    expect(
+      within(form).getByText('Approving puts them in effect: v4 then prices the season')
+    ).toBeInTheDocument()
+    // uncheck one: the partial sentence, never the promise
+    await userEvent.click(boxes[0] as HTMLElement)
     expect(
       within(form).getByText(
         'Approving these sections: v4 prices the season once every section is approved.'
       )
     ).toBeInTheDocument()
     expect(within(form).queryByText(/Approving puts them in effect/)).toBeNull()
-    for (const box of boxes) if (!(box as HTMLInputElement).checked) await userEvent.click(box)
+    await userEvent.click(boxes[0] as HTMLElement)
     expect(
       within(form).getByText('Approving puts them in effect: v4 then prices the season')
     ).toBeInTheDocument()
     expect(within(form).queryByText(/once every section is approved/)).toBeNull()
+  })
+
+  it('starts with EVERY changed section checked, whichever tab opened it (the final design)', async () => {
+    const base = rulesDraft()
+    const drafted = base.sections.find((s) => s.section === 'award_tables')
+    server = [
+      {
+        ...base,
+        sections: base.sections.map((s) =>
+          s.section === 'awards' && drafted !== undefined ? { ...drafted, section: 'awards' } : s
+        ),
+      },
+    ]
+    renderAt('/aid/season/rules?section=income')
+    await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
+    const form = screen.getByTestId('approve-form')
+    await within(form).findByRole('checkbox', { name: 'Round 1 award table' })
+    for (const box of within(form).getAllByRole('checkbox')) expect(box).toBeChecked()
+    expect(within(form).getByRole('button', { name: 'Approve 2 Sections' })).toBeDisabled()
+  })
+
+  it('words a table change by its pool, never "Summer", and without "Tiers" (B34)', async () => {
+    const base = rulesDraft()
+    server = [{ ...base, groups: [{ pool: 'pool_a', label: 'Pool A', equity_class: 'general' }] }]
+    renderAt('/aid/season/rules?section=award_tables')
+    await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
+    const form = screen.getByTestId('approve-form')
+    await within(form).findByRole('checkbox', { name: 'Round 1 award table' })
+    expect(within(form).getByText('Pool A › Tier 2 › Round 1 %: 60% → 55%')).toBeInTheDocument()
+    expect(within(form).queryByText(/Tiers/)).toBeNull()
   })
 
   it('Esc closes the Approve form without approving', async () => {
@@ -733,12 +768,13 @@ describe('the approval form keeps its own ticks (review I2, m3)', () => {
     draft = { data: twoDraftsDraft(), isLoading: false, error: null }
     renderAt('/aid/season/rules?section=award_tables')
     await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
+    // every changed section starts checked (the final design); uncheck one, then browse
     await userEvent.click(await screen.findByRole('checkbox', { name: 'Budget and pools' }))
-    expect(screen.getByRole('button', { name: 'Approve 2 Sections' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Approve 1 Section' })).toBeInTheDocument()
     await userEvent.click(
       within(screen.getByTestId('chapter-bar')).getByRole('button', { name: /^Programs/ })
     )
-    expect(screen.getByRole('button', { name: 'Approve 2 Sections' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Approve 1 Section' })).toBeInTheDocument()
   })
 
   it('unticks a ticked section that gained errors since it was seen, and says so', async () => {
@@ -756,7 +792,8 @@ describe('the approval form keeps its own ticks (review I2, m3)', () => {
     renderAt('/aid/season/rules?section=award_tables')
     await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
     const form = screen.getByTestId('approve-form')
-    await userEvent.click(await within(form).findByRole('checkbox', { name: /Budget and pools/ }))
+    // both sections start checked (the final design)
+    expect(await within(form).findByRole('checkbox', { name: /Budget and pools/ })).toBeChecked()
     await userEvent.type(within(form).getByRole('textbox'), 'Finance, Jan 22 meeting')
     await userEvent.click(within(form).getByRole('button', { name: 'Approve 2 Sections' }))
     expect(await screen.findByTestId('approve-conflict')).toHaveTextContent(
@@ -792,6 +829,8 @@ describe('the approval notice follows what moved (S8-⚠1 interim, review ⚠1)'
     await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
     const form = screen.getByTestId('approve-form')
     await within(form).findByRole('checkbox', { name: 'Dates' })
+    // only the dates: the award table starts checked too (the final design), so uncheck it
+    await userEvent.click(within(form).getByRole('checkbox', { name: 'Round 1 award table' }))
     await userEvent.type(within(form).getByRole('textbox'), 'Finance, Jan 22 meeting')
     await userEvent.click(within(form).getByRole('button', { name: 'Approve 1 Section' }))
     const notice = await screen.findByTestId('rules-notice')

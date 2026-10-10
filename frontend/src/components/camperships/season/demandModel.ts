@@ -6,14 +6,34 @@
  */
 import type { ApiAidBudget, ApiAidBudgetPool, ApiAidCount } from '../../../types/api-types'
 import { aidHref, type AidView } from '../kit/asOf'
-import { formatMoney } from '../kit/money'
+import { formatWholeMoney } from '../kit/money'
 import { countWords } from '../requests/views'
 import { NO_POOL, opensQueueViews } from './budgetModel'
 
+/**
+ * Demand's money reads in whole dollars, as every other figure on the page (rounds-17: the real 2026 Round 1 unmet ask
+ * read $3,566,095.61). The server keeps the cents; the screen doesn't show them.
+ */
+export const demandMoney = formatWholeMoney
+
+/**
+ * The rows' own definitions, as titles (the final design moves the old notes 8 and 9 here; the six notes are
+ * Allocated … Below the line). Every ask counts at the D91 need cap (owner Q12, 2026-10-10): at most the request's
+ * session cost less the awards posted before that round, as Statistics' Asked does since #3122.
+ */
+export const DEMAND_TITLES = {
+  round2_asks:
+    "Round 2 asks so far: the appeals keyed so far on live requests (not cancelled, withdrawn or a duplicate), counted, with their total ask, held appeals' asks included, and the total computed for those decided or posted. Each ask counts at most the session's cost less the Round 1 award posted. It knows only the appeals keyed so far. Shown below the line, never counted in Remaining.",
+  round1_unmet:
+    "Round 1 unmet ask, not yet appealed: Σ (the family's Round 1 ask, at most the session's cost, − its Round 1 decided award) over live requests with no Round 2 ask keyed yet, plus held Round 1 requests' asks, per pool. It is demand that can still come back as appeals: shown below the line, never counted in Remaining. Rounds outside the budget don't count, offers that were clawed back don't count, and each family's gap is floored at $0, so one family's overage never offsets another's unmet ask.",
+} as const
+
 export interface DemandLine {
-  /** The line's key in the definitions registry, for its note number. */
+  /** The row's kind; its note is the sixth, Below the line. */
   readonly key: 'round2_asks' | 'round1_unmet'
   readonly label: string
+  /** The row's definition, for its title attribute. */
+  readonly title: string
   /** The requests the line counts (the server's `round2_asks` / `round1_unmet_requests`). */
   readonly requests: ApiAidCount | null
   readonly asked: number | null
@@ -33,7 +53,7 @@ export interface DemandGroup {
 
 /** The Held · asked cell: "2 fam · 2 req · $2,600", or "—" where a past date leaves it empty. */
 export function heldWords(line: DemandLine): string {
-  return line.held === null ? '—' : `${countWords(line.held)} · ${formatMoney(line.heldAsked)}`
+  return line.held === null ? '—' : `${countWords(line.held)} · ${demandMoney(line.heldAsked)}`
 }
 
 function groupOf(pool: ApiAidBudgetPool, view: AidView, onPool: boolean): DemandGroup {
@@ -48,6 +68,7 @@ function groupOf(pool: ApiAidBudgetPool, view: AidView, onPool: boolean): Demand
       {
         key: 'round2_asks',
         label: 'Round 2 asks so far',
+        title: DEMAND_TITLES.round2_asks,
         requests: asks,
         asked: demand.round2_asked,
         computed: demand.round2_computed,
@@ -69,6 +90,7 @@ function groupOf(pool: ApiAidBudgetPool, view: AidView, onPool: boolean): Demand
       {
         key: 'round1_unmet',
         label: 'Round 1 unmet ask, not yet appealed',
+        title: DEMAND_TITLES.round1_unmet,
         requests: demand.round1_unmet_requests ?? null,
         asked: null,
         computed: null,
