@@ -7,7 +7,6 @@ name, camper name or request id (§9.4). Every datetime becomes camp time before
 from __future__ import annotations
 
 import asyncio
-from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
@@ -18,7 +17,6 @@ from api.schemas.financial_aid_surfaces import (
     TodayWeekResponse,
     WeekFeedOut,
     WeekFigureOut,
-    WeekPointOut,
 )
 from api.services.camp_calendar import CAMP_TZ
 from api.services.financial_aid_decisions_service import DecisionsStore
@@ -176,25 +174,6 @@ def _development(
     ]
 
 
-def _posted_by_week(events: Sequence[DecisionEvent], today: date) -> list[WeekPointOut]:
-    """Cumulative posted camp money at the end of each week, from the first week with any post through this one."""
-    per_week: dict[date, Decimal] = defaultdict(Decimal)
-    for event in events:
-        if event.kind in ("post", "unpost"):
-            sign = 1 if event.kind == "post" else -1
-            per_week[week_start(_day(event.created))] += sign * _amount(event)
-    if not any(e.kind == "post" for e in events):
-        return []
-    cursor, last = min(per_week), week_start(today)
-    points: list[WeekPointOut] = []
-    running = Decimal(0)
-    while cursor <= last:
-        running += per_week.get(cursor, Decimal(0))
-        points.append(WeekPointOut(week_of=cursor, posted=float(running)))
-        cursor += timedelta(days=7)
-    return points
-
-
 def _overdue(events: Sequence[DecisionEvent], windows: _Counted) -> list[tuple[DecisionEvent, datetime]]:
     """Posts with no later accept or unpost for the same request and round, whose 14th day falls in this week."""
     ordered = sorted(events, key=lambda e: e.created)
@@ -263,7 +242,6 @@ class TodayWeekService:
             finance=_finance(windows, events, request_household) if finance else None,
             development=_development(windows, events, register, funder_log) if development else None,
             feed=feed,
-            posted_by_week=_posted_by_week(events, today) if finance else None,
         )
 
     @staticmethod

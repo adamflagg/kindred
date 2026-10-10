@@ -160,16 +160,24 @@ class TodayStagesOut(BaseModel):
     posted_this_week: int  # requests with a round posted since Monday (camp time), the "+n" on Accepted
 
 
+class WeekPointOut(BaseModel):
+    week_of: date
+    posted: float  # cumulative posted camp money by the end of that week, as the budget's Posted counts it
+
+
 class TodayResponse(BaseModel):
     """Today's sections follow the user's permissions: casework None without financial_aid.casework,
     finance None without financial_aid.rules, development None without financial_aid.grantors or .summary.
-    stages: casework or finance callers (the hero bar); None for development."""
+    stages: casework or finance callers (the hero bar); None for development.
+    posted_by_week: finance only (Committed by week); built from the priced rows the budget counts, so its last
+    point is the budget's Posted."""
 
     year: int
     casework: list[TodayLineOut] | None
     finance: list[TodayLineOut] | None
     stages: TodayStagesOut | None = None
     development: list[TodayLineOut] | None = None
+    posted_by_week: list[WeekPointOut] | None = None
 
 
 class HouseholdMatchOut(BaseModel):
@@ -215,13 +223,8 @@ class WeekFeedOut(BaseModel):
     href_kind: Literal["household", "funders", "rules", "none"] = "none"
 
 
-class WeekPointOut(BaseModel):
-    week_of: date
-    posted: float  # cumulative posted camp money by the end of that week
-
-
 class TodayWeekResponse(BaseModel):
-    """Sections follow the caller's permissions, as TodayResponse's do. posted_by_week is finance only."""
+    """Sections follow the caller's permissions, as TodayResponse's do."""
 
     year: int
     week_of: date
@@ -229,4 +232,3 @@ class TodayWeekResponse(BaseModel):
     finance: list[WeekFigureOut] | None = None
     development: list[WeekFigureOut] | None = None
     feed: list[WeekFeedOut]
-    posted_by_week: list[WeekPointOut] | None = None

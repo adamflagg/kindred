@@ -18170,6 +18170,8 @@ export type TodayReasonOut = {
  * Today's sections follow the user's permissions: casework None without financial_aid.casework,
  * finance None without financial_aid.rules, development None without financial_aid.grantors or .summary.
  * stages: casework or finance callers (the hero bar); None for development.
+ * posted_by_week: finance only (Committed by week); built from the priced rows the budget counts, so its last
+ * point is the budget's Posted.
  */
 export type TodayResponse = {
   /**
@@ -18189,6 +18191,10 @@ export type TodayResponse = {
    * Development
    */
   development?: Array<TodayLineOut> | null
+  /**
+   * Posted By Week
+   */
+  posted_by_week?: Array<WeekPointOut> | null
 }
 
 /**
@@ -18235,7 +18241,7 @@ export type TodayStagesOut = {
 /**
  * TodayWeekResponse
  *
- * Sections follow the caller's permissions, as TodayResponse's do. posted_by_week is finance only.
+ * Sections follow the caller's permissions, as TodayResponse's do.
  */
 export type TodayWeekResponse = {
   /**
@@ -18262,10 +18268,6 @@ export type TodayWeekResponse = {
    * Feed
    */
   feed: Array<WeekFeedOut>
-  /**
-   * Posted By Week
-   */
-  posted_by_week?: Array<WeekPointOut> | null
 }
 
 /**

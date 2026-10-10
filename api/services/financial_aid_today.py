@@ -13,7 +13,7 @@ import asyncio
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Final, Protocol
 
@@ -28,6 +28,7 @@ from api.schemas.financial_aid_surfaces import (
     TodayReasonOut,
     TodayResponse,
     TodayStagesOut,
+    WeekPointOut,
 )
 from api.services.camp_calendar import CAMP_TZ
 from api.services.financial_aid_decisions_service import DecisionsStore, FinancialAidDecisionsService, PricingRules
@@ -501,6 +502,29 @@ def _stages(inputs: TodayInputs) -> TodayStagesOut:
     )
 
 
+def _posted_by_week(inputs: TodayInputs) -> list[WeekPointOut]:
+    """Committed by week: the budget's Posted, week by week. A posted round counts as budget.py's `_tally_round` counts
+    it: not at all when clawed back (D54), and only its inside part otherwise, the round's amount less the money below
+    the line (`outside_budget`, the grid's tag of counted_part's second half). Dated by `posted_on`, accumulated, with
+    empty weeks filled, from the first week with a post through the current one; the last point is the budget's Posted."""
+    per_week: dict[date, Decimal] = defaultdict(Decimal)
+    for row in inputs.rows:
+        for r in row.rounds:
+            if r.status != "posted" or r.clawed_back or r.posted_on is None:
+                continue
+            per_week[week_start(r.posted_on)] += Decimal(str(r.posted or 0)) - Decimal(str(r.outside_budget or 0))
+    if not per_week:
+        return []
+    points: list[WeekPointOut] = []
+    running = Decimal(0)
+    cursor, last = min(per_week), max(max(per_week), week_start(inputs.today))
+    while cursor <= last:
+        running += per_week.get(cursor, Decimal(0))
+        points.append(WeekPointOut(week_of=cursor, posted=float(running)))
+        cursor += timedelta(days=7)
+    return points
+
+
 def build_today(inputs: TodayInputs, *, casework: bool, finance: bool, development: bool = False) -> TodayResponse:
     return TodayResponse(
         year=inputs.year,
@@ -508,6 +532,7 @@ def build_today(inputs: TodayInputs, *, casework: bool, finance: bool, developme
         finance=_finance(inputs) if finance else None,
         stages=_stages(inputs) if casework or finance else None,
         development=_development(inputs) if development else None,
+        posted_by_week=_posted_by_week(inputs) if finance else None,
     )
 
 
