@@ -170,7 +170,7 @@ export function LedgerFamilies({
   const pickers = (
     <>
       {picker('source', 'Source', filters.source, sourceOptions)}
-      {picker('program', 'Program (in CampMinder)', filters.program, programOptions)}
+      {picker('program', 'Program (in CM)', filters.program, programOptions)}
       {picker('level', 'Level', filters.level, levelOptions)}
     </>
   )

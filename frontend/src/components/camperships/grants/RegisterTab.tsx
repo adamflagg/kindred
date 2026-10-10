@@ -242,7 +242,7 @@ export function RegisterTab({ view }: { view: AidView }) {
       },
       {
         key: 'program',
-        header: 'Program (in CampMinder)',
+        header: 'Program (in CM)',
         width: 168,
         value: (r) => programCsv(r, needsCamper),
         title: (r) =>
@@ -380,9 +380,9 @@ export function RegisterTab({ view }: { view: AidView }) {
                 className={GRANTOR_WIDTH}
               />
             </ToolbarLabel>
-            <ToolbarLabel text="Program (in CampMinder)" plain>
+            <ToolbarLabel text="Program (in CM)" plain>
               <AidPicker
-                label="Program (in CampMinder)"
+                label="Program (in CM)"
                 value={filters.program ?? ''}
                 options={programOptions}
                 onChange={(next) => setParam('program', next === '' ? null : next)}

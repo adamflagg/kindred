@@ -7,7 +7,7 @@ const WORDS = {
   priced:
     'Program (as priced): the program the rules price the request under, so Quest and TLI fall under Summer. The Ledger and Grants use the program in CampMinder.',
   campminder:
-    'Program (in CampMinder): the program the money was posted under, so Quest and Teen Leadership have their own. Requests uses the program the rules price under.',
+    'Program (in CM): the program the money was posted under, so Quest and Teen Leadership have their own. Requests uses the program the rules price under.',
 } as const
 
 export function ProgramWordsNote({ which }: { which: keyof typeof WORDS }) {

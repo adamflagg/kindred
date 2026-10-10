@@ -122,7 +122,7 @@ describe('Money › Ledger (§8.1; F10 as money-v2 draws it)', () => {
     renderTab('/aid/money/ledger', { year: 2027, asOf: { kind: 'live' } })
     expect(screen.getByText('Family rows')).toBeInTheDocument()
     await screen.findAllByText('Summer Sessions')
-    for (const header of ['Program (in CampMinder)', 'Camp aid (net)', 'Outside grants', 'Total']) {
+    for (const header of ['Program (in CM)', 'Camp aid (net)', 'Outside grants', 'Total']) {
       expect(screen.getByRole('columnheader', { name: header })).toBeInTheDocument()
     }
     expect(screen.queryByRole('columnheader', { name: 'Unclassified' })).toBeNull()

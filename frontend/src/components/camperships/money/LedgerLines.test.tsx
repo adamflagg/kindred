@@ -215,12 +215,14 @@ describe('the lines card, as the final mock draws it (★13, §23)', () => {
     const panel = await screen.findByTestId('ledger-lines')
     await within(panel).findByText('reversed Mar 9')
     expect(within(panel).getByRole('table').parentElement?.className).toContain('max-h-[420px]')
+    // The header is the shorthand; its help names the program in CampMinder in full.
+    expect(within(panel).getByText('Program (in CM)')).toBeInTheDocument()
     for (const header of [
       'Family',
       'Camper',
       'Description in CampMinder',
       'Source family',
-      'Program',
+      'Program (in CM)',
       'Amount',
       'Posted on',
       "Level, where it isn't a request",

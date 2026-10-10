@@ -70,7 +70,7 @@ function pivotColumns(
   return [
     {
       key: 'program',
-      header: 'Program (in CampMinder)',
+      header: 'Program (in CM)',
       width: 260,
       pinned: true,
       value: (r) => summaryProgramWords(r.program, r.program_label),

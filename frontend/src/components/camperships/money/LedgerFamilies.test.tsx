@@ -91,7 +91,7 @@ const rowOf = (key: number) => {
 async function pick(picker: 'Source' | 'Program' | 'Level', option: string | RegExp) {
   await userEvent.click(
     screen.getByRole('button', {
-      name: new RegExp(`^${picker === 'Program' ? 'Program \\(in CampMinder\\)' : picker}:`),
+      name: new RegExp(`^${picker === 'Program' ? 'Program \\(in CM\\)' : picker}:`),
     })
   )
   await userEvent.click(await screen.findByRole('option', { name: option }))
@@ -99,7 +99,7 @@ async function pick(picker: 'Source' | 'Program' | 'Level', option: string | Reg
 const optionWords = async (picker: 'Source' | 'Program' | 'Level') => {
   await userEvent.click(
     screen.getByRole('button', {
-      name: new RegExp(`^${picker === 'Program' ? 'Program \\(in CampMinder\\)' : picker}:`),
+      name: new RegExp(`^${picker === 'Program' ? 'Program \\(in CM\\)' : picker}:`),
     })
   )
   return (await screen.findAllByRole('option')).map((o) => o.textContent.replace(/^✓/, ''))
@@ -234,7 +234,7 @@ describe('Money › Ledger family rows (P-22)', () => {
     const toolbars = document.querySelectorAll('[data-aid-toolbar]')
     expect(toolbars).toHaveLength(1)
     const bar = toolbars[0] as HTMLElement
-    for (const name of ['Source: All', 'Program (in CampMinder): All', 'Level: All']) {
+    for (const name of ['Source: All', 'Program (in CM): All', 'Level: All']) {
       expect(within(bar).getByRole('button', { name })).toBeInTheDocument()
     }
     expect(within(bar).getByPlaceholderText('Family, camper or CM ID')).toBeInTheDocument()
@@ -379,7 +379,7 @@ describe('Money › Ledger family rows (P-22)', () => {
     // Ruled test edit (coordinator 10-08, program_label): a program with no label reads
     // 'Other program' (was 'Old program', the key spelled out).
     expect(
-      screen.getByRole('button', { name: 'Program (in CampMinder): Other program' })
+      screen.getByRole('button', { name: 'Program (in CM): Other program' })
     ).toBeInTheDocument()
     // A value the picker already offers is not listed twice.
     await userEvent.click(screen.getByRole('button', { name: /^Source:/ }))
