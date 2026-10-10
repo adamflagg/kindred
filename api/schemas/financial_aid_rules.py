@@ -190,3 +190,7 @@ class ApprovedRulesOut(BaseModel):
     groups: list[GroupOut] = Field(default_factory=list)
     season_done: bool = False  # spec §11.1, as on RulesDraftOut
     configured_year: int | None = None
+    # program family (or rules program key) -> the one word every Camperships screen shows for it (#3131's
+    # FAMILY_WORDS over the rules' labels: summer is At Camp, never "Summer"; owner 2026-10-10 for Funders and the
+    # household page). The screens read words from here, so no TypeScript copy of them exists.
+    program_words: dict[str, str] = Field(default_factory=dict)

@@ -96,7 +96,11 @@ vi.mock('../../hooks/useCurrentYear', () => ({ useYear: () => 2027 }))
 // The approved rules name the programs (D31): the postings read them, as the grid does.
 vi.mock('../../hooks/camperships/useAidRules', () => ({
   useAidApprovedRules: () => ({
-    data: { sections: [{ section: 'programs', content: { summer: { label: 'Summer Camp' } } }] },
+    data: {
+      sections: [{ section: 'programs', content: { summer: { label: 'Summer Camp' } } }],
+      // the server's shared family words over the rules' labels (#3131 FAMILY_WORDS)
+      program_words: { summer: 'At Camp', quest: 'Quests', teen: 'Teen Programs' },
+    },
   }),
 }))
 
@@ -328,12 +332,14 @@ describe('AidHouseholdPage (§6.3)', () => {
     expect(screen.queryByTestId('tab-panel')).toBeNull()
   })
 
-  it("names a posting's program as the approved rules do (D31)", async () => {
+  // Owner 2026-10-10 ("fix the language then for the funders thing"): the shared family words, never the
+  // rules' own label (was: the rules' "Summer Camp").
+  it("names a posting's program in the shared family words, not the rules' label", async () => {
     renderAt('/aid/households/1000001')
     await userEvent.click(screen.getByRole('button', { name: /^Grants and postings/ }))
-    expect(
-      within(screen.getByRole('table', { name: 'Postings' })).getAllByText('Summer Camp')
-    ).toHaveLength(2)
+    const postings = within(screen.getByRole('table', { name: 'Postings' }))
+    expect(postings.getAllByText('At Camp')).toHaveLength(2)
+    expect(postings.queryByText('Summer Camp')).toBeNull()
   })
 
   it('opens the income on its own for a flagged family', () => {

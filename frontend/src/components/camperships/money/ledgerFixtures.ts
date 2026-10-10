@@ -121,10 +121,22 @@ export const SUMMARY_UNCLASSIFIED: ApiAidSummary = {
 
 const programs = APPROVED_RULES_2026.sections.find((s) => s.section === 'programs')
 
-/** 2027's approved rules, naming summer "Summer Sessions" and family_camp "Family Camp Weekends". */
+/**
+ * 2027's approved rules, naming summer "Summer Sessions" and family_camp "Family Camp Weekends"; the server's
+ * `program_words` lays the shared family words over them (api `words_over`: summer is At Camp).
+ */
 export const RULES_2027: ApiAidApprovedRules = {
   ...APPROVED_RULES_2026,
   year: 2027,
+  program_words: {
+    summer: 'At Camp',
+    family_camp: 'Family Camp',
+    quest: 'Quests',
+    teen: 'Teen Programs',
+    adult_weekend: 'Adult Weekends',
+    family_school: 'Family School',
+    bmitzvah: 'TBM',
+  },
   sections:
     programs === undefined
       ? []

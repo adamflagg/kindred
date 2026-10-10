@@ -32,7 +32,7 @@ import {
   type EditorExits,
 } from '../../components/camperships/household/editorExits'
 import { useQueueWalk } from '../../components/camperships/household/useQueueWalk'
-import { programLabels } from '../../components/camperships/requests/programLabel'
+import { programWords } from '../../components/camperships/requests/programLabel'
 import { AidDefinitionNotes } from '../../components/camperships/shell/AidDefinitionNotes'
 import { AidPageBand } from '../../components/camperships/shell/AidPageBand'
 import { useAidAsOf } from '../../hooks/camperships/useAidAsOf'
@@ -199,9 +199,9 @@ export default function AidHouseholdPage() {
   const data = page.data
   const missing = !valid || hasStatus(page.error, 404)
   const { hash } = useLocation()
-  // Program words come from the approved rules, as the grid's (D31); keys spelled out until they load.
+  // The shared family words the approved read sends (owner 2026-10-10); keys spelled out until they load.
   const approvedRules = useAidApprovedRules(null)
-  const programNames = useMemo(() => programLabels(approvedRules.data), [approvedRules.data])
+  const programNames = useMemo(() => programWords(approvedRules.data), [approvedRules.data])
   useScrollToHash()
 
   return (

@@ -12,6 +12,7 @@ import { refusalWords } from '../money/refusal'
 import {
   candidateSessions,
   evidenceLines,
+  needsSessionPick,
   pickedSession,
   placedGrantWords,
   placementFor,
@@ -46,7 +47,7 @@ export function PlaceCamperForm({
         ? String(only.person_cm_id)
         : ''
   )
-  // The Session picker's value ("" = untouched: the suggestion's session, else the camper's first).
+  // The Session picker's value ("" = untouched: the camper's one session, else the suggestion's, else none yet).
   const [sessionPick, setSessionPick] = useState('')
   const [problem, setProblem] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -56,6 +57,10 @@ export function PlaceCamperForm({
     if (inFlight.current) return
     if (person === '') {
       setProblem('Pick the camper')
+      return
+    }
+    if (needsSessionPick(need, Number(person), sessionPick)) {
+      setProblem('Pick a session')
       return
     }
     inFlight.current = true
@@ -96,11 +101,16 @@ export function PlaceCamperForm({
 
   const sessions = person === '' ? [] : candidateSessions(need, Number(person))
   const session = person === '' ? null : pickedSession(need, Number(person), sessionPick)
-  const sessionOptions: Array<AidPickerOption<string>> = sessions.map((s) => ({
-    value: String(s.session_cm_id),
-    label: aidSessionName(s.name, s.session_type) || s.name,
-    title: s.name,
-  }))
+  // Owner 2026-10-10: no guessed session. Two or more and no suggestion: "Pick a session", and Place waits.
+  const waiting = person !== '' && needsSessionPick(need, Number(person), sessionPick)
+  const sessionOptions: Array<AidPickerOption<string>> = [
+    ...(waiting ? [{ value: '', label: 'Pick a session' }] : []),
+    ...sessions.map((s) => ({
+      value: String(s.session_cm_id),
+      label: aidSessionName(s.name, s.session_type) || s.name,
+      title: s.name,
+    })),
+  ]
   const [onlySession] = sessions
 
   return (
@@ -135,7 +145,7 @@ export function PlaceCamperForm({
           }
           actions={
             <EditorActions reason={`${SUGGESTS_CONFIRMS} One logged operation in History.`}>
-              <button type="submit" className={CS_BTN} disabled={busy}>
+              <button type="submit" className={CS_BTN} disabled={busy || waiting}>
                 {busy ? 'Placing…' : 'Put It There'}
               </button>
               <button type="button" className={CS_BTN2} disabled={busy} onClick={onCancel}>

@@ -35,9 +35,11 @@ beforeEach(() => {
 afterEach(() => fetchSpy.mockRestore())
 
 describe('useAidProgramNames', () => {
-  it("names each program as the season's approved rules do", async () => {
+  // Owner 2026-10-10: the shared family words the server lays over the rules' labels, never the rules' own.
+  it('names each program family in the shared words the approved read sends', async () => {
     const { result } = renderHook(() => useAidProgramNames(), { wrapper })
-    await waitFor(() => expect(programLabel(result.current, 'summer')).toBe('Summer Sessions'))
+    await waitFor(() => expect(programLabel(result.current, 'summer')).toBe('At Camp'))
+    expect(programLabel(result.current, 'quest')).toBe('Quests')
     expect(fetchSpy.mock.calls[0]?.[0]).toBe('/api/financial-aid/rules/2027/approved')
   })
 

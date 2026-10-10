@@ -33,7 +33,14 @@ BMITZVAH_FALLBACK: Final = "TBM"
 def program_labels(document: AidRules | None) -> dict[str, str]:
     """family (or rules program key) -> label: the rules' label for each program they name, then every family's
     shared word over it; bmitzvah reads the rules' own label for it (or its `tbm` alias), else TBM."""
-    labels = {key: program.label for key, program in document.programs.items()} if document is not None else {}
+    return words_over(
+        {key: program.label for key, program in document.programs.items()} if document is not None else {}
+    )
+
+
+def words_over(rules_labels: Mapping[str, str]) -> dict[str, str]:
+    """`program_labels` from the rules' own labels (program key -> label), as a section's content carries them."""
+    labels = dict(rules_labels)
     labels.update(FAMILY_WORDS)
     if "bmitzvah" not in labels:
         labels["bmitzvah"] = labels.get(RULES_KEY_ALIASES["bmitzvah"], BMITZVAH_FALLBACK)

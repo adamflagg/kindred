@@ -330,6 +330,12 @@ describe('reporting groups as pools (star 19)', () => {
     expect(coversWords([], POOLS, NAMES)).toBe('No group: the source will need one.')
   })
 
+  it("lists a pool's families in the shared family order, whatever order the words arrive in", () => {
+    const tbm = [{ key: 'tbm', label: 'TBM', families: ['bmitzvah', 'family_school'] }]
+    const words = { family_school: 'Family School', summer: 'At Camp', bmitzvah: 'TBM' }
+    expect(coversWords(['tbm'], tbm, words)).toBe('Covers: TBM, Family School')
+  })
+
   it('words the opened row in pool names, not program families', () => {
     expect(fundsWords(['summer'], POOLS, NAMES)).toEqual({
       lead: 'Reporting group',

@@ -111,6 +111,7 @@ const GRANTORS = {
 }
 
 let storedRead: ApiAidGrants = GRANTS_READ
+let pageRead: ApiAidGrants = GRANTS_READ
 let fetchSpy: MockInstance<typeof fetch>
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
 const writes = () =>
@@ -121,6 +122,7 @@ const writes = () =>
 beforeEach(() => {
   granted = ['financial_aid.view', 'financial_aid.casework']
   storedRead = GRANTS_READ
+  pageRead = GRANTS_READ
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date('2027-04-20T18:00:00Z'))
   fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((url, init) => {
@@ -138,7 +140,7 @@ beforeEach(() => {
       return Promise.resolve(json(PAGE))
     }
     if (path.includes('offsets=false')) return Promise.resolve(json(storedRead))
-    if (path.startsWith('/api/financial-aid/grants/2027')) return Promise.resolve(json(GRANTS_READ))
+    if (path.startsWith('/api/financial-aid/grants/2027')) return Promise.resolve(json(pageRead))
     if (path.startsWith('/api/financial-aid/grantors')) return Promise.resolve(json(GRANTORS))
     return Promise.resolve(json({ detail: 'not here' }, 404))
   })
@@ -200,6 +202,34 @@ describe("the household page's grant buttons (rulings:340)", () => {
     await userEvent.click(within(form).getByRole('button', { name: 'Session: Session 1' }))
     await userEvent.click(within(form).getByRole('option', { name: 'Session 2' }))
     await userEvent.click(within(form).getByRole('button', { name: 'Put It There' }))
+    await waitFor(() => expect(writes()).toHaveLength(1))
+    expect(JSON.parse(String(writes()[0]?.body)).placements).toEqual([
+      { transaction_cm_id: 1000304, person_cm_id: 1000002, session_cm_id: 1000102 },
+    ])
+  })
+
+  // Owner 2026-10-10: two sessions and no suggestion naming one: no preselection, "Pick a session", and Put It
+  // There stays disabled until one is picked.
+  it('picks no session for a camper with two and no suggestion, and waits for one before placing', async () => {
+    pageRead = {
+      ...GRANTS_READ,
+      needs_camper: GRANTS_READ.needs_camper.map((n) => ({ ...n, suggestion: null })),
+    }
+    storedRead = pageRead
+    const table = await openGrantsTab()
+    await userEvent.click(await within(table).findByRole('button', { name: 'Place on a Camper…' }))
+    const form = screen.getByTestId('place-camper-form')
+    await userEvent.click(within(form).getByRole('button', { name: 'Camper: Pick the camper' }))
+    await userEvent.click(within(form).getByRole('option', { name: 'Emma Johnson' }))
+    const put = within(form).getByRole('button', { name: 'Put It There' })
+    expect(
+      within(form).getByRole('button', { name: 'Session: Pick a session' })
+    ).toBeInTheDocument()
+    expect(put).toBeDisabled()
+    await userEvent.click(within(form).getByRole('button', { name: 'Session: Pick a session' }))
+    await userEvent.click(within(form).getByRole('option', { name: 'Session 2' }))
+    expect(put).toBeEnabled()
+    await userEvent.click(put)
     await waitFor(() => expect(writes()).toHaveLength(1))
     expect(JSON.parse(String(writes()[0]?.body)).placements).toEqual([
       { transaction_cm_id: 1000304, person_cm_id: 1000002, session_cm_id: 1000102 },

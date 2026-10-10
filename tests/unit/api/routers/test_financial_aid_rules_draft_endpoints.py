@@ -210,6 +210,23 @@ def test_the_approved_read_passes_a_receipts_version_and_404s_without_approved_r
     assert _client().get("/api/financial-aid/rules/2031/approved").status_code == 404
 
 
+def test_the_approved_read_sends_the_shared_program_words_over_the_rules_labels() -> None:
+    """Owner 2026-10-10 ("fix the language then for the funders thing"): Funders' Covers line and the household
+    page read the one set of family words (#3131's FAMILY_WORDS: summer is At Camp, never the rules' "Summer"),
+    from the server, so no TypeScript copy of the words exists."""
+    programs = ApprovedSection("programs", SectionStatus(), {"summer": {"label": "Summer"}, "tbm": {"label": "TBM"}}, 1)
+    service = _stub()
+    service.approved_view = AsyncMock(
+        return_value=replace(
+            APPROVED, sections=tuple(programs if s.section == "programs" else s for s in APPROVED.sections)
+        )
+    )
+    words = _client().get("/api/financial-aid/rules/2031/approved").json()["program_words"]
+    assert words["summer"] == "At Camp"
+    assert (words["quest"], words["teen"], words["bmitzvah"]) == ("Quests", "Teen Programs", "TBM")
+    assert (words["family_camp"], words["adult_weekend"]) == ("Family Camp", "Adult Weekends")
+
+
 def test_a_section_save_without_its_opening_fingerprint_is_422() -> None:
     service = _stub()
     body = {"base_version": 2, "content": AWARDS}
