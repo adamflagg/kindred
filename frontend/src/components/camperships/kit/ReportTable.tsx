@@ -5,10 +5,11 @@ import { Link } from 'react-router'
 import { SortableColumnHeader } from '../../ui/SortableColumnHeader'
 import { CS_BOUNDED, CS_EMPTY, CS_CUT, CS_LINK_CELL, CS_SEARCH, CS_TOOLBAR_STATUS } from './csType'
 import { AidCopyButton, AidCsvButton } from './CsvButton'
-import { DefRef } from './DefinitionNotes'
+import { DefRef, type DefinitionNote } from './DefinitionNotes'
 import { CS_BAND, CS_RULE, TABLE_CARD } from './kitStyles'
 import { Money } from './MoneyText'
 import {
+  basisTitle,
   formatCount,
   reportSortValue,
   reportText,
@@ -88,6 +89,10 @@ interface ReportTableProps {
    * window. The header and, with `totalsFirst`, the totals row stay pinned while the body scrolls.
    */
   readonly bounded?: boolean | undefined
+  /** The page's numbered notes: a header's note mark carries its note's words as a hover title (ux3 statistics-8). */
+  readonly notes?: readonly DefinitionNote[] | undefined
+  /** The table's own choice words, after a count link's title ("All award tables · Round 1"; statistics-m1). */
+  readonly countWords?: string | undefined
 }
 
 const BODY_KINDS = new Set(['body', 'end'])
@@ -97,8 +102,8 @@ const onScreen = (c: ReportColumn) => !c.csvOnly && !c.exportOnly
 /** The mock's `.cf-empty`: a dashed card in muted body type, standing where the grid would. */
 
 /** A cell as the kit draws it: money through `Money`, a count above 0 with a link as that link (D20). */
-function cellContent(cell: ReportValue, href: string | undefined): ReactNode {
-  const figure = cell.display !== undefined ? cell.display : figureContent(cell, href)
+function cellContent(cell: ReportValue, href: string | undefined, scope: CountScope): ReactNode {
+  const figure = cell.display !== undefined ? cell.display : figureContent(cell, href, scope)
   if (cell.note === undefined) return figure
   return (
     <>
@@ -108,11 +113,27 @@ function cellContent(cell: ReportValue, href: string | undefined): ReactNode {
   )
 }
 
-function figureContent(cell: ReportValue, href: string | undefined): ReactNode {
-  if (cell.kind === 'money') return <Money value={cell.value} />
+/** What a count link's title names: its row, its column and the table's own words (statistics-m1). */
+interface CountScope {
+  readonly row: string
+  readonly column: string
+  readonly words: string | undefined
+}
+
+function countTitle(n: number, scope: CountScope): string {
+  const what = n === 1 ? 'this request' : `these ${formatCount(n)} requests`
+  const where = [scope.row, scope.column, scope.words].filter((w) => w !== undefined && w !== '')
+  return `Open ${what} in Requests: ${where.join(' · ')}`
+}
+
+function figureContent(cell: ReportValue, href: string | undefined, scope: CountScope): ReactNode {
+  if (cell.kind === 'money') {
+    // whole dollars on screen only: Copy and the CSV read the value itself (statistics-6)
+    return <Money value={cell.value} whole={cell.whole === true} />
+  }
   if (href !== undefined && cell.kind === 'count' && cell.value !== null && cell.value > 0) {
     return (
-      <Link to={href} className={COUNT_LINK}>
+      <Link to={href} className={COUNT_LINK} title={countTitle(cell.value, scope)}>
         {formatCount(cell.value)}
       </Link>
     )
@@ -140,7 +161,8 @@ function cellClass(column: ReportColumn | undefined, index: number, kind: string
           : TD_NUMBER
   const mono =
     column?.mono && kind === 'body' ? `${base} font-mono text-[12.5px] tabular-nums` : base
-  return column?.divider === 'before' ? mono.replace(CS_RULE, DIVIDER_BEFORE) : mono
+  const strong = column?.strong && kind === 'body' ? `${mono} font-bold` : mono
+  return column?.divider === 'before' ? strong.replace(CS_RULE, DIVIDER_BEFORE) : strong
 }
 
 /** A cell's native title: the cell's own, else a text cell's words (it may be cut); a figure has none. */
@@ -158,8 +180,18 @@ function labelLine(
   cell: ReportValue
 ): boolean {
   return (
-    index === 0 && (row.badge !== undefined || span > 1 || (fixed && cell.display === undefined))
+    index === 0 &&
+    (row.badge !== undefined ||
+      span > 1 ||
+      cell.twoLines === true ||
+      (fixed && cell.display === undefined))
   )
+}
+
+/** A fixed table's <col>: a percentage of the declared widths when every column has one, else the pixels. */
+function colStyle(column: ReportColumn, widthSum: number) {
+  if (column.width === undefined) return undefined
+  return { width: widthSum > 0 ? `${String((column.width / widthSum) * 100)}%` : column.width }
 }
 
 function indentStyle(indent: number | undefined) {
@@ -211,8 +243,21 @@ export function ReportTable({
   findNoun = 'rows',
   tools = true,
   bounded = false,
+  notes,
+  countWords,
 }: ReportTableProps) {
   const columnKeys = useMemo(() => columns.map((c) => c.key), [columns])
+  const noteWords = (n: number) => notes?.find((note) => note.n === n)?.text
+  // A count link's title: its row (the first cell's words), its column (and group) and the table's own words.
+  const scopeOf = (row: ReportRow, index: number): CountScope => {
+    const column = columns[index]
+    const header = column === undefined ? '' : column.header
+    return {
+      row: row.cells[0] ? reportText(row.cells[0]) : '',
+      column: column?.group ? `${column.group} · ${header}` : header,
+      words: countWords,
+    }
+  }
   const { sort, toggleSort } = useAidTableUrl(columnKeys, [], urlPrefix, undefined, defaultSort)
   const [query, setQuery] = useState('')
 
@@ -253,6 +298,11 @@ export function ReportTable({
   // Download CSV, never on screen.
   const drawn = useMemo(() => columns.filter(onScreen), [columns])
   const grouped = drawn.some((c) => c.group !== undefined)
+  // Declared widths are shares, not pixels, when EVERY column declares one: they scale to the card as the kit's
+  // CF.table({fixed}) does (statistics-m4). With an unsized first column it takes the rest, as before.
+  const widthSum = drawn.every((c) => c.width !== undefined)
+    ? drawn.reduce((sum, c) => sum + (c.width ?? 0), 0)
+    : 0
 
   const { copy, download, copied, failed } = useReportExport({
     heading,
@@ -288,7 +338,7 @@ export function ReportTable({
             {column.sub}
           </span>
         ) : null}
-        {column.note ? <DefRef n={column.note} /> : null}
+        {column.note ? <DefRef n={column.note} title={noteWords(column.note)} /> : null}
       </>
     )
     if (sortable) {
@@ -302,7 +352,7 @@ export function ReportTable({
           onSort={() => toggleSort(column.key)}
           indicator={
             <>
-              {column.note ? <DefRef n={column.note} /> : null}
+              {column.note ? <DefRef n={column.note} title={noteWords(column.note)} /> : null}
               {sort?.key === column.key ? (
                 <span className="text-primary ml-0.5 font-bold">
                   {sort.dir === 'asc' ? '↑' : '↓'}
@@ -341,7 +391,11 @@ export function ReportTable({
             title={hint ?? heading.title}
           >
             {heading.title}
-            {basisBadge ? <span className={BASIS_BADGE}>{basisBadge}</span> : null}
+            {basisBadge ? (
+              <span className={BASIS_BADGE} title={basisTitle(heading.title, basisBadge)}>
+                {basisBadge}
+              </span>
+            ) : null}
           </h2>
           {description !== undefined && (
             <div
@@ -410,10 +464,7 @@ export function ReportTable({
               // group cells with none: a colgroup sizes every column, and the unsized first one takes the rest.
               <colgroup>
                 {drawn.map((column) => (
-                  <col
-                    key={column.key}
-                    style={column.width ? { width: column.width } : undefined}
-                  />
+                  <col key={column.key} style={colStyle(column, widthSum)} />
                 ))}
               </colgroup>
             )}
@@ -435,7 +486,12 @@ export function ReportTable({
                           }
                         >
                           {segment.group}
-                          {segment.first.groupNote ? <DefRef n={segment.first.groupNote} /> : null}
+                          {segment.first.groupNote ? (
+                            <DefRef
+                              n={segment.first.groupNote}
+                              title={noteWords(segment.first.groupNote)}
+                            />
+                          ) : null}
                         </th>
                       )
                     )}
@@ -464,7 +520,9 @@ export function ReportTable({
                     <td colSpan={drawn.length} className={ROW_HEADING}>
                       {row.cells[0] ? reportText(row.cells[0]) : ''}
                       {row.meta ? (
-                        <span className="text-muted-foreground ml-2 font-normal">{row.meta}</span>
+                        <span className="text-muted-foreground ml-1.5 text-xs font-normal">
+                          {row.meta}
+                        </span>
                       ) : null}
                     </td>
                   </tr>
@@ -509,8 +567,14 @@ export function ReportTable({
                           {labelLine(index, row, span, fixed, cell) ? (
                             // a spanned label cuts with a title; the badge stays at its right end
                             <span className="flex items-center gap-1.5">
-                              <span className={`${CS_CUT} min-w-0 flex-initial`}>
-                                {cellContent(cell, row.links?.[index])}
+                              <span
+                                className={
+                                  cell.twoLines
+                                    ? 'line-clamp-2 min-w-0 flex-initial break-words whitespace-normal'
+                                    : `${CS_CUT} min-w-0 flex-initial`
+                                }
+                              >
+                                {cellContent(cell, row.links?.[index], scopeOf(row, index))}
                               </span>
                               {index === 0 && row.ref !== undefined ? (
                                 <span className="-ml-1 flex-none">
@@ -518,13 +582,16 @@ export function ReportTable({
                                 </span>
                               ) : null}
                               {row.badge !== undefined && (
-                                <span className={`${BASIS_BADGE} ml-auto flex-none`}>
+                                <span
+                                  className={`${BASIS_BADGE} ml-auto flex-none`}
+                                  title={basisTitle(heading.title, row.badge)}
+                                >
                                   {row.badge}
                                 </span>
                               )}
                             </span>
                           ) : (
-                            cellContent(cell, row.links?.[index])
+                            cellContent(cell, row.links?.[index], scopeOf(row, index))
                           )}
                           {index === 0 &&
                           row.ref !== undefined &&

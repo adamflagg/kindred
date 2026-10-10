@@ -265,7 +265,7 @@ def _row(
     with_decided = basis == "posted_and_decided"
     asked = asked_as_typed = live_asked = live_full_asked = amount = decided = awarded = ZERO
     asks = awarded_count = decided_count = cancelled = capped = 0
-    grants = ZERO
+    grants = request_grants = ZERO
     for request in requests:
         found = counts_in(request, rounds, with_decided=with_decided)
         asks += "asks" in found
@@ -293,12 +293,16 @@ def _row(
         decided += money - posted
         # An outside-budget round's own money is an outside funder's: grants, never the camp's amount (owner A1).
         grants += request.grants + request.outside_funded(rounds, decided=with_decided)
+        request_grants += request.grants  # Q9's denominator: the grants outside any funder-paid round
     shows_grants = round_ in (None, 1)
     # Owner (b) (RULED 2026-10-02): pct_of_ask and "% with grants" divide Posted (+ Decided, on the decided basis) by
     # the live requests' asks, so a request still waiting on an offer sits in the denominator at $0; the decided
     # basis's column says so (PCT_OF_ASK_DECIDED_LABEL). The asks differ: pct_of_ask divides by the in-budget asks
     # (`live_asked`), "% with grants" adds its grants to the numerator and divides by the full asks, outside-funded
-    # rounds kept (`live_full_asked`; owner, RULED 2026-10-02).
+    # rounds kept (`live_full_asked`; owner, RULED 2026-10-02). Owner Q9 (2026-10-10, a number-meaning change): each
+    # request-level grant joins that denominator too, so a grant larger than the ask does not push the share past it.
+    # A funder-paid round's money does not: its ask is already in `live_full_asked`, and counting it again would dilute
+    # a fully funded request to 50% (coordinator, 2026-10-10).
     return StatisticsRow(
         tier=tier,
         income_from=band[0] if band is not None else None,
@@ -319,7 +323,7 @@ def _row(
         live_asked=live_asked,
         pct_of_ask=pct(amount, live_asked),
         grants=grants if shows_grants else None,
-        pct_of_ask_with_grants=pct(amount + grants, live_full_asked) if shows_grants else None,
+        pct_of_ask_with_grants=pct(amount + grants, live_full_asked + request_grants) if shows_grants else None,
         requests_capped=capped,
     )
 

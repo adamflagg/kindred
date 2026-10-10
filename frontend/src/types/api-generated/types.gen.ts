@@ -3733,6 +3733,10 @@ export type DefinitionNoteOut = {
    * Text
    */
   text: string
+  /**
+   * Also Bold
+   */
+  also_bold?: Array<string>
 }
 
 /**

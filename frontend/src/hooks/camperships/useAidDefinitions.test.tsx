@@ -102,4 +102,16 @@ describe('useAidDefinitions (§4.8; D20)', () => {
     const { result } = renderHook(() => useAidDefinitions('nope'), { wrapper })
     await waitFor(() => expect(result.current.error).not.toBeNull())
   })
+
+  it("passes a note's extra bold terms along, and none where the server sent none (ux3 statistics-7)", async () => {
+    const [first, second] = PAYLOAD.notes
+    const body = { ...PAYLOAD, notes: [{ ...first, also_bold: ['Decided'] }, second] }
+    fetchSpy.mockImplementation(() =>
+      Promise.resolve(new Response(JSON.stringify(body), { status: 200 }))
+    )
+    const { result } = renderHook(() => useAidDefinitions('requests'), { wrapper })
+    await waitFor(() => expect(result.current.notes).toHaveLength(2))
+    expect(result.current.notes[0]?.alsoBold).toEqual(['Decided'])
+    expect(result.current.notes[1]).not.toHaveProperty('alsoBold')
+  })
 })

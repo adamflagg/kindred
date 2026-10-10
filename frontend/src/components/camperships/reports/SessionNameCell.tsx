@@ -1,7 +1,7 @@
 import { Home } from 'lucide-react'
 import { useLayoutEffect, useRef, useState } from 'react'
 
-import { sessionName } from '../../../utils/sessionName'
+import { aidCellShortName } from '../kit/sessionShort'
 import { sessionNameTitle } from './sessionNameTitle'
 
 /**
@@ -25,7 +25,7 @@ export function SessionNameCell({
   useLayoutEffect(() => {
     shortRef.current = short
   }, [short])
-  const shortForm = sessionName(name, sessionType, 'short')
+  const shortForm = aidCellShortName(name, sessionType)
 
   // A new name starts from the full form again.
   const [seen, setSeen] = useState(name)

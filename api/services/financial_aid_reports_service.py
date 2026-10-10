@@ -132,6 +132,7 @@ from bunking.financial_aid.reports.statistics import (
 from bunking.financial_aid.rules import AidRules, resolve_program, round1_table
 from bunking.financial_aid.scenarios.request_set import RequestSet, RequestSetNote, request_set_note
 from bunking.pocketbase_batch import MAX_BATCH_REQUESTS
+from bunking.session_order import session_rank
 
 # Finance ruled out reporting before 2022 (COVID): trends start there (§9.5).
 FIRST_REPORT_SEASON: Final = 2022
@@ -507,7 +508,12 @@ class FinancialAidReportsService:
         )
         document = read.season.rules.document if read.season.rules is not None else None
         sessions = rules_sessions(read.season, document)
-        table = programs(read.requests, sessions)
+        table = programs(
+            read.requests,
+            sessions,
+            rank=session_rank(read.season.sessions.values()),
+            closed_to_aid=closed_to_aid_sessions(read.season, document),
+        )
         names = {cm_id: row.name for cm_id, row in read.season.sessions.items()}
         types = {cm_id: row.session_type for cm_id, row in read.season.sessions.items()}
 
@@ -838,6 +844,20 @@ def rules_sessions(season: Season, document: AidRules | None) -> dict[int, str |
         if program is not None:
             out[cm_id] = document.programs[program].budget_pool
     return out
+
+
+def closed_to_aid_sessions(season: Season, document: AidRules | None) -> frozenset[int]:
+    """The sessions whose rules program is not open to aid (Statistics' session table hides one with no application)."""
+    if document is None:
+        return frozenset()
+    closed: set[int] = set()
+    for cm_id, session in season.sessions.items():
+        program = resolve_program(
+            document, cm_id, session.session_type, ag_parent=ag_parent_of(session, season.sessions)
+        )
+        if program is not None and not document.programs[program].open_to_aid:
+            closed.add(cm_id)
+    return frozenset(closed)
 
 
 def _end_day(session_end: str) -> date | None:

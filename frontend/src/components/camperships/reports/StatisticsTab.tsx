@@ -12,7 +12,7 @@ import { AidCopyButton, AidCsvButton } from '../kit/CsvButton'
 import { AidSegmented } from '../kit/Segmented'
 import { AidToolbar, ToolbarLabel } from '../kit/Toolbar'
 import { useReportExport } from '../kit/useReportExport'
-import { COUNT_LINK, DECIDED_INK, REPORT_NOTE } from '../kit/reportStyles'
+import { COUNT_LINK, DECIDED_INK } from '../kit/reportStyles'
 import { ReportTable } from '../kit/ReportTable'
 import type { ReportColumn, ReportHeading, ReportRow } from '../kit/report'
 import { reportParam, type ReportAddress } from '../requests/reportFilter'
@@ -65,6 +65,8 @@ const SESSION_ROUND_WHY =
 const SESSION_DECIDED_WHY =
   "Not on Session rows yet: the session figures don't carry Decided amounts. Income tier rows have it."
 const CHECK = 'inline-flex flex-none items-center gap-1.5 whitespace-nowrap'
+// the kit's checkbox label: foreground ink (CS_FLABEL's muted colour is dropped, never set twice)
+const FLABEL = CS_FLABEL.replace('text-muted-foreground ', '')
 
 /**
  * Reports › Statistics, this season (spec §9.2, §9.7; D80, D129–D131, D138, D157; the approved final
@@ -80,7 +82,7 @@ export function StatisticsTab({ view }: { view: AidView }) {
   const bySession = choice.rows === 'session'
   const stats = useAidStatistics(choice)
   const programs = useAidPrograms(choice.requestSet, bySession)
-  const { numberOf, entries } = useAidDefinitions('reports-statistics')
+  const { numberOf, entries, notes } = useAidDefinitions('reports-statistics')
   const setParam = useReportParam()
   const setParams = useReportParams()
   const link = aidHref(PATH, view, statisticsLinkParams(choice))
@@ -117,7 +119,7 @@ export function StatisticsTab({ view }: { view: AidView }) {
     if (!data) return null
     return {
       title: 'By tier',
-      heading: statisticsHeading(data, 'By tier', true, tierNotes(data.total)),
+      heading: statisticsHeading(data, 'By tier', true, tierNotes(data.total, choice.round)),
       columns: tierColumns(data, numberOf),
       rows: tierRows(data, choice, linkOf),
       csvFilename: statisticsCsvName(view, choice, 'by-tier'),
@@ -137,8 +139,34 @@ export function StatisticsTab({ view }: { view: AidView }) {
   const status = refusal ?? exporter.failed ?? pastWords ?? undefined
   const onRequestSet = (next: AidRequestSet) => setParam('through', requestSetParam(next))
   const leftOut = data ? requestSetLeftOut(data) : null
-  const tierFootnote = data ? tierNotes(data.total).join(' ') : null
+  const tierFootnote = data ? tierNotes(data.total, choice.round).join(' ') : ''
   const sessionFootnote = programs.data ? programsNotes(programs.data).join(' ') : ''
+  // The count links' titles name the award table in play, as the mock's do ("tier 1 · All award tables").
+  const countWords = chosen?.label ?? 'All award tables'
+
+  // ONE block 6px under the first table (the kit's .cf-under; the table section's own gap): the cap line and, when
+  // anyone cancelled or later requests were left out, the Cancelled line. The Cancelled line leaves out a zero.
+  const cancelledCount = data?.cancelled_applicants ?? 0
+  const underTable = (words: string) =>
+    words === '' && cancelledCount === 0 && leftOut === null ? undefined : (
+      <>
+        {words !== '' && <p>{words}</p>}
+        {(cancelledCount > 0 || leftOut !== null) && (
+          <p>
+            {cancelledCount > 0 && (
+              <>
+                Cancelled applicants, counted in Apps too:{' '}
+                <Link to={cancelledApplicantsLink(choice, linkOf)} className={COUNT_LINK}>
+                  {String(cancelledCount)}
+                </Link>
+              </>
+            )}
+            {leftOut !== null &&
+              `${cancelledCount > 0 ? ' · ' : ''}${String(leftOut)} requests received later are left out`}
+          </p>
+        )}
+      </>
+    )
 
   const controls = (
     <AidToolbar
@@ -203,7 +231,7 @@ export function StatisticsTab({ view }: { view: AidView }) {
             onChange={onRequestSet}
           />
           <label
-            className={`${CHECK} ${CS_FLABEL} ${choice.decided && !bySession ? DECIDED_INK : ''} ${bySession ? 'cursor-not-allowed opacity-45' : ''}`}
+            className={`${CHECK} ${FLABEL} ${bySession ? 'text-muted-foreground cursor-not-allowed opacity-45' : choice.decided ? DECIDED_INK : 'text-foreground'}`}
             title={bySession ? SESSION_DECIDED_WHY : (decidedNote ?? 'Include not yet offered')}
           >
             <input
@@ -265,9 +293,9 @@ export function StatisticsTab({ view }: { view: AidView }) {
                       csvFilename={first.csvFilename}
                       link={first.link}
                       emptyText="No sessions in the rules yet."
-                      {...(sessionFootnote === ''
-                        ? {}
-                        : { footnote: <p className={REPORT_NOTE}>{sessionFootnote}</p> })}
+                      notes={notes}
+                      countWords={countWords}
+                      footnote={underTable(sessionFootnote)}
                     />
                   )
                 }
@@ -282,23 +310,12 @@ export function StatisticsTab({ view }: { view: AidView }) {
                   rows={first.rows}
                   csvFilename={first.csvFilename}
                   link={first.link}
-                  {...(tierFootnote === null
-                    ? {}
-                    : { footnote: <p className={REPORT_NOTE}>{tierFootnote}</p> })}
+                  notes={notes}
+                  countWords={countWords}
+                  footnote={underTable(tierFootnote)}
                 />
               )
             )}
-            <p className={REPORT_NOTE}>
-              Cancelled applicants, counted in Apps too:{' '}
-              {stat.cancelled_applicants > 0 ? (
-                <Link to={cancelledApplicantsLink(choice, linkOf)} className={COUNT_LINK}>
-                  {String(stat.cancelled_applicants)}
-                </Link>
-              ) : (
-                '0'
-              )}
-              {leftOut !== null && ` · ${String(leftOut)} requests received later are left out`}
-            </p>
             <ReportTable
               fixed
               heading={statisticsHeading(stat, 'Aid recipients who cancelled', false)}
@@ -308,6 +325,8 @@ export function StatisticsTab({ view }: { view: AidView }) {
               rows={cancelledRows(stat, choice, linkOf)}
               csvFilename={statisticsCsvName(view, choice, 'recipients-cancelled')}
               link={link}
+              notes={notes}
+              countWords={countWords}
               emptyText="No aid recipient has cancelled."
             />
             <ReportTable
@@ -319,6 +338,8 @@ export function StatisticsTab({ view }: { view: AidView }) {
               rows={tierAppealsRows(stat, choice, linkOf)}
               csvFilename={statisticsCsvName(view, choice, 'tier-appeals')}
               link={link}
+              notes={notes}
+              countWords={countWords}
             />
             <ReportTable
               fixed
@@ -329,6 +350,8 @@ export function StatisticsTab({ view }: { view: AidView }) {
               rows={outcomeRows(stat, choice, linkOf)}
               csvFilename={statisticsCsvName(view, choice, 'outcomes')}
               link={link}
+              notes={notes}
+              countWords={countWords}
             />
           </div>
         )}

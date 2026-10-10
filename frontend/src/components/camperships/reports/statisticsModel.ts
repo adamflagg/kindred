@@ -16,7 +16,7 @@ import {
   BASIS_WORDS,
   averageValue,
   countValue,
-  moneyValue,
+  wholeMoneyValue,
   pctValue,
   textValue,
   type ReportColumn,
@@ -181,17 +181,17 @@ const VARIES_FEE = 'Each award table sets its own fee share: pick one to see it'
 function figureCells(row: ApiAidStatisticsRow, decided: boolean): ReportValue[] {
   return [
     countValue(row.apps),
-    moneyValue(row.asked),
-    moneyValue(row.asked_as_typed),
+    wholeMoneyValue(row.asked),
+    wholeMoneyValue(row.asked_as_typed),
     countValue(row.asks),
     averageValue(row.average_ask),
     // Posted alone on either basis (#2974): the screen never subtracts decided from `amount`
-    moneyValue(row.awarded),
-    ...(decided ? [moneyValue(row.decided)] : []),
+    wholeMoneyValue(row.awarded),
+    ...(decided ? [wholeMoneyValue(row.decided)] : []),
     averageValue(row.average_award),
     countValue(row.awarded_count),
     // % of ask's denominator, as sent (owner B4a (c)): never Asked, never computed here
-    moneyValue(row.live_asked),
+    wholeMoneyValue(row.live_asked),
     pctValue(row.pct_of_ask),
     pctValue(row.pct_of_ask_with_grants),
   ]
@@ -242,8 +242,10 @@ export function tierRows(
     kind: row.tier === null ? 'end' : 'body',
     cells: [
       textValue(row.tier === null ? 'No tier' : String(row.tier)),
-      moneyValue(row.income_from),
-      row.income_to === null && row.tier !== null ? textValue('and up') : moneyValue(row.income_to),
+      wholeMoneyValue(row.income_from),
+      row.income_to === null && row.tier !== null
+        ? textValue('and up')
+        : wholeMoneyValue(row.income_to),
       feeCell(row.fee_pct, varies, VARIES_FEE),
       ...figureCells(row, decided),
     ],
@@ -286,7 +288,7 @@ export function cancelledApplicantsLink(choice: StatisticsChoice, linkOf: LinkOf
 /** RPT-22: aid recipients who cancelled, by reason, pool and round (D131; owner R2a D24, B4b (a)). */
 export function cancelledColumns(_noteOf: NoteOf): ReportColumn[] {
   return [
-    { key: 'reason', header: 'Reason' },
+    { key: 'reason', header: 'Reason', width: 420 },
     { key: 'pool', header: 'Pool', align: 'left', width: 200 },
     { key: 'round', header: 'Round', align: 'left', width: 140 },
     {
@@ -323,7 +325,7 @@ export function cancelledRows(
       textValue(row.pool_label),
       textValue(`Round ${String(row.round)}`),
       countValue(row.requests),
-      moneyValue(row.posted),
+      wholeMoneyValue(row.posted),
     ],
     links: {
       3: linkOf(
@@ -417,7 +419,7 @@ export function tierAppealsRows(
           textValue(''),
           countValue(row.appeals),
           textValue(''),
-          moneyValue(row.round3_awarded),
+          wholeMoneyValue(row.round3_awarded),
           pctValue(row.appeal_rate),
         ],
         links: appealsLinks(choice, { part: 'total_appeals' }, linkOf),
@@ -428,10 +430,10 @@ export function tierAppealsRows(
       kind: row.tier === null ? 'end' : 'body',
       cells: [
         textValue(row.tier === null ? 'No tier' : String(row.tier)),
-        moneyValue(row.income_from),
+        wholeMoneyValue(row.income_from),
         row.income_to === null && row.tier !== null
           ? textValue('and up')
-          : moneyValue(row.income_to),
+          : wholeMoneyValue(row.income_to),
         countValue(row.round1_apps),
         feeCell(row.round1_fee_pct, allTables, 'Each award table sets its own fee share'),
         countValue(row.appeals),
@@ -440,7 +442,7 @@ export function tierAppealsRows(
           allTables,
           'Blank on All award tables: each table has its own Round 2 caps'
         ),
-        moneyValue(row.round3_awarded),
+        wholeMoneyValue(row.round3_awarded),
         pctValue(row.appeal_rate),
       ],
       // the "no tier" row is the route's tier-absent row
@@ -457,7 +459,7 @@ export function tierAppealsRows(
 
 /** RPT-23: the March committee's outcomes per pool, then the server's no-pool row and all pools. */
 export const OUTCOME_COLUMNS: readonly ReportColumn[] = [
-  { key: 'pool', header: 'Pool' },
+  { key: 'pool', header: 'Pool', width: 300 },
   { key: 'accepted', header: 'Accepted', width: 150 },
   { key: 'acceptedAmount', header: 'Accepted $', width: 160 },
   { key: 'appealed', header: 'Appealed', width: 150 },
@@ -506,9 +508,9 @@ export function outcomeRows(
       cells: [
         textValue(row.pool_label),
         countValue(row.accepted),
-        moneyValue(row.accepted_amount),
+        wholeMoneyValue(row.accepted_amount),
         countValue(row.appealed),
-        moneyValue(row.appealed_asked),
+        wholeMoneyValue(row.appealed_asked),
         countValue(row.waiting),
       ],
       links,
@@ -594,8 +596,14 @@ export function cappedAskWords(total: {
 export const ROUND_CHIPS_NOTE =
   "Round chips don't add up to All rounds: an appeal re-asks part of the earlier shortfall, so All rounds counts it once."
 
-/** The tier table's footnote lines: the chips note always, the cap words when some requests were capped. */
-export function tierNotes(total: { readonly requests_capped?: number | undefined }): string[] {
+/**
+ * The tier table's footnote lines: the chips note when R2, R3 or All is picked (on R1 it explains nothing the view
+ * shows; ux3 statistics-9), then the cap words when some requests were capped.
+ */
+export function tierNotes(
+  total: { readonly requests_capped?: number | undefined },
+  round: RoundChip
+): string[] {
   const capped = cappedAskWords(total)
-  return capped === null ? [ROUND_CHIPS_NOTE] : [ROUND_CHIPS_NOTE, capped]
+  return [...(round === '1' ? [] : [ROUND_CHIPS_NOTE]), ...(capped === null ? [] : [capped])]
 }

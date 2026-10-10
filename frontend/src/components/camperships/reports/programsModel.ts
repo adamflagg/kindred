@@ -20,7 +20,7 @@ import {
   BASIS_WORDS,
   countValue,
   averageValue,
-  moneyValue,
+  wholeMoneyValue,
   pctValue,
   textValue,
   type ReportColumn,
@@ -84,6 +84,7 @@ export function programColumns(noteOf: NoteOf): ReportColumn[] {
       header: 'Total awarded',
       divider: 'before',
       wrap: true,
+      strong: true, // the mock draws every Total awarded figure bold
       width: 84,
       title: 'Rounds 1–3 Posted, net of clawbacks',
     },
@@ -93,9 +94,9 @@ export function programColumns(noteOf: NoteOf): ReportColumn[] {
 function sixCells(block: ApiAidRoundBlock): ReportValue[] {
   return [
     countValue(block.apps),
-    moneyValue(block.requested),
-    moneyValue(block.requested_as_typed),
-    moneyValue(block.awarded),
+    wholeMoneyValue(block.requested),
+    wholeMoneyValue(block.requested_as_typed),
+    wholeMoneyValue(block.awarded),
     averageValue(block.average_request),
     averageValue(block.average_award),
     pctValue(block.pct_awarded),
@@ -134,8 +135,8 @@ function cells(label: ReportValue, row: ApiAidProgramRow): ReportValue[] {
     ...sixCells(row.round1),
     ...sixCells(row.round2),
     countValue(row.round3.apps),
-    moneyValue(row.round3.awarded),
-    moneyValue(row.total_awarded),
+    wholeMoneyValue(row.round3.awarded),
+    wholeMoneyValue(row.total_awarded),
   ]
 }
 
@@ -208,6 +209,7 @@ export function programRows(
       cells: cells(
         {
           ...textValue(`${pool.pool_label} subtotal`),
+          twoLines: true, // the mock's .cf-cut2: "Weekend Programs subtotal" shows in full over two lines
           title: `${pool.pool_label} subtotal: pooled ratios, not averages of the rows`,
         },
         pool.subtotal

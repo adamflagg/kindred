@@ -162,20 +162,35 @@ def _row(session: int, requests: Sequence[ReportRequest]) -> ProgramRow:
     )
 
 
-def programs(requests: Iterable[ReportRequest], sessions: Mapping[int, str | None]) -> ProgramsTable:
-    """`sessions`: every session a rules program claims -> its program's pool (None: the program has no pool)."""
+def programs(
+    requests: Iterable[ReportRequest],
+    sessions: Mapping[int, str | None],
+    *,
+    rank: Mapping[int, int] | None = None,
+    closed_to_aid: frozenset[int] = frozenset(),
+) -> ProgramsTable:
+    """`sessions`: every session a rules program claims -> its program's pool (None: the program has no pool).
+
+    `rank`: each session's place in the reader's order (bunking/session_order.py; owner Q8, 2026-10-09), inside its
+    pool; a session it names no place for, and any tie, goes by CampMinder id. "Session not matched" is always last.
+    `closed_to_aid`: the sessions whose rules program is not open to aid. One of them with no application is no row
+    (owner Q7, 2026-10-10: "hide sessions which are the no pool ones"), keyed off the rules and never the zero count;
+    with an application it shows. A session of an aided program shows even at 0."""
     every = [r for r in requests if r.counts_as_received]  # a posted duplicate is no application, nor a session's
     by_session: dict[tuple[str | None, int], list[ReportRequest]] = defaultdict(list)
     for request in every:
         by_session[_slot(request, sessions)].append(request)
     slots: dict[str | None, set[int]] = defaultdict(set)
     for session, pool in sessions.items():
+        if session in closed_to_aid and (pool, session) not in by_session:
+            continue
         slots[pool].add(session)
     for pool, session in by_session:
         slots[pool].add(session)
     groups: list[PoolGroup] = []
+    places = rank or {}
     for pool in sorted(slots, key=lambda p: (p is None, p or "")):
-        ordered = sorted(slots[pool], key=lambda s: (s == UNMATCHED_SESSION, s))
+        ordered = sorted(slots[pool], key=lambda s: (s == UNMATCHED_SESSION, places.get(s, len(places)), s))
         rows = tuple(_row(session, by_session.get((pool, session), [])) for session in ordered)
         members = [r for session in ordered for r in by_session.get((pool, session), [])]
         groups.append(PoolGroup(pool, rows, _row(UNMATCHED_SESSION, members)))

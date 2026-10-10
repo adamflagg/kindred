@@ -71,8 +71,34 @@ def test_percent_of_ask_names_todays_asks_the_outside_funder_exclusion_and_the_d
     assert note.text.startswith("% of ask: awarded $ ÷ the live requests' in-budget asks.")
     assert "Incl. grants adds outside grants and fully funded rounds to both sides" in note.text
     assert "Round 1 and All rounds" in note.text
-    # Owner A5 (2026-10-09): the denominator is on Asked's capped basis, and the note says so.
-    assert "capped as Asked is" in note.text
+    # Owner A5 (2026-10-09): the denominator is on Asked's capped basis, and the note says so. ux3 statistics-10
+    # rewords the mock-less "Asks are capped as Asked is." into a sentence that names the cap.
+    assert "In-budget asks are capped at the session's cost, as Asked is." in note.text
+    assert "Asks are capped as Asked is" not in note.text
+
+
+def test_the_statistics_notes_bold_the_terms_the_final_mock_bolds_beside_their_lead() -> None:
+    """ux3 statistics-7: the mock's notes also bold Awards, Incl. grants, appeal rate and R2 max fee %. Each is a term
+    the page sets bold wherever it occurs in the text, sent as `also_bold` so no markup sits in the words."""
+    assert BY_KEY["awarded"].also_bold == ("Awards",)
+    assert BY_KEY["pct_of_ask"].also_bold == ("Incl. grants",)
+    assert BY_KEY["appeals"].also_bold == ("appeal rate", "R2 max fee %")
+    assert BY_KEY["apps"].also_bold == ()
+    for key in ("awarded", "pct_of_ask", "appeals"):
+        for term in BY_KEY[key].also_bold:
+            assert term in BY_KEY[key].text, (key, term)
+
+
+def test_percent_of_ask_incl_grants_adds_each_grant_to_both_sides() -> None:
+    """Owner Q9 (2026-10-10, a number-meaning change): note 4's "to both sides" is now what the figure does."""
+    assert "adds outside grants and fully funded rounds to both sides" in BY_KEY["pct_of_ask"].text
+    text = BY_KEY["pct_of_ask_with_grants"].text
+    assert "each grant counts on both sides" in text
+    # Coordinator (2026-10-10): the note promises no ceiling (an award above its ask can still pass 100%); it says what
+    # the grants do, and that a funder-paid round's money is not added to the asks a second time.
+    assert "a grant larger than the ask doesn't push the share past it" in text
+    assert "never passes 100%" not in text
+    assert "already in the asks" in text
 
 
 def test_awarded_says_live_for_the_request_standing_never_included() -> None:

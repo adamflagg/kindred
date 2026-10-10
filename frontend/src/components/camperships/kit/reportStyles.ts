@@ -30,8 +30,8 @@ export const TH_DECIDED_INK = `${TH_SHAPE.replace('text-muted-foreground', AMBER
 export const TD_DECIDED_INK = `${TD_NUMBER} ${AMBER_INK}`
 
 /** A group's name over its rows (Programs' pools; Development's sections). */
-export const ROW_HEADING = `${CS_BAND} ${CS_BAND_EDGE} text-foreground border-border border-b px-2 py-[5px] text-left text-xs font-semibold`
-export const ROW_SUBTOTAL = 'font-semibold'
+export const ROW_HEADING = `${CS_BAND} ${CS_BAND_EDGE} text-foreground border-border border-b px-2 py-[5px] text-left text-[13.5px] leading-5 font-bold`
+export const ROW_SUBTOTAL = 'font-bold'
 /**
  * A total row: the band, bold, and the band's edge rule on its CELLS (a separated-borders table
  * draws no border on a <tr>). The edge colours are CS_BAND_EDGE's, written out for Tailwind.
@@ -42,7 +42,7 @@ export const ROW_END = 'text-muted-foreground italic'
 
 /** "P" or "r" beside a table's or a season's name (§9.7: every figure prints its basis). */
 export const BASIS_BADGE =
-  'ml-1.5 rounded bg-sky-100 px-1 text-xs font-semibold text-sky-800 dark:bg-sky-900/40 dark:text-sky-200'
+  'ml-1.5 inline-block cursor-help rounded-full bg-sky-100 px-2 py-px text-[11.5px] leading-4 font-semibold text-sky-800 dark:bg-sky-900/40 dark:text-sky-200'
 /** The muted description right after a table's title, on the same row (the mock's CF.thead desc). */
 export const REPORT_DESC = 'text-muted-foreground min-w-0 flex-1 truncate text-xs'
 /** A table's heading: the sans card heading, not the display serif (owner Q7 true-up). */
@@ -52,8 +52,7 @@ export const REPORT_NOTE = 'text-muted-foreground text-xs'
 /** "Decided (not yet offered)": amber, never "awarded" (D130; S4-3). */
 export const DECIDED_INK = 'text-amber-700 dark:text-amber-400'
 
-/** A count that opens its requests (the mock's `.lnk`): primary, semibold, dotted underline. */
-export const COUNT_LINK =
-  'text-primary border-primary border-b border-dotted font-semibold whitespace-nowrap tabular-nums'
+/** A count that opens its requests (the final kit's `table.cf-grid td a`): plain primary at weight 500, underlined on hover only. */
+export const COUNT_LINK = 'text-primary font-medium whitespace-nowrap tabular-nums hover:underline'
 /** A divider between a table's words and its figures (the mock's `.bl`), on a header and its cells. */
 export const DIVIDER_BEFORE = CS_RULE_GROUP

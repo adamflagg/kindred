@@ -609,13 +609,19 @@ describe('Asked (as typed): the raw sum beside the capped Asked, in Copy and the
 })
 
 describe('the tier table footnote lines (owner A2 and A3, 2026-10-09)', () => {
-  it('always says round chips do not add up to All rounds, and adds the cap words when some were capped', () => {
+  it('says round chips do not add up to All rounds only when R2, R3 or All is picked, and adds the cap words when some were capped', () => {
+    // pin changed (ux3 statistics-9, coordinator ruling): the caveat was on every chip, R1 included, where it
+    // explains nothing the view shows.
     expect(ROUND_CHIPS_NOTE).toBe(
       "Round chips don't add up to All rounds: an appeal re-asks part of the earlier shortfall, so All rounds counts it once."
     )
-    expect(tierNotes(STATISTICS.total)).toEqual([ROUND_CHIPS_NOTE])
+    expect(tierNotes(STATISTICS.total, '1')).toEqual([])
+    for (const round of ['2', '3', 'all'] as const) {
+      expect(tierNotes(STATISTICS.total, round)).toEqual([ROUND_CHIPS_NOTE])
+    }
     const capped = { ...STATISTICS.total, requests_capped: 2 }
-    expect(tierNotes(capped)).toEqual([ROUND_CHIPS_NOTE, cappedAskWords(capped)])
+    expect(tierNotes(capped, '1')).toEqual([cappedAskWords(capped)])
+    expect(tierNotes(capped, 'all')).toEqual([ROUND_CHIPS_NOTE, cappedAskWords(capped)])
   })
 
   it("carries them in By tier's Copy heading only when given as the heading notes", () => {
@@ -623,12 +629,35 @@ describe('the tier table footnote lines (owner A2 and A3, 2026-10-09)', () => {
     const columns = tierColumns(STATISTICS, noNotes)
     const rows = tierRows(STATISTICS, CAMP_R1, linkOf)
     const text = copyText(
-      statisticsHeading(STATISTICS, 'By tier', true, tierNotes(capped)),
+      statisticsHeading(STATISTICS, 'By tier', true, tierNotes(capped, 'all')),
       columns,
       rows
     )
     expect(text).toContain(ROUND_CHIPS_NOTE)
     expect(text).toContain("2 requests above their session's cost counted at the cost.")
     expect(statisticsHeading(STATISTICS, 'By tier').notes).toBeUndefined()
+  })
+})
+
+describe('Statistics money and widths as the final mock draws them (ux3 statistics)', () => {
+  it('shows the tier table money in whole dollars, with the exact figure behind it (statistics-6)', () => {
+    const cents = {
+      ...STATISTICS,
+      rows: STATISTICS.rows.map((r, i) => (i === 0 ? { ...r, asked: 102577.2 } : r)),
+    }
+    const row = tierRows(cents, CAMP_R1, linkOf)[0]!
+    const asked = tierColumns(cents, noNotes).findIndex((c) => c.key === 'asked')
+    expect(row.cells[asked]).toMatchObject({ kind: 'money', value: 102577.2, whole: true })
+    const text = copyText(
+      statisticsHeading(cents, 'By tier'),
+      tierColumns(cents, noNotes),
+      tierRows(cents, CAMP_R1, linkOf)
+    )
+    expect(text).toContain('$102,577.20')
+  })
+
+  it("gives every column of the cancelled and committee tables a width, so they scale to the card as the mock's do (statistics-m4)", () => {
+    expect(cancelledColumns(noNotes).map((c) => c.width)).toEqual([420, 200, 140, 120, 140])
+    expect(OUTCOME_COLUMNS.map((c) => c.width)).toEqual([300, 150, 160, 150, 160, 200])
   })
 })

@@ -3,6 +3,8 @@ export interface DefinitionNote {
   readonly text: string
   /** The lead term, set bold when the text opens with it and `:`, `,` or ` =` follows; plain otherwise. */
   readonly term?: string
+  /** More terms set bold wherever they occur in the text, beside the lead term ("Awards", "Incl. grants"). */
+  readonly alsoBold?: readonly string[]
 }
 
 /** At most six numbered notes per page view (design-language §12; owner: "way too many footer notes"). */

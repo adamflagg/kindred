@@ -18,10 +18,17 @@ interface ReportValueBase {
   readonly muted?: boolean | undefined
   /** What the screen draws in place of the words (a name that fits or shortens); Copy and the CSV keep the words. */
   readonly display?: ReactNode | undefined
+  /** A label that clamps to TWO lines on screen instead of cutting at one (the kit's `.cf-cut2`); the title keeps the words. */
+  readonly twoLines?: true | undefined
 }
 
 export type ReportValue =
-  | (ReportValueBase & { readonly kind: 'money'; readonly value: number | null })
+  | (ReportValueBase & {
+      readonly kind: 'money'
+      readonly value: number | null
+      /** The screen rounds to the whole dollar; Copy and the CSV keep the exact figure (ux3 statistics-6). */
+      readonly whole?: true | undefined
+    })
   | (ReportValueBase & { readonly kind: 'count'; readonly value: number | null })
   | (ReportValueBase & { readonly kind: 'pct'; readonly value: number | null })
   | (ReportValueBase & {
@@ -36,6 +43,15 @@ export type ReportValue =
 export const moneyValue = (value: number | null | undefined): ReportValue => ({
   kind: 'money',
   value: value ?? null,
+})
+/**
+ * Money the screen draws in whole dollars, as the final mocks do ("$1,337,495"); Copy and the CSV carry the exact
+ * figure, cents and all (ux3 statistics-6, coordinator ruling 2026-10-10).
+ */
+export const wholeMoneyValue = (value: number | null | undefined): ReportValue => ({
+  kind: 'money',
+  value: value ?? null,
+  whole: true,
 })
 /**
  * An average (Avg ask, Avg request, Avg award): whole dollars, as every Reports mock draws them. The
@@ -127,6 +143,8 @@ export interface ReportColumn {
   /** The column's definition note number (`useAidDefinitions().numberOf`), shown as ¹. */
   readonly note?: number | null | undefined
   readonly width?: number | undefined
+  /** Body cells in bold (Statistics' Total awarded column, the mock's `<b>`); Copy and the CSV are unchanged. */
+  readonly strong?: true | undefined
   /** `left`: a column of words (a pool, a round, a group), left-aligned as the mocks draw it; figures align right. */
   readonly align?: 'left' | undefined
   /**
@@ -188,6 +206,13 @@ export interface ReportHeading {
   readonly requestSet?: string | null | undefined
   /** Footnote lines after the others, each its own line in Copy and the CSV (the cap note, owner A3). */
   readonly notes?: readonly string[] | undefined
+}
+
+/** The basis badge's hover: what P or r means for the table it sits on (the kit's `.cf-pill.sky` title). */
+export function basisTitle(table: string, basis: 'P' | 'r'): string {
+  return basis === 'P'
+    ? `${table}: every figure is Posted (P), from the dashboard's Posted amounts.`
+    : `${table}: every figure is as reported (r), typed once.`
 }
 
 export const BASIS_WORDS = {
