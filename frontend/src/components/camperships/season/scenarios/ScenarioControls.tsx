@@ -1,7 +1,14 @@
 import { useCallback, useRef, useState, type ReactNode } from 'react'
 
 import type { AidRequestSet } from '../../../../services/camperships/aidApi'
-import { CS_BTN, CS_BTN2, CS_INPUT, CS_SELECT_CTL, CS_SMALL } from '../../kit/csType'
+import {
+  CS_BTN,
+  CS_BTN2,
+  CS_INPUT,
+  CS_SELECT_CTL,
+  CS_SMALL,
+  CS_TOOLBAR_LEAD,
+} from '../../kit/csType'
 import type { LoadFrom } from '../../../../hooks/camperships/useAidScenarioDraft'
 import { AidPicker } from '../../kit/AidPicker'
 import { campToday } from '../../kit/dates'
@@ -69,28 +76,48 @@ export function RenameBox({
 }
 
 /**
- * The control line under the tab bar (scenarios-2; the mock's one toolbar), on the kit AidToolbar, left to right:
- * - the lead, "56 held · Oct 8, 4:18 am", with the full pile sentence as its title (the pile changes only on
- *   Update Applications, owner line 683);
+ * The pile, in the Season tab row's right-hand slot before Approve… (owner, 2026-10-10, toolbar fit E): "56 held ·
+ * Oct 8, 4:18 am", with the full pile sentence as its title, then Update Applications (the pile changes only there,
+ * owner line 683). The lead keeps the toolbar's type size, so it reads as it did on the toolbar.
+ */
+export function ScenarioPile(props: {
+  /** The full pile sentence: the lead's title. */
+  pill: string
+  /** The lead's words: "56 held", and its moment (muted) when a pile is held. */
+  lead: { readonly held: string; readonly when: string | null }
+  onUpdate: () => void
+}) {
+  return (
+    <>
+      <span className={`${CS_TOOLBAR_LEAD} text-[12.5px] leading-[18px]`} title={props.pill}>
+        {props.lead.held}
+        {props.lead.when !== null && (
+          <span className="text-muted-foreground font-normal">{` · ${props.lead.when}`}</span>
+        )}
+      </span>
+      <button type="button" className={CS_BTN2} onClick={props.onUpdate}>
+        Update Applications
+      </button>
+    </>
+  )
+}
+
+/**
+ * The control line under the tab bar (scenarios-2; the mock's one toolbar), on the kit AidToolbar, left to right
+ * (the pile and Update Applications sit in the tab row: ScenarioPile):
  * - Sandbox | Compare;
  * - From ▾, one picker with two groups (Start from; Kept) and ✎ beside it renaming the loaded kept option;
  * - Price ▾;
  * - Posted ▾ once a round is posted (owner, 2026-10-10): Stands (regular), or No postings (as if nothing is posted);
  * - on the right the status slot (change count, "Nothing new since …", a refusal, the "isn't kept" notice), then
- *   Discard Changes, Make ‹B› the Rules Draft… and Keep… (in Compare, Columns, By tier and Print), and Update
- *   Applications last.
+ *   Discard Changes, Make ‹B› the Rules Draft… and Keep… (in Compare, Columns, By tier and Print).
  * Nothing here wraps and nothing adds a row: a refusal is the status, never a banner.
  */
 export function ScenarioControls(props: {
   panel: 'sandbox' | 'compare'
   compareCount: number
   onPanel: (panel: 'sandbox' | 'compare') => void
-  /** The full pile sentence: the lead's title. */
-  pill: string
-  /** The lead's words: "56 held", and its moment (muted) when a pile is held. */
-  lead: { readonly held: string; readonly when: string | null }
   nothingNew: string | null
-  onUpdate: () => void
   price: AidRequestSet
   onPrice: (set: AidRequestSet) => void
   start: readonly StartEntry[]
@@ -180,14 +207,6 @@ export function ScenarioControls(props: {
   return (
     <AidToolbar
       className="print:hidden"
-      lead={
-        <span title={props.pill}>
-          {props.lead.held}
-          {props.lead.when !== null && (
-            <span className="text-muted-foreground font-normal">{` · ${props.lead.when}`}</span>
-          )}
-        </span>
-      }
       left={
         <>
           <AidSegmented
@@ -215,9 +234,6 @@ export function ScenarioControls(props: {
               ) : (
                 <AidPicker
                   label="From"
-                  // Capped below the kit's 220px: with Posted ▾ the one-row toolbar has no slack, and at 1440 a
-                  // long kept name beside "No postings" cut "1 change" (measured 10-10). The title reads whole.
-                  className="max-w-[156px] [&>button]:min-w-0"
                   value={selected}
                   disabled={!props.canEdit}
                   options={fromOptions}
@@ -367,9 +383,6 @@ export function ScenarioControls(props: {
               {keepPop}
             </span>
           )}
-          <button type="button" className={CS_BTN2} onClick={props.onUpdate}>
-            Update Applications
-          </button>
         </>
       }
     />

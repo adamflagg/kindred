@@ -70,10 +70,22 @@ vi.mock('../../components/camperships/season/rules/RulesTab', async () => {
     ),
   }
 })
-// Also keeps the real tab's hooks out of this suite.
-vi.mock('../../components/camperships/season/scenarios/ScenariosTab', () => ({
-  ScenariosTab: () => <div>Scenarios tab body</div>,
-}))
+// Also keeps the real tab's hooks out of this suite. It draws its pile in the tab row, as the real tab does (toolbar
+// fit E), through the page's slot.
+vi.mock('../../components/camperships/season/scenarios/ScenariosTab', async () => {
+  const { InSeasonTabRow } = await import('../../components/camperships/season/SeasonTabRow')
+  return {
+    ScenariosTab: () => (
+      <div>
+        Scenarios tab body
+        <InSeasonTabRow>
+          <span>Pile stub</span>
+          <button type="button">Update Applications</button>
+        </InSeasonTabRow>
+      </div>
+    ),
+  }
+})
 
 const REGISTRAR = ['financial_aid.view', 'financial_aid.casework']
 const FINANCE = [...REGISTRAR, 'financial_aid.rules']
@@ -214,6 +226,28 @@ describe('the tab bar right side (spec §4; Review Focus 5)', () => {
     renderAt('/aid/season/history')
     expect(screen.queryByRole('button', { name: 'Download CSV' })).toBeNull()
   })
+
+  // Owner, 10-10 (toolbar fit E): on Scenarios only, the pile and Update Applications sit before Approve….
+  it('gives Scenarios a slot in the tab row, before Approve…, holding its pile and Update Applications', () => {
+    granted = FINANCE
+    renderAt('/aid/season/scenarios')
+    const nav = screen.getByRole('navigation')
+    expect(within(nav).getByTestId('season-tab-row-slot')).toBeInTheDocument()
+    expect(within(nav).getByText('Pile stub')).toBeInTheDocument()
+    const names = within(nav)
+      .getAllByRole('button')
+      .map((b) => b.textContent)
+    expect(names).toEqual(['Update Applications', 'Approve…'])
+  })
+
+  it.each(['rounds-budget', 'rules', 'history'])(
+    'leaves the tab row of %s without a slot',
+    (tab) => {
+      granted = FINANCE
+      renderAt(`/aid/season/${tab}`)
+      expect(screen.queryByTestId('season-tab-row-slot')).toBeNull()
+    }
+  )
 
   it('never shows Approve… to the registrar', () => {
     granted = REGISTRAR

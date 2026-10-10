@@ -16,6 +16,7 @@ import { QueryGuard } from '../../../QueryGuard'
 import { CS_AMBER_NOTE, CS_CARD } from '../../kit/csType'
 import { campToday, formatLongDate } from '../../kit/dates'
 import { AidDefinitionNotes } from '../../shell/AidDefinitionNotes'
+import { InSeasonTabRow } from '../SeasonTabRow'
 import { rulesVocabulary } from '../rules/rulesModel'
 import { CompareTable, CompareTools } from './CompareTable'
 import {
@@ -50,7 +51,7 @@ import { SandboxEquityCard } from './SandboxEquityCard'
 import { SandboxIncomeCard } from './SandboxIncomeCard'
 import { SandboxTierCard } from './SandboxTierCard'
 import { bindingOf, changeCount } from './sandboxModel'
-import { ScenarioControls } from './ScenarioControls'
+import { ScenarioControls, ScenarioPile } from './ScenarioControls'
 import { builtOnWords } from './scenarioModel'
 import { SCENARIO_PAGE_NOTES } from './scenarioNotes'
 import { SpendTable } from './SpendTable'
@@ -206,14 +207,19 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
         sourceNames={sourceNames}
         onClose={() => setPromoting(null)}
       />
+      {/* Owner, 10-10 (toolbar fit E): the pile and Update Applications sit in the tab row, before Approve…. */}
+      <InSeasonTabRow>
+        <ScenarioPile
+          pill={pillWords(snapshot)}
+          lead={leadWords(snapshot)}
+          onUpdate={() => void work.update()}
+        />
+      </InSeasonTabRow>
       <ScenarioControls
         panel={view.panel}
         compareCount={view.panel === 'compare' || view.anyColumn ? checked.length : 0}
         onPanel={(panel) => write({ panel: panel === 'compare' ? 'compare' : null })}
-        pill={pillWords(snapshot)}
-        lead={leadWords(snapshot)}
         nothingNew={work.nothingNew && snapshot !== null ? nothingNewWords(snapshot) : null}
-        onUpdate={() => void work.update()}
         price={view.requestSet}
         onPrice={(set) => write({ through: requestSetParam(set) })}
         posted={isLocked ? (asIfUnposted ? 'none' : 'stands') : null}
