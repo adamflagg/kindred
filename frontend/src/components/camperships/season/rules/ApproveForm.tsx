@@ -71,9 +71,12 @@ const reasonOf = (caught: unknown) => (caught instanceof Error ? caught.message 
  * - a failed read says so; the form stays, and Approve or Cancel are always there.
  */
 export function ApproveForm({
+  initial,
   onDone,
   onBusyChange,
 }: {
+  /** The section open when the form opened; read once, so browsing the list never re-ticks. */
+  initial: ApiAidRulesSection
   /** The approval's outcome, or null when cancelled. */
   onDone: (approved: Approved | null) => void
   /** Told when a submit starts and ends, so the page can keep the panel open through a tab switch. */
@@ -88,6 +91,7 @@ export function ApproveForm({
   const [recheck, setRecheck] = useState<Recheck | null>(null)
   // Busy from the click through every read and the write, until the form is done or refused.
   const [busy, setBusy] = useState(false)
+  const [first] = useState(initial)
   const alive = useRef(true)
   useEffect(() => {
     alive.current = true
@@ -110,20 +114,17 @@ export function ApproveForm({
     void fetchFresh().then(
       (fresh) => {
         setSeen(fresh)
-        // The final design opens with every changed section checked, as both approved mocks do (the owner reads
-        // each line and unchecks what is not ready). Not one with errors: its box is disabled, but a ticked one
-        // would still be sent.
+        // Only the open section (Decision 17), not every changed one as the mocks draw it: approving the budget
+        // locks the season's total (#3094), and the owner has not ruled on pre-ticking more (coordinator, 10-10).
+        // Not pre-ticked with errors: its box is disabled, but a ticked one would still be sent.
+        const row = fresh.sections.find((s) => s.section === first)
         setTicked(
-          new Set(
-            draftSections(fresh).filter(
-              (section) => (fresh.sections.find((s) => s.section === section)?.errors ?? 0) === 0
-            )
-          )
+          new Set(draftSections(fresh).includes(first) && (row?.errors ?? 0) === 0 ? [first] : [])
         )
       },
       (caught: unknown) => setError(`Couldn't load the rules draft: ${reasonOf(caught)}`)
     )
-  }, [fetchFresh])
+  }, [fetchFresh, first])
   useEffect(open, [open])
 
   if (seen === null) {

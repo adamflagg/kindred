@@ -89,7 +89,8 @@ function RoundsBudgetBody({ budget, view }: { budget: ApiAidBudget; view: AidVie
   const live = view.asOf.kind !== 'past'
   const { approving, locked, relocks } = useSeasonChrome()
   // Edit Plan… waits while the Approve panel is open, as Rules' Edit… does ("Approve or cancel first.").
-  // It also serves a season with no approved rules yet: the editor then sets the first budget (the mock's no-rules state).
+  // It also serves a season with no approved rules yet, where the editor sets the first budget; the mock draws no such
+  // state (rounds-18), and the save is the Rules draft's own, which never needed approved rules (coordinator 10-10).
   const canPlan = finance && live && draft.data !== undefined && !approving && !locked
   const [editing, setEditing] = useState(false)
   const [typed, setTyped] = useState<TypedPlan | null>(null)

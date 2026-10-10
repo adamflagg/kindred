@@ -151,9 +151,11 @@ describe('SeasonChrome (spec §4)', () => {
     renderChrome()
     await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
     await screen.findByLabelText('Notes')
-    // the panel starts as the mock does, every changed section checked, so (owner ruling 10-09) it may promise
+    // owner ruling 10-09: with only some sections ticked, no promise to price the season
     expect(
-      screen.getByText(/^Approving puts them in effect: v\d+ then prices the season$/)
+      screen.getByText(
+        /^Approving these sections: v\d+ prices the season once every section is approved\.$/
+      )
     ).toBeInTheDocument()
     const go = screen.getByRole('button', { name: /^Approve \d Sections?$/ })
     expect(go).toBeDisabled()

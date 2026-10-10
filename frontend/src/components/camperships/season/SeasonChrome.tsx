@@ -257,11 +257,12 @@ function UnlockForm() {
 /** The Approve panel, at the top of the tab's content (Rules: under its lead line). */
 export function ApprovePanel() {
   const year = useYear()
-  const { approving, closeApprove, setNotice, setApproveBusy } = useSeasonChrome()
+  const { approving, closeApprove, setNotice, setApproveBusy, section } = useSeasonChrome()
   if (!approving) return null
   return (
     <ApproveForm
       key={year}
+      initial={section}
       onBusyChange={setApproveBusy}
       onDone={(approved) => {
         closeApprove()
