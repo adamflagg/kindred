@@ -178,7 +178,17 @@ function renderAt(path: string) {
 }
 
 // §3: Program is the white AidPicker (a Listbox button named "Program: …"), not a native control.
-const programButton = () => screen.getByRole('button', { name: /^Program:/ })
+// Owner ruling (final audit): Requests' Program is labelled "as priced", with one note on the page.
+it('says Program is the program the rules price under, and how Ledger and Grants differ', async () => {
+  // Rendered by the page tests below; the note is a static line under the grid.
+  const { ProgramWordsNote } = await import('../../components/camperships/shell/ProgramWordsNote')
+  render(<ProgramWordsNote which="priced" />)
+  expect(screen.getByTestId('program-words-note')).toHaveTextContent(
+    'The Ledger and Grants use the program in CampMinder'
+  )
+})
+
+const programButton = () => screen.getByRole('button', { name: /^Program \(as priced\):/ })
 const openProgram = () => userEvent.click(programButton())
 const pickProgram = async (name: string) => {
   await openProgram()

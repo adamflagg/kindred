@@ -286,6 +286,8 @@ export interface EffectLine {
   readonly sym: 'ok' | 'hand' | 'warn' | 'info'
   readonly lead?: string
   readonly text: string
+  /** Several reasons, one per line under the words (never joined into a run-on sentence). */
+  readonly items?: readonly string[]
   readonly then?: string
 }
 
@@ -347,7 +349,9 @@ export function confirmEffects(
         return {
           sym: 'warn',
           lead: `${round(n.round)} not marked Posted`,
-          text: `: ${joinWords(n.reasons)}, after the ${day} posting`,
+          ...(n.reasons.length > 1
+            ? { text: `: after the ${day} posting`, items: n.reasons }
+            : { text: `: ${joinWords(n.reasons)}, after the ${day} posting` }),
           then: `→ Check the offer, then Mark Posted · it keeps the higher of ${day}'s amount and today's`,
         }
       }),

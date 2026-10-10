@@ -13,6 +13,7 @@ import { HouseholdLabelText } from '../household/HouseholdLabel'
 import { aidHref, type AidView } from '../kit/asOf'
 import { AidPicker } from '../kit/AidPicker'
 import { AidTable, type AidColumn, type AidCsvExtra } from '../kit/AidTable'
+import { ProgramWordsNote } from '../shell/ProgramWordsNote'
 import { CS_BTN, CS_CUT, CS_LINK_CELL, CS_OK_INK, CS_PMETA, CS_TOOLBAR_STATUS } from '../kit/csType'
 import { moneyCsv } from '../kit/money'
 import { Money } from '../kit/MoneyText'
@@ -220,7 +221,7 @@ export function RegisterTab({ view }: { view: AidView }) {
       {
         key: 'grantor',
         header: 'Grantor',
-        width: 196,
+        width: 180,
         value: (r) => (r.grantor_key === '' ? 'no grantor yet' : r.grantor_name),
         title: (r) =>
           r.grantor_key === ''
@@ -241,8 +242,8 @@ export function RegisterTab({ view }: { view: AidView }) {
       },
       {
         key: 'program',
-        header: 'Program',
-        width: 114,
+        header: 'Program (in CampMinder)',
+        width: 168,
         value: (r) => programCsv(r, needsCamper),
         title: (r) =>
           programWords(r) !== '—'
@@ -255,7 +256,7 @@ export function RegisterTab({ view }: { view: AidView }) {
       {
         key: 'offsets',
         header: 'Aid request it offsets',
-        width: 192,
+        width: 176,
         value: (r) => offsetWords(r, needsCamper),
         title: (r) => offsetTitle(r, needsCamper),
         render: (r) =>
@@ -379,9 +380,9 @@ export function RegisterTab({ view }: { view: AidView }) {
                 className={GRANTOR_WIDTH}
               />
             </ToolbarLabel>
-            <ToolbarLabel text="Program" plain>
+            <ToolbarLabel text="Program (in CampMinder)" plain>
               <AidPicker
-                label="Program"
+                label="Program (in CampMinder)"
                 value={filters.program ?? ''}
                 options={programOptions}
                 onChange={(next) => setParam('program', next === '' ? null : next)}
@@ -468,6 +469,7 @@ export function RegisterTab({ view }: { view: AidView }) {
               arrowKeys
               emptyText="No grants match."
             />
+            <ProgramWordsNote which="campminder" />
           </div>
         )
       }}

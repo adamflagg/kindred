@@ -16,6 +16,7 @@ import { formatLongDate } from '../kit/dates'
 import { moneyCsv } from '../kit/money'
 import { Money } from '../kit/MoneyText'
 import { AidDefinitionNotes } from '../shell/AidDefinitionNotes'
+import { ProgramWordsNote } from '../shell/ProgramWordsNote'
 import { LedgerFamilies } from './LedgerFamilies'
 import { useLedgerNotes, type NoteMark } from './useLedgerNotes'
 import {
@@ -69,7 +70,7 @@ function pivotColumns(
   return [
     {
       key: 'program',
-      header: 'Program',
+      header: 'Program (in CampMinder)',
       width: 260,
       pinned: true,
       value: (r) => summaryProgramWords(r.program, r.program_label),
@@ -312,6 +313,7 @@ export function LedgerTab({ view }: { view: AidView }) {
         )}
       </section>
       <AidDefinitionNotes surface="money-ledger" extra={marks.extra} boldTerm />
+      <ProgramWordsNote which="campminder" />
     </div>
   )
 }

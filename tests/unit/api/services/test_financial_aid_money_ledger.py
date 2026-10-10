@@ -188,6 +188,51 @@ def test_outside_and_incentive_lines_are_outside_grants_with_no_level() -> None:
     assert [p.level for p in pieces if not p.camp] == [None, None]
 
 
+def _household_grant(txn: int, *, session: int, basis: str = "household", person: int = 0) -> RegisterRow:
+    return RegisterRow(
+        kind="ledger",
+        transaction_cm_id=txn,
+        commitment_id="",
+        household_cm_id=1000001,
+        person_cm_id=person,
+        camper_basis=basis,  # type: ignore[arg-type]
+        session_cm_id=session,
+        program_family="family_camp",
+        grantor_key="",
+        source_key="",
+        source_family="other_outside",
+        funder_type="outside",
+        amount=Decimal(250),
+        recorded_on="2027-03-08",
+        recorded_at=None,
+        is_reversed=False,
+        reversal_date="",
+        cancelled=False,
+        counts=True,
+        fulfils_commitment_id="",
+        requests=(),
+    )
+
+
+def test_an_outside_grant_posted_to_the_household_carries_the_household_level_and_its_session() -> None:
+    """Final audit O3 (owner ruling): the lines card draws "Household level" and the Family Camp session for an outside
+    grant that sits on the household, as it does for camp aid. A grant on a camper keeps no level."""
+    store = _johnsons()
+    camp = seed_line(store, 9001, "1500")
+    placed = SeasonLedger(by_request={EMMA: (camp,)}, read=True)
+    register = [
+        _household_grant(9101, session=1000301),
+        _household_grant(9102, session=1000102, basis="placed", person=1000011),
+    ]
+    pieces = _pieces(store, [_camp(camp), _other(9101, "250"), _other(9102, "250")], placed, register=register)
+    by_txn = {p.transaction_cm_id: p for p in pieces}
+    assert (by_txn[9101].level, by_txn[9101].household_session_cm_id) == ("household", 1000301)
+    assert (by_txn[9102].level, by_txn[9102].household_session_cm_id) == (None, 0)
+    # A season before levels exist carries none on any piece.
+    old = _pieces(store, [_other(9101, "250")], placed, register=register, levels=False)
+    assert [p.level for p in old] == [None]
+
+
 def test_an_unclassified_line_counts_in_outside_grants() -> None:
     """Owner question 3 (default): a line whose description is still unclassified counts in Outside grants, so that
     nothing drops out of the Ledger (§8.1)."""

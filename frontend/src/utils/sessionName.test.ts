@@ -531,6 +531,16 @@ describe('sessionName — #2790 tiny vocabulary', () => {
     expect(sessionName(name, undefined, 'tiny')).toBe(expected)
   })
 
+  // Final audit (#2790 quirks): CampMinder's "H20" has a digit zero and "`n`" has backticks; the
+  // short form reads the words the camp means.
+  it.each([
+    ['Quest H20', 'Quest H2O'],
+    ['Surf `n` Turf Quest', 'Surf n Turf Quest'],
+    ['Rock and River Quest', 'Rock and River Quest'],
+  ])('quest %j reads %s in the short form', (name, expected) => {
+    expect(sessionName(name, 'quest', 'short')).toBe(expected)
+  })
+
   it.each([
     ['Women of the Wild Quest', 'Women of the Wild Quest'],
     ['Magical Mystery Tour', 'Magical Mystery Tour'],
@@ -583,6 +593,10 @@ describe('sessionName — #2790 tiny vocabulary', () => {
   it.each([
     ['{camp} Family School - East Bay cohort', 'TFS EB'],
     ['{camp} Family School - San Francisco cohort', 'TFS SF'],
+    ['Tawonga Family School - San Francisco cohort', 'TFS SF'],
+    ['Tawonga Family School - East Bay cohort', 'TFS EB'],
+    // The cohort after the dash names the region, even when the name mentions the other one.
+    ['Family School - San Francisco cohort (East Bay families welcome)', 'TFS SF'],
     ['{camp} Family School (Marin Cohort)', '{camp} Family School (Marin Cohort)'],
   ])('Family School %j → %s', (name, expected) => {
     expect(sessionName(name, 'school', 'tiny')).toBe(expected)
@@ -650,6 +664,9 @@ describe('sessionName — #2790 short vocabulary', () => {
   it.each([
     ['{camp} Family School - East Bay cohort', 'Family School EB'],
     ['{camp} Family School - San Francisco cohort', 'Family School SF'],
+    ['Tawonga Family School - San Francisco cohort', 'Family School SF'],
+    ['Tawonga Family School - East Bay cohort', 'Family School EB'],
+    ['Family School - San Francisco cohort (East Bay families welcome)', 'Family School SF'],
     ['{camp} Family School (Marin Cohort)', '{camp} Family School (Marin Cohort)'],
   ])('Family School %j → %s', (name, expected) => {
     expect(sessionName(name, 'school', 'short')).toBe(expected)

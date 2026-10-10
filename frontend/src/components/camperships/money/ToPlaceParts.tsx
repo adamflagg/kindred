@@ -77,6 +77,11 @@ export function EffectList({ lines }: { lines: readonly EffectLine[] }) {
       <>
         {l.lead !== undefined && <b className="font-bold">{l.lead}</b>}
         {l.text}
+        {l.items?.map((item) => (
+          <span key={item} className="block pl-3">
+            · {item}
+          </span>
+        ))}
       </>
     ),
     ...(l.then === undefined ? {} : { then: l.then }),

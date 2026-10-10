@@ -32,8 +32,10 @@ describe('the nav (D7 as amended by D64, D65)', () => {
     expect(labels(AID_SECTIONS)).toEqual(['Today', 'Requests', 'Money', 'Season', 'Reports'])
   })
 
-  it('shows the registrar every link', () => {
-    expect(labels(visibleSections(REGISTRAR))).toHaveLength(5)
+  // Owner ruling (final audit): Today is parked. It stays a section (its route works by URL) but
+  // the nav does not draw it, until it is built.
+  it('hides Today from the nav and shows the registrar the other four', () => {
+    expect(labels(visibleSections(REGISTRAR))).toEqual(['Requests', 'Money', 'Season', 'Reports'])
   })
 
   it('shows a summary-only user Reports alone (D65)', () => {
@@ -41,7 +43,7 @@ describe('the nav (D7 as amended by D64, D65)', () => {
   })
 
   it('shows an admin everything', () => {
-    expect(labels(visibleSections(ADMIN))).toHaveLength(5)
+    expect(labels(visibleSections(ADMIN))).toHaveLength(4)
   })
 })
 
@@ -88,8 +90,8 @@ describe('the tabs (URL-held, §3.6)', () => {
 })
 
 describe('aidHomePath', () => {
-  it('is Today for view holders and Reports › Development for summary-only (D65)', () => {
-    expect(aidHomePath(REGISTRAR)).toBe('/aid')
+  it('is Requests for view holders (Today is parked) and Reports › Development for summary-only (D65)', () => {
+    expect(aidHomePath(REGISTRAR)).toBe('/aid/requests')
     expect(aidHomePath(DEVELOPMENT)).toBe('/aid/reports/development')
   })
 })

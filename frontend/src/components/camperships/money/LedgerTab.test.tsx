@@ -109,11 +109,20 @@ const rowOf = (words: string) => {
 }
 
 describe('Money › Ledger (§8.1; F10 as money-v2 draws it)', () => {
+  // Owner ruling (final audit): the two Program vocabularies are both labelled, with one note.
+  it('says Program is CampMinder’s and how it differs from Requests', async () => {
+    renderTab('/aid/money/ledger', { year: 2027, asOf: { kind: 'live' } })
+    await screen.findAllByText('Summer Sessions')
+    expect(screen.getByTestId('program-words-note')).toHaveTextContent(
+      'Requests uses the program the rules price under'
+    )
+  })
+
   it("shows the family rows, then camp aid, outside grants and the total per program, in the rules' words and order", async () => {
     renderTab('/aid/money/ledger', { year: 2027, asOf: { kind: 'live' } })
     expect(screen.getByText('Family rows')).toBeInTheDocument()
     await screen.findAllByText('Summer Sessions')
-    for (const header of ['Program', 'Camp aid (net)', 'Outside grants', 'Total']) {
+    for (const header of ['Program (in CampMinder)', 'Camp aid (net)', 'Outside grants', 'Total']) {
       expect(screen.getByRole('columnheader', { name: header })).toBeInTheDocument()
     }
     expect(screen.queryByRole('columnheader', { name: 'Unclassified' })).toBeNull()

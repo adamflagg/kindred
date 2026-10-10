@@ -89,11 +89,19 @@ const rowOf = (key: number) => {
 
 /** Opens a toolbar picker by its name and chooses an option by its words. */
 async function pick(picker: 'Source' | 'Program' | 'Level', option: string | RegExp) {
-  await userEvent.click(screen.getByRole('button', { name: new RegExp(`^${picker}:`) }))
+  await userEvent.click(
+    screen.getByRole('button', {
+      name: new RegExp(`^${picker === 'Program' ? 'Program \\(in CampMinder\\)' : picker}:`),
+    })
+  )
   await userEvent.click(await screen.findByRole('option', { name: option }))
 }
 const optionWords = async (picker: 'Source' | 'Program' | 'Level') => {
-  await userEvent.click(screen.getByRole('button', { name: new RegExp(`^${picker}:`) }))
+  await userEvent.click(
+    screen.getByRole('button', {
+      name: new RegExp(`^${picker === 'Program' ? 'Program \\(in CampMinder\\)' : picker}:`),
+    })
+  )
   return (await screen.findAllByRole('option')).map((o) => o.textContent.replace(/^✓/, ''))
 }
 const tfoot = () => {
@@ -226,7 +234,7 @@ describe('Money › Ledger family rows (P-22)', () => {
     const toolbars = document.querySelectorAll('[data-aid-toolbar]')
     expect(toolbars).toHaveLength(1)
     const bar = toolbars[0] as HTMLElement
-    for (const name of ['Source: All', 'Program: All', 'Level: All']) {
+    for (const name of ['Source: All', 'Program (in CampMinder): All', 'Level: All']) {
       expect(within(bar).getByRole('button', { name })).toBeInTheDocument()
     }
     expect(within(bar).getByPlaceholderText('Family, camper or CM ID')).toBeInTheDocument()
@@ -370,7 +378,9 @@ describe('Money › Ledger family rows (P-22)', () => {
     expect(screen.getByRole('button', { name: 'Source: old family' })).toBeInTheDocument()
     // Ruled test edit (coordinator 10-08, program_label): a program with no label reads
     // 'Other program' (was 'Old program', the key spelled out).
-    expect(screen.getByRole('button', { name: 'Program: Other program' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Program (in CampMinder): Other program' })
+    ).toBeInTheDocument()
     // A value the picker already offers is not listed twice.
     await userEvent.click(screen.getByRole('button', { name: /^Source:/ }))
     expect(await screen.findAllByRole('option', { name: 'camp fa' })).toHaveLength(1)

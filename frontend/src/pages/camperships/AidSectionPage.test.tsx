@@ -34,6 +34,7 @@ function renderAt(path: string) {
           }
         >
           <Route index element={<AidHome />} />
+          <Route path="today" element={<AidSectionPage section="today" />} />
           <Route path="requests" element={<AidSectionPage section="requests" />} />
           <Route path="season/:tab?" element={<AidSectionPage section="season" />} />
           <Route path="reports/:tab?" element={<AidSectionPage section="reports" />} />
@@ -96,8 +97,14 @@ describe('AidSectionPage before its slice lands (Decision 4)', () => {
 })
 
 describe('AidHome', () => {
-  it('is Today for a view holder, with no as-of', () => {
-    renderAt('/aid')
+  // Owner ruling (final audit): Today is parked, so /aid lands on Requests until it is built.
+  it('lands a view holder on Requests, keeping the season', () => {
+    renderAt('/aid?year=2027')
+    expect(screen.getByTestId('where')).toHaveTextContent('/aid/requests?year=2027')
+  })
+
+  it('still answers Today by its own URL, with no as-of', () => {
+    renderAt('/aid/today')
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Today')
     expect(screen.queryByText(/as of/)).toBeNull()
   })

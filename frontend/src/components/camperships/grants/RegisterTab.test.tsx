@@ -151,7 +151,7 @@ describe('Grants › Register (§8.2)', () => {
       'Camper',
       'Family',
       'Grantor',
-      'Program',
+      'Program in CampMinder',
       'Aid request it offsets',
       'Amount',
       'Where it stands',
@@ -266,7 +266,9 @@ describe('Grants › Register (§8.2)', () => {
     expect(bars).toHaveLength(1)
     const bar = bars[0] as HTMLElement
     expect(within(bar).getByRole('button', { name: 'Grantor: All' })).toBeInTheDocument()
-    expect(within(bar).getByRole('button', { name: 'Program: All' })).toBeInTheDocument()
+    expect(
+      within(bar).getByRole('button', { name: 'Program (in CampMinder): All' })
+    ).toBeInTheDocument()
     expect(within(bar).getByPlaceholderText('Camper, family, grantor')).toBeInTheDocument()
     const buttons = within(bar).getAllByRole('button')
     expect(buttons[buttons.length - 1]).toHaveTextContent(/Download CSV/)
@@ -295,6 +297,15 @@ describe('Grants › Register (§8.2)', () => {
     ).toBeInTheDocument()
     const actions = document.querySelector('[data-panel="actions"]') as HTMLElement
     expect(within(actions).getByText(/A grant line is CampMinder’s/)).toBeInTheDocument()
+  })
+
+  // Owner ruling (final audit): the two Program vocabularies are both labelled, with one note.
+  it('labels Program as CampMinder’s and says how it differs from Requests', async () => {
+    renderTab()
+    expect((await screen.findAllByText('Program (in CampMinder)')).length).toBeGreaterThan(0)
+    expect(screen.getByTestId('program-words-note')).toHaveTextContent(
+      'Requests uses the program the rules price under'
+    )
   })
 
   it('records a commitment for a camper on a request this season (D55; P-16)', async () => {
@@ -587,7 +598,7 @@ describe('Grants › Register (§8.2)', () => {
   it('words the Grantor and Program filters\' no-filter choice "All", sentence case like the Ledger', async () => {
     renderTab()
     await screen.findByRole('group', { name: 'Show' })
-    for (const name of ['Grantor', 'Program']) {
+    for (const name of ['Grantor', 'Program (in CampMinder)']) {
       await userEvent.click(screen.getByRole('button', { name: `${name}: All` }))
       expect(screen.getAllByRole('option')[0]).toHaveTextContent(/^(✓)?All$/)
       await userEvent.keyboard('{Escape}')

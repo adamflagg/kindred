@@ -272,8 +272,22 @@ def ledger_pieces(
             grant = grants.get(line.transaction_cm_id)
             program = (grant.program_family if grant is not None else "") or line.program_family
             person = grant.person_cm_id if grant is not None and grant.person_cm_id > 0 else line.person_cm_id
+            # An outside grant that sits on the household (a household program's line, or a household that never
+            # applied) reads as camp aid at household level does: the "household" level and, for Family Camp, the
+            # session of the household request it is for (owner ruling, final audit).
+            on_household = grant is not None and grant.camper_basis == "household" and grant.person_cm_id <= 0
             out.append(
-                _piece(ledger_line, family, live, line.amount, camp=False, program=program, level=None, person=person)
+                _piece(
+                    ledger_line,
+                    family,
+                    live,
+                    line.amount,
+                    camp=False,
+                    program=program,
+                    level="household" if on_household and live and levels else None,
+                    person=person,
+                    household_session=grant.session_cm_id if on_household and grant is not None else 0,
+                )
             )
             continue
         found = parts.get(line.transaction_cm_id, [])

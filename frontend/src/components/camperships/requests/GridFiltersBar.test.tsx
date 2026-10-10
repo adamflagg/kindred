@@ -41,7 +41,13 @@ function bar(props: { program?: string | null; pool?: string | null; round?: 1 |
   return { onChange, onProgramPool }
 }
 
-const programButton = () => screen.getByRole('button', { name: /^Program:/ })
+// Owner ruling (final audit): Requests' Program is the program the rules price under.
+it('labels the Program filter "as priced"', () => {
+  bar({})
+  expect(screen.getByText('Program (as priced)')).toBeInTheDocument()
+})
+
+const programButton = () => screen.getByRole('button', { name: /^Program \(as priced\):/ })
 const openProgram = async () => {
   await userEvent.click(programButton())
   return screen.findAllByRole('option')

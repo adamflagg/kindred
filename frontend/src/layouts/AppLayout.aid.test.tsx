@@ -106,9 +106,11 @@ describe('AppLayout on a Camperships page', () => {
     granted = [VIEW]
     renderAt('/aid/requests')
 
-    for (const label of ['Today', 'Requests', 'Money', 'Season', 'Reports']) {
+    for (const label of ['Requests', 'Money', 'Season', 'Reports']) {
       expect(screen.getByRole('link', { name: label })).toBeInTheDocument()
     }
+    // Today is parked: not in the nav (the route still answers by URL).
+    expect(screen.queryByRole('link', { name: 'Today' })).toBeNull()
     expect(screen.queryByRole('link', { name: 'Campers' })).toBeNull()
     expect(screen.queryByTestId('aid-nav-divider')).toBeNull()
     expect(screen.queryByRole('link', { name: 'Users' })).toBeNull()
@@ -158,10 +160,10 @@ describe('AppLayout on a Camperships page', () => {
     renderAt('/aid/season/rules')
 
     expect(screen.getByRole('link', { name: 'Season' })).toHaveClass('active')
-    expect(screen.getByRole('link', { name: 'Today' })).not.toHaveClass('active')
+    expect(screen.getByRole('link', { name: 'Requests' })).not.toHaveClass('active')
   })
 
-  it('carries the season and the as-of on section links; Today is always live (D15, D20)', () => {
+  it('carries the season and the as-of on section links (D15)', () => {
     granted = [VIEW]
     renderAt('/aid/requests?year=2025&as_of=2026-04-01')
 
@@ -169,16 +171,6 @@ describe('AppLayout on a Camperships page', () => {
     expect(new URLSearchParams(grants.split('?')[1]).get('year')).toBe('2027')
     expect(new URLSearchParams(grants.split('?')[1]).get('as_of')).toBe('2026-04-01')
     expect(grants.startsWith('/aid/money?')).toBe(true)
-    // useYear is mocked to 2027 in this file.
-    expect(screen.getByRole('link', { name: 'Today' }).getAttribute('href')).not.toContain('as_of')
-    expect(screen.getByRole('link', { name: 'Today' }).getAttribute('href')).toBe('/aid?year=2027')
-  })
-
-  it('marks Today only on /aid itself', () => {
-    granted = [VIEW]
-    renderAt('/aid')
-
-    expect(screen.getByRole('link', { name: 'Today' })).toHaveClass('active')
   })
 
   it('points the logo at /aid', () => {

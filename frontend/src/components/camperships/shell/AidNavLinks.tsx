@@ -9,7 +9,7 @@ import { aidHref, type AidAsOf } from '../kit/asOf'
 const LIVE: AidAsOf = { kind: 'live' }
 
 function isActive(section: AidSection, pathname: string): boolean {
-  if (section.key === 'today') return pathname === '/aid' || pathname === '/aid/'
+  if (section.key === 'today') return pathname === '/aid/today'
   return pathname === section.path || pathname.startsWith(`${section.path}/`)
 }
 
