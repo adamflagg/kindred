@@ -153,8 +153,8 @@ function tagOf(label: string, groupLabel: string, name: string): string | null {
   return label
 }
 
-/** The Camperships session order (owner Q8): main, embedded and AG by start date, then Quest, TLI, SCIT, Family Camp. */
-export const byDate = (a: CardRow, b: CardRow) => a.rank - b.rank
+/** Rows by their place in the Camperships session order (owner Q8; the rule itself lives in utils/sessionOrder.ts). */
+export const bySessionOrder = (a: CardRow, b: CardRow) => a.rank - b.rank
 
 export function cardView(
   doc: ProgramsCostsDoc,
@@ -200,20 +200,20 @@ export function cardView(
     const running = mine.filter((r) => !r.notRunning)
     const priced = running
       .filter((r) => r.kind !== 'per_person')
-      .sort((a, b) => SUB_ORDER.indexOf(a.sub) - SUB_ORDER.indexOf(b.sub) || byDate(a, b))
-    const perPerson = running.filter((r) => r.kind === 'per_person').sort(byDate)
+      .sort((a, b) => SUB_ORDER.indexOf(a.sub) - SUB_ORDER.indexOf(b.sub) || bySessionOrder(a, b))
+    const perPerson = running.filter((r) => r.kind === 'per_person').sort(bySessionOrder)
     const parentRunsHere = (ag: CatalogSession) =>
       running.some((r) => r.session.cmId === ag.parentId)
     return {
       pool: g.pool,
       label: g.label,
       running: [...priced, ...perPerson],
-      notRunning: mine.filter((r) => r.notRunning).sort(byDate),
+      notRunning: mine.filter((r) => r.notRunning).sort(bySessionOrder),
       agCount: ags.filter(parentRunsHere).length,
       subLabels: new Set(priced.map((r) => r.sub)).size >= 2,
     }
   })
-  return { groups: view, notOpen: rows.filter((r) => r.group === NOT_OPEN).sort(byDate) }
+  return { groups: view, notOpen: rows.filter((r) => r.group === NOT_OPEN).sort(bySessionOrder) }
 }
 
 export type EditField = 't' | 's' | 'i' | 'g' | 'nr'
@@ -480,7 +480,7 @@ export function changesSince(
       (a, b) =>
         groupIndex(a) - groupIndex(b) ||
         SUB_ORDER.indexOf(a.sub) - SUB_ORDER.indexOf(b.sub) ||
-        byDate(a, b)
+        bySessionOrder(a, b)
     )
   for (const row of flips) {
     lines.push({

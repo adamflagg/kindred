@@ -34,7 +34,7 @@ import {
   type CardSection,
   type EditField,
   type Edits,
-  byDate,
+  bySessionOrder,
   type ProgramShape,
   type ProgramsCostsDoc,
 } from './programsCostsModel'
@@ -47,8 +47,8 @@ const SUB_ORDER = Object.keys(SUBSECTION_LABELS)
 const inPlace = (rows: readonly CardRow[]): CardRow[] => [
   ...rows
     .filter((r) => r.kind !== 'per_person')
-    .sort((a, b) => SUB_ORDER.indexOf(a.sub) - SUB_ORDER.indexOf(b.sub) || byDate(a, b)),
-  ...rows.filter((r) => r.kind === 'per_person').sort(byDate),
+    .sort((a, b) => SUB_ORDER.indexOf(a.sub) - SUB_ORDER.indexOf(b.sub) || bySessionOrder(a, b)),
+  ...rows.filter((r) => r.kind === 'per_person').sort(bySessionOrder),
 ]
 
 const BOX =

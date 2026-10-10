@@ -100,7 +100,7 @@ describe('useAidSessionNames (Decision 28; M6)', () => {
     ])
   })
 
-  it('breaks start-date ties by cm_id so the picker order is stable', async () => {
+  it('reads in a stable server order (start date, then cm_id); the Q8 sort above decides the picker order', async () => {
     getFullList.mockClear()
     renderHook(() => useAidSessionNames(2028), { wrapper })
     await waitFor(() => expect(getFullList).toHaveBeenCalled())
