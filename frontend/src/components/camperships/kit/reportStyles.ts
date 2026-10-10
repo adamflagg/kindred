@@ -30,7 +30,7 @@ export const TH_DECIDED_INK = `${TH_SHAPE.replace('text-muted-foreground', AMBER
 export const TD_DECIDED_INK = `${TD_NUMBER} ${AMBER_INK}`
 
 /** A group's name over its rows (Programs' pools; Development's sections). */
-export const ROW_HEADING = `${CS_BAND} ${CS_BAND_EDGE} text-foreground border-border border-b px-2 py-[5px] text-left text-[13.5px] font-bold`
+export const ROW_HEADING = `${CS_BAND} ${CS_BAND_EDGE} text-foreground border-border border-b px-2 py-[5px] text-left text-[13.5px] leading-5 font-bold`
 export const ROW_SUBTOTAL = 'font-bold'
 /**
  * A total row: the band, bold, and the band's edge rule on its CELLS (a separated-borders table

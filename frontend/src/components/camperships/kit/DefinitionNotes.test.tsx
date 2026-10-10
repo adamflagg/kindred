@@ -179,7 +179,7 @@ describe('DefinitionNotes number', () => {
 })
 
 describe('DefinitionNotes: extra bold terms (ux3 statistics-7)', () => {
-  it('sets each also-bold term in bold wherever it occurs, beside the lead term', () => {
+  it('sets each also-bold term in bold at its first occurrence only, beside the lead term', () => {
     render(
       <DefinitionNotes
         notes={[
@@ -193,7 +193,7 @@ describe('DefinitionNotes: extra bold terms (ux3 statistics-7)', () => {
       />
     )
     const bolds = [...document.querySelectorAll('b')].map((b) => b.textContent)
-    expect(bolds).toEqual(['Awarded:', 'Awards', 'Awards'])
+    expect(bolds).toEqual(['Awarded:', 'Awards'])
     expect(screen.getByRole('listitem')).toHaveTextContent(
       '1. Awarded: Posted, net of clawbacks. Awards counts requests above $0; more Awards follow.'
     )

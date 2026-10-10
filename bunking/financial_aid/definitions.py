@@ -23,7 +23,7 @@ class Definition:
     text: str  # the whole note, opening with `term`
     spec: str  # the clean spec section that holds the signed meaning
     rulings: tuple[str, ...]
-    # Terms the page sets bold wherever they occur in `text`, beside the lead term (the final mocks bold "Awards",
+    # Terms the page sets bold at their first occurrence in `text`, beside the lead term (the final mocks bold "Awards",
     # "Incl. grants", "appeal rate"); sent as data so the words carry no markup.
     also_bold: tuple[str, ...] = ()
 
