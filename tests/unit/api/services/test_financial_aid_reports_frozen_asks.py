@@ -90,27 +90,28 @@ async def test_a_received_through_cut_filters_the_requests_and_reads_every_ask_a
     small ask into a live award. Only the committee's at-cutoff snapshot row freezes asks."""
     service = _service(_emma_asks_more_after_the_deadline())
     every = await service.statistics(YEAR, table="camp", round_=1)
-    assert (
-        every.total.asked == CAPPED_ASKED
-    )  # Rule M (owner 10-09): Asked counts at the session cost; live_asked is as typed
+    assert every.total.asked == CAPPED_ASKED  # Rule M (owner 10-09): Asked counts at the session cost
     cut = await service.statistics(YEAR, table="camp", round_=1, through=date(2027, 2, 15))
-    assert (cut.total.apps, cut.total.asked, cut.total.live_asked) == (2, CAPPED_ASKED, 7000.0)
-    assert cut.total.pct_of_ask == pytest.approx(1500 / 7000 * 100, abs=0.05)
+    # owner A5 (2026-10-09): % of ask's denominator is on the same capped basis; the as-typed sum reads today's 5,000
+    assert (cut.total.apps, cut.total.asked, cut.total.live_asked) == (2, CAPPED_ASKED, CAPPED_ASKED)
+    assert cut.total.asked_as_typed == 7000.0
+    assert cut.total.pct_of_ask == pytest.approx(1500 / 4000 * 100, abs=0.05)
     assert cut.request_set is not None
     assert "asks" not in StatisticsResponse.model_fields
     by_session = await service.programs(YEAR, through_deadline=True)
-    assert by_session.total.round1.requested == 7000.0
+    assert (by_session.total.round1.requested, by_session.total.round1.requested_as_typed) == (CAPPED_ASKED, 7000.0)
     assert "asks" not in ProgramsResponse.model_fields
 
 
 async def test_a_received_through_percent_of_ask_divides_by_the_ask_as_it_stands_today() -> None:
-    """Owner N1: Emma's lock is 1,500; her ask was 4,000 on the cut day and is 5,000 now. Frozen, the share was 37.5%;
-    on today's ask it is 30%."""
+    """Owner N1: Emma's lock is 1,500; her ask was 4,000 on the cut day and is 5,000 now: the cut reads today's 5,000
+    (the as-typed figure). Both cap at Session 2's 2,000, so % of ask divides by 2,000 (owner A5, 2026-10-09)."""
     cut = await _service(_emma_asks_more_after_the_deadline()).statistics(
         YEAR, table="camp", round_=1, through=date(2027, 2, 15)
     )
     two = next(row for row in cut.rows if row.tier == 2)
-    assert (two.amount, two.live_asked, two.pct_of_ask) == (1500.0, 5000.0, 30.0)
+    assert (two.amount, two.live_asked, two.pct_of_ask) == (1500.0, 2000.0, 75.0)
+    assert two.asked_as_typed == 5000.0
 
 
 async def test_an_answer_edited_after_the_cut_freezes_to_the_answer_that_stood() -> None:
@@ -172,7 +173,7 @@ async def test_asks_that_cant_be_rebuilt_fall_back_to_now_and_say_so(monkeypatch
     cut = await service.statistics(YEAR, table="camp", round_=1, through=DEADLINE)
     assert (
         cut.total.asked == CAPPED_ASKED
-    )  # Rule M (owner 10-09): Asked counts at the session cost; live_asked is as typed
+    )  # Rule M (owner 10-09): Asked counts at the session cost; live_asked too (owner A5, 2026-10-09)
 
 
 async def test_a_cut_on_or_after_the_reads_own_day_needs_no_past_read(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -186,7 +187,7 @@ async def test_a_cut_on_or_after_the_reads_own_day_needs_no_past_read(monkeypatc
     out = await service.statistics(YEAR, table="camp", round_=1, through=date(2027, 4, 1))
     assert (
         out.total.asked == CAPPED_ASKED
-    )  # Rule M (owner 10-09): Asked counts at the session cost; live_asked is as typed
+    )  # Rule M (owner 10-09): Asked counts at the session cost; live_asked too (owner A5, 2026-10-09)
 
 
 def test_freezing_asks_replaces_round_1_only_and_leaves_appeal_asks_out_of_the_snapshot() -> None:
@@ -215,4 +216,5 @@ async def test_a_received_through_round_2_chip_shows_todays_appeal_ask_for_a_kep
         )
     )
     cut = await _service(store).statistics(YEAR, table="camp", round_=2, through=date(2027, 2, 15))
-    assert (cut.total.apps, cut.total.asked) == (1, 900.0)
+    # today's 900 appeal (as typed), capped at what Session 2's 2,000 leaves after the 1,500 posted (owner A2)
+    assert (cut.total.apps, cut.total.asked, cut.total.asked_as_typed) == (1, 500.0, 900.0)

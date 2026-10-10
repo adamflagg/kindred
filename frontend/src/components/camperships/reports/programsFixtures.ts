@@ -8,6 +8,8 @@ import type { ApiAidProgramRow, ApiAidPrograms, ApiAidRoundBlock } from '../../.
 const block = (over: Partial<ApiAidRoundBlock> = {}): ApiAidRoundBlock => ({
   apps: 0,
   requested: 0,
+  // raw and uncapped: equal to Requested unless a block says otherwise
+  requested_as_typed: over.requested ?? 0,
   asks: 0,
   awarded: 0,
   awarded_count: 0,
@@ -110,6 +112,7 @@ export const PROGRAMS: ApiAidPrograms = {
     round1: block({
       apps: 3,
       requested: 8000,
+      requested_as_typed: 9500,
       asks: 3,
       awarded: 1500,
       awarded_count: 1,

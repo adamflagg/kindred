@@ -52,6 +52,8 @@ export function programColumns(noteOf: NoteOf): ReportColumn[] {
       width: w[0],
     },
     { key: `${group}-requested`, header: asked, group, width: w[1] },
+    // the raw sum beside the capped one: in Copy and Download CSV only (owner A3, 2026-10-09)
+    { key: `${group}-requestedTyped`, header: `${asked} (as typed)`, group, exportOnly: true },
     { key: `${group}-awarded`, header: 'Awarded', group, note: noteOf('awarded'), width: w[2] },
     { key: `${group}-avgRequest`, header: 'Avg request', group, wrap: true, width: w[3] },
     {
@@ -92,6 +94,7 @@ function sixCells(block: ApiAidRoundBlock): ReportValue[] {
   return [
     countValue(block.apps),
     moneyValue(block.requested),
+    moneyValue(block.requested_as_typed),
     moneyValue(block.awarded),
     averageValue(block.average_request),
     averageValue(block.average_award),
@@ -99,11 +102,11 @@ function sixCells(block: ApiAidRoundBlock): ReportValue[] {
   ]
 }
 
-/** Each round block's Apps cell, by index: Round 1's, Round 2's, Round 3's (see `programColumns`). */
+/** Each round block's Apps cell, by column key: Round 1's, Round 2's, Round 3's (see `programColumns`). */
 const APPS_CELLS = [
-  [1, '1'],
-  [7, '2'],
-  [13, '3'],
+  ['Round 1-apps', '1'],
+  ['Round 2 (appeals)-apps', '2'],
+  ['r3-apps', '3'],
 ] as const
 
 /** A row's Apps links: `part` names the row (#2974: session, subtotal, total), one per round block. */
@@ -113,7 +116,9 @@ function appsLinks(
   linkOf: LinkOf
 ): Record<number, string> {
   const links: Record<number, string> = {}
-  for (const [cell, block] of APPS_CELLS) {
+  const keys = programColumns(() => null).map((c) => c.key)
+  for (const [key, block] of APPS_CELLS) {
+    const cell = keys.indexOf(key)
     const address: ReportAddress = {
       report: 'programs',
       query: { ...requestSetQuery(requestSet), ...part, block, count: 'apps' },
@@ -249,7 +254,18 @@ function totalRow(
   }
 }
 
+/** How many requests Requested and Asked counted at their session's cost (owner A3), as the footnote lines. */
+export function programsNotes(programs: {
+  readonly requests_capped?: number | undefined
+}): string[] {
+  const n = programs.requests_capped ?? 0
+  if (n === 0) return []
+  const noun = n === 1 ? 'request above its' : 'requests above their'
+  return [`Requested and Asked: ${String(n)} ${noun} session's cost counted at the cost.`]
+}
+
 export function programsHeading(programs: ApiAidPrograms): ReportHeading {
+  const notes = programsNotes(programs)
   return {
     title: 'By session',
     season: programs.year,
@@ -257,6 +273,7 @@ export function programsHeading(programs: ApiAidPrograms): ReportHeading {
     live: programs.as_of === null,
     basis: BASIS_WORDS.P,
     requestSet: programs.request_set?.label ?? null,
+    ...(notes.length === 0 ? {} : { notes }),
   }
 }
 

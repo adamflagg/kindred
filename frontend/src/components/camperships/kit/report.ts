@@ -119,6 +119,11 @@ export interface ReportColumn {
    * the dashboard added beyond finance's slides (the mock's "hidden · in the CSV").
    */
   readonly csvOnly?: true | undefined
+  /**
+   * Kept off the screen but written to BOTH Copy and Download CSV (unlike `csvOnly`, which Copy also
+   * drops): a raw figure beside a capped one, for whoever pastes the table elsewhere (owner A3, 2026-10-09).
+   */
+  readonly exportOnly?: true | undefined
   /** The column's definition note number (`useAidDefinitions().numberOf`), shown as ¹. */
   readonly note?: number | null | undefined
   readonly width?: number | undefined
@@ -181,6 +186,8 @@ export interface ReportHeading {
   readonly basis: string | null
   /** "requests received through Feb 1, 2027" (D138), when a reporting control is on. */
   readonly requestSet?: string | null | undefined
+  /** Footnote lines after the others, each its own line in Copy and the CSV (the cap note, owner A3). */
+  readonly notes?: readonly string[] | undefined
 }
 
 export const BASIS_WORDS = {
@@ -197,6 +204,7 @@ export function headingLines(heading: ReportHeading): string[] {
     `Season ${String(heading.season)} · ${asOf}`,
     ...(heading.basis === null ? [] : [`Basis: ${heading.basis}`]),
     ...(heading.requestSet ? [`Counts only ${heading.requestSet}`] : []),
+    ...(heading.notes ?? []),
   ]
 }
 

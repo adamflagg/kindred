@@ -71,6 +71,8 @@ def test_percent_of_ask_names_todays_asks_the_outside_funder_exclusion_and_the_d
     assert note.text.startswith("% of ask: awarded $ ÷ the live requests' in-budget asks.")
     assert "Incl. grants adds outside grants and fully funded rounds to both sides" in note.text
     assert "Round 1 and All rounds" in note.text
+    # Owner A5 (2026-10-09): the denominator is on Asked's capped basis, and the note says so.
+    assert "capped as Asked is" in note.text
 
 
 def test_awarded_says_live_for_the_request_standing_never_included() -> None:

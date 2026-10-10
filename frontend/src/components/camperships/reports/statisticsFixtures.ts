@@ -16,6 +16,8 @@ function tierRow(over: Partial<ApiAidStatisticsRow>): ApiAidStatisticsRow {
     apps: 0,
     cancelled: 0,
     asked: 0,
+    // raw and uncapped: equal to Asked unless a row says otherwise
+    asked_as_typed: over.asked ?? 0,
     asks: 0,
     average_ask: null,
     amount: 0,
@@ -79,6 +81,7 @@ export const STATISTICS_TOTAL = tierRow({
   apps: 16,
   cancelled: 1,
   asked: 44000,
+  asked_as_typed: 47000,
   asks: 15,
   average_ask: 2933.33,
   amount: 28500,

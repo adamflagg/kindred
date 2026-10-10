@@ -111,7 +111,15 @@ export function tierColumns(stats: ApiAidStatistics, noteOf: NoteOf): ReportColu
       key: 'asked',
       header: 'Asked',
       width: 92,
-      title: "Every app's ask, cancelled and closed ones included",
+      title:
+        "Every app's ask, cancelled and closed ones included, at most its session's cost (an appeal counts on top of the earlier awards, as Development's need)",
+    },
+    {
+      key: 'askedTyped',
+      header: 'Asked (as typed)',
+      // the raw sum of what was asked, beside the capped Asked: in Copy and Download CSV only (owner A3, 2026-10-09)
+      exportOnly: true,
+      title: "Every app's ask exactly as typed, before the session-cost cap",
     },
     { key: 'asks', header: 'Asks', width: 58, title: 'One per round asked' },
     { key: 'averageAsk', header: 'Avg ask', width: 78 },
@@ -174,6 +182,7 @@ function figureCells(row: ApiAidStatisticsRow, decided: boolean): ReportValue[] 
   return [
     countValue(row.apps),
     moneyValue(row.asked),
+    moneyValue(row.asked_as_typed),
     countValue(row.asks),
     averageValue(row.average_ask),
     // Posted alone on either basis (#2974): the screen never subtracts decided from `amount`
@@ -514,7 +523,8 @@ export function outcomeRows(
 export function statisticsHeading(
   stats: ApiAidStatistics,
   title: string,
-  withDecided = true
+  withDecided = true,
+  notes?: readonly string[]
 ): ReportHeading {
   return {
     title,
@@ -526,6 +536,7 @@ export function statisticsHeading(
         ? `${BASIS_WORDS.P}, plus Decided (not yet offered), which moves until posted`
         : BASIS_WORDS.P,
     requestSet: stats.request_set?.label ?? null,
+    ...(notes === undefined ? {} : { notes }),
   }
 }
 
@@ -566,8 +577,9 @@ export function statisticsCsvName(view: AidView, choice: StatisticsChoice, table
 }
 
 /**
- * Rule M on Asked (owner 10-09): a request's asks together count at most its priced session's cost, as in
- * Development. This line says how many requests that moved, under the tier table; null when none did.
+ * Rule M on Asked (owner 10-09, A1/A2 2026-10-09): every Asked figure counts at most the priced session's cost.
+ * This line counts the requests whose need is above that cost (the All-rounds basis, whatever the chip), under
+ * the tier table; null when there are none.
  */
 export function cappedAskWords(total: {
   readonly requests_capped?: number | undefined
@@ -576,4 +588,14 @@ export function cappedAskWords(total: {
   if (n === 0) return null
   const noun = n === 1 ? 'request above its' : 'requests above their'
   return `Asked and Avg ask: ${String(n)} ${noun} session's cost counted at the cost.`
+}
+
+/** Why the round chips need not add up to All rounds (owner A2, 2026-10-09). */
+export const ROUND_CHIPS_NOTE =
+  "Round chips don't add up to All rounds: an appeal re-asks part of the earlier shortfall, so All rounds counts it once."
+
+/** The tier table's footnote lines: the chips note always, the cap words when some requests were capped. */
+export function tierNotes(total: { readonly requests_capped?: number | undefined }): string[] {
+  const capped = cappedAskWords(total)
+  return capped === null ? [ROUND_CHIPS_NOTE] : [ROUND_CHIPS_NOTE, capped]
 }

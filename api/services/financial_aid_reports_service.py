@@ -545,6 +545,7 @@ class FinancialAidReportsService:
                 for group in sorted(table.pools, key=lambda g: _pool_rank(document, g.pool))
             ],
             total=row_out(table.total, ALL_POOLS_LABEL),
+            requests_capped=table.requests_capped,
             request_set=read.note,
             not_rebuilt=self._gaps(read),
         )
@@ -901,6 +902,7 @@ def _statistics_row(row: StatisticsRow) -> StatisticsRowOut:
         apps=row.apps,
         cancelled=row.cancelled,
         asked=money(row.asked),
+        asked_as_typed=money(row.asked_as_typed),
         asks=row.asks,
         average_ask=_money(row.average_ask),
         amount=money(row.amount),
@@ -921,6 +923,7 @@ def _block(block: RoundBlock) -> RoundBlockOut:
     return RoundBlockOut(
         apps=block.apps,
         requested=money(block.requested),
+        requested_as_typed=money(block.requested_as_typed),
         asks=block.asks,
         awarded=money(block.awarded),
         awarded_count=block.awarded_count,

@@ -50,7 +50,7 @@ from decimal import Decimal
 from typing import Final, Literal
 
 from bunking.financial_aid.money import ZERO
-from bunking.financial_aid.reports.facts import ReportRequest, average, capped_at_cost
+from bunking.financial_aid.reports.facts import ReportRequest, average, is_capped, need
 from bunking.financial_aid.scenarios.committee import pct
 
 GroupKind = Literal["summer", "families", "campers"]
@@ -243,34 +243,6 @@ def rebuilt_ages(
             who = persons.get(person)
             ages[age_band(age_on(who.birthdate if who is not None else None, first.get(person)))] += 1
     return dict(ages)
-
-
-def _uncapped_need(request: ReportRequest) -> Decimal:
-    """§5.10: the camp's awards in the rounds before an ask + that ask, at its highest over the asked rounds."""
-    best = ZERO
-    awarded_before = ZERO
-    for n in (1, 2, 3):
-        facts = request.round(n)
-        if facts is None:
-            continue
-        if facts.ask is not None:
-            best = max(best, awarded_before + facts.ask)
-        awarded_before += facts.posted or ZERO
-    return best
-
-
-def is_capped(request: ReportRequest) -> bool:
-    """Rule M (owner 10-08, per request): the request's asks add up to more than its priced session cost. A request
-    with no cost known is never capped (counted as typed). The footnote counts these: "N requests above their
-    session's cost counted at the cost"."""
-    return request.cost is not None and _uncapped_need(request) > request.cost
-
-
-def need(request: ReportRequest) -> Decimal:
-    """§5.10's need, at most the request's session cost (Rule M, owner 10-08: "cap it at the session cost", per
-    request: its asks together count at most the cost). No cost known: as typed."""
-    uncapped = _uncapped_need(request)
-    return capped_at_cost(uncapped, request.cost)
 
 
 @dataclass

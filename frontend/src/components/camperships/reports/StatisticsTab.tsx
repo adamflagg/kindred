@@ -23,6 +23,7 @@ import {
   programRows,
   programsCsvName,
   programsHeading,
+  programsNotes,
   programsLinkParams,
 } from './programsModel'
 import { RequestSetPicker } from './RequestSetPicker'
@@ -36,7 +37,7 @@ import {
   statisticsHeading,
   statisticsLinkParams,
   cancelledApplicantsLink,
-  cappedAskWords,
+  tierNotes,
   cancelledColumns,
   cancelledRows,
   tableShortLabel,
@@ -116,7 +117,7 @@ export function StatisticsTab({ view }: { view: AidView }) {
     if (!data) return null
     return {
       title: 'By tier',
-      heading: statisticsHeading(data, 'By tier'),
+      heading: statisticsHeading(data, 'By tier', true, tierNotes(data.total)),
       columns: tierColumns(data, numberOf),
       rows: tierRows(data, choice, linkOf),
       csvFilename: statisticsCsvName(view, choice, 'by-tier'),
@@ -136,7 +137,8 @@ export function StatisticsTab({ view }: { view: AidView }) {
   const status = refusal ?? exporter.failed ?? pastWords ?? undefined
   const onRequestSet = (next: AidRequestSet) => setParam('through', requestSetParam(next))
   const leftOut = data ? requestSetLeftOut(data) : null
-  const cappedWords = data ? cappedAskWords(data.total) : null
+  const tierFootnote = data ? tierNotes(data.total).join(' ') : null
+  const sessionFootnote = programs.data ? programsNotes(programs.data).join(' ') : ''
 
   const controls = (
     <AidToolbar
@@ -263,6 +265,9 @@ export function StatisticsTab({ view }: { view: AidView }) {
                       csvFilename={first.csvFilename}
                       link={first.link}
                       emptyText="No sessions in the rules yet."
+                      {...(sessionFootnote === ''
+                        ? {}
+                        : { footnote: <p className={REPORT_NOTE}>{sessionFootnote}</p> })}
                     />
                   )
                 }
@@ -277,9 +282,9 @@ export function StatisticsTab({ view }: { view: AidView }) {
                   rows={first.rows}
                   csvFilename={first.csvFilename}
                   link={first.link}
-                  {...(cappedWords === null
+                  {...(tierFootnote === null
                     ? {}
-                    : { footnote: <p className={REPORT_NOTE}>{cappedWords}</p> })}
+                    : { footnote: <p className={REPORT_NOTE}>{tierFootnote}</p> })}
                 />
               )
             )}

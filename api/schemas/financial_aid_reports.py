@@ -48,7 +48,9 @@ class StatisticsRowOut(BaseModel):
     fee_pct: float | None  # None: varies (All tables), or no table value (Round 3)
     apps: int
     cancelled: int  # received requests cancelled (D131); on a past date, cancelled by that day
-    asked: float
+    asked: float  # capped (owner A1/A2, 2026-10-09): All rounds is Development's need at most the cost; a round chip
+    # its ask at most the cost less the awards posted before it. No cost known: as typed.
+    asked_as_typed: float = 0.0  # A3: the asks as keyed, summed, uncapped: the CSV and Copy's "Asked (as typed)"
     asks: int  # apps with an ask: the average ask's population
     average_ask: float | None
     amount: float  # awarded (Posted); with basis posted_and_decided, plus `decided`
@@ -57,11 +59,11 @@ class StatisticsRowOut(BaseModel):
     awarded_count: int  # live apps whose AWARDED (Posted) money is above $0: the average award's population
     decided_count: int  # live apps with decided money not yet offered (0 on the posted basis)
     average_award: float | None  # awarded ÷ awarded_count, on either basis (O-930-16; D130)
-    live_asked: float  # the live apps' in-budget asks: % of ask's denominator (not % of ask incl. grants')
+    live_asked: float  # the live apps' in-budget capped asks (A5): % of ask's denominator (not % incl. grants')
     pct_of_ask: float | None
     grants: float | None  # Round 1 and All rounds only
     pct_of_ask_with_grants: float | None
-    requests_capped: int = 0  # Rule M: requests above their session's cost counted at the cost in `asked`
+    requests_capped: int = 0  # Rule M: requests whose need is above their session's cost (All-rounds basis, A1)
 
 
 class CancelledRowOut(BaseModel):
@@ -128,7 +130,8 @@ class StatisticsResponse(BaseModel):
 
 class RoundBlockOut(BaseModel):
     apps: int
-    requested: float
+    requested: float  # capped as Statistics' round chip (owner A1/A2, 2026-10-09)
+    requested_as_typed: float = 0.0  # A3: the asks as keyed, for the CSV and Copy
     asks: int
     awarded: float
     awarded_count: int
@@ -162,6 +165,7 @@ class ProgramsResponse(BaseModel):
     rules_version: int | None
     pools: list[PoolGroupOut]
     total: ProgramRowOut
+    requests_capped: int = 0  # received requests whose need is above their session's cost (All-rounds basis, A1)
     request_set: RequestSetNote | None
     not_rebuilt: list[NotRebuiltOut]
 

@@ -91,6 +91,9 @@ interface ReportTableProps {
 }
 
 const BODY_KINDS = new Set(['body', 'end'])
+
+/** Whether the screen draws a column: csvOnly and exportOnly ones live in the exports alone. */
+const onScreen = (c: ReportColumn) => !c.csvOnly && !c.exportOnly
 /** The mock's `.cf-empty`: a dashed card in muted body type, standing where the grid would. */
 const EMPTY_BODY = `bg-card border-border text-muted-foreground rounded-xl border border-dashed px-4 py-3.5 ${CS_BODY}`
 
@@ -247,8 +250,9 @@ export function ReportTable({
   // The find status counts the table's own rows (ZIPs), never its end rows ("Outside the US", "No ZIP on file").
   const bodyCount = ordered.filter((r) => r.kind === 'body').length
   const matching = visible.filter((r) => r.kind === 'body').length
-  // csvOnly columns are in Download CSV, never on screen or in Copy.
-  const drawn = useMemo(() => columns.filter((c) => !c.csvOnly), [columns])
+  // csvOnly columns are in Download CSV, never on screen or in Copy; exportOnly ones are in Copy and
+  // Download CSV, never on screen.
+  const drawn = useMemo(() => columns.filter(onScreen), [columns])
   const grouped = drawn.some((c) => c.group !== undefined)
 
   const { copy, download, copied, failed } = useReportExport({
@@ -483,13 +487,13 @@ export function ReportTable({
                       const pinned = bounded && totalsFirst && row.kind === 'total'
                       // A spanned label covers the cells after it (they stay in `cells` for Copy and the CSV).
                       if (index > 0 && index < span) return null
-                      if (columns[index]?.csvOnly) return null
+                      if (columns[index] && !onScreen(columns[index])) return null
                       return (
                         <td
                           key={columns[index]?.key ?? index}
                           colSpan={
                             index === 0 && span > 1
-                              ? columns.slice(0, span).filter((c) => !c.csvOnly).length
+                              ? columns.slice(0, span).filter(onScreen).length
                               : undefined
                           }
                           title={cellTitle(cell)}

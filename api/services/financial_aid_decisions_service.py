@@ -420,6 +420,9 @@ class Season:
     # Reports: a cancelled request is priced as not live (no result), so its income tier is read by pricing it live
     # once, tier only. Never an award or a round view. On a past read: the cancelled requests with no pricing gap.
     live_tiers: Mapping[str, int] = field(default_factory=dict)
+    # Owner A4 (2026-10-09): each request priced as not live (cancelled, withdrawn, a duplicate), its session cost
+    # alone (`_cost_only`), so Reports caps its asks at it. On a past read: those with no pricing gap.
+    cost_only: Mapping[str, Decimal] = field(default_factory=dict)
     # SP11-rest: what the live ledger was built from, so To place can re-place a line and see where it lands.
     # Empty on a past read.
     camp_lines: tuple[CampLine, ...] = ()
@@ -527,6 +530,21 @@ def _to_price(
     return build(converted.application, converted.request, converted.blocked, converted.issues)
 
 
+def session_cost(priced: PricedRequest | None, document: AidRules | None) -> Decimal | None:
+    """The request's session cost as priced (the rules' price, an AG session's parent's, or a staff cost override), for
+    Rule M (a request whose need is above it counts at the cost). The calculator's own when it reached its cost step;
+    else the cost resolver's, since a session's price doesn't depend on the family's income (the calculator stops
+    before cost when no income is reported). None when nothing could price it: a request priced as not live (its
+    cost comes from `_cost_only`), or no rules."""
+    if priced is None:
+        return None
+    if priced.result is not None and priced.result.cost is not None:
+        return priced.result.cost
+    if priced.inputs is not None and document is not None:
+        return resolve_cost(priced.inputs, document).amount
+    return None
+
+
 def _live_tier(
     request: RequestRecord,
     applications: Mapping[str, ApplicationRecord],
@@ -554,6 +572,27 @@ def _live_tier(
         rules,
     )
     return priced.result.final_tier if priced.result is not None else None
+
+
+def _cost_only(
+    request: RequestRecord,
+    application: ApplicationRecord | None,
+    corrections: Sequence[CorrectionRecord],
+    sessions: Mapping[int, SessionRow],
+    shares: Sequence[PayerShareRecord],
+    equity: EquityAnswers | None,
+    rules: AidRules | None,
+) -> Decimal | None:
+    """The cost-only pricing path (owner A4, 2026-10-09): the session cost of a request priced as not live (cancelled,
+    withdrawn, a duplicate), which pricing never reaches. A session's price doesn't depend on the family's income or
+    its standing, so only the request's program and session (and a staff cost override) are read. Reports caps the
+    request's asks at it (Rule M), Statistics and Development alike. None when it can't be priced: no rules, no
+    application, no priced program, or a program with no price."""
+    if rules is None or application is None:
+        return None
+    answers = effective_values(application.answers, APPLICATION_CORRECTABLE, corrections)
+    converted = calculator_inputs(request, application, answers, corrections, sessions, shares, equity, rules)
+    return resolve_cost(converted.request, rules).amount if converted.request is not None else None
 
 
 def _money(value: Decimal | None) -> float | None:
@@ -1581,7 +1620,20 @@ class FinancialAidDecisionsService:
         }
         priced = {r.id: price_request(items[r.id], document) for r in side.requests}
         live_tiers: dict[str, int] = {}
+        cost_only: dict[str, Decimal] = {}
         for request in side.requests:
+            if request.status not in _LIVE or request.id in cancellations:
+                cost = _cost_only(
+                    request,
+                    by_id.get(request.application_id),
+                    own.get(request.application_id, []),
+                    session_map,
+                    shares,
+                    side.equity.get(request.person_cm_id),
+                    document,
+                )
+                if cost is not None:
+                    cost_only[request.id] = cost
             if request.id in cancellations:
                 tier = _live_tier(request, by_id, own, session_map, shares, side.equity, grants, document)
                 if tier is not None:
@@ -1645,6 +1697,7 @@ class FinancialAidDecisionsService:
             to_reverse=to_reverse,
             inputs=items,
             live_tiers=live_tiers,
+            cost_only=cost_only,
             camp_lines=tuple(camp_lines),
             placements=placements,
             splits=splits,
@@ -1900,6 +1953,7 @@ class FinancialAidDecisionsService:
         priced: dict[str, PricedRequest] = {}
         gapped: dict[str, str] = {}
         live_tiers: dict[str, int] = {}
+        cost_only: dict[str, Decimal] = {}
         for request_id, request in requests.items():
             cancelled = request_id in in_kindred
             gap = _pricing_gap(
@@ -1951,6 +2005,19 @@ class FinancialAidDecisionsService:
                         )
                         if tier is not None:
                             live_tiers[request_id] = tier
+                    if cancelled or request.status not in _LIVE:
+                        # Reports, as live: the session cost of a request priced as not live (owner A4).
+                        cost = _cost_only(
+                            request,
+                            applications.get(request.application_id),
+                            mine,
+                            session_map,
+                            shares,
+                            request.equity,
+                            document,
+                        )
+                        if cost is not None:
+                            cost_only[request_id] = cost
                     priced[request_id] = full
                     continue
             gapped[request_id] = gap
@@ -2032,6 +2099,7 @@ class FinancialAidDecisionsService:
             cancelled_in_campminder=cancelled_now,
             past_ledger=past_ledger,
             live_tiers=live_tiers,
+            cost_only=cost_only,
             cancellations=_past_cancellations(
                 requests, today, enrollments, sessions, day, kindred_states, cancelled_now
             ),
