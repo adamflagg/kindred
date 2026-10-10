@@ -113,6 +113,9 @@ export function RoundsTable({
             const num = foot ? FOOT_NUM : RG_TD_NUM
             const gnum = foot ? FOOT_GROUP_NUM : RG_TD_GROUP_NUM
             const muted = row.kind === 'nopool' ? ' text-muted-foreground' : ''
+            // A round sits 24px in under its pool (mock td.ind). Kept out of the className literal: the Tailwind
+            // formatter trims a leading space there, which once glued it onto whitespace-nowrap.
+            const indent = row.kind === 'round' ? ' pl-6' : ''
             const isOpen = open.has(row.pool)
             return (
               <tr
@@ -123,7 +126,7 @@ export function RoundsTable({
               >
                 <td
                   title={row.title}
-                  className={`${foot ? `${TFOOT_CELL} text-left` : RG_TD}${muted}${row.kind === 'round' ? 'pl-7' : ''}`}
+                  className={`${foot ? `${TFOOT_CELL} text-left` : RG_TD}${muted}${indent}`}
                 >
                   {row.kind === 'pool' ? (
                     <button
@@ -132,7 +135,7 @@ export function RoundsTable({
                       aria-expanded={isOpen}
                       onClick={() => onToggle(row.pool)}
                     >
-                      <span className="text-muted-foreground inline-block w-3 text-[10px]">
+                      <span className="text-muted-foreground inline-block w-3 text-left text-[10px] leading-5">
                         {isOpen ? '▾' : '▸'}
                       </span>
                       <b>{row.label}</b>

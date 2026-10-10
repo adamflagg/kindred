@@ -58,13 +58,22 @@ export function belowSummary(budget: ApiAidBudget, pool: string | null): string 
   const grants =
     (scope.below.outside_grants ?? 0) +
     (pool === null ? (budget.outside_grants_off_requests ?? 0) : 0)
-  const outside = (scope.decision_types ?? [])
-    .filter((t) => !t.counts_toward_budget)
-    .map((t) => `${t.label} ${formatMoney(t.amount)}`)
+  // The mock names the outside fund generically here; its own name is on its row in the table.
+  const funds = (scope.decision_types ?? []).filter((t) => !t.counts_toward_budget)
+  const fundsMoney = formatMoney(funds.reduce((acc, t) => acc + (t.amount ?? 0), 0))
+  const outside =
+    funds.length === 0
+      ? []
+      : [
+          funds.length === 1
+            ? `a named outside fund ${fundsMoney}`
+            : `${String(funds.length)} named outside funds ${fundsMoney}`,
+        ]
+  const held = scope.below.held?.requests ?? 0
   return [
     `outside grants ${formatMoney(grants)}`,
     ...outside,
-    `${String(scope.below.held?.requests ?? 0)} held req`,
+    `${String(held)} held ${held === 1 ? 'request' : 'requests'}`,
   ].join(' · ')
 }
 

@@ -16,9 +16,10 @@ import { RoundsBudgetCsv, RoundsBudgetTab } from './RoundsBudgetTab'
 
 let read: { data: ApiAidBudget | undefined; isLoading: boolean; error: Error | null }
 vi.mock('../../../hooks/camperships/useAidBudget', () => ({ useAidBudget: () => read }))
+let notes: Array<{ n: number; term?: string; text: string }> = []
 vi.mock('../../../hooks/camperships/useAidDefinitions', () => ({
   useAidDefinitions: () => ({
-    notes: [],
+    notes,
     numberOf: (key: string) =>
       ({
         rounds_allocated: 1,
@@ -104,6 +105,7 @@ beforeEach(() => {
   read = { data: BUDGET, isLoading: false, error: null }
   granted = REGISTRAR
   draft = rulesDraft()
+  notes = []
   download.mockReset()
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date('2027-04-10T18:00:00Z'))
@@ -630,5 +632,90 @@ describe('the fold lines carry what the table, strip and notes did (spec §5.2 F
       'href',
       '/aid/season/rounds-budget?year=2027&as_of=2027-03-15'
     )
+  })
+})
+
+describe('the shots against the mock (10-10)', () => {
+  it('indents each round under its pool by 24px and keeps the cell from wrapping (mock td.ind)', () => {
+    renderAt('/aid/season/rounds-budget')
+    const td = document.querySelector('tr[data-ledger="round"] td')
+    expect(td).toHaveClass('pl-6', 'whitespace-nowrap')
+  })
+
+  it('pins each caret to the left of its 12/14px box, so a gap sits before the title (buttons centre text)', () => {
+    renderAt('/aid/season/rounds-budget')
+    const poolCaret = screen.getByRole('button', { name: /Pool A/ }).querySelector('span')
+    // 20px line on the 10px caret, as the mock's .cf-tg inherits: the pool row stands 33px against a round's 31
+    expect(poolCaret).toHaveClass('text-left', 'leading-5')
+    const sectionCaret = within(screen.getByTestId('fold-lines'))
+      .getByRole('button', { name: /Where each round stands/ })
+      .querySelector('span')
+    expect(sectionCaret).toHaveClass('text-left')
+  })
+
+  it("raises a section's note mark straight after its title, inside the title's run (mock: title then S(6))", () => {
+    renderAt('/aid/season/rounds-budget')
+    const section = document.querySelector('[data-fold-line="below"]') as HTMLElement
+    const button = within(section).getByRole('button', { name: /Shown, not counted/ })
+    const mark = within(section).getByText('6')
+    expect(mark.tagName).toBe('SUP')
+    expect(mark.parentElement).toBe(button.parentElement)
+    expect(mark.parentElement).toHaveClass('text-[13.5px]')
+    expect(mark.parentElement).not.toHaveClass('flex')
+  })
+
+  it('lets the four lower tables size their columns to the content, as the mock does (no fixed widths)', () => {
+    renderAt('/aid/season/rounds-budget?open=lines:stands,lines:below,lines:demand,lines:types')
+    const lines = screen.getByTestId('fold-lines')
+    expect(within(lines).getAllByRole('table')).toHaveLength(4)
+    expect([...lines.querySelectorAll('th')].filter((th) => th.style.width !== '')).toEqual([])
+  })
+
+  it("indents Demand's lines 24px under their pool (mock td.ind)", () => {
+    renderAt('/aid/season/rounds-budget?open=lines:demand')
+    const cell = screen.getAllByText('Round 2 asks so far')[0]!.closest('td')
+    expect(cell).toHaveClass('pl-6')
+    expect(cell).not.toHaveClass('pl-7')
+  })
+
+  it("on a one-pool page leads each pool-scoped summary with the pool's name (mock ?scope=tbm)", () => {
+    renderAt('/aid/season/rounds-budget?pool=pool_b')
+    const summary = (key: string) =>
+      (document.querySelector(`[data-fold-line="${key}"]`) as HTMLElement).querySelector(
+        'span[title]'
+      )
+    expect(summary('below')).toHaveTextContent(/^Pool B · outside grants \$3,100 · 1 held request$/)
+    expect(summary('demand')).toHaveTextContent(/^Pool B · Round 2 asks so far/)
+    expect(summary('types')).toHaveTextContent(/^Pool B · /)
+  })
+
+  it('bolds the second term in the Committed, Posted and Needs an offer notes, as the mock does', () => {
+    notes = [
+      {
+        n: 2,
+        term: 'Committed',
+        text: 'Committed: Posted + Needs an offer. Accepted sits inside Posted.',
+      },
+      {
+        n: 3,
+        term: 'Posted',
+        text: 'Posted: locked. Not yet confirmed: the part not in CampMinder.',
+      },
+      {
+        n: 4,
+        term: 'Needs an offer',
+        text: 'Needs an offer: decided. Pending approval: a Round 3 above $300.',
+      },
+    ]
+    renderAt('/aid/season/rounds-budget')
+    const bold = [...document.querySelectorAll('ol li b')].map((b) => b.textContent)
+    expect(bold).toEqual([
+      'Committed:',
+      'Accepted',
+      'Posted:',
+      'Not yet confirmed:',
+      'Needs an offer:',
+      'Pending approval:',
+    ])
   })
 })

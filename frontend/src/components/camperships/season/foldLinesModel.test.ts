@@ -47,9 +47,27 @@ describe('the Budget heading and the fold lines (spec §5.2 F)', () => {
     )
   })
 
-  it('names outside grants, each outside-budget type and the held requests', () => {
+  it('names outside grants, the outside fund generically, and the held requests in full words (mock)', () => {
     expect(belowSummary(BUDGET, null)).toBe(
-      'outside grants $49,700 · Funded outside the budget $21,840 · 10 held req'
+      'outside grants $49,700 · a named outside fund $21,840 · 10 held requests'
+    )
+  })
+
+  it('sums two or more outside funds into one phrase', () => {
+    const outside = BUDGET.total.decision_types?.find((t) => !t.counts_toward_budget)
+    if (outside === undefined) throw new Error('fixture has an outside type')
+    const two = {
+      ...BUDGET,
+      total: {
+        ...BUDGET.total,
+        decision_types: [
+          ...(BUDGET.total.decision_types ?? []),
+          { ...outside, key: 'outside2', label: 'Second fund', amount: 1000 },
+        ],
+      },
+    }
+    expect(belowSummary(two, null)).toBe(
+      'outside grants $49,700 · 2 named outside funds $22,840 · 10 held requests'
     )
   })
 
@@ -78,6 +96,6 @@ describe('the Budget heading and the fold lines (spec §5.2 F)', () => {
 
 describe('belowSummary scope (mutation guard)', () => {
   it('a one-pool summary leaves the no-request outside grants out', () => {
-    expect(belowSummary(BUDGET, 'pool_b')).toBe('outside grants $3,100 · 1 held req')
+    expect(belowSummary(BUDGET, 'pool_b')).toBe('outside grants $3,100 · 1 held request')
   })
 })

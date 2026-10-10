@@ -50,21 +50,11 @@ export function ForwardDemand({ groups, view }: { groups: readonly DemandGroup[]
         <thead>
           <tr>
             <th className={RG_TH}>Pool · line</th>
-            <th className={RG_TH_NUM} style={{ width: 150 }}>
-              Requests
-            </th>
-            <th className={RG_TH_NUM} style={{ width: 110 }}>
-              Asked
-            </th>
-            <th className={RG_TH_NUM} style={{ width: 110 }}>
-              Computed
-            </th>
-            <th className={RG_TH_NUM} style={{ width: 110 }}>
-              Unmet ask
-            </th>
-            <th className={RG_TH_NUM} style={{ width: 180 }}>
-              Held · asked
-            </th>
+            <th className={RG_TH_NUM}>Requests</th>
+            <th className={RG_TH_NUM}>Asked</th>
+            <th className={RG_TH_NUM}>Computed</th>
+            <th className={RG_TH_NUM}>Unmet ask</th>
+            <th className={RG_TH_NUM}>Held · asked</th>
           </tr>
         </thead>
         <tbody>
@@ -80,7 +70,7 @@ export function ForwardDemand({ groups, view }: { groups: readonly DemandGroup[]
               </tr>
               {group.lines.map((line) => (
                 <tr key={line.key} data-demand-line={`${group.pool}:${line.key}`}>
-                  <td className={`${RG_TD} pl-7`} title={line.title}>
+                  <td className={`${RG_TD} pl-6`} title={line.title}>
                     {line.label}
                   </td>
                   <td className={RG_TD_NUM}>

@@ -6,6 +6,7 @@ export function AidDefinitionNotes({
   surface,
   extra = [],
   boldTerm = false,
+  alsoBold,
   appendToLast,
 }: {
   surface: string
@@ -13,6 +14,8 @@ export function AidDefinitionNotes({
   extra?: readonly string[]
   /** Bold each note's leading "Term:" (Requests; the mock does it there only). */
   boldTerm?: boolean
+  /** Second terms the page's mock bolds inside a note (Rounds: "Accepted", "Not yet confirmed:", …). */
+  alsoBold?: readonly string[]
   /** Words joined onto the LAST registry note (not a note of their own): a persona's one-line caveat. */
   appendToLast?: string
 }) {
@@ -33,5 +36,5 @@ export function AidDefinitionNotes({
           i === notes.length - 1 ? { ...note, text: `${note.text} ${appendToLast}` } : note
         )
   const all = [...registry, ...extra.map((text, i) => ({ n: notes.length + i + 1, text }))]
-  return <DefinitionNotes notes={all} boldTerm={boldTerm} />
+  return <DefinitionNotes notes={all} boldTerm={boldTerm} {...(alsoBold ? { alsoBold } : {})} />
 }

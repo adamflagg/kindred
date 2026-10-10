@@ -145,9 +145,19 @@ describe('Edit Plan… as an editor (design-language §24)', () => {
 describe('Edit Plan… editor as the final design draws it (rounds-12; §24)', () => {
   it('is a titled panel: "Edit Plan · the rules draft\'s budget section"', () => {
     render(<Harness />)
-    expect(
-      screen.getByRole('heading', { name: "Edit Plan · the rules draft's budget section" })
-    ).toBeInTheDocument()
+    expect(screen.getByText("Edit Plan · the rules draft's budget section")).toBeInTheDocument()
+  })
+
+  it("titles the panel in the kit's panel-head grammar: 11px, 700, uppercase, muted (mock .cf-phead)", () => {
+    render(<Harness />)
+    const head = screen.getByText("Edit Plan · the rules draft's budget section")
+    expect(head).toHaveClass('uppercase', 'text-[11px]', 'font-bold', 'text-muted-foreground')
+  })
+
+  it('sets the split line as a result: 600, in the ok ink (mock .cf-res)', () => {
+    render(<Harness />)
+    const line = screen.getByText('sums to 100% · Pool A $900,000 · Pool B $100,000')
+    expect(line).toHaveClass('font-semibold', 'text-forest-800')
   })
 
   it('lays Total and Program split in the two-column grid, label then field', () => {

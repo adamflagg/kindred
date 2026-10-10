@@ -79,9 +79,7 @@ function StandsTable({ budget, view }: { budget: ApiAidBudget; view: AidView }) 
       <table className={RG_TABLE}>
         <thead>
           <tr>
-            <th className={RG_TH} style={{ width: 90 }}>
-              Round
-            </th>
+            <th className={RG_TH}>Round</th>
             {STAGES.map((stage) => (
               <th key={stage.measure} className={RG_TH_NUM}>
                 {stage.label}
@@ -132,15 +130,9 @@ function BelowTable({
         <thead>
           <tr>
             <th className={RG_TH}>Line</th>
-            <th className={RG_TH_NUM} style={{ width: 170 }}>
-              Families · requests
-            </th>
-            <th className={RG_TH_NUM} style={{ width: 120 }}>
-              Amount
-            </th>
-            <th className={RG_TH} style={{ width: 260 }}>
-              Of it
-            </th>
+            <th className={RG_TH_NUM}>Families · requests</th>
+            <th className={RG_TH_NUM}>Amount</th>
+            <th className={RG_TH}>Of it</th>
           </tr>
         </thead>
         <tbody>
@@ -197,6 +189,8 @@ export function BudgetFoldLines({
   const toggle = (key: FoldLineKey) => () => onToggle(lineKey(key))
   const demand = demandGroups(budget, pool, view)
   const types = budgetTypeLines(budget, pool)
+  // A one-pool page names its pool on each pool-scoped summary (mock ?scope=tbm: "TBM · outside grants $800 · …").
+  const scoped = (words: string) => (pool === null ? words : `${scope.label} · ${words}`)
   return (
     <div data-testid="fold-lines">
       <Section
@@ -212,7 +206,7 @@ export function BudgetFoldLines({
         id="below"
         title="Shown, not counted"
         note={noteMark(numberOf, 'below_the_line')}
-        description={belowSummary(budget, pool)}
+        description={scoped(belowSummary(budget, pool))}
         open={is('below')}
         onToggle={toggle('below')}
       >
@@ -223,7 +217,7 @@ export function BudgetFoldLines({
           id="demand"
           title="Demand still to come"
           note={noteMark(numberOf, 'demand')}
-          description={demandSummary(scope)}
+          description={scoped(demandSummary(scope))}
           open={is('demand')}
           onToggle={toggle('demand')}
         >
@@ -234,7 +228,7 @@ export function BudgetFoldLines({
         <Section
           id="types"
           title="In the budget, by decision type"
-          description={typesSummary(scope)}
+          description={scoped(typesSummary(scope))}
           open={is('types')}
           onToggle={toggle('types')}
         >

@@ -33,19 +33,25 @@ export function AidSectionHead({
       {onToggle === undefined ? (
         <h2 className={`${CS_CARD_HEADING} min-w-0 truncate whitespace-nowrap`}>{title}</h2>
       ) : (
-        <button
-          type="button"
-          aria-expanded={open}
-          className="text-foreground cursor-pointer text-[13.5px] leading-[20px] font-bold whitespace-nowrap hover:underline"
-          onClick={onToggle}
-        >
-          <span className="text-muted-foreground inline-block w-3.5 no-underline">
-            {open ? '▾' : '▸'}
-          </span>
-          {title}
-        </button>
+        // The title's run (mock: the fold link, then S(n)): the note mark sits inline straight after the title, raised
+        // at 0.72em of 13.5px, never a flex item 10px away (a flex item can't be raised).
+        <span className="text-foreground text-[13.5px] leading-[20px] font-bold whitespace-nowrap">
+          <button
+            type="button"
+            aria-expanded={open}
+            className="cursor-pointer font-bold hover:underline"
+            onClick={onToggle}
+          >
+            {/* text-left: a button centres its text, which pushed the caret against the title */}
+            <span className="text-muted-foreground inline-block w-3.5 text-left no-underline">
+              {open ? '▾' : '▸'}
+            </span>
+            {title}
+          </button>
+          {note}
+        </span>
       )}
-      {note}
+      {onToggle === undefined && note}
       {description !== undefined && description !== '' && (
         <span
           title={description}

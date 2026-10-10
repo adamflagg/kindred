@@ -24,6 +24,45 @@ describe('DefinitionNotes (§4.8; D20: numbered notes at the bottom, no hover)',
     )
   })
 
+  // kit CF.notes: `.cf-notes li > .n { min-width: 12px }`, so every note's words start at one x.
+  it('gives each number a 12px minimum so the words line up', () => {
+    render(<DefinitionNotes notes={[{ n: 1, text: 'Posted: locked.' }]} />)
+    expect(screen.getByText('1.')).toHaveClass('min-w-3')
+  })
+
+  // The Rounds mock bolds a second term inside a note ("… Accepted sits inside Posted").
+  it('bolds the first use of each alsoBold term after the lead term', () => {
+    render(
+      <DefinitionNotes
+        alsoBold={['Accepted', 'Not yet confirmed:']}
+        notes={[
+          {
+            n: 1,
+            term: 'Committed',
+            text: 'Committed: what Remaining takes away. Accepted sits inside Posted. Accepted again.',
+          },
+          {
+            n: 2,
+            term: 'Posted',
+            text: 'Posted: locked. Not yet confirmed: the part CampMinder lacks.',
+          },
+        ]}
+      />
+    )
+    const [first, second] = screen.getAllByRole('listitem')
+    expect([...first!.querySelectorAll('b')].map((b) => b.textContent)).toEqual([
+      'Committed:',
+      'Accepted',
+    ])
+    expect(first).toHaveTextContent(
+      '1. Committed: what Remaining takes away. Accepted sits inside Posted. Accepted again.'
+    )
+    expect([...second!.querySelectorAll('b')].map((b) => b.textContent)).toEqual([
+      'Posted:',
+      'Not yet confirmed:',
+    ])
+  })
+
   // Design language §12 (kit CF.notes): the term leads in bold, the words follow.
   it("sets a note's term in bold when it carries one", () => {
     render(<DefinitionNotes notes={[{ n: 1, term: 'Locked', text: 'Locked: in effect.' }]} />)

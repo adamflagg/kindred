@@ -8,7 +8,15 @@ import type { ApiAidRulesDraft } from '../../../types/api-types'
 import { DefRef } from '../kit/DefinitionNotes'
 import { formatMoney, toCents } from '../kit/money'
 import { EditorActions, EditorField, EditorForm, EditorGrid } from '../kit/EditorLayout'
-import { CS_AMBER_NOTE, CS_BTN, CS_BTN2, CS_FGRID_LABEL, CS_FIELD, CS_SMALL } from '../kit/csType'
+import {
+  CS_AMBER_NOTE,
+  CS_BTN,
+  CS_BTN2,
+  CS_FGRID_LABEL,
+  CS_FIELD,
+  CS_OK_INK,
+  CS_SMALL,
+} from '../kit/csType'
 import { savePrecondition } from './rules/precondition'
 import { useSeasonChrome } from './seasonChrome'
 import { planContent, planIssues, splitWords, type PlanPool, type TypedPlan } from './planModel'
@@ -109,12 +117,13 @@ export function EditPlan({
   return (
     <EditorForm
       title="Edit Plan · the rules draft's budget section"
+      heading="phead"
       side={
         <div className="space-y-1">
           {totalLocked && <p className={CS_SMALL}>{LOCKED}</p>}
           {split !== null && (
             // One line, ellipsised, the whole words as its title (the mock's cf-res).
-            <p className={`${CS_SMALL} truncate`} title={split}>
+            <p className={`${CS_OK_INK} truncate text-[12.5px] font-semibold`} title={split}>
               {split}
             </p>
           )}

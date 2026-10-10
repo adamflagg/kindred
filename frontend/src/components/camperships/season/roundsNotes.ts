@@ -38,3 +38,10 @@ export function roundsNote(
 ): number | null {
   return numberOf(ROUNDS_NOTE_KEY[figure])
 }
+
+/** The second term each note's words name, bold as the mock sets them (notes 2, 3 and 4). */
+export const ROUNDS_NOTE_ALSO_BOLD: readonly string[] = [
+  'Accepted',
+  'Not yet confirmed:',
+  'Pending approval:',
+]

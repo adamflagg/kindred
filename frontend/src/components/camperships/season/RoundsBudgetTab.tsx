@@ -33,7 +33,7 @@ import { DEFAULT_OPEN_LINES, openKeys, toggleOpenKey } from './foldLinesModel'
 import { draftPillWords, planOf, previewFigures, type TypedPlan } from './planModel'
 import { PoolCard } from './PoolCard'
 import { RoundsTable } from './RoundsTable'
-import { roundsNote } from './roundsNotes'
+import { ROUNDS_NOTE_ALSO_BOLD, roundsNote } from './roundsNotes'
 import { useSeasonChrome } from './seasonChrome'
 
 const SURFACE = 'season-rounds-budget'
@@ -232,7 +232,7 @@ function RoundsBudgetBody({ budget, view }: { budget: ApiAidBudget; view: AidVie
         onToggle={toggle}
         numberOf={numberOf}
       />
-      <AidDefinitionNotes surface={SURFACE} />
+      <AidDefinitionNotes surface={SURFACE} alsoBold={ROUNDS_NOTE_ALSO_BOLD} />
     </div>
   )
 }

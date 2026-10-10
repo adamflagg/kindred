@@ -20,19 +20,15 @@ export function BudgetTypeLines({ lines }: { readonly lines: readonly TypeLine[]
         <thead>
           <tr>
             <th className={RG_TH}>Decision type</th>
-            <th className={RG_TH_NUM} style={{ width: 170 }}>
-              Requests
-            </th>
+            <th className={RG_TH_NUM}>Requests</th>
             <th
               className={RG_TH_NUM}
-              style={{ width: 130 }}
+
               title="Money a named award brings from outside the rounds"
             >
               Own money
             </th>
-            <th className={RG_TH_NUM} style={{ width: 130 }}>
-              Rounds total
-            </th>
+            <th className={RG_TH_NUM}>Rounds total</th>
           </tr>
         </thead>
         <tbody>
