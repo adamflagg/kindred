@@ -174,8 +174,9 @@ describe('AidMoneyPage (spec §8.1; D62; owner 10-08)', () => {
       'href',
       '/aid/requests?view=to-reverse&year=2027'
     )
-    // Sized links (§19): 13.5px, never an inherited 16.
-    expect(screen.getByRole('link', { name: 'To reverse' })).toHaveClass('text-[13.5px]')
+    // Sized links (§19): in the 12px slot the links are 12px too (the mock's .cf-m), never an inherited 16.
+    expect(screen.getByRole('link', { name: 'To reverse' })).toHaveClass('text-xs')
+    expect(screen.getByText('Also raised:').parentElement).toHaveClass('text-xs')
     expect(screen.getByText('Also raised:')).toHaveAttribute(
       'title',
       'Also raised by the ledger, worked where the request is'

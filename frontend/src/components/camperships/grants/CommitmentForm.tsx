@@ -199,6 +199,7 @@ export function CommitmentForm({
             Save does in the right column, Save and Cancel on one row. */}
         <EditorForm
           title={initial === undefined ? 'Record a commitment' : 'Edit the commitment'}
+          heading="phead"
           side={
             <Effects
               items={[

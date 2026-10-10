@@ -11,7 +11,7 @@ import type {
   ApiAidPlacePreviewIn,
   ApiAidToPlaceLine,
 } from '../../../types/api-types'
-import { CS_AMBER_NOTE, CS_BTN, CS_BTN2, CS_FIELD, CS_PANEL_HEAD, CS_PMETA } from '../kit/csType'
+import { CS_AMBER_NOTE, CS_BTN, CS_BTN2, CS_FIELD, CS_PHEAD, CS_POPEN_META } from '../kit/csType'
 import { EditorActions, EditorField, EditorForm, EditorGrid } from '../kit/EditorLayout'
 import { formatMoney } from '../kit/money'
 import { previewRefusalWords, refusalWords } from './refusal'
@@ -76,11 +76,16 @@ export function PlaceEditor({
   const busy = inFlight.has(txn)
   const family = lineFamily(line).text
   const [inputs, setInputs] = useState<SplitInputs>(() => initialInputs(line))
-  const [chosen, setChosen] = useState<string | null>(null)
+  // Place on Another Request… opens on the first request (the mock's radio 0 is checked), so its effects show at
+  // once, as Split… opens on the suggestion's parts (ux3 to-place-8).
+  const [chosen, setChosen] = useState<string | null>(() => line.candidates[0]?.request_id ?? null)
   const [error, setError] = useState<string | null>(null)
   // What the preview was last asked. Split… opens on the suggestion's parts and asks at once.
   const [asked, setAsked] = useState<ApiAidPlacePreviewIn | null>(() => {
-    if (mode !== 'split') return null
+    if (mode !== 'split') {
+      const first = line.candidates[0]
+      return first === undefined ? null : previewOf(wholeLineOn(line, first.request_id))
+    }
     const first = readSplit(line, initialInputs(line))
     return first.ok ? previewOf(first.body) : null
   })
@@ -154,9 +159,9 @@ export function PlaceEditor({
   // there is something to preview (§24).
   const side = (
     <div className="space-y-1" data-testid="place-effects">
-      <p className={CS_PANEL_HEAD}>What placing this does</p>
+      <p className={`${CS_PHEAD} mt-[7px]`}>What placing this does</p>
       {typed === null ? (
-        <p className={`${CS_PMETA} opacity-60`}>
+        <p className={`${CS_POPEN_META} opacity-60`}>
           {mode === 'split'
             ? 'Type parts that make the whole line to see it'
             : 'Pick a request to see it'}
@@ -173,7 +178,7 @@ export function PlaceEditor({
           </button>
         </p>
       ) : (
-        <p className={CS_PMETA}>Working out what placing this does…</p>
+        <p className={CS_POPEN_META}>Working out what placing this does…</p>
       )}
     </div>
   )
@@ -194,9 +199,15 @@ export function PlaceEditor({
     >
       <EditorForm
         title={head}
-        side={side}
+        heading="phead"
         actions={
-          <EditorActions reason="Each part lands on its request in full, or nothing is written · one logged operation">
+          <EditorActions
+            reason={
+              mode === 'split'
+                ? 'Each part lands on its request in full, or nothing is written · one logged operation'
+                : 'Worked out again for the request you pick'
+            }
+          >
             <button
               type="submit"
               className={CS_BTN}
@@ -215,6 +226,7 @@ export function PlaceEditor({
           </EditorActions>
         }
       >
+        {/* In the right panel the effects stack under the fields (the mock's .cf-ed), not beside them. */}
         {mode === 'split' ? (
           <>
             <EditorGrid columns={2}>
@@ -237,7 +249,7 @@ export function PlaceEditor({
                 </EditorField>
               ))}
             </EditorGrid>
-            <p className={`${CS_PMETA} mt-1`}>
+            <p className={`${CS_POPEN_META} mt-1`}>
               {split.ok ? (
                 <>
                   <span data-sym="" className="text-forest-700 dark:text-forest-300 mr-1 font-bold">
@@ -271,11 +283,12 @@ export function PlaceEditor({
                   />
                   <span>{candidateShort(c, line)}</span>
                 </label>
-                <span className={CS_PMETA}>{`· ${candidateDetail(c)}`}</span>
+                <span className={CS_POPEN_META}>{`· ${candidateDetail(c)}`}</span>
               </li>
             ))}
           </ul>
         )}
+        {side}
       </EditorForm>
     </form>
   )

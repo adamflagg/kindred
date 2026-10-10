@@ -24,6 +24,13 @@ interface ModalProps {
    */
   closeDisabled?: boolean | undefined
   /**
+   * Opt in: the kit's plain scrim (38% black, no blur) instead of the blurred one. The Camperships dialogs draw
+   * the final mocks' `.cf-scrim`; every other caller keeps the blur.
+   */
+  plainBackdrop?: boolean
+  /** Opt in: no close X (Escape and the backdrop still close). The Camperships dialogs' mocks draw none. */
+  hideCloseButton?: boolean
+  /**
    * Fires when the leave transition COMPLETES (not when it is interrupted by
    * a reopen). For parents holding a retained snapshot (kindred#2529) this is
    * the moment the data can be safely dropped — the DOM is already gone.
@@ -232,6 +239,8 @@ export function Modal({
   headerOnDark = false,
   closeAlign = 'center',
   closeDisabled = false,
+  plainBackdrop = false,
+  hideCloseButton = false,
 }: ModalProps) {
   const contentRef = useRef<HTMLDivElement>(null)
   const previouslyFocusedRef = useRef<HTMLElement | null>(null)
@@ -419,9 +428,9 @@ export function Modal({
           // DOM for the fade, so this goes inert the same frame the background
           // is un-inerted — no one-frame gap where a dying overlay still
           // swallows the click that closed it (2530 review finding 1).
-          className={`${isOpen ? 'pointer-events-auto' : 'pointer-events-none'} fixed inset-0 backdrop-blur`}
+          className={`${isOpen ? 'pointer-events-auto' : 'pointer-events-none'} fixed inset-0 ${plainBackdrop ? '' : 'backdrop-blur'}`}
           style={{
-            backgroundColor: 'rgba(17, 26, 22, 0.42)',
+            backgroundColor: plainBackdrop ? 'rgba(0, 0, 0, 0.38)' : 'rgba(17, 26, 22, 0.42)',
             ...(backdropInsetRight ? { right: backdropInsetRight } : {}),
           }}
           onClick={handleBackdropClick}
@@ -470,21 +479,23 @@ export function Modal({
           {hasCustomHeader && (
             <div className="relative">
               {header}
-              <button
-                onClick={onClose}
-                disabled={closeDisabled}
-                className={`absolute ${
-                  closeAlign === 'center' ? 'top-1/2 -translate-y-1/2' : 'top-4'
-                } right-4 z-20 rounded-lg p-2 transition-colors ${
-                  headerOnDark
-                    ? `text-white/70 ${closeDisabled ? CLOSE_HELD : 'hover:bg-white/10 hover:text-white'}`
-                    : `text-muted-foreground ${closeDisabled ? CLOSE_HELD : 'hover:text-foreground hover:bg-black/10'}`
-                }`}
-                data-modal-close
-                aria-label="Close modal"
-              >
-                <X className="h-5 w-5" />
-              </button>
+              {!hideCloseButton && (
+                <button
+                  onClick={onClose}
+                  disabled={closeDisabled}
+                  className={`absolute ${
+                    closeAlign === 'center' ? 'top-1/2 -translate-y-1/2' : 'top-4'
+                  } right-4 z-20 rounded-lg p-2 transition-colors ${
+                    headerOnDark
+                      ? `text-white/70 ${closeDisabled ? CLOSE_HELD : 'hover:bg-white/10 hover:text-white'}`
+                      : `text-muted-foreground ${closeDisabled ? CLOSE_HELD : 'hover:text-foreground hover:bg-black/10'}`
+                  }`}
+                  data-modal-close
+                  aria-label="Close modal"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              )}
             </div>
           )}
 

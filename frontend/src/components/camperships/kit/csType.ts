@@ -84,6 +84,14 @@ export const CS_PANEL_RULE = 'border-dashed border-amber-300 dark:border-amber-8
 export const CS_PMETA = 'text-muted-foreground text-xs'
 /** cs-phead 11.5/17.25 700 muted, sentence case (the household receipt's head). */
 export const CS_PANEL_HEAD = 'text-muted-foreground text-[11.5px] leading-[1.5] font-bold'
+/**
+ * The final mocks' `.cf-phead` (ux3 to-place-3): 11/15 700 uppercase, .05em. Where a mock draws it (To place's, Grants'
+ * and Funders' opened rows and editors); Rules and Scenarios keep CS_PANEL_HEAD, their mocks draw none.
+ */
+export const CS_PHEAD =
+  'text-muted-foreground text-[11px] leading-[15px] font-bold tracking-[.05em] uppercase'
+/** The opened row's and the editors' meta, the mock's `.cf-pmeta` 12.5/18 (CS_PMETA's 12px stays elsewhere). */
+export const CS_POPEN_META = 'text-muted-foreground text-[12.5px] leading-[18px]'
 /** cs-panel 14/20 400 (also cs-td's size): an opened row's panels, the History box's words, the Season notice. */
 export const CS_PANEL = 'text-sm'
 

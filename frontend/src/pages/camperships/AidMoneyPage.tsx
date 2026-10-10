@@ -3,7 +3,7 @@ import { useMemo } from 'react'
 import { Link, Navigate, useParams, useSearchParams } from 'react-router'
 
 import { aidHref, type AidView } from '../../components/camperships/kit/asOf'
-import { CS_LINK } from '../../components/camperships/kit/csType'
+import { CS_LINK, CS_LINK_SM } from '../../components/camperships/kit/csType'
 import { formatLongDate } from '../../components/camperships/kit/dates'
 import { RegisterTab } from '../../components/camperships/grants/RegisterTab'
 import { householdParam } from '../../components/camperships/money/moneyTabs'
@@ -89,13 +89,16 @@ export default function AidMoneyPage() {
   // right slot, on To place only (the final mock; design-language §5, §19).
   const alsoRaised =
     slug === 'to-place' ? (
-      <span className="text-muted-foreground text-[12.5px]">
+      <span className="text-muted-foreground text-xs">
         <span title="Also raised by the ledger, worked where the request is">Also raised:</span>{' '}
-        <Link className={CS_LINK} to={aidHref('/aid/requests', view, { view: 'not-reconciled' })}>
+        <Link
+          className={CS_LINK_SM}
+          to={aidHref('/aid/requests', view, { view: 'not-reconciled' })}
+        >
           Requests › Not reconciled
         </Link>{' '}
         ·{' '}
-        <Link className={CS_LINK} to={aidHref('/aid/requests', view, { view: 'to-reverse' })}>
+        <Link className={CS_LINK_SM} to={aidHref('/aid/requests', view, { view: 'to-reverse' })}>
           To reverse
         </Link>
       </span>

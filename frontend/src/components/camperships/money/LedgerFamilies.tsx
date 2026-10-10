@@ -1,6 +1,5 @@
-import { Home } from 'lucide-react'
 import { useCallback, useMemo, type ReactNode } from 'react'
-import { Link, useSearchParams } from 'react-router'
+import { useSearchParams } from 'react-router'
 
 import { useAidMoneyLedger } from '../../../hooks/camperships/useAidMoneyLedger'
 import { useAidSources } from '../../../hooks/camperships/useAidSources'
@@ -10,12 +9,12 @@ import type {
   ApiAidMoneyLedger,
 } from '../../../types/api-types'
 import { QueryGuard } from '../../QueryGuard'
-import { HouseholdLabelText } from '../household/HouseholdLabel'
 import { labelWords } from '../household/householdModel'
 import { aidHref, type AidView } from '../kit/asOf'
 import { AidPicker } from '../kit/AidPicker'
 import { AidTable, type AidColumn, type AidCsvExtra } from '../kit/AidTable'
-import { CS_FLABEL, CS_LINK_CELL, CS_PMETA } from '../kit/csType'
+import { CS_FLABEL, CS_PMETA } from '../kit/csType'
+import { FamilyLinkCell } from './FamilyLinkCell'
 import { familyLabel } from '../kit/familyLabel'
 import { moneyCsv } from '../kit/money'
 import { Money } from '../kit/MoneyText'
@@ -251,26 +250,14 @@ function FamilyTable({
         pinned: true,
         value: (r) => labelWords(labelOfRow(r)),
         title: (r) => labelWords(labelOfRow(r)),
-        render: (r) => {
-          const link = (
-            <Link
-              className={CS_LINK_CELL}
-              to={aidHref(`/aid/households/${String(r.household_cm_id)}`, view)}
-              onClick={(event) => event.stopPropagation()}
-            >
-              <HouseholdLabelText label={labelOfRow(r)} />
-            </Link>
-          )
+        render: (r) => (
           // §15: a Family Camp household reads ⌂ before its label, as the Requests grid does.
-          return isHousehold(r) ? (
-            <span className="flex min-w-0 items-center gap-1">
-              <Home className="text-muted-foreground h-3 w-3 flex-none" />
-              {link}
-            </span>
-          ) : (
-            link
-          )
-        },
+          <FamilyLinkCell
+            label={labelOfRow(r)}
+            to={aidHref(`/aid/households/${String(r.household_cm_id)}`, view)}
+            household={isHousehold(r)}
+          />
+        ),
         searchable: true,
       },
       {

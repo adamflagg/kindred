@@ -113,9 +113,13 @@ const tfoot = () => {
 describe('Money › Ledger family rows (P-22)', () => {
   it("names each family by the household page's label, its tie-break muted, the server's name when blank (R-D)", async () => {
     renderAt('/aid/money/ledger')
-    const johnson = await screen.findByRole('link', { name: 'Pat Johnson Riverside, CA' })
+    // The tie-break is the link's muted sibling, as the Requests grid draws it (ux3 Ledger "…" fix).
+    const [johnson, lakeside] = await screen.findAllByRole('link', { name: 'Pat Johnson' })
+    expect(lakeside).toHaveAttribute('href', '/aid/households/1000004?year=2027')
     expect(johnson).toHaveAttribute('href', '/aid/households/1000001?year=2027')
-    expect(within(johnson).getByText('Riverside, CA')).toBeInTheDocument()
+    expect(
+      within(johnson?.parentElement as HTMLElement).getByText('Riverside, CA')
+    ).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Liam & Olivia Garcia' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Chen' })).toHaveAttribute(
       'href',
@@ -163,7 +167,7 @@ describe('Money › Ledger family rows (P-22)', () => {
       return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }))
     })
     renderAt('/aid/money/ledger')
-    await screen.findByRole('link', { name: 'Pat Johnson Lakeside, CA' })
+    await screen.findByRole('link', { name: 'Pat Johnson' })
     const cell = within(rowOf(1000004)).getAllByRole('cell')[1]
     expect(cell).toHaveTextContent('—')
     expect(cell).toHaveAttribute(
@@ -199,6 +203,19 @@ describe('Money › Ledger family rows (P-22)', () => {
       expect(cell).toHaveAttribute(
         'title',
         `${FC4.name}: a household-level request, no camper on the line`
+      )
+    })
+
+    // Final audit M-E2 (as Requests, #3120): the label truncates with its own ellipsis, the tiebreak shrinks first.
+    it('lets the ⌂ label shrink and truncate, and the tiebreak shrink first', async () => {
+      serve({ household_sessions: [FC4], label_tiebreak: 'Riverside, CA' })
+      renderAt('/aid/money/ledger')
+      const link = await screen.findByRole('link', { name: /Pat Johnson/ })
+      expect(link).toHaveClass('min-w-0', 'truncate')
+      expect(link).not.toHaveClass('flex-none')
+      expect(within(rowOf(1000001)).getByText('Riverside, CA')).toHaveClass(
+        'shrink-[999]',
+        'truncate'
       )
     })
 

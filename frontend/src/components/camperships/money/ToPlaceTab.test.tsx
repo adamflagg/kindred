@@ -15,8 +15,10 @@ import { ToPlaceTab } from './ToPlaceTab'
 import { SOURCES } from './sourcesFixtures'
 import {
   CHEN_EXACT,
+  GARCIA_WITHHELD,
   JOHNSON_SPLIT,
   RILEY_EXACT,
+  SAM_NO_REQUEST,
   SAM_RECLASSIFIED,
   TO_PLACE,
   TO_PLACE_SKIPPED,
@@ -1172,7 +1174,8 @@ describe('Split… and Place on Another Request… preview what they place (§8.
     const row = await openLine(GARCIA_LINE)
     await userEvent.click(within(row).getByRole('button', { name: 'Place on Another Request…' }))
     const editor = within(row).getByTestId('place-editor')
-    expect(within(editor).getByRole('button', { name: 'Place It' })).toBeDisabled()
+    // Pin changed (ux3 to-place-8): it opens on the first request, so Place It is no longer off before a pick.
+    expect(within(editor).getAllByRole('radio')[0]).toBeChecked()
     await userEvent.click(within(editor).getByRole('radio', { name: 'Liam Garcia · Quest' }))
     await waitFor(() =>
       expect(effects(editor)).toContain('Marks Posted · Liam Garcia · Quest · R1 · $600')
@@ -1187,23 +1190,22 @@ describe('Split… and Place on Another Request… preview what they place (§8.
     })
   })
 
-  it('opens an editor under the three panels, the whole opened row, with its dependent choice shown off, not hidden (§24)', async () => {
+  // Pin changed (owner Q13, 10-09): the editor sits inside the right panel, as the mock draws it (was: under all three
+  // panels, the whole opened row, which left an empty third panel above it).
+  it('opens an editor inside the right panel, with its dependent choice shown, not hidden (§24)', async () => {
     renderTab()
     const row = await openLine(GARCIA_LINE)
     await userEvent.click(within(row).getByRole('button', { name: 'Place on Another Request…' }))
     const editor = within(row).getByTestId('place-editor')
-    // Not inside the right panel: it takes the row's width under all three.
-    expect(editor.closest('[data-panel]')).toBeNull()
-    expect(row.querySelector('[data-panel="confirm"]')).not.toContainElement(editor)
-    // The effects column is there before anything is picked, switched off.
+    expect(row.querySelector('[data-panel="confirm"]')).toContainElement(editor)
+    // The effects are there before anything is typed or picked.
     const side = within(editor).getByTestId('place-effects')
     expect(within(side).getByText('What placing this does')).toBeInTheDocument()
-    expect(within(side).getByText('Pick a request to see it')).toHaveClass('opacity-60')
     // Title Case buttons on one row, the logged-with-who line beside them.
     const place = within(editor).getByRole('button', { name: 'Place It' })
     const back = within(editor).getByRole('button', { name: 'Back' })
     expect(place.parentElement).toBe(back.parentElement)
-    expect(place.parentElement).toHaveTextContent('Each part lands on its request in full')
+    expect(place.parentElement).toHaveTextContent('Worked out again for the request you pick')
   })
 
   it('Back closes the editor and brings the buttons back', async () => {
@@ -1263,8 +1265,8 @@ describe('Reclassify… (finance, D104; P-7) and the lines waiting apart', () =>
     const picker = within(editor).getByRole('button', { name: /^Reclassify as:/ })
     expect(picker.className).toMatch(/h-\[30px\]/)
     expect(editor.querySelector('select')).toBeNull()
-    // Off until a source and a reason are given (an open list makes the rest of the page inert).
-    expect(within(editor).getByRole('button', { name: 'Reclassify' })).toBeDisabled()
+    // Pin changed (ux3 to-place-m3): live from the start, as the mock draws it; an empty send says what is missing.
+    expect(within(editor).getByRole('button', { name: 'Reclassify' })).toBeEnabled()
     await userEvent.click(picker)
     await within(editor).findByRole('option', { name: 'Grantor C full-ride program (outside)' })
     // The line's own description and the unclassified one are not offered.
@@ -1612,5 +1614,297 @@ describe('Money › To place › the outside-grant group (M5)', () => {
     expect(await screen.findByText(/^✓ 1 line placed on its camper/)).toBeInTheDocument()
     expect(writes()[0]?.url).toBe('/api/financial-aid/grants/2027/placements')
     expect(GARCIA_HOUSEHOLD.transaction_cm_id).toBe(4000002)
+  })
+})
+
+// ── ux3 (Money PR): To place against the final mock ─────────────────────────────────────────────
+describe('ux3: the opened row against the final mock', () => {
+  const FINANCE = [...REGISTRAR, 'financial_aid.rules']
+  const johnsonWithFacts = {
+    ...JOHNSON_SPLIT,
+    posting_note: 'full-ride program',
+    reposted_after: [{ amount: 1420, reversed_on: '2027-03-09' }],
+    candidates: JOHNSON_SPLIT.candidates.map((c, i) => ({
+      ...c,
+      rounds:
+        i === 0
+          ? [
+              { round: 1, status: 'posted', amount: 1420 },
+              { round: 2, status: 'needs_offer', amount: 780 },
+            ]
+          : [],
+    })),
+  }
+  const read = (...lines: ApiAidToPlace['groups'][number]['lines']): ApiAidToPlace => ({
+    ...TO_PLACE,
+    groups: [{ ...TO_PLACE.groups[0]!, lines }],
+    open_count: lines.length,
+  })
+  const JOHNSON_NOTED = `${JOHNSON_LINE} · note "full-ride program"`
+
+  // to-place-3, -4, -12
+  it('draws the panel heads in the uppercase .cf-phead grammar, over a 5 : 4 : 5 grid', async () => {
+    renderTab()
+    const row = await openLine(JOHNSON_LINE)
+    for (const head of [
+      'The line in CampMinder',
+      'Suggestion',
+      'Requests it could belong to',
+      'What Confirm does',
+    ]) {
+      expect(within(row).getByText(head)).toHaveClass('uppercase', 'text-[11px]', 'leading-[15px]')
+    }
+    const grid = row.querySelector('[data-panel="line"]')?.parentElement
+    expect(grid?.className).toContain('grid-cols-[minmax(0,5fr)_minmax(0,4fr)_minmax(0,5fr)]')
+    expect(grid).toHaveClass('text-[13.5px]')
+    expect(row.querySelector('[data-panel="line"]')).toHaveClass('pl-0')
+    expect(row.querySelector('[data-panel="candidates"]')).toHaveClass('px-3.5')
+    // The panels start under the family name: the mock's detail cell pads 34px (12 + 22).
+    expect(row).toHaveClass('pl-[22px]')
+  })
+
+  it('sets a later head in a panel 7px under the one before, and the no-request line in the muted 12.5px meta', async () => {
+    renderTab()
+    const row = await openLine(JOHNSON_LINE)
+    expect(within(row).getByText('Suggestion')).toHaveClass('mt-[7px]')
+    expect(within(row).getByText('The line in CampMinder')).not.toHaveClass('mt-[7px]')
+    const sam = await openLine(SAM_LINE)
+    expect(within(sam).getByText('No application this season.')).toHaveClass(
+      'text-[12.5px]',
+      'text-muted-foreground'
+    )
+  })
+
+  // to-place-10
+  it('says each candidate’s rounds, the line’s history and its posting note', async () => {
+    reads = [read(johnsonWithFacts)]
+    renderTab()
+    const row = await openLine(JOHNSON_NOTED)
+    const candidates = within(row.querySelector('[data-panel="candidates"]') as HTMLElement)
+    expect(candidates.getByText('R1 Posted $1,420 · R2 decided $780')).toHaveClass('text-[12.5px]')
+    const line = within(row.querySelector('[data-panel="line"]') as HTMLElement)
+    expect(line.getByText('Reposted after reversing $1,420 (Mar 9)')).toBeInTheDocument()
+    expect(line.getByText(/note "full-ride program"/)).toBeInTheDocument()
+  })
+
+  it('says why a no-request line found nothing, in the evidence under its suggestion', async () => {
+    reads = [
+      {
+        ...TO_PLACE,
+        groups: [
+          {
+            ...TO_PLACE.groups[1]!,
+            lines: [
+              {
+                ...SAM_NO_REQUEST,
+                no_request: { kind: 'person_no_application', person: 'Riley Sam' },
+              },
+            ],
+          },
+        ],
+      },
+    ]
+    renderTab()
+    const row = await openLine(SAM_LINE)
+    expect(within(row).getByText('○ Riley has no application this season')).toBeInTheDocument()
+  })
+
+  // to-place-16 (owner Q14)
+  it('shows three of many withheld reasons, then "· and N more" carrying the full list in its title', async () => {
+    const reasons = ['one changed', 'two changed', 'three changed', 'four changed', 'five changed']
+    const line = {
+      ...GARCIA_WITHHELD,
+      suggestion: {
+        ...GARCIA_WITHHELD.suggestion!,
+        would_not_tick: [{ ...GARCIA_WITHHELD.suggestion!.would_not_tick![0]!, reasons }],
+      },
+    }
+    reads = [read(line)]
+    renderTab()
+    const row = await openLine(GARCIA_LINE)
+    const confirm = within(row.querySelector('[data-panel="confirm"]') as HTMLElement)
+    expect(confirm.getByText(/three changed/)).toBeInTheDocument()
+    expect(confirm.queryByText(/four changed/)).toBeNull()
+    const more = confirm.getByText('and 2 more').closest('span.block')
+    expect(more).toHaveTextContent('·and 2 more')
+    expect(more).toHaveAttribute('title', reasons.join('\n'))
+  })
+
+  it('hangs a wrapped reason under its words, not under its dot (to-place-m1)', async () => {
+    const line = {
+      ...GARCIA_WITHHELD,
+      suggestion: {
+        ...GARCIA_WITHHELD.suggestion!,
+        would_not_tick: [
+          {
+            ...GARCIA_WITHHELD.suggestion!.would_not_tick![0]!,
+            reasons: ['one changed', 'two changed'],
+          },
+        ],
+      },
+    }
+    reads = [read(line)]
+    renderTab()
+    const row = await openLine(GARCIA_LINE)
+    const item = within(row).getByText('one changed').closest('span.block') as HTMLElement
+    expect(item).toHaveClass('pl-[22px]', '-indent-[10px]')
+  })
+
+  // to-place-15 (owner Q13), -8, -9, -m2, -m3
+  it('opens Split… and Place on Another Request… inside the right panel, with no empty third panel', async () => {
+    renderTab()
+    const row = await openLine(GARCIA_LINE)
+    await userEvent.click(within(row).getByRole('button', { name: 'Split…' }))
+    const editor = within(row).getByTestId('place-editor')
+    const panel = row.querySelector('[data-panel="confirm"]') as HTMLElement
+    expect(panel).toContainElement(editor)
+    // The suggestion's "What Confirm does" gives way to the editor's own "What placing this does".
+    expect(within(panel).queryByText('What Confirm does')).toBeNull()
+    expect(within(editor).getByText('What placing this does')).toBeInTheDocument()
+    expect(within(editor).getByText('Split $600')).toHaveClass('uppercase')
+  })
+
+  it('opens Place on Another Request… with the first request picked and its effects shown', async () => {
+    renderTab()
+    const row = await openLine(GARCIA_LINE)
+    await userEvent.click(within(row).getByRole('button', { name: 'Place on Another Request…' }))
+    const editor = within(row).getByTestId('place-editor')
+    const radios = within(editor).getAllByRole('radio')
+    expect(radios.map((r) => (r as HTMLInputElement).checked)).toEqual([true, false])
+    await waitFor(() =>
+      expect(within(editor).getByRole('button', { name: 'Place It' })).toBeEnabled()
+    )
+    expect(
+      within(editor).getByText('Worked out again for the request you pick')
+    ).toBeInTheDocument()
+    // Not the split's sentence.
+    expect(within(editor).queryByText(/Each part lands on its request/)).toBeNull()
+    expect(within(editor).queryByText('Pick a request to see it')).toBeNull()
+  })
+
+  it('keeps the split’s own sentence on Split…', async () => {
+    renderTab()
+    const row = await openLine(GARCIA_LINE)
+    await userEvent.click(within(row).getByRole('button', { name: 'Split…' }))
+    expect(
+      within(within(row).getByTestId('place-editor')).getByText(
+        /Each part lands on its request in full/
+      )
+    ).toBeInTheDocument()
+  })
+
+  it('asks for a reason in a "required" field on Leave, and a Reclassify that stays enabled and says what is missing', async () => {
+    granted = FINANCE
+    renderTab()
+    const row = await openLine(SAM_LINE)
+    await userEvent.click(within(row).getByRole('button', { name: 'Reclassify…' }))
+    const editor = within(row).getByTestId('reclassify-editor')
+    expect(within(editor).getByRole('textbox', { name: 'Reason' })).toHaveAttribute(
+      'placeholder',
+      'required'
+    )
+    // m3: both buttons are live; an empty send says what is missing at the end of the row.
+    const send = within(editor).getByRole('button', { name: 'Reclassify' })
+    expect(send).toBeEnabled()
+    await userEvent.click(send)
+    expect(await within(editor).findByText('Pick what it is reclassified as')).toBeInTheDocument()
+    expect(writes()).toHaveLength(0)
+    // The editor sits in the right panel.
+    expect(row.querySelector('[data-panel="confirm"]')).toContainElement(editor)
+    // m2: no four-column grid; the picker takes its own width and Reason the rest.
+    expect(editor.querySelector('[data-testid="aid-editor-grid"]')).toBeNull()
+    const picker = within(editor).getByRole('button', { name: /^Reclassify as:/ })
+    expect(picker.parentElement).not.toHaveClass('w-full')
+    expect(within(editor).getByRole('textbox', { name: 'Reason' })).toHaveClass('flex-1')
+  })
+
+  it('puts the Leave editor in the right panel with a "required" Why', async () => {
+    renderTab()
+    const row = await openLine(GARCIA_LINE)
+    await userEvent.click(within(row).getByRole('button', { name: 'Leave at Family Level…' }))
+    const why = within(row).getByRole('textbox', { name: 'Why' })
+    expect(why).toHaveAttribute('placeholder', 'required')
+    expect(row.querySelector('[data-panel="confirm"]')).toContainElement(why)
+    expect(within(row).getByText('Leave at family level')).toHaveClass('uppercase')
+  })
+
+  // to-place-7, -13
+  it('does not pin the Family column, and closes up the caret before the name', async () => {
+    renderTab()
+    await openLine(JOHNSON_LINE)
+    const rowCaret = screen.getAllByText('▾').find((e) => e.closest('td') !== null) as HTMLElement
+    expect(rowCaret.closest('td')?.className).not.toMatch(/\bsticky\b/)
+    const caretBox = rowCaret.parentElement as HTMLElement
+    expect(caretBox).not.toHaveClass('gap-1.5')
+    const groupCaret = screen.getAllByText('▾').find((e) => e.closest('[data-group-heading-row]'))
+    expect(groupCaret).not.toHaveClass('w-3', 'mr-1')
+  })
+
+  // to-place-11
+  it('keeps the one-row toolbar for a season that predates To place, with the plain under-line', async () => {
+    reads = [TO_PLACE_SKIPPED]
+    renderTab()
+    const under = await screen.findByText(
+      'Nothing to place: 2026 predates To place, which starts in 2027.'
+    )
+    expect(under).toHaveClass('text-xs', 'text-muted-foreground', 'ml-0.5', 'mt-1.5')
+    expect(under.closest('.card-lodge')).toBeNull()
+    const bar = screen.getByTestId('aid-toolbar')
+    expect(bar).toHaveTextContent('0 lines open')
+    expect(within(bar).getByRole('button', { name: /Download CSV/ })).toBeInTheDocument()
+  })
+})
+
+describe('ux3: the bulk confirm dialog against the final mock (to-place-2)', () => {
+  const open = async () => {
+    reads = [TO_PLACE_WITH_RILEY]
+    renderTab()
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Confirm the 2 Exact Matches…' })
+    )
+    return screen.findByRole('dialog')
+  }
+
+  it('is a 560px card at the top, with a plain scrim and no close X', async () => {
+    await open()
+    expect(screen.getByTestId('modal-content')).toHaveClass('max-w-[560px]')
+    expect(screen.getByTestId('modal-backdrop')).not.toHaveClass('backdrop-blur')
+    expect(screen.queryByLabelText('Close modal')).toBeNull()
+  })
+
+  it('titles in the sans at 15px bold, and leads with a bold line', async () => {
+    const dialog = await open()
+    const title = within(dialog).getByText('Confirm 2 exact single matches')
+    expect(title).toHaveClass('text-[15px]', 'font-bold')
+    expect(title.className).not.toMatch(/font-display|font-serif/)
+    expect(
+      within(dialog)
+        .getByText(/^2 lines · 2 households · marks/)
+        .closest('p')
+    ).toHaveClass('font-bold')
+  })
+
+  it('lists the lines in a bordered box, one per line, cut with an ellipsis and a title', async () => {
+    const dialog = await open()
+    const list = within(dialog).getByTestId('bulk-place-names')
+    expect(list).toHaveClass('border', 'rounded-lg', 'max-h-[150px]')
+    expect(list).not.toHaveClass('columns-2')
+    const [first] = within(list).getAllByRole('listitem')
+    expect(first).toHaveClass('truncate')
+    expect(first).toHaveAttribute('title')
+  })
+
+  it('puts the all-or-nothing sentence left in a footer band, Back then Confirm 2 on the right', async () => {
+    const dialog = await open()
+    const footer = within(dialog).getByTestId('bulk-place-footer')
+    expect(footer).toHaveClass('border-t', 'justify-between')
+    const sentence = within(footer).getByText('All or nothing · one operation in Season › History')
+    const back = within(footer).getByRole('button', { name: 'Back' })
+    const confirm = within(footer).getByRole('button', { name: 'Confirm 2' })
+    const order = [sentence, back, confirm].map((el) =>
+      Array.from(footer.querySelectorAll('*')).indexOf(el)
+    )
+    expect(order).toEqual([...order].sort((a, b) => a - b))
+    expect(back.parentElement).toBe(confirm.parentElement)
   })
 })

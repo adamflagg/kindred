@@ -23,6 +23,7 @@ export function ReasonEditor({
   testId,
   cancelLabel = 'Back',
   requiredWords,
+  placeholder = 'required',
 }: {
   title: string
   label: string
@@ -36,6 +37,8 @@ export function ReasonEditor({
   cancelLabel?: string
   /** What an empty send says; default "<label> is required". Funders' Retire and Unretire: "A reason is required." */
   requiredWords?: string
+  /** The field's placeholder: the mocks draw "required" (Funders' Retire: "required, logged"). */
+  placeholder?: string
 }) {
   const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -83,6 +86,7 @@ export function ReasonEditor({
       >
         <EditorForm
           title={title}
+          heading="phead"
           actions={
             <EditorActions reason={hint}>
               <button type="submit" className={CS_BTN} disabled={busy}>
@@ -102,6 +106,7 @@ export function ReasonEditor({
                 ref={field}
                 type="text"
                 aria-label={label}
+                placeholder={placeholder}
                 value={note}
                 maxLength={REASON_MAX}
                 className={`${CS_FIELD} w-full`}

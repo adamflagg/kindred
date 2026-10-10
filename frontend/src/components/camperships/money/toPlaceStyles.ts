@@ -15,4 +15,4 @@ export const GROUP_HEADING = 'text-foreground text-[13.5px] leading-normal font-
 export const GROUP_HEADING_ROW = 'mt-3.5 mb-1 ml-0.5 flex items-baseline gap-2'
 
 /** The fold caret before a group's heading. */
-export const GROUP_CARET = 'mr-1 inline-block w-3'
+export const GROUP_CARET = 'inline-block'

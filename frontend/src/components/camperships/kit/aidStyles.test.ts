@@ -75,3 +75,18 @@ describe('Camperships kit styles in both themes', () => {
     expect(styles.NEGATIVE_INK).toContain('text-red-700')
   })
 })
+
+// ux3 to-place-5: the opened row's detail cell is the mock's td.cf-detail tint (amber-100 22% over the card, amber-900
+// 18% in dark), lighter than the clicked row's amber-50, which stays.
+describe('the opened row’s detail tint', () => {
+  it('is its own, not the highlighted row’s amber-50', () => {
+    expect(kit.DETAIL_ROW).not.toContain('bg-amber-50')
+    expect(kit.DETAIL_ROW).toContain(
+      'bg-[color-mix(in_oklab,var(--color-amber-100)_22%,var(--color-card))]'
+    )
+    expect(kit.DETAIL_ROW).toContain(
+      'dark:bg-[color-mix(in_oklab,var(--color-amber-900)_18%,var(--color-card))]'
+    )
+    expect(kit.ROW_HIGHLIGHT).toContain('bg-amber-50')
+  })
+})

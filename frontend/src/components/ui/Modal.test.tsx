@@ -1233,4 +1233,35 @@ describe('Modal', () => {
       await waitFor(() => expect(document.activeElement).toBe(screen.getByPlaceholderText('Field')))
     })
   })
+
+  describe('plainBackdrop and hideCloseButton (opt in; the Camperships dialogs)', () => {
+    it('keeps the blur and the close X by default', () => {
+      render(
+        <Modal isOpen onClose={() => {}} title="T">
+          <p>x</p>
+        </Modal>
+      )
+      expect(screen.getByTestId('modal-backdrop')).toHaveClass('backdrop-blur')
+      expect(screen.getByLabelText('Close modal')).toBeInTheDocument()
+    })
+
+    it('draws the kit scrim, with no blur and no X, when asked', () => {
+      render(
+        <Modal
+          isOpen
+          onClose={() => {}}
+          header={<h2>T</h2>}
+          ariaLabel="T"
+          plainBackdrop
+          hideCloseButton
+        >
+          <p>x</p>
+        </Modal>
+      )
+      const backdrop = screen.getByTestId('modal-backdrop')
+      expect(backdrop).not.toHaveClass('backdrop-blur')
+      expect(backdrop.style.backgroundColor).toBe('rgba(0, 0, 0, 0.38)')
+      expect(screen.queryByLabelText('Close modal')).toBeNull()
+    })
+  })
 })

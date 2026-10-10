@@ -59,18 +59,20 @@ describe('BulkPlaceDialog headline', () => {
 })
 
 describe('BulkPlaceDialog is wide and short (design-language §24)', () => {
-  it('lists the lines in two columns and puts the buttons on one row with the History line', () => {
+  // Pin changed (ux3 to-place-2): the final mock's `.cf-modal`: a boxed one-line list (no columns) and a footer
+  // band, the History sentence at its left and Back then Confirm N at its right (was: two columns, buttons left).
+  it('lists the lines one per row in a box and puts Back and Confirm in a footer band with the History line', () => {
     show(planOf([withLock(CHEN_EXACT, 1500), withLock(RILEY_EXACT, 300)]))
     const dialog = screen.getByRole('dialog')
-    expect(dialog.querySelector('ul.columns-2')).not.toBeNull()
+    expect(dialog.querySelector('ul.columns-2')).toBeNull()
+    expect(within(dialog).getByTestId('bulk-place-names')).toHaveClass('border', 'rounded-lg')
     const confirm = within(dialog).getByRole('button', { name: 'Confirm 2' })
     const back = within(dialog).getByRole('button', { name: 'Back' })
     expect(confirm.parentElement).toBe(back.parentElement)
-    expect(confirm.parentElement).toHaveTextContent(
+    expect(within(dialog).getByTestId('bulk-place-footer')).toHaveTextContent(
       'All or nothing · one operation in Season › History'
     )
-    // Title Case buttons, the Posted wording unchanged (standing ruling).
-    expect(confirm.parentElement?.className).toMatch(/flex-nowrap/)
+    expect(back.compareDocumentPosition(confirm) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   it('explains in short lines with symbols', () => {

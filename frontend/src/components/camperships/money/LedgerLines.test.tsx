@@ -152,7 +152,11 @@ describe("The Ledger's totals open their lines (ruling F)", () => {
     expect(within(panel).getByRole('button', { name: 'Download CSV' })).toBeInTheDocument()
     // R3-3: each line's family is named as its Ledger row names it, tie-break muted, and links to
     // that family's household (R3-14), not the posting household.
-    const [family] = within(panel).getAllByRole('link', { name: 'Pat Johnson Riverside, CA' })
+    // (The tie-break is the link's muted sibling now, as the Requests grid draws it, so the link names the label.)
+    const [family] = within(panel).getAllByRole('link', { name: 'Pat Johnson' })
+    expect(
+      within(family?.parentElement as HTMLElement).getByText('Riverside, CA')
+    ).toBeInTheDocument()
     expect(family).toHaveAttribute('href', '/aid/households/1000001?year=2027')
     await userEvent.click(within(panel).getByRole('button', { name: 'Close' }))
     expect(screen.queryByTestId('ledger-lines')).toBeNull()
@@ -286,6 +290,33 @@ describe('the lines card, as the final mock draws it (★13, §23)', () => {
     )
     expect(cells[0]?.querySelector('svg')).not.toBeNull()
     expect(within(camper).getAllByRole('cell')[0]?.querySelector('svg')).toBeNull()
+  })
+
+  // Final audit M-E2, as Requests got it (#3120): the household link truncates WITH its own ellipsis (it can shrink),
+  // and the tiebreak gives way first, so a long ⌂ label is never cut with no "…".
+  it('lets a ⌂ household label shrink and truncate, and its tiebreak shrink first', async () => {
+    const [first, ...rest] = LEDGER_LINES.lines
+    if (first === undefined) throw new Error('fixture')
+    lines = {
+      ...LEDGER_LINES,
+      lines: [
+        {
+          ...first,
+          household_session: { name: 'Family Camp 4: Riverside Weekend', session_type: 'family' },
+        },
+        ...rest,
+      ],
+    }
+    renderAt(OPEN, LIVE_VIEW)
+    const panel = await screen.findByTestId('ledger-lines')
+    await within(panel).findByText('reversed Mar 9')
+    const [household] = within(panel).getAllByRole('row').slice(1)
+    if (household === undefined) throw new Error('rows')
+    const link = within(household).getAllByRole('link')[0] as HTMLElement
+    expect(link).toHaveClass('min-w-0', 'truncate')
+    expect(link).not.toHaveClass('flex-none')
+    expect(link).not.toHaveClass('max-w-full')
+    expect(within(household).getByText('Riverside, CA')).toHaveClass('shrink-[999]', 'truncate')
   })
 
   it('searches the lines from the heading row', async () => {
