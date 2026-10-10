@@ -360,8 +360,8 @@ def test_the_round_2_fee_percent_follows_the_class_table_for_a_program_by_class(
 
 
 def test_asked_counts_a_request_above_its_session_cost_at_the_cost() -> None:
-    """Rule M, as Development applies it: a typo'd 40,000 ask on a 4,000 session counts 4,000. Average ask follows;
-    the live asks behind % of ask (a different question) are as typed."""
+    """Rule M, as Development applies it: a typo'd 40,000 ask on a 4,000 session counts 4,000. Average ask follows,
+    and so do the live asks behind % of ask (owner A5, 2026-10-09); only Asked (as typed) keeps the raw sum."""
     table = statistics(
         [
             req("reqemma00000001", rnd(1, ask="40000", posted="1500"), cost="4000"),

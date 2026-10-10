@@ -173,7 +173,7 @@ async def test_asks_that_cant_be_rebuilt_fall_back_to_now_and_say_so(monkeypatch
     cut = await service.statistics(YEAR, table="camp", round_=1, through=DEADLINE)
     assert (
         cut.total.asked == CAPPED_ASKED
-    )  # Rule M (owner 10-09): Asked counts at the session cost; live_asked is as typed
+    )  # Rule M (owner 10-09): Asked counts at the session cost; live_asked too (owner A5, 2026-10-09)
 
 
 async def test_a_cut_on_or_after_the_reads_own_day_needs_no_past_read(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -187,7 +187,7 @@ async def test_a_cut_on_or_after_the_reads_own_day_needs_no_past_read(monkeypatc
     out = await service.statistics(YEAR, table="camp", round_=1, through=date(2027, 4, 1))
     assert (
         out.total.asked == CAPPED_ASKED
-    )  # Rule M (owner 10-09): Asked counts at the session cost; live_asked is as typed
+    )  # Rule M (owner 10-09): Asked counts at the session cost; live_asked too (owner A5, 2026-10-09)
 
 
 def test_freezing_asks_replaces_round_1_only_and_leaves_appeal_asks_out_of_the_snapshot() -> None:

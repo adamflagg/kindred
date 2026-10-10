@@ -22,19 +22,19 @@ The chips are an award table (None: All award tables, RPT-10) and a round (None:
   awarded_count   live requests whose AWARDED (Posted) money is above $0, on either basis; the average award is
                   awarded ÷ this count (D80, labelled with its population: O-930-16), never decided money (D130:
                   decided is never called awarded). `decided_count` counts the requests with decided money apart.
-  % of ask        amount ÷ the asks of the LIVE requests (a cancelled request's ask leaves with its award), as they
-                  stand today; a round outside the budget (D121's full-cost outside funder) is never awarded, so its
-                  ask leaves the denominator too (owner (c), RULED 2026-10-02; `asked` keeps it). On the
+  % of ask        amount ÷ the capped asks (as `asked`, owner A5 2026-10-09) of the LIVE requests (a cancelled
+                  request's ask leaves with its award), as they stand today; a round outside the budget (D121's
+                  full-cost outside funder) is never awarded, so its ask leaves the denominator too (owner (c),
+                  RULED 2026-10-02; `asked` keeps it). On the
                   "posted_and_decided" basis amount is Posted + Decided and the column reads
                   PCT_OF_ASK_DECIDED_LABEL (owner (b), RULED 2026-10-02).
   grants          the live requests' counting outside grants plus each outside-budget round's own money (Posted,
                   + Decided on the decided basis): "grants means anything that isn't internal camp money" (owner A1,
                   RULED 2026-10-02).
-  % with grants   (amount + grants) ÷ the live requests' FULL asks, outside-budget rounds kept: an outside funder
-                  counts as grants, so its ask stays in the denominator beside its money (owner, RULED 2026-10-02).
-                  The sheet's
-                  "% of Ask Granted in Total". Round 1 and All rounds only: a grant belongs to the request, not a
-                  round.
+  % with grants   (amount + grants) ÷ the live requests' FULL capped asks (A5), outside-budget rounds kept: an
+                  outside funder counts as grants, so its ask stays in the denominator beside its money (owner,
+                  RULED 2026-10-02). The sheet's "% of Ask Granted in Total". Round 1 and All rounds only: a grant
+                  belongs to the request, not a round.
   fee %           Round 1 and All rounds: the chip table's Round 1 % for the tier. Round 2: the Round 2 table the
                   chip table's programs use, when they use one (its total %, a rules value). Round 3 and the All
                   chip: None (the screen reads "varies").

@@ -577,8 +577,9 @@ export function statisticsCsvName(view: AidView, choice: StatisticsChoice, table
 }
 
 /**
- * Rule M on Asked (owner 10-09): a request's asks together count at most its priced session's cost, as in
- * Development. This line says how many requests that moved, under the tier table; null when none did.
+ * Rule M on Asked (owner 10-09, A1/A2 2026-10-09): every Asked figure counts at most the priced session's cost.
+ * This line counts the requests whose need is above that cost (the All-rounds basis, whatever the chip), under
+ * the tier table; null when there are none.
  */
 export function cappedAskWords(total: {
   readonly requests_capped?: number | undefined
