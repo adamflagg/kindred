@@ -7,7 +7,7 @@ import type { ReactNode } from 'react'
  */
 export function AidPageHead({ band, tabs }: { band: ReactNode; tabs?: ReactNode }) {
   return (
-    <div data-testid="aid-page-head">
+    <div data-testid="aid-page-head" className="flow-root">
       <div className={tabs === undefined ? 'mb-0.5' : 'mb-1'}>{band}</div>
       {tabs}
     </div>
