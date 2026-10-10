@@ -3,13 +3,13 @@ Figures: Session 2 (1000101) gives a tier-2 family Round 1 = 1,500; Emma (100001
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime
 
 import pytest
 
 from api.schemas.financial_aid_to_place import ToPlaceLineOut
 from api.services.financial_aid_to_place import MISMATCH_FLAG, LeftLine, LineDetail
-from tests.unit.api.services.decisions_fakes import seed_line
+from tests.unit.api.services.decisions_fakes import seed_line, seed_request
 from tests.unit.api.services.financial_aid_fakes import YEAR
 from tests.unit.api.services.to_place_fakes import EMMA, MAR8, FakeLabels, one_line, to_place_service
 
@@ -129,3 +129,61 @@ def test_a_lines_household_label_defaults_to_empty() -> None:
     """A field the frontend's exhaustive fixtures don't name yet must not be required."""
     assert ToPlaceLineOut.model_fields["household_label"].default == ""
     assert ToPlaceLineOut.model_fields["household_label_tiebreak"].default == ""
+
+
+# --- the opened row's extra facts (ux3 to-place-10): display-only, they change no total, count or class ------
+
+
+@pytest.mark.asyncio
+async def test_a_candidate_carries_each_rounds_status_and_amount() -> None:
+    """The mock's second meta line under a candidate ("R1 Posted $1,420 · R2 decided $780") is built from these."""
+    out = await to_place_service(one_line()).read(YEAR)
+    (candidate,) = out.groups[0].lines[0].candidates
+    assert [(r.round, r.status, r.amount) for r in candidate.rounds] == [(1, "needs_offer", 1500.0)]
+
+
+@pytest.mark.asyncio
+async def test_a_line_carries_its_postings_note() -> None:
+    store = one_line()
+    store.details[9001] = LineDetail(9001, "camp fa", (), note="full-ride program")
+    out = await to_place_service(store).read(YEAR)
+    assert out.groups[0].lines[0].posting_note == "full-ride program"
+    store.details[9001] = LineDetail(9001, "camp fa")
+    out = await to_place_service(store).read(YEAR)
+    assert out.groups[0].lines[0].posting_note == ""
+
+
+@pytest.mark.asyncio
+async def test_a_line_posted_just_after_a_reversal_says_what_was_reversed() -> None:
+    store = one_line()  # 9001 posted Mar 8
+    seed_line(store, 9000, "1500", person=0, posted=datetime(2027, 3, 1, 18, 0, tzinfo=UTC), reversed_at=MAR8)
+    seed_line(store, 8999, "100", household=1000009, person=0, posted=MAR8, reversed_at=MAR8)  # another family's
+    out = await to_place_service(store).read(YEAR)
+    line = next(ln for g in out.groups for ln in g.lines if ln.transaction_cm_id == 9001)
+    assert [(r.amount, r.reversed_on) for r in line.reposted_after] == [(1500.0, date(2027, 3, 8))]
+
+
+@pytest.mark.asyncio
+async def test_a_line_with_no_reversal_before_it_has_no_history() -> None:
+    out = await to_place_service(one_line()).read(YEAR)
+    assert out.groups[0].lines[0].reposted_after == []
+
+
+@pytest.mark.asyncio
+async def test_a_no_request_line_says_why_nothing_was_found() -> None:
+    store = one_line()
+    # A household-level line: its household's only request was withdrawn, so someone DID apply.
+    seed_line(store, 9002, "700", household=1000009, person=0, posted=MAR8)
+    seed_line(store, 9003, "300", household=1000009, person=1000091, posted=MAR8)  # a camper who did not apply
+    seed_request(store, "reqwithdrawn001", household=1000009, person=1000092, status="withdrawn")
+    seed_line(store, 9004, "250", household=1000009, person=1000092, posted=MAR8)
+    seed_line(store, 9005, "400", household=1000008, person=0, posted=MAR8)  # nobody in the household applied
+    out = await to_place_service(store).read(YEAR)
+    lines = {ln.transaction_cm_id: ln for g in out.groups for ln in g.lines}
+    assert lines[9001].no_request is None  # it has a candidate
+    assert [(lines[t].no_request.kind, lines[t].no_request.person) for t in (9002, 9003, 9004, 9005)] == [  # type: ignore[union-attr]
+        ("withdrawn", "Camper 1000092"),
+        ("person_no_application", "Camper 1000091"),
+        ("withdrawn", "Camper 1000092"),
+        ("household_no_application", ""),
+    ]

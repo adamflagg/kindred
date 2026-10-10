@@ -171,6 +171,7 @@ export function GrantorForm({
             changes height. The buttons share one row with the required line. */}
         <EditorForm
           title={initial === undefined ? 'New funder' : `Editing · ${initial.name}`}
+          heading="phead"
           side={
             <EditorGrid columns={2}>
               <span className="col-span-2">

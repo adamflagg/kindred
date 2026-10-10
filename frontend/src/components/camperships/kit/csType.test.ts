@@ -44,6 +44,20 @@ describe('csType aliases slice 1 (spec §1.1)', () => {
     expect((cs as unknown as Record<string, string>)[name]).toBe(source)
   })
 
+  // ux3 to-place-3: the final mocks' .cf-phead, a separate token so Rules and Scenarios keep the sentence-case head.
+  it('CS_PHEAD is the mock .cf-phead: 11/15, 700, .05em, uppercase; CS_PANEL_HEAD stays sentence case', () => {
+    expect(cs.CS_PHEAD).toBe(
+      'text-muted-foreground text-[11px] leading-[15px] font-bold tracking-[.05em] uppercase'
+    )
+    expect(cs.CS_PANEL_HEAD).not.toContain('uppercase')
+  })
+
+  // ux3 to-place-4: the opened row's meta is the mock's .cf-pmeta, 12.5/18 (CS_PMETA stays 12px for the rest).
+  it('CS_POPEN_META is 12.5/18 muted', () => {
+    expect(cs.CS_POPEN_META).toBe('text-muted-foreground text-[12.5px] leading-[18px]')
+    expect(cs.CS_PMETA).toBe('text-muted-foreground text-xs')
+  })
+
   it('CS_PILL is the kit PILL record', () => {
     expect(cs.CS_PILL).toBe(kit.PILL)
   })

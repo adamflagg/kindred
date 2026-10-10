@@ -10,7 +10,8 @@ import type { ApiAidToPlace, ApiAidToPlaceLine } from '../../../types/api-types'
 import { QueryGuard } from '../../QueryGuard'
 import type { AidView } from '../kit/asOf'
 import { CS_TOOLBAR_LEAD, CS_TOOLBAR_STATUS } from '../kit/csType'
-import { AidFilterChip } from '../kit/Toolbar'
+import { AidCsvButton } from '../kit/CsvButton'
+import { AidFilterChip, AidToolbar } from '../kit/Toolbar'
 import { hiddenTicks } from '../requests/ticks'
 import { AidDefinitionNotes } from '../shell/AidDefinitionNotes'
 import { BulkPlaceBar } from './BulkPlaceBar'
@@ -268,6 +269,23 @@ function ToPlaceBody({
 }
 
 /**
+ * A season that predates To place (ux3 to-place-11; the mock's empty answer): the one-row toolbar stays, saying
+ * "0 lines open" with Download CSV (nothing to download, so it is off), and the reason is the kit's plain
+ * under-line, not a shadowed card.
+ */
+function ToPlaceSkipped({ words }: { words: string }) {
+  return (
+    <>
+      <AidToolbar
+        lead={<span className="text-muted-foreground font-normal">0 lines open</span>}
+        right={<AidCsvButton onDownload={() => undefined} disabled title="Nothing to download" />}
+      />
+      <p className="text-muted-foreground mt-1.5 ml-0.5 text-xs">Nothing to place: {words}.</p>
+    </>
+  )
+}
+
+/**
  * Money › To place (spec §8.1; D12, D16, D26, D58, D62, D104, D151, D152; final UX, money-to-place.html):
  * camp-aid lines no single request takes, grouped by reason, each with the dashboard's suggestion, its
  * evidence and what Confirm will mark Posted; the lines left at family level and those reclassified
@@ -317,9 +335,7 @@ export function ToPlaceTab({
       >
         {(data) =>
           data.skipped ? (
-            <div className="card-lodge text-muted-foreground p-6 text-sm">
-              Nothing to place: {data.skipped}.
-            </div>
+            <ToPlaceSkipped words={data.skipped} />
           ) : (
             <ToPlaceBody
               key={`${String(data.year)}:${String(householdCmId ?? 'all')}`}

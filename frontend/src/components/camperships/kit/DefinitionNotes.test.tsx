@@ -128,3 +128,13 @@ describe('DefinitionNotes boldTerm', () => {
     expect(document.querySelector('b')).toBeNull()
   })
 })
+
+// ux3 to-place-14: the mock's `.cf-notes li > .n` is flex none, min-width 12px, so the terms align from note 10 on.
+describe('DefinitionNotes number', () => {
+  it('holds a 12px minimum width and never shrinks', () => {
+    render(<DefinitionNotes notes={[{ n: 1, text: 'Decided: the award.' }]} />)
+    const number = screen.getByRole('listitem').querySelector('span')
+    expect(number).toHaveTextContent('1.')
+    expect(number).toHaveClass('flex-none', 'min-w-3')
+  })
+})

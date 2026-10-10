@@ -156,6 +156,7 @@ export function ClassifyEditor({
     <div data-testid="classify-editor">
       <EditorForm
         title={unclassified ? 'Classify this description' : 'Edit this description'}
+        heading="phead"
         actions={
           <EditorActions reason={read.ok ? undefined : read.problem}>
             <button

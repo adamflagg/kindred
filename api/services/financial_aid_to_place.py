@@ -86,6 +86,7 @@ class LineDetail:
     transaction_cm_id: int
     description_key: str
     flags: tuple[str, ...] = ()
+    note: str = ""  # aid_postings.transaction_note, shown on the opened row
 
 
 @dataclass(frozen=True)

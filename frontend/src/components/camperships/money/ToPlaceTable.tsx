@@ -57,11 +57,10 @@ function columnsFor(
       key: 'family',
       header: 'Family',
       width: WIDTH.family,
-      pinned: true,
       value: (line) => labelWords(lineFamily(line)),
       title: (line) => `${labelWords(lineFamily(line))} · open the household page`,
       render: (line, ctx) => (
-        <span className="flex min-w-0 items-center gap-1.5">
+        <span className="flex min-w-0 items-center">
           <span className={CARET}>{ctx.highlighted ? '▾' : '▸'}</span>
           <Link
             to={aidHref(`/aid/households/${String(line.household_cm_id)}`, view)}

@@ -84,6 +84,31 @@ class SuggestionOut(BaseModel):
     would_not_tick: list[NotTickedOut] = Field(default_factory=list)
 
 
+class RoundStatusOut(BaseModel):
+    """One round of a candidate request, for the opened row's status line ("R1 Posted $1,420 · R2 decided $780").
+    `status` is the pricing's own (posted, needs_offer, held, ...). `amount` is what a posted round locked, else its
+    decided amount, None when nothing is decided. Display only: no total, count or class reads it."""
+
+    round: int
+    status: str
+    amount: float | None = None
+
+
+class ReversedOut(BaseModel):
+    """A camp-aid line of the household CampMinder reversed just before this one was posted (display only)."""
+
+    amount: float
+    reversed_on: date
+
+
+class NoRequestOut(BaseModel):
+    """Why a no_request line found no request (display only): nobody in the household applied, the line's camper
+    did not, or the camper's request was withdrawn. `person` names the camper ("" for the household)."""
+
+    kind: Literal["household_no_application", "person_no_application", "withdrawn"]
+    person: str = ""
+
+
 class CandidateOut(BaseModel):
     """A request the line's family holds (D26). not_yet_in_campminder is the part of it not yet in CampMinder:
     its locked total and its decided rounds waiting to be ticked, less the money already placed on it."""
@@ -100,6 +125,7 @@ class CandidateOut(BaseModel):
     )
     not_yet_in_campminder: float
     cancelled: bool
+    rounds: list[RoundStatusOut] = Field(default_factory=list)
 
 
 class ToPlaceLineOut(BaseModel):
@@ -125,6 +151,11 @@ class ToPlaceLineOut(BaseModel):
     reclassified_to: str = ""
     household_label: str = ""
     household_label_tiebreak: str = ""
+    posting_note: str = ""  # the posting's CampMinder note (display only)
+    reposted_after: list[ReversedOut] = Field(
+        default_factory=list
+    )  # reversals of the household just before this posting
+    no_request: NoRequestOut | None = None  # why a no_request line found nothing
 
 
 class ToPlaceGroupOut(BaseModel):

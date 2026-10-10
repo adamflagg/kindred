@@ -9,6 +9,7 @@ import {
   CS_FGRID_TWO,
   CS_FORM2,
   CS_FORM2_SIDE,
+  CS_PHEAD,
   CS_TOOLBAR_STATUS,
 } from './csType'
 
@@ -23,7 +24,9 @@ export function EditorForm({
   actions,
   children,
   className,
+  heading = 'card',
 }: {
+  readonly heading?: 'card' | 'phead'
   readonly title?: ReactNode
   readonly side?: ReactNode
   readonly actions?: ReactNode
@@ -32,7 +35,13 @@ export function EditorForm({
 }) {
   return (
     <div className={className ? `${CS_EDITOR} ${className}` : CS_EDITOR}>
-      {title !== undefined && <h3 className={CS_CARD_HEADING}>{title}</h3>}
+      {title !== undefined &&
+        (heading === 'phead' ? (
+          // The mock's .cf-phead inside .cf-ed (ux3 to-place-3): a span, as bare headings are styled outside the layers.
+          <span className={`${CS_PHEAD} block`}>{title}</span>
+        ) : (
+          <h3 className={CS_CARD_HEADING}>{title}</h3>
+        ))}
       <div data-testid="aid-editor-form" className={side !== undefined ? CS_FORM2 : undefined}>
         <div className={side !== undefined ? 'min-w-0 pr-4' : undefined}>{children}</div>
         {side !== undefined && <div className={CS_FORM2_SIDE}>{side}</div>}

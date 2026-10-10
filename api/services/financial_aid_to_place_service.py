@@ -37,6 +37,7 @@ from api.schemas.financial_aid_to_place import (
     EvidenceOut,
     LeaveLineIn,
     LeftToTickOut,
+    NoRequestOut,
     NotTickedOut,
     PartOut,
     PlaceLineIn,
@@ -46,6 +47,8 @@ from api.schemas.financial_aid_to_place import (
     PlacePreviewIn,
     PlacePreviewOut,
     ReclassifyLineIn,
+    ReversedOut,
+    RoundStatusOut,
     SuggestionOut,
     TickedOut,
     ToPlaceGroupOut,
@@ -62,8 +65,10 @@ from api.services.financial_aid_decisions_service import (
     Season,
 )
 from api.services.financial_aid_grants_register import Placement
+from api.services.financial_aid_intake_types import STATUS_WITHDRAWN
 from api.services.financial_aid_ledger_service import money
 from api.services.financial_aid_reconciliation import (
+    CampLine,
     LedgerTick,
     SeasonLedger,
     SplitPart,
@@ -95,6 +100,7 @@ from api.services.financial_aid_to_place import (
 from bunking.financial_aid.change_diff import changed_fields
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite, AidWriteConflictError
 from bunking.financial_aid.decisions import PricedRequest
+from bunking.financial_aid.decisions.pricing import RoundView
 from bunking.financial_aid.money import ZERO, dollars
 from bunking.pocketbase_batch import BatchLimitError, BatchRequestFailedError
 
@@ -348,6 +354,37 @@ def _raced(exc: BatchRequestFailedError) -> bool:
     return exc.status == 404 or any("unique" in message.lower() for message in exc.field_errors.values())
 
 
+# A reversal counts as "just before" a posting when CampMinder reversed it within this many days of it.
+_REPOST_WINDOW_DAYS: Final = 3
+
+
+def _round_status(view: RoundView) -> RoundStatusOut:
+    """A round as the opened row's status line shows it: a posted round's locked amount, else what is decided."""
+    amount = view.locked if view.status == "posted" else view.decided
+    return RoundStatusOut(round=view.round, status=view.status, amount=money(amount) if amount is not None else None)
+
+
+def _reposted_after(line: CampLine, camp_lines: Sequence[CampLine]) -> list[ReversedOut]:
+    """The household's camp-aid lines CampMinder reversed on the day this one was posted or up to
+    `_REPOST_WINDOW_DAYS` days before it, one per day with their sum (display only)."""
+    if line.post_date is None:
+        return []
+    posted = camp_date(line.post_date)
+    by_day: dict[date, Decimal] = {}
+    for other in camp_lines:
+        if (
+            other.transaction_cm_id == line.transaction_cm_id
+            or other.household_cm_id != line.household_cm_id
+            or not other.is_reversed
+            or other.reversal_date is None
+        ):
+            continue
+        day = camp_date(other.reversal_date)
+        if 0 <= (posted - day).days <= _REPOST_WINDOW_DAYS:
+            by_day[day] = by_day.get(day, ZERO) + other.amount
+    return [ReversedOut(amount=money(total), reversed_on=day) for day, total in sorted(by_day.items())]
+
+
 class ToPlaceService:
     def __init__(
         self,
@@ -433,6 +470,27 @@ class ToPlaceService:
                 would_not_tick=not_ticked_outs([(item.line.transaction_cm_id, t, reasons) for t, reasons in held]),
             )
 
+        def no_request_out(line: CampLine) -> NoRequestOut:
+            withdrawn = sorted(
+                (
+                    r
+                    for r in season.requests.values()
+                    if r.household_cm_id == line.household_cm_id and r.status == STATUS_WITHDRAWN
+                ),
+                key=lambda r: r.id,
+            )
+            if line.person_cm_id <= 0:
+                # A household-level line: a withdrawn request in the household means someone did apply, so say
+                # whose request it was ("" when it names no camper; the client says "the household's").
+                if withdrawn:
+                    first = withdrawn[0]
+                    who = persons.get(first.person_cm_id, "") if first.person_cm_id > 0 else ""
+                    return NoRequestOut(kind="withdrawn", person=who)
+                return NoRequestOut(kind="household_no_application")
+            who = persons.get(line.person_cm_id, "")
+            mine = any(r.person_cm_id == line.person_cm_id for r in withdrawn)
+            return NoRequestOut(kind="withdrawn" if mine else "person_no_application", person=who)
+
         def line_out(item: ToPlaceItem, pending: str, note: str) -> ToPlaceLineOut:
             line = item.line
             detail = details.get(line.transaction_cm_id)
@@ -454,6 +512,9 @@ class ToPlaceService:
                 reclassified_to=described(pending) if pending else "",
                 household_label=named.label if named is not None else "",
                 household_label_tiebreak=named.tiebreak if named is not None else "",
+                posting_note=detail.note if detail is not None else "",
+                reposted_after=_reposted_after(line, season.camp_lines),
+                no_request=no_request_out(line) if not item.candidates else None,
             )
 
         sorted_lines = sort_lines(items, overrides, details, left)
@@ -486,6 +547,7 @@ class ToPlaceService:
     @staticmethod
     def _candidate_out(c: Candidate, season: Season, families: dict[int, str], persons: dict[int, str]) -> CandidateOut:
         session = season.sessions.get(c.session_cm_id)
+        priced = season.priced.get(c.request_id)
         return CandidateOut(
             request_id=c.request_id,
             household_cm_id=c.household_cm_id,
@@ -497,6 +559,9 @@ class ToPlaceService:
             session_type=session.session_type if session is not None else "",
             not_yet_in_campminder=money(c.not_yet_in_campminder),
             cancelled=c.cancelled,
+            rounds=[_round_status(view) for view in sorted(priced.rounds, key=lambda v: v.round)]
+            if priced is not None
+            else [],
         )
 
     # --- the writes ---------------------------------------------------------------------------------

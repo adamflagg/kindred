@@ -22,7 +22,7 @@ export function DefinitionNotes({
     <ol className={`${CS_NOTES} mt-2.5 ml-0.5 max-w-[1000px] space-y-0.5`}>
       {notes.map((note) => (
         <li key={note.n} className="flex gap-1.5">
-          <span className="tabular-nums">{note.n}.</span>{' '}
+          <span className="min-w-3 flex-none tabular-nums">{note.n}.</span>{' '}
           <span>
             <NoteWords note={note} boldTerm={boldTerm} />
           </span>

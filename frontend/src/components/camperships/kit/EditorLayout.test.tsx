@@ -95,3 +95,25 @@ describe('EditorActions', () => {
     expect(reason).not.toHaveClass('max-w-[340px]')
   })
 })
+
+// ux3 to-place-3: an editor whose final mock draws a .cf-phead head asks for it; the rest keep the card heading.
+describe('EditorForm heading', () => {
+  it('is the uppercase panel head when asked, the card heading otherwise', () => {
+    const { rerender } = render(
+      <EditorForm title="Split $600" heading="phead">
+        <span>fields</span>
+      </EditorForm>
+    )
+    expect(screen.getByText('Split $600')).toHaveClass(
+      'uppercase',
+      'text-[11px]',
+      'tracking-[.05em]'
+    )
+    rerender(
+      <EditorForm title="Edit plan">
+        <span>fields</span>
+      </EditorForm>
+    )
+    expect(screen.getByText('Edit plan')).not.toHaveClass('uppercase')
+  })
+})

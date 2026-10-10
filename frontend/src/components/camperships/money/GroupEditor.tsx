@@ -146,6 +146,7 @@ export function GroupEditor({
     <div data-testid="group-editor">
       <EditorForm
         title={`Set a Group · ${row.description}`}
+        heading="phead"
         actions={
           <EditorActions reason={ready ? undefined : 'Nothing to save yet.'}>
             <button type="button" className={CS_BTN} disabled={!ready} onClick={() => void send()}>

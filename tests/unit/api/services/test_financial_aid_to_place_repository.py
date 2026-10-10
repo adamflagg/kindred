@@ -42,19 +42,21 @@ async def test_line_details_are_the_camp_aid_lines_descriptions_and_flags() -> N
         [
             SimpleNamespace(transaction_cm_id=9001, effective_source_key="camp fa", flags=["implied_program_mismatch"]),
             SimpleNamespace(transaction_cm_id=9002, effective_source_key="camp fa", flags='["positive_amount"]'),
-            SimpleNamespace(transaction_cm_id=9003, effective_source_key="camp fa", flags=None),
+            SimpleNamespace(
+                transaction_cm_id=9003, effective_source_key="camp fa", flags=None, transaction_note="full-ride program"
+            ),
             SimpleNamespace(transaction_cm_id=9001, effective_source_key="camp fa", flags=["positive_amount"]),
         ]
     )
     assert await repo.fetch_line_details(YEAR) == {
         9001: LineDetail(9001, "camp fa", ("implied_program_mismatch", "positive_amount")),  # every row's flags
         9002: LineDetail(9002, "camp fa", ("positive_amount",)),
-        9003: LineDetail(9003, "camp fa", ()),
+        9003: LineDetail(9003, "camp fa", (), "full-ride program"),  # the posting's note, for the opened row
     }
     pb.collection.assert_called_with("aid_postings")
     query = pb.collection.return_value.get_full_list.call_args.kwargs["query_params"]
     assert query["filter"] == f"year = {YEAR} && funder_type = 'camp'"
-    assert set(query["fields"].split(",")) == {"transaction_cm_id", "effective_source_key", "flags"}
+    assert set(query["fields"].split(",")) == {"transaction_cm_id", "effective_source_key", "flags", "transaction_note"}
 
 
 @pytest.mark.asyncio

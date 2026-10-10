@@ -116,7 +116,11 @@ export function postedToWords(line: ApiAidToPlaceLine): string {
     : `posted to ${line.person}`
 }
 
-/** "$3,620 · Camp aid · Summer · posted to the household · May 14". */
+/** The posting's CampMinder note as it ends the line's words: `note "full-ride program"` (ux3 to-place-10). */
+const noteWords = (line: ApiAidToPlaceLine): string[] =>
+  line.posting_note === undefined || line.posting_note === '' ? [] : [`note "${line.posting_note}"`]
+
+/** "$3,620 · Camp aid · Summer · posted to the household · May 14", then `· note "…"` when the posting has one. */
 export function lineWords(line: ApiAidToPlaceLine): string {
   const parts = [
     formatMoney(line.amount),
@@ -124,7 +128,7 @@ export function lineWords(line: ApiAidToPlaceLine): string {
     postedToWords(line),
   ]
   if (line.posted_on !== null) parts.push(formatShortDate(line.posted_on))
-  return parts.join(' · ')
+  return [...parts, ...noteWords(line)].join(' · ')
 }
 
 /** The line's words without its amount, for the opened row (the amount is drawn bold before them). */
@@ -189,7 +193,44 @@ export function lineCell(line: ApiAidToPlaceLine): string {
     ...(line.posted_on === null ? [] : [formatShortDate(line.posted_on)]),
     `to ${to}`,
     line.description || 'no description',
+    ...noteWords(line),
   ].join(' · ')
+}
+
+const ROUND_WORDS: Readonly<Record<string, string>> = {
+  held: 'held',
+  pending_approval: 'pending approval',
+  refused: 'refused',
+  not_decided: 'not decided',
+  not_rebuilt: 'not rebuilt',
+}
+
+/**
+ * Each round of a candidate as the opened row's status line reads it (mock `c.st`): "R1 Posted $1,420 · R2
+ * decided $780", with "household request · " first on a household's own request. Display only: what the server
+ * sent, no figure here moves a total. Empty when it sent no rounds.
+ */
+export function candidateStatusWords(candidate: ApiAidToPlaceCandidate): string {
+  const rounds = (candidate.rounds ?? []).map((r) => {
+    const word =
+      r.status === 'posted'
+        ? 'Posted'
+        : r.status === 'needs_offer'
+          ? 'decided'
+          : (ROUND_WORDS[r.status] ?? r.status)
+    const amount = r.amount === null || r.amount === undefined ? '' : ` ${formatMoney(r.amount)}`
+    return `R${String(r.round)} ${word}${amount}`
+  })
+  if (rounds.length === 0) return ''
+  return [...(isHouseholdCandidate(candidate) ? ['household request'] : []), ...rounds].join(' · ')
+}
+
+/** What CampMinder reversed just before this line was posted (mock `hist`), or null. */
+export function historyWords(line: ApiAidToPlaceLine): string | null {
+  const reversed = line.reposted_after ?? []
+  if (reversed.length === 0) return null
+  const days = reversed.map((r) => `${formatMoney(r.amount)} (${formatShortDate(r.reversed_on)})`)
+  return `Reposted after reversing ${joinWords(days)}`
 }
 
 /** Every request a set of lines could land on, by id, so a server answer naming ids reads in names. */
@@ -260,13 +301,33 @@ export function equalMatches(line: ApiAidToPlaceLine): ApiAidToPlaceCandidate[] 
 }
 
 /**
+ * "Riley's request was withdrawn" by first name, or "the household's request was withdrawn" when the withdrawn
+ * request names no camper (a household-level line whose household's request carries none).
+ */
+const withdrawnWords = (person: string | undefined): string => {
+  const first = (person ?? '').split(' ')[0] ?? ''
+  return `${first === '' ? 'the household' : first}'s request was withdrawn`
+}
+
+/** Why a no-request line found nothing (mock `evid`), from the server's reason; none for a read without one. */
+function noRequestEvidence(line: ApiAidToPlaceLine): string[] {
+  const why = line.no_request
+  if (why === null || why === undefined) return []
+  const first = (why.person ?? '').split(' ')[0] ?? ''
+  if (why.kind === 'household_no_application')
+    return ['○ no one in the household applied this season']
+  if (why.kind === 'withdrawn') return [`○ ${withdrawnWords(why.person)}`]
+  return [`○ ${first} has no application this season`]
+}
+
+/**
  * The suggestion's evidence, one fact per line (§16: never a · chain that wraps): each of the server's
  * facts with a ✓; for equal matches, the two ○ facts that say why the dashboard doesn't choose.
  */
 export function evidenceLines(line: ApiAidToPlaceLine): string[] {
   if (line.suggestion !== null) return line.suggestion.evidence.map((e) => `✓ ${e.text}`)
   const tied = equalMatches(line)
-  if (tied.length < 2) return []
+  if (tied.length < 2) return noRequestEvidence(line)
   const names = tied.map((c) => candidateShort(c, line))
   const list =
     names.length === 2
@@ -410,12 +471,20 @@ export function confirmEffects(
 export function noSuggestionEffects(line: ApiAidToPlaceLine): EffectLine[] {
   if (line.suggestion !== null) return []
   if (line.reason === 'no_request') {
+    const why = line.no_request
     return [
       {
         sym: 'hand',
         lead: 'Nothing to mark Posted',
-        text: ': no application this season',
-        then: '→ Reclassify… or Leave With a Note…',
+        text:
+          why?.kind === 'withdrawn'
+            ? `: ${withdrawnWords(why.person)}`
+            : ': no application this season',
+        // The posting's own note is what suggests the money is outside (mock n1).
+        then:
+          line.posting_note === undefined || line.posting_note === ''
+            ? '→ Reclassify… or Leave With a Note…'
+            : "→ Reclassify… if it's outside money, or Leave With a Note…",
       },
     ]
   }

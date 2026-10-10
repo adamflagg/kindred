@@ -4,8 +4,7 @@ import { useAidPlaceLines } from '../../../hooks/camperships/useAidToPlaceWrites
 import type { ApiAidToPlaceLine } from '../../../types/api-types'
 import { AMBER_NOTE } from '../../admin/lodging/lodgingStyles'
 import { Modal } from '../../ui/Modal'
-import { CS_BTN, CS_BTN2 } from '../kit/csType'
-import { EditorActions } from '../kit/EditorLayout'
+import { CS_BTN, CS_BTN2, CS_POPEN_META } from '../kit/csType'
 import { StatusPill } from '../kit/Pills'
 import { formatMoney } from '../kit/money'
 import { bulkBody, estimateLocked, MAX_BULK_LINES, type BulkPlan } from './bulkPlaceModel'
@@ -93,12 +92,33 @@ export function BulkPlaceDialog({
       isOpen
       onClose={close}
       closeDisabled={busy}
-      title={`Confirm ${String(plan.lines.length)} exact single ${plan.lines.length === 1 ? 'match' : 'matches'}`}
-      size="xl"
+      // The final mock's `.cf-modal` (ux3 to-place-2): a 560px card near the top on a plain scrim, a 15px sans title
+      // (§19: serif only on the band), no close X, and a muted footer band.
+      header={
+        <div
+          id="bulk-place-title"
+          className="px-[18px] pt-3.5 pb-1.5 text-[15px] leading-[22px] font-bold"
+        >{`Confirm ${String(plan.lines.length)} exact single ${plan.lines.length === 1 ? 'match' : 'matches'}`}</div>
+      }
+      ariaLabelledBy="bulk-place-title"
+      noPadding
+      maxWidthClassName="max-w-[560px]"
+      anchor="top"
+      plainBackdrop
+      hideCloseButton
       footer={
-        // §24: Title Case buttons on one row, the logged-with-who line beside them.
-        <div className="pt-1">
-          <EditorActions reason="All or nothing · one operation in Season › History">
+        // §24: the logged-with-who sentence at the left of the band, Back then Confirm N at the right.
+        <div
+          data-testid="bulk-place-footer"
+          className="border-border flex items-center justify-between gap-3 border-t bg-[color-mix(in_oklab,var(--color-muted)_35%,var(--color-card))] px-[18px] py-2.5"
+        >
+          <span className={`${CS_POPEN_META} min-w-0 truncate`}>
+            All or nothing · one operation in Season › History
+          </span>
+          <div className="flex flex-none items-center gap-2">
+            <button type="button" className={CS_BTN2} disabled={busy} onClick={close}>
+              Back
+            </button>
             <button
               type="button"
               className={CS_BTN}
@@ -107,15 +127,12 @@ export function BulkPlaceDialog({
             >
               {busy ? 'Placing…' : `Confirm ${String(plan.lines.length)}`}
             </button>
-            <button type="button" className={CS_BTN2} disabled={busy} onClick={close}>
-              Back
-            </button>
-          </EditorActions>
+          </div>
         </div>
       }
     >
-      <div className="space-y-2 text-sm">
-        <p className="font-medium">
+      <div className="flex flex-col gap-2 px-[18px] pt-0.5 pb-3 text-[13.5px] leading-normal">
+        <p className="font-bold">
           {plan.lines.length === 0
             ? 'Nothing to confirm together'
             : `${plural(plan.lines.length, 'line', 'lines')} · ${plural(plan.households, 'household', 'households')} · ${marking} `}
@@ -148,11 +165,12 @@ export function BulkPlaceDialog({
         )}
         <ul
           data-testid="bulk-place-names"
-          className="text-muted-foreground max-h-48 columns-2 gap-x-6 overflow-y-auto text-xs"
+          className="border-border text-muted-foreground max-h-[150px] overflow-y-auto rounded-lg border bg-[color-mix(in_oklab,var(--color-muted)_25%,var(--color-card))] px-2.5 py-1.5 text-[12.5px] leading-[18px]"
         >
           {plan.lines.map(({ line, hidden }) => (
             <li
               key={line.transaction_cm_id}
+              className="truncate"
               title={`${familyOf(line)}: ${lineWords(line)} → ${suggestionWords(line).replace(/^Place on /, '')}`}
             >
               {`${familyOf(line)}: ${formatMoney(line.amount)} → ${suggestionShort(line).replace(/^Place on /, '')}`}

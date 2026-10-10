@@ -13,9 +13,9 @@ import {
   CS_BTN,
   CS_BTN2,
   CS_LINK_SM,
-  CS_PANEL_HEAD,
   CS_PANEL_RULE,
-  CS_PMETA,
+  CS_PHEAD,
+  CS_POPEN_META,
 } from '../kit/csType'
 import { DefRef } from '../kit/DefinitionNotes'
 import { formatMoney, toCents } from '../kit/money'
@@ -27,9 +27,11 @@ import { inStaffWords, previewRefusalWords, refusalWords } from './refusal'
 import {
   candidateDetail,
   candidateShort,
+  candidateStatusWords,
   confirmBody,
   confirmLines,
   evidenceLines,
+  historyWords,
   lineFamily,
   lineWordsBare,
   noSuggestionEffects,
@@ -54,12 +56,15 @@ export interface LineAccess {
 
 type Mode = 'none' | 'leave' | 'split' | 'another' | 'reclassify'
 
-/** Three panels side by side, divided by the grid's dashed amber rule (RequestDetailLine's grammar). */
+/**
+ * Three panels side by side, divided by the grid's dashed amber rule (the mock's `.cf-open`: 5 : 4 : 5 at 13.5px,
+ * panels padded 14px with a 2px gap, the first flush left).
+ */
 const THREE_PANELS =
-  'grid grid-cols-[minmax(0,5fr)_minmax(0,4fr)_minmax(0,4fr)] items-stretch text-sm'
-const LEFT = `flex min-w-0 flex-col gap-1 border-r pr-4 ${CS_PANEL_RULE}`
-const MIDDLE = `flex min-w-0 flex-col gap-1 border-r px-4 ${CS_PANEL_RULE}`
-const RIGHT = 'flex min-w-0 flex-col gap-1.5 pl-4'
+  'grid grid-cols-[minmax(0,5fr)_minmax(0,4fr)_minmax(0,5fr)] items-stretch text-[13.5px] leading-normal'
+const LEFT = `flex min-w-0 flex-col gap-0.5 border-r pr-3.5 pl-0 ${CS_PANEL_RULE}`
+const MIDDLE = `flex min-w-0 flex-col gap-0.5 border-r px-3.5 ${CS_PANEL_RULE}`
+const RIGHT = 'flex min-w-0 flex-col gap-0.5 pl-3.5'
 
 /** The suggestion's parts, as the preview route takes them (exact to the cent, P-4). */
 function suggestionBody(line: ApiAidToPlaceLine): ApiAidPlacePreviewIn | null {
@@ -71,12 +76,15 @@ function suggestionBody(line: ApiAidToPlaceLine): ApiAidPlacePreviewIn | null {
 function PanelHead({
   children,
   mark,
+  later = false,
 }: {
   children: string
   mark?: ToPlaceMarks[keyof ToPlaceMarks]
+  /** A head after another in its panel sits 7px lower (the mock's `.cf-phead ~ .cf-phead`). */
+  later?: boolean
 }) {
   return (
-    <p className={CS_PANEL_HEAD}>
+    <p className={later ? `${CS_PHEAD} mt-[7px]` : CS_PHEAD}>
       {children}
       {mark !== null && mark !== undefined && <DefRef n={mark.n} title={mark.title} />}
     </p>
@@ -91,8 +99,8 @@ function PanelHead({
  * - Middle: the requests it could belong to, each with what it still lacks ("not yet in CampMinder").
  * - Right: what Confirm does before the click (§4.10), one effect per line with ✓ ○ ⚠ and →, the
  *   refusal if any, the buttons and links.
- * An editor (Split…, Place on Another Request…, Reclassify…, Leave) opened from a row takes the whole
- * opened row, under the three panels (§24).
+ * An editor (Split…, Place on Another Request…, Reclassify…, Leave) opened from a row opens in the right
+ * panel, in place of what Confirm does, as the mock draws it (owner Q13, 10-09).
  * For casework, a line that stays open `PREVIEW_SETTLE_MS` asks the server afresh what Confirm would
  * do (P-4); Confirm sends that answer's lock. Until it answers, and for view-only staff, the read's
  * own preview shows.
@@ -155,9 +163,6 @@ export function ToPlaceOpenRow({
   const previewRefused = previewRefusalWords(preview.error)
   const would = preview.data ?? line.suggestion
   const body = previewRefused === null ? confirmBody(line, would) : null
-  // Split… and Place on Another Request… show their own "What placing this does", so the suggestion's
-  // isn't repeated above them.
-  const own = mode === 'split' || mode === 'another'
 
   const confirm = async () => {
     // A second press while one is in flight is ignored (ReasonForm's pattern): `isPending` from the
@@ -187,18 +192,59 @@ export function ToPlaceOpenRow({
     return c === undefined ? 'another request' : candidateShort(c, line)
   }
 
+  // Split…, Place on Another Request…, Reclassify… and Leave open in the right panel, as the mock draws them
+  // (owner Q13, 10-09): the opened row stays one block, with no empty third panel.
+  const editing = mode !== 'none'
+  const leaveEditor = (
+    <ReasonEditor
+      title={line.reason === 'several' ? 'Leave at family level' : 'Leave with a note'}
+      label="Why"
+      submitLabel="Leave It"
+      hint="It leaves the open count · Reopen needs a reason"
+      onCancel={() => setMode('none')}
+      onSubmit={async (note) => {
+        // The form shows a thrown message itself, so this one is not also sent up.
+        if (!inFlight.begin(txn)) {
+          throw new Error(
+            'Nothing was written: this line is still saving. Try again when it finishes.'
+          )
+        }
+        let written: number
+        try {
+          ;({ written } = await inStaffWords(
+            leave.mutateAsync({ year, transactionCmId: txn, note })
+          ))
+        } catch (caught) {
+          if (caught instanceof Error) onRefused(caught.message)
+          throw caught
+        } finally {
+          inFlight.end(txn)
+        }
+        onDone(
+          written === 0
+            ? `${family}: already left at family level with this note; nothing changed.`
+            : `${family}: left at family level with your note · Reopen needs a reason`
+        )
+      }}
+    />
+  )
+  const history = historyWords(line)
+
   return (
-    <div className="flex flex-col gap-2" data-testid="to-place-row">
+    <div className="flex flex-col gap-2 pl-[22px]" data-testid="to-place-row">
       <div className={THREE_PANELS}>
         <div className={LEFT} data-panel="line">
-          <p className={CS_PANEL_HEAD}>The line in CampMinder</p>
+          <p className={CS_PHEAD}>The line in CampMinder</p>
           <p>
             <b>{formatMoney(line.amount)}</b> · {lineWordsBare(line)}
             {still !== null && <span className="text-muted-foreground"> {still}</span>}
           </p>
-          <PanelHead mark={marks.suggestion}>Suggestion</PanelHead>
+          {history !== null && <p className={CS_POPEN_META}>{history}</p>}
+          <PanelHead mark={marks.suggestion} later>
+            Suggestion
+          </PanelHead>
           {line.suggestion === null ? (
-            <p className={CS_PMETA}>{`${suggestionShort(line)}.`}</p>
+            <p className={CS_POPEN_META}>{`${suggestionShort(line)}.`}</p>
           ) : line.suggestion.parts.length > 1 ? (
             <>
               <p>
@@ -220,7 +266,7 @@ export function ToPlaceOpenRow({
             )
           )}
           {evidence.map((fact) => (
-            <p key={fact} className={CS_PMETA}>
+            <p key={fact} className={CS_POPEN_META}>
               {fact}
             </p>
           ))}
@@ -228,20 +274,24 @@ export function ToPlaceOpenRow({
         <div className={MIDDLE} data-panel="candidates">
           <PanelHead mark={marks.candidates}>Requests it could belong to</PanelHead>
           {line.candidates.length === 0 ? (
-            <p className="text-muted-foreground">No application this season.</p>
+            <p className={CS_POPEN_META}>No application this season.</p>
           ) : (
             <ul className="space-y-0.5">
-              {line.candidates.map((c) => (
-                <li key={c.request_id}>
-                  <span title={c.session}>{candidateShort(c, line)}</span>{' '}
-                  <span className={CS_PMETA}>{`· ${candidateDetail(c)}`}</span>
-                </li>
-              ))}
+              {line.candidates.map((c) => {
+                const status = candidateStatusWords(c)
+                return (
+                  <li key={c.request_id}>
+                    <span title={c.session}>{candidateShort(c, line)}</span>{' '}
+                    <span className={CS_POPEN_META}>{`· ${candidateDetail(c)}`}</span>
+                    {status !== '' && <div className={CS_POPEN_META}>{status}</div>}
+                  </li>
+                )
+              })}
             </ul>
           )}
         </div>
         <div className={RIGHT} data-panel="confirm">
-          {!own && (
+          {!editing && (
             <>
               <PanelHead mark={marks.confirm}>What Confirm does</PanelHead>
               {line.suggestion === null ? (
@@ -265,8 +315,36 @@ export function ToPlaceOpenRow({
             </>
           )}
           {error !== null && <p className={CS_AMBER_NOTE}>{error}</p>}
+          {(mode === 'split' || mode === 'another') && (
+            // The editor's own keys (Enter, Esc, ↑/↓ in its fields) stay its own: AidTable stands aside.
+            <div data-aid-editor="">
+              <PlaceEditor
+                key={mode}
+                line={line}
+                year={year}
+                mode={mode}
+                inFlight={inFlight}
+                onCancel={() => setMode('none')}
+                onDone={finish}
+                onRefused={onRefused}
+              />
+            </div>
+          )}
+          {mode === 'reclassify' && (
+            <div data-aid-editor="">
+              <ReclassifyEditor
+                line={line}
+                year={year}
+                inFlight={inFlight}
+                onCancel={() => setMode('none')}
+                onDone={finish}
+                onRefused={onRefused}
+              />
+            </div>
+          )}
+          {mode === 'leave' && leaveEditor}
           {mode === 'none' && (
-            <div className="flex flex-wrap items-center gap-2 pt-1">
+            <div className="flex flex-wrap items-center gap-1.5 pt-1">
               {/* R1-12: Confirm sends the suggestion; while an editor is open, its own button sends. */}
               {access.casework && body !== null && (
                 <button
@@ -342,67 +420,6 @@ export function ToPlaceOpenRow({
           )}
         </div>
       </div>
-      {/* §24: an editor opened from a row takes the whole opened row, under the three panels. */}
-      {(mode === 'split' || mode === 'another') && (
-        // The editor's own keys (Enter, Esc, ↑/↓ in its fields) stay its own: AidTable stands aside.
-        <div data-aid-editor="">
-          <PlaceEditor
-            key={mode}
-            line={line}
-            year={year}
-            mode={mode}
-            inFlight={inFlight}
-            onCancel={() => setMode('none')}
-            onDone={finish}
-            onRefused={onRefused}
-          />
-        </div>
-      )}
-      {mode === 'reclassify' && (
-        <div data-aid-editor="">
-          <ReclassifyEditor
-            line={line}
-            year={year}
-            inFlight={inFlight}
-            onCancel={() => setMode('none')}
-            onDone={finish}
-            onRefused={onRefused}
-          />
-        </div>
-      )}
-      {mode === 'leave' && (
-        <ReasonEditor
-          title={line.reason === 'several' ? 'Leave at family level' : 'Leave with a note'}
-          label="Why"
-          submitLabel="Leave It"
-          hint="It leaves the open count · Reopen needs a reason"
-          onCancel={() => setMode('none')}
-          onSubmit={async (note) => {
-            // The form shows a thrown message itself, so this one is not also sent up.
-            if (!inFlight.begin(txn)) {
-              throw new Error(
-                'Nothing was written: this line is still saving. Try again when it finishes.'
-              )
-            }
-            let written: number
-            try {
-              ;({ written } = await inStaffWords(
-                leave.mutateAsync({ year, transactionCmId: txn, note })
-              ))
-            } catch (caught) {
-              if (caught instanceof Error) onRefused(caught.message)
-              throw caught
-            } finally {
-              inFlight.end(txn)
-            }
-            onDone(
-              written === 0
-                ? `${family}: already left at family level with this note; nothing changed.`
-                : `${family}: left at family level with your note · Reopen needs a reason`
-            )
-          }}
-        />
-      )}
     </div>
   )
 }

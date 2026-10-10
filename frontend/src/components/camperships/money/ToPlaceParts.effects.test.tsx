@@ -17,10 +17,12 @@ describe('EffectList withheld reasons', () => {
         ]}
       />
     )
-    const first = screen.getByText('· the application was changed (Oct 8)')
-    const second = screen.getByText('· an outside grant was posted (Oct 8)')
-    expect(first).toHaveClass('block')
-    expect(second).toHaveClass('block')
-    expect(first.parentElement).toBe(second.parentElement)
+    // Pin changed (ux3 to-place-m1): the "·" is its own 10px box so a wrapped reason hangs under its words; the
+    // reason's block still carries the dot and the words (it was one "· words" text node).
+    const first = screen.getByText('the application was changed (Oct 8)').closest('span.block')
+    const second = screen.getByText('an outside grant was posted (Oct 8)').closest('span.block')
+    expect(first).toHaveTextContent('·the application was changed (Oct 8)')
+    expect(second).toHaveTextContent('·an outside grant was posted (Oct 8)')
+    expect(first?.parentElement).toBe(second?.parentElement)
   })
 })

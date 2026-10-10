@@ -4,8 +4,8 @@ import { useAidSources } from '../../../hooks/camperships/useAidSources'
 import { useAidReclassifyLine } from '../../../hooks/camperships/useAidToPlaceWrites'
 import type { ApiAidToPlaceLine } from '../../../types/api-types'
 import { AidPicker } from '../kit/AidPicker'
-import { CS_AMBER_NOTE, CS_BTN, CS_BTN2, CS_FIELD } from '../kit/csType'
-import { EditorActions, EditorField, EditorForm, EditorGrid } from '../kit/EditorLayout'
+import { CS_AMBER_NOTE, CS_BTN, CS_BTN2, CS_FGRID_LABEL, CS_FIELD } from '../kit/csType'
+import { EditorActions, EditorForm } from '../kit/EditorLayout'
 import type { AidPickerOption } from '../kit/pickerWords'
 import { refusalWords } from './refusal'
 import { lineFamily, reclassifyTargets, targetWords } from './toPlaceModel'
@@ -44,10 +44,19 @@ export function ReclassifyEditor({
   const [error, setError] = useState<string | null>(null)
   const targets = reclassifyTargets(sources.data?.sources ?? [], line)
   const chosen = targets.find((t) => t.description_key === target)
-  const ready = chosen !== undefined && reason.trim() !== '' && !busy
 
   const send = async () => {
-    if (chosen === undefined || reason.trim() === '' || !inFlight.begin(txn)) return
+    // Both buttons are live, as the mock draws them: an empty send says what is missing at the end of the row
+    // (the Leave editor's grammar), where the disabled button used to say nothing.
+    if (chosen === undefined) {
+      setError('Pick what it is reclassified as')
+      return
+    }
+    if (reason.trim() === '') {
+      setError('Reason is required')
+      return
+    }
+    if (!inFlight.begin(txn)) return
     setError(null)
     const family = lineFamily(line).text
     try {
@@ -101,9 +110,10 @@ export function ReclassifyEditor({
     >
       <EditorForm
         title="Reclassify"
+        heading="phead"
         actions={
           <EditorActions reason="It can move money in or out of the budget · the next ledger sync applies it · until then the line is listed apart">
-            <button type="submit" className={CS_BTN} disabled={!ready}>
+            <button type="submit" className={CS_BTN} disabled={busy}>
               {busy ? 'Reclassifying…' : 'Reclassify'}
             </button>
             <button type="button" className={CS_BTN2} disabled={busy} onClick={onCancel}>
@@ -118,28 +128,31 @@ export function ReclassifyEditor({
           </EditorActions>
         }
       >
-        <EditorGrid columns={4}>
-          <EditorField label="Reclassify as">
+        {/* The mock's .cf-ed .row: the picker at its own width, the reason taking the rest. */}
+        <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2">
+          <label className="flex items-center gap-1.5">
+            <span className={CS_FGRID_LABEL}>Reclassify as</span>
             <AidPicker
               label="Reclassify as"
               size="field"
               value={target}
               options={options}
               onChange={setTarget}
-              className="w-full [&>button]:w-full"
             />
-          </EditorField>
-          <EditorField label="Reason">
+          </label>
+          <label className="flex min-w-[200px] flex-1 items-center gap-1.5">
+            <span className={CS_FGRID_LABEL}>Reason</span>
             <input
               type="text"
               aria-label="Reason"
-              className={`${CS_FIELD} w-full`}
+              placeholder="required"
+              className={`${CS_FIELD} min-w-0 flex-1`}
               maxLength={REASON_MAX}
               value={reason}
               onChange={(event) => setReason(event.target.value)}
             />
-          </EditorField>
-        </EditorGrid>
+          </label>
+        </div>
       </EditorForm>
     </form>
   )

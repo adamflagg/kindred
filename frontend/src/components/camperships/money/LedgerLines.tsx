@@ -1,6 +1,5 @@
 import { Home } from 'lucide-react'
 import { useMemo } from 'react'
-import { Link } from 'react-router'
 
 import { useAidLedgerLines } from '../../../hooks/camperships/useAidMoneyLedger'
 import type {
@@ -9,11 +8,11 @@ import type {
   ApiAidLedgerTotal,
 } from '../../../types/api-types'
 import { QueryGuard } from '../../QueryGuard'
-import { HouseholdLabelText } from '../household/HouseholdLabel'
 import { labelWords } from '../household/householdModel'
 import { aidHref, type AidView } from '../kit/asOf'
 import { AidTable, type AidColumn } from '../kit/AidTable'
-import { CS_BTN2, CS_LINK_CELL, CS_PMETA } from '../kit/csType'
+import { CS_BTN2, CS_PMETA } from '../kit/csType'
+import { FamilyLinkCell } from './FamilyLinkCell'
 import { formatShortDate } from '../kit/dates'
 import { familyLabel } from '../kit/familyLabel'
 import { moneyCsv } from '../kit/money'
@@ -70,27 +69,15 @@ export function LedgerLines({
         pinned: true,
         value: (l) => labelWords(labelOfLine(l)),
         title: (l) => labelWords(labelOfLine(l)),
-        render: (l) => {
-          // R3-14: the family's household, the one the name and the family row are.
-          const link = (
-            <Link
-              className={CS_LINK_CELL}
-              to={aidHref(`/aid/households/${String(l.family_household_cm_id)}`, view)}
-              onClick={(event) => event.stopPropagation()}
-            >
-              <HouseholdLabelText label={labelOfLine(l)} />
-            </Link>
-          )
-          // §15: a line posted to a Family Camp household reads ⌂ before its family label.
-          return l.household_session != null ? (
-            <span className="flex min-w-0 items-center gap-1">
-              <Home className="text-muted-foreground h-3 w-3 flex-none" />
-              {link}
-            </span>
-          ) : (
-            link
-          )
-        },
+        render: (l) => (
+          // R3-14: the family's household, the one the name and the family row are. §15: a line posted to a
+          // Family Camp household reads ⌂ before its family label.
+          <FamilyLinkCell
+            label={labelOfLine(l)}
+            to={aidHref(`/aid/households/${String(l.family_household_cm_id)}`, view)}
+            household={l.household_session != null}
+          />
+        ),
         searchable: true,
       },
       {

@@ -150,6 +150,7 @@ export function GrantorField({
     <div data-testid="grantor-field">
       <EditorForm
         title={`Funder · ${initial.description}`}
+        heading="phead"
         actions={
           <EditorActions reason={why}>
             <button type="button" className={CS_BTN} disabled={!ready} onClick={() => void save()}>

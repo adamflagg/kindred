@@ -134,11 +134,11 @@ export const TFOOT_CELL_WRAP = `${CS_BAND} ${CS_BAND_EDGE} px-2 py-[5px] font-bo
 /** A section row (§9): the green band. */
 export const GROUP_ROW = `${CS_BAND} ${CS_BAND_EDGE} text-foreground border-border border-b px-2 py-[5px] text-[13.5px] font-bold`
 /**
- * The opened row's detail line (batch 4, grid-layout-options.html round 6): the highlighted row's
- * tint with an amber rule under it. Its cell must not clip (`overflow-visible`) and carries no side
+ * The opened row's detail line (batch 4, grid-layout-options.html round 6): the mock's td.cf-detail tint (lighter
+ * than the clicked row's, ux3 to-place-5) with an amber rule under it. Its cell must not clip (`overflow-visible`) and carries no side
  * padding, or the sticky line inside would be trapped by it or pushed off the box's left edge.
  */
-export const DETAIL_ROW = `${ROW_HIGHLIGHT} overflow-visible border-b border-amber-300 px-0 py-1.5 dark:border-amber-800`
+export const DETAIL_ROW = `bg-[color-mix(in_oklab,var(--color-amber-100)_22%,var(--color-card))] dark:bg-[color-mix(in_oklab,var(--color-amber-900)_18%,var(--color-card))] overflow-visible border-b border-amber-300 px-0 py-1.5 dark:border-amber-800`
 /** The line itself: stuck at the box's left, as wide as the box (set inline), wrapping. */
 export const DETAIL_LINE = 'sticky left-0 box-border px-3 whitespace-normal'
 

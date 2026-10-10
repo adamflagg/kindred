@@ -34,7 +34,8 @@ export function GroupHeading({
           title={`${folded ? 'Show' : 'Hide'} this group`}
           onClick={onToggle}
         >
-          <span className={GROUP_CARET}>{folded ? '▸' : '▾'}</span>
+          {/* The mock draws '▾&nbsp;' inline: a no-break space is the gap (ux3 to-place-13). */}
+          <span className={GROUP_CARET}>{folded ? '▸\u00a0' : '▾\u00a0'}</span>
           <span>{title}</span>
         </button>
       )}
@@ -69,6 +70,22 @@ export function GroupDoes({
   return <Does tone={spec.tone} lines={spec.lines.map((line) => doesLine(line, posted))} />
 }
 
+/** Withheld reasons shown before "· and N more" (owner 10-09 Q14); the full list rides in that line's title. */
+export const REASONS_SHOWN = 3
+
+/**
+ * A sub-reason under an effect: the "·" is its own 10px box, so a wrapped line hangs under the words and not
+ * under the dot (kit `.cf-fx`'s hanging indent; ux3 to-place-m1).
+ */
+function Reason({ children, title }: { children: ReactNode; title?: string }) {
+  return (
+    <span className="block pl-[22px] -indent-[10px]" title={title}>
+      <span className="inline-block w-[10px] indent-0">·</span>
+      {children}
+    </span>
+  )
+}
+
 /** The effects, one per line, with ✓ ○ ⚠ and the → next step under their words (§16). */
 export function EffectList({ lines }: { lines: readonly EffectLine[] }) {
   const items: EffectItem[] = lines.map((l) => ({
@@ -77,11 +94,14 @@ export function EffectList({ lines }: { lines: readonly EffectLine[] }) {
       <>
         {l.lead !== undefined && <b className="font-bold">{l.lead}</b>}
         {l.text}
-        {l.items?.map((item) => (
-          <span key={item} className="block pl-3">
-            · {item}
-          </span>
+        {l.items?.slice(0, REASONS_SHOWN).map((item) => (
+          <Reason key={item}>{item}</Reason>
         ))}
+        {l.items !== undefined && l.items.length > REASONS_SHOWN && (
+          <Reason
+            title={l.items.join('\n')}
+          >{`and ${String(l.items.length - REASONS_SHOWN)} more`}</Reason>
+        )}
       </>
     ),
     ...(l.then === undefined ? {} : { then: l.then }),
