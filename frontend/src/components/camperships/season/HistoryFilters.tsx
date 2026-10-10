@@ -48,10 +48,7 @@ function SearchBox({ initial, onSearch }: { initial: string; onSearch: (text: st
         commit()
       }}
     >
-      <Search
-        className="text-muted-foreground pointer-events-none absolute top-1/2 left-2 h-3.5 w-3.5 -translate-y-1/2"
-        aria-hidden
-      />
+      <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-2 h-3.5 w-3.5 -translate-y-1/2" />
       <input
         type="search"
         aria-label="Search"
@@ -171,7 +168,7 @@ function DatesPicker({
         onClick={() => setOpen((was) => !was)}
       >
         <span className="min-w-0 truncate">{words}</span>
-        <ChevronDown className="text-muted-foreground h-3.5 w-3.5 flex-none" aria-hidden />
+        <ChevronDown className="text-muted-foreground h-3.5 w-3.5 flex-none" />
       </button>
       {open && (
         <div data-testid="history-dates-popover" className={POPOVER}>
