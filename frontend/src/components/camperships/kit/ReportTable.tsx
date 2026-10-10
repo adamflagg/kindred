@@ -3,7 +3,7 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 
 import { SortableColumnHeader } from '../../ui/SortableColumnHeader'
-import { CS_BODY, CS_BOUNDED, CS_CUT, CS_LINK_CELL, CS_SEARCH, CS_TOOLBAR_STATUS } from './csType'
+import { CS_BOUNDED, CS_EMPTY, CS_CUT, CS_LINK_CELL, CS_SEARCH, CS_TOOLBAR_STATUS } from './csType'
 import { AidCopyButton, AidCsvButton } from './CsvButton'
 import { DefRef } from './DefinitionNotes'
 import { CS_BAND, CS_RULE, TABLE_CARD } from './kitStyles'
@@ -95,7 +95,6 @@ const BODY_KINDS = new Set(['body', 'end'])
 /** Whether the screen draws a column: csvOnly and exportOnly ones live in the exports alone. */
 const onScreen = (c: ReportColumn) => !c.csvOnly && !c.exportOnly
 /** The mock's `.cf-empty`: a dashed card in muted body type, standing where the grid would. */
-const EMPTY_BODY = `bg-card border-border text-muted-foreground rounded-xl border border-dashed px-4 py-3.5 ${CS_BODY}`
 
 /** A cell as the kit draws it: money through `Money`, a count above 0 with a link as that link (D20). */
 function cellContent(cell: ReportValue, href: string | undefined): ReactNode {
@@ -398,7 +397,7 @@ export function ReportTable({
         </div>
       )}
       {emptyBody !== undefined ? (
-        <div className={EMPTY_BODY}>{emptyBody}</div>
+        <div className={CS_EMPTY}>{emptyBody}</div>
       ) : (
         <div className={bounded ? CS_BOUNDED : TABLE_CARD}>
           {/* aria-label: a test handle naming the table by its heading (frontend/CLAUDE.md's rule). */}

@@ -264,9 +264,13 @@ describe('the tab bar right side (spec §4; Review Focus 5)', () => {
     expect(screen.getByTestId('approve-section')).toHaveTextContent('budget')
   })
 
-  it('spaces band, tab bar and content 12px at every width', () => {
+  // Pin changed (chrome-1/2): the mock's rhythm replaces the old 12px: band, 4px, tabs, 10px, content.
+  it('spaces band to tabs 4px and the head to its content 10px at every width', () => {
     const { container } = renderAt('/aid/season/history')
-    expect(container.querySelector('.space-y-3')).not.toBeNull()
+    const head = screen.getByTestId('aid-page-head')
+    expect(head.firstElementChild).toHaveClass('mb-1')
+    expect(head.parentElement?.parentElement).toHaveClass('space-y-2.5')
+    expect(container.querySelector('.space-y-3')).toBeNull()
     expect(container.querySelector('[class*="sm:space-y-4"]')).toBeNull()
   })
 })

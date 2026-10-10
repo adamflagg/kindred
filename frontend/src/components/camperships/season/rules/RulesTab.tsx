@@ -672,7 +672,7 @@ function ChaptersBody({
   if (askingFor !== null && !asking) setAskingFor(null)
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2.5">
       {/* The switch and Open All / Close All ride on the chapter bar's line (owner 10-08: buy the row back). */}
       <ChapterBar draft={draft} inView={inView} budgetHref={budgetHref} onJump={jump}>
         <LeadLine

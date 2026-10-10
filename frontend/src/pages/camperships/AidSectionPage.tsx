@@ -9,6 +9,8 @@ import {
 import { Navigate, useParams } from 'react-router'
 
 import { aidHref } from '../../components/camperships/kit/asOf'
+import { CS_EMPTY } from '../../components/camperships/kit/csType'
+import { AidPageHead } from '../../components/camperships/shell/AidPageHead'
 import { AidPageBand } from '../../components/camperships/shell/AidPageBand'
 import { AidTabNav } from '../../components/camperships/shell/AidTabNav'
 import { aidSection, resolveAidTab, type AidSectionKey } from '../../config/aidNav'
@@ -45,16 +47,24 @@ export default function AidSectionPage({ section: key }: { section: AidSectionKe
   const { tab: current, tabs } = resolved
 
   return (
-    <div className="space-y-3 sm:space-y-4">
-      <AidPageBand
-        icon={ICONS[key]}
-        title={section.label}
-        subtitle={`Season ${String(year)}`}
-        // Today shows counts of work, not money: no as-of on its band (D20).
-        asOf={key === 'today' ? undefined : asOf}
+    <div className="space-y-2.5">
+      <AidPageHead
+        band={
+          <AidPageBand
+            icon={ICONS[key]}
+            title={section.label}
+            subtitle={`Season ${String(year)}`}
+            // Today shows counts of work, not money: no as-of on its band (D20).
+            asOf={key === 'today' ? undefined : asOf}
+          />
+        }
+        tabs={
+          tabs.length > 0 ? (
+            <AidTabNav section={section} tabs={tabs} view={{ year, asOf }} />
+          ) : undefined
+        }
       />
-      {tabs.length > 0 && <AidTabNav section={section} tabs={tabs} view={{ year, asOf }} />}
-      <div className="card-lodge text-muted-foreground p-6 text-sm">
+      <div className={CS_EMPTY}>
         {current ? `${section.label} › ${current.label}` : section.label} is built in{' '}
         {section.builtIn}.
       </div>

@@ -230,4 +230,14 @@ describe('JumpBox (§3.5; D13)', () => {
     expect(box()).toHaveValue('')
     expect(box()).not.toHaveFocus()
   })
+
+  // chrome-9: the mock's .cf-jump is a 210px white box with no shadow.
+  it('is the mock 210px white control', () => {
+    renderBox()
+    const input = screen.getByLabelText('Jump to a family')
+    expect(input.parentElement).toHaveClass('w-[210px]')
+    expect(input).toHaveClass('bg-card')
+    expect(input).not.toHaveClass('bg-background')
+    expect(input.className).not.toMatch(/shadow/)
+  })
 })

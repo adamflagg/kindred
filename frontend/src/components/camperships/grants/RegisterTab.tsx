@@ -392,7 +392,7 @@ export function RegisterTab({ view }: { view: AidView }) {
           </>
         )
         return (
-          <div className="space-y-3">
+          <div className="space-y-2">
             {/* §18: one flat list with one choice on is the grey switcher, counts inside; it keeps its own row. */}
             <AidToolbar
               left={

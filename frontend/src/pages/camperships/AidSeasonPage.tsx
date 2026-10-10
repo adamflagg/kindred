@@ -23,6 +23,7 @@ import {
   UnlockButton,
   UnlockPanel,
 } from '../../components/camperships/season/SeasonChrome'
+import { AidPageHead } from '../../components/camperships/shell/AidPageHead'
 import { AidPageBand } from '../../components/camperships/shell/AidPageBand'
 import { AidTabNav } from '../../components/camperships/shell/AidTabNav'
 import { aidSection, resolveAidTab } from '../../config/aidNav'
@@ -104,18 +105,22 @@ export default function AidSeasonPage() {
 
   return (
     <SeasonChromeProvider section={approveSection} tab={slug}>
-      <div className="space-y-3 print:font-sans">
+      <div className="space-y-2.5 print:font-sans">
         {/* Scenarios prints as the compare alone: its band and tab strip stay off the paper. */}
-        <div className={`space-y-3 ${onScenarios ? 'print:hidden' : ''}`}>
-          <AidPageBand
-            icon={CalendarCheck}
-            title={SEASON.label}
-            subtitle={`Season ${String(year)}`}
-            // A past date covers the Remaining line on every tab, so its pill shows on every tab (I6).
-            asOf={asOf}
-            stats={onRounds ? <BudgetStats /> : undefined}
+        <div className={onScenarios ? 'print:hidden' : undefined}>
+          <AidPageHead
+            band={
+              <AidPageBand
+                icon={CalendarCheck}
+                title={SEASON.label}
+                subtitle={`Season ${String(year)}`}
+                // A past date covers the Remaining line on every tab, so its pill shows on every tab (I6).
+                asOf={asOf}
+                stats={onRounds ? <BudgetStats /> : undefined}
+              />
+            }
+            tabs={<AidTabNav section={SEASON} tabs={resolved.tabs} view={view} right={right} />}
           />
-          <AidTabNav section={SEASON} tabs={resolved.tabs} view={view} right={right} />
         </div>
         {/* Rules puts the panel and the notice under its own lead line (spec §6.2 B). */}
         {!onRules && <ApprovePanel />}

@@ -11,6 +11,7 @@ import { LedgerTab } from '../../components/camperships/money/LedgerTab'
 import { FundersTab } from '../../components/camperships/money/FundersTab'
 import { ToPlaceTab } from '../../components/camperships/money/ToPlaceTab'
 import { AidDefinitionNotes } from '../../components/camperships/shell/AidDefinitionNotes'
+import { AidPageHead } from '../../components/camperships/shell/AidPageHead'
 import { AidPageBand } from '../../components/camperships/shell/AidPageBand'
 import { AidTabNav } from '../../components/camperships/shell/AidTabNav'
 import { toPlaceCount } from '../../components/camperships/money/toPlaceModel'
@@ -56,14 +57,18 @@ export default function AidMoneyPage() {
     const refused = MONEY.tabs.find((t) => t.slug === tab)
     if (first === undefined || refused === undefined) return <PermissionDeniedPage />
     return (
-      <div className="space-y-3 sm:space-y-4">
-        <AidPageBand
-          icon={Landmark}
-          title={MONEY.label}
-          subtitle={`Season ${String(year)} · what CampMinder posted`}
-          asOf={asOf}
+      <div className="space-y-2.5">
+        <AidPageHead
+          band={
+            <AidPageBand
+              icon={Landmark}
+              title={MONEY.label}
+              subtitle={`Season ${String(year)} · what CampMinder posted`}
+              asOf={asOf}
+            />
+          }
+          tabs={<AidTabNav section={MONEY} tabs={mine} view={view} />}
         />
-        <AidTabNav section={MONEY} tabs={mine} view={view} />
         <div className="border-border bg-card text-muted-foreground rounded-xl border border-dashed px-4 py-3.5 text-[13.5px] leading-normal">
           Development opens{' '}
           <Link className={CS_LINK} to={aidHref(`${MONEY.path}/${first.slug}`, view)}>
@@ -97,25 +102,31 @@ export default function AidMoneyPage() {
     ) : undefined
 
   return (
-    <div className="space-y-3 sm:space-y-4">
-      <AidPageBand
-        icon={Landmark}
-        title={MONEY.label}
-        subtitle={`Season ${String(year)} · what CampMinder posted`}
-        asOf={asOf}
-        // §6: no sentence row that pushes the page down; the pill says which tabs show today.
-        asOfTitle={
-          asOf.kind === 'past'
-            ? `Money › Ledger shows ${formatLongDate(asOf.date)}. To place, Grants and Funders show today.`
-            : undefined
+    <div className="space-y-2.5">
+      <AidPageHead
+        band={
+          <AidPageBand
+            icon={Landmark}
+            title={MONEY.label}
+            subtitle={`Season ${String(year)} · what CampMinder posted`}
+            asOf={asOf}
+            // §6: no sentence row that pushes the page down; the pill says which tabs show today.
+            asOfTitle={
+              asOf.kind === 'past'
+                ? `Money › Ledger shows ${formatLongDate(asOf.date)}. To place, Grants and Funders show today.`
+                : undefined
+            }
+          />
         }
-      />
-      <AidTabNav
-        section={MONEY}
-        tabs={resolved.tabs}
-        view={view}
-        counts={{ 'to-place': placeCount ?? undefined }}
-        right={alsoRaised}
+        tabs={
+          <AidTabNav
+            section={MONEY}
+            tabs={resolved.tabs}
+            view={view}
+            counts={{ 'to-place': placeCount ?? undefined }}
+            right={alsoRaised}
+          />
+        }
       />
       {slug === 'to-place' && <ToPlaceTab view={view} householdCmId={householdCmId} />}
       {slug === 'ledger' && <LedgerTab view={view} />}

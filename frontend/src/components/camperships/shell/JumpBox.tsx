@@ -85,7 +85,7 @@ export function JumpBox() {
   }
 
   return (
-    <div className="relative w-56 min-w-40 shrink">
+    <div className="relative w-[210px] min-w-40 shrink">
       <Search className="text-muted-foreground absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2" />
       <input
         ref={inputRef}
@@ -102,7 +102,7 @@ export function JumpBox() {
         onFocus={() => setOpen(true)}
         onBlur={() => setOpen(false)}
         onKeyDown={onKeyDown}
-        className="border-border bg-background focus:ring-primary/50 w-full rounded-lg border py-1 pr-7 pl-8 text-xs focus:ring-2 focus:outline-none disabled:opacity-60"
+        className="border-border bg-card focus:ring-primary/50 w-full rounded-lg border py-1 pr-7 pl-8 text-xs focus:ring-2 focus:outline-none disabled:opacity-60"
       />
       <kbd className="border-border text-muted-foreground absolute top-1/2 right-2 -translate-y-1/2 rounded border px-1 font-mono text-xs">
         /
