@@ -120,9 +120,10 @@ describe('HistoryTable', () => {
     // Spec §7.2 D: the reason is the left panel's quoted sentence, no "Reason:" label.
     expect(screen.getByText('“Family emailed”')).toBeInTheDocument()
     // Each household's row, its record id left out: the row links its household (#18).
-    expect(screen.getAllByText('Household share set · payer share · Family emailed')).toHaveLength(
-      2
-    )
+    // The mock draws no per-row head: the reason already sits in the left panel (history-3).
+    expect(
+      within(screen.getByTestId('history-panels')).queryByText(/payer share · Family emailed/)
+    ).toBeNull()
     expect(screen.queryByText(/req000000000009/)).toBeNull()
     // Spec §7.2 D: a field is a label and its value in a grid, not one "Label: value" string.
     expect(screen.getAllByText('Share pct')).toHaveLength(2)
@@ -183,7 +184,9 @@ describe('HistoryTable', () => {
 
   it('opens a rules line to its diff and "Open vN in Rules" (D49)', () => {
     renderTable([OP_RULES_APPROVE.operation_id])
-    expect(screen.getAllByText(/Draft → Approved/)).toHaveLength(2)
+    // One change line per section: its key, the old word struck, the new one bold.
+    expect(screen.getAllByText('Draft')).toHaveLength(2)
+    expect(screen.getAllByText('Approved')).toHaveLength(2)
     expect(screen.getByRole('link', { name: 'Open v3 in Rules ›' })).toHaveAttribute(
       'href',
       '/aid/season/rules?version=3&section=awards&year=2027'
@@ -269,14 +272,44 @@ describe('HistoryTable in the box (spec §7.2 C)', () => {
       </MemoryRouter>
     )
 
-  it('fixes its columns at 122 / 214 / 128 / auto / 56', () => {
+  it('fixes its columns at 124 / 190 / 132 / auto / 60 (history-8)', () => {
     inBox({})
     const cols = Array.from(document.querySelectorAll('col')).map((c) => c.className)
     expect(cols).toHaveLength(5)
-    expect(cols[0]).toContain('w-[122px]')
-    expect(cols[1]).toContain('w-[214px]')
-    expect(cols[2]).toContain('w-[128px]')
-    expect(cols[4]).toContain('w-[56px]')
+    expect(cols[0]).toContain('w-[124px]')
+    expect(cols[1]).toContain('w-[190px]')
+    expect(cols[2]).toContain('w-[132px]')
+    expect(cols[4]).toContain('w-[60px]')
+  })
+
+  it('draws one cut line per row, the full words in its title (history-8)', () => {
+    inBox({})
+    const share = line(OP_SHARE.operation_id)
+    const cells = share.querySelectorAll('td')
+    const what = cells[3] as HTMLElement
+    expect(what).toHaveClass('whitespace-nowrap', 'overflow-hidden', 'text-ellipsis')
+    expect(what.title).toContain(' · “Family emailed”')
+    expect(what.title.startsWith(what.querySelector('span')?.textContent ?? '?')).toBe(true)
+    // The reason is 12px muted.
+    expect(within(what).getByText(/Family emailed/)).toHaveClass('text-xs', 'text-muted-foreground')
+    expect((cells[1] as HTMLElement).title).not.toBe('')
+    expect(cells[1]).toHaveClass('overflow-hidden', 'text-ellipsis')
+    expect(share.querySelector('td span')).toHaveClass('text-[10px]')
+    for (const th of document.querySelectorAll('th')) expect(th).toHaveClass('whitespace-nowrap')
+    expect(screen.getByRole('columnheader', { name: 'Rows' })).toHaveAttribute(
+      'title',
+      'How many records the operation wrote'
+    )
+  })
+
+  it('with no operations keeps the header and one full-width row, with Clear filters (history-m3)', async () => {
+    const onClearFilters = vi.fn()
+    inBox({ operations: [], onClearFilters })
+    expect(screen.getByRole('columnheader', { name: 'When' })).toBeInTheDocument()
+    const empty = screen.getByText('No operations match these filters.')
+    expect(empty.closest('td')).toHaveAttribute('colspan', '5')
+    await userEvent.click(screen.getByRole('button', { name: 'Clear filters' }))
+    expect(onClearFilters).toHaveBeenCalledOnce()
   })
 
   it('puts a page-break row before the row each later page starts at', () => {
@@ -366,9 +399,79 @@ describe('the opened row (spec §7.2 D)', () => {
     expect(within(panels).getByText('What changed')).toBeInTheDocument()
     expect(within(panels).getByText('Open')).toBeInTheDocument()
     expect(within(panels).getByText(/^“March offers”$|^No reason recorded\.$/)).toBeInTheDocument()
+    const ops = within(panels).getByText(`30 rows · id ${OP_POSTED.operation_id}`)
+    expect(ops).toHaveAttribute(
+      'title',
+      `Operation ${OP_POSTED.operation_id}: search the log by this id`
+    )
+  })
+
+  it('says "1 row", not "1 rows"', () => {
+    openWith({ ...OP_SHARE, rows: 1 }, DETAIL_SHARE)
+    expect(screen.getByText(`1 row · id ${OP_SHARE.operation_id}`)).toBeInTheDocument()
+  })
+
+  it('shows a 13-row rules operation with its reason once, one change line per section', () => {
+    const [approve] = DETAIL_RULES_APPROVE.rows
+    if (approve === undefined) throw new Error('fixture')
+    const reason = 'Rules finance ran in the sheet, reproduced 494/494'
+    const op = { ...OP_RULES_APPROVE, reason, rows: 13 }
+    openWith(op, {
+      ...DETAIL_RULES_APPROVE,
+      operation: op,
+      rows: Array.from({ length: 13 }, (_, i) => ({
+        ...approve,
+        reason,
+        entity_id: `2027:3:section${String(i)}`,
+      })),
+    })
+    const panels = screen.getByTestId('history-panels')
+    expect(within(panels).getAllByText(new RegExp(reason))).toHaveLength(1)
+    expect(within(panels).getAllByText('Draft')).toHaveLength(13)
+    expect(within(panels).getAllByText('Approved')).toHaveLength(13)
+  })
+
+  it('draws grant placements as a compact table, leaving the removes as a muted count', () => {
+    const [share] = DETAIL_SHARE.rows
+    if (share === undefined) throw new Error('fixture')
+    const place = (i: number) => ({
+      ...share,
+      entity: 'aid_grant_placements',
+      entity_id: `commitment:g${String(i)}`,
+      action: 'place',
+      before: null,
+      after: { placement: { amount: '500.00' } },
+      changes: [],
+      camper_name: i === 2 ? null : 'Emma Johnson',
+      request_id: null,
+      session_cm_id: 9300102,
+    })
+    const remove = {
+      ...place(9),
+      action: 'remove',
+      before: { placement: { amount: '500.00' } },
+      after: null,
+    }
+    openWith(OP_SHARE, {
+      ...DETAIL_SHARE,
+      rows: [place(1), place(2), place(3), place(4), remove, remove],
+    })
+    const table = screen.getByTestId('compact-table')
+    expect(within(table).getByText('Grant placed')).toBeInTheDocument()
+    expect(within(table).getByText('$2,000')).toBeInTheDocument()
+    expect(within(table).getAllByText('household request')).toHaveLength(1)
     expect(
-      within(panels).getByText(`30 rows · operation ${OP_POSTED.operation_id}`)
+      screen.getByText('and 2 recorded rows not listed: removals that cancel a placement')
     ).toBeInTheDocument()
+    expect(document.querySelectorAll('[data-history-row]')).toHaveLength(0)
+  })
+
+  it("gives a camper's row one meta line and no bold head", () => {
+    openWith(OP_SHARE, DETAIL_SHARE)
+    const rowEl = document.querySelector('[data-history-row]')
+    expect(rowEl?.querySelector('.font-semibold')).toBeNull()
+    expect(rowEl?.querySelector('b')).not.toBeNull() // the new value, bold
+    expect(rowEl?.textContent).not.toMatch(/Household share set/)
   })
 
   it('shows 3+ requests as a compact table: 8 rows, then Show all 30, with session names and camper links', async () => {
@@ -377,7 +480,7 @@ describe('the opened row (spec §7.2 D)', () => {
     expect(within(table).getAllByRole('row')).toHaveLength(1 + 8 + 1) // head, 8 rows, foot
     expect(within(table).getByText('All 30, as recorded')).toBeInTheDocument()
     expect(within(table).getAllByText('Session 2')[0]).toBeInTheDocument()
-    expect(within(table).getAllByRole('link', { name: 'Emma Johnson' })[0]).toHaveAttribute(
+    expect(within(table).getAllByRole('link', { name: 'Emma Johnson ›' })[0]).toHaveAttribute(
       'href',
       '/aid/households/1000001?year=2027#request-req000000000001'
     )

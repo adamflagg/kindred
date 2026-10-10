@@ -133,6 +133,9 @@ beforeEach(() => {
 })
 afterEach(() => vi.useRealTimers())
 
+/** The Dates picker keeps From and Through in its popover (history-1). */
+const openDates = () => fireEvent.click(screen.getByRole('button', { name: /^Dates:/ }))
+
 describe('HistoryTab', () => {
   it("shows the season's log, its count in the box footer (the purpose line is gone, owner 10-06)", () => {
     renderAt()
@@ -153,7 +156,7 @@ describe('HistoryTab', () => {
     pages.data = only(FINANCE_PAGE)
     renderAt()
     expect(screen.getByRole('button', { name: 'Rules 3' })).toBeInTheDocument()
-    expect(screen.getByText(/Scenario edits stay in Scenarios/)).toBeInTheDocument()
+    expect(screen.getByText(/its edits stay in Scenarios/)).toBeInTheDocument()
   })
 
   it('counts each chip as the server counts it, and shows "—" for every count while it loads (H5; spec §7.2 A)', () => {
@@ -178,12 +181,12 @@ describe('HistoryTab', () => {
     expect(where().has('kind')).toBe(false)
   })
 
-  it('filters by person from the people the read lists', async () => {
+  it('filters by who from the people the read lists', async () => {
     granted = FINANCE
     pages.data = only(FINANCE_PAGE)
     renderAt()
-    // Owner ruling 10-09: Person is the kit's white picker (a listbox), not a native select.
-    await userEvent.click(screen.getByRole('button', { name: 'Person: Anyone' }))
+    // Owner ruling 10-09: Who is the kit's white picker (a listbox), not a native select.
+    await userEvent.click(screen.getByRole('button', { name: 'Who: Anyone' }))
     expect(screen.getAllByRole('option').map((o) => o.textContent.replace(/^✓/, ''))).toEqual([
       'Anyone',
       FINANCE_EMAIL,
@@ -197,12 +200,13 @@ describe('HistoryTab', () => {
   it("keeps a pasted link's person in the list even when this page doesn't name them", async () => {
     renderAt('/aid/season/history?actor=someone%40example.com')
     // The kit picker (owner ruling 10-09) lists its options once opened; its face reads the person.
-    await userEvent.click(screen.getByRole('button', { name: 'Person: someone@example.com' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Who: someone@example.com' }))
     expect(screen.getByRole('option', { name: 'someone@example.com' })).toBeInTheDocument()
   })
 
   it('filters by camp day, From and Through, on leaving the box', () => {
     renderAt()
+    openDates()
     // jsdom has no picker, so the change is fired directly; the day lands when the box is left.
     fireEvent.change(screen.getByLabelText('From'), { target: { value: '2027-03-01' } })
     fireEvent.blur(screen.getByLabelText('From'))
@@ -218,6 +222,7 @@ describe('HistoryTab', () => {
 
   it('writes a typed day on Enter too', () => {
     renderAt()
+    openDates()
     fireEvent.change(screen.getByLabelText('From'), { target: { value: '2027-03-01' } })
     fireEvent.keyDown(screen.getByLabelText('From'), { key: 'Enter' })
     expect(where().get('since')).toBe('2027-03-01')
@@ -225,6 +230,7 @@ describe('HistoryTab', () => {
 
   it('writes nothing while a date is typed segment by segment, until blur (I1)', () => {
     renderAt()
+    openDates()
     // A browser fires change on each digit once the box holds a whole day: 04/20 -> 04/01 -> 04/15.
     for (const day of ['2027-04-20', '2027-04-01', '2027-04-15']) {
       fireEvent.change(screen.getByLabelText('From'), { target: { value: day } })
@@ -237,6 +243,7 @@ describe('HistoryTab', () => {
 
   it("commits a typed date only once its year is a season's (I4)", () => {
     renderAt()
+    openDates()
     // Typing the year into a date box passes through 0002-, 0020-, 0202-: each a real day.
     for (const partial of ['0002-03-01', '0020-03-01', '0202-03-01']) {
       fireEvent.change(screen.getByLabelText('From'), { target: { value: partial } })
@@ -251,20 +258,19 @@ describe('HistoryTab', () => {
     expect(where().get('since')).toBe('2027-03-01')
   })
 
-  it('shows a URL change in the date box and keeps focus there (Back, a pasted link)', () => {
+  it('shows a URL change in the date box (Back, a pasted link)', () => {
     renderAt()
-    const box = screen.getByLabelText('From')
-    box.focus()
+    // The test's jump link is a click outside the popover, which closes it; reopened, the box shows the URL's day.
     fireEvent.click(screen.getByTestId('jump'))
     expect(where().get('since')).toBe('2027-02-01')
-    expect(screen.getByLabelText('From')).toBe(box)
-    expect(box).toHaveValue('2027-02-01')
-    expect(box).toHaveFocus()
+    expect(screen.getByRole('button', { name: 'Dates: Feb 1 – today' })).toBeInTheDocument()
+    openDates()
+    expect(screen.getByLabelText('From')).toHaveValue('2027-02-01')
   })
 
   it('shows intake runs only when ticked (D49)', async () => {
     renderAt()
-    await userEvent.click(screen.getByRole('checkbox', { name: 'Show intake runs' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Intake runs' }))
     expect(where().get('intake')).toBe('1')
     expect(lastQuery()).toMatchObject({ include_intake: 'true' })
   })
@@ -323,12 +329,21 @@ describe('HistoryTab', () => {
     expect(lastQuery()).toEqual({ per_page: '50' })
   })
 
-  it('says when nothing matches, keeping the filters on screen', () => {
+  it('says when nothing matches inside the table, with Clear filters in one URL write (history-m3)', () => {
     pages.data = only({ ...PAGE, total: 0, operations: [] })
-    renderAt('/aid/season/history?kind=grants')
-    expect(screen.getByText('No operations match.')).toBeInTheDocument()
+    renderAt(
+      '/aid/season/history?kind=grants&actor=a%40example.com&since=2027-03-01&until=2027-03-09&q=zzz&intake=1'
+    )
+    expect(screen.getByText('No operations match these filters.')).toBeInTheDocument()
+    // The table's header stays, and the footer counts nothing.
+    expect(screen.getByRole('columnheader', { name: 'What happened' })).toBeInTheDocument()
+    expect(screen.getByTestId('history-footer')).toHaveTextContent('0 operations')
     expect(screen.getByRole('button', { name: /^Grants/ })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Older' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }))
+    const now = where()
+    for (const key of ['kind', 'actor', 'since', 'until', 'q']) expect(now.has(key)).toBe(false)
+    // The intake runs check is a view choice, not a filter on what was searched: it stays.
+    expect(now.get('intake')).toBe('1')
   })
 
   it('keeps the rows on a failed refetch (owner Group 5)', () => {
@@ -387,6 +402,7 @@ describe('HistoryTab', () => {
 
   it('puts a partly erased date box back to the URL day, and clears only a truly empty one', () => {
     renderAt('/aid/season/history?since=2027-02-01')
+    openDates()
     const box = screen.getByLabelText('From')
     // A browser reports value '' with badInput while a segment is erased: not "no date".
     Object.defineProperty(box, 'validity', { value: { badInput: true }, configurable: true })
@@ -405,6 +421,7 @@ describe('HistoryTab', () => {
     ['Enter', (box: HTMLElement) => fireEvent.keyDown(box, { key: 'Enter' })],
   ])('resets the DOM of a partly typed box when the URL has no day, on %s', (_name, leave) => {
     renderAt('/aid/season/history')
+    openDates()
     const box = screen.getByLabelText('From')
     // A browser keeps value '' with badInput for a lone month segment; React sees no change to undo.
     const sets: string[] = []
@@ -436,6 +453,19 @@ describe('HistoryTab', () => {
 })
 
 describe('History box (spec §7.2 C)', () => {
+  it('keeps the three notes with bold terms, below the box (history-10)', () => {
+    granted = FINANCE
+    pages.data = only(FINANCE_PAGE)
+    renderAt('/aid/season/history')
+    const notes = screen.getAllByRole('listitem')
+    expect(notes.map((n) => n.querySelector('b')?.textContent)).toEqual([
+      'Amounts:',
+      'Household timeline:',
+      'Scenarios:',
+    ])
+    expect(screen.getByText(/as locked or entered at that moment/)).toBeInTheDocument()
+  })
+
   it('drops the purpose line (owner 10-06)', () => {
     renderAt('/aid/season/history')
     expect(screen.queryByText('Who changed what, and when. Append-only.')).toBeNull()
@@ -448,10 +478,21 @@ describe('History box (spec §7.2 C)', () => {
     expect(screen.getByText('Scroll for 51–100')).toBeInTheDocument()
     const footer = screen.getByTestId('history-footer')
     expect(footer).toHaveTextContent('112 operations')
-    expect(footer).toHaveTextContent('Page 1 of 3')
-    expect(footer).toHaveTextContent('· 1–50 on screen; scroll for more')
+    // One muted span holds both halves, so no stray gap sits before the dot (history-7).
+    expect(footer).toHaveTextContent('Page 1 of 3 · 1–50 on screen; scroll for more')
+    expect(screen.getByText('Page 1 of 3 · 1–50 on screen; scroll for more')).toHaveClass(
+      'text-muted-foreground'
+    )
+    expect(footer).toHaveClass('sticky', 'bottom-0', 'border-t')
+    expect(footer.className).toMatch(/bg-\[/)
+    expect(within(footer).getByText('112 operations')).toHaveClass('font-bold')
     expect(within(footer).getByRole('button', { name: 'Newer' })).toBeDisabled()
-    expect(within(footer).getByRole('button', { name: '1' })).toHaveClass('bg-primary')
+    // history-6: the picked page is primary with its own ink (it was dark ink on green); disabled dims.
+    const one = within(footer).getByRole('button', { name: '1' })
+    expect(one).toHaveClass('bg-primary', 'text-primary-foreground', 'border-primary')
+    expect(one).not.toHaveClass('text-forest-700')
+    expect(within(footer).getByRole('button', { name: 'Newer' })).toHaveClass('disabled:opacity-45')
+    expect(within(footer).getByRole('button', { name: '2' })).toHaveClass('bg-card')
   })
 
   it('loads the next page when the box scrolls within 160px of its end', () => {
@@ -514,19 +555,19 @@ describe('History box (spec §7.2 C)', () => {
     expect(pageQueries.at(-1)).not.toHaveProperty('page')
   })
 
-  it('dims the old rows, says Updating… and dims the counts while a filter re-reads', () => {
+  it('dims the old rows, says Updating… and dims the kind switcher while a filter re-reads', () => {
     pages.data = { pages: [opsPage(1, 10, 10)] }
     pages.isPlaceholderData = true
     renderAt('/aid/season/history?kind=offers')
     expect(screen.getByTestId('history-rows')).toHaveAttribute('data-stale')
     expect(screen.getByTestId('history-footer')).toHaveTextContent('Updating…')
-    expect(screen.getAllByTestId('history-count')[0]).toHaveClass('opacity-35')
+    expect(screen.getByRole('group', { name: 'Kind' })).toHaveClass('opacity-60')
   })
 
-  it('says "No operations match." when nothing does', () => {
+  it('says "No operations match these filters." when nothing does', () => {
     pages.data = { pages: [opsPage(1, 0, 0)] }
     renderAt('/aid/season/history?q=nobody')
-    expect(screen.getByText('No operations match.')).toBeInTheDocument()
+    expect(screen.getByText('No operations match these filters.')).toBeInTheDocument()
   })
 
   it('loading and failing read as QueryGuard words inside the box', () => {

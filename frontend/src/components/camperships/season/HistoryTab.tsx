@@ -9,7 +9,7 @@ import { usePermissions } from '../../../hooks/usePermissions'
 import type { ApiAidHistoryPage } from '../../../types/api-types'
 import { QueryGuard } from '../../QueryGuard'
 import type { AidView } from '../kit/asOf'
-import { CS_BTN_SM, CS_PANEL, CS_SCROLL_BOX } from '../kit/csType'
+import { CS_BAND, CS_BAND_EDGE, CS_PANEL, CS_SCROLL_BOX } from '../kit/csType'
 import { DefinitionNotes, type DefinitionNote } from '../kit/DefinitionNotes'
 import { useFitToViewport } from '../kit/useFitToViewport'
 import { HistoryFilters } from './HistoryFilters'
@@ -30,31 +30,36 @@ import {
 } from './historyModel'
 import { HistoryTable } from './HistoryTable'
 
-/** history.html B's notes. History defines no money figure, so they are the page's own words. */
+/** The mock's notes (history-10): History defines no money figure, so they are the page's own words. */
 const NOTES: readonly DefinitionNote[] = [
   {
     n: 1,
-    text: 'Amounts in the log are the amounts locked or entered at that moment; they are not recomputed.',
+    term: 'Amounts',
+    text: 'Amounts: as locked or entered at that moment; the log never recomputes them.',
   },
   {
     n: 2,
-    text: "Each request's own timeline stays on its household page; this tab is the season-wide view.",
+    term: 'Household timeline',
+    text: "Household timeline: each request's own history stays on its household page; this tab is the season-wide log.",
   },
   {
     n: 3,
-    text: 'Scenario edits stay in Scenarios; making a kept option the rules draft appears here as a rules operation.',
+    term: 'Scenarios',
+    text: 'Scenarios: its edits stay in Scenarios; making a kept option the rules draft shows here as a Rules operation.',
   },
 ]
 const NOTES_WITHOUT_SCENARIOS = NOTES.slice(0, 2)
+/** What "Clear filters" resets (history-m3). */
+const CLEARED_BY_CLEAR: readonly HistoryFilterKey[] = ['kind', 'actor', 'since', 'until', 'q']
 const NO_ACTORS: readonly string[] = []
 const NO_PAGES: readonly ApiAidHistoryPage[] = []
 /** The box asks for its next page this close (px) to its end (spec §7.2 C). */
 const NEAR_END = 160
-/** The picked page number: CS_BTN_SM with its background and ink swapped (one class per property). */
-const PAGE_ON = CS_BTN_SM.replace('bg-card', 'bg-primary').replace(
-  'text-forest-700 dark:text-forest-300',
-  'text-primary-foreground'
-)
+/** A pager button (the mock's .cf-pg, history-6): 22px, 12px/600, dimmed when disabled; the picked one is primary. */
+const PAGE_BTN =
+  'border-border bg-card text-foreground inline-flex h-[22px] min-w-[22px] cursor-pointer items-center justify-center rounded-md border px-[7px] text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-45'
+const PAGE_ON =
+  'border-primary bg-primary text-primary-foreground inline-flex h-[22px] min-w-[22px] cursor-pointer items-center justify-center rounded-md border px-[7px] text-xs font-semibold'
 
 /**
  * Season › History (spec §7.2; D49, D76; history-v2.html): the season's log in one scrolling box, one
@@ -112,6 +117,15 @@ export function HistoryTab() {
   const setFilter = useCallback(
     (key: HistoryFilterKey, value: string | null) =>
       setParamsRef.current((previous) => withFilter(previous, key, value), { replace: true }),
+    []
+  )
+  /** Clear filters: kind, who, dates and search in ONE URL write (history-m3); intake is a view choice and stays. */
+  const clearFilters = useCallback(
+    (keys: readonly HistoryFilterKey[]) =>
+      setParamsRef.current(
+        (previous) => keys.reduce((url, key) => withFilter(url, key, null), previous),
+        { replace: true }
+      ),
     []
   )
   const toggle = useCallback(
@@ -207,6 +221,7 @@ export function HistoryTab() {
         counting={stale}
         canSeeRules={canSeeRules}
         onChange={setFilter}
+        onClear={clearFilters}
       />
       <div
         ref={box}
@@ -222,11 +237,7 @@ export function HistoryTab() {
           label="History"
         >
           {() =>
-            first === undefined || first.total === 0 ? (
-              <p className={`${CS_PANEL} text-muted-foreground px-3 py-[18px]`}>
-                No operations match.
-              </p>
-            ) : (
+            first === undefined ? null : (
               <>
                 <div
                   data-testid="history-rows"
@@ -242,6 +253,7 @@ export function HistoryTab() {
                     onToggle={toggle}
                     view={view}
                     lineWidth={fit.width}
+                    onClearFilters={() => clearFilters(CLEARED_BY_CLEAR)}
                     tail={scrollRowWords(
                       loaded.length,
                       first.total,
@@ -297,12 +309,13 @@ function HistoryFooter({
   return (
     <div
       data-testid="history-footer"
-      className={`${CS_PANEL} bg-muted text-muted-foreground border-border sticky bottom-0 z-[35] flex flex-wrap items-center gap-2 border-t px-2 py-1.5 font-medium`}
+      className={`${CS_PANEL} ${CS_BAND} ${CS_BAND_EDGE} text-foreground sticky bottom-0 z-[35] flex flex-wrap items-center gap-0.5 px-2 py-1.5`}
     >
-      <span className="text-foreground">{updating ? 'Updating…' : words.count}</span>
+      <span className="font-bold">{updating ? 'Updating…' : words.count}</span>
+      <span className="w-2.5" />
       <button
         type="button"
-        className={CS_BTN_SM}
+        className={`${PAGE_BTN} ml-1`}
         disabled={page <= 1}
         onClick={() => onPage(page - 1)}
       >
@@ -312,7 +325,7 @@ function HistoryFooter({
         <button
           key={n}
           type="button"
-          className={n === page ? PAGE_ON : CS_BTN_SM}
+          className={`${n === page ? PAGE_ON : PAGE_BTN} ml-1`}
           onClick={() => onPage(n)}
         >
           {n}
@@ -320,14 +333,13 @@ function HistoryFooter({
       ))}
       <button
         type="button"
-        className={CS_BTN_SM}
+        className={`${PAGE_BTN} ml-1`}
         disabled={page >= last}
         onClick={() => onPage(page + 1)}
       >
         Older
       </button>
-      <span>{words.pageOf}</span>
-      <span>{words.onScreen}</span>
+      <span className="text-muted-foreground ml-2.5 font-medium">{`${words.pageOf} ${words.onScreen}`}</span>
     </div>
   )
 }

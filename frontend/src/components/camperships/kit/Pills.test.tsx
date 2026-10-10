@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { ConfirmationOut } from '../../../types/api-generated'
 import { CM_PENDING_WORD } from '../requests/views'
-import { STATUS_TONE } from './kitStyles'
+import { PILL, STATUS_TONE } from './kitStyles'
 import { CancelMark, ConfirmationState, HouseholdChip, IdChip, OverPill, StatusPill } from './Pills'
 
 function confirmation(over: Partial<ConfirmationOut>): ConfirmationOut {
@@ -184,5 +184,13 @@ describe('the outlined "line" pill (approved final mock reports-yoy.html: the se
     expect(pill.className).toContain('border')
     expect(pill.className).toContain('bg-transparent')
     expect(pill.className).toContain('truncate')
+  })
+})
+
+describe('PILL.amber', () => {
+  // history-m2: the kit's --t-amber-bg is 30% in dark (cs-final.css:229), like the other tones.
+  it('fills at 30% in dark', () => {
+    expect(PILL.amber).toContain('dark:bg-amber-900/30')
+    expect(PILL.amber).not.toContain('dark:bg-amber-900/50')
   })
 })
