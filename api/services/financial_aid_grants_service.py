@@ -68,6 +68,7 @@ from api.services.financial_aid_grants_register import (
     program_family_for_session_type,
 )
 from api.services.financial_aid_grants_repository import GrantsRepository
+from api.services.financial_aid_intake_types import SessionRow
 from api.services.financial_aid_ledger_service import (
     FinancialAidNotFoundError,
     FinancialAidValidationError,
@@ -89,6 +90,7 @@ from bunking.financial_aid.change_log import (
     race_conflict,
 )
 from bunking.pocketbase_batch import BatchRequestFailedError
+from bunking.session_order import session_order
 
 if TYPE_CHECKING:
     from api.services.financial_aid_household_page import HouseholdLabeler
@@ -339,6 +341,7 @@ class _Loaded:
     enrollments: list[Enrollment]
     session_names: dict[int, str]
     session_types: dict[int, str]
+    session_rows: dict[int, SessionRow]  # with dates and parent, for the Q8 session order
     household_rows: list[Any]
 
 
@@ -607,6 +610,18 @@ class GrantsService:
             for s in (_expanded(a, "session") for a in attendees)
             if s is not None
         }
+        session_rows: dict[int, SessionRow] = {}
+        for a in attendees:
+            s = _expanded(a, "session")
+            if s is not None:
+                session_rows[int(s.cm_id)] = SessionRow(
+                    cm_id=int(s.cm_id),
+                    name=str(getattr(s, "name", "") or ""),
+                    session_type=str(getattr(s, "session_type", "") or ""),
+                    start_date=str(getattr(s, "start_date", "") or ""),
+                    end_date=str(getattr(s, "end_date", "") or ""),
+                    parent_cm_id=int(getattr(s, "parent_id", 0) or 0),
+                )
         grantor_by_source = {str(s.description_key): str(getattr(s, "grantor_key", "") or "") for s in sources}
         inputs = RegisterInputs(
             lines=lines,
@@ -636,6 +651,7 @@ class GrantsService:
             enrollments=enrollments,
             session_names=session_names,
             session_types=session_types,
+            session_rows=session_rows,
             household_rows=household_rows,
         )
 
@@ -658,6 +674,7 @@ class GrantsService:
         answers, family_sets, members, people = loaded.answers, loaded.family_sets, loaded.members, loaded.people
         enrollments, session_names, household_rows = loaded.enrollments, loaded.session_names, loaded.household_rows
         session_types = loaded.session_types
+        session_rows = loaded.session_rows
 
         active = {e.person_cm_id for e in enrollments if e.status_id == ACTIVE_ENROLLED_STATUS_ID}
         candidates = {
@@ -690,14 +707,21 @@ class GrantsService:
             # program the row's source can pay for.
             group = inputs.families_by_source.get(row.source_key, frozenset())
             pays_for = group & CAMPER_PROGRAM_FAMILIES if group else CAMPER_PROGRAM_FAMILIES
+            mine = {
+                e.session_cm_id
+                for e in enrollments
+                if e.person_cm_id == cm and e.status_id == ACTIVE_ENROLLED_STATUS_ID and e.program_family in pays_for
+            }
+            # The Camperships session order (owner Q8), among just the sessions this camper is in.
+            known = [session_rows[i] for i in mine if i in session_rows]
+            ordered = session_order(known) + sorted(mine - {s.cm_id for s in known})
             return [
                 CandidateSessionOut(
-                    session_cm_id=e.session_cm_id,
-                    name=session_names.get(e.session_cm_id, ""),
-                    session_type=session_types.get(e.session_cm_id, ""),
+                    session_cm_id=i,
+                    name=session_names.get(i, ""),
+                    session_type=session_types.get(i, ""),
                 )
-                for e in sorted(enrollments, key=lambda e: e.session_cm_id)
-                if e.person_cm_id == cm and e.status_id == ACTIVE_ENROLLED_STATUS_ID and e.program_family in pays_for
+                for i in ordered
             ]
 
         def family_of(cm: int) -> str:

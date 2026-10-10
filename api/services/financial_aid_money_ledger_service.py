@@ -45,6 +45,7 @@ from api.services.financial_aid_program_labels import program_labels
 from api.services.financial_aid_reconciliation import SeasonLedger, camp_date
 from api.services.financial_aid_to_place import LeftLine, SourceRow
 from bunking.financial_aid.money import ZERO
+from bunking.session_order import session_order
 
 if TYPE_CHECKING:
     from api.services.financial_aid_household_page import HouseholdLabeler
@@ -81,9 +82,11 @@ def _session(sessions: Mapping[int, SessionRow], cm_id: int) -> LedgerSessionOut
 
 
 def _household_sessions(sessions: Mapping[int, SessionRow], ids: Collection[int]) -> list[LedgerSessionOut]:
-    """Each session once, by start day then id (a session the season doesn't know is left out)."""
-    known = sorted((sessions[i] for i in set(ids) if i in sessions), key=lambda s: (s.start_date, s.cm_id))
-    return [LedgerSessionOut(name=s.name, session_type=s.session_type) for s in known]
+    """Each session once, in the Camperships session order (owner Q8; a session the season doesn't know is left out)."""
+    known = {i: sessions[i] for i in set(ids) if i in sessions}
+    return [
+        LedgerSessionOut(name=known[i].name, session_type=known[i].session_type) for i in session_order(known.values())
+    ]
 
 
 def _people(persons: Mapping[int, str], ids: Collection[int]) -> list[str]:
