@@ -1423,3 +1423,14 @@
     display: none !important;
   }
 }
+
+/* Camperships hero bar (design-language section 13): the bar wipes in left to right. Outside any layer so
+   Tailwind's tree-shaking keeps the @keyframes. */
+@keyframes cs-hero-reveal {
+  from {
+    clip-path: inset(0 100% 0 0 round 8px);
+  }
+  to {
+    clip-path: inset(0 0 0 0 round 8px);
+  }
+}

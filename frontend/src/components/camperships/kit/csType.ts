@@ -105,6 +105,11 @@ export const CS_CARD_TITLE = 'font-bold'
  * beat Tailwind's layered utilities (Fraunces, 30px). The important modifiers win until the app-wide fix (#2954).
  */
 export const CS_CARD_HEADING = `${CS_CARD_TITLE} !font-sans !text-[13.5px] !leading-normal !tracking-[inherit]`
+/** Today's hero (design-language section 13 "The hero bar"): a 16/22 bold title and a 24/28 headline figure. */
+export const CS_HERO_TITLE = '!text-[16px] !leading-[22px] !font-bold font-sans text-foreground'
+export const CS_HERO_FIG =
+  'text-[24px] leading-[28px] font-bold tabular-nums tracking-[-0.01em] text-foreground'
+export const CS_HERO_CARD = 'rounded-xl border border-border bg-card px-[18px] pt-3.5 pb-3'
 /** cs-body 13.5/20.25, for a block outside a card. */
 export const CS_BODY = 'text-[13.5px] leading-normal'
 /** The mock's `.cf-empty`: a dashed card in muted body type, standing where a table or grid would. */
