@@ -215,6 +215,9 @@ export function ScenarioControls(props: {
               ) : (
                 <AidPicker
                   label="From"
+                  // Capped below the kit's 220px: with Posted ▾ the one-row toolbar has no slack, and at 1440 a
+                  // long kept name beside "No postings" cut "1 change" (measured 10-10). The title reads whole.
+                  className="max-w-[156px] [&>button]:min-w-0"
                   value={selected}
                   disabled={!props.canEdit}
                   options={fromOptions}

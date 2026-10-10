@@ -390,6 +390,20 @@ describe('the pricing mode (Posted ▾)', () => {
     expect(screen.getByRole('button', { name: /^Posted:/ })).toHaveTextContent('No postings')
   })
 
+  // Coordinator, 10-10: with Posted ▾ the one-row toolbar has no slack, so From ▾ is capped (measured at 1440 with a
+  // long kept name and "No postings": "1 change" stays whole). A cut name reads whole in the title.
+  it('caps From ▾ so the change count always fits, the full name in its title', () => {
+    const long = 'Rules v3 as they were before the late-season review'
+    setup({
+      posted: 'none',
+      chips: [{ code: 'B', name: long, loaded: true }],
+    })
+    const from = screen.getByRole('button', { name: /^From:/ })
+    // the face must shrink inside the cap, or it overflows onto ✎ instead of cutting its name
+    expect(from.parentElement).toHaveClass('max-w-[156px]', '[&>button]:min-w-0')
+    expect(from).toHaveAttribute('title', expect.stringContaining(`B · ${long}`))
+  })
+
   it('shows no Posted ▾ before anything is posted: the two modes price alike', () => {
     setup({ posted: null })
     expect(screen.queryByRole('button', { name: /^Posted:/ })).toBeNull()
