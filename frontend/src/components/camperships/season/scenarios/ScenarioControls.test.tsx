@@ -136,7 +136,7 @@ describe('the control line (§S5 A; scenarios-2): one kit toolbar row', () => {
     await openFrom()
     const groups = screen.getAllByRole('presentation').map((n) => n.textContent)
     expect(groups).toEqual(['Start from', 'Kept'])
-    expect(screen.getAllByRole('option').map((o) => o.textContent?.replace('✓', ''))).toEqual([
+    expect(screen.getAllByRole('option').map((o) => o.textContent.replace('✓', ''))).toEqual([
       'Rules in effect · v4',
       "Last season's rules",
       'A · Tiers 3–5 +5%',
