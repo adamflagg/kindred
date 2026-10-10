@@ -8,6 +8,7 @@ export interface CatalogSession {
   readonly cmId: number
   readonly name: string
   readonly startDate: string
+  readonly endDate: string
   readonly sortOrder: number
   readonly type: string
   readonly parentId: number
@@ -17,6 +18,7 @@ interface Row {
   cm_id: number
   name: string
   start_date: string
+  end_date: string | null
   sort_order: number | null
   session_type: string
   parent_id: number | null
@@ -29,13 +31,14 @@ function useCatalogQuery(year: number) {
     queryFn: async () => {
       const rows = await pb.collection('camp_sessions').getFullList<Row>({
         filter: `year = ${String(year)}`,
-        fields: 'cm_id,name,start_date,sort_order,session_type,parent_id',
+        fields: 'cm_id,name,start_date,end_date,sort_order,session_type,parent_id',
         sort: 'start_date,sort_order,cm_id',
       })
       return rows.map((r): CatalogSession => ({
         cmId: r.cm_id,
         name: r.name,
         startDate: r.start_date,
+        endDate: r.end_date ?? '',
         sortOrder: r.sort_order ?? 0,
         type: r.session_type,
         parentId: r.parent_id ?? 0,
@@ -47,7 +50,7 @@ function useCatalogQuery(year: number) {
 
 /**
  * The season's sessions as the Programs and costs card lays them out (spec §5.3): type for the sub-sections and the
- * per-person default, parent for AG sessions, date then CampMinder's order. Read like `useAidSessionNames` (any
+ * per-person default, parent for AG sessions, and the dates the Camperships session order needs (Q8, utils/sessionOrder.ts). Read like `useAidSessionNames` (any
  * signed-in user may list camp_sessions); inherits the app's cache defaults for the same reason (sessions change only
  * on a sync, and `camp-sessions` is a sync-dependent prefix).
  */

@@ -34,6 +34,7 @@ import {
   type CardSection,
   type EditField,
   type Edits,
+  byDate,
   type ProgramShape,
   type ProgramsCostsDoc,
 } from './programsCostsModel'
@@ -41,10 +42,6 @@ import { Flow, FormulaLine, PerPersonHead, RowName } from './ProgramsCostsParts'
 
 const SECTIONS: readonly CardSection[] = ['programs', 'cost']
 const SUB_ORDER = Object.keys(SUBSECTION_LABELS)
-const byDate = (a: CardRow, b: CardRow) =>
-  a.session.startDate.localeCompare(b.session.startDate) ||
-  a.session.sortOrder - b.session.sortOrder ||
-  a.session.cmId - b.session.cmId
 
 /** A group's rows, running and not running alike (a checked row stays where it was), in the read view's order. */
 const inPlace = (rows: readonly CardRow[]): CardRow[] => [

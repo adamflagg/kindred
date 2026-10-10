@@ -3,6 +3,7 @@
  * named by its label; A3's `groups`). Pure: the card, its editor and its tests read the season through here. Programs
  * stay in the data (ground rule 1); a group is drawn from its sessions.
  */
+import { sessionOrderIds, type SessionOrderInput } from '../../../../utils/sessionOrder'
 import type { CatalogSession } from '../../../../hooks/camperships/useAidSessionCatalog'
 import type { ApiAidGroup, ApiAidValidationIssue } from '../../../../types/api-types'
 import { boxText, parseSetting, type FieldSpec } from './sectionEdit'
@@ -56,6 +57,8 @@ export interface ProgramsCostsDoc {
 }
 export interface CardRow {
   readonly session: CatalogSession
+  /** The session's place in the Camperships order (Q8) among the season's sessions. */
+  readonly rank: number
   readonly program: string | null
   readonly group: string
   readonly kind: PriceKind | null
@@ -117,6 +120,15 @@ export function resolveProgram(
   return resolveProgram(doc, parent.cmId, parent.type)
 }
 
+export const orderInput = (s: CatalogSession): SessionOrderInput => ({
+  cm_id: s.cmId,
+  name: s.name,
+  session_type: s.type,
+  start_date: s.startDate,
+  end_date: s.endDate,
+  parent_cm_id: s.parentId,
+})
+
 export function isAgChild(
   session: CatalogSession,
   byId: ReadonlyMap<number, CatalogSession>
@@ -141,10 +153,8 @@ function tagOf(label: string, groupLabel: string, name: string): string | null {
   return label
 }
 
-const byDate = (a: CardRow, b: CardRow) =>
-  a.session.startDate.localeCompare(b.session.startDate) ||
-  a.session.sortOrder - b.session.sortOrder ||
-  a.session.cmId - b.session.cmId
+/** The Camperships session order (owner Q8): main, embedded and AG by start date, then Quest, TLI, SCIT, Family Camp. */
+export const byDate = (a: CardRow, b: CardRow) => a.rank - b.rank
 
 export function cardView(
   doc: ProgramsCostsDoc,
@@ -153,6 +163,9 @@ export function cardView(
   cancelled: ReadonlySet<number>
 ): CardView {
   const byId = new Map(sessions.map((s) => [s.cmId, s] as const))
+  const rankOf = new Map(
+    sessionOrderIds(sessions.map(orderInput)).map((id, place) => [id, place] as const)
+  )
   const pools = new Set(groups.map((g) => g.pool))
   const notRunningIds = new Set((doc.cost.not_running_session_cm_ids ?? []).map(Number))
   const rowOf = (session: CatalogSession): CardRow => {
@@ -164,6 +177,7 @@ export function cardView(
     const groupLabel = groups.find((g) => g.pool === pool)?.label ?? ''
     return {
       session,
+      rank: rankOf.get(session.cmId) ?? Number.MAX_SAFE_INTEGER,
       program: key,
       group: pool,
       kind: pool === NOT_OPEN ? null : (program?.cost_source ?? null),
