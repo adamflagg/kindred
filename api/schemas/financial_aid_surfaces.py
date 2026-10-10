@@ -81,8 +81,13 @@ TodayKey = Literal[
     "sources",
     "intake",
     "equity_field_never_true",
+    # development (financial_aid.grantors or .summary), spec 2026-10-10 §5.1
+    "no_contact",
+    "no_eligibility",
+    "needs_group",
+    "no_grantor",
 ]
-TodayItemKind = Literal["requests", "grants", "sections", "descriptions", "fields", "lines"]
+TodayItemKind = Literal["requests", "grants", "sections", "descriptions", "fields", "lines", "funders"]
 
 
 class TodayReasonOut(BaseModel):
@@ -135,6 +140,9 @@ class TodayLineOut(BaseModel):
         False  # past the line's TODAY_OVERDUE_DAYS threshold (spec 2026-10-10 §5.2); never on a line without one
     )
     next_up: list[TodayNextUpOut] = Field(default_factory=list)  # oldest first, at most NEXT_UP_CAP households
+    names: list[str] = Field(
+        default_factory=list
+    )  # development lines: the funders or descriptions it counts, by name; no family data (§9.4)
 
 
 class TodayStagesOut(BaseModel):
@@ -153,13 +161,14 @@ class TodayStagesOut(BaseModel):
 
 class TodayResponse(BaseModel):
     """Today's sections follow the user's permissions: casework None without financial_aid.casework,
-    finance None without financial_aid.rules. stages: casework or finance callers (the hero bar); None for
-    development."""
+    finance None without financial_aid.rules, development None without financial_aid.grantors or .summary.
+    stages: casework or finance callers (the hero bar); None for development."""
 
     year: int
     casework: list[TodayLineOut] | None
     finance: list[TodayLineOut] | None
     stages: TodayStagesOut | None = None
+    development: list[TodayLineOut] | None = None
 
 
 class HouseholdMatchOut(BaseModel):

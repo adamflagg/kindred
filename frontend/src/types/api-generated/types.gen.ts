@@ -18033,6 +18033,10 @@ export type TodayLineOut = {
     | 'sources'
     | 'intake'
     | 'equity_field_never_true'
+    | 'no_contact'
+    | 'no_eligibility'
+    | 'needs_group'
+    | 'no_grantor'
   /**
    * Families
    */
@@ -18044,7 +18048,7 @@ export type TodayLineOut = {
   /**
    * Item Kind
    */
-  item_kind: 'requests' | 'grants' | 'sections' | 'descriptions' | 'fields' | 'lines'
+  item_kind: 'requests' | 'grants' | 'sections' | 'descriptions' | 'fields' | 'lines' | 'funders'
   /**
    * Reasons
    */
@@ -18073,6 +18077,65 @@ export type TodayLineOut = {
    * Skipped
    */
   skipped?: string
+  /**
+   * Overdue
+   */
+  overdue?: boolean
+  /**
+   * Next Up
+   */
+  next_up?: Array<TodayNextUpOut>
+  /**
+   * Names
+   */
+  names?: Array<string>
+}
+
+/**
+ * TodayNextUpOut
+ *
+ * One household Today's home page names on a queue line (spec 2026-10-10 §5.5): the household once, at its oldest
+ * request on the line. `days` is on the line's own clock (Needs an offer: since asked; Waiting on the family: since
+ * posted; Pending approval: since keyed for approval) and None on a line that has no clock. Casework and finance only:
+ * the development section never carries one (§9.4).
+ */
+export type TodayNextUpOut = {
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Label
+   */
+  label: string
+  /**
+   * Tiebreak
+   */
+  tiebreak?: string
+  /**
+   * Days
+   */
+  days?: number | null
+  /**
+   * Camper Name
+   */
+  camper_name?: string
+  /**
+   * Session Name
+   */
+  session_name?: string
+  /**
+   * Session Type
+   */
+  session_type?: string
+  /**
+   * Round
+   */
+  round?: number | null
+  /**
+   * Ask
+   */
+  ask?: number | null
 }
 
 /**
@@ -18105,7 +18168,8 @@ export type TodayReasonOut = {
  * TodayResponse
  *
  * Today's sections follow the user's permissions: casework None without financial_aid.casework,
- * finance None without financial_aid.rules.
+ * finance None without financial_aid.rules, development None without financial_aid.grantors or .summary.
+ * stages: casework or finance callers (the hero bar); None for development.
  */
 export type TodayResponse = {
   /**
@@ -18120,6 +18184,52 @@ export type TodayResponse = {
    * Finance
    */
   finance: Array<TodayLineOut> | null
+  stages?: TodayStagesOut | null
+  /**
+   * Development
+   */
+  development?: Array<TodayLineOut> | null
+}
+
+/**
+ * TodayStagesOut
+ *
+ * The registrar hero's one bar (spec 2026-10-10 §4.1): every request this season by its Stage column's code
+ * (row_stage), in the bar's order. A request with no round yet has no stage and is counted in none.
+ */
+export type TodayStagesOut = {
+  /**
+   * Accepted
+   */
+  accepted: number
+  /**
+   * Waiting On Family
+   */
+  waiting_on_family: number
+  /**
+   * Pending Approval
+   */
+  pending_approval: number
+  /**
+   * Needs Offer
+   */
+  needs_offer: number
+  /**
+   * Held
+   */
+  held: number
+  /**
+   * Cancelled
+   */
+  cancelled: number
+  /**
+   * Families
+   */
+  families: number
+  /**
+   * Posted This Week
+   */
+  posted_this_week: number
 }
 
 /**

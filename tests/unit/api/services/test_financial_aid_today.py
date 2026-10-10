@@ -38,6 +38,7 @@ from api.services.financial_aid_queues import row_queues
 from api.services.financial_aid_rules_service import RulesNotFoundError, RulesVersion
 from api.services.financial_aid_today import (
     CASEWORK_LINES,
+    DEVELOPMENT_LINES,
     FINANCE_LINES,
     NEXT_UP_CAP,
     TODAY_OVERDUE_DAYS,
@@ -933,3 +934,68 @@ def test_posted_this_week_counts_rows_posted_since_monday() -> None:
 def test_stages_are_sent_to_finance_and_registrar_alike() -> None:
     assert build_today(_inputs([]), casework=False, finance=True).stages is not None
     assert build_today(_inputs([]), casework=True, finance=False).stages is not None
+
+
+def _named_grantor(key: str, name: str, *, contacts: str = "", eligibility: str = "", retired: str = "") -> GrantorOut:
+    return _grantor(key, full=False).model_copy(
+        update={"name": name, "contacts": contacts, "eligibility": eligibility, "retired_at": retired}
+    )
+
+
+def test_development_lines_are_funder_upkeep_in_the_fixed_order() -> None:
+    lines = build_today(_inputs([]), casework=False, finance=False, development=True).development
+    assert [line.key for line in lines or []] == list(DEVELOPMENT_LINES)
+
+
+def test_funders_missing_a_contact_or_eligibility_are_named_and_retired_ones_are_not() -> None:
+    grantors = [
+        _named_grantor("riverbend", "Riverbend Community Foundation", contacts="", eligibility="need-based"),
+        _named_grantor("northfield", "Northfield Family Foundation", contacts="grants@example.com", eligibility=""),
+        _named_grantor("oldfund", "Old Fund", retired="2030-01-01"),
+    ]
+    dev = build_today(_inputs([], grantors=grantors), casework=False, finance=False, development=True).development
+    assert (_line(dev, "no_contact").items, _line(dev, "no_contact").names) == (1, ["Riverbend Community Foundation"])
+    assert (_line(dev, "no_eligibility").items, _line(dev, "no_eligibility").names) == (
+        1,
+        ["Northfield Family Foundation"],
+    )
+    assert _line(dev, "no_contact").item_kind == "funders"
+
+
+def test_descriptions_needing_a_group_or_a_funder_are_named() -> None:
+    grants = _grants(
+        unmapped=[
+            UnmappedDescriptionOut(
+                source_id="src1",
+                description_key="Outside award spring",
+                description="Outside award spring",
+                lines=2,
+                amount=900.0,
+            )
+        ]
+    )
+    dev = build_today(
+        _inputs([], grants=grants, needs_group=["Scholarship other"]), casework=False, finance=False, development=True
+    ).development
+    assert _line(dev, "needs_group").names == ["Scholarship other"]
+    assert _line(dev, "no_grantor").names == ["Outside award spring"]
+
+
+def test_the_development_section_carries_no_family_data() -> None:
+    """Spec 2026-10-10 section 9.4, review focus 4: serialise the whole response and look for household data."""
+    rows = [
+        _row(
+            "reqemma00000001",
+            1000001,
+            _round(1, "needs_offer", decided=1500.0, asked_on=TODAY),
+            family_name="Johnson",
+            camper_name="Emma Johnson",
+        )
+    ]
+    today = build_today(
+        _inputs(rows, grantors=[_named_grantor("g", "Riverbend")]), casework=False, finance=False, development=True
+    )
+    body = today.model_dump_json()
+    for leak in ("1000001", "Johnson", "Emma", "reqemma", "household_cm_id"):
+        assert leak not in body, leak
+    assert (today.stages, today.casework, today.finance) == (None, None, None)
