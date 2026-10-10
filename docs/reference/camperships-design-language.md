@@ -197,7 +197,7 @@ A line that **replaces** the table (loading, failed, empty) is allowed. So is a 
 
 - `AidFoldCard` has ONE header row: a caret and a 13.5/700 title that folds the card, a muted one-line meta, pills, and the figures on the right (a muted label with its footnote mark, then a tabular value). Opened, it shows a kit table flush under a rule. A card that opens nothing has no caret.
 - `shape`: the default (full width), `compact` (figures stacked label over value; lay several across with `AidCards`), and `row` (one line, figures in fixed columns). `band` puts a total card in the green band.
-- `AidMeter` (committed against allocated), `AidShareBar`, `AidLegend` and Today's `AidHeroBar` are the only bars. `AidHeroBar` is Today's alone: one per page, with segments that are links into the slice they count, an optional dashed budget marker, and a one-time reveal that `prefers-reduced-motion` turns off. Its `compact` form (10px, no labels) draws the pool rows under it.
+- `AidMeter` (committed against allocated, amber stripes past 100%), `AidShareBar`, `AidLegend` and Today's `AidHeroBar` are the only bars. `AidHeroBar` is Today's alone: one per page, with segments that are links into the slice they count, an optional dashed budget marker, and a one-time reveal that `prefers-reduced-motion` turns off. Its `compact` form (10px, no labels) draws the pool rows under it.
 
 ## 14. Sessions and programs
 
