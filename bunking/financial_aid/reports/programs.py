@@ -22,6 +22,10 @@ the screen): the pool grouping and subtotals, the Round 3 columns and total awar
                     requested).
   subtotals/total   POOLED ratios over the rows' requests, never averages of the rows' ratios (the sheet summed its
                     averages and averaged its percentages).
+  one row           the season's SCIT sessions (Counselor and Specialist In-Training: two CampMinder sessions of type
+                    scit, the same dates) are ONE row in a pool, summing both (owner 2026-10-10: "approved to combine
+                    SCIT"). By session type within the season, never by id; the row is named by its first session in
+                    the reader's order, and its counts open every session in it.
 """
 
 from __future__ import annotations
@@ -35,8 +39,11 @@ from typing import Final, Literal
 from bunking.financial_aid.money import ZERO
 from bunking.financial_aid.reports.facts import ReportRequest, average, capped_ask, in_round, is_capped
 from bunking.financial_aid.scenarios.committee import pct
+from bunking.session_order import SessionLike, session_order
 
 UNMATCHED_SESSION: Final = 0
+# The session types whose sessions in one pool make one row (owner 2026-10-10: SCIT, CIT + SIT).
+ONE_ROW_TYPES: Final = frozenset({"scit"})
 ProgramsCount = Literal["apps", "asks", "awarded"]
 ProgramsPart = Literal["session", "subtotal", "total"]
 
@@ -55,12 +62,27 @@ def block_counts_in(request: ReportRequest, n: int) -> frozenset[ProgramsCount]:
     return frozenset(found)
 
 
-def _slot(request: ReportRequest, sessions: Mapping[int, str | None]) -> tuple[str | None, int]:
-    """The (pool, session) row a request counts in: its own rules session under that session's pool, else its home
-    pool's "session not matched" row."""
-    session = request.session_cm_id if request.session_cm_id in sessions else UNMATCHED_SESSION
+def one_row_sessions(season: Sequence[SessionLike], sessions: Mapping[int, str | None]) -> dict[int, int]:
+    """Each session that shares a row -> the row's session (its group's first in the reader's order): the season's
+    sessions of a ONE_ROW_TYPES type that the rules put in the same pool, two or more of them. `sessions`: the rules'
+    sessions -> their pool, as `programs` takes them."""
+    kinds = {s.cm_id: s.session_type.strip().lower() for s in season}
+    shared = [s for s in season if kinds[s.cm_id] in ONE_ROW_TYPES and s.cm_id in sessions]
+    groups: dict[tuple[str, str | None], list[int]] = defaultdict(list)
+    for cm_id in session_order(shared):
+        groups[(kinds[cm_id], sessions[cm_id])].append(cm_id)
+    return {member: ids[0] for ids in groups.values() if len(ids) > 1 for member in ids}
+
+
+def _slot(
+    request: ReportRequest, sessions: Mapping[int, str | None], one_row: Mapping[int, int]
+) -> tuple[str | None, int]:
+    """The (pool, session) row a request counts in: its own rules session (or the row it shares) under that session's
+    pool, else its home pool's "session not matched" row."""
+    own = request.session_cm_id
+    session = one_row.get(own, own) if own in sessions else UNMATCHED_SESSION
     # A rules session sits in its own program's pool, so a request never splits it across two pools.
-    pool = sessions[session] if session != UNMATCHED_SESSION else request.pool
+    pool = sessions[own] if session != UNMATCHED_SESSION else request.pool
     return pool, session
 
 
@@ -73,17 +95,21 @@ def program_members(
     session: int,
     block: int,
     count: ProgramsCount,
+    one_row: Mapping[int, int] | None = None,
 ) -> tuple[str, ...]:
     """The requests behind one count of one Programs row: a session's row in `pool` (`session` 0: that group's
-    "session not matched"), a pool's subtotal, or the total; in round `block`'s block. Sorted."""
+    "session not matched"; any session of a shared row names the row), a pool's subtotal, or the total; in round
+    `block`'s block. Sorted."""
+    shared = one_row or {}
+    row = shared.get(session, session)
 
     def in_row(request: ReportRequest) -> bool:
         if part == "total":
             return True
-        slot_pool, slot_session = _slot(request, sessions)
+        slot_pool, slot_session = _slot(request, sessions, shared)
         if slot_pool != pool:
             return False
-        return part == "subtotal" or slot_session == session
+        return part == "subtotal" or slot_session == row
 
     return tuple(sorted(r.request_id for r in requests if in_row(r) and count in block_counts_in(r, block)))
 
@@ -108,6 +134,7 @@ class ProgramRow:
     round2: RoundBlock
     round3: RoundBlock
     total_awarded: Decimal
+    session_cm_ids: tuple[int, ...] = ()  # the sessions the row counts: one, or a shared row's (SCIT); none on 0
 
 
 @dataclass(frozen=True)
@@ -152,13 +179,14 @@ def _block(requests: Sequence[ReportRequest], n: int) -> RoundBlock:
     )
 
 
-def _row(session: int, requests: Sequence[ReportRequest]) -> ProgramRow:
+def _row(session: int, requests: Sequence[ReportRequest], members: tuple[int, ...] = ()) -> ProgramRow:
     return ProgramRow(
         session_cm_id=session,
         round1=_block(requests, 1),
         round2=_block(requests, 2),
         round3=_block(requests, 3),
         total_awarded=sum((r.awarded() for r in requests), ZERO),
+        session_cm_ids=members,
     )
 
 
@@ -168,6 +196,7 @@ def programs(
     *,
     rank: Mapping[int, int] | None = None,
     closed_to_aid: frozenset[int] = frozenset(),
+    one_row: Mapping[int, int] | None = None,
 ) -> ProgramsTable:
     """`sessions`: every session a rules program claims -> its program's pool (None: the program has no pool).
 
@@ -175,23 +204,33 @@ def programs(
     pool; a session it names no place for, and any tie, goes by CampMinder id. "Session not matched" is always last.
     `closed_to_aid`: the sessions whose rules program is not open to aid. One of them with no application is no row
     (owner Q7, 2026-10-10: "hide sessions which are the no pool ones"), keyed off the rules and never the zero count;
-    with an application it shows. A session of an aided program shows even at 0."""
+    with an application it shows. A session of an aided program shows even at 0.
+    `one_row`: each session that shares a row -> the row's session (`one_row_sessions`); the row hides only when all
+    its sessions are closed to aid."""
+    shared = one_row or {}
     every = [r for r in requests if r.counts_as_received]  # a posted duplicate is no application, nor a session's
     by_session: dict[tuple[str | None, int], list[ReportRequest]] = defaultdict(list)
     for request in every:
-        by_session[_slot(request, sessions)].append(request)
+        by_session[_slot(request, sessions, shared)].append(request)
+    places = rank or {}
+    row_sessions: dict[int, list[int]] = defaultdict(list)
+    for session in sorted(sessions, key=lambda s: (places.get(s, len(places)), s)):
+        row_sessions[shared.get(session, session)].append(session)
     slots: dict[str | None, set[int]] = defaultdict(set)
     for session, pool in sessions.items():
-        if session in closed_to_aid and (pool, session) not in by_session:
+        row = shared.get(session, session)
+        if all(m in closed_to_aid for m in row_sessions[row]) and (pool, row) not in by_session:
             continue
-        slots[pool].add(session)
+        slots[pool].add(row)
     for pool, session in by_session:
         slots[pool].add(session)
     groups: list[PoolGroup] = []
-    places = rank or {}
     for pool in sorted(slots, key=lambda p: (p is None, p or "")):
         ordered = sorted(slots[pool], key=lambda s: (s == UNMATCHED_SESSION, places.get(s, len(places)), s))
-        rows = tuple(_row(session, by_session.get((pool, session), [])) for session in ordered)
+        rows = tuple(
+            _row(session, by_session.get((pool, session), []), tuple(row_sessions.get(session, ())))
+            for session in ordered
+        )
         members = [r for session in ordered for r in by_session.get((pool, session), [])]
         groups.append(PoolGroup(pool, rows, _row(UNMATCHED_SESSION, members)))
     capped = sum(1 for r in every if r.asked() is not None and is_capped(r))

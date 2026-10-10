@@ -31,6 +31,7 @@ import {
 import type { AidRequestSet } from '../../../services/camperships/aidApi'
 import type { ReportAddress } from '../requests/reportFilter'
 import { requestSetParam } from '../season/scenarios/controlsModel'
+import { aidCellShortName } from '../kit/sessionShort'
 import { requestSetQuery } from './reportParams'
 import { SessionNameCell } from './SessionNameCell'
 import { sessionNameTitle } from './sessionNameTitle'
@@ -180,6 +181,9 @@ export function programRows(
     })
     pool.sessions.forEach((session, index) => {
       const type = session.session_type ?? ''
+      // A shared row (SCIT: Counselor + Specialist In-Training, owner 2026-10-10) always reads short; the words
+      // and the title keep every full name.
+      const shared = (session.session_cm_ids ?? []).length > 1
       rows.push({
         key: `session-${key}-${String(session.session_cm_id)}-${String(index)}`,
         // "Session not matched" sits in the no-pool group: muted italic, as the mock draws it
@@ -188,10 +192,12 @@ export function programRows(
           {
             ...textValue(session.session_name),
             title: sessionNameTitle(session.session_name, type),
-            display: createElement(SessionNameCell, {
-              name: session.session_name,
-              sessionType: type,
-            }),
+            display: shared
+              ? aidCellShortName(session.session_name, type)
+              : createElement(SessionNameCell, {
+                  name: session.session_name,
+                  sessionType: type,
+                }),
           },
           session
         ),

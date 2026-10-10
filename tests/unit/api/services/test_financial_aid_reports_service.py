@@ -685,6 +685,43 @@ async def test_programs_rows_carry_the_sessions_type_for_the_short_name_and_the_
     assert out.total.session_type == ""
 
 
+def _scit_store() -> tuple[FakeDecisionsStore, FakeRules]:
+    """Noah at Counselor In-Training; nobody at Specialist In-Training; summer claims both by type."""
+    store = report_season()
+    seed_request(store, NOAH, household=1000003, person=1000031, session=1000107, ask=1000.0)
+    log_seeded(store, EARLY)
+    scit = with_levers(RULES, {"programs.summer.session_types": ["main", "embedded", "ag", "scit"]})
+    return store, FakeRules(approved(scit))
+
+
+async def test_programs_shows_the_seasons_scit_sessions_as_one_row_summing_both() -> None:
+    """Owner 2026-10-10 ("approved to combine SCIT"): Counselor + Specialist In-Training, two CampMinder sessions of
+    type scit, are one row (real 2026: CIT 14 apps + SIT 0 is one SCIT row of 14). By type, not by id."""
+    store, rules = _scit_store()
+    out = await _service(store, rules=rules).programs(YEAR)
+    camp = next(group for group in out.pools if group.pool == "camp_pool")
+    scit = [row for row in camp.sessions if row.session_type == "scit"]
+    assert len(scit) == 1
+    row = scit[0]
+    assert (row.session_cm_id, row.session_cm_ids) == (1000107, [1000107, 1000108])
+    assert row.session_names == ["Counselor In-Training", "Specialist In-Training"]
+    assert row.round1.apps == 1
+    session2 = next(r for r in camp.sessions if r.session_cm_id == 1000101)
+    assert (session2.session_cm_ids, session2.session_names) == ([1000101], ["Session 2"])
+    assert (camp.subtotal.session_cm_ids, out.total.session_names) == ([], [])
+
+
+async def test_a_scit_rows_count_opens_both_sessions_requests() -> None:
+    store, rules = _scit_store()
+    seed_request(store, "reqoliv00000001", household=1000004, person=1000041, session=1000108, ask=500.0)
+    log_seeded(store, EARLY)
+    service = _service(store, rules=rules)
+    ids = await service.programs_request_ids(
+        YEAR, part="session", pool="camp_pool", session=1000107, block=1, count="apps"
+    )
+    assert ids.request_ids == [NOAH, "reqoliv00000001"]
+
+
 async def test_programs_pool_groups_follow_the_rules_pool_order_not_the_alphabet() -> None:
     """Pool groups follow `budget.pools` (camp, weekend, b'mitzvah); a pool-less group goes last."""
     out = await _service(report_season()).programs(YEAR)

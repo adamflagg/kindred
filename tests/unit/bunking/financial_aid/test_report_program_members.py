@@ -89,3 +89,25 @@ def test_every_rows_every_block_count_opens_exactly_that_many_requests() -> None
                 ids = _ids(part, pool=pool, session=session, block=block, count=count)
                 expected = getattr(getattr(row, f"round{block}"), FIELD[count])
                 assert len(ids) == expected, (part, pool, session, block, count)
+
+
+def test_a_one_row_groups_count_opens_every_session_in_it() -> None:
+    """SCIT (owner 2026-10-10): the row's Apps open both sessions' requests, named by either session."""
+    cit, sit = 1000107, 1000108
+    sessions = {**SESSIONS, cit: "camp_pool", sit: "camp_pool"}
+    requests = [
+        req(EMMA, rnd(1, ask="4000"), session=cit),
+        req(LIAM, rnd(1, ask="2000"), household=1000002, session=sit),
+        req(NOAH, rnd(1, ask="3000"), household=1000003),
+    ]
+    for named in (cit, sit):
+        assert program_members(
+            requests,
+            sessions,
+            part="session",
+            pool="camp_pool",
+            session=named,
+            block=1,
+            count="apps",
+            one_row={cit: cit, sit: cit},
+        ) == (EMMA, LIAM)

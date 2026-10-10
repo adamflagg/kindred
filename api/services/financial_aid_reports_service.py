@@ -103,6 +103,7 @@ from bunking.financial_aid.reports.programs import (
     ProgramsCount,
     ProgramsPart,
     RoundBlock,
+    one_row_sessions,
     program_members,
     programs,
 )
@@ -513,15 +514,20 @@ class FinancialAidReportsService:
             sessions,
             rank=session_rank(read.season.sessions.values()),
             closed_to_aid=closed_to_aid_sessions(read.season, document),
+            one_row=one_row_sessions(list(read.season.sessions.values()), sessions),
         )
         names = {cm_id: row.name for cm_id, row in read.season.sessions.items()}
         types = {cm_id: row.session_type for cm_id, row in read.season.sessions.items()}
 
         def row_out(row: ProgramRow, name: str, session_type: str = "") -> ProgramRowOut:
+            members = [names.get(cm_id, UNMATCHED_LABEL) for cm_id in row.session_cm_ids]
             return ProgramRowOut(
                 session_cm_id=row.session_cm_id,
-                session_name=name,
+                # a shared row (SCIT) is named by all its sessions; the screen shortens it
+                session_name=" + ".join(members) if len(members) > 1 else name,
                 session_type=session_type,
+                session_cm_ids=list(row.session_cm_ids),
+                session_names=members,
                 round1=_block(row.round1),
                 round2=_block(row.round2),
                 round3=_block(row.round3),
@@ -638,14 +644,16 @@ class FinancialAidReportsService:
             year, as_of=as_of, axis=axis, request_set=await self._request_set(year, through_deadline, through)
         )
         document = read.season.rules.document if read.season.rules is not None else None
+        sessions = rules_sessions(read.season, document)
         ids = program_members(
             read.requests,
-            rules_sessions(read.season, document),
+            sessions,
             part=part,
             pool=pool,
             session=session or 0,
             block=block,
             count=count,
+            one_row=one_row_sessions(list(read.season.sessions.values()), sessions),
         )
         return _ids_out(year, read, ids)
 

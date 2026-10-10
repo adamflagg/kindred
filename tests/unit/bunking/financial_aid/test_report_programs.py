@@ -3,9 +3,10 @@ the multi-session rule. Fictional sessions (financial_aid_fakes.SESSIONS ids) an
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from decimal import Decimal
 
-from bunking.financial_aid.reports.programs import UNMATCHED_SESSION, programs
+from bunking.financial_aid.reports.programs import UNMATCHED_SESSION, one_row_sessions, programs
 from tests.unit.bunking.financial_aid.report_fixtures import req, rnd
 
 SESSION_2, TASTE_1, FAMILY_6 = 1000101, 1000104, 1000202
@@ -144,3 +145,70 @@ def test_a_closed_to_aid_session_with_an_application_shows() -> None:
     table = programs(requests, sessions, closed_to_aid=frozenset({TASTE_1, FAMILY_6}))
     assert [(g.pool, [r.session_cm_id for r in g.sessions]) for g in table.pools] == [(None, [TASTE_1])]
     assert table.pools[0].sessions[0].round1.apps == 1
+
+
+# --- SCIT as one session (owner 2026-10-10: "approved to combine SCIT") ------------------------------------------
+
+CIT, SIT = 1000107, 1000108
+
+
+@dataclass(frozen=True)
+class SessionRow:
+    cm_id: int
+    name: str
+    session_type: str
+    start_date: str
+    end_date: str
+    parent_cm_id: int = 0
+
+
+def _scit_sessions() -> dict[int, str | None]:
+    return {SESSION_2: "camp_pool", CIT: "camp_pool", SIT: "camp_pool"}
+
+
+def test_a_one_row_group_is_one_row_whose_figures_sum_its_sessions() -> None:
+    """Counselor and Specialist In-Training: two CampMinder sessions, one Camperships row summing both."""
+    requests = [
+        req("reqemma00000001", rnd(1, ask="4000", posted="1500"), session=CIT),
+        req("reqliam00000001", rnd(1, ask="2000", posted="1000"), household=1000002, session=SIT),
+    ]
+    table = programs(requests, _scit_sessions(), one_row={CIT: CIT, SIT: CIT})
+    rows = table.pools[0].sessions
+    assert [row.session_cm_id for row in rows] == [SESSION_2, CIT]
+    scit = rows[1]
+    assert scit.session_cm_ids == (CIT, SIT)
+    assert (scit.round1.apps, scit.round1.requested, scit.round1.awarded) == (2, Decimal(6000), Decimal(2500))
+    assert scit.total_awarded == Decimal(2500)
+    assert table.pools[0].subtotal.round1.apps == 2
+    assert rows[0].session_cm_ids == (SESSION_2,)
+
+
+def test_a_one_row_group_with_no_applications_on_one_session_counts_the_other_alone() -> None:
+    """Real 2026's shape: CIT 14 apps + SIT 0 is one SCIT row of 14."""
+    requests = [req(f"reqemma0000000{n}", rnd(1, ask="1000"), household=1000001 + n, session=CIT) for n in range(3)]
+    scit = programs(requests, _scit_sessions(), one_row={CIT: CIT, SIT: CIT}).pools[0].sessions[1]
+    assert (scit.session_cm_id, scit.session_cm_ids, scit.round1.apps) == (CIT, (CIT, SIT), 3)
+
+
+def test_a_one_row_group_hides_only_when_every_session_is_closed_to_aid_and_empty() -> None:
+    sessions = _scit_sessions()
+    one_row = {CIT: CIT, SIT: CIT}
+    hidden = programs([], sessions, one_row=one_row, closed_to_aid=frozenset({CIT, SIT}))
+    assert [r.session_cm_id for r in hidden.pools[0].sessions] == [SESSION_2]
+    shown = programs([], sessions, one_row=one_row, closed_to_aid=frozenset({SIT}))
+    assert [r.session_cm_id for r in shown.pools[0].sessions] == [SESSION_2, CIT]
+
+
+def test_one_row_sessions_groups_scit_by_type_within_a_pool_first_in_the_session_order() -> None:
+    """By session type, never by id; per pool, so two programs' SCIT sessions never share a row; a lone one is
+    its own row."""
+    season = [
+        SessionRow(SESSION_2, "Session 2", "main", "2027-06-20", "2027-07-10"),
+        SessionRow(SIT, "Specialist In-Training", "scit", "2027-06-20", "2027-07-10"),
+        SessionRow(CIT, "Counselor In-Training", "scit", "2027-06-20", "2027-07-10"),
+        SessionRow(1000109, "Another In-Training", "scit", "2027-06-20", "2027-07-10"),
+    ]
+    pools: dict[int, str | None] = {SESSION_2: "camp_pool", CIT: "camp_pool", SIT: "camp_pool", 1000109: "tbm_pool"}
+    assert one_row_sessions(season, pools) == {CIT: CIT, SIT: CIT}
+    assert one_row_sessions(season[:2], pools) == {}
+    assert one_row_sessions(season, {SESSION_2: "camp_pool", CIT: "camp_pool"}) == {}

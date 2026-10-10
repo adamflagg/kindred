@@ -100,6 +100,48 @@ describe('Programs (RPT-11)', () => {
     expect(session?.cells[0]?.display).toBeDefined()
   })
 
+  // Owner 2026-10-10, "approved to combine SCIT": the server sends Counselor + Specialist In-Training as one row.
+  it('draws a shared SCIT row as "SCIT", both full names on hover and in Copy/CSV, its Apps by its row session', () => {
+    const scit = {
+      ...PROGRAMS,
+      pools: [
+        {
+          ...PROGRAMS.pools[0]!,
+          sessions: [
+            {
+              ...PROGRAMS.pools[0]!.sessions[0]!,
+              session_cm_id: 1000107,
+              session_name: 'Counselor In-Training + Specialist In-Training',
+              session_type: 'scit',
+              session_cm_ids: [1000107, 1000108],
+              session_names: ['Counselor In-Training', 'Specialist In-Training'],
+            },
+          ],
+        },
+      ],
+    }
+    const rows = programRows(scit, ALL, linkOf)
+    const row = rows[1]
+    expect(row?.cells[0]).toMatchObject({
+      kind: 'text',
+      value: 'Counselor In-Training + Specialist In-Training',
+      title: 'Counselor In-Training + Specialist In-Training',
+      display: 'SCIT',
+    })
+    expect(rows[0]?.meta).toBe('1 session')
+    const apps = programColumns(() => null).findIndex((c) => c.key === 'Round 1-apps')
+    expect(addressOf(row?.links?.[apps])).toMatchObject({ part: 'session', session: '1000107' })
+    const csv = csvLines(
+      programsHeading(scit),
+      programColumns(() => null),
+      rows,
+      'link'
+    )
+    expect(csv.find((line) => line[0]?.startsWith('Counselor'))?.[0]).toBe(
+      'Counselor In-Training + Specialist In-Training'
+    )
+  })
+
   it("marks a Family Camp session's title with the household rule", () => {
     const family = {
       ...PROGRAMS,

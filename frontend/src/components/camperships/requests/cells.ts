@@ -3,7 +3,7 @@
  * row's `session_type`, `household_label` and its tiebreak (#3107); this decides the words.
  */
 import type { ApiAidGridRow } from '../../../types/api-types'
-import { sessionName } from '../../../utils/sessionName'
+import { aidTinyName } from '../kit/sessionShort'
 // Type only: householdModel imports views, which imports this, so a value import would be a cycle.
 import type { HouseholdLabel } from '../household/householdModel'
 
@@ -18,7 +18,7 @@ export const SESSION_UNCLEAR_TITLE =
  */
 export function sessionCell(row: ApiAidGridRow): { text: string; title: string } {
   if (row.session_name === '') return { text: '—', title: SESSION_UNCLEAR_TITLE }
-  const tiny = sessionName(row.session_name, row.session_type ?? '', 'tiny')
+  const tiny = aidTinyName(row.session_name, row.session_type ?? '')
   return { text: tiny || row.session_name, title: row.session_name }
 }
 
