@@ -17,6 +17,12 @@ import { usePermissions } from '../usePermissions'
 /** A refusal in the server's words (no such option, 404; nothing to change, 422) answers at once. */
 const retry = retryUnlessRefused([404, 422])
 
+export interface FitVars {
+  readonly document: ApiAidRulesDocumentIn
+  /** Posted ▾ (owner, 2026-10-10): fit across every request, as if nothing were posted; regular moves only the rest. */
+  readonly asIfUnposted: boolean
+}
+
 /**
  * Fit to budget (§7.4; D119): a read that records nothing, so it refreshes nothing. Its answer is
  * shown beside the draft until "Use it" records the document (useAidScenarioDraft's `adopt`).
@@ -25,8 +31,11 @@ export function useAidScenarioFit() {
   const year = useYear()
   const { fetchWithAuth } = useApiWithAuth()
   return useMutation({
-    mutationFn: (document: ApiAidRulesDocumentIn) =>
-      fitAidScenario(fetchWithAuth, year, { document }),
+    mutationFn: ({ document, asIfUnposted }: FitVars) =>
+      fitAidScenario(fetchWithAuth, year, {
+        document,
+        ...(asIfUnposted ? { as_if_unposted: true } : {}),
+      }),
   })
 }
 

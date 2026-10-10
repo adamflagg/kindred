@@ -203,7 +203,7 @@ def test_scenarios_numbers_spend_remaining_projected_and_below_the_line() -> Non
     )
     assert BY_KEY["scenario_spend"].text == (
         "Spend: what the applications priced would get under these settings. A what-if: nothing here touches a "
-        "family or the rules, and posted amounts always stand."
+        "family or the rules."
     )
     assert BY_KEY["scenario_remaining"].text == (
         "Remaining: the budget's Allocated \u2212 Committed, per pool and in total, as on Rounds & budget. A pool "

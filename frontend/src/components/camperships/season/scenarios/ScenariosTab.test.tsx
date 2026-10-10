@@ -61,7 +61,11 @@ vi.mock('../../../../hooks/camperships/useAidScenarioDraft', () => ({
   },
 }))
 
-const pricingCalls: Array<{ requestSet: AidRequestSet; snapshot: string | null }> = []
+const pricingCalls: Array<{
+  requestSet: AidRequestSet
+  snapshot: string | null
+  asIfUnposted: boolean
+}> = []
 let pricing: {
   data?: { results: ApiAidScenarioResults }
   error: Error | null
@@ -72,9 +76,10 @@ vi.mock('../../../../hooks/camperships/useAidScenarioPricing', () => ({
   useAidScenarioPricing: (
     _document: unknown,
     requestSet: AidRequestSet,
-    snapshot: string | null
+    snapshot: string | null,
+    asIfUnposted = false
   ) => {
-    pricingCalls.push({ requestSet, snapshot })
+    pricingCalls.push({ requestSet, snapshot, asIfUnposted })
     return pricing
   },
 }))
@@ -369,6 +374,54 @@ describe('the sandbox (§S5 E–G)', () => {
   })
 })
 
+// Owner, 2026-10-10: "1 and 2 as you suggest … 4 yes, depending on the mode (as if nothing posted - all, regular -
+// unposted)". A view setting in the URL, never the rules.
+describe('the pricing mode (Posted ▾)', () => {
+  const POSTED: Partial<ApiAidScenarioWorkspace> = {
+    locked_sections: ['income', 'tiers', 'equity', 'award_tables', 'awards'],
+  }
+
+  it('prices the sandbox, its starting point, Compare and Fit as if nothing is posted, and keeps it in the URL', async () => {
+    renderAt('', POSTED)
+    expect(pricingCalls.at(-1)?.asIfUnposted).toBe(false)
+    await userEvent.click(screen.getByRole('button', { name: /^Posted:/ }))
+    await userEvent.click(screen.getByRole('option', { name: 'As if nothing is posted' }))
+    expect(location).toContain('unposted=1')
+    // both pricings of the render: the draft's and its starting point's
+    expect(pricingCalls.slice(-2).map((c) => c.asIfUnposted)).toEqual([true, true])
+    await userEvent.click(screen.getByRole('button', { name: 'Fit to Budget' }))
+    expect(fit.mutate).toHaveBeenCalledWith(expect.objectContaining({ asIfUnposted: true }))
+    expect(screen.getByRole('button', { name: 'Fit to Budget' })).toHaveAttribute(
+      'title',
+      expect.stringContaining('it moves every request')
+    )
+    await userEvent.click(screen.getByRole('button', { name: /^Compare/ }))
+    expect(compareCalls.at(-1)?.query.asIfUnposted).toBe(true)
+  })
+
+  it('regular, Fit moves only what is not posted, and nothing reads as if nothing is posted', async () => {
+    renderAt('', POSTED)
+    expect(screen.getByRole('button', { name: /^Posted:/ })).toHaveTextContent('Stands')
+    await userEvent.click(screen.getByRole('button', { name: 'Fit to Budget' }))
+    expect(fit.mutate).toHaveBeenCalledWith(expect.objectContaining({ asIfUnposted: false }))
+    expect(screen.getByRole('button', { name: 'Fit to Budget' })).toHaveAttribute(
+      'title',
+      expect.stringContaining('it moves only what is not posted yet')
+    )
+  })
+
+  it('has no Posted ▾ and prices regular before any round posts, whatever an old link says', () => {
+    renderAt('?unposted=1')
+    expect(screen.queryByRole('button', { name: /^Posted:/ })).toBeNull()
+    expect(pricingCalls.at(-1)?.asIfUnposted).toBe(false)
+  })
+
+  it('never offers Make … the Rules Draft from the switch: the real lock is the same in both modes', () => {
+    renderAt('?unposted=1', POSTED)
+    expect(screen.queryByRole('button', { name: /the Rules Draft/ })).toBeNull()
+  })
+})
+
 describe('Compare (§S5 H) and the URL (§S5 L)', () => {
   it('opens on its default columns the first time, and asks for exactly them', () => {
     renderAt('?panel=compare')
@@ -380,6 +433,7 @@ describe('Compare (§S5 H) and the URL (§S5 L)', () => {
         rules: true,
         lastRules: false,
         draft: false,
+        asIfUnposted: false,
       },
       enabled: true,
     })

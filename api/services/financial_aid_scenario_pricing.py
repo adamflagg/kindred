@@ -123,16 +123,26 @@ class _Recorder:
         return call
 
 
-class _Replay:
-    """A decisions store that answers each read with what the snapshot recorded."""
+# The aid_decisions events that post a round or hang off a posted one (the Posted tick, its undo, and the family's
+# acceptance of the posted offer). Priced as if nothing is posted, the replay leaves these out, so every round is
+# worked out by the document from scratch; the asks, staff awards and approvals are today's data and stay.
+_POSTING: Final = frozenset({"post", "unpost", "accept", "unaccept"})
 
-    def __init__(self, calls: Mapping[str, Any]) -> None:
+
+class _Replay:
+    """A decisions store that answers each read with what the snapshot recorded. `as_if_unposted` (owner, 2026-10-10:
+    next-year modelling on this year's data) answers the decision events with the posting ones left out."""
+
+    def __init__(self, calls: Mapping[str, Any], *, as_if_unposted: bool = False) -> None:
         self._calls = calls
+        self._as_if_unposted = as_if_unposted
 
     def __getattr__(self, name: str) -> Any:
         if name not in self._calls:
             raise SnapshotError(f"This snapshot predates the season read {name}: Update Applications again")
         value = self._calls[name]
+        if self._as_if_unposted and name == "fetch_decision_events":
+            value = [event for event in value if event.kind not in _POSTING]
 
         async def call(*args: Any, **kwargs: Any) -> Any:
             return _fresh(value)
@@ -251,11 +261,20 @@ def _decoded(raw: Mapping[str, Any]) -> SeasonSnapshot:
 
 
 async def price_document(
-    snapshot: SeasonSnapshot, document: AidRules, base: RulesVersion, *, requests: Collection[str] | None = None
+    snapshot: SeasonSnapshot,
+    document: AidRules,
+    base: RulesVersion,
+    *,
+    requests: Collection[str] | None = None,
+    as_if_unposted: bool = False,
 ) -> PricedSeason:
     """`document` priced over the frozen season, as if it were the season's approved rules. `base` is any real
     version of the season (the latest); only its identity fields are kept. `requests` narrows the season to those
-    requests before its budget is summed (a request set, D138); None prices every frozen request."""
+    requests before its budget is summed (a request set, D138); None prices every frozen request.
+
+    Regular pricing replays the season as it stands, so a posted round keeps its lock (D43). `as_if_unposted` (owner,
+    2026-10-10) replays it with no round posted: every request is priced by `document` from scratch, through the
+    same season read, and nothing posted is counted."""
     if document.year != snapshot.year:
         raise SnapshotError(f"The document is for {document.year}, but this snapshot is {snapshot.year}'s")
     approved = {name: SectionStatus(state="approved") for name in SECTION_NAMES}
@@ -265,7 +284,7 @@ async def price_document(
         return snapshot.register
 
     service = FinancialAidDecisionsService(
-        cast(DecisionsStore, _Replay(snapshot.calls)),
+        cast(DecisionsStore, _Replay(snapshot.calls, as_if_unposted=as_if_unposted)),
         _Approved(version),
         register,
         clock=lambda: snapshot.frozen_at,  # the replay runs at the frozen moment

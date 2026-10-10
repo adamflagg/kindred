@@ -4507,6 +4507,10 @@ export type EvaluateIn = {
    */
   received_through?: string | null
   /**
+   * As If Unposted
+   */
+  as_if_unposted?: boolean
+  /**
    * Tier Shift
    */
   tier_shift?: number | string
@@ -13773,6 +13777,10 @@ export type ResultsOut = {
   not_in_tiers: number
   request_set?: RequestSetOut | null
   /**
+   * As If Unposted
+   */
+  as_if_unposted?: boolean
+  /**
    * Appeals
    */
   appeals?: number
@@ -18764,6 +18772,10 @@ export type ViewIn = {
    * Received Through
    */
   received_through?: string | null
+  /**
+   * As If Unposted
+   */
+  as_if_unposted?: boolean
 }
 
 /**
@@ -26064,6 +26076,10 @@ export type CompareScenariosApiFinancialAidScenariosYearCompareGetData = {
      * Draft
      */
     draft?: boolean
+    /**
+     * As If Unposted
+     */
+    as_if_unposted?: boolean
   }
   url: '/api/financial-aid/scenarios/{year}/compare'
 }

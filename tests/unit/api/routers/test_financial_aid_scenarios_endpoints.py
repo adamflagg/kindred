@@ -298,6 +298,7 @@ def test_evaluate_passes_the_sizing_settings() -> None:
         "tier_shift": Decimal("2.5"),
         "band_width_delta": Decimal(1000),
         "request_set": None,
+        "as_if_unposted": False,
     }
 
 
@@ -311,6 +312,7 @@ def test_compare_passes_the_ticked_codes_in_order() -> None:
         "rules": False,
         "last_rules": False,
         "draft": True,
+        "as_if_unposted": False,
     }
 
 
@@ -322,15 +324,36 @@ def test_the_request_set_controls_reach_every_read() -> None:
     client.post("/api/financial-aid/scenarios/2027/sensitivity", json={**DOC_BODY, "received_through": "2027-02-01"})
     client.get("/api/financial-aid/scenarios/2027/compare", params={"codes": "A", "through_round1_deadline": "true"})
     assert service.evaluate.await_args.kwargs["request_set"] == "round1_deadline"
-    assert service.fit.await_args.kwargs == {"request_set": date(2027, 2, 1)}
-    assert service.sensitivity.await_args.kwargs == {"request_set": date(2027, 2, 1)}
+    assert service.fit.await_args.kwargs == {"request_set": date(2027, 2, 1), "as_if_unposted": False}
+    assert service.sensitivity.await_args.kwargs == {"request_set": date(2027, 2, 1), "as_if_unposted": False}
     assert service.compare.await_args.kwargs == {
         "request_set": "round1_deadline",
         "last_season": False,
         "rules": False,
         "last_rules": False,
         "draft": True,
+        "as_if_unposted": False,
     }
+
+
+def test_as_if_nothing_is_posted_reaches_every_read_and_the_figures_say_so() -> None:
+    """Owner, 2026-10-10: the sandbox's pricing mode is a view setting on every read (evaluate, fit, sensitivity and
+    compare), never a write."""
+    service = _stub()
+    client = _client()
+    client.post("/api/financial-aid/scenarios/2027/evaluate", json={**DOC_BODY, "as_if_unposted": True})
+    client.post("/api/financial-aid/scenarios/2027/fit-to-budget", json={**DOC_BODY, "as_if_unposted": True})
+    client.post("/api/financial-aid/scenarios/2027/sensitivity", json={**DOC_BODY, "as_if_unposted": True})
+    client.get("/api/financial-aid/scenarios/2027/compare", params={"codes": "A", "as_if_unposted": "true"})
+    assert service.evaluate.await_args.kwargs["as_if_unposted"] is True
+    assert service.fit.await_args.kwargs == {"request_set": None, "as_if_unposted": True}
+    assert service.sensitivity.await_args.kwargs == {"request_set": None, "as_if_unposted": True}
+    assert service.compare.await_args.kwargs["as_if_unposted"] is True
+    service.evaluate = AsyncMock(
+        return_value=Evaluation(DOC, RESULTS.model_copy(update={"as_if_unposted": True}), ValidationReport())
+    )
+    body = client.post("/api/financial-aid/scenarios/2027/evaluate", json=DOC_BODY).json()
+    assert body["results"]["as_if_unposted"] is True
 
 
 def test_both_request_set_controls_at_once_is_422_before_the_service() -> None:
@@ -697,6 +720,7 @@ def test_compare_carries_the_committee_tables_and_last_season() -> None:
         "rules": False,
         "last_rules": False,
         "draft": True,
+        "as_if_unposted": False,
     }
 
 
@@ -743,6 +767,7 @@ def test_compare_passes_the_built_in_columns_and_reads_their_version() -> None:
         "rules": True,
         "last_rules": True,
         "draft": False,
+        "as_if_unposted": False,
     }
     [column] = body["columns"]
     assert (column["code"], column["version"], column["via"], column["up"]) == ("rules", 4, "B", None)

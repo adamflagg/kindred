@@ -102,6 +102,9 @@ class ResultsOut(BaseModel):
     # Round 1 on requests in no tier (a withdrawn request's posted round): the tier rows plus this are `round1`.
     not_in_tiers: float
     request_set: RequestSetOut | None = None
+    # Priced as if nothing is posted (owner, 2026-10-10): what the season would cost under these rules, not today's
+    # Remaining. False on every regular read and on stored results.
+    as_if_unposted: bool = False
     # The appeals keyed so far and their asks: Below the line once Round 1 posts (§S11.4).
     appeals: int = 0
     appeals_asked: float = 0
@@ -186,6 +189,9 @@ class ViewIn(DocumentIn):
 
     through_round1_deadline: bool = False
     received_through: date | None = None
+    # The sandbox's pricing mode (owner, 2026-10-10): price every request from scratch, as if no round were posted.
+    # A view setting: it never reaches the rules or a decision.
+    as_if_unposted: bool = False
 
     @model_validator(mode="after")
     def _one_request_set(self) -> Self:

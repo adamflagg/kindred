@@ -134,6 +134,13 @@ describe('the Spend table (final mock: Pool · Round 1 · 2 · 3 · Spend · Rem
     )
   })
 
+  it('heads figures priced as if nothing is posted with what the season would cost, never posted Round 1 stands', () => {
+    const fresh = { ...DRAFT, as_if_unposted: true }
+    expect(spendHeading(fresh, true, '420 applications held')).toBe(
+      'What this season would cost under these rules: $756,450 of $1,000,000 \u00b7 420 applications held'
+    )
+  })
+
   it('explains the projected figure in its title, from last year’s share', () => {
     expect(projectedTitle({ ...DRAFT, projection: PROJECTION })).toBe(
       "Projected Remaining: if the rest of the season's applications arrive like last year's (about 39% are in by this week)"

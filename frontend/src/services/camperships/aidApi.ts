@@ -49,7 +49,6 @@ import type {
   ApiAidRulesVersion,
   ApiAidRound3AmountIn,
   ApiAidRound3ApprovalIn,
-  ApiAidScenarioDocumentIn,
   ApiAidScenarioDraft,
   ApiAidScenarioEvaluateIn,
   ApiAidScenarioEvaluation,
@@ -61,6 +60,7 @@ import type {
   ApiAidScenarioRenameIn,
   ApiAidScenarioSaveDraftIn,
   ApiAidScenarioSnapshot,
+  ApiAidScenarioViewIn,
   ApiAidScenarioWorkspace,
   ApiAidSectionSaveIn,
   ApiAidSectionsSaveIn,
@@ -737,6 +737,8 @@ export interface CompareQuery {
   readonly rules: boolean
   readonly lastRules: boolean
   readonly draft: boolean
+  /** Posted ▾: every column priced as if nothing were posted (owner, 2026-10-10). */
+  readonly asIfUnposted: boolean
 }
 
 export const compareKey = (query: CompareQuery) =>
@@ -747,6 +749,7 @@ export const compareKey = (query: CompareQuery) =>
     query.rules,
     query.lastRules,
     query.draft,
+    query.asIfUnposted,
   ].join('|')
 
 /** Rename a kept option (§S11.1): everyone with `rules` sees it. */
@@ -783,6 +786,7 @@ export async function fetchAidScenarioCompare(
   if (compare.rules) query.set('rules', 'true')
   if (compare.lastRules) query.set('last_rules', 'true')
   if (!compare.draft) query.set('draft', 'false')
+  if (compare.asIfUnposted) query.set('as_if_unposted', 'true')
   const search = query.toString()
   const response = await fetchWithAuth(`${scenarios(year)}/compare${search ? `?${search}` : ''}`)
   if (!response.ok) throw await toApiError(response, 'Failed to compare', AidApiError)
@@ -792,11 +796,12 @@ export async function fetchAidScenarioCompare(
 /**
  * The tier shift that uses Round 1's allocation: the total row's Round 1 Remaining (it also counts
  * money on programs with no pool; §7.4; D119; fit.py), naming the tightest pool as information. Records nothing: "Use it" records the document.
+ * `as_if_unposted` fits across every request; regular, a posted Round 1 stands and only the rest move.
  */
 export function fitAidScenario(
   fetchWithAuth: FetchWithAuth,
   year: number,
-  body: ApiAidScenarioDocumentIn
+  body: ApiAidScenarioViewIn
 ): Promise<ApiAidScenarioFit> {
   return send<ApiAidScenarioFit>(
     fetchWithAuth,

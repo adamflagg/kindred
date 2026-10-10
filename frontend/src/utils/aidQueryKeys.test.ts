@@ -226,6 +226,7 @@ describe('invalidateAidScenarioQueries (slice 2; spec §7.4)', () => {
       rules: false,
       lastRules: false,
       draft: true,
+      asIfUnposted: false,
     })
     const compareOf = (query: CompareQuery) => queryKeys.aidScenarioCompare(2027, compareKey(query))
     const key = compareOf(ask({ kind: 'deadline' }, true, ['A1', 'B']))
@@ -236,6 +237,9 @@ describe('invalidateAidScenarioQueries (slice 2; spec §7.4)', () => {
     )
     expect(compareOf(ask({ kind: 'all' }, false))).not.toEqual(
       compareOf(ask({ kind: 'all' }, true))
+    )
+    expect(compareOf(ask({ kind: 'all' }, false))).not.toEqual(
+      compareOf({ ...ask({ kind: 'all' }, false), asIfUnposted: true })
     )
   })
 

@@ -90,6 +90,40 @@ describe('the Spend table (final mock; scenarios-3)', () => {
     expect(screen.queryByText('Round 2: no appeals before Round 1.')).toBeNull()
   })
 
+  // Owner, 2026-10-10: priced as if nothing is posted, Spend reads as what the season would cost, not today's
+  // Remaining, and says so in its labels.
+  it('labels figures priced as if nothing is posted as what the season would cost under these rules', () => {
+    show({ draft: { ...DRAFT, as_if_unposted: true }, locked: true, postedStands: true })
+    expect(
+      screen.getByRole('heading', { name: /^Spend as if nothing is posted, from Rules v4/ })
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'What this season would cost under these rules: $756,450 of $1,000,000 · 420 applications held'
+      )
+    ).toBeInTheDocument()
+    const heads = within(table()).getAllByRole('columnheader')
+    expect(heads.map((th) => th.childNodes[0]?.textContent)).toEqual([
+      'Pool',
+      'Round 1',
+      'Round 2, keyed so far',
+      'Round 3',
+      'Would cost',
+      'Would remain',
+      'vs Rules v4',
+      'Projected',
+      'Used',
+    ])
+    expect(screen.getByRole('columnheader', { name: /^Would remain/ })).toHaveAttribute(
+      'title',
+      'Allocated − what this season would cost under these rules, as if nothing is posted'
+    )
+    expect(
+      screen.getByRole('columnheader', { name: /^Would remain/ }).querySelector('sup')
+    ).toHaveTextContent('6')
+    expect(screen.queryByText(/posted Round 1 stands/)).toBeNull()
+  })
+
   it('says Round 2 keyed so far once Round 1 is locked', () => {
     show({ locked: true })
     expect(screen.getByRole('columnheader', { name: /^Round 2, keyed so far/ })).toHaveAttribute(

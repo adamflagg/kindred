@@ -62,6 +62,8 @@ function setup(over: Partial<Props> = {}) {
     refused: null,
     notice: null,
     error: null,
+    posted: null,
+    onPosted: vi.fn(),
     ...over,
   }
   const view = render(<ScenarioControls {...props} />)
@@ -366,5 +368,28 @@ describe('the control line (§S5 A; scenarios-2): one kit toolbar row', () => {
     })
     expect(screen.getByRole('button', { name: 'Keep…' })).toBeDisabled()
     expect(screen.getByText(/Update Applications first/)).toBeInTheDocument()
+  })
+})
+
+// Owner, 2026-10-10: "Price as if nothing is posted", a sandbox switch; regular keeps today's behaviour.
+describe('the pricing mode (Posted ▾)', () => {
+  it('offers Posted ▾ once a round is posted: Stands, or As if nothing is posted', async () => {
+    const onPosted = vi.fn()
+    setup({ posted: 'stands', onPosted })
+    const picker = screen.getByRole('button', { name: /^Posted:/ })
+    expect(picker).toHaveTextContent('Stands')
+    expect(within(screen.getByTestId('aid-toolbar')).getByText('Posted')).toBeInTheDocument()
+    await userEvent.click(picker)
+    await userEvent.click(screen.getByRole('option', { name: 'As if nothing is posted' }))
+    expect(onPosted).toHaveBeenCalledWith('none')
+    again({ posted: 'none' })
+    expect(screen.getByRole('button', { name: /^Posted:/ })).toHaveTextContent(
+      'As if nothing is posted'
+    )
+  })
+
+  it('shows no Posted ▾ before anything is posted: the two modes price alike', () => {
+    setup({ posted: null })
+    expect(screen.queryByRole('button', { name: /^Posted:/ })).toBeNull()
   })
 })

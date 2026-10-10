@@ -142,6 +142,10 @@ class ScenarioResults(_Result):
     # The request set these figures were priced on (D138); None: every frozen request. Kept options and trail rows
     # always store None: a request set is a view setting, applied when a figure is read.
     request_set: RequestSetNote | None = None
+    # Priced as if nothing is posted (owner, 2026-10-10): every request worked out by the document from scratch, so
+    # these are what the season would cost under it, not today's Remaining. A view setting like `request_set`: kept
+    # options and trail rows always store False.
+    as_if_unposted: bool = False
     # SP9c (RPT-17, RPT-32). Every one is defaulted so results stored by SP9b still load; `committee_rows` says the
     # rows below were computed (SP9b's stored results carry none, so compare prices those options again).
     by_table: list[TableTierRow] = Field(default_factory=list)

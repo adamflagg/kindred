@@ -574,7 +574,13 @@ class FinancialAidScenariosService:
 
         return projected
 
-    async def _pricer(self, meta: SnapshotMeta, request_set: RequestSet | None = None) -> Pricer:
+    async def _pricer(
+        self, meta: SnapshotMeta, request_set: RequestSet | None = None, *, as_if_unposted: bool = False
+    ) -> Pricer:
+        """One read's pricing: every document through price_document on the frozen season. Regular pricing replays the
+        season as it stands, so a posted round keeps its lock and only unposted requests move. `as_if_unposted` (owner,
+        2026-10-10: "as if nothing posted - all, regular - unposted") prices every request from scratch through the same
+        calculator, and its results say so. A view setting: nothing a write stores is priced this way."""
         snapshot = await self._store.snapshot_inputs(meta.id)
         base = await self._rules.load(meta.year)
         kept: frozenset[str] | None = None
@@ -584,9 +590,11 @@ class FinancialAidScenariosService:
             kept, note = split.kept, request_set_note(request_set, split)
 
         async def price(document: AidRules) -> Priced:
-            priced = await price_document(snapshot, document, base, requests=kept)
+            priced = await price_document(snapshot, document, base, requests=kept, as_if_unposted=as_if_unposted)
             requests = list(priced.season.priced.values())
             results = scenario_results(requests, priced.budget, document=document, request_set=note)
+            if as_if_unposted:
+                results = results.model_copy(update={"as_if_unposted": True})
             return Priced(results, round1_by_request(requests))
 
         return price
@@ -1132,14 +1140,16 @@ class FinancialAidScenariosService:
         tier_shift: Decimal = ZERO,
         band_width_delta: Decimal = ZERO,
         request_set: RequestSetChoice | None = None,
+        as_if_unposted: bool = False,
     ) -> Evaluation:
         """`document` with the relative sizing settings applied, priced on the frozen season (only the requests
-        received through a date, when `request_set` asks). Writes nothing."""
+        received through a date, when `request_set` asks; every request from scratch, when `as_if_unposted`). Writes
+        nothing."""
         self._check_year(year, document)
         moved = derive_weights(apply_sizing(document, tier_shift=tier_shift, band_width_delta=band_width_delta))
         chosen = await self._request_set(year, request_set)
         meta = await self._meta(year)
-        priced = await (await self._pricer(meta, chosen))(moved)
+        priced = await (await self._pricer(meta, chosen, as_if_unposted=as_if_unposted))(moved)
         projection, too_early = _split((await self._projector(year, meta, chosen))(priced.results))
         return Evaluation(
             moved,
@@ -1324,12 +1334,14 @@ class FinancialAidScenariosService:
         rules: bool = False,
         last_rules: bool = False,
         draft: bool = True,
+        as_if_unposted: bool = False,
     ) -> Comparison:
         """Columns in §S5 H's fixed order: the rules in effect, last season's rules on these applications, `actor`'s
         draft, then the kept options asked for, in the order they were kept. Every one is on the current snapshot
         and counts its changes and its requests up / down against the rules in effect (N3, N4); the rules column's
         own up / down is None. `draft` defaults on so today's screen is unchanged; PR 12 sends it. `last_season`
-        adds last season's posted money beside them (one live read)."""
+        adds last season's posted money beside them (one live read). `as_if_unposted` prices every column from scratch,
+        as if nothing were posted, so no column reads a kept option's stored figures (they are priced regular)."""
         wanted = list(dict.fromkeys(codes))
         if len(wanted) > MAX_COMPARED:
             raise ScenarioRefusedError(f"Compare up to {MAX_COMPARED} kept options beside your draft")
@@ -1339,8 +1351,11 @@ class FinancialAidScenariosService:
             raise ScenarioNotFoundError(f"{year} has no kept option {', '.join(missing)}")
         meta = await self._meta(year)
         chosen = await self._request_set(year, request_set)
-        price = await self._pricer(meta, chosen)
+        price = await self._pricer(meta, chosen, as_if_unposted=as_if_unposted)
         projector = await self._projector(year, meta, chosen)
+        # A kept option's stored figures were priced regular, on every request of its own snapshot: reused only for a
+        # regular read of all of that snapshot.
+        stored_ok = chosen is None and not as_if_unposted
         effect = await self._in_effect(year)
         last = await self._last_rules(year)
         seen: dict[str, Priced] = {}
@@ -1356,7 +1371,7 @@ class FinancialAidScenariosService:
             if option.code not in seen:
                 seen[option.code] = (
                     Priced(option.results, await self._store.option_round1(option.id))
-                    if option.snapshot == meta.id and chosen is None and option.results.committee_rows
+                    if option.snapshot == meta.id and stored_ok and option.results.committee_rows
                     else await price(option.document)
                 )
             return seen[option.code]
@@ -1367,7 +1382,7 @@ class FinancialAidScenariosService:
             (
                 option
                 for option in options.values()
-                if option.document == effect.document and option.snapshot == meta.id and chosen is None
+                if option.document == effect.document and option.snapshot == meta.id and stored_ok
             ),
             None,
         )
@@ -1466,16 +1481,24 @@ class FinancialAidScenariosService:
             else budget.total.total.allocated - sum((budget.total.rounds[n].posted for n in (1, 2, 3)), ZERO),
         )
 
-    async def fit(self, year: int, document: AidRules, *, request_set: RequestSetChoice | None = None) -> Fitted:
+    async def fit(
+        self,
+        year: int,
+        document: AidRules,
+        *,
+        request_set: RequestSetChoice | None = None,
+        as_if_unposted: bool = False,
+    ) -> Fitted:
         """Fit to budget: the largest shift of every Round 1 table cell that keeps the total row's Round 1 Remaining
         (money on a program with no pool included) at or above zero, priced on the frozen season (plan Decision 11 (a), RULED 2026-09-30; D119). The
         tightest pool is named as information only; `budget.spillover` is not read. It refuses a request set (owner
-        ruling): the fit sizes Round 1 for every request, so it never runs on part of the season."""
+        ruling): the fit sizes Round 1 for every request, so it never runs on part of the season. Regular, a posted Round
+        1 stands and the fit moves only the unposted ones; `as_if_unposted` (owner, 2026-10-10) fits across all of them."""
         self._check_year(year, document)
         document = derive_weights(document)
         if request_set is not None:
             raise ScenarioRefusedError("Fit to budget uses every request; turn off the request set.")
-        price = await self._pricer(await self._meta(year))
+        price = await self._pricer(await self._meta(year), as_if_unposted=as_if_unposted)
 
         async def remaining_at(shift: Decimal) -> Decimal:
             return _fit_margin((await price(shift_round1_tables(document, shift))).results)
@@ -1488,13 +1511,20 @@ class FinancialAidScenariosService:
         return Fitted(found, tightest.pool if tightest is not None else None, evaluation)
 
     async def sensitivity(
-        self, year: int, document: AidRules, *, request_set: RequestSetChoice | None = None
+        self,
+        year: int,
+        document: AidRules,
+        *,
+        request_set: RequestSetChoice | None = None,
+        as_if_unposted: bool = False,
     ) -> Sensitivity:
         """What one step of each sizing setting moves Round 1 by (spec §7.4), on the frozen season. The
         dollar-for-dollar switch's one step is flipping it (D137)."""
         self._check_year(year, document)
         document = derive_weights(document)
-        price = await self._pricer(await self._meta(year), await self._request_set(year, request_set))
+        price = await self._pricer(
+            await self._meta(year), await self._request_set(year, request_set), as_if_unposted=as_if_unposted
+        )
         base = (await price(document)).results
         effects: list[LeverEffect] = []
         for lever in SIZING_LEVERS:

@@ -54,7 +54,7 @@ describe('useAidScenarioFit (D119)', () => {
   it("POSTs the draft's document and refreshes nothing: it records nothing", async () => {
     const invalidate = vi.spyOn(client, 'invalidateQueries')
     const { result } = renderHook(() => useAidScenarioFit(), { wrapper })
-    await act(() => result.current.mutateAsync(RULES_DOCUMENT))
+    await act(() => result.current.mutateAsync({ document: RULES_DOCUMENT, asIfUnposted: false }))
     expect(sent()).toEqual({
       url: '/api/financial-aid/scenarios/2027/fit-to-budget',
       method: 'POST',
@@ -62,6 +62,13 @@ describe('useAidScenarioFit (D119)', () => {
       auth: 'Bearer test-jwt',
     })
     expect(invalidate).not.toHaveBeenCalled()
+  })
+
+  // Owner, 2026-10-10: "as if nothing posted - all, regular - unposted".
+  it('fits across every request when priced as if nothing is posted', async () => {
+    const { result } = renderHook(() => useAidScenarioFit(), { wrapper })
+    await act(() => result.current.mutateAsync({ document: RULES_DOCUMENT, asIfUnposted: true }))
+    expect(sent().body).toEqual({ document: RULES_DOCUMENT, as_if_unposted: true })
   })
 })
 

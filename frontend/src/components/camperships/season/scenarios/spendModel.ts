@@ -141,9 +141,13 @@ export function kilo(value: number): string {
 }
 
 /** The heading line's muted words: "Remaining $243,550 of $1,000,000 · 56 applications held". After the lock, with
- * Round 1 settings that differ from the rules in effect, posted Round 1 stands (N10) in place of the applications. */
+ * Round 1 settings that differ from the rules in effect, posted Round 1 stands (N10) in place of the applications.
+ * Priced as if nothing is posted (owner, 2026-10-10), it is what the season would cost under these rules instead: no
+ * posted amount stands, so it never says so. */
 export function spendHeading(draft: Results, postedStands: boolean, pricedOn: string): string {
   const budget = formatWholeMoney(draft.allocated ?? draft.round1_allocated ?? null)
+  if (draft.as_if_unposted === true)
+    return `What this season would cost under these rules: ${formatWholeMoney(spent(draft))} of ${budget} · ${pricedOn}`
   return `Remaining ${formatWholeMoney(draft.remaining ?? null)} of ${budget} · ${
     postedStands ? 'posted Round 1 stands' : pricedOn
   }`

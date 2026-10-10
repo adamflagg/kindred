@@ -48,6 +48,7 @@ const ask = (
   rules: false,
   lastRules: false,
   draft: true,
+  asIfUnposted: false,
 })
 
 const url = () => (fetchSpy.mock.calls[0] as [string, RequestInit])[0]
@@ -78,6 +79,16 @@ describe('useAidScenarioCompare', () => {
     expect(new Headers(options.headers).get('Authorization')).toBe('Bearer test-jwt')
   })
 
+  // Owner, 2026-10-10: Posted ▾ prices every column as if nothing were posted.
+  it('asks for every column priced as if nothing is posted', async () => {
+    renderHook(
+      () => useAidScenarioCompare({ ...ask(['A'], { kind: 'all' }, false), asIfUnposted: true }),
+      { wrapper }
+    )
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalled())
+    expect(url()).toBe('/api/financial-aid/scenarios/2027/compare?codes=A&as_if_unposted=true')
+  })
+
   it('asks for a received-through date, and nothing more for the plain draft', async () => {
     renderHook(() => useAidScenarioCompare(ask([], { kind: 'date', date: '2027-02-01' }, false)), {
       wrapper,
@@ -96,6 +107,7 @@ describe('useAidScenarioCompare', () => {
           rules: true,
           lastRules: true,
           draft: false,
+          asIfUnposted: false,
         }),
       { wrapper }
     )

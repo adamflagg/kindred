@@ -1,6 +1,7 @@
 /**
- * Scenarios' notes (final mock: six, in ONE list; Locked left with the sandbox's lock, owner 2026-10-10: five): 1-4 are
- * the registry's (`season-scenarios`: Spend, Remaining, Projected, Below the line), 5 the page's own (Change colours).
+ * Scenarios' notes (final mock: six, in ONE list): 1-4 are the registry's (`season-scenarios`: Spend, Remaining,
+ * Projected, Below the line), 5 and 6 the page's own (Change colours; Pricing, the two modes of the sandbox, which took
+ * Locked's place when the sandbox stopped locking: owner 2026-10-10, "add the line explainer").
  * The tier, ceiling, equity-class and current-year definitions ride in their headers' and fields' titles now, not in
  * numbered notes.
  */
@@ -8,12 +9,16 @@ import type { DefinitionNote } from '../../kit/DefinitionNotes'
 import { RULES_FOOTNOTES } from '../rules/rulesLayout'
 
 export const REGISTRY_NOTE = { spend: 1, remaining: 2, projected: 3, below: 4 } as const
-export const PAGE_NOTE = { colours: 5 } as const
+export const PAGE_NOTE = { colours: 5, pricing: 6 } as const
 
 export const SCENARIO_PAGE_NOTES: readonly DefinitionNote[] = [
   {
     n: PAGE_NOTE.colours,
     text: 'Change colours: green leaves more money, amber less. An edited setting is amber, its old value in its title. In Compare, amber marks a setting unlike the rules in effect.',
+  },
+  {
+    n: PAGE_NOTE.pricing,
+    text: 'Pricing: Regular keeps a posted Round 1 as posted, so an edit moves only what is not posted yet. As if nothing is posted prices every request from scratch: what the season would cost under these rules.',
   },
 ]
 

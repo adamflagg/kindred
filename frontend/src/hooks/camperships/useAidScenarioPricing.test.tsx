@@ -45,6 +45,27 @@ describe('useAidScenarioPricing (§S5 E: the strip prices on evaluate, cached by
     expect(client.getQueryData(key)).toBeDefined()
   })
 
+  // Owner, 2026-10-10: Posted ▾ prices every request as if nothing were posted; its answer is keyed apart.
+  it('prices as if nothing is posted when asked, and keys that answer apart from the regular one', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const { result } = renderHook(
+      () => useAidScenarioPricing(DOC, { kind: 'all' }, 'snp000000000001', true),
+      { wrapper: wrapper(client) }
+    )
+    await waitFor(() => expect(result.current.data).toBeDefined())
+    const [, init] = fetchWithAuth.mock.calls[0] as [string, RequestInit]
+    expect(JSON.parse(String(init.body))).toEqual({ document: DOC, as_if_unposted: true })
+    const fresh = queryKeys.aidScenarioEvaluate(
+      2027,
+      'snp000000000001',
+      'all:unposted',
+      documentKey(DOC)
+    )
+    const regular = queryKeys.aidScenarioEvaluate(2027, 'snp000000000001', 'all', documentKey(DOC))
+    expect(client.getQueryData(fresh)).toBeDefined()
+    expect(client.getQueryData(regular)).toBeUndefined()
+  })
+
   it('asks nothing without a document or a held pile', () => {
     const client = new QueryClient()
     renderHook(() => useAidScenarioPricing(null, { kind: 'all' }, 'snp000000000001'), {

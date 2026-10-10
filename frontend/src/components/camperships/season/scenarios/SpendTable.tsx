@@ -221,6 +221,9 @@ export function SpendTable({
       return next
     })
   const table = useMemo(() => (draft === null ? null : spendTable(draft, from)), [draft, from])
+  // Priced as if nothing is posted (owner, 2026-10-10), as the server says these figures were: what the season would
+  // cost under these rules, not today's Remaining, and the labels say so.
+  const fresh = draft?.as_if_unposted === true
 
   const columns: readonly ReportColumn[] = useMemo(
     () => [
@@ -238,13 +241,30 @@ export function SpendTable({
         width: 96,
         title: 'Typed by staff, so no formula prices it: what is posted or keyed stands',
       },
-      { key: 'spend', header: 'Spend', width: 112, divider: 'before' },
-      { key: 'remaining', header: 'Remaining', note: REGISTRY_NOTE.remaining, width: 120 },
+      fresh
+        ? {
+            key: 'spend',
+            header: 'Would cost',
+            width: 112,
+            divider: 'before',
+            title: 'What this season would cost under these rules, as if nothing is posted',
+          }
+        : { key: 'spend', header: 'Spend', width: 112, divider: 'before' },
+      fresh
+        ? {
+            key: 'remaining',
+            header: 'Would remain',
+            note: PAGE_NOTE.pricing,
+            width: 120,
+            title:
+              'Allocated − what this season would cost under these rules, as if nothing is posted',
+          }
+        : { key: 'remaining', header: 'Remaining', note: REGISTRY_NOTE.remaining, width: 120 },
       {
         key: 'vs',
         header: `vs ${fromName}`,
         note: PAGE_NOTE.colours,
-        title: `Remaining against ${fromName}`,
+        title: `${fresh ? 'Would remain' : 'Remaining'} against ${fromName}`,
         width: 112,
       },
       {
@@ -262,16 +282,17 @@ export function SpendTable({
           "Spend against each pool's allocation, one shade per round; the dotted tick is the starting point",
       },
     ],
-    [locked, fromName]
+    [locked, fromName, fresh]
   )
 
+  const title =
+    draft === null || !held
+      ? 'Spend'
+      : `Spend${fresh ? ' as if nothing is posted' : ''}, from ${fromName}`
   const head = (
     <div className="mt-4 mb-1.5 ml-0.5 flex min-h-7 flex-nowrap items-center gap-2.5">
-      <h2
-        className={`${REPORT_TITLE} min-w-0 truncate`}
-        title={draft === null || !held ? 'Spend' : `Spend, from ${fromName}`}
-      >
-        {draft === null || !held ? 'Spend' : `Spend, from ${fromName}`}
+      <h2 className={`${REPORT_TITLE} min-w-0 truncate`} title={title}>
+        {title}
         <DefRef n={REGISTRY_NOTE.spend} />
       </h2>
       <div className={REPORT_DESC}>
