@@ -385,7 +385,7 @@ describe('the pricing mode (Posted ▾)', () => {
     renderAt('', POSTED)
     expect(pricingCalls.at(-1)?.asIfUnposted).toBe(false)
     await userEvent.click(screen.getByRole('button', { name: /^Posted:/ }))
-    await userEvent.click(screen.getByRole('option', { name: 'As if nothing is posted' }))
+    await userEvent.click(screen.getByRole('option', { name: 'As if none' }))
     expect(location).toContain('unposted=1')
     // both pricings of the render: the draft's and its starting point's
     expect(pricingCalls.slice(-2).map((c) => c.asIfUnposted)).toEqual([true, true])

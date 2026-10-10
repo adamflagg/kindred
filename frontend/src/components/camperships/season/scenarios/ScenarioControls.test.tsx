@@ -373,19 +373,21 @@ describe('the control line (§S5 A; scenarios-2): one kit toolbar row', () => {
 
 // Owner, 2026-10-10: "Price as if nothing is posted", a sandbox switch; regular keeps today's behaviour.
 describe('the pricing mode (Posted ▾)', () => {
-  it('offers Posted ▾ once a round is posted: Stands, or As if nothing is posted', async () => {
+  it('offers Posted ▾ once a round is posted: Stands, or As if none, with the full words in its title', async () => {
     const onPosted = vi.fn()
     setup({ posted: 'stands', onPosted })
     const picker = screen.getByRole('button', { name: /^Posted:/ })
     expect(picker).toHaveTextContent('Stands')
     expect(within(screen.getByTestId('aid-toolbar')).getByText('Posted')).toBeInTheDocument()
     await userEvent.click(picker)
-    await userEvent.click(screen.getByRole('option', { name: 'As if nothing is posted' }))
+    await userEvent.click(screen.getByRole('option', { name: 'As if none' }))
     expect(onPosted).toHaveBeenCalledWith('none')
-    again({ posted: 'none' })
-    expect(screen.getByRole('button', { name: /^Posted:/ })).toHaveTextContent(
-      'As if nothing is posted'
+    expect(screen.getByRole('button', { name: /^Posted:/ })).toHaveAttribute(
+      'title',
+      'Regular: a posted Round 1 stays as posted, so an edit moves only what is not posted yet'
     )
+    again({ posted: 'none' })
+    expect(screen.getByRole('button', { name: /^Posted:/ })).toHaveTextContent('As if none')
   })
 
   it('shows no Posted ▾ before anything is posted: the two modes price alike', () => {

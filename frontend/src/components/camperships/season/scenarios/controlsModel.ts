@@ -203,9 +203,10 @@ export function parseView(params: URLSearchParams): ScenarioView {
   }
 }
 
-/** Posted ▾ (owner, 2026-10-10: "as if nothing posted - all, regular - unposted"): regular keeps a posted Round 1 as
- * posted; as if nothing is posted prices every request from scratch (next year's rules on this year's applications).
- * Shown once a round is posted; before that the two price alike. */
+/** Posted ▾ (owner, 2026-10-10: "as if nothing posted - all, regular - unposted"): Stands (regular) keeps a posted
+ * Round 1 as posted; As if none prices every request from scratch (next year's rules on this year's applications). The
+ * short label keeps the toolbar on one row with its status; the title carries the full words. Shown once a round is
+ * posted; before that the two price alike. */
 export type PostedMode = 'stands' | 'none'
 
 export const POSTED_CHOICES: ReadonlyArray<{
@@ -221,9 +222,9 @@ export const POSTED_CHOICES: ReadonlyArray<{
   },
   {
     value: 'none',
-    label: 'As if nothing is posted',
+    label: 'As if none',
     title:
-      'Every request priced from scratch through these rules: what the season would cost under them',
+      'As if nothing is posted: every request priced from scratch, so the figures are what the season would cost under these rules',
   },
 ]
 

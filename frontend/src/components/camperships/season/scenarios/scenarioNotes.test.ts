@@ -16,7 +16,7 @@ describe('the notes (final mock: 11 → 6; Locked gone, Pricing in: 6)', () => {
   it("says Change colours in the mock's words and the two pricing modes, each one line with a bold term first", () => {
     expect(SCENARIO_PAGE_NOTES.map((n) => n.text)).toEqual([
       'Change colours: green leaves more money, amber less. An edited setting is amber, its old value in its title. In Compare, amber marks a setting unlike the rules in effect.',
-      'Pricing: Regular keeps a posted Round 1 as posted, so an edit moves only what is not posted yet. As if nothing is posted prices every request from scratch: what the season would cost under these rules.',
+      "Pricing: Stands keeps a posted Round 1, so edits move only unposted requests. As if none prices every request fresh: the season's cost under these rules.",
     ])
     for (const note of SCENARIO_PAGE_NOTES) expect(note.text).toMatch(/^[A-Z][a-z ]+:/)
   })
