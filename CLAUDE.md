@@ -33,6 +33,7 @@ Subdir `CLAUDE.md` files load automatically when you work in that area — they 
 | FastAPI HTTP layer | `api/` | `api/CLAUDE.md` |
 | PocketBase (Go, SQLite, CampMinder sync, migrations) | `pocketbase/` | `pocketbase/CLAUDE.md` |
 | React UI | `frontend/src/` | `frontend/CLAUDE.md` |
+| Camperships UI kit (the required `/aid` style guide) | `frontend/src/components/camperships/kit/` | `frontend/src/components/camperships/CLAUDE.md` |
 | Tests (pytest + Vitest) | `tests/`, `frontend/src/**/*.test.ts` | `tests/CLAUDE.md` |
 
 **Two footguns worth reading up front, because you hit them before you'd open the subdir file:**
@@ -46,7 +47,7 @@ See `/docs`:
 - `architecture/` — sync-layer, bunk-request-pipeline, session-types, metrics-module, data-model, solver-internals
 - `guides/` — solver-configuration, csv-preparation, dev-database-seeding, troubleshooting, docker-deployment
 - `api/` — solver-api
-- `reference/` — cli-commands, configuration, tables, commit-conventions, git-workflow, oauth2-setup, pocketbase-migrations, go-sync-patterns, sync-id-conventions, family-camp-field-provenance, family-camp-grain-collapse, issue-triage, lodging-registry, lodging-board-vs-summer, lodging-inventory-sheet, weekend-card-vocabulary, objective-sensitivity, weekend-go-live-sequence, ui-uplift
+- `reference/` — cli-commands, configuration, tables, commit-conventions, git-workflow, oauth2-setup, pocketbase-migrations, go-sync-patterns, sync-id-conventions, family-camp-field-provenance, family-camp-grain-collapse, issue-triage, lodging-registry, lodging-board-vs-summer, lodging-inventory-sheet, weekend-card-vocabulary, objective-sensitivity, weekend-go-live-sequence, ui-uplift, camperships-design-language
 
 `docs/reference/` also holds four large working documents that churn — read them for current
 state, not as stable reference: `solver-roadmap.md`, `solver-config-decisions.md`,

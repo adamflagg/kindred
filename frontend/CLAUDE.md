@@ -24,6 +24,12 @@ React + TypeScript + Vite. Dev server on `:3000` (HMR); prod served via Caddy at
 - **Barrel exports** — directories use `index.ts` for clean imports
 - **Visual effects** — read `docs/reference/ui-uplift.md` first: its ground rules (no new dependency, nothing idles, pointer work bounded to a frame) and the house effects to reuse, starting with the glow card (`.glow-card` + `ui/useGlowGroup.ts`)
 
+## Design language
+
+- **Camperships (`/aid`) has a required style guide.** `docs/reference/camperships-design-language.md` maps each rule to the kit primitive in `src/components/camperships/kit/` that implements it, and `src/components/camperships/CLAUDE.md` enforces it there.
+- **Weekend / Family Camp model summer** (root `CLAUDE.md` §4).
+- **Any other module** reworking its UI states which path it takes: keep diverging, get its own per-module kit, or adopt the Camperships kit. If it adopts, it reuses the kit primitives rather than near-copies (see the doc's "Extending beyond Camperships").
+
 ## Accessibility — deliberately minimal
 
 **Read this before adding any ARIA attribute, `sr-only` text, or keyboard handler. This project has opted out of accessibility work, on purpose.**
