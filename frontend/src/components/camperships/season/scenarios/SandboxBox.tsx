@@ -10,11 +10,10 @@ const BOX =
 const UNIT = 'text-muted-foreground font-normal'
 
 /**
- * One editable value (§S5 F). Typing reports each keystroke (the strip prices it, nothing is recorded); leaving the
- * box, or Enter, releases it (one trail row). A bad figure gives a red border and isn't priced; a changed value
- * is amber with its old value in the title ("was ‹old›"). Whole dollars show with thousands separators, raw while
- * the box has focus, and commas are stripped on input. `label` is the test handle (frontend/CLAUDE.md: no ARIA
- * beyond that).
+ * One editable value (§S5 F). Typing reports each keystroke (the Spend table prices it, nothing is recorded); leaving
+ * the box, or Enter, releases it (one trail row). A bad figure gives a red border and isn't priced; a changed value is
+ * amber with its old value in the title ("was ‹old›"). Whole dollars show with thousands separators, raw while the box
+ * has focus, and commas are stripped on input. `label` is the test handle (frontend/CLAUDE.md: no ARIA beyond that).
  */
 export function SandboxBox({
   boxKey,

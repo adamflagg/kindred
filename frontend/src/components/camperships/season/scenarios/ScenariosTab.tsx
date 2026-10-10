@@ -355,8 +355,8 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
 }
 
 /**
- * Season › Scenarios (Scenarios addendum; scenarios-v4.html): finance's sandbox, built from the Rules tab's pieces,
- * with the spend strip on top, three cards, named flat kept options and Compare. A scenario never writes live
+ * Season › Scenarios (Scenarios addendum; the final mock): finance's sandbox, built from the Rules tab's pieces,
+ * with the Spend table on top, three cards, named flat kept options and Compare. A scenario never writes live
  * awards; a kept option reaches the rules only through Make It the Rules Draft. `rules` only: the tab is hidden
  * from everyone else (D76), and a past date shows today (parent §4's as-of sentence on the tab bar).
  */

@@ -43,7 +43,8 @@ export function formatPileMoment(iso: string): string {
 
 const applications = (n: number) => `${String(n)} application${n === 1 ? '' : 's'}`
 
-/** The held pile's pill (§S5 A2): "applications" are requests, one per camper requesting aid (N5). */
+/** The held pile in words (§S5 A2), now the toolbar lead's title: "applications" are requests, one per camper
+ * requesting aid (N5). */
 export function pillWords(snapshot: ApiAidScenarioSnapshot | null): string {
   if (snapshot === null) return 'No applications held yet'
   const held = `${applications(snapshot.requests)} · as of ${formatPileMoment(snapshot.taken_at)}`
@@ -116,7 +117,7 @@ export function startEntries(workspace: ApiAidScenarioWorkspace): StartEntry[] {
   return entries
 }
 
-/** What the sandbox is from, in the strip's "from …" words. */
+/** What the sandbox is from, in the Spend table's "from …" words. */
 export function fromName(draft: ApiAidScenarioDraft, workspace: ApiAidScenarioWorkspace): string {
   if (draft.from_code === 'rules') {
     return workspace.pricing_version === null

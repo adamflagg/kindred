@@ -1,13 +1,9 @@
 /**
- * The spend strip as data (Scenarios addendum §S5 E). The server does every sum (§S2 rule 2); this file picks and
- * words them, decides each change's colour (footnote 11: green leaves more money, amber leaves less) and rounds a
- * projection to $1,000, which is all the client does with it. Pure.
+ * The Spend table as data (Scenarios addendum §S5 E; final mock scenarios-3). The server does every sum (§S2 rule 2);
+ * this file picks and words them, decides each change's colour (footnote 11: green leaves more money, amber leaves
+ * less) and rounds a projection to $1,000, which is all the client does with it. Pure.
  */
-import type {
-  ApiAidScenarioProjection,
-  ApiAidScenarioResults,
-  ApiAidScenarioTooEarly,
-} from '../../../../types/api-types'
+import type { ApiAidScenarioResults, ApiAidScenarioTooEarly } from '../../../../types/api-types'
 import { MINUS, formatWholeMoney, toCents } from '../../kit/money'
 import type { PoolCardModel } from '../budgetCards'
 
@@ -156,41 +152,19 @@ export function spendHeading(draft: Results, postedStands: boolean, pricedOn: st
 /** The Projected cells' title: what the figure is, or why there is none (too early, under 5% of last year's). */
 export function projectedTitle(draft: Results): string {
   if (draft.projection === null || draft.projection === undefined) {
-    const early = projectionWords(null, false, draft.too_early)
-    return early === null ? 'No projection yet' : early.text
+    return tooEarlyWords(draft.too_early) ?? 'No projection yet'
   }
   return `Projected Remaining: if the rest of the season's applications arrive like last year's (about ${String(Math.round(draft.projection.share * 100))}% are in by this week)`
 }
 
-/** The projection line (§S5 E; N8): muted, never coloured; dimmed after the lock; absent with neither a projection nor
- * `tooEarly`. Under 5% of last year's applications in (owner 10-07) the server sends `tooEarly` instead, and the line
- * says so. */
-export function projectionWords(
-  projection: ApiAidScenarioProjection | null | undefined,
-  locked: boolean,
-  tooEarly?: ApiAidScenarioTooEarly | null
-): { text: string; dimmed: boolean } | null {
-  if (projection === null || projection === undefined) {
-    if (tooEarly === null || tooEarly === undefined) return null
-    // Rounded DOWN, so a share just under the 5% floor never reads "about 5%" on a too-early line.
-    const early = Math.floor(tooEarly.share * 100)
-    const share = early < 1 ? 'under 1%' : `about ${String(early)}%`
-    return {
-      text: `Too early to project: ${share} of last year's applications had arrived by this point`,
-      dimmed: locked,
-    }
-  }
-  const pct = String(Math.round(projection.share * 100))
-  const expected = `about ${String(projection.requests)} expected`
-  return locked
-    ? {
-        text: `≈${pct}% of last year's applications had arrived by this point → ${expected} · R1 + R2 ≈ ${roughly(projection.round1_and_2)}`,
-        dimmed: true,
-      }
-    : {
-        text: `Projected: by this point last year ${pct}% had arrived → ${expected} · if the rest arrive like last year: Round 1 ≈ ${roughly(projection.round1)}`,
-        dimmed: false,
-      }
+/** Why there is no projection (§S5 E; N8): under 5% of last year's applications in (owner 10-07) the server sends
+ * `tooEarly` in place of a projection, and the words say so; null when it sent neither. */
+export function tooEarlyWords(tooEarly: ApiAidScenarioTooEarly | null | undefined): string | null {
+  if (tooEarly === null || tooEarly === undefined) return null
+  // Rounded DOWN, so a share just under the 5% floor never reads "about 5%" on a too-early line.
+  const early = Math.floor(tooEarly.share * 100)
+  const share = early < 1 ? 'under 1%' : `about ${String(early)}%`
+  return `Too early to project: ${share} of last year's applications had arrived by this point`
 }
 
 export interface BelowPart {
@@ -222,7 +196,7 @@ const countChange = (now: number, from: number | undefined) => {
   return `${now > from ? '+' : MINUS}${String(Math.abs(now - from))}`
 }
 
-/** The Below the line popover's rows (§S5 E). Counts and asks, so their changes are plain, never coloured. */
+/** The Below the line fold's rows (§S5 E). Counts and asks, so their changes are plain, never coloured. */
 export function belowRows(draft: Results, from: Results | null, locked: boolean): BelowRow[] {
   const money = (now: number, then: number | undefined) => ({
     draft: formatWholeMoney(now),
@@ -263,7 +237,7 @@ export interface TierRow {
   readonly change: Change | null
 }
 
-/** The By tier popover (§S5 E): each tier's Round 1 (and Round 2 after the lock), and its Round 1 + 2 change. */
+/** The By tier fold (§S5 E): each tier's Round 1 (and Round 2 after the lock), and its Round 1 + 2 change. */
 export function byTierRows(draft: Results, from: Results | null, locked: boolean): TierRow[] {
   return draft.by_tier.map((row) => {
     const before = from?.by_tier.find((t) => t.tier === row.tier)

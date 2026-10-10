@@ -151,8 +151,8 @@ export interface ColumnHead {
 
 const day = (iso: string) => formatShortDate(campToday(new Date(iso)))
 
-/** Each column's chip, name and meta line (§S5 H). A kept option's meta is what it priced the day it was kept, on
- * that day's whole pile, never recomputed. */
+/** Each column's name, headline, meta line and title (§S5 H). A kept option's meta is what it priced the day it
+ * was kept, on that day's whole pile, never recomputed. */
 export function columnHeads(
   sources: readonly CompareSource[],
   workspace: ApiAidScenarioWorkspace,

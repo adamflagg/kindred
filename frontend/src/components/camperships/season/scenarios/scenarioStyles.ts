@@ -7,7 +7,7 @@ import { RG_TH_GROUP_MID } from '../rules/gridStyles'
  */
 
 /** A money change that leaves more money (footnote 11, N9): green. The underline is an inset shadow, as the mock's
- * `.mvd`, not a border: a mark sits in the strip's flex lines, where a border would make each line 2px taller. */
+ * `.mvd`, not a border, so a mark never makes its line 2px taller. */
 export const CHANGE_MORE =
   'rounded-sm bg-forest-100 px-0.5 text-forest-700 shadow-[inset_0_-2px_0_var(--color-forest-500)] dark:bg-forest-900/70 dark:text-forest-300 dark:shadow-[inset_0_-2px_0_var(--color-forest-400)]'
 /** A money change that leaves less: amber. */

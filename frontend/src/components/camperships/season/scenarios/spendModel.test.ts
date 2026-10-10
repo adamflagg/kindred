@@ -8,12 +8,12 @@ import {
   ghostPct,
   moneyChange,
   poolCard,
-  projectionWords,
   roughly,
   kilo,
   projectedTitle,
   spendHeading,
   spendTable,
+  tooEarlyWords,
 } from './spendModel'
 
 // results(r1): Pool A spends r1 − 50,000 in Round 1 + 20,500 + 950; Pool B 50,000; Remaining 1,000,000 − r1 − 21,450.
@@ -148,56 +148,46 @@ describe('the Spend table (final mock: Pool · Round 1 · 2 · 3 · Spend · Rem
   })
 })
 
-describe('the projection line (§S5 E; N8: never amber or red)', () => {
-  it('reads as last year’s share before the lock and dims after it', () => {
-    expect(projectionWords(PROJECTION, false)).toEqual({
-      text: 'Projected: by this point last year 39% had arrived → about 465 expected · if the rest arrive like last year: Round 1 ≈ $800,000',
-      dimmed: false,
-    })
-    expect(projectionWords({ ...PROJECTION, share: 0.98 }, true)).toEqual({
-      text: "≈98% of last year's applications had arrived by this point → about 465 expected · R1 + R2 ≈ $850,000",
-      dimmed: true,
-    })
-  })
+describe('the too-early words (§S5 E; N8)', () => {
+  const early = (share: number) => tooEarlyWords({ share, through: '2027-01-05', basis_year: 2026 })
 
-  it('is absent with no projection', () => {
-    expect(projectionWords(null, false)).toBeNull()
-    expect(projectionWords(undefined, true)).toBeNull()
-    expect(projectionWords(null, false, null)).toBeNull()
+  it('is absent when the server sent no too-early share', () => {
+    expect(tooEarlyWords(null)).toBeNull()
+    expect(tooEarlyWords(undefined)).toBeNull()
   })
 
   it('says it is too early to project below a 5% share', () => {
-    expect(
-      projectionWords(null, false, { share: 0.03, through: '2027-01-05', basis_year: 2026 })
-    ).toEqual({
-      text: "Too early to project: about 3% of last year's applications had arrived by this point",
-      dimmed: false,
-    })
+    expect(early(0.03)).toBe(
+      "Too early to project: about 3% of last year's applications had arrived by this point"
+    )
   })
 
   it('rounds the too-early share to a whole percent', () => {
-    expect(
-      projectionWords(null, false, { share: 0.034, through: '2027-01-05', basis_year: 2026 })?.text
-    ).toBe("Too early to project: about 3% of last year's applications had arrived by this point")
+    expect(early(0.034)).toBe(
+      "Too early to project: about 3% of last year's applications had arrived by this point"
+    )
   })
 
   it('never reads 5% on a too-early line: the share rounds down', () => {
-    expect(
-      projectionWords(null, false, { share: 0.0499, through: '2027-01-05', basis_year: 2026 })?.text
-    ).toBe("Too early to project: about 4% of last year's applications had arrived by this point")
+    expect(early(0.0499)).toBe(
+      "Too early to project: about 4% of last year's applications had arrived by this point"
+    )
   })
 
   it('says under 1% rather than about 0%', () => {
-    expect(
-      projectionWords(null, false, { share: 0.004, through: '2027-01-05', basis_year: 2026 })?.text
-    ).toBe("Too early to project: under 1% of last year's applications had arrived by this point")
+    expect(early(0.004)).toBe(
+      "Too early to project: under 1% of last year's applications had arrived by this point"
+    )
   })
 
-  it('shows a projection, never the too-early line, when there is one', () => {
+  it('leaves the title to the projection when there is one', () => {
     expect(
-      projectionWords(PROJECTION, false, { share: 0.03, through: '2027-01-05', basis_year: 2026 })
-        ?.text
-    ).toMatch(/^Projected:/)
+      projectedTitle({
+        ...DRAFT,
+        projection: PROJECTION,
+        too_early: { share: 0.03, through: '2027-01-05', basis_year: 2026 },
+      })
+    ).toMatch(/^Projected Remaining:/)
   })
 })
 
