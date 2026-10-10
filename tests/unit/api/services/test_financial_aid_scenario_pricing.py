@@ -343,3 +343,77 @@ async def test_freezing_and_pricing_a_scenario_never_read_or_write_the_grant_pla
     assert "fetch_grant_placements" not in frozen.calls
     await price_document(frozen, approved().document, approved())
     assert (store.grant_placements, store.operations) == ([], [])
+
+
+# --- as if nothing is posted (owner, 2026-10-10: "as if nothing posted - all, regular - unposted") ---------------
+
+
+def _posted_emma(store: FakeDecisionsStore, *, appeal: bool = False) -> None:
+    """Emma's Round 1 posted at 1,400 and accepted; with `appeal`, her Round 2 ask keyed after it."""
+    store.events.append(
+        DecisionEvent(
+            id="ev0000000000001",
+            request_id=EMMA,
+            round=1,
+            kind="post",
+            created=T0,
+            amount=Decimal(1400),
+            effective_on=date(2027, 3, 9),
+            lock_source="tick",
+            rules_version=1,
+            snapshot={"pool": "camp_pool", "counts_toward_budget": True},
+        )
+    )
+    store.events.append(DecisionEvent(id="ev0000000000002", request_id=EMMA, round=1, kind="accept", created=T0))
+    if appeal:
+        store.events.append(
+            DecisionEvent(
+                id="ev0000000000003",
+                request_id=EMMA,
+                round=2,
+                kind="ask",
+                created=T0,
+                amount=Decimal(300),
+                effective_on=date(2027, 4, 1),
+            )
+        )
+
+
+@pytest.mark.asyncio
+async def test_as_if_nothing_is_posted_a_posted_round_is_priced_fresh_under_the_document() -> None:
+    store = _store()
+    _posted_emma(store)
+    document = shift_round1_tables(intake_rules(), Decimal(5))
+    priced = await price_document(await _frozen(store), document, approved(), as_if_unposted=True)
+    # Emma's 1,400 lock is gone: her Round 1 is what the document gives a tier 2 family (75% + 5 of 2,000), unposted
+    # and not accepted, exactly as Liam's.
+    assert _rounds(priced.season.priced) == {
+        EMMA: [(1, "needs_offer", Decimal(1600))],
+        LIAM: [(1, "needs_offer", Decimal(1200))],
+    }
+    assert priced.season.priced[EMMA].view(1).accepted is False  # type: ignore[union-attr]
+    assert priced.budget.total.total.posted == Decimal(0)
+
+
+@pytest.mark.asyncio
+async def test_as_if_nothing_is_posted_keeps_todays_appeal_asks() -> None:
+    """Only the posting is set aside: an appeal keyed today is today's data, priced through the document's Round 2."""
+    store = _store()
+    _posted_emma(store, appeal=True)
+    priced = await price_document(await _frozen(store), intake_rules(), approved(), as_if_unposted=True)
+    emma = priced.season.priced[EMMA]
+    round1, round2 = emma.view(1), emma.view(2)
+    assert round1 is not None
+    assert round1.status == "needs_offer"
+    assert round2 is not None
+    assert round2.ask == Decimal(300)
+
+
+@pytest.mark.asyncio
+async def test_pricing_as_if_nothing_is_posted_leaves_the_snapshot_as_it_was() -> None:
+    store = _store()
+    _posted_emma(store)
+    frozen = await _frozen(store)
+    await price_document(frozen, intake_rules(), approved(), as_if_unposted=True)
+    regular = await price_document(frozen, intake_rules(), approved())
+    assert _rounds(regular.season.priced)[EMMA] == [(1, "posted", Decimal(1400))]

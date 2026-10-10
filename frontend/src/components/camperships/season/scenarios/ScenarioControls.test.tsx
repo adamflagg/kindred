@@ -62,6 +62,8 @@ function setup(over: Partial<Props> = {}) {
     refused: null,
     notice: null,
     error: null,
+    posted: null,
+    onPosted: vi.fn(),
     ...over,
   }
   const view = render(<ScenarioControls {...props} />)
@@ -366,5 +368,44 @@ describe('the control line (§S5 A; scenarios-2): one kit toolbar row', () => {
     })
     expect(screen.getByRole('button', { name: 'Keep…' })).toBeDisabled()
     expect(screen.getByText(/Update Applications first/)).toBeInTheDocument()
+  })
+})
+
+// Owner, 2026-10-10: "Price as if nothing is posted", a sandbox switch; regular keeps today's behaviour.
+describe('the pricing mode (Posted ▾)', () => {
+  it('offers Posted ▾ once a round is posted: Stands, or No postings (owner, 10-10), with the full words in its title', async () => {
+    const onPosted = vi.fn()
+    setup({ posted: 'stands', onPosted })
+    const picker = screen.getByRole('button', { name: /^Posted:/ })
+    expect(picker).toHaveTextContent('Stands')
+    expect(within(screen.getByTestId('aid-toolbar')).getByText('Posted')).toBeInTheDocument()
+    await userEvent.click(picker)
+    await userEvent.click(screen.getByRole('option', { name: 'No postings' }))
+    expect(onPosted).toHaveBeenCalledWith('none')
+    expect(screen.getByRole('button', { name: /^Posted:/ })).toHaveAttribute(
+      'title',
+      'Regular: a posted Round 1 stays as posted, so an edit moves only what is not posted yet'
+    )
+    again({ posted: 'none' })
+    expect(screen.getByRole('button', { name: /^Posted:/ })).toHaveTextContent('No postings')
+  })
+
+  // Coordinator, 10-10: with Posted ▾ the one-row toolbar has no slack, so From ▾ is capped (measured at 1440 with a
+  // long kept name and "No postings": "1 change" stays whole). A cut name reads whole in the title.
+  it('caps From ▾ so the change count always fits, the full name in its title', () => {
+    const long = 'Rules v3 as they were before the late-season review'
+    setup({
+      posted: 'none',
+      chips: [{ code: 'B', name: long, loaded: true }],
+    })
+    const from = screen.getByRole('button', { name: /^From:/ })
+    // the face must shrink inside the cap, or it overflows onto ✎ instead of cutting its name
+    expect(from.parentElement).toHaveClass('max-w-[156px]', '[&>button]:min-w-0')
+    expect(from).toHaveAttribute('title', expect.stringContaining(`B · ${long}`))
+  })
+
+  it('shows no Posted ▾ before anything is posted: the two modes price alike', () => {
+    setup({ posted: null })
+    expect(screen.queryByRole('button', { name: /^Posted:/ })).toBeNull()
   })
 })

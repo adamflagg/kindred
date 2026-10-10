@@ -770,7 +770,7 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         term="Spend",
         text=(
             "Spend: what the applications priced would get under these settings. A what-if: nothing here touches a "
-            "family or the rules, and posted amounts always stand."
+            "family or the rules."
         ),
         spec="§7.4",
         rulings=("D35", "D38"),

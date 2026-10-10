@@ -469,10 +469,15 @@ async def test_the_rules_column_is_served_from_a_kept_option_that_is_the_rules_i
     priced: list[AidRules] = []
 
     async def counting(
-        snapshot: SeasonSnapshot, document: AidRules, base: RulesVersion, *, requests: Collection[str] | None = None
+        snapshot: SeasonSnapshot,
+        document: AidRules,
+        base: RulesVersion,
+        *,
+        requests: Collection[str] | None = None,
+        as_if_unposted: bool = False,
     ) -> PricedSeason:
         priced.append(document)
-        return await price_document(snapshot, document, base, requests=requests)
+        return await price_document(snapshot, document, base, requests=requests, as_if_unposted=as_if_unposted)
 
     monkeypatch.setattr(service_module, "price_document", counting)
     [rules] = (await world.service.compare(YEAR, FINANCE, [], rules=True, draft=False)).columns
@@ -965,10 +970,15 @@ async def test_compare_prices_no_reference_for_a_starting_point_from_the_rules(m
     priced: list[AidRules] = []
 
     async def counting(
-        snapshot: SeasonSnapshot, document: AidRules, base: RulesVersion, *, requests: Collection[str] | None = None
+        snapshot: SeasonSnapshot,
+        document: AidRules,
+        base: RulesVersion,
+        *,
+        requests: Collection[str] | None = None,
+        as_if_unposted: bool = False,
     ) -> PricedSeason:
         priced.append(document)
-        return await price_document(snapshot, document, base, requests=requests)
+        return await price_document(snapshot, document, base, requests=requests, as_if_unposted=as_if_unposted)
 
     monkeypatch.setattr(service_module, "price_document", counting)
     await world.service.load(YEAR, TREASURER, option="A")  # TREASURER's draft is A, unchanged
@@ -2130,3 +2140,77 @@ async def test_an_option_built_on_a_discarded_rules_draft_cannot_be_promoted() -
     assert (option.promotable, option.blocked) == (False, words)
     with pytest.raises(ScenarioRefusedError, match="a discarded rules draft"):
         await world.service.make_rules_draft(YEAR, kept.record.code, base_version=1, acknowledged={}, actor=FINANCE)
+
+
+# --- as if nothing is posted (owner, 2026-10-10: "as if nothing posted - all, regular - unposted") ---------------
+
+
+async def _posted_world() -> World:
+    """Emma's Round 1 posted at 1,400 before the freeze; Liam's (1,100 under the rules) not; option A kept."""
+    world = await _world()
+    world.season.events.append(
+        DecisionEvent(
+            id="ev0000000000001",
+            request_id=EMMA,
+            round=1,
+            kind="post",
+            created=T0,
+            amount=Decimal(1400),
+            effective_on=date(2027, 3, 9),
+            lock_source="tick",
+            rules_version=1,
+            snapshot={"pool": "camp_pool", "counts_toward_budget": True},
+        )
+    )
+    await world.service.freeze(YEAR, FINANCE)
+    await world.service.start_from_rules(YEAR, FINANCE)
+    return world
+
+
+@pytest.mark.asyncio
+async def test_evaluate_as_if_nothing_is_posted_reprices_every_request_and_says_so() -> None:
+    world = await _posted_world()
+    before = len(world.store.operations)
+    rules_ops = len(world.rules_store.operations)
+    regular = await world.service.evaluate(YEAR, intake_rules(), tier_shift=Decimal(5))
+    fresh = await world.service.evaluate(YEAR, intake_rules(), tier_shift=Decimal(5), as_if_unposted=True)
+    # Regular: Emma's posted 1,400 stands and only Liam moves (1,200). As if nothing is posted: 1,600 + 1,200.
+    assert (regular.results.round1, regular.results.as_if_unposted) == (Decimal(2600), False)
+    assert (fresh.results.round1, fresh.results.as_if_unposted) == (Decimal(2800), True)
+    assert len(world.store.operations) == before  # nothing recorded
+    assert len(world.rules_store.operations) == rules_ops  # nor any rules written
+
+
+@pytest.mark.asyncio
+async def test_fit_as_if_nothing_is_posted_moves_every_round1() -> None:
+    world = await _posted_world()
+    budget = with_lever(intake_rules(), "budget.total", "3000")
+    # Regular (test_fit_never_moves_a_posted_round1): only Liam moves, so +25. As if nothing is posted both move,
+    # 40 a point from 2,600: +10.
+    regular = await world.service.fit(YEAR, budget)
+    fresh = await world.service.fit(YEAR, budget, as_if_unposted=True)
+    assert (regular.fit.kind, regular.fit.shift) == ("fits", Decimal(25))
+    assert (fresh.fit.kind, fresh.fit.shift, fresh.evaluation.results.round1) == ("fits", Decimal(10), Decimal(3000))
+    assert fresh.evaluation.results.as_if_unposted is True
+
+
+@pytest.mark.asyncio
+async def test_compare_as_if_nothing_is_posted_reprices_every_column_never_from_stored_figures() -> None:
+    world = await _posted_world()
+    regular = await world.service.compare(YEAR, FINANCE, ["A"], rules=True, draft=False)
+    fresh = await world.service.compare(YEAR, FINANCE, ["A"], rules=True, draft=False, as_if_unposted=True)
+    # A's stored figures hold Emma's 1,400 lock (1,400 + 1,100); priced fresh she is 1,500 under the rules.
+    assert [(c.code, c.results.round1) for c in regular.columns] == [("rules", Decimal(2500)), ("A", Decimal(2500))]
+    assert [(c.code, c.results.round1, c.results.as_if_unposted) for c in fresh.columns] == [
+        ("rules", Decimal(2600), True),
+        ("A", Decimal(2600), True),
+    ]
+    assert (await world.service.workspace(YEAR, FINANCE)).options[0].record.results.round1 == Decimal(2500)
+
+
+@pytest.mark.asyncio
+async def test_sensitivity_as_if_nothing_is_posted_moves_every_round1() -> None:
+    world = await _posted_world()
+    regular = await world.service.sensitivity(YEAR, intake_rules())
+    fresh = await world.service.sensitivity(YEAR, intake_rules(), as_if_unposted=True)
+    assert (regular.results.round1, fresh.results.round1) == (Decimal(2500), Decimal(2600))

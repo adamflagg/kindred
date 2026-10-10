@@ -17,6 +17,36 @@ const FIT: ApiAidScenarioFit = {
 }
 
 describe('Fit to Budget on the Tiers card (§S5 G; scenarios-13)', () => {
+  // Owner, 2026-10-10: "as if nothing posted - all, regular - unposted".
+  it('says in its title which requests it moves once a round is posted, by the pricing mode', () => {
+    const { rerender } = render(
+      <FitToBudgetButton
+        disabled={false}
+        reason={null}
+        pending={false}
+        onFit={vi.fn()}
+        moves="unposted"
+      />
+    )
+    expect(screen.getByRole('button', { name: 'Fit to Budget' })).toHaveAttribute(
+      'title',
+      "Shifts every tier's Round 1 % by the same points until Round 1 uses the budget. A posted Round 1 stands, so it moves only what is not posted yet"
+    )
+    rerender(
+      <FitToBudgetButton
+        disabled={false}
+        reason={null}
+        pending={false}
+        onFit={vi.fn()}
+        moves="all"
+      />
+    )
+    expect(screen.getByRole('button', { name: 'Fit to Budget' })).toHaveAttribute(
+      'title',
+      "Shifts every tier's Round 1 % by the same points until Round 1 uses the budget. Priced as if nothing is posted, it moves every request"
+    )
+  })
+
   it('is a button whose title says what it does, and says why it is off only in its title', async () => {
     const onFit = vi.fn()
     const { rerender } = render(

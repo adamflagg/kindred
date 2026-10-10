@@ -9,7 +9,13 @@ import { EditorActions, EditorForm } from '../../kit/EditorLayout'
 import type { AidPickerOption } from '../../kit/pickerWords'
 import { AidSegmented } from '../../kit/Segmented'
 import { AidToolbar, ToolbarLabel } from '../../kit/Toolbar'
-import { guardWords, PRICE_CHOICES, type StartEntry } from './controlsModel'
+import {
+  guardWords,
+  POSTED_CHOICES,
+  PRICE_CHOICES,
+  type PostedMode,
+  type StartEntry,
+} from './controlsModel'
 import { KeepPopover } from './KeepPopover'
 import { ScenarioPopover } from './ScenarioPopover'
 
@@ -69,6 +75,7 @@ export function RenameBox({
  * - Sandbox | Compare;
  * - From ▾, one picker with two groups (Start from; Kept) and ✎ beside it renaming the loaded kept option;
  * - Price ▾;
+ * - Posted ▾ once a round is posted (owner, 2026-10-10): Stands (regular), or No postings (as if nothing is posted);
  * - on the right the status slot (change count, "Nothing new since …", a refusal, the "isn't kept" notice), then
  *   Discard Changes, Make ‹B› the Rules Draft… and Keep… (in Compare, Columns, By tier and Print), and Update
  *   Applications last.
@@ -116,6 +123,9 @@ export function ScenarioControls(props: {
   /** "D isn't kept in 2027, so it was left out of the compare." */
   notice: string | null
   error: string | null
+  /** Posted ▾'s mode, or null before any round posts (the two modes then price alike, so there is no picker). */
+  posted: PostedMode | null
+  onPosted: (mode: PostedMode) => void
 }) {
   const [guard, setGuard] = useState<Guard | null>(null)
   const [keeping, setKeeping] = useState(false)
@@ -205,6 +215,9 @@ export function ScenarioControls(props: {
               ) : (
                 <AidPicker
                   label="From"
+                  // Capped below the kit's 220px: with Posted ▾ the one-row toolbar has no slack, and at 1440 a
+                  // long kept name beside "No postings" cut "1 change" (measured 10-10). The title reads whole.
+                  className="max-w-[156px] [&>button]:min-w-0"
                   value={selected}
                   disabled={!props.canEdit}
                   options={fromOptions}
@@ -301,6 +314,16 @@ export function ScenarioControls(props: {
               />
             )}
           </ToolbarLabel>
+          {props.posted !== null && (
+            <ToolbarLabel text="Posted">
+              <AidPicker
+                label="Posted"
+                value={props.posted}
+                options={POSTED_CHOICES}
+                onChange={props.onPosted}
+              />
+            </ToolbarLabel>
+          )}
         </>
       }
       {...(status === null ? {} : { status })}

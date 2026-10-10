@@ -155,6 +155,9 @@ export interface ScenarioView {
   readonly draft: boolean
   readonly lastSeason: boolean
   readonly byTier: boolean
+  /** Posted ▾ (owner, 2026-10-10): price every request from scratch, as if nothing were posted (`unposted=1`). A view
+   * setting: it never reaches the rules. */
+  readonly asIfUnposted: boolean
   /** Any column param present: when none is, Compare's first open checks its defaults (§S5 H). */
   readonly anyColumn: boolean
 }
@@ -192,12 +195,38 @@ export function parseView(params: URLSearchParams): ScenarioView {
     draft: on('draft'),
     lastSeason: on('last'),
     byTier: on('tiers'),
+    asIfUnposted: on('unposted'),
   }
   return {
     ...view,
     anyColumn: codes.length > 0 || view.rules || view.lastRules || view.draft || view.lastSeason,
   }
 }
+
+/** Posted ▾ (owner, 2026-10-10: "as if nothing posted - all, regular - unposted"): Stands (regular) keeps a posted
+ * Round 1 as posted; No postings prices every request from scratch (next year's rules on this year's applications). The
+ * short label keeps the toolbar on one row with its status; the title carries the full words. Shown once a round is
+ * posted; before that the two price alike. */
+export type PostedMode = 'stands' | 'none'
+
+export const POSTED_CHOICES: ReadonlyArray<{
+  readonly value: PostedMode
+  readonly label: string
+  readonly title: string
+}> = [
+  {
+    value: 'stands',
+    label: 'Stands',
+    title:
+      'Regular: a posted Round 1 stays as posted, so an edit moves only what is not posted yet',
+  },
+  {
+    value: 'none',
+    label: 'No postings',
+    title:
+      'As if nothing is posted: every request priced from scratch, so the figures are what the season would cost under these rules',
+  },
+]
 
 export const PRICE_CHOICES: ReadonlyArray<{
   readonly value: 'all' | 'deadline' | 'date'

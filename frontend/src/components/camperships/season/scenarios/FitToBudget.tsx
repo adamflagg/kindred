@@ -4,30 +4,44 @@ import { fitWords } from './scenarioModel'
 import { FIT_DONE, FIT_WARN } from './scenarioStyles'
 
 const FIT_TITLE = "Shifts every tier's Round 1 % by the same points until Round 1 uses the budget"
+// Which requests it moves once a round is posted, by Posted ▾ (owner, 2026-10-10: "as if nothing posted - all, regular -
+// unposted"). Before any round posts the two are the same, so the title says neither.
+const MOVES: Record<'all' | 'unposted', string> = {
+  unposted: 'A posted Round 1 stands, so it moves only what is not posted yet',
+  all: 'Priced as if nothing is posted, it moves every request',
+}
 
 /**
  * Fit to Budget, on the Tiers & Round 1 card's header (§S5 G). Its maths and route are unchanged (owner: "no changes
- * to the Fit work in this pass"). Why it is off ("Off once Round 1 posts", "Fit uses every application held",
- * "Nothing is held yet") is the disabled button's title alone, never a line beside it (scenarios-13).
+ * to the Fit work in this pass"). Why it is off ("Fit uses every application held", "Nothing is held yet") is the disabled button's title alone, never a line beside it (scenarios-13).
  */
 export function FitToBudgetButton({
   disabled,
   reason,
   pending,
   onFit,
+  moves = null,
 }: {
   disabled: boolean
   /** Why it is off, for the title of the disabled button. */
   reason: string | null
   pending: boolean
   onFit: () => void
+  /** Once a round is posted: whether it fits every request (as if nothing is posted) or only the unposted ones. */
+  moves?: 'all' | 'unposted' | null
 }) {
   return (
     <button
       type="button"
       className={`${CS_BTN2} ml-auto`}
       disabled={disabled || pending}
-      title={disabled ? (reason ?? undefined) : FIT_TITLE}
+      title={
+        disabled
+          ? (reason ?? undefined)
+          : moves === null
+            ? FIT_TITLE
+            : `${FIT_TITLE}. ${MOVES[moves]}`
+      }
       onClick={onFit}
     >
       Fit to Budget

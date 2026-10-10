@@ -96,6 +96,7 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
   const rename = useAidRenameOption()
   const fit = useAidScenarioFit()
   const [fitAskedOn, setFitAskedOn] = useState<string | null | undefined>(undefined)
+  const [fitAskedFresh, setFitAskedFresh] = useState(false)
   const [promoting, setPromoting] = useState<string | null>(null)
   const [refused, setRefused] = useState<string | null>(null)
   const draft = workspace.draft
@@ -103,6 +104,10 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
   // A posted round's lock in the real rules: Spend and Compare say its amounts stand. It never locks the sandbox
   // (owner, 2026-10-10: "scenarios sandbox should never lock anything unlike the real rules").
   const isLocked = (workspace.locked_sections ?? []).length > 0
+  // Posted ▾ (owner, 2026-10-10: "as if nothing posted - all, regular - unposted"): a view setting in the URL that
+  // prices every read as if nothing were posted. It never reaches the rules or a decision. Before any round posts the
+  // two modes price alike, so there is no picker and every read is regular, whatever an old link says.
+  const asIfUnposted = isLocked && view.asIfUnposted
 
   // A kept code in the URL this year doesn't hold (a year switch, an old link): left out, dropped, said once.
   const kept = useMemo(() => new Set(workspace.options.map((o) => o.code)), [workspace.options])
@@ -115,18 +120,27 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
     if (gone !== '') write({ compare: codesKey === '' ? null : codesKey })
   }, [gone, codesKey, write])
 
-  const pricing = useAidScenarioPricing(work.pricedDocument, view.requestSet, snapshot?.id ?? null)
+  const pricing = useAidScenarioPricing(
+    work.pricedDocument,
+    view.requestSet,
+    snapshot?.id ?? null,
+    asIfUnposted
+  )
   const starting = useAidScenarioPricing(
     draft?.source_document ?? null,
     view.requestSet,
-    snapshot?.id ?? null
+    snapshot?.id ?? null,
+    asIfUnposted
   )
   // A refused read (a 422) keeps the last good figures on screen (§S5 E States).
   const fresh = pricing.data?.results ?? null
   const [lastGood, setLastGood] = useState<ApiAidScenarioResults | null>(null)
   if (fresh !== null && fresh !== lastGood) setLastGood(fresh)
+  // The draft's stored figures are regular, on every request: a stand-in only for a regular read of all of them.
   const figures =
-    fresh ?? lastGood ?? (view.requestSet.kind === 'all' ? (draft?.results ?? null) : null)
+    fresh ??
+    lastGood ??
+    (view.requestSet.kind === 'all' && !asIfUnposted ? (draft?.results ?? null) : null)
 
   // The draft is a Compare column only while it holds changes no kept option has (N11). A `draft=1` still in the URL
   // after a keep is dropped here too, or Compare would show a column Columns ▾ no longer lists (plan review, minor 16).
@@ -138,7 +152,7 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
     ? columnsFromView({ ...view, codes })
     : defaultColumns(workspace)
   const checked = unkeptDraft ? wanted : wanted.filter((key) => key !== 'draft')
-  const compare = useAidScenarioCompare(compareQuery(checked, view.requestSet), {
+  const compare = useAidScenarioCompare(compareQuery(checked, view.requestSet, asIfUnposted), {
     enabled: canEdit && snapshot !== null && view.panel === 'compare',
   })
 
@@ -162,8 +176,11 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
     workspace.pricing_version === null
       ? `Rules draft v${String(workspace.rules_version)}`
       : `Rules v${String(workspace.pricing_version)}`
+  // Worded by the figures on screen, not the switch: a mode flip keeps the other mode's figures up while it loads.
   const postedStands =
-    isLocked && (draft.differs_in ?? []).some((section) => ROUND1_SECTIONS.includes(section))
+    isLocked &&
+    figures?.as_if_unposted !== true &&
+    (draft.differs_in ?? []).some((section) => ROUND1_SECTIONS.includes(section))
   // The vocabulary only: Compare reads each setting under its own section (Task 72; disagreement 13).
   const names = rulesVocabulary(
     (section) => (draft.document as unknown as Record<string, unknown>)[section]
@@ -174,7 +191,10 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
   const priceOff = view.requestSet.kind !== 'all'
   const choices = columnChoices(workspace, unkeptDraft)
   const fitStale =
-    fitAskedOn !== undefined && (fitAskedOn !== (draft.trail_id ?? null) || work.edits.size > 0)
+    fitAskedOn !== undefined &&
+    (fitAskedOn !== (draft.trail_id ?? null) ||
+      work.edits.size > 0 ||
+      fitAskedFresh !== asIfUnposted)
   const recordedChanges = draft.changes.length
   const pricedOn = pricedOnFigures(figures, view.requestSet)
 
@@ -196,6 +216,8 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
         onUpdate={() => void work.update()}
         price={view.requestSet}
         onPrice={(set) => write({ through: requestSetParam(set) })}
+        posted={isLocked ? (asIfUnposted ? 'none' : 'stands') : null}
+        onPosted={(mode) => write({ unposted: mode === 'none' ? '1' : null })}
         start={startEntries(workspace)}
         fromCode={draft.from_code}
         loadedCode={loaded}
@@ -288,9 +310,11 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
                         : null
                   }
                   pending={fit.isPending}
+                  moves={isLocked ? (asIfUnposted ? 'all' : 'unposted') : null}
                   onFit={() => {
                     setFitAskedOn(draft.trail_id ?? null)
-                    fit.mutate(binding.typed)
+                    setFitAskedFresh(asIfUnposted)
+                    fit.mutate({ document: binding.typed, asIfUnposted })
                   }}
                 />
               ) : null
@@ -340,7 +364,7 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
         />
       )}
       <div className="print:hidden">
-        {/* ONE list: the registry's four, then the page's Change colours (final mock's six, less Locked). */}
+        {/* ONE list, the final mock's six: the registry's four, then the page's Change colours and Pricing. */}
         <AidDefinitionNotes
           surface={SURFACE}
           extra={SCENARIO_PAGE_NOTES.map((note) => note.text)}

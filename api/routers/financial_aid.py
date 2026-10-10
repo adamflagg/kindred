@@ -1387,6 +1387,7 @@ def _results_out(
         ],
         not_in_tiers=money(r.not_in_tiers),
         request_set=RequestSetOut(**r.request_set.model_dump()) if r.request_set is not None else None,
+        as_if_unposted=r.as_if_unposted,
         appeals=appeals,
         appeals_asked=money(appeals_asked),
     )
@@ -1626,6 +1627,7 @@ async def evaluate_scenario(year: _Year, body: EvaluateIn, user: AuthUser = _RUL
             tier_shift=body.tier_shift,
             band_width_delta=body.band_width_delta,
             request_set=_request_set(body),
+            as_if_unposted=body.as_if_unposted,
         )
     except FinancialAidError as exc:
         raise _scenarios_http(exc) from exc
@@ -1686,12 +1688,14 @@ async def compare_scenarios(
     rules: bool = Query(default=False),
     last_rules: bool = Query(default=False),
     draft: bool = Query(default=True),
+    as_if_unposted: bool = Query(default=False),
     user: AuthUser = _RULES,
 ) -> CompareOut:
     """The rules in effect, last season's rules, your draft (each when asked) and up to 4 kept options, in §S5 H's
     fixed order, all on the current snapshot and each counted against the rules in effect, on a request set when
     asked (D138: the Round 1 deadline switch or a received-through date, not both). Each column carries what the committee
-    compares (RPT-17, RPT-32); `last_season` adds last season's posted money beside them."""
+    compares (RPT-17, RPT-32); `last_season` adds last season's posted money beside them. `as_if_unposted` prices every
+    column as if nothing were posted (owner, 2026-10-10): a view setting, never a write."""
     if through_round1_deadline and received_through is not None:
         raise HTTPException(status_code=422, detail="Choose the Round 1 deadline or a received-through date, not both")
     request_set: RequestSetChoice | None = "round1_deadline" if through_round1_deadline else received_through
@@ -1705,6 +1709,7 @@ async def compare_scenarios(
             rules=rules,
             last_rules=last_rules,
             draft=draft,
+            as_if_unposted=as_if_unposted,
         )
     except FinancialAidError as exc:
         raise _scenarios_http(exc) from exc
@@ -1722,7 +1727,9 @@ async def fit_scenario_to_budget(year: _Year, body: ViewIn, user: AuthUser = _RU
     """The tier shift that uses Round 1's allocation: the total row's Round 1 Remaining (main spec §12.3 method 1;
     Decision 11 (a), D119), naming the tightest pool as information; nothing is recorded. 422 on a request set."""
     try:
-        fitted = await _scenarios().fit(year, body.document, request_set=_request_set(body))
+        fitted = await _scenarios().fit(
+            year, body.document, request_set=_request_set(body), as_if_unposted=body.as_if_unposted
+        )
     except FinancialAidError as exc:
         raise _scenarios_http(exc) from exc
     return FitOut(
@@ -1741,7 +1748,9 @@ async def scenario_sensitivity(year: _Year, body: ViewIn, user: AuthUser = _RULE
     """What one step of each sizing setting moves Round 1 by (spec §7.4), the dollar-for-dollar switch included
     (D137)."""
     try:
-        sensitivity = await _scenarios().sensitivity(year, body.document, request_set=_request_set(body))
+        sensitivity = await _scenarios().sensitivity(
+            year, body.document, request_set=_request_set(body), as_if_unposted=body.as_if_unposted
+        )
     except FinancialAidError as exc:
         raise _scenarios_http(exc) from exc
     return SensitivityOut(

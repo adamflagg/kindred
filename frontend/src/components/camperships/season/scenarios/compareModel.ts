@@ -111,9 +111,11 @@ export function columnsFromView(
 
 export function compareQuery(
   checked: readonly ColumnKey[],
-  requestSet: AidRequestSet
+  requestSet: AidRequestSet,
+  asIfUnposted = false
 ): CompareQuery {
   return {
+    asIfUnposted,
     codes: checked.filter((k) => k.startsWith('kept:')).map((k) => k.slice('kept:'.length)),
     requestSet,
     lastSeason: checked.includes('last_season'),
@@ -328,6 +330,9 @@ export function compareRows(
 ): CompareRow[] {
   const { byTier, locked, effectName, names } = options
   const priced = sources.flatMap((s) => (s.kind === 'priced' ? [s.column] : []))
+  // Priced as if nothing is posted (Posted ▾, owner 2026-10-10), as the server says the columns were: every column is
+  // what the season would cost under its rules, so no posted Round 1 stands and nothing reads as today's Remaining.
+  const fresh = priced.some((column) => column.results.as_if_unposted === true)
   const rows: CompareRow[] = [
     { kind: 'section', label: `Settings that differ from ${effectName}`, cells: [] },
   ]
@@ -370,7 +375,11 @@ export function compareRows(
       ? s.column.results.pools.find((p) => p.pool === key)
       : (s.last.pools ?? []).find((p) => p.pool === key)
 
-  rows.push({ kind: 'section', label: 'Spend, by pool', cells: [] })
+  rows.push({
+    kind: 'section',
+    label: fresh ? 'Spend as if nothing is posted, by pool' : 'Spend, by pool',
+    cells: [],
+  })
   rows.push({
     kind: 'row',
     label: 'Round 1',
@@ -378,7 +387,9 @@ export function compareRows(
     cells: sources.map((s) => {
       if (s.kind === 'season') return money(s.last.view?.round1)
       const cell = money(s.column.results.round1)
-      return locked && round1Differs(s.column) ? { ...cell, note: 'posted Round 1 stands' } : cell
+      return locked && !fresh && round1Differs(s.column)
+        ? { ...cell, note: 'posted Round 1 stands' }
+        : cell
     }),
   })
   for (const [key, label] of pools)
@@ -408,7 +419,7 @@ export function compareRows(
   })
   rows.push({
     kind: 'row',
-    label: 'Remaining',
+    label: fresh ? 'Would remain' : 'Remaining',
     bold: true,
     cells: sources.map((s) =>
       s.kind === 'season'
@@ -435,7 +446,9 @@ export function compareRows(
       const left = projection.remaining ?? null
       return {
         text: `≈${roughly(locked ? projection.round1_and_2 : projection.round1)}`,
-        ...(left === null ? {} : { sub: `Remaining ≈${roughly(left)}` }),
+        ...(left === null
+          ? {}
+          : { sub: `${fresh ? 'Would remain' : 'Remaining'} ≈${roughly(left)}` }),
       }
     }),
   })

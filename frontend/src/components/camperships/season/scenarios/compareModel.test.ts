@@ -16,6 +16,7 @@ import {
   toggleColumn,
   withNewKeep,
   type ColumnKey,
+  type CompareSource,
 } from './compareModel'
 import { compareOut, OPTIONS, workspace } from './scenarioFixtures'
 
@@ -160,7 +161,9 @@ describe('Columns ▾ (§S5 H; N11)', () => {
       rules: true,
       lastRules: false,
       draft: true,
+      asIfUnposted: false,
     })
+    expect(compareQuery(checked, { kind: 'all' }, true).asIfUnposted).toBe(true)
   })
 })
 
@@ -308,6 +311,34 @@ describe('the rows (§S5 H; N3, N4, N10)', () => {
       null,
     ])
     expect(after.some((r) => r.label === 'Round 2, appeals keyed so far')).toBe(true)
+  })
+
+  it('prices every column as if nothing is posted when the server says so: no posted Round 1 stands, and it says what it would cost', () => {
+    const fresh: CompareSource[] = SOURCES.map((s) =>
+      s.kind === 'priced'
+        ? {
+            kind: 'priced',
+            column: { ...s.column, results: { ...s.column.results, as_if_unposted: true } },
+          }
+        : s
+    )
+    const after = compareRows(fresh, {
+      byTier: false,
+      locked: true,
+      effectName: 'Rules v4',
+      names: NAMES,
+    })
+    const labels = after.map((r) => r.label)
+    expect(labels).toContain('Spend as if nothing is posted, by pool')
+    expect(labels).not.toContain('Spend, by pool')
+    expect(labels).toContain('Would remain')
+    expect(labels).not.toContain('Remaining')
+    expect(after.find((r) => r.label === 'Round 1')?.cells.map((c) => c.note ?? null)).toEqual([
+      null,
+      null,
+      null,
+      null,
+    ])
   })
 
   it('projects each priced column, never last season', () => {

@@ -31,7 +31,7 @@ export function documentKey(document: unknown): string {
 
 /**
  * A document priced on the held applications (§S5 E: the strip's draft figures and its starting point's), on the
- * Price ▾ request set. Evaluate writes nothing, so it is a cached read: its answer is fixed by its key (the document,
+ * Price ▾ request set, and as if nothing were posted when Posted ▾ asks. Evaluate writes nothing, so it is a cached read: its answer is fixed by its key (the document,
  * the snapshot and the request set) except for what the rules and money writers move (an approval, a posted round,
  * the budget), so `invalidateAidRulesQueries` and `invalidateAidMoneyQueries` refresh it. A scenario write
  * (`invalidateAidScenarioQueries`) leaves it alone: a release, a load or Update Applications changes the key itself
@@ -41,7 +41,9 @@ export function documentKey(document: unknown): string {
 export function useAidScenarioPricing(
   document: ApiAidRulesDocumentIn | null | undefined,
   requestSet: AidRequestSet,
-  snapshotId: string | null
+  snapshotId: string | null,
+  /** Posted ▾ (owner, 2026-10-10): every request priced as if nothing were posted. */
+  asIfUnposted = false
 ) {
   const year = useYear()
   const { fetchWithAuth } = useApiWithAuth()
@@ -49,13 +51,22 @@ export function useAidScenarioPricing(
   const { hasPermission } = usePermissions()
   const key = document === null || document === undefined ? '' : documentKey(document)
   return useQuery({
-    queryKey: queryKeys.aidScenarioEvaluate(year, snapshotId ?? '', setKey(requestSet), key),
+    queryKey: queryKeys.aidScenarioEvaluate(
+      year,
+      snapshotId ?? '',
+      `${setKey(requestSet)}${asIfUnposted ? ':unposted' : ''}`,
+      key
+    ),
     queryFn: ({ signal }) => {
       if (document === null || document === undefined) throw new Error('Nothing to price')
       return evaluateAidScenario(
         fetchWithAuth,
         year,
-        { document, ...requestSetBody(requestSet) },
+        {
+          document,
+          ...requestSetBody(requestSet),
+          ...(asIfUnposted ? { as_if_unposted: true } : {}),
+        },
         signal
       )
     },

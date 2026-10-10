@@ -129,10 +129,17 @@ describe('the URL view (§S5 L)', () => {
       draft: true,
       lastSeason: true,
       byTier: true,
+      asIfUnposted: false,
       anyColumn: true,
     })
     const old = parseView(new URLSearchParams('panel=trail&trail_page=3&through=2027-02-30'))
     expect([old.panel, old.requestSet, old.anyColumn]).toEqual(['sandbox', { kind: 'all' }, false])
+  })
+
+  it('reads the pricing mode: as if nothing is posted only on unposted=1, regular otherwise', () => {
+    expect(parseView(new URLSearchParams('unposted=1')).asIfUnposted).toBe(true)
+    expect(parseView(new URLSearchParams('unposted=0')).asIfUnposted).toBe(false)
+    expect(parseView(new URLSearchParams('')).asIfUnposted).toBe(false)
   })
 
   it('writes a request set back, and words it for the corner cell', () => {
