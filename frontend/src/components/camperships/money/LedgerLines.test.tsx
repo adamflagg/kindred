@@ -216,7 +216,14 @@ describe('the lines card, as the final mock draws it (★13, §23)', () => {
     await within(panel).findByText('reversed Mar 9')
     expect(within(panel).getByRole('table').parentElement?.className).toContain('max-h-[420px]')
     // The header is the shorthand; its help names the program in CampMinder in full.
-    expect(within(panel).getByText('Program (in CM)')).toBeInTheDocument()
+    const program = within(panel).getByRole('columnheader', { name: 'Program (in CM)' })
+    expect(program).toHaveAttribute(
+      'title',
+      'Program (in CampMinder): the program the money was posted under'
+    )
+    // Still sortable: a native title, not the tooltip help (which turns sorting off).
+    await userEvent.click(within(program).getByRole('button'))
+    expect(program).toHaveAttribute('aria-sort', 'ascending')
     for (const header of [
       'Family',
       'Camper',

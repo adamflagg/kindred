@@ -140,7 +140,7 @@ export function LedgerLines({
       {
         key: 'program',
         header: 'Program (in CM)',
-        help: 'Program (in CampMinder): the program the money was posted under',
+        headerTitle: 'Program (in CampMinder): the program the money was posted under',
         width: 124,
         value: (l) => (l.program === '' ? '' : summaryProgramWords(l.program, l.program_label)),
         title: (l) =>
