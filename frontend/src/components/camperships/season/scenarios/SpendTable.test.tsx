@@ -71,7 +71,7 @@ describe('the Spend table (final mock; scenarios-3)', () => {
       '',
       '',
       '2',
-      '6',
+      '5',
       '3',
       '',
     ])

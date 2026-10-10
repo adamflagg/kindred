@@ -1,19 +1,16 @@
 /**
- * Scenarios' notes (final mock: six, in ONE list): 1-4 are the registry's (`season-scenarios`: Spend, Remaining,
- * Projected, Below the line), 5 and 6 the page's own (Locked, Change colours). The tier, ceiling, equity-class and
- * current-year definitions ride in their headers' and fields' titles now, not in numbered notes.
+ * Scenarios' notes (final mock: six, in ONE list; Locked left with the sandbox's lock, owner 2026-10-10: five): 1-4 are
+ * the registry's (`season-scenarios`: Spend, Remaining, Projected, Below the line), 5 the page's own (Change colours).
+ * The tier, ceiling, equity-class and current-year definitions ride in their headers' and fields' titles now, not in
+ * numbered notes.
  */
 import type { DefinitionNote } from '../../kit/DefinitionNotes'
 import { RULES_FOOTNOTES } from '../rules/rulesLayout'
 
 export const REGISTRY_NOTE = { spend: 1, remaining: 2, projected: 3, below: 4 } as const
-export const PAGE_NOTE = { locked: 5, colours: 6 } as const
+export const PAGE_NOTE = { colours: 5 } as const
 
 export const SCENARIO_PAGE_NOTES: readonly DefinitionNote[] = [
-  {
-    n: PAGE_NOTE.locked,
-    text: 'Locked: a posted round read it. Round 1 locks the bands, Round 1 %, minimum, equity and income counting; Round 2 locks the cap.',
-  },
   {
     n: PAGE_NOTE.colours,
     text: 'Change colours: green leaves more money, amber less. An edited setting is amber, its old value in its title. In Compare, amber marks a setting unlike the rules in effect.',

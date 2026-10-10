@@ -19315,10 +19315,6 @@ export type WorkspaceOut = {
     | 'milestones'
   >
   /**
-   * Locked By Round
-   */
-  locked_by_round?: number | null
-  /**
    * Last Rules Version
    */
   last_rules_version?: number | null

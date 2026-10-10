@@ -35,7 +35,8 @@ const message = (caught: unknown, fallback: string) =>
  * - `type` holds a box's text by its path: the strip prices the typed document (`pricedDocument`, the last one with
  *   no bad figure, once the typing pauses) and nothing is recorded;
  * - `release` (leaving a box, or Enter) records the typed document in one PUT /draft: one trail row per release;
- *   a refusal (a 409 lock, a conflict) keeps the typing and puts the server's words in `error`. With no applications
+ *   a refusal (a conflict, a write that failed) keeps the typing and puts the server's words in `error`. A posted
+ *   round's lock never refuses one: the sandbox never locks (owner, 2026-10-10). With no applications
  *   held yet, nothing is sent and the typing stays (disagreement 17);
  * - every write (release, load, discard, keep, update, Use It) runs after the one before, in the order asked, so a
  *   load or a keep clicked while a box still holds typing waits for that typing to be recorded first;

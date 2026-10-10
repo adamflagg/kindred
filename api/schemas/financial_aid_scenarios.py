@@ -162,9 +162,8 @@ class WorkspaceOut(BaseModel):
     options: list[OptionOut]
     # the rules draft's version while it differs from the rules in effect: the cue for Start from's third entry
     rules_draft_version: int | None = None
-    # a posted round locked these (§S11.3): the screen greys from them alone
+    # a posted round locked these (§S11.3): Spend and Compare say its amounts stand. The sandbox never greys from them.
     locked_sections: list[SectionName] = Field(default_factory=list)
-    locked_by_round: int | None = None
     last_rules_version: int | None = None  # last season's approved version: Start from's "(none approved)"
 
 

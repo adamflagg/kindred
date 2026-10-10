@@ -323,7 +323,7 @@ describe('the promotion dialog (review m3, m4, m7, m8, m9, ⚠1)', () => {
   it('shows a locked refusal from the preview in the server’s words, with nothing to confirm', async () => {
     preview = undefined
     previewError = new AidApiError(
-      'Round 1 award table is locked: Round 1 is posted, so Scenarios models only what is still open.',
+      "Round 1 award table is locked: Round 1 is posted, so a kept option can't change it in the rules draft.",
       409
     )
     await renderDialog()

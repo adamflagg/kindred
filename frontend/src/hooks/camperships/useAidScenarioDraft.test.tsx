@@ -118,8 +118,8 @@ describe('useAidScenarioDraft', () => {
   it('keeps the typing and says the server’s words when a release is refused (Review Focus 1)', async () => {
     save.mockRejectedValueOnce(
       new AidWriteError(
-        'Round 1 award table is locked: Round 1 is posted, so Scenarios models only what is still open.',
-        409
+        'Update Applications first: every scenario is priced on the applications held',
+        422
       )
     )
     const { result } = setup()
@@ -130,7 +130,7 @@ describe('useAidScenarioDraft', () => {
     })
     expect(landed).toBe(false)
     expect(result.current.error).toBe(
-      'Round 1 award table is locked: Round 1 is posted, so Scenarios models only what is still open.'
+      'Update Applications first: every scenario is priced on the applications held'
     )
     expect(result.current.edits.get('award_tables.general.tiers.1.r1_pct')).toBe('85')
     act(() => result.current.type('award_tables.general.tiers.1.r1_pct', '86')) // the next action clears it

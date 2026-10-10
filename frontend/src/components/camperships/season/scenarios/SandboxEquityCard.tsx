@@ -14,14 +14,11 @@ import {
 import { equityClasses, equityRows } from '../rules/rulesCards'
 import { documentGroups } from '../rules/tierGrid'
 import { SandboxBox } from './SandboxBox'
-import { LockNoteView } from './SandboxTierCard'
 import {
   cardProblems,
   classLabel,
   enabledKey,
   fixFirstWords,
-  keyLocked,
-  lockNote,
   poolHeadLabel,
   weightKey,
   type SandboxBinding,
@@ -29,7 +26,7 @@ import {
 import { TITLE_WORDS } from './scenarioNotes'
 import { CARD_SHELL, CHECK_CHANGED, GROUP_HEAD } from './scenarioStyles'
 
-/** The kit's check (`.cf-ck`): the forest accent, 13px; greyed when locked, as the boxes are. */
+/** The kit's check (`.cf-ck`): the forest accent, 13px; greyed only without `rules`, as the boxes are. */
 const CHECK =
   'accent-primary size-[13px] cursor-pointer align-middle disabled:cursor-not-allowed disabled:opacity-50'
 
@@ -40,15 +37,11 @@ export function SandboxEquityCard({ binding }: { binding: SandboxBinding }) {
   const content = binding.typed.equity as unknown as Record<string, unknown>
   const before =
     binding.source === null ? null : (binding.source.equity as unknown as Record<string, unknown>)
-  const note = lockNote('equity', binding.locked, binding.byRound)
   const classes = equityClasses(content, documentGroups(binding.typed))
   const fixFirst = fixFirstWords(cardProblems(binding.problems, 'equity'), binding.typed)
   return (
     <section data-card="sandbox-equity" className={CARD_SHELL}>
-      <div className="flex flex-wrap items-center gap-2">
-        <h3 className={CS_CARD_HEADING}>Equity</h3>
-        {note !== null && <LockNoteView text={note} />}
-      </div>
+      <h3 className={CS_CARD_HEADING}>Equity</h3>
       {fixFirst !== null && <p className={CS_AMBER_NOTE}>{fixFirst}</p>}
       <div className={RG_WRAP_FIT}>
         <table className={RG_TABLE_FIT}>
@@ -85,7 +78,7 @@ export function SandboxEquityCard({ binding }: { binding: SandboxBinding }) {
                       aria-label={`${row.label} enabled`}
                       className={`${CHECK} ${binding.was(key) !== null ? CHECK_CHANGED : ''}`}
                       checked={row.enabled}
-                      disabled={!binding.canEdit || keyLocked(key, binding.locked)}
+                      disabled={!binding.canEdit}
                       onChange={(event) => {
                         binding.type(key, String(event.target.checked))
                         binding.release()

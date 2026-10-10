@@ -1,10 +1,11 @@
 import { useState } from 'react'
 
-import { boxText, keyLocked, type SandboxBinding } from './sandboxModel'
+import { boxText, type SandboxBinding } from './sandboxModel'
 import { BOX_BAD, BOX_CHANGED } from './scenarioStyles'
 
-/** The kit's small input (`.cf-input.sm`): 24px, 12.5px, right-aligned, tabular, radius 8, white; greyed when locked
- * (`.cf-input:disabled`: a muted fill, muted ink, no shadow). */
+/** The kit's small input (`.cf-input.sm`): 24px, 12.5px, right-aligned, tabular, radius 8, white; greyed only without
+ * `rules` (`.cf-input:disabled`: a muted fill, muted ink, no shadow). A posted round never greys it: the sandbox never
+ * locks (owner, 2026-10-10). */
 const BOX =
   'bg-card border-border text-foreground box-border h-6 rounded-lg border px-1.5 text-right text-[12.5px] leading-[18px] tabular-nums shadow-[0_1px_2px_hsl(var(--shadow-color)/0.07)] hover:border-[color-mix(in_oklab,var(--color-primary)_50%,var(--color-border))] focus-visible:border-[color-mix(in_oklab,var(--color-primary)_50%,var(--color-border))] focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:outline-none disabled:cursor-not-allowed disabled:bg-[color-mix(in_oklab,var(--color-muted)_70%,var(--color-card))] disabled:text-muted-foreground disabled:shadow-none disabled:hover:border-border'
 const UNIT = 'text-muted-foreground font-normal'
@@ -33,7 +34,6 @@ export function SandboxBox({
   const [focused, setFocused] = useState(false)
   const bad = binding.bad(boxKey)
   const was = binding.was(boxKey)
-  const off = !binding.canEdit || keyLocked(boxKey, binding.locked)
   const raw = binding.value(boxKey)
   return (
     <span className="inline-flex items-center gap-1 whitespace-nowrap">
@@ -45,7 +45,7 @@ export function SandboxBox({
         value={focused ? raw : boxText(boxKey, raw)}
         placeholder={placeholder}
         title={was !== null && !bad ? was : undefined}
-        disabled={off}
+        disabled={!binding.canEdit}
         onChange={(event) => binding.type(boxKey, event.target.value.replaceAll(',', ''))}
         onFocus={() => setFocused(true)}
         onBlur={() => {

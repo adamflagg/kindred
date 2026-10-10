@@ -127,7 +127,7 @@ function Where() {
 
 function renderAt(search = '', ws: Partial<ApiAidScenarioWorkspace> = {}) {
   read = {
-    data: workspace({ last_rules_version: 3, locked_sections: [], locked_by_round: null, ...ws }),
+    data: workspace({ last_rules_version: 3, locked_sections: [], ...ws }),
     isLoading: false,
     error: null,
   }
@@ -270,8 +270,7 @@ describe('the control line (§S5 A)', () => {
   })
 
   it('shows a refusal as one amber line in the server’s words', () => {
-    work.error =
-      'Round 1 award table is locked: Round 1 is posted, so Scenarios models only what is still open.'
+    work.error = 'Update Applications first: every scenario is priced on the applications held'
     renderAt()
     expect(screen.getByText(work.error)).toBeInTheDocument()
   })
@@ -350,24 +349,23 @@ describe('the sandbox (§S5 E–G)', () => {
     expect(screen.queryByText('Fit uses every application held')).toBeNull()
   })
 
-  it('turns Fit off after Round 1 posts', () => {
-    renderAt('', { locked_sections: ['award_tables'], locked_by_round: 1 })
-    expect(screen.getByRole('button', { name: 'Fit to Budget' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Fit to Budget' })).toHaveAttribute(
-      'title',
-      'Off once Round 1 posts'
-    )
+  // Owner, 2026-10-10: "scenarios sandbox should never lock anything unlike the real rules".
+  it('keeps Fit on after Round 1 and Round 2 post', () => {
+    renderAt('', {
+      locked_sections: ['income', 'tiers', 'equity', 'award_tables', 'round2', 'awards'],
+    })
+    expect(screen.getByRole('button', { name: 'Fit to Budget' })).toBeEnabled()
   })
 
-  it('greys the locked cards with one note each', () => {
+  it('never locks a card after a round posts: no lock pill, every box, check and picker open', () => {
     renderAt('', {
-      locked_sections: ['income', 'tiers', 'equity', 'award_tables', 'awards'],
-      locked_by_round: 1,
+      locked_sections: ['income', 'tiers', 'equity', 'award_tables', 'round2', 'awards'],
     })
-    expect(
-      screen.getByText('Locked: Round 1 is posted · the Round 1 + 2 cap stays open')
-    ).toBeInTheDocument()
-    expect(screen.getAllByText('Locked: Round 1 is posted')).toHaveLength(2)
+    expect(screen.queryByText(/^Locked:/)).toBeNull()
+    expect(document.querySelector('[class*="bg-stone"]')).toBeNull()
+    for (const box of screen.getAllByRole('textbox')) expect(box).toBeEnabled()
+    for (const check of screen.queryAllByRole('checkbox')) expect(check).toBeEnabled()
+    expect(screen.getByRole('button', { name: /^Dependents:/ })).toBeEnabled()
   })
 })
 

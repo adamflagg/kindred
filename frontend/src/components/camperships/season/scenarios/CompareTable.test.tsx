@@ -222,7 +222,7 @@ describe('CompareTable (§S5 H)', () => {
     const projected = screen.getByText('Projected season').closest('td')!
     expect(within(projected).getByText('3', { selector: 'sup' })).toBeInTheDocument()
     const corner = screen.getByText('Priced on 420 applications held').closest('th')!
-    expect(within(corner).getByText('6', { selector: 'sup' })).toBeInTheDocument()
+    expect(within(corner).getByText('5', { selector: 'sup' })).toBeInTheDocument()
   })
 
   it('shows the kit’s dashed empty box when no applications are held (scenarios-12)', () => {

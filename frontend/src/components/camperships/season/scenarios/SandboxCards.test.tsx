@@ -8,25 +8,19 @@ import { SandboxTierCard } from './SandboxTierCard'
 import { SANDBOX_DOC } from './sandboxFixtures'
 import { bindingOf } from './sandboxModel'
 
-function setup(
-  over: { edits?: Record<string, string>; locked?: string[]; byRound?: number | null } = {}
-) {
+function setup(over: { edits?: Record<string, string>; canEdit?: boolean } = {}) {
   const type = vi.fn<(key: string, raw: string) => void>()
   const release = vi.fn<() => void>()
   const binding = bindingOf({
     recorded: SANDBOX_DOC,
     source: SANDBOX_DOC,
     edits: new Map(Object.entries(over.edits ?? {})),
-    locked: over.locked ?? [],
-    byRound: over.byRound ?? null,
-    canEdit: true,
+    canEdit: over.canEdit ?? true,
     type,
     release,
   })
   return { binding, type, release }
 }
-
-const ROUND1 = ['income', 'tiers', 'equity', 'award_tables', 'awards']
 
 describe('the three cards’ titles (V F7)', () => {
   it('keeps each title in the card face: 13.5px sans, whatever the bare h3 rule says (as the Rules tab’s cards)', () => {
@@ -111,8 +105,6 @@ describe('Tiers & Round 1 (§S5 F1)', () => {
       recorded: SANDBOX_DOC,
       source: { ...SANDBOX_DOC, awards: { ...SANDBOX_DOC.awards, minimum: '125.50' } },
       edits: new Map(),
-      locked: [],
-      byRound: null,
       canEdit: true,
       type,
       release,
@@ -124,29 +116,14 @@ describe('Tiers & Round 1 (§S5 F1)', () => {
     )
   })
 
-  it('greys the boxes after Round 1 posts, says so once in the stone pill, and keeps the cap open', () => {
-    const { binding } = setup({ locked: ROUND1, byRound: 1 })
-    render(<SandboxTierCard binding={binding} fitButton={null} fitAnswer={null} />)
-    const pill = screen.getByText('Locked: Round 1 is posted · the Round 1 + 2 cap stays open')
-    // the kit's stone pill, titled, with note 5 (scenarios-8)
-    expect(pill).toHaveClass('bg-stone-200')
-    expect(pill).toHaveAttribute('title', 'A posted round read these settings')
-    expect(pill.parentElement?.querySelector('sup')).toHaveTextContent('5')
-    expect(screen.getByRole('textbox', { name: 'Band width' })).toBeDisabled()
-    expect(screen.getByRole('textbox', { name: 'Round 1 % · General · tier 1' })).toBeDisabled()
-    expect(
-      screen.getByRole('textbox', { name: 'Round 1 + 2 cap · General · tier 1' })
-    ).toBeEnabled()
-  })
-
-  it('keeps the locked card white (no tint, no lock icons): the greyed boxes carry the lock (scenarios-5, -8)', () => {
-    const { binding } = setup({ locked: ROUND1, byRound: 1 })
+  it('greys its boxes only for someone who cannot edit (owner, 2026-10-10: the sandbox never locks)', () => {
+    const { binding } = setup({ canEdit: false })
     const { container } = render(
       <SandboxTierCard binding={binding} fitButton={null} fitAnswer={null} />
     )
-    expect(container.querySelector('[class*="bg-muted/22"]')).toBeNull()
-    expect(container.querySelector('svg')).toBeNull()
+    expect(container.querySelector('[class*="bg-stone"]')).toBeNull()
     const box = screen.getByRole('textbox', { name: 'Band width' })
+    expect(box).toBeDisabled()
     // the kit's .cf-input:disabled: a muted fill and muted ink, no shadow
     expect(box.className).toContain('disabled:bg-[color-mix(in_oklab,var(--color-muted)_70%')
     expect(box).toHaveClass('disabled:text-muted-foreground', 'disabled:shadow-none')
@@ -303,17 +280,6 @@ describe('Equity (§S5 F2)', () => {
       'rounded-[10px]'
     )
   })
-
-  it('stays white and greys its boxes under the lock', () => {
-    const { binding } = setup({ locked: ROUND1, byRound: 1 })
-    const { container } = render(<SandboxEquityCard binding={binding} />)
-    expect(container.querySelector('[class*="bg-muted/22"]')).toBeNull()
-    expect(screen.getByRole('checkbox', { name: 'Unemployment enabled' })).toBeDisabled()
-    expect(screen.getByText('Locked: Round 1 is posted')).toHaveAttribute(
-      'title',
-      'A posted round read these settings'
-    )
-  })
 })
 
 describe('Income counting (§S5 F3)', () => {
@@ -386,8 +352,6 @@ describe('the Sandbox grids follow the rules’ pool order (final mock: "pool or
       recorded: POOLED,
       source: POOLED,
       edits: new Map(),
-      locked: [],
-      byRound: null,
       canEdit: true,
       type: vi.fn(),
       release: vi.fn(),
@@ -424,8 +388,6 @@ describe('the Sandbox grids follow the rules’ pool order (final mock: "pool or
           recorded: lone,
           source: lone,
           edits: new Map(),
-          locked: [],
-          byRound: null,
           canEdit: true,
           type: vi.fn(),
           release: vi.fn(),

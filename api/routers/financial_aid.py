@@ -1508,7 +1508,6 @@ def _workspace_out(workspace: Workspace) -> WorkspaceOut:
         options=[_option_out(kept) for kept in workspace.options],
         rules_draft_version=workspace.rules_draft_version,
         locked_sections=list(workspace.locked_sections),
-        locked_by_round=workspace.locked_by_round,
         last_rules_version=workspace.last_rules_version,
     )
 
