@@ -164,6 +164,7 @@ def to_request_inputs(
         person_cm_id=None if household_level else request.person_cm_id,
         session_cm_id=request.session_cm_id,
         ag_parent_cm_id=ag_parent if ag_parent > 0 else None,
+        session_name=session.name if session is not None and session.name else None,
         program_key=program_key,
         ask=_money(ask),
         cost_override=cost_override,

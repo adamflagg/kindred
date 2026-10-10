@@ -51,7 +51,11 @@ vi.mock('../lib/pocketbase', () => ({
   },
 }))
 vi.mock('../components/YearSelector', () => ({
-  default: () => <div data-testid="year-selector">2027</div>,
+  default: ({ aid }: { aid?: boolean }) => (
+    <div data-testid="year-selector" data-aid={aid ? 'true' : undefined}>
+      2027
+    </div>
+  ),
 }))
 vi.mock('../components/CacheStatus', () => ({ default: () => null }))
 vi.mock('../components/BunkRequestsUpload', () => ({ default: () => null }))
@@ -91,6 +95,13 @@ describe('AppLayout on a Camperships page', () => {
   // Owner ruling 2026-10-01 (supersedes "then Users after a divider", D7/D64/D65):
   // Users and Manage left the bar for the user menu, so the divider that ended the
   // section has nothing to separate and is gone.
+  // Final audit M-E5: only the Camperships subbar gets the kit's white 26px Season picker.
+  it('asks for the kit-dressed Season picker', () => {
+    granted = [VIEW]
+    renderAt('/aid/requests')
+    expect(screen.getByTestId('year-selector')).toHaveAttribute('data-aid', 'true')
+  })
+
   it('shows its five links and no Campers link; Users lives in the user menu, not the bar', () => {
     granted = [VIEW]
     renderAt('/aid/requests')

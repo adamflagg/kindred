@@ -40,4 +40,29 @@ describe('YearSelector', () => {
     // Should display the current year
     expect(screen.getByText('2026')).toBeTruthy()
   })
+
+  // Final audit M-E5: on Camperships the Season picker is the kit's white 26px picker; Summer and
+  // Family Camp keep the shared compact button.
+  it('dresses the button in the kit picker only with the aid prop', () => {
+    const ctx = {
+      currentYear: 2026,
+      setCurrentYear: vi.fn(),
+      availableYears: [2026, 2025],
+      isTransitioning: false,
+      isYearReady: true,
+    }
+    const { unmount } = render(
+      createElement(
+        CurrentYearContext.Provider,
+        { value: ctx },
+        createElement(YearSelector, { aid: true })
+      )
+    )
+    const aidButton = screen.getByText('2026').closest('button') as HTMLElement
+    expect(aidButton).toHaveClass('bg-card', 'text-[12.5px]')
+    expect(aidButton).not.toHaveClass('listbox-button-compact')
+    unmount()
+    renderWithContext(ctx)
+    expect(screen.getByText('2026').closest('button')).toHaveClass('listbox-button-compact')
+  })
 })

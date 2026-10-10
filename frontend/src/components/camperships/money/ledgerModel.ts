@@ -58,10 +58,10 @@ export function programLabelsOf(summary: ApiAidSummary | undefined): Record<stri
  */
 export function programChoicesOf(
   summary: ApiAidSummary | undefined,
-  names: Readonly<Record<string, string>> = {}
+  rank: ProgramRank = NO_RANK
 ): Array<{ value: string; label: string }> {
   if (!summary) return []
-  return pivotRows(summary, names)
+  return pivotRows(summary, rank)
     .filter((row) => !BUCKETS_LAST.includes(row.program))
     .map((row) => ({
       value: row.program,
@@ -69,23 +69,24 @@ export function programChoicesOf(
     }))
 }
 
+/** A program's place in the rules' pool order (`programRank`); every key alike when none is given. */
+export type ProgramRank = (program: string) => number
+const NO_RANK: ProgramRank = () => 0
+
 /**
- * The pivot's rows in the rules' order (R3-10): the programs the rules name, as the rules list them;
- * then any other program, A to Z; then "Household level" and "Not placed" last.
+ * The pivot's rows in pool order (final audit M-E8; R3-10): programs grouped by their budget pool,
+ * the rules' order inside a pool, then any tie A to Z; then "Household level" and "Not placed" last.
  */
 export function pivotRows(
   summary: ApiAidSummary,
-  names: Readonly<Record<string, string>>
+  rank: ProgramRank = NO_RANK
 ): ApiAidProgramSplit[] {
-  const named = Object.keys(names)
-  const rank = (program: string) => {
+  const place = (program: string) => {
     const bucket = BUCKETS_LAST.indexOf(program)
-    if (bucket >= 0) return named.length + 1 + bucket
-    const at = named.indexOf(program)
-    return at >= 0 ? at : named.length
+    return bucket >= 0 ? Number.MAX_SAFE_INTEGER - BUCKETS_LAST.length + bucket : rank(program)
   }
   return [...(summary.by_program ?? [])].sort(
-    (a, b) => rank(a.program) - rank(b.program) || a.program.localeCompare(b.program)
+    (a, b) => place(a.program) - place(b.program) || a.program.localeCompare(b.program)
   )
 }
 

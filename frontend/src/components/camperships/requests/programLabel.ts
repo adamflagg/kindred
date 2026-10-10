@@ -90,3 +90,23 @@ export function programGroups(
       programs: [...programs.values()].sort((x, y) => x.label.localeCompare(y.label)),
     }))
 }
+
+/**
+ * Where a program sits in the pool order (final audit M-E8; "pool order is the rules' order"): its
+ * budget pool's place in the rules' `budget.pools`, then its place among the rules' programs. A
+ * family the rules do not name (Quest, Teen Leadership on a Ledger) belongs to the camp & quest
+ * pool, as that pool's label says, and follows the programs the rules do name there. Ties go to the
+ * caller's own key or label order. With no rules every key ranks alike.
+ */
+export function programRank(rules: ApiAidApprovedRules | undefined): (program: string) => number {
+  const pools = Object.keys(poolLabels(rules))
+  const programs = Object.keys(sectionContent(rules, 'programs') ?? {})
+  const filed = stringField(sectionContent(rules, 'programs'), 'budget_pool')
+  const homePool = Math.max(pools.indexOf('camp_quest'), 0)
+  return (program) => {
+    const known = programs.indexOf(program)
+    const pool = known === -1 ? homePool : Math.max(pools.indexOf(filed[program] ?? ''), 0)
+    // Inside a pool the rules' programs keep the rules' order, and the unnamed ones follow them.
+    return pool * 1000 + (known === -1 ? 999 : known)
+  }
+}

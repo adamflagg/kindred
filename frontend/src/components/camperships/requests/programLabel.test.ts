@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { APPROVED_RULES_2026 } from './approvedRulesFixtures'
-import { programGroups, programLabel, programLabels, poolLabels } from './programLabel'
+import { programGroups, programLabel, programLabels, poolLabels, programRank } from './programLabel'
 
 describe('programLabels (the rules name their own programs)', () => {
   it("reads each program's label from the approved rules' programs section", () => {
@@ -141,5 +141,47 @@ describe('programGroups (T6: one Program dropdown, pools as headings)', () => {
   it('lists a program in no pool last while the read has no answer too', () => {
     const groups = programGroups([{ program: 'not_aided', pool: null }, ...seen], undefined)
     expect(groups.map((g) => g.pool?.value ?? null)).toEqual(['pool_a', 'pool_b', null])
+  })
+})
+
+describe('programRank (final audit M-E8: pool order, then the rules’ order inside a pool)', () => {
+  const entry = (pool: string) => ({ budget_pool: pool })
+  const rules = {
+    ...APPROVED_RULES_2026,
+    sections: [
+      {
+        ...APPROVED_RULES_2026.sections[1]!,
+        // Alphabetical, as the server's object is: not a pool order.
+        content: {
+          family_camp: entry('weekend'),
+          summer: entry('camp_quest'),
+          tbm: entry('tbm'),
+        },
+      },
+      {
+        ...APPROVED_RULES_2026.sections[2]!,
+        content: {
+          total: 1,
+          pools: {
+            camp_quest: { label: 'Camp & Quest' },
+            tbm: { label: 'TBM' },
+            weekend: { label: 'Weekend Programs' },
+          },
+        },
+      },
+    ],
+  }
+
+  it('ranks Summer, then a ledger-only family (Quest, Teen) in the same pool, then TBM, then Family Camp', () => {
+    const rank = programRank(rules)
+    const order = ['family_camp', 'tbm', 'teen', 'quest', 'summer'].sort(
+      (a, b) => rank(a) - rank(b) || a.localeCompare(b)
+    )
+    expect(order).toEqual(['summer', 'quest', 'teen', 'tbm', 'family_camp'])
+  })
+
+  it('ranks every key alike while the rules have not loaded', () => {
+    const rank = programRank(undefined)
+    expect(rank('summer')).toBe(rank('family_camp'))
   })
 })

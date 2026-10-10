@@ -92,7 +92,13 @@ const WITH_SESSIONS: ApiAidGrants = {
             {
               person_cm_id: 2000010,
               name: 'Riley Chen',
-              sessions: [{ session_cm_id: 1000104, name: 'Session 4', session_type: 'main' }],
+              sessions: [
+                {
+                  session_cm_id: 1000104,
+                  name: 'Family Camp 4: Labor Day Weekend (w/ kids 10 and under)',
+                  session_type: 'family',
+                },
+              ],
             },
           ],
         }
@@ -388,7 +394,9 @@ describe('To place › Outside grant posted to the family (M5)', () => {
     await userEvent.click(within(form).getByRole('button', { name: /^Camper:/ }))
     await userEvent.click(within(form).getByRole('option', { name: 'Riley Chen' }))
     expect(within(form).queryByRole('button', { name: /^Session:/ })).toBeNull()
-    expect(within(form).getByText('Session 4, the camper’s one session')).toBeInTheDocument()
+    // Final audit M-E7: the short session form (FC4), the full name in the title.
+    const one = within(form).getByText('FC4, the camper’s one session')
+    expect(one).toHaveAttribute('title', 'Family Camp 4: Labor Day Weekend (w/ kids 10 and under)')
     expect(
       within(form).getByText('it lowers that request’s share in the round it counts in')
     ).toBeInTheDocument()

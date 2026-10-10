@@ -180,6 +180,14 @@ describe('REQUEST_VIEWS (§6.2)', () => {
     expect(GRID_COLUMNS.requestedBy.pinned).toBeUndefined()
   })
 
+  // Final audit M-E4: a household-level request has no person (0): the Person cell reads "—".
+  it('reads a household request’s Person as empty, not the sentinel 0', () => {
+    const ctx = columnContext(requestView('all'), '2027-04-01')
+    const household = gridRow({ person_cm_id: 0 })
+    expect(GRID_COLUMNS.personId.value(household, ctx)).toBeNull()
+    expect(GRID_COLUMNS.personId.value(ROW_EMMA, ctx)).toBe(ROW_EMMA.person_cm_id)
+  })
+
   // T3 (LOCKED): Requested by replaces Family; no view keeps a Family column.
   it('puts Requested by just left of Needs attention in every view, and no Family column (T3)', () => {
     for (const view of REQUEST_VIEWS) {

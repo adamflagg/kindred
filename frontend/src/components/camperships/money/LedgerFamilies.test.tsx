@@ -402,6 +402,11 @@ describe('the total row (★11)', () => {
     expect(within(foot).getByRole('button', { name: '$141,450' })).toBeInTheDocument()
     // 6 + 4 + 3 + 1 lines, 2 + 1 reversed.
     expect(within(foot).getByText('14 · 3 reversed')).toBeInTheDocument()
+    // Final audit D-E1: the Lines total can be cut in its column, so it carries its words.
+    expect(within(foot).getByText('14 · 3 reversed').closest('td')).toHaveAttribute(
+      'title',
+      '14 · 3 reversed'
+    )
     expect(within(foot).getByText('each total opens its lines')).toBeInTheDocument()
   })
 

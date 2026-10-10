@@ -215,15 +215,11 @@ function renderFor(
         return (
           <span className="flex min-w-0 items-center gap-1">
             <Home className="text-muted-foreground h-3 w-3 flex-none" />
-            <HouseholdLink
-              row={row}
-              links={links}
-              className={`${NAME_LINK} max-w-full flex-none truncate`}
-            >
+            <HouseholdLink row={row} links={links} className={`${NAME_LINK} min-w-0 truncate`}>
               {household.text}
             </HouseholdLink>
             {household.tiebreak !== '' && (
-              <span className="text-muted-foreground min-w-0 truncate font-normal">
+              <span className="text-muted-foreground min-w-0 shrink-[999] truncate font-normal">
                 {household.tiebreak}
               </span>
             )}
@@ -368,7 +364,15 @@ function buildColumns(
       sortValue: spec.sortValue,
       render: renderFor(key, ctx, links, onTick),
       mark: spec.noteKey !== undefined ? noteMarks?.[spec.noteKey] : undefined,
-      title: CELL_TITLE[key],
+      // A money cell is cut in a narrow column ($6,866.41 in 74px): its title is the full figure.
+      title:
+        CELL_TITLE[key] ??
+        (spec.money
+          ? (row: ApiAidGridRow) => {
+              const value = asMoney(spec.value(row, ctx))
+              return value === null ? undefined : formatMoney(value)
+            }
+          : undefined),
       footerNote:
         key === 'requestedBy'
           ? (rows: readonly ApiAidGridRow[]) => outsideFooterNote(rows, outsideMark)

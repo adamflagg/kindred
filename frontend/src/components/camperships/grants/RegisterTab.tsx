@@ -5,6 +5,7 @@ import { Link, useSearchParams } from 'react-router'
 import { Permission } from '../../../constants/permissions'
 import { useAidDefinitions } from '../../../hooks/camperships/useAidDefinitions'
 import { useAidGrants } from '../../../hooks/camperships/useAidGrants'
+import { useAidProgramRank } from '../../../hooks/camperships/useAidProgramNames'
 import { usePermissions } from '../../../hooks/usePermissions'
 import type { ApiAidGrantRow } from '../../../types/api-types'
 import { QueryGuard } from '../../QueryGuard'
@@ -142,6 +143,7 @@ function StandingCell({ row }: { row: ApiAidGrantRow }) {
  */
 export function RegisterTab({ view }: { view: AidView }) {
   const grants = useAidGrants()
+  const rank = useAidProgramRank()
   const defs = useAidDefinitions('grants')
   const { hasPermission } = usePermissions()
   const canWork = hasPermission(Permission.FINANCIAL_AID_CASEWORK)
@@ -364,7 +366,7 @@ export function RegisterTab({ view }: { view: AidView }) {
         ]
         const programOptions: Array<AidPickerOption<string>> = [
           { value: '', label: 'All' },
-          ...programChoices(data.grants),
+          ...programChoices(data.grants, rank),
         ]
         const pickers = (
           <>
@@ -406,9 +408,6 @@ export function RegisterTab({ view }: { view: AidView }) {
                 />
               }
             />
-            {recording && (
-              <CommitmentForm year={data.year} onCancel={() => setRecording(false)} onDone={done} />
-            )}
             <AidTable
               rows={rows}
               columns={columns}
@@ -419,6 +418,15 @@ export function RegisterTab({ view }: { view: AidView }) {
               highlighted={highlighted}
               onHighlight={onHighlight}
               nowrapHeaders
+              belowToolbar={
+                recording ? (
+                  <CommitmentForm
+                    year={data.year}
+                    onCancel={() => setRecording(false)}
+                    onDone={done}
+                  />
+                ) : undefined
+              }
               toolbarLead={pickers}
               searchWidth={190}
               toolbarStatus={

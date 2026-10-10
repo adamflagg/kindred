@@ -95,6 +95,19 @@ def test_family_camp_with_no_rate_for_the_session_is_unknown() -> None:
     assert "1000299" in (cost.missing or "")
 
 
+def test_a_missing_family_rate_names_the_session_by_its_name_not_its_id() -> None:
+    cost = resolve_cost(
+        _family(session_cm_id=1000299, session_name="Family Camp 2", headcount={"standard": 2}),
+        fictional_rules(),
+    )
+    assert cost.missing == "no family-camp rate for Family Camp 2"
+
+
+def test_a_missing_tuition_names_the_session_by_its_name_when_known() -> None:
+    cost = resolve_cost(req(session_cm_id=1000999, session_name="Session 9"), fictional_rules())
+    assert cost.missing == "no tuition for Session 9"
+
+
 def test_a_typed_program_needs_an_override() -> None:
     typed = req(program_key="family_school", session_cm_id=1000501)
     assert resolve_cost(typed, fictional_rules()).amount is None

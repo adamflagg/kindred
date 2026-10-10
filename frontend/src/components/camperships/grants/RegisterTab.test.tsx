@@ -311,6 +311,12 @@ describe('Grants › Register (§8.2)', () => {
     expect(save.parentElement).toBe(
       within(form).getByRole('button', { name: 'Cancel' }).parentElement
     )
+    // Final audit M-E1: the form opens BELOW the toolbar (AidTable's belowToolbar slot), so the
+    // button just clicked never jumps down.
+    expect(
+      screen.getByRole('button', { name: 'Record a Commitment…' }).compareDocumentPosition(form) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
     // The toolbar never shifts: its button stays on the row, off, while the form is open (money-grants.html).
     expect(screen.getByRole('button', { name: 'Record a Commitment…' })).toBeDisabled()
     await userEvent.click(within(form).getByRole('button', { name: 'Grantor: — pick —' }))

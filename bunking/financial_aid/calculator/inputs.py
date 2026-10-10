@@ -117,6 +117,8 @@ class RequestInputs(_Input):
     # price falls back to the parent's tuition or family rate when the AG session has none of its own. None
     # otherwise, embedded sessions included: they carry their own prices.
     ag_parent_cm_id: int | None = None
+    # The session's name, for words only (a missing-price warning names the session, never its CampMinder id).
+    session_name: str | None = None
     program_key: str
     ask: Money | None
     # This camper's own equity answers, keyed by the criterion's `field` (e.g. "bipoc").

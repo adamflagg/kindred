@@ -34,6 +34,11 @@ def _unknown(missing: str) -> CostResolution:
     return CostResolution(amount=None, source="unknown", missing=missing)
 
 
+def _session_words(request: RequestInputs) -> str:
+    """The session in staff words: its name when the caller knows it, else its CampMinder id."""
+    return request.session_name or f"session {request.session_cm_id}"
+
+
 def resolve_cost(request: RequestInputs, rules: AidRules) -> CostResolution:
     program = rules.programs.get(request.program_key)
     if program is None:
@@ -58,7 +63,7 @@ def resolve_cost(request: RequestInputs, rules: AidRules) -> CostResolution:
         if price is None and request.ag_parent_cm_id is not None:
             price = rules.cost.tuition.get(request.ag_parent_cm_id)  # no own price: the AG parent's (spec §8)
         if price is None:
-            return _unknown(f"no tuition for session {request.session_cm_id}")
+            return _unknown(f"no tuition for {_session_words(request)}")
         return CostResolution(amount=price, source="catalog")
     if program.cost_source == "per_person":
         return _per_person(request, rules)
@@ -73,6 +78,6 @@ def _per_person(request: RequestInputs, rules: AidRules) -> CostResolution:
     if rate is None and request.ag_parent_cm_id is not None:  # no own rate: the AG parent's (spec §8)
         rate = next((r for r in rules.cost.family_rates if r.session_cm_id == request.ag_parent_cm_id), None)
     if rate is None:
-        return _unknown(f"no family-camp rate for session {request.session_cm_id}")
+        return _unknown(f"no family-camp rate for {_session_words(request)}")
     amount = rate.standard * (headcount.standard + headcount.children) + rate.infant * headcount.infants
     return CostResolution(amount=amount, source="per_person")

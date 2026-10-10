@@ -613,7 +613,7 @@ export const AppLayout = () => {
                 <span className="text-muted-foreground text-xs font-semibold tracking-wider uppercase">
                   Season
                 </span>
-                <YearSelector />
+                <YearSelector aid={activeProgram === 'aid'} />
               </div>
               {/*
                 WEEKEND'S FRESHNESS STACK — kindred#2570 + kindred#2478 §4.

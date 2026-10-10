@@ -14,6 +14,7 @@ import {
   appliedBy,
   bandSubtitle,
   bandTitle,
+  camperOf,
   campMinderPersonUrl,
   cancellationWords,
   cardShares,
@@ -528,5 +529,31 @@ describe('expectedKindWords (Grants › Expected; D56, P-25)', () => {
       'Expected: Grantor B'
     )
     expect(expectedKindWords({ ...expected, display_name: null })).toBe('Expected: synagogue grant')
+  })
+})
+
+// Final audit: a household-level card is titled with the household's label, as Requests reads it.
+describe('camperOf (a card’s name)', () => {
+  it('is the camper, else the household label, never "Household request"', () => {
+    const camper = householdRequest(gridRow({ camper_name: 'Emma Johnson' }))
+    expect(camperOf(camper)).toBe('Emma Johnson')
+    const household = householdRequest(
+      gridRow({
+        camper_name: '',
+        person_cm_id: 0,
+        household_label: 'Mia & Noah Johnson',
+        household_label_tiebreak: 'Riverside',
+      })
+    )
+    expect(camperOf(household)).toBe('Mia & Noah Johnson')
+    const noLabel = householdRequest(
+      gridRow({
+        camper_name: '',
+        person_cm_id: 0,
+        household_label: '',
+        family_name: 'The Johnson Family',
+      })
+    )
+    expect(camperOf(noLabel)).toBe('The Johnson Family')
   })
 })

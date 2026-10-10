@@ -322,6 +322,7 @@ function FamilyTable({
         width: 120,
         value: (r) => linesWords(r.lines, r.reversed_lines),
         footerNote: () => linesWords(lineCount, reversedCount),
+        footerTitle: () => linesWords(lineCount, reversedCount),
       },
       {
         key: 'level',

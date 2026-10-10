@@ -14,7 +14,7 @@ import { AidDefinitionNotes } from '../../components/camperships/shell/AidDefini
 import { AidPageBand } from '../../components/camperships/shell/AidPageBand'
 import { AidTabNav } from '../../components/camperships/shell/AidTabNav'
 import { toPlaceCount } from '../../components/camperships/money/toPlaceModel'
-import { aidSection, resolveAidTab } from '../../config/aidNav'
+import { aidSection, resolveAidTab, visibleTabs } from '../../config/aidNav'
 import { useAidAsOf } from '../../hooks/camperships/useAidAsOf'
 import { useAidGrants } from '../../hooks/camperships/useAidGrants'
 import { useAidToPlace } from '../../hooks/camperships/useAidToPlace'
@@ -47,7 +47,32 @@ export default function AidMoneyPage() {
   const grants = useAidGrants()
   const placeCount = toPlaceCount(campAid.data?.open_count, grants.data?.needs_camper.length)
   const resolved = resolveAidTab(MONEY, tab, { hasPermission })
-  if (resolved.kind === 'denied') return <PermissionDeniedPage />
+  if (resolved.kind === 'denied') {
+    // Final audit M-E6: a tab this user may not open, on a section they can (development on an old
+    // Ledger link): the Money band, the tabs they have and one plain line, as Requests does.
+    const mine = visibleTabs(MONEY, { hasPermission })
+    const first = mine[0]
+    const refused = MONEY.tabs.find((t) => t.slug === tab)
+    if (first === undefined || refused === undefined) return <PermissionDeniedPage />
+    return (
+      <div className="space-y-3 sm:space-y-4">
+        <AidPageBand
+          icon={Landmark}
+          title={MONEY.label}
+          subtitle={`Season ${String(year)} · what CampMinder posted`}
+          asOf={asOf}
+        />
+        <AidTabNav section={MONEY} tabs={mine} view={view} />
+        <div className="border-border bg-card text-muted-foreground rounded-xl border border-dashed px-4 py-3.5 text-[13.5px] leading-normal">
+          Development opens{' '}
+          <Link className={CS_LINK} to={aidHref(`${MONEY.path}/${first.slug}`, view)}>
+            {MONEY.label} › {first.label}
+          </Link>{' '}
+          only: {refused.label} isn&apos;t one of its tabs.
+        </div>
+      </div>
+    )
+  }
   if (resolved.kind === 'first') {
     // A bare or unknown tab opens the first one this user may see: the Ledger for view holders,
     // Funders for development (owner 10-08; Decision 2's "To place first" is revisited).

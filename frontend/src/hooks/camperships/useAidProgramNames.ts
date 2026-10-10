@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 
-import { programLabels } from '../../components/camperships/requests/programLabel'
+import { programLabels, programRank } from '../../components/camperships/requests/programLabel'
 import { useAidApprovedRules } from './useAidRules'
 
 /**
@@ -11,4 +11,10 @@ import { useAidApprovedRules } from './useAidRules'
 export function useAidProgramNames(): Readonly<Record<string, string>> {
   const rules = useAidApprovedRules(null)
   return useMemo(() => programLabels(rules.data), [rules.data])
+}
+
+/** Where each program sits in the rules' pool order (`programRank`); shares the rules read's cache entry. */
+export function useAidProgramRank(): (program: string) => number {
+  const rules = useAidApprovedRules(null)
+  return useMemo(() => programRank(rules.data), [rules.data])
 }

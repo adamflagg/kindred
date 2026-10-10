@@ -114,3 +114,22 @@ describe('the Program filter (program_label, #3090)', () => {
     expect(programChoices([quest])).toEqual([{ value: 'quest', label: 'Other program' }])
   })
 })
+
+describe('the Program filter order (final audit M-E8)', () => {
+  it('follows the rank it is given, then the label', () => {
+    const row = (family: string, label: string) => ({
+      ...GRANTS.grants[0]!,
+      program_family: family,
+      program_label: label,
+    })
+    const rows = [row('family_camp', 'Family Camp'), row('summer', 'Summer'), row('quest', 'Quest')]
+    const rank = (p: string) => ({ summer: 0, quest: 1, family_camp: 2 })[p] ?? 9
+    expect(programChoices(rows, rank).map((c) => c.value)).toEqual([
+      'summer',
+      'quest',
+      'family_camp',
+    ])
+    // With no rank (the rules not loaded) it stays A to Z by label.
+    expect(programChoices(rows).map((c) => c.label)).toEqual(['Family Camp', 'Quest', 'Summer'])
+  })
+})

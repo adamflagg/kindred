@@ -97,6 +97,14 @@ def test_application_inputs_use_corrected_values_as_decimals_and_carry_every_fig
     assert inputs.income_override is None
 
 
+def test_the_session_name_reaches_the_calculator_for_words_only() -> None:
+    named = to_request_inputs(
+        _summer_request(), _ask("1500.00"), None, "summer", session=SessionRow(1000102, "Session 2", "main")
+    )
+    assert named.session_name == "Session 2"
+    assert to_request_inputs(_summer_request(), _ask("1500.00"), None, "summer").session_name is None
+
+
 def test_a_blank_gross_income_reaches_the_calculator_as_none_and_is_not_priced() -> None:  # Review Focus 6
     inputs = to_application_inputs(1000001, effective(stored_answers()))
     assert (inputs.prior_year_gross, inputs.current_year_gross, inputs.prior_year_agi) == (None, None, None)
