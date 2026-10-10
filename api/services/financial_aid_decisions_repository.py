@@ -464,7 +464,7 @@ class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
             {
                 "filter": f"year = {int(year)} && funder_type = 'camp'",
                 "sort": "transaction_cm_id,id",
-                "fields": "transaction_cm_id,effective_source_key,flags",
+                "fields": "transaction_cm_id,effective_source_key,flags,transaction_note",
             },
         )
         details: dict[int, LineDetail] = {}
@@ -476,6 +476,7 @@ class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
                 txn,
                 known.description_key if known is not None else str(row.effective_source_key or ""),
                 tuple(sorted(flags | set(known.flags if known is not None else ()))),
+                known.note if known is not None and known.note else str(getattr(row, "transaction_note", "") or ""),
             )
         return details
 

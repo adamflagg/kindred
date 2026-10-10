@@ -2283,6 +2283,10 @@ export type CandidateOut = {
    * Cancelled
    */
   cancelled: boolean
+  /**
+   * Rounds
+   */
+  rounds?: Array<RoundStatusOut>
 }
 
 /**
@@ -9426,6 +9430,23 @@ export type NewVsReturning = {
 }
 
 /**
+ * NoRequestOut
+ *
+ * Why a no_request line found no request (display only): nobody in the household applied, the line's camper
+ * did not, or the camper's request was withdrawn. `person` names the camper ("" for the household).
+ */
+export type NoRequestOut = {
+  /**
+   * Kind
+   */
+  kind: 'household_no_application' | 'person_no_application' | 'withdrawn'
+  /**
+   * Person
+   */
+  person?: string
+}
+
+/**
  * NotBuiltOut
  *
  * A figure Reports doesn't show yet, and what it waits on. Unlike a past date's NotRebuiltOut, it never names a
@@ -14419,6 +14440,22 @@ export type RetentionTrendsResponse = {
 }
 
 /**
+ * ReversedOut
+ *
+ * A camp-aid line of the household CampMinder reversed just before this one was posted (display only).
+ */
+export type ReversedOut = {
+  /**
+   * Amount
+   */
+  amount: number
+  /**
+   * Reversed On
+   */
+  reversed_on: string
+}
+
+/**
  * RosterCounts
  *
  * Honest counts, at the level the board DRAWS -- see `drawn_units`. A
@@ -15037,6 +15074,28 @@ export type RoundRef = {
    * Round
    */
   round: 1 | 2 | 3
+}
+
+/**
+ * RoundStatusOut
+ *
+ * One round of a candidate request, for the opened row's status line ("R1 Posted $1,420 · R2 decided $780").
+ * `status` is the pricing's own (posted, needs_offer, held, ...). `amount` is what a posted round locked, else its
+ * decided amount, None when nothing is decided. Display only: no total, count or class reads it.
+ */
+export type RoundStatusOut = {
+  /**
+   * Round
+   */
+  round: number
+  /**
+   * Status
+   */
+  status: string
+  /**
+   * Amount
+   */
+  amount?: number | null
 }
 
 /**
@@ -17789,6 +17848,15 @@ export type ToPlaceLineOut = {
    * Household Label Tiebreak
    */
   household_label_tiebreak?: string
+  /**
+   * Posting Note
+   */
+  posting_note?: string
+  /**
+   * Reposted After
+   */
+  reposted_after?: Array<ReversedOut>
+  no_request?: NoRequestOut | null
 }
 
 /**
