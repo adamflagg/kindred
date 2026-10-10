@@ -107,7 +107,9 @@ vi.mock('../components/BrandedLogo', () => ({
 }))
 
 vi.mock('../components/VersionInfo', () => ({
-  VersionInfo: () => null,
+  VersionInfo: ({ className = '' }: { className?: string }) => (
+    <div data-testid="version-info" className={className} />
+  ),
 }))
 
 vi.mock('../components/FeedbackModal', () => ({
@@ -212,6 +214,16 @@ describe('View as switcher', () => {
     fireEvent.click(screen.getByRole('button', { name: /View as…/ }))
     expect(screen.getByTestId('view-as-menu')).toBeInTheDocument()
     expect(screen.queryByText('My Account')).toBeNull()
+  })
+
+  // Owner ruling (final audit): the version moves into the user menu, never fixed on the page.
+  it('keeps the version in the user menu, not fixed at the bottom of the page', () => {
+    renderAppLayout()
+    expect(screen.queryByTestId('version-info')).toBeNull()
+    fireEvent.click(screen.getByText('Jane Smith'))
+    const version = screen.getByTestId('version-info')
+    expect(version.closest('.fixed')).toBeNull()
+    expect(version.closest('.card-lodge')).not.toBeNull()
   })
 
   it('has no "View as…" item for anyone who cannot switch', () => {

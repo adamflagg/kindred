@@ -84,13 +84,15 @@ async def test_without_placements_the_levels_are_gos() -> None:
 
 @pytest.mark.asyncio
 async def test_a_split_lines_placed_dollars_count_as_placed_in_the_camp_aid_shares() -> None:
-    """D151 in the F10 shares too: a split line's placed dollars are "placed"; the unplaced part keeps Go's level
-    (program_family: household). The outside grant (9004) is never in the shares."""
+    """D151 in the F10 shares too: a split line's placed dollars are "placed". The unplaced part keeps Go's level,
+    program_family, which is placed on a program: owner ruling (final audit), Family Camp household-request money counts
+    as placed on a request, so the household-level share is only the program table's "Household level" row
+    (ambiguous). The outside grant (9004) is never in the shares."""
     service = FinancialAidLedgerService(_repo(fetch_postings=_four_lines()))
     got = await service.summary(2027, split_placed={9001: Decimal(2500), 9002: Decimal(1000), 9004: Decimal(300)})
     assert [(lvl.group, lvl.amount, lvl.share) for lvl in got.camp_aid_levels] == [
-        ("placed", 3500.0, 0.7955),
-        ("household", 900.0, 0.2045),
+        ("placed", 4400.0, 1.0),
+        ("household", 0.0, 0.0),
         ("not_placed", 0.0, 0.0),
     ]
     assert (got.camp_aid, got.outside_grants) == (4400.0, 300.0)

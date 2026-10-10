@@ -545,6 +545,9 @@ export const AppLayout = () => {
                           <LogOut className="h-4 w-4" />
                           Sign Out
                         </button>
+
+                        {/* The version, a muted line (owner ruling, final audit): no longer fixed on the page. */}
+                        <VersionInfo compact className="mt-1 justify-center px-3 pt-1" />
                       </div>
                     )}
                   </div>
@@ -796,11 +799,6 @@ export const AppLayout = () => {
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
         <Outlet />
       </main>
-
-      {/* Version badge - fixed bottom right, subtle */}
-      <div data-app-chrome className="fixed right-4 bottom-4 z-10">
-        <VersionInfo className="opacity-50 transition-opacity hover:opacity-100" />
-      </div>
 
       {/* Feedback Modal */}
       <FeedbackModal isOpen={isFeedbackOpen} onClose={() => setIsFeedbackOpen(false)} />

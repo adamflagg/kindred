@@ -378,6 +378,22 @@ async def test_summary_camp_aid_levels_are_shares_of_camp_aid_only() -> None:
 
 
 @pytest.mark.asyncio
+async def test_program_family_money_is_placed_and_only_the_household_level_row_is_at_household_level() -> None:
+    """Owner ruling (final audit): money attributed to a program (a Family Camp household request) is placed on a
+    request; "at household level" is only the ambiguous bucket, the program table's "Household level" row."""
+    postings = [
+        _posting(9001, 100, -400.0, attribution_level="program_family"),
+        _posting(9002, 200, -100.0, attribution_level="ambiguous", program_family=""),
+    ]
+    got = await FinancialAidLedgerService(_repo(fetch_postings=postings)).summary(2026)
+    assert [(lvl.group, lvl.amount, lvl.share) for lvl in got.camp_aid_levels] == [
+        ("placed", 400.0, 0.8),
+        ("household", 100.0, 0.2),
+        ("not_placed", 0.0, 0.0),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_a_season_with_no_camp_aid_has_zero_shares() -> None:
     got = await FinancialAidLedgerService(_repo(fetch_postings=[_grant(9003, 300, -50.0)])).summary(2026)
     assert [(lvl.group, lvl.share) for lvl in got.camp_aid_levels] == [

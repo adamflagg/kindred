@@ -3,6 +3,8 @@ import { parseVersion } from '../utils/versionParser'
 
 interface VersionInfoProps {
   className?: string
+  /** One muted line for the user menu: "v6.4.0 +5", no product name and no GitHub marks. */
+  compact?: boolean
 }
 
 const GitHubIcon: FC<{ size?: number }> = ({ size = 14 }) => (
@@ -22,7 +24,7 @@ const GitHubIcon: FC<{ size?: number }> = ({ size = 14 }) => (
   </svg>
 )
 
-export const VersionInfo: FC<VersionInfoProps> = ({ className = '' }) => {
+export const VersionInfo: FC<VersionInfoProps> = ({ className = '', compact = false }) => {
   const parsed = parseVersion(import.meta.env.VITE_APP_VERSION)
 
   return (
@@ -35,8 +37,8 @@ export const VersionInfo: FC<VersionInfoProps> = ({ className = '' }) => {
             rel="noopener noreferrer"
             className="flex items-center gap-1.5 text-gray-400 transition-colors hover:text-gray-500"
           >
-            <span>Kindred {parsed.display}</span>
-            {!parsed.ahead && <GitHubIcon />}
+            <span>{compact ? parsed.display : `Kindred ${parsed.display}`}</span>
+            {!parsed.ahead && !compact && <GitHubIcon />}
           </a>
           {parsed.ahead && (
             <a
@@ -46,7 +48,7 @@ export const VersionInfo: FC<VersionInfoProps> = ({ className = '' }) => {
               className="flex items-center gap-1.5 text-gray-400 transition-colors hover:text-gray-500"
             >
               <span>{parsed.ahead.display}</span>
-              <GitHubIcon />
+              {!compact && <GitHubIcon />}
             </a>
           )}
         </>
