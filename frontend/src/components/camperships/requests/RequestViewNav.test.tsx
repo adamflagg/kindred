@@ -132,7 +132,7 @@ describe('RequestViewNav: the views strip (T4; mock v=f, ls=b, po=b, rv=todo)', 
   // in it, or while it is picked. Full label, red unless amber.
   it('shows To reverse, red, when its count is non-zero', () => {
     strip()
-    expect(link('To reverse').className).toContain('bg-red-100')
+    expect(link('To reverse').className).toContain('bg-red-50')
     expect(link('To reverse')).not.toHaveAttribute('data-state')
   })
 
@@ -152,7 +152,7 @@ describe('RequestViewNav: the views strip (T4; mock v=f, ls=b, po=b, rv=todo)', 
       strip({ counts: new Map([...COUNTS, [key, count(0)]]), stage: key })
       expect(badgeLink(key)).toHaveAttribute('data-state', 'on')
       expect(badgeLink(key)).toHaveTextContent(`${labelOf(key)} 0`)
-      expect(badgeLink(key)?.className).not.toMatch(/bg-(red|amber)-100/)
+      expect(badgeLink(key)?.className).not.toMatch(/bg-(red|amber)-(50|100)/)
     }
   )
 
@@ -164,7 +164,7 @@ describe('RequestViewNav: the views strip (T4; mock v=f, ls=b, po=b, rv=todo)', 
 
   it('keeps normal-width badges with their full labels', () => {
     strip()
-    expect(link('Session unclear').className).toContain('px-2')
+    expect(link('Session unclear').className).toContain('px-[9px]')
     expect(link('Session unclear').className).not.toContain('px-[6px]')
   })
 
@@ -198,15 +198,73 @@ describe('RequestViewNav: the views strip (T4; mock v=f, ls=b, po=b, rv=todo)', 
     expect(nav.className).not.toContain('flex-wrap')
   })
 
-  it('tones a to-do count amber and a zero one muted; Waiting on the family is watched, not to do', () => {
+  // ux3 requests-5: the mock pills only Not reconciled (even at 0) and the picked stage (amber-400);
+  // every other count is plain muted text.
+  it('pills only Not reconciled and the picked stage; every other count is plain muted', () => {
     strip()
-    expect(within(link('Needs an offer')).getByText('14').className).toContain('bg-amber-100')
-    expect(within(link('Not reconciled')).getByText('0').className).not.toContain('bg-amber-100')
-    expect(within(link('Waiting on the family')).getByText('5').className).not.toContain(
-      'bg-amber-100'
-    )
-    expect(link('On hold').className).toContain('bg-red-100')
+    const plain = (el: HTMLElement) => {
+      expect(el.className).not.toMatch(/\bbg-amber/)
+      expect(el.className).toContain('text-muted-foreground')
+    }
+    plain(within(link('Needs an offer')).getByText('14'))
+    plain(within(link('Pending approval')).getByText('3'))
+    plain(within(link('Waiting on the family')).getByText('5'))
+    expect(within(link('Not reconciled')).getByText('0').className).toContain('bg-amber-100')
+  })
+
+  it('pills the picked stage count amber-400 on forest-900', () => {
+    strip({ stage: 'needs_offer' })
+    const picked = within(link('Needs an offer')).getByText('14').className
+    expect(picked).toContain('bg-amber-400')
+    expect(picked).toContain('text-forest-900')
+  })
+
+  // A count still loading reads a plain "—": never an amber pill, not on Not reconciled, not picked.
+  it('draws a loading count as a plain muted dash, never a pill', () => {
+    strip({ counts: null, stage: 'needs_offer' })
+    for (const name of ['Not reconciled', 'Needs an offer']) {
+      const dash = within(link(name)).getByText('—')
+      expect(dash.className).not.toMatch(/\bbg-amber/)
+      expect(dash.className).toContain('text-muted-foreground')
+    }
+  })
+
+  it('keeps exception badges 22px with the amber and red tones of the mock', () => {
+    strip()
+    expect(link('On hold').className).toContain('h-[22px]')
+    expect(link('On hold').className).toContain('bg-red-50')
     expect(link('Session unclear').className).toContain('bg-amber-100')
+    expect(link('Session unclear').className).toContain('text-amber-700')
+  })
+
+  // ux3 requests-4: the mock outlines the picked lens (1px primary) in both views, never fills it.
+  it('outlines the picked lens at h-6 with and without a stage; an idle lens is transparent-bordered', () => {
+    const { unmount } = strip()
+    const all = link('All').className
+    expect(all).toContain('border-primary')
+    expect(all).toContain('h-6')
+    expect(all).not.toContain('bg-primary')
+    expect(link('Appeals').className).toContain('border-transparent')
+    expect(link('Appeals').className).toContain('font-normal')
+    unmount()
+    strip({ stage: 'needs_offer' })
+    expect(link('All').className).toContain('border-primary')
+    expect(link('All').className).not.toContain('inset')
+  })
+
+  it('draws the strip as the white card of the kit: no divider after the lenses', () => {
+    strip()
+    expect(screen.getByRole('navigation').className).toContain('bg-card')
+    expect(screen.getByRole('navigation').className).toContain('rounded-[10px]')
+    expect(screen.getByTestId('strip-lenses').className).not.toContain('border-r')
+  })
+
+  it('sizes the chevrons 26px, the picked one forest-700', () => {
+    strip({ stage: 'needs_offer' })
+    expect(link('Pending approval').className).toContain('h-[26px]')
+    expect(link('Needs an offer').className).toContain('bg-forest-700')
+    expect(link('Needs an offer').className).toContain('text-white')
+    expect(link('Waiting on the family').className).toContain('font-normal')
   })
 
   it('hands a plain click to onOpen, and leaves a modified click to the browser (new tab)', () => {
@@ -317,9 +375,7 @@ describe('RequestViewNav: the +N overflow chip (owner 2026-10-04)', () => {
       'href',
       '/s/to-reverse'
     )
-    expect(within(list).getByRole('link', { name: /^To reverse/ }).className).toContain(
-      'bg-red-100'
-    )
+    expect(within(list).getByRole('link', { name: /^To reverse/ }).className).toContain('bg-red-50')
   })
 
   it('does not open on hover', () => {
@@ -412,7 +468,7 @@ describe('RequestViewNav: the +N overflow chip (owner 2026-10-04)', () => {
   it('tones the chip red when a folded red badge has requests', () => {
     navWidth = 1000
     strip()
-    expect(chip()?.className).toContain('bg-red-100')
+    expect(chip()?.className).toContain('bg-red-50')
   })
 
   it('tones the chip amber when only an amber badge is folded', () => {

@@ -6,7 +6,7 @@ import { CS_BADGE_AMBER } from '../../kit/csType'
 import { CHAPTERS, chapterMarks } from './rulesLayout'
 
 // final mock season-rules.html (.cf-chapstrip / .cf-chip): a 26px strip of 20px chips at 12px. Local classes, not the
-// Requests strip's tokens (CS_STRIP is 38px with 28px chips).
+// Requests strip's tokens (CS_STRIP is 34px with 24px lenses and 26px stage chevrons).
 const STRIP =
   'border-border flex h-[26px] shrink-0 items-center gap-0.5 rounded-[9px] border bg-[color-mix(in_oklab,var(--color-muted)_55%,transparent)] p-0.5 whitespace-nowrap'
 const CHIP =

@@ -134,6 +134,8 @@ export function stepHighlight(
 export interface FitContent {
   readonly pad: number
   readonly min: number
+  /** A cap: a longer content cuts (with its title) instead of widening the column. A `min` above it wins. */
+  readonly max?: number
 }
 
 /**
@@ -142,5 +144,40 @@ export interface FitContent {
  */
 export function fitColumnWidth(widths: readonly number[], fit: FitContent): number {
   const widest = widths.reduce((max, width) => Math.max(max, width), 0)
-  return Math.max(fit.min, Math.ceil(widest) + fit.pad)
+  const fitted = Math.ceil(widest) + fit.pad
+  return Math.max(fit.min, fit.max === undefined ? fitted : Math.min(fit.max, fitted))
+}
+
+/** A text measurer (px, or null when nothing can measure: jsdom has no canvas). */
+export type TextMeasurer = (text: string) => number | null
+
+/**
+ * A money column fits its footer total (ux3 requests-10): never under its spec width, else the
+ * total's measured width, rounded up, plus `pad` (the cell's 16px). The measurer is injected so the
+ * rule stays apart from the canvas that draws it.
+ */
+export function moneyColumnWidth(
+  spec: number,
+  totalText: string,
+  measure: TextMeasurer,
+  pad = 16
+): number {
+  const width = measure(totalText)
+  return width === null ? spec : Math.max(spec, Math.ceil(width) + pad)
+}
+
+/** Measures with a canvas set to `font` (a CSS font shorthand); null where there is no 2d canvas. */
+export function canvasMeasurer(font: string): TextMeasurer {
+  let context: CanvasRenderingContext2D | null | undefined
+  return (text) => {
+    if (context === undefined) {
+      try {
+        context = document.createElement('canvas').getContext('2d')
+        if (context !== null) context.font = font
+      } catch {
+        context = null
+      }
+    }
+    return context ? context.measureText(text).width : null
+  }
 }

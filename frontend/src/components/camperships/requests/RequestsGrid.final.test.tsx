@@ -91,11 +91,31 @@ describe('the Session column (§14: tiny everywhere)', () => {
     )
   })
 
-  it('is 136px wide, and the Camper 170px', () => {
-    render(<Grid rows={[ROW_EMMA]} />)
-    const cols = screen.getByRole('table').querySelectorAll('col')
-    expect((cols[0] as HTMLElement).style.width).toBe('170px')
-    expect((cols[1] as HTMLElement).style.width).toBe('136px')
+  // ux3 requests-11 (owner): Session fits its names (name + 18), capped at the mock's 136.
+  it('fits its names up to 136px, and the Camper is 170px', () => {
+    const scroll = vi.spyOn(Element.prototype, 'scrollWidth', 'get')
+    try {
+      scroll.mockReturnValue(200)
+      const { unmount } = render(<Grid rows={[ROW_EMMA]} />)
+      const cols = screen.getByRole('table').querySelectorAll('col')
+      expect((cols[0] as HTMLElement).style.width).toBe('170px')
+      expect((cols[1] as HTMLElement).style.width).toBe('136px')
+      unmount()
+      scroll.mockReturnValue(60)
+      const again = render(<Grid rows={[ROW_EMMA]} />)
+      expect(
+        (screen.getByRole('table').querySelectorAll('col')[1] as HTMLElement).style.width
+      ).toBe('78px')
+      again.unmount()
+      // Never under its sorted header: "Session" (~45px at 12px semibold), the 4px gap and ↑ (~11px), plus 16.
+      scroll.mockReturnValue(20)
+      render(<Grid rows={[ROW_EMMA]} />)
+      expect(
+        (screen.getByRole('table').querySelectorAll('col')[1] as HTMLElement).style.width
+      ).toBe('76px')
+    } finally {
+      scroll.mockRestore()
+    }
   })
 })
 

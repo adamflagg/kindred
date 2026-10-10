@@ -46,10 +46,12 @@ import {
 } from './kitStyles'
 import { csvCell, withLinkLine } from './csv'
 import { isPageKey } from './keyboard'
-import { moneyCsv } from './money'
+import { formatMoney, moneyCsv } from './money'
 import { Money } from './MoneyText'
 import {
+  canvasMeasurer,
   fitColumnWidth,
+  moneyColumnWidth,
   groupRows,
   matchesSearch,
   sortRows,
@@ -57,6 +59,7 @@ import {
   type CellValue,
   type FitContent,
   type RowGroup,
+  type TextMeasurer,
 } from './table'
 import { useAidTableUrl } from './useAidTableUrl'
 
@@ -342,7 +345,7 @@ const TONE_BG = { group: CS_BAND, warn: CS_BAND_WARN } as const
 const TONE_TD = 'border-border border-t border-b px-2 py-[5px] align-top font-semibold'
 const FLEX_MIN = 250
 /** The selection's checkbox column (§4.10). */
-const SELECT_WIDTH = 32
+const SELECT_WIDTH = 30
 
 const join = (...classes: Array<string | false | undefined>) => classes.filter(Boolean).join(' ')
 
@@ -663,6 +666,8 @@ export function AidTable<Row>({
   // have changed what is drawn) and on resize; each setState is a no-op when nothing moved.
   const [fitWidths, setFitWidths] = useState<Readonly<Record<string, number>>>({})
   const [boxWidth, setBoxWidth] = useState(0)
+  // One canvas for this table's life (re-made only if its font changes), not one per render.
+  const measurerRef = useRef<{ readonly font: string; readonly measure: TextMeasurer } | null>(null)
   const measureWidths = useCallback(() => {
     const element = boxRef.current
     if (element === null) return
@@ -678,20 +683,41 @@ export function AidTable<Row>({
         .map((chip) => Math.max(chip.getBoundingClientRect().width, chip.scrollWidth))
       next[column.key] = fitColumnWidth(chips, column.fitContent)
     }
+    // A total column fits its footer total (ux3 requests-10), on the 14px bold the footer draws in.
+    // Once per data set: the total of every row, not the searched ones, so typing in the search box
+    // never moves a column (a searched total still says its full figure in its title). Nothing
+    // measures in jsdom, so the spec width stands there.
+    if (columns.some((column) => column.total && column.width !== undefined)) {
+      const font = `700 14px ${getComputedStyle(element).fontFamily}`
+      if (measurerRef.current?.font !== font)
+        measurerRef.current = { font, measure: canvasMeasurer(font) }
+      const { measure } = measurerRef.current
+      for (const column of columns) {
+        if (!column.total || column.fitContent || column.flex || column.width === undefined)
+          continue
+        const total = column.total(rows)
+        if (total === null) continue
+        next[column.key] = moneyColumnWidth(column.width, formatMoney(total), measure)
+      }
+    }
     setFitWidths((was) => {
       const keys = Object.keys(next)
       const same =
         keys.length === Object.keys(was).length && keys.every((key) => was[key] === next[key])
       return same ? was : next
     })
-  }, [columns])
+  }, [columns, rows])
   useLayoutEffect(measureWidths)
   useEffect(() => {
     window.addEventListener('resize', measureWidths)
     return () => window.removeEventListener('resize', measureWidths)
   }, [measureWidths])
   const widthOf = (column: AidColumn<Row>) =>
-    column.fitContent ? (fitWidths[column.key] ?? column.fitContent.min) : column.width
+    column.fitContent
+      ? (fitWidths[column.key] ?? column.fitContent.min)
+      : column.total && column.width !== undefined
+        ? (fitWidths[column.key] ?? column.width)
+        : column.width
 
   // The opened row comes into view with its detail line under it (batch 4): the line first, then
   // the row, so a row taller than the room left still shows its top. Again once the held header and
@@ -852,6 +878,7 @@ export function AidTable<Row>({
           >
             <input
               type="checkbox"
+              className="accent-primary align-[-2px]"
               aria-label="Select all"
               checked={box.all}
               onChange={box.toggle}
@@ -960,6 +987,7 @@ export function AidTable<Row>({
                 {key !== kept && (
                   <input
                     type="checkbox"
+                    className="accent-primary align-[-2px]"
                     aria-label="Select"
                     checked={selection.selected.has(key)}
                     onChange={() => toggleOne(key)}
@@ -1158,11 +1186,13 @@ export function AidTable<Row>({
                           className="sticky left-2 cursor-pointer"
                           onClick={() => toggleFold(g)}
                         >
-                          <span className="mr-1.5 inline-block w-3">{isFolded(g) ? '▸' : '▾'}</span>
+                          <span className="mr-1 inline-block">{isFolded(g) ? '▸' : '▾'}</span>
                           <span>{g.heading}</span>
                         </button>
                         {groupCount ? (
-                          <span className="ml-2 font-normal">{groupCount(counted(g.rows))}</span>
+                          <span className="text-muted-foreground ml-1.5 text-xs font-normal">
+                            {groupCount(counted(g.rows))}
+                          </span>
                         ) : null}
                       </td>
                     </tr>
@@ -1190,7 +1220,9 @@ export function AidTable<Row>({
                         title={
                           index === 0 && footerTitle
                             ? footerTitle(visible)
-                            : (c.footerTitle?.(visible) ?? undefined)
+                            : (c.footerTitle?.(visible) ??
+                              // A total cut in a narrow column still says its full figure (requests-10).
+                              (total !== null && !c.totalTitle ? formatMoney(total) : undefined))
                         }
                         style={leadsSelect ? { left: 0 } : pinStyle(c)}
                         className={join(

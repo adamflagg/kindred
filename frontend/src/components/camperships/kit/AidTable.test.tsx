@@ -7,7 +7,7 @@ import userEvent from '@testing-library/user-event'
 import { ListFilter } from 'lucide-react'
 import { useState } from 'react'
 import { MemoryRouter, useLocation } from 'react-router'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { AidTable, type AidColumn, type AidGrouping } from './AidTable'
 import { moneyCsv } from './money'
@@ -364,7 +364,7 @@ describe('AidTable', () => {
     const first = screen.getByText('Emma Johnson').closest('tr')?.querySelector('td')
     const shadows = (first?.className ?? '').split(' ').filter((c) => c.startsWith('shadow-'))
     expect(shadows).toEqual([
-      'shadow-[inset_3px_0_0_var(--color-amber-500),6px_0_6px_-6px_rgb(0_0_0/0.25)]',
+      'shadow-[inset_3px_0_0_var(--color-amber-500),6px_0_6px_-6px_rgb(0_0_0/0.16)]',
     ])
   })
 
@@ -895,8 +895,8 @@ describe('AidTable with a selection (§4.10)', () => {
   it('pins the identity columns after the checkbox column', () => {
     render(<Selectable />)
     const [, family, camper] = screen.getAllByRole('columnheader')
-    expect(family).toHaveStyle({ left: '32px' })
-    expect(camper).toHaveStyle({ left: '142px' })
+    expect(family).toHaveStyle({ left: '30px' })
+    expect(camper).toHaveStyle({ left: '140px' })
   })
 
   it('moves the highlight edge to the checkbox cell', () => {
@@ -1367,5 +1367,100 @@ describe('AidTable onCsvDownload', () => {
     )
     await userEvent.click(screen.getByRole('button', { name: 'Download CSV' }))
     expect(onCsvDownload).toHaveBeenCalledTimes(1)
+  })
+})
+
+// ux3 requests-8 / -7 / -10 / -m1: the kit's checkbox, group row and money footer match the final mock.
+describe('the kit grid matches the final mock (ux3 Requests)', () => {
+  it('aligns the header and row checkboxes at -2px and tints them primary', () => {
+    render(<Selectable />)
+    const boxes = screen.getAllByRole('checkbox')
+    expect(boxes.length).toBeGreaterThan(1)
+    for (const box of boxes) {
+      expect(box.className).toContain('align-[-2px]')
+      expect(box.className).toContain('accent-primary')
+    }
+  })
+
+  it('draws the group row with its band edge, a muted 12px count and a tight caret', () => {
+    renderTable('/aid/requests', {
+      defaultGrouping: 'family',
+      groupCount: (rows) => `${String(rows.length)} in group`,
+    })
+    const heading = document.querySelector('td[data-group-heading]') as HTMLElement
+    expect(heading.className).toContain('border-t')
+    const count = within(heading).getByText(/in group/)
+    expect(count.className).toContain('text-xs')
+    expect(count.className).toContain('text-muted-foreground')
+    expect(count.className).toContain('ml-1.5')
+    expect(heading.querySelector('button > span')?.className).not.toContain('w-3')
+  })
+
+  it('titles a footer money total with its full figure', () => {
+    const { container } = render(
+      <MemoryRouter initialEntries={['/aid/requests']}>
+        <AidTable<Row>
+          rows={ROWS}
+          columns={COLUMNS}
+          rowKey={(r) => r.id}
+          csvFilename="x.csv"
+          footerLabel={(rows) => `${String(rows.length)} requests`}
+        />
+      </MemoryRouter>
+    )
+    const cell = [...container.querySelectorAll('tfoot td')].find((td) =>
+      td.textContent.includes('$3,950')
+    )
+    expect(cell).toHaveAttribute('title', '$3,950')
+  })
+
+  describe('with a canvas to measure on', () => {
+    const original = HTMLCanvasElement.prototype.getContext
+    beforeEach(() => {
+      HTMLCanvasElement.prototype.getContext = function () {
+        return { font: '', measureText: (t: string) => ({ width: t.length * 10 }) }
+      } as unknown as typeof HTMLCanvasElement.prototype.getContext
+    })
+    afterEach(() => {
+      HTMLCanvasElement.prototype.getContext = original
+    })
+
+    // The decided column's <col> (family, camper, decided: no checkbox column here).
+    const DECIDED = COLUMNS.findIndex((c) => c.key === 'decided')
+    const widthsOf = (container: HTMLElement) =>
+      [...container.querySelectorAll('col')].map((col) => (col as HTMLElement).style.width)
+
+    it('widens a total column to its footer total plus 16px', () => {
+      const { container } = renderTable('/aid/requests', {
+        columns: COLUMNS.map((c) => (c.key === 'decided' ? { ...c, width: 40 } : c)),
+      })
+      // "$3,950" is 6 characters: 60px measured + 16px padding.
+      expect(widthsOf(container)[DECIDED]).toBe('76px')
+    })
+
+    it('never narrows a column under its spec width', () => {
+      const { container } = renderTable()
+      expect(widthsOf(container)[DECIDED]).toBe('90px')
+    })
+
+    // requests-10: "measured once per data set", so a search typed into the box never moves it.
+    it('holds a total column at its data set width while the search narrows the rows', async () => {
+      const { container } = renderTable('/aid/requests', {
+        columns: COLUMNS.map((c) => (c.key === 'decided' ? { ...c, width: 40 } : c)),
+      })
+      expect(widthsOf(container)[DECIDED]).toBe('76px')
+      await userEvent.type(screen.getByRole('searchbox', { name: 'Search' }), 'chen')
+      expect(bodyCampers()).toEqual(['Olivia Chen'])
+      expect(widthsOf(container)[DECIDED]).toBe('76px')
+    })
+
+    it('measures on one canvas, not a new one each render', async () => {
+      const getContext = vi.spyOn(HTMLCanvasElement.prototype, 'getContext')
+      renderTable('/aid/requests', {
+        columns: COLUMNS.map((c) => (c.key === 'decided' ? { ...c, width: 40 } : c)),
+      })
+      await userEvent.type(screen.getByRole('searchbox', { name: 'Search' }), 'chen')
+      expect(getContext).toHaveBeenCalledTimes(1)
+    })
   })
 })

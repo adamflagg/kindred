@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   fitColumnWidth,
+  moneyColumnWidth,
   formatSort,
   groupRows,
   fold,
@@ -171,5 +172,38 @@ describe('fitColumnWidth', () => {
   it('never goes under the floor, nor with no chip on screen', () => {
     expect(fitColumnWidth([40.5], { pad: 18, min: 84 })).toBe(84)
     expect(fitColumnWidth([], { pad: 18, min: 84 })).toBe(84)
+  })
+})
+
+// ux3 requests-11: Session fits its visible names, but a longer name still cuts at the cap.
+describe('fitColumnWidth with a max', () => {
+  it('clamps to max, and still honours min', () => {
+    expect(fitColumnWidth([300], { pad: 18, min: 64, max: 136 })).toBe(136)
+    expect(fitColumnWidth([80.2], { pad: 18, min: 64, max: 136 })).toBe(99)
+    expect(fitColumnWidth([20], { pad: 18, min: 64, max: 136 })).toBe(64)
+  })
+
+  it('lets a min above the max win (the header must stay readable)', () => {
+    expect(fitColumnWidth([10], { pad: 18, min: 150, max: 136 })).toBe(150)
+  })
+})
+
+// ux3 requests-10: a money column is never narrower than its footer total at 14px bold + 16px padding.
+describe('moneyColumnWidth', () => {
+  const measure = (text: string) => text.length * 8
+  it('keeps the spec width when the total fits', () => {
+    expect(moneyColumnWidth(74, '$99,050', measure)).toBe(74)
+  })
+
+  it('grows to the measured total plus 16px of padding', () => {
+    expect(moneyColumnWidth(74, '$4,275,039.61', measure)).toBe(13 * 8 + 16)
+  })
+
+  it('rounds a fractional measure up', () => {
+    expect(moneyColumnWidth(10, '$1', () => 20.2)).toBe(37)
+  })
+
+  it('falls back to the spec width where nothing can measure (jsdom has no canvas)', () => {
+    expect(moneyColumnWidth(74, '$4,275,039.61', () => null)).toBe(74)
   })
 })

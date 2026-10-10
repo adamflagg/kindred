@@ -121,18 +121,18 @@ export const ROW_HIGHLIGHT =
   'bg-amber-50 dark:bg-[color-mix(in_oklab,var(--color-amber-900)_30%,var(--color-card))]'
 export const HIGHLIGHT_EDGE = 'shadow-[inset_3px_0_0_var(--color-amber-500)]'
 /** The soft shadow on the last pinned column's edge (D25). */
-export const PINNED_EDGE = 'shadow-[6px_0_6px_-6px_rgb(0_0_0/0.25)]'
+export const PINNED_EDGE = 'shadow-[6px_0_6px_-6px_rgb(0_0_0/0.16)]'
 /** The soft shadow on the left edge of a column frozen on the right (batch 4: Needs attention). */
-export const RIGHT_PINNED_EDGE = 'shadow-[-6px_0_6px_-6px_rgb(0_0_0/0.25)]'
+export const RIGHT_PINNED_EDGE = 'shadow-[-6px_0_6px_-6px_rgb(0_0_0/0.16)]'
 /** Both on one cell (a highlighted row's first cell is also the last pinned one): one shadow class, not two. */
 export const HIGHLIGHT_PINNED_EDGE =
-  'shadow-[inset_3px_0_0_var(--color-amber-500),6px_0_6px_-6px_rgb(0_0_0/0.25)]'
+  'shadow-[inset_3px_0_0_var(--color-amber-500),6px_0_6px_-6px_rgb(0_0_0/0.16)]'
 /** A total row (§10): the green band, bold, its edge on top. */
 export const TFOOT_CELL = `${CS_BAND} ${CS_BAND_EDGE} px-2 py-[5px] font-bold whitespace-nowrap ${CS_RULE} first:border-l-0`
 /** The totals label's cell in the screen box: it wraps within the pinned column rather than printing over the next total. */
 export const TFOOT_CELL_WRAP = `${CS_BAND} ${CS_BAND_EDGE} px-2 py-[5px] font-bold whitespace-normal ${CS_RULE} first:border-l-0`
 /** A section row (§9): the green band. */
-export const GROUP_ROW = `${CS_BAND} text-foreground border-border border-b px-2 py-[5px] text-[13.5px] font-bold`
+export const GROUP_ROW = `${CS_BAND} ${CS_BAND_EDGE} text-foreground border-border border-b px-2 py-[5px] text-[13.5px] font-bold`
 /**
  * The opened row's detail line (batch 4, grid-layout-options.html round 6): the highlighted row's
  * tint with an amber rule under it. Its cell must not clip (`overflow-visible`) and carries no side
@@ -165,50 +165,63 @@ export const BINDING_TEXT = 'font-medium text-amber-700 dark:text-amber-400'
  * +N when they do not fit (owner 2026-10-04). `relative` anchors the badges' measuring copy.
  */
 export const STRIP =
-  'border-border relative flex items-center gap-2 rounded-xl border bg-[color-mix(in_oklab,var(--color-muted)_45%,var(--color-card))] p-1 whitespace-nowrap'
-export const STRIP_LENSES = 'border-border flex gap-0.5 border-r pr-2'
+  'border-border bg-card relative flex items-center gap-1 rounded-[10px] border p-[3px] whitespace-nowrap shadow-[0_1px_2px_hsl(var(--shadow-color)/0.07)]'
+export const STRIP_LENSES = 'mr-1.5 flex gap-0.5'
 const STRIP_LENS_SHAPE =
   'inline-flex items-center gap-1 rounded-lg px-[7px] py-[5px] text-[12.5px] leading-[18px]'
-/** All reads in ink, Appeals muted, as the mock's lenses do. */
+/** All reads in ink, Appeals muted, as the mock's lenses do. (The Scenarios and History chips.) */
 export const STRIP_LENS = {
   all: `${STRIP_LENS_SHAPE} text-foreground font-semibold`,
   appeals: `${STRIP_LENS_SHAPE} text-muted-foreground font-medium`,
 } as const
-/** The lens picked with no stage: filled. */
+/** The chip picked: filled. (Scenarios and History; Requests outlines its lens, `REQ_LENS`.) */
 export const STRIP_LENS_ON = `${STRIP_LENS_SHAPE} bg-primary text-primary-foreground font-semibold`
-/** The lens picked under a stage: outlined, so the lens still reads as in force. */
-export const STRIP_LENS_UNDER = `${STRIP_LENS_SHAPE} text-primary font-bold shadow-[inset_0_0_0_2px_var(--color-primary)]`
+
+/**
+ * The Requests strip's own lenses (ux3 requests-4; mock `.cf-strip .lens button`): 24px, 7px radius,
+ * a 1px border that is transparent while idle and primary while picked, in both views. Never filled.
+ */
+const REQ_LENS_SHAPE =
+  'inline-flex h-6 items-center gap-1 rounded-[7px] border px-[7px] text-[12.5px] leading-[18px]'
+export const REQ_LENS = {
+  idle: `${REQ_LENS_SHAPE} text-muted-foreground border-transparent font-normal`,
+  on: `${REQ_LENS_SHAPE} border-primary text-primary font-bold`,
+} as const
 
 export const STRIP_PIPE = 'flex'
 const SEG_SHAPE =
-  'inline-flex items-center gap-1.5 py-[5px] pr-[15px] pl-[18px] -ml-[5px] text-[12.5px] leading-[18px] [clip-path:polygon(0_0,calc(100%_-_11px)_0,100%_50%,calc(100%_-_11px)_100%,0_100%,11px_50%)] first:ml-0 first:rounded-l-lg first:pl-3 first:[clip-path:polygon(0_0,calc(100%_-_11px)_0,100%_50%,calc(100%_-_11px)_100%,0_100%)]'
-const SEG_FILL =
-  'bg-[color-mix(in_oklab,var(--color-bark-300)_35%,var(--color-card))] dark:bg-[color-mix(in_oklab,var(--color-bark-600)_45%,var(--color-card))]'
-/** A chevron: to do (ink), watched (muted: Waiting on the family, rv=todo), or picked (filled). */
+  'inline-flex h-[26px] items-center gap-0 pr-5 pl-[18px] -ml-1.5 text-[12.5px] leading-[18px] [clip-path:polygon(0_0,calc(100%_-_10px)_0,100%_50%,calc(100%_-_10px)_100%,0_100%,10px_50%)] first:ml-0 first:rounded-l-md first:pl-3 first:[clip-path:polygon(0_0,calc(100%_-_10px)_0,100%_50%,calc(100%_-_10px)_100%,0_100%)]'
+const SEG_FILL = 'bg-[color-mix(in_oklab,var(--color-muted)_80%,var(--color-card))]'
+/** A chevron: to do (ink), watched (muted: Waiting on the family, rv=todo), or picked (forest). */
 export const STRIP_SEG = {
   todo: `${SEG_SHAPE} ${SEG_FILL} text-foreground font-semibold`,
-  watch: `${SEG_SHAPE} ${SEG_FILL} text-muted-foreground font-medium`,
-  on: `${SEG_SHAPE} bg-primary text-primary-foreground font-semibold`,
+  watch: `${SEG_SHAPE} ${SEG_FILL} text-muted-foreground font-normal`,
+  on: `${SEG_SHAPE} bg-forest-700 dark:bg-forest-600 font-semibold text-white`,
 } as const
 
 const COUNT = 'not-italic tabular-nums'
-/** A to-do count: an amber pill, or muted when nothing is there. */
-export const STRIP_COUNT_TODO = `${COUNT} inline-block min-w-[18px] rounded-full bg-amber-100 px-1.5 text-center text-[11.5px] leading-[17px] font-bold text-amber-800 dark:bg-amber-900/50 dark:text-amber-300`
-export const STRIP_COUNT_ZERO = `${COUNT} inline-block min-w-[18px] px-1.5 text-center text-[11.5px] leading-[17px] font-medium opacity-70`
-/** A watched or lens count: plain, muted (on a filled chip, its ink). */
+/** A chevron's count (mock `.stg .n`): 11px bold muted, a pill only where a tone below says so. */
+const STRIP_COUNT_BASE = `${COUNT} ml-1.5 inline-block min-w-[14px] rounded-full px-[5px] text-center text-[11px] leading-4 font-bold`
+export const STRIP_COUNT_PLAIN = `${STRIP_COUNT_BASE} text-muted-foreground`
+/** Not reconciled's count: the amber pill, at any count (mock `.stg.amber .n`). */
+export const STRIP_COUNT_AMBER = `${STRIP_COUNT_BASE} bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300`
+/** The picked stage's count: amber-400 on forest-900 in both themes (mock `.stg.on .n`). */
+export const STRIP_COUNT_PICKED = `${STRIP_COUNT_BASE} bg-amber-400 dark:bg-amber-400 text-forest-900`
+/** A lens or chip count: plain, in the lens's own ink. */
 export const STRIP_COUNT_WATCH = `${COUNT} text-xs opacity-85`
+export const STRIP_COUNT_LENS = `${COUNT} ml-px`
 
 export const STRIP_EXCEPTIONS = 'border-border ml-auto flex gap-1 border-l pl-2'
 const BADGE_SHAPE =
-  'inline-flex items-center gap-1 rounded-full border px-2 py-[3px] text-xs leading-[18px] font-semibold [&>i]:font-bold [&>i]:not-italic [&>i]:tabular-nums'
+  'inline-flex h-[22px] items-center gap-1 rounded-full border px-[9px] py-0 text-xs leading-[18px] font-semibold [&>i]:font-bold [&>i]:not-italic [&>i]:tabular-nums'
 /** An exception badge (k-pill tones): a hold or duplicate red, an unsettled session amber, none muted. */
 export const STRIP_BADGE = {
-  red: `${BADGE_SHAPE} border-red-200 bg-red-100 text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-300`,
-  amber: `${BADGE_SHAPE} border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-700 dark:bg-amber-900/50 dark:text-amber-300`,
+  red: `${BADGE_SHAPE} border-red-200 bg-red-50 text-red-700 dark:border-red-700/60 dark:bg-red-900/40 dark:text-red-200`,
+  amber: `${BADGE_SHAPE} border-amber-300 bg-amber-100 text-amber-700 dark:border-amber-700/60 dark:bg-amber-900/40 dark:text-amber-300`,
   zero: `${BADGE_SHAPE} text-muted-foreground border-transparent bg-transparent font-medium opacity-70`,
 } as const
-/** The badge picked: ringed in primary. */
-export const STRIP_BADGE_ON = 'outline-primary outline-2 outline-offset-1 outline-solid'
+/** The badge picked: the mock's 1.5px inset ring in the badge's own ink. */
+export const STRIP_BADGE_ON = 'shadow-[inset_0_0_0_1.5px_currentColor]'
 /**
  * The badges' measuring copy: every badge at its natural width, laid out where nothing sees it. A
  * 0×0 box clipping its content, so it neither shows nor widens the strip, and folding never reads

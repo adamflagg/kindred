@@ -90,7 +90,7 @@ describe('DefinitionNotes (§4.8; D20: numbered notes at the bottom, no hover)',
   it('draws the mark at 0.72em, raised, with the note as its title', () => {
     render(<DefRef n={3} title="Awarded: posted amounts, net of reversals." />)
     const mark = screen.getByText('3')
-    expect(mark).toHaveClass('text-[0.72em]', 'leading-none', 'font-medium', 'align-super')
+    expect(mark).toHaveClass('text-[0.72em]', 'leading-[0]', 'font-medium', 'align-super')
     expect(mark).not.toHaveClass('text-xs')
     expect(mark).toHaveAttribute('title', 'Awarded: posted amounts, net of reversals.')
     expect(mark).toHaveClass('tabular-nums', 'cursor-help')
