@@ -61,6 +61,9 @@ describe('YearSelector', () => {
     const aidButton = screen.getByText('2026').closest('button') as HTMLElement
     expect(aidButton).toHaveClass('bg-card', 'text-[12.5px]')
     expect(aidButton).not.toHaveClass('listbox-button-compact')
+    // The kit picker dims itself while the year switches (disabled), as the shared button does.
+    expect(aidButton.className).toMatch(/disabled:opacity-\d+/)
+    expect(aidButton).toHaveClass('disabled:cursor-wait')
     unmount()
     renderWithContext(ctx)
     expect(screen.getByText('2026').closest('button')).toHaveClass('listbox-button-compact')

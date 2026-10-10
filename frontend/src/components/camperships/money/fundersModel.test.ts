@@ -170,12 +170,14 @@ describe('buildFunders: chips', () => {
     ])
   })
 
-  // Final audit: with no funder yet the count would read a bare 0 over a table of descriptions.
-  it('words the All choice out when there are descriptions and no funder yet', () => {
+  // Final audit: with no funder yet the count would read a bare 0 over a table of descriptions, so All counts the
+  // descriptions it shows; every choice carries a count, like the other options.
+  it('counts the descriptions in the All choice when there are no funder yet', () => {
     const [all] = switcherOptions({ funders: 0, descriptions: 28, noFunder: 28 }, [])
     expect(all).toEqual({
       value: 'all',
-      label: 'All 0 funders · 28 descriptions',
+      label: 'All',
+      count: 28,
       title: 'All 0 funders · 28 descriptions',
     })
     // Nothing at all keeps the plain chip and its 0.

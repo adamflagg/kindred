@@ -49,9 +49,10 @@ export default function AidMoneyPage() {
   const resolved = resolveAidTab(MONEY, tab, { hasPermission })
   if (resolved.kind === 'denied') {
     // Final audit M-E6: a tab this user may not open, on a section they can (development on an old
-    // Ledger link): the Money band, the tabs they have and one plain line, as Requests does.
+    // Ledger link): the Money band, the tabs they have and one plain line, as Requests does. The line
+    // names Funders, so it is only for who can open Funders; anyone else gets the plain permission page.
     const mine = visibleTabs(MONEY, { hasPermission })
-    const first = mine[0]
+    const first = mine.find((t) => t.slug === 'funders')
     const refused = MONEY.tabs.find((t) => t.slug === tab)
     if (first === undefined || refused === undefined) return <PermissionDeniedPage />
     return (

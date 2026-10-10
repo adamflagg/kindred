@@ -18,7 +18,7 @@ const BUCKETS_LAST = ['ambiguous', 'unattributed']
 /**
  * The mock's words for each camp-aid share (money-v2.html l.145). `satisfies` the generated union:
  * a new group fails tsc here. The server's grouping: `placed` = levels override, decision, session,
- * person; `household` = program_family, ambiguous; `not_placed` = none (PR A, Task A3).
+ * person, program_family (money on a program's request); `household` = ambiguous only; `not_placed` = none (PR A, Task A3).
  */
 const SHARE_WORDS = {
   placed: 'placed on a camper or request',

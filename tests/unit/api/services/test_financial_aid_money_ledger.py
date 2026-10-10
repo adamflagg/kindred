@@ -214,9 +214,10 @@ def _household_grant(txn: int, *, session: int, basis: str = "household", person
     )
 
 
-def test_an_outside_grant_posted_to_the_household_carries_the_household_level_and_its_session() -> None:
+def test_an_outside_grant_posted_to_the_household_is_drawn_at_household_level_but_has_no_level() -> None:
     """Final audit O3 (owner ruling): the lines card draws "Household level" and the Family Camp session for an outside
-    grant that sits on the household, as it does for camp aid. A grant on a camper keeps no level."""
+    grant that sits on the household, as it does for camp aid. That is display only: the piece keeps NO level, so the
+    family row's Level column and the Level filter still mean unplaced camp aid. A grant on a camper draws none."""
     store = _johnsons()
     camp = seed_line(store, 9001, "1500")
     placed = SeasonLedger(by_request={EMMA: (camp,)}, read=True)
@@ -226,11 +227,20 @@ def test_an_outside_grant_posted_to_the_household_carries_the_household_level_an
     ]
     pieces = _pieces(store, [_camp(camp), _other(9101, "250"), _other(9102, "250")], placed, register=register)
     by_txn = {p.transaction_cm_id: p for p in pieces}
-    assert (by_txn[9101].level, by_txn[9101].household_session_cm_id) == ("household", 1000301)
-    assert (by_txn[9102].level, by_txn[9102].household_session_cm_id) == (None, 0)
-    # A season before levels exist carries none on any piece.
+    assert (by_txn[9101].level, by_txn[9101].on_household, by_txn[9101].household_session_cm_id) == (
+        None,
+        True,
+        1000301,
+    )
+    assert (by_txn[9102].level, by_txn[9102].on_household, by_txn[9102].household_session_cm_id) == (None, False, 0)
+    drawn = {lt.first.transaction_cm_id: lt.display_level for lt in total_lines(pieces, "outside_grants")}
+    assert drawn == {9101: "household", 9102: None}
+    # The family row and the Level filter do not see it.
+    assert {t.level for t in family_totals(pieces)} == {None}
+    assert not LedgerFilters(level="household").keeps(by_txn[9101])
+    # A season before levels exist draws none either.
     old = _pieces(store, [_other(9101, "250")], placed, register=register, levels=False)
-    assert [p.level for p in old] == [None]
+    assert [lt.display_level for lt in total_lines(old, "outside_grants")] == [None]
 
 
 def test_an_unclassified_line_counts_in_outside_grants() -> None:

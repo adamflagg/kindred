@@ -38,6 +38,10 @@ describe('the nav (D7 as amended by D64, D65)', () => {
     expect(labels(visibleSections(REGISTRAR))).toEqual(['Requests', 'Money', 'Season', 'Reports'])
   })
 
+  it('keeps the parked Today at its real path, so un-parking it links to Today', () => {
+    expect(AID_SECTIONS.find((s) => s.key === 'today')?.path).toBe('/aid/today')
+  })
+
   it('shows a summary-only user Reports alone (D65)', () => {
     expect(labels(visibleSections(DEVELOPMENT))).toEqual(['Reports'])
   })

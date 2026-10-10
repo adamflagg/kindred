@@ -645,3 +645,20 @@ def test_program_labels_come_from_the_rules_programs_and_only_the_fixed_words_wi
     assert labels["summer"] == "Summer"
     assert labels["family_camp"] == "Family camp"
     assert program_labels(None) == {"quest": "Quest", "teen": "Teen Leadership", "bmitzvah": "B*Mitzvah"}
+
+
+@pytest.mark.asyncio
+async def test_the_household_level_share_equals_the_program_tables_household_level_row() -> None:
+    """Owner ruling (final audit): program_family money (Family Camp household requests) is placed, so the shares'
+    household-level amount is exactly the program table's "Household level" (ambiguous) camp-aid row, not that row
+    plus the program_family money."""
+    postings = [
+        *_five_postings(),
+        _posting(9007, 600, -450.0, attribution_level="program_family", program_family="family_camp"),
+    ]
+    got = await FinancialAidLedgerService(_repo(fetch_postings=postings)).summary(2026)
+    household_share = next(lvl for lvl in got.camp_aid_levels if lvl.group == "household")
+    table_row = next(r for r in got.by_program if r.program == "ambiguous")
+    assert household_share.amount == table_row.camp_aid == 300.0
+    placed = next(lvl for lvl in got.camp_aid_levels if lvl.group == "placed")
+    assert placed.amount == 700.0 + 450.0

@@ -49,7 +49,7 @@ export const AID_SECTIONS: readonly AidSection[] = [
   {
     key: 'today',
     label: 'Today',
-    path: '/aid',
+    path: '/aid/today',
     access: VIEW,
     tabs: [],
     builtIn: 'slice 1 (December)',

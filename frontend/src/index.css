@@ -1417,7 +1417,7 @@
 }
 
 /* A page that prints alone (Season › Scenarios' compare, data-print-alone) keeps the app's chrome off the paper:
-   the nav, the Season bar, the cache line and the version badge (data-app-chrome). Every other page prints as before. */
+   the nav (its user menu holds the version), the Season bar and the cache line (data-app-chrome). Every other page prints as before. */
 @media print {
   body:has([data-print-alone]) [data-app-chrome] {
     display: none !important;
