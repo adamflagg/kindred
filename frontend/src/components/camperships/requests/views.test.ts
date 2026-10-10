@@ -120,6 +120,11 @@ describe('REQUEST_VIEWS (§6.2)', () => {
     })
   })
 
+  // ux3 requests-11 (owner): Session fits what is drawn; 136 stays as the cap, a longer name cuts with its title.
+  it('fits Session to its names, up to the mock’s 136', () => {
+    expect(GRID_COLUMNS.session.fitContent).toEqual({ pad: 18, min: 64, max: 136 })
+  })
+
   // §8 / the mock's attW: never under 84 (owner LOCKED batch 4) and never under its own header.
   it('keeps Needs attention at least as wide as its own header', () => {
     expect(GRID_COLUMNS.attention.fitContent).toEqual({ pad: 18, min: 112 })

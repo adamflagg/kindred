@@ -5,13 +5,12 @@ import {
   STRIP,
   STRIP_BADGE,
   STRIP_BADGE_ON,
-  STRIP_COUNT_TODO,
-  STRIP_COUNT_WATCH,
-  STRIP_COUNT_ZERO,
+  REQ_LENS,
+  STRIP_COUNT_AMBER,
+  STRIP_COUNT_LENS,
+  STRIP_COUNT_PICKED,
+  STRIP_COUNT_PLAIN,
   STRIP_EXCEPTIONS,
-  STRIP_LENS,
-  STRIP_LENS_ON,
-  STRIP_LENS_UNDER,
   STRIP_LENSES,
   STRIP_MEASURE,
   STRIP_PIPE,
@@ -45,18 +44,29 @@ function viewOf(key: RequestViewKey): RequestView {
   return view
 }
 
-function Count({ count, tone }: { count: ViewCount | undefined; tone: 'todo' | 'watch' | 'ink' }) {
-  if (count === undefined) return <i className={STRIP_COUNT_WATCH}>—</i>
-  const n = count.requests
+/** The stage keys whose count the mock pills amber whatever it reads (`.stg.amber`). */
+const AMBER_STAGES: ReadonlySet<RequestViewKey> = new Set(['not_reconciled'])
+
+/**
+ * A count (mock `.n`): a lens's reads in the lens's ink; a chevron's is plain muted, except the
+ * picked stage's (amber-400 pill) and Not reconciled's (the amber pill, even at 0).
+ */
+function Count({
+  count,
+  kind,
+}: {
+  count: ViewCount | undefined
+  kind: 'lens' | 'plain' | 'amber' | 'picked'
+}) {
   const className =
-    tone === 'todo'
-      ? n > 0
-        ? STRIP_COUNT_TODO
-        : STRIP_COUNT_ZERO
-      : tone === 'watch'
-        ? `${STRIP_COUNT_WATCH} text-muted-foreground`
-        : STRIP_COUNT_WATCH
-  return <i className={className}>{n}</i>
+    kind === 'lens'
+      ? STRIP_COUNT_LENS
+      : kind === 'picked'
+        ? STRIP_COUNT_PICKED
+        : kind === 'amber'
+          ? STRIP_COUNT_AMBER
+          : STRIP_COUNT_PLAIN
+  return <i className={className}>{count === undefined ? '—' : count.requests}</i>
 }
 
 /**
@@ -147,10 +157,10 @@ export function RequestViewNav({
             return to(
               key,
               lensHrefOf(key),
-              filled ? STRIP_LENS_ON : picked ? STRIP_LENS_UNDER : STRIP_LENS[key],
+              picked ? REQ_LENS.on : REQ_LENS.idle,
               filled ? 'on' : picked ? 'lens' : undefined,
               <>
-                {label} <Count count={lensCounts?.get(key)} tone={filled ? 'ink' : 'watch'} />
+                {label} <Count count={lensCounts?.get(key)} kind="lens" />
               </>,
               lensTitle(key)
             )
@@ -161,14 +171,14 @@ export function RequestViewNav({
             const view = viewOf(key)
             const on = key === stage
             const watched = WATCHED.has(key)
+            const kind = on ? 'picked' : AMBER_STAGES.has(key) ? 'amber' : 'plain'
             return to(
               key,
               hrefOf(view),
               on ? STRIP_SEG.on : watched ? STRIP_SEG.watch : STRIP_SEG.todo,
               on ? 'on' : undefined,
               <>
-                {view.label}{' '}
-                <Count count={counts?.get(key)} tone={watched ? (on ? 'ink' : 'watch') : 'todo'} />
+                {view.label} <Count count={counts?.get(key)} kind={kind} />
               </>,
               stageTitle(view.label)
             )

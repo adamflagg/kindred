@@ -227,7 +227,12 @@ function renderFor(
         )
       }
     case 'session':
-      return (row) => sessionCell(row).text
+      // A truncating span, so AidTable can measure the name's natural width (ux3 requests-11).
+      return (row) => (
+        <span className="inline-block max-w-full truncate align-bottom">
+          {sessionCell(row).text}
+        </span>
+      )
     case 'stage':
       return (row) => {
         const stage = requestStage(row)

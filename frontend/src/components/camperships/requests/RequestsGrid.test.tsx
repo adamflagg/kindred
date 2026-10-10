@@ -289,6 +289,17 @@ describe('RequestsGrid', () => {
     expect(within(requester).queryByRole('link')).toBeNull()
   })
 
+  // ux3 requests-11: the Session cell's first element is a truncating span, so AidTable can measure it.
+  it('draws the session as a truncating span that carries its title', () => {
+    render(<Grid slug="all" />)
+    const at = screen.getAllByRole('columnheader').findIndex((th) => th.textContent === 'Session')
+    const cell = within(rowOf('Riley Sam')).getAllByRole('cell')[at] as HTMLElement
+    const span = cell.firstElementChild as HTMLElement
+    expect(span.tagName).toBe('SPAN')
+    expect(span.className).toContain('truncate')
+    expect(span.className).toContain('inline-block')
+  })
+
   it("keeps each view's default grouping: All is flat, a queue view is grouped by reason", () => {
     const { unmount } = render(<Grid slug="all" />)
     expect(document.querySelectorAll('[data-group-heading]')).toHaveLength(0)

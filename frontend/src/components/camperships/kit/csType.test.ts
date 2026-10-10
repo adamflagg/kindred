@@ -192,7 +192,7 @@ describe('csType carries the final design language (design-language.md)', () => 
 
   it('§12: the footnote mark is 0.72em and the notes 11.5px', () => {
     expect(classes(cs.CS_SUP)).toEqual(
-      expect.arrayContaining(['text-[0.72em]', 'leading-none', 'align-super'])
+      expect.arrayContaining(['text-[0.72em]', 'leading-[0]', 'align-super'])
     )
     expect(classes(cs.CS_NOTES)).toContain('text-[11.5px]')
   })
