@@ -56,6 +56,7 @@ import type {
   ApiAidTodayWeek,
   ApiAidWeekFeed,
   ApiAidWeekFigure,
+  ApiAidWeekPoint,
 } from '../../types/api-types'
 import PermissionDeniedPage from '../PermissionDeniedPage'
 
@@ -93,7 +94,7 @@ function WeekColumn({
   extra,
 }: {
   readonly pick: (week: ApiAidTodayWeek) => readonly ApiAidWeekFigure[] | null | undefined
-  readonly extra?: (week: ApiAidTodayWeek) => ReactNode
+  readonly extra?: ReactNode
 }) {
   const week = useAidTodayWeek()
   return (
@@ -105,7 +106,7 @@ function WeekColumn({
     >
       {(data) => (
         <>
-          {extra?.(data)}
+          {extra}
           <AidWeekCard
             weekOf={data.week_of}
             figures={pick(data) ?? []}
@@ -120,13 +121,12 @@ function WeekColumn({
 
 /** Finance's chart: posted by week against the budget, and what is committed once waiting requests are offered. */
 function CommittedByWeek({
-  week,
+  points,
   budget,
 }: {
-  readonly week: ApiAidTodayWeek
+  readonly points: readonly ApiAidWeekPoint[]
   readonly budget: ReturnType<typeof useAidBudget>
 }) {
-  const points = week.posted_by_week ?? []
   const total = budget.data?.total.total
   const first = points[0]
   return (
@@ -303,7 +303,7 @@ function FinanceBody({
         right={
           <WeekColumn
             pick={(w) => w.finance}
-            extra={(w) => <CommittedByWeek week={w} budget={budget} />}
+            extra={<CommittedByWeek points={today.posted_by_week ?? []} budget={budget} />}
           />
         }
       />

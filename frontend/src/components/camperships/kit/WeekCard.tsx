@@ -7,6 +7,8 @@ import { CS_CARD_HEADING, CS_META } from './csType'
 import { campToday, formatShortDate } from './dates'
 
 const CAMP_TIME_ZONE = 'America/Los_Angeles'
+/** The column holds the latest six items; the server sends no more, and the cap keeps it from growing if it did. */
+const FEED_CAP = 6
 const UP_INK = 'text-forest-700 dark:text-forest-300'
 const SKY_INK = 'text-sky-700 dark:text-sky-300'
 
@@ -103,7 +105,7 @@ export function AidWeekCard({
       </div>
       {feed.length > 0 && (
         <ul className="border-border divide-border divide-y border-t">
-          {feed.map((item, i) => {
+          {feed.slice(0, FEED_CAP).map((item, i) => {
             const href = hrefOf(item)
             return (
               <li

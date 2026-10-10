@@ -40,4 +40,34 @@ describe('AidBurnUp', () => {
     expect(container.querySelector('path[data-line="posted"]')).not.toBeNull()
     expect(container.querySelector('line[data-line="budget"]')).toBeNull()
   })
+
+  it('draws no budget line, and no "Budget $0" label, when the budget is 0', () => {
+    const { container } = render(
+      <AidBurnUp budget={0} committed={null} points={[{ week_of: '2031-01-06', posted: 5000 }]} />
+    )
+    expect(container.querySelector('line[data-line="budget"]')).toBeNull()
+    expect(screen.queryByText(/Budget/)).toBeNull()
+  })
+
+  it("labels the first point's month too, and drops it when the next month is too close to fit", () => {
+    const early = render(
+      <AidBurnUp
+        budget={null}
+        committed={null}
+        points={[{ week_of: '2031-01-06', posted: 5000 }]}
+      />
+    )
+    expect(early.getByText('Jan')).toBeInTheDocument()
+    expect(early.getByText('Feb')).toBeInTheDocument()
+    early.unmount()
+    render(
+      <AidBurnUp
+        budget={null}
+        committed={null}
+        points={[{ week_of: '2031-01-29', posted: 5000 }]}
+      />
+    )
+    expect(screen.queryByText('Jan')).toBeNull()
+    expect(screen.getByText('Feb')).toBeInTheDocument()
+  })
 })

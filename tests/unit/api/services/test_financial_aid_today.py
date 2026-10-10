@@ -48,6 +48,8 @@ from api.services.financial_aid_today import (
     pending_since,
     week_start,
 )
+from bunking.financial_aid.decisions.budget import counted_part
+from bunking.financial_aid.decisions.pricing import RoundView
 from bunking.financial_aid.decisions.rounds import DecisionEvent
 from bunking.financial_aid.rules.lifecycle import SectionStatus
 from tests.unit.api.services.decisions_fakes import T0, FakeDecisionsStore, FakeRules, approved, grant_row, seed_request
@@ -999,3 +1001,84 @@ def test_the_development_section_carries_no_family_data() -> None:
     for leak in ("1000001", "Johnson", "Emma", "reqemma", "household_cm_id"):
         assert leak not in body, leak
     assert (today.stages, today.casework, today.finance) == (None, None, None)
+
+
+# --- Committed by week: the series counts what the budget's Posted counts -----------------------------------
+
+
+def _posted(n: int, amount: float, day: date, **over: Any) -> RoundOut:
+    return _round(n, "posted", posted=amount, posted_on=day, accepted=True, **over)
+
+
+def _series(rows: list[GridRowOut]) -> dict[date, float]:
+    today = build_today(_inputs(rows), casework=False, finance=True)
+    assert today.posted_by_week is not None
+    return {p.week_of: p.posted for p in today.posted_by_week}
+
+
+def test_a_clawed_back_posted_round_is_not_in_committed_by_week() -> None:
+    rows = [
+        _row("a", 1, _posted(1, 1000.0, date(2031, 4, 1))),
+        _row("b", 2, _posted(1, 700.0, date(2031, 4, 2), clawed_back=True)),
+    ]
+    assert list(_series(rows).values())[-1] == 1000.0
+
+
+def test_money_below_the_line_is_not_in_committed_by_week() -> None:
+    rows = [_row("a", 1, _posted(1, 1000.0, date(2031, 4, 1), outside_budget=400.0, outside_label="Fund"))]
+    assert list(_series(rows).values())[-1] == 600.0
+
+
+def test_committed_by_week_is_cumulative_and_fills_the_empty_weeks() -> None:
+    rows = [
+        _row("a", 1, _posted(1, 1000.0, date(2031, 3, 25))),  # week of Mar 24
+        _row("b", 2, _posted(1, 500.0, date(2031, 4, 9))),  # week of Apr 7; Mar 31 has no post
+    ]
+    assert _series(rows) == {
+        date(2031, 3, 24): 1000.0,
+        date(2031, 3, 31): 1000.0,
+        date(2031, 4, 7): 1500.0,
+        date(2031, 4, 14): 1500.0,  # TODAY's week
+    }
+
+
+def test_committed_by_week_runs_to_the_current_week() -> None:
+    rows = [_row("a", 1, _posted(1, 1000.0, date(2031, 3, 25)))]
+    assert max(_series(rows)) == week_start(TODAY)
+
+
+def test_committed_by_week_is_empty_without_a_post_and_none_without_finance() -> None:
+    rows = [_row("a", 1, _round(1, "needs_offer", decided=500.0))]
+    assert build_today(_inputs(rows), casework=True, finance=True).posted_by_week == []
+    assert build_today(_inputs(rows), casework=True, finance=False).posted_by_week is None
+
+
+def test_the_last_point_equals_what_the_budget_counts_as_posted() -> None:
+    posted_rounds = [
+        (_posted(1, 1000.0, date(2031, 3, 25)), False),
+        (_posted(1, 800.0, date(2031, 4, 2), outside_budget=300.0, outside_label="Fund"), True),
+        (_posted(1, 700.0, date(2031, 4, 3), clawed_back=True), False),
+        (_posted(2, 250.0, date(2031, 4, 10)), False),
+    ]
+    rows = [_row(f"r{i}", i + 1, rnd) for i, (rnd, _) in enumerate(posted_rounds)]
+    # The budget's own split, on the same rounds: a clawed-back round counts nowhere; the rest keep only the camp's
+    # part (counted_part), with the below-the-line money taken out.
+    counted = Decimal(0)
+    for rnd, split in posted_rounds:
+        if rnd.clawed_back:
+            continue
+        view = RoundView(
+            round=rnd.round,
+            status="posted",
+            ask=None,
+            decided=None,
+            locked=Decimal(str(rnd.posted)),
+            accepted=True,
+            pending=None,
+            counts_toward_budget=not split,
+            pool="camp",
+            extra=Decimal(str(rnd.outside_budget or 0)),
+            extra_outside=split,
+        )
+        counted += counted_part(view, Decimal(str(rnd.posted)))[0]
+    assert list(_series(rows).values())[-1] == float(counted) == 1750.0

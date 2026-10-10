@@ -36,10 +36,6 @@ const weekData: ApiAidTodayWeek = {
       href_kind: 'funders',
     },
   ],
-  posted_by_week: [
-    { week_of: '2027-01-04', posted: 0 },
-    { week_of: '2027-03-29', posted: 843380 },
-  ],
 }
 
 vi.mock('../../hooks/usePermissions', () => ({
@@ -102,6 +98,10 @@ vi.mock('../PermissionDeniedPage', () => ({ default: () => <div>Permission denie
 const FINANCE_TODAY: ApiAidToday = {
   ...REGISTRAR_TODAY,
   finance: [line('pending_approval', 6), line('rules_sections', 1), line('sources', 3)],
+  posted_by_week: [
+    { week_of: '2027-01-04', posted: 0 },
+    { week_of: '2027-03-29', posted: 843380 },
+  ],
   development: [
     line('no_contact', 2, { item_kind: 'funders', names: ['Riverbend', 'Lakeside'] }),
     line('needs_group', 1, { item_kind: 'funders', names: ['Pinewood'] }),
@@ -284,6 +284,8 @@ describe('AidTodayPage', () => {
     granted = FINANCE
     const { container } = renderPage()
     expect(await screen.findByText('Committed by week')).toBeInTheDocument()
+    // The series rides Today's read (the budget's own rows), not the week read.
+    expect(screen.getByText(/\$843k posted/)).toBeInTheDocument()
     expect(container.querySelector('path[data-line="posted"]')).not.toBeNull()
     expect(screen.getByText('Avg award')).toBeInTheDocument()
   })

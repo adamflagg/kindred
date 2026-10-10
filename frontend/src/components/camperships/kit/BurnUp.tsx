@@ -8,6 +8,7 @@ const PAD = { left: 38, right: 8, top: 12, bottom: 18 }
 const DAY_MS = 86_400_000
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const FONT = 9
+const MONTH_GAP = 30 // the least room, in chart units, two month labels need side by side
 
 const INK = 'var(--color-muted-foreground)'
 const POSTED = 'var(--color-primary)'
@@ -66,17 +67,18 @@ export function AidBurnUp({
   const area = `${line} L${x(lastDay).toFixed(1)},${y(0).toFixed(1)} L${x(first).toFixed(1)},${y(0).toFixed(1)} Z`
 
   const ticks = [0, top / 3, (2 * top) / 3]
+  // The first point's month is labelled too, unless the next month starts too close for both to fit.
   const months: Array<{ at: number; label: string }> = []
-  const startDate = new Date(first * DAY_MS)
-  let cursor = Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth() + 1, 1) / DAY_MS
+  const monthOf = (day: number) => MONTHS[new Date(day * DAY_MS).getUTCMonth()] ?? ''
+  const nextMonth = (day: number) => {
+    const d = new Date(day * DAY_MS)
+    return Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1) / DAY_MS
+  }
+  let cursor = nextMonth(first)
+  if (x(cursor) - x(first) >= MONTH_GAP) months.push({ at: first, label: monthOf(first) })
   while (cursor <= end) {
-    months.push({ at: cursor, label: MONTHS[new Date(cursor * DAY_MS).getUTCMonth()] ?? '' })
-    cursor =
-      Date.UTC(
-        new Date(cursor * DAY_MS).getUTCFullYear(),
-        new Date(cursor * DAY_MS).getUTCMonth() + 1,
-        1
-      ) / DAY_MS
+    months.push({ at: cursor, label: monthOf(cursor) })
+    cursor = nextMonth(cursor)
   }
 
   const dotX = x(lastDay)
@@ -110,7 +112,7 @@ export function AidBurnUp({
       ))}
       <path d={area} fill={POSTED} fillOpacity={0.12} />
       <path d={line} data-line="posted" fill="none" stroke={POSTED} strokeWidth={1.75} />
-      {budget !== null && (
+      {budget !== null && budget > 0 && (
         <>
           <line
             data-line="budget"

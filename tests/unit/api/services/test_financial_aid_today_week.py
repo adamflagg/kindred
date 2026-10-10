@@ -162,18 +162,7 @@ async def test_development_feed_names_no_family(store_with_posts: tuple[_Store, 
         assert leak not in body
     assert week.registrar is None
     assert week.finance is None
-    assert week.posted_by_week is None
     assert {f.key for f in week.development or []} == {"outside_in", "awards", "funders_edited"}
-
-
-@pytest.mark.asyncio
-async def test_posted_by_week_is_cumulative_and_finance_only(store_with_posts: tuple[_Store, _Grants]) -> None:
-    fin = await _service(*store_with_posts).read(2031, casework=True, finance=True, development=False)
-    points = fin.posted_by_week or []
-    assert points
-    assert [p.posted for p in points] == sorted(p.posted for p in points)
-    reg = await _service(*store_with_posts).read(2031, casework=True, finance=False, development=False)
-    assert reg.posted_by_week is None
 
 
 @pytest.mark.asyncio

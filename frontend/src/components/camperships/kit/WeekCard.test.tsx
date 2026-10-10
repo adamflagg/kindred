@@ -82,4 +82,15 @@ describe('AidWeekCard', () => {
     )
     expect(screen.queryByRole('link', { name: 'A funder changed' })).toBeNull()
   })
+
+  it('shows at most the latest six feed items', () => {
+    const feed = Array.from({ length: 9 }, (_, n) => ({
+      kind: 'posted' as const,
+      at: '2031-04-17T17:14:00Z',
+      words: `Item ${String(n)}`,
+    }))
+    renderCard(feed, () => null)
+    expect(screen.getAllByRole('listitem')).toHaveLength(6)
+    expect(screen.queryByText('Item 6')).toBeNull()
+  })
 })
