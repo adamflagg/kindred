@@ -187,3 +187,36 @@ async def test_a_feed_item_with_no_household_links_nowhere(store_with_old_post: 
     orphan = next(f for f in week.feed if f.kind == "accepted")
     assert orphan.household_cm_id is None
     assert orphan.href_kind == "none"
+
+
+# --- Final review ---------------------------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_finance_week_figures_leave_posted_in_cm_to_the_today_read(
+    store_with_posts: tuple[_Store, _Grants],
+) -> None:
+    """Posted in CM is counted from the budget's own rows in the Today read (TodayResponse.posted_this_week)."""
+    week = await _service(*store_with_posts).read(2031, casework=True, finance=True, development=False)
+    assert [f.key for f in week.finance or []] == ["approved", "avg", "helped"]
+
+
+@pytest.mark.asyncio
+async def test_an_overdue_item_is_stamped_the_day_the_line_goes_overdue() -> None:
+    """The line is overdue past 14 days (`> 14`), so the item is stamped post + 15 days, not + 14."""
+    store = _Store()
+    seed_request(store, "reqjohnson00001", household=1000001)
+    _event(store, "reqjohnson00001", "post", _at(3, 31))
+    week = await _service(store, _Grants([])).read(2031, casework=True, finance=False, development=False)
+    overdue = next(f for f in week.feed if f.kind == "overdue")
+    assert overdue.at == datetime(2031, 4, 15, 17, tzinfo=UTC)
+
+
+@pytest.mark.asyncio
+async def test_an_overdue_item_later_than_now_is_not_shown() -> None:
+    """Posted Apr 1 at 19:00 UTC: its 15th day is Apr 16 at 19:00, an hour after NOW."""
+    store = _Store()
+    seed_request(store, "reqjohnson00001", household=1000001)
+    _event(store, "reqjohnson00001", "post", _at(4, 1, 19))
+    week = await _service(store, _Grants([])).read(2031, casework=True, finance=False, development=False)
+    assert [f for f in week.feed if f.kind == "overdue"] == []

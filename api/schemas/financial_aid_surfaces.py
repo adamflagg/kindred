@@ -140,6 +140,7 @@ class TodayLineOut(BaseModel):
     overdue: bool = (
         False  # past the line's TODAY_OVERDUE_DAYS threshold (spec 2026-10-10 §5.2); never on a line without one
     )
+    overdue_after_days: int | None = None  # the line's TODAY_OVERDUE_DAYS threshold; None on a line without one
     next_up: list[TodayNextUpOut] = Field(default_factory=list)  # oldest first, at most NEXT_UP_CAP households
     names: list[str] = Field(
         default_factory=list
@@ -165,12 +166,23 @@ class WeekPointOut(BaseModel):
     posted: float  # cumulative posted camp money by the end of that week, as the budget's Posted counts it
 
 
+class WeekFigureOut(BaseModel):
+    """One figure: this week (Monday through today) against the same weekdays of last week."""
+
+    key: str
+    label: str
+    value: float
+    previous: float
+    unit: Literal["count", "dollars"]
+
+
 class TodayResponse(BaseModel):
     """Today's sections follow the user's permissions: casework None without financial_aid.casework,
     finance None without financial_aid.rules, development None without financial_aid.grantors or .summary.
-    stages: casework or finance callers (the hero bar); None for development.
+    stages: casework, finance or view callers (the hero bar); None for a development-only caller.
     posted_by_week: finance only (Committed by week); built from the priced rows the budget counts, so its last
-    point is the budget's Posted."""
+    point is the budget's Posted.
+    posted_this_week: finance only (This week's "Posted in CM"), from the same rows, by posted_on."""
 
     year: int
     casework: list[TodayLineOut] | None
@@ -178,6 +190,7 @@ class TodayResponse(BaseModel):
     stages: TodayStagesOut | None = None
     development: list[TodayLineOut] | None = None
     posted_by_week: list[WeekPointOut] | None = None
+    posted_this_week: WeekFigureOut | None = None
 
 
 class HouseholdMatchOut(BaseModel):
@@ -200,17 +213,7 @@ class HouseholdSearchResponse(BaseModel):
 
 # --- Today: This week (spec 2026-10-10 §8) ---------------------------------------------------------------
 
-WeekFeedKind = Literal["posted", "accepted", "approved", "refused", "grant", "overdue", "funder"]
-
-
-class WeekFigureOut(BaseModel):
-    """One figure: this week (Monday through today) against the same weekdays of last week."""
-
-    key: str
-    label: str
-    value: float
-    previous: float
-    unit: Literal["count", "dollars"]
+WeekFeedKind = Literal["posted", "accepted", "approved", "grant", "overdue", "funder"]
 
 
 class WeekFeedOut(BaseModel):
@@ -220,7 +223,7 @@ class WeekFeedOut(BaseModel):
     at: datetime
     words: str
     household_cm_id: int | None = None
-    href_kind: Literal["household", "funders", "rules", "none"] = "none"
+    href_kind: Literal["household", "funders", "none"] = "none"
 
 
 class TodayWeekResponse(BaseModel):

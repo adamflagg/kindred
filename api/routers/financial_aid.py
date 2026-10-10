@@ -1900,6 +1900,7 @@ async def get_today(year: _Year, user: AuthUser = _CAMPERSHIPS_OPEN) -> TodayRes
         casework=_holds(user, Permission.FINANCIAL_AID_CASEWORK),
         finance=_holds(user, Permission.FINANCIAL_AID_RULES),
         development=_holds(user, Permission.FINANCIAL_AID_GRANTORS) or _holds(user, Permission.FINANCIAL_AID_SUMMARY),
+        view=_holds(user, Permission.FINANCIAL_AID_VIEW),  # the registrar hero, for a view-only page too (§2, §9.3)
     )
 
 

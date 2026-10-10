@@ -32,6 +32,7 @@ from api.schemas.financial_aid_grants import (
 from api.schemas.financial_aid_intake import IssueOut
 from api.schemas.financial_aid_surfaces import TodayKey
 from api.services.camp_calendar import CAMP_TZ
+from api.services.financial_aid_decisions_service import FinancialAidDecisionsService
 from api.services.financial_aid_grants_register import RegisterRow
 from api.services.financial_aid_intake_service import never_true_fields, never_true_labels
 from api.services.financial_aid_queues import row_queues
@@ -1082,3 +1083,210 @@ def test_the_last_point_equals_what_the_budget_counts_as_posted() -> None:
         )
         counted += counted_part(view, Decimal(str(rnd.posted)))[0]
     assert list(_series(rows).values())[-1] == float(counted) == 1750.0
+
+
+# --- Final review: Next up's clock, the round it names, and the undated ------------------------------------
+
+
+def test_an_undated_waiting_household_has_no_days_and_comes_after_the_dated_ones() -> None:
+    """A C1 round (cm_pending) waits on the family with no posted_on: its wait is unknown, never its first ask's age."""
+    rows = [
+        _row(
+            "reqemma00000001",
+            1000001,
+            _round(1, "needs_offer", decided=900.0, asked_on=date(2031, 3, 1), cm_pending=True),
+            family_name="Johnson",
+        ),
+        _row(
+            "reqliam00000001",
+            1000002,
+            _round(1, "posted", posted=800.0, posted_on=date(2031, 4, 10)),
+            family_name="Garcia",
+        ),
+    ]
+    line = _line(build_today(_inputs(rows), casework=True, finance=False).casework, "waiting_on_family")
+    assert [(n.label, n.days) for n in line.next_up] == [("Garcia", 10), ("Johnson", None)]
+
+
+def test_an_unkeyed_pending_round_has_no_days_and_comes_after_the_keyed_ones() -> None:
+    rows = [
+        _row(
+            "reqemma00000001",
+            1000001,
+            _round(1, "pending_approval", pending_approval=300.0, asked_on=date(2031, 3, 1)),
+            family_name="Johnson",
+        ),
+        _row("reqliam00000001", 1000002, _round(1, "pending_approval", pending_approval=400.0), family_name="Garcia"),
+    ]
+    inputs = _inputs(rows, pending_since={("reqliam00000001", 1): date(2031, 4, 18)})
+    line = _line(build_today(inputs, casework=False, finance=True).finance, "pending_approval")
+    assert [(n.label, n.days) for n in line.next_up] == [("Garcia", 2), ("Johnson", None)]
+
+
+def test_each_next_up_names_the_round_that_set_its_clock() -> None:
+    """Waiting names the waiting posted round, Pending the pending round, Needs an offer the offer round; a line with
+    no clock names the newest round."""
+    johnson = _row(
+        "reqemma00000001",
+        1000001,
+        _round(1, "posted", ask=1000.0, posted=900.0, posted_on=date(2031, 4, 10)),
+        _round(2, "needs_offer", ask=500.0, decided=400.0, asked_on=date(2031, 4, 12)),
+        family_name="Johnson",
+    )
+    garcia = _row(
+        "reqliam00000001",
+        1000002,
+        _round(1, "pending_approval", ask=300.0, pending_approval=250.0),
+        _round(2, "needs_offer", ask=200.0, decided=150.0, asked_on=date(2031, 4, 13)),
+        family_name="Garcia",
+    )
+    chen = _row(
+        "reqoliv00000001",
+        1000003,
+        _round(1, "needs_offer", ask=700.0, decided=650.0, asked_on=date(2031, 4, 1)),
+        _round(2, "held", ask=350.0),
+        holds=[_hold("household_income_conflict")],
+        family_name="Chen",
+    )
+    inputs = _inputs([johnson, garcia, chen], pending_since={("reqliam00000001", 1): date(2031, 4, 18)})
+    today = build_today(inputs, casework=True, finance=True)
+
+    def named(lines: list[Any] | None, key: str, household: int) -> tuple[int | None, float | None]:
+        chip = next(n for n in _line(lines, key).next_up if n.household_cm_id == household)
+        return chip.round, chip.ask
+
+    assert named(today.casework, "waiting_on_family", 1000001) == (1, 1000.0)
+    assert named(today.casework, "needs_offer", 1000001) == (2, 500.0)
+    assert named(today.finance, "pending_approval", 1000002) == (1, 300.0)
+    assert named(today.casework, "holds", 1000003) == (2, 350.0)
+
+
+# --- Final review: This week's Posted in CM counts what the budget counts -----------------------------------
+
+
+def test_posted_this_week_counts_the_budgets_posted_by_posted_on() -> None:
+    """TODAY is Sunday 2031-04-20: this week is Apr 14-20, last week Apr 7-13. A clawed-back round counts nowhere and
+    money below the line is left out, as the budget's Posted does."""
+    rows = [
+        _row("a", 1, _posted(1, 1000.0, date(2031, 4, 15))),
+        _row("b", 2, _posted(1, 800.0, date(2031, 4, 16), outside_budget=300.0, outside_label="Fund")),
+        _row("c", 3, _posted(1, 700.0, date(2031, 4, 17), clawed_back=True)),
+        _row("d", 4, _posted(1, 600.0, date(2031, 4, 8))),
+        _row("e", 5, _posted(1, 400.0, date(2031, 4, 1))),
+    ]
+    figure = build_today(_inputs(rows), casework=False, finance=True).posted_this_week
+    assert figure is not None
+    assert (figure.key, figure.label, figure.unit) == ("posted_cm", "Posted in CM", "dollars")
+    assert (figure.value, figure.previous) == (1500.0, 600.0)
+
+
+def test_posted_this_week_is_finance_only() -> None:
+    rows = [_row("a", 1, _posted(1, 1000.0, date(2031, 4, 15)))]
+    assert build_today(_inputs(rows), casework=True, finance=False).posted_this_week is None
+
+
+# --- Final review: the view-only hero, and a development read that prices nothing ------------------------------
+
+
+def test_a_view_only_caller_gets_the_registrar_hero() -> None:
+    """Spec §2, §9.3: view only sees the registrar hero, read only."""
+    out = build_today(_inputs([]), casework=False, finance=False, view=True)
+    assert out.stages is not None
+    assert (out.casework, out.finance, out.development) == (None, None, None)
+
+
+def test_a_development_only_caller_gets_no_hero_stages() -> None:
+    assert build_today(_inputs([]), casework=False, finance=False, development=True).stages is None
+
+
+class _NoSeasonStore:
+    """A store whose every read fails: a development-only Today must never price the season."""
+
+    def __getattr__(self, name: str) -> Any:
+        raise AssertionError(f"a development-only read called the store's {name}")
+
+
+@pytest.mark.asyncio
+async def test_a_development_only_read_never_prices_the_season() -> None:
+    service = TodayService(
+        store=_NoSeasonStore(),
+        pricing=FakeRules(approved()),
+        rules=_Drafts(None),
+        grants=_Grants(_grants(year=YEAR)),
+        ledger=_Ledger(needs_group=["Scholarship other"]),
+        clock=lambda: T0,
+    )
+    out = await service.read(YEAR, casework=False, finance=False, development=True)
+    assert _line(out.development, "needs_group").names == ["Scholarship other"]
+    assert (out.stages, out.casework, out.finance) == (None, None, None)
+
+
+@pytest.mark.asyncio
+async def test_a_view_only_read_prices_the_season_for_its_hero() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, "reqemma00000001")
+    out = await _service(store, _Grants(_grants(year=YEAR)), _Drafts(None), _Ledger()).read(
+        YEAR, casework=False, finance=False, view=True
+    )
+    assert out.stages is not None
+    assert out.stages.families == 1
+    assert (out.casework, out.finance, out.development) == (None, None, None)
+
+
+# --- Final review: an undated post still counts, so the last point is the budget's Posted ---------------------
+
+
+def test_an_undated_post_counts_in_the_current_week() -> None:
+    rows = [
+        _row("a", 1, _posted(1, 1000.0, date(2031, 3, 25))),
+        _row("b", 2, _round(1, "posted", posted=500.0, posted_on=None, accepted=True)),
+    ]
+    series = _series(rows)
+    assert series[week_start(TODAY)] == 1500.0
+    assert series[date(2031, 3, 24)] == 1000.0
+
+
+@pytest.mark.asyncio
+async def test_the_last_point_is_the_budget_reads_own_posted() -> None:
+    """The budget read (FinancialAidDecisionsService.budget, budget.py's season_budget) and Today's series, on one
+    season: a dated post and an undated one."""
+    store = FakeDecisionsStore()
+    seed_request(store, "reqemma00000001")
+    seed_request(store, "reqliam00000001", household=1000002, person=1000021)
+    for request_id, effective_on in (("reqemma00000001", date(2027, 3, 2)), ("reqliam00000001", None)):
+        store.events.append(
+            DecisionEvent(
+                id=f"ev{len(store.events):013d}",
+                request_id=request_id,
+                round=1,
+                kind="post",
+                amount=Decimal(1500),
+                created=T0,
+                effective_on=effective_on,
+                lock_source="tick",
+                rules_version=1,
+                snapshot={"pool": "camp_pool", "counts_toward_budget": True},
+            )
+        )
+    grants = _Grants(_grants(year=YEAR))
+    today = await _service(store, grants, _Drafts(None), _Ledger()).read(YEAR, casework=False, finance=True)
+
+    async def no_register(year: int) -> list[RegisterRow]:
+        return []
+
+    budget = await FinancialAidDecisionsService(store, FakeRules(approved()), no_register, clock=lambda: T0).budget(
+        YEAR
+    )
+    assert today.posted_by_week
+    assert today.posted_by_week[-1].posted == budget.total.total.posted == 3000.0
+
+
+# --- Final review: each line's overdue threshold comes from the server -----------------------------------------
+
+
+def test_the_three_clocked_lines_carry_their_overdue_threshold() -> None:
+    today = build_today(_inputs([]), casework=True, finance=True)
+    lines = [*(today.casework or []), *(today.finance or [])]
+    assert {line.key: line.overdue_after_days for line in lines if line.overdue_after_days is not None} == dict(
+        TODAY_OVERDUE_DAYS
+    )

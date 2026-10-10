@@ -18082,6 +18082,10 @@ export type TodayLineOut = {
    */
   overdue?: boolean
   /**
+   * Overdue After Days
+   */
+  overdue_after_days?: number | null
+  /**
    * Next Up
    */
   next_up?: Array<TodayNextUpOut>
@@ -18169,9 +18173,10 @@ export type TodayReasonOut = {
  *
  * Today's sections follow the user's permissions: casework None without financial_aid.casework,
  * finance None without financial_aid.rules, development None without financial_aid.grantors or .summary.
- * stages: casework or finance callers (the hero bar); None for development.
+ * stages: casework, finance or view callers (the hero bar); None for a development-only caller.
  * posted_by_week: finance only (Committed by week); built from the priced rows the budget counts, so its last
  * point is the budget's Posted.
+ * posted_this_week: finance only (This week's "Posted in CM"), from the same rows, by posted_on.
  */
 export type TodayResponse = {
   /**
@@ -18195,6 +18200,7 @@ export type TodayResponse = {
    * Posted By Week
    */
   posted_by_week?: Array<WeekPointOut> | null
+  posted_this_week?: WeekFigureOut | null
 }
 
 /**
@@ -19206,7 +19212,7 @@ export type WeekFeedOut = {
   /**
    * Kind
    */
-  kind: 'posted' | 'accepted' | 'approved' | 'refused' | 'grant' | 'overdue' | 'funder'
+  kind: 'posted' | 'accepted' | 'approved' | 'grant' | 'overdue' | 'funder'
   /**
    * At
    */
@@ -19222,7 +19228,7 @@ export type WeekFeedOut = {
   /**
    * Href Kind
    */
-  href_kind?: 'household' | 'funders' | 'rules' | 'none'
+  href_kind?: 'household' | 'funders' | 'none'
 }
 
 /**

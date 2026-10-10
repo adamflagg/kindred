@@ -18,7 +18,7 @@ from decimal import Decimal
 from typing import Final, Protocol
 
 from api.schemas.financial_aid import UnclassifiedSource
-from api.schemas.financial_aid_decisions import GridRowOut, QueueOut
+from api.schemas.financial_aid_decisions import GridRowOut, QueueOut, RoundOut
 from api.schemas.financial_aid_grants import GrantorOut, GrantorsResponse, GrantsResponse
 from api.schemas.financial_aid_surfaces import (
     TodayItemKind,
@@ -28,6 +28,7 @@ from api.schemas.financial_aid_surfaces import (
     TodayReasonOut,
     TodayResponse,
     TodayStagesOut,
+    WeekFigureOut,
     WeekPointOut,
 )
 from api.services.camp_calendar import CAMP_TZ
@@ -145,6 +146,7 @@ def _line(
         largest_gap=largest_gap,
         request_ids=[row.request_id for row in rows] if listed else [],
         overdue=overdue,
+        overdue_after_days=TODAY_OVERDUE_DAYS.get(key),
         next_up=next_up or [],
     )
 
@@ -153,26 +155,50 @@ def _in(rows: Sequence[GridRowOut], queue: QueueOut) -> list[GridRowOut]:
     return [row for row in rows if row.queues and queue in row.queues]
 
 
+Clock = Callable[[GridRowOut], tuple[date | None, RoundOut | None]]
+"""A line's clock on one row: (when it started, the round that started it). The date is None when no round on the line
+is dated (a C1 `cm_pending` round waiting on the family, a pending round with no keyed award); the round is still the
+line's own when it has one."""
+
+
+def _clocked(
+    rounds: Iterable[RoundOut], when: Callable[[RoundOut], date | None]
+) -> tuple[date | None, RoundOut | None]:
+    """The round that sets a line's clock: its oldest dated round (ties by round), else its first undated one."""
+    listed = list(rounds)
+    dated = [(day, r) for r in listed if (day := when(r)) is not None]
+    if dated:
+        return min(dated, key=lambda pair: (pair[0], pair[1].round))
+    return None, (listed[0] if listed else None)
+
+
+def _waiting_clock(row: GridRowOut) -> tuple[date | None, RoundOut | None]:
+    """Waiting on the family's clock: the oldest post among the rounds waiting (a C1 round waits too, undated)."""
+    waiting = [r for r in row.rounds if (r.status == "posted" or r.cm_pending) and not r.accepted and not r.clawed_back]
+    return _clocked(waiting, lambda r: r.posted_on if r.status == "posted" else None)
+
+
 def _waiting_since(row: GridRowOut) -> date | None:
-    days = [r.posted_on for r in row.rounds if r.status == "posted" and not r.accepted and not r.clawed_back]
-    return min((d for d in days if d is not None), default=None)
+    return _waiting_clock(row)[0]
+
+
+def _asked_clock(row: GridRowOut) -> tuple[date | None, RoundOut | None]:
+    """Needs an offer's clock: the oldest ask among the rounds the queue holds."""
+    return _clocked(offer_rounds(row), lambda r: r.asked_on)
 
 
 def _asked_since(row: GridRowOut) -> date | None:
-    """Needs an offer's clock: the oldest ask among the rounds the queue holds."""
-    return min((r.asked_on for r in offer_rounds(row) if r.asked_on is not None), default=None)
+    return _asked_clock(row)[0]
+
+
+def _pending_clock(row: GridRowOut, keyed: Mapping[tuple[str, int], date]) -> tuple[date | None, RoundOut | None]:
+    """Pending approval's clock: when the oldest of the row's pending rounds was keyed for approval."""
+    pending = [r for r in row.rounds if r.status == "pending_approval"]
+    return _clocked(pending, lambda r: keyed.get((row.request_id, r.round)))
 
 
 def _pending_since(row: GridRowOut, keyed: Mapping[tuple[str, int], date]) -> date | None:
-    """Pending approval's clock: when the oldest of the row's pending rounds was keyed for approval."""
-    return min(
-        (
-            keyed[(row.request_id, r.round)]
-            for r in row.rounds
-            if r.status == "pending_approval" and (row.request_id, r.round) in keyed
-        ),
-        default=None,
-    )
+    return _pending_clock(row, keyed)[0]
 
 
 def _first_ask(row: GridRowOut) -> date:
@@ -180,28 +206,31 @@ def _first_ask(row: GridRowOut) -> date:
     return min((r.asked_on for r in row.rounds if r.asked_on is not None), default=date.max)
 
 
-def _next_up(
-    rows: Sequence[GridRowOut], today: date, since: Callable[[GridRowOut], date | None] | None
-) -> list[TodayNextUpOut]:
-    """Each household once, at its oldest request, oldest first (ties by household id), capped. With no clock the
-    order is the first ask and `days` is None."""
-    best: dict[int, tuple[date, GridRowOut]] = {}
+def _newest_round(row: GridRowOut) -> RoundOut | None:
+    return max(row.rounds, key=lambda r: r.round) if row.rounds else None
+
+
+def _next_up(rows: Sequence[GridRowOut], today: date, clock: Clock | None) -> list[TodayNextUpOut]:
+    """Each household once, at its oldest request, oldest first (ties by household id), capped. On a clocked line the
+    dated households come first, by their clock, and the undated after them (by first ask) with `days` None; the
+    round and ask named are the round that set the clock. With no clock the order is the first ask, `days` is None and
+    the round is the newest."""
+    best: dict[int, tuple[tuple[bool, date], date | None, RoundOut | None, GridRowOut]] = {}
     for row in rows:
-        when = (since(row) if since else None) or _first_ask(row)
+        when, rnd = clock(row) if clock is not None else (None, None)
+        order = (when is None, when or _first_ask(row))
         held = best.get(row.household_cm_id)
-        if held is None or when < held[0]:
-            best[row.household_cm_id] = (when, row)
-    ordered = sorted(best.values(), key=lambda pair: (pair[0], pair[1].household_cm_id))[:NEXT_UP_CAP]
+        if held is None or order < held[0]:
+            best[row.household_cm_id] = (order, when, rnd or _newest_round(row), row)
+    ordered = sorted(best.values(), key=lambda entry: (entry[0], entry[3].household_cm_id))[:NEXT_UP_CAP]
     out: list[TodayNextUpOut] = []
-    for when, row in ordered:
-        offers = offer_rounds(row)
-        rnd = offers[0] if offers else (max(row.rounds, key=lambda r: r.round) if row.rounds else None)
+    for _, when, rnd, row in ordered:
         out.append(
             TodayNextUpOut(
                 household_cm_id=row.household_cm_id,
                 label=row.household_label or row.family_name,
                 tiebreak=row.household_label_tiebreak,
-                days=(today - when).days if since is not None and when != date.max else None,
+                days=(today - when).days if when is not None else None,
                 camper_name=row.camper_name,
                 session_name=row.session_name,
                 session_type=row.session_type,
@@ -315,7 +344,7 @@ def _casework(inputs: TodayInputs) -> list[TodayLineOut]:
             reasons=_reasons((f"r{r.round}", row.household_cm_id) for row in needs_offer for r in offer_rounds(row)),
             oldest_days=offer_oldest,
             overdue=_overdue("needs_offer", offer_oldest),
-            next_up=_next_up(needs_offer, inputs.today, _asked_since),
+            next_up=_next_up(needs_offer, inputs.today, _asked_clock),
         ),
         "holds": _line(
             "holds",
@@ -329,7 +358,7 @@ def _casework(inputs: TodayInputs) -> list[TodayLineOut]:
             oldest_days=waiting_oldest,
             over_14_days=sum(1 for d in since if (inputs.today - d).days > WAITING_TOO_LONG_DAYS),
             overdue=_overdue("waiting_on_family", waiting_oldest),
-            next_up=_next_up(waiting, inputs.today, _waiting_since),
+            next_up=_next_up(waiting, inputs.today, _waiting_clock),
         ),
         "not_reconciled": _line(
             "not_reconciled",
@@ -400,7 +429,7 @@ def _finance(inputs: TodayInputs) -> list[TodayLineOut]:
             amount=money(pending_amount),
             oldest_days=pending_oldest,
             overdue=_overdue("pending_approval", pending_oldest),
-            next_up=_next_up(pending, inputs.today, lambda row: _pending_since(row, inputs.pending_since)),
+            next_up=_next_up(pending, inputs.today, lambda row: _pending_clock(row, inputs.pending_since)),
         ),
         "rules_sections": TodayLineOut(
             key="rules_sections",
@@ -502,22 +531,29 @@ def _stages(inputs: TodayInputs) -> TodayStagesOut:
     )
 
 
-def _posted_by_week(inputs: TodayInputs) -> list[WeekPointOut]:
-    """Committed by week: the budget's Posted, week by week. A posted round counts as budget.py's `_tally_round` counts
-    it: not at all when clawed back (D54), and only its inside part otherwise, the round's amount less the money below
-    the line (`outside_budget`, the grid's tag of counted_part's second half). Dated by `posted_on`, accumulated, with
-    empty weeks filled, from the first week with a post through the current one; the last point is the budget's Posted."""
-    per_week: dict[date, Decimal] = defaultdict(Decimal)
-    for row in inputs.rows:
+def _posted_parts(rows: Iterable[GridRowOut]) -> Iterable[tuple[date | None, Decimal]]:
+    """Each posted round's money as budget.py's `_tally_round` counts it in Posted, with its `posted_on`: nothing when
+    clawed back (D54), and otherwise only its inside part, the round's amount less the money below the line
+    (`outside_budget`, the grid's tag of counted_part's second half)."""
+    for row in rows:
         for r in row.rounds:
-            if r.status != "posted" or r.clawed_back or r.posted_on is None:
-                continue
-            per_week[week_start(r.posted_on)] += Decimal(str(r.posted or 0)) - Decimal(str(r.outside_budget or 0))
+            if r.status == "posted" and not r.clawed_back:
+                yield r.posted_on, Decimal(str(r.posted or 0)) - Decimal(str(r.outside_budget or 0))
+
+
+def _posted_by_week(inputs: TodayInputs) -> list[WeekPointOut]:
+    """Committed by week: the budget's Posted (`_posted_parts`), week by week, dated by `posted_on`, accumulated, with
+    empty weeks filled, from the first week with a post through the current one. A post with no `posted_on` counts in
+    the current week, so the last point is always the budget's Posted."""
+    current = week_start(inputs.today)
+    per_week: dict[date, Decimal] = defaultdict(Decimal)
+    for posted_on, part in _posted_parts(inputs.rows):
+        per_week[week_start(posted_on) if posted_on is not None else current] += part
     if not per_week:
         return []
     points: list[WeekPointOut] = []
     running = Decimal(0)
-    cursor, last = min(per_week), max(max(per_week), week_start(inputs.today))
+    cursor, last = min(per_week), max(max(per_week), current)
     while cursor <= last:
         running += per_week.get(cursor, Decimal(0))
         points.append(WeekPointOut(week_of=cursor, posted=float(running)))
@@ -525,14 +561,38 @@ def _posted_by_week(inputs: TodayInputs) -> list[WeekPointOut]:
     return points
 
 
-def build_today(inputs: TodayInputs, *, casework: bool, finance: bool, development: bool = False) -> TodayResponse:
+def _posted_this_week(inputs: TodayInputs) -> WeekFigureOut:
+    """This week's "Posted in CM" (spec §7.2): the budget's Posted (`_posted_parts`) by `posted_on`, Monday through
+    today against the same weekdays of last week, as the week read's windows run. An undated post is in neither."""
+    this_start = week_start(inputs.today)
+    last_start = this_start - timedelta(days=7)
+    last_end = last_start + (inputs.today - this_start)
+    now = before = Decimal(0)
+    for posted_on, part in _posted_parts(inputs.rows):
+        if posted_on is None:
+            continue
+        if this_start <= posted_on <= inputs.today:
+            now += part
+        elif last_start <= posted_on <= last_end:
+            before += part
+    return WeekFigureOut(
+        key="posted_cm", label="Posted in CM", value=float(now), previous=float(before), unit="dollars"
+    )
+
+
+def build_today(
+    inputs: TodayInputs, *, casework: bool, finance: bool, development: bool = False, view: bool = False
+) -> TodayResponse:
+    """`view`: the caller holds financial_aid.view, so a view-only page still draws the registrar hero (spec §2, §9.3).
+    A development-only caller gets no stages."""
     return TodayResponse(
         year=inputs.year,
         casework=_casework(inputs) if casework else None,
         finance=_finance(inputs) if finance else None,
-        stages=_stages(inputs) if casework or finance else None,
+        stages=_stages(inputs) if casework or finance or view else None,
         development=_development(inputs) if development else None,
         posted_by_week=_posted_by_week(inputs) if finance else None,
+        posted_this_week=_posted_this_week(inputs) if finance else None,
     )
 
 
@@ -597,9 +657,14 @@ class TodayService:
         self._to_place = to_place
         self._clock: Callable[[], datetime] = clock or (lambda: datetime.now(UTC))
 
-    async def read(self, year: int, *, casework: bool, finance: bool, development: bool = False) -> TodayResponse:
-        if not (casework or finance or development):
+    async def read(
+        self, year: int, *, casework: bool, finance: bool, development: bool = False, view: bool = False
+    ) -> TodayResponse:
+        if not (casework or finance or development or view):
             return TodayResponse(year=year, casework=None, finance=None)
+        # A development-only caller gets funder upkeep alone: no family line and no hero stages, so the season is
+        # never priced for it. View needs the season for the registrar hero (spec §2, §9.3).
+        priced = casework or finance or view
         shared = OneGrantsLoad(self._grants, year)
         decisions = FinancialAidDecisionsService(self._store, self._pricing, shared.register, clock=self._clock)
         # asyncio.gather types six awaitables at most, so the events ride a task of their own.
@@ -612,7 +677,7 @@ class TodayService:
             (unclassified, needs_group),
             never_labels,
         ) = await asyncio.gather(
-            decisions.season(year),
+            decisions.season(year) if priced else _none(),
             shared.read(),
             # Retired grantors too: hidden from pickers, never from the grants that named them.
             self._grants.list_grantors(include_retired=True) if casework or development else _no_grantors(),
@@ -621,9 +686,13 @@ class TodayService:
             _never_true(self._intake, year) if finance and self._intake is not None else _no_fields(),
         )
         events = await events_read
-        season = await decisions.with_unticked(season)
-        rows = [decisions.row_of(season, ({}, {}), request_id) for request_id in season.priced]
-        open_lines = await open_to_place(season, self._to_place) if casework and self._to_place is not None else None
+        rows: list[GridRowOut] = []
+        open_lines: OpenToPlace | None = None
+        if season is not None:
+            season = await decisions.with_unticked(season)
+            rows = [decisions.row_of(season, ({}, {}), request_id) for request_id in season.priced]
+            if casework and self._to_place is not None:
+                open_lines = await open_to_place(season, self._to_place)
         inputs = TodayInputs(
             year=year,
             rows=rows,
@@ -639,7 +708,7 @@ class TodayService:
             needs_group=needs_group,
             pending_since=pending_since(events),
         )
-        return build_today(inputs, casework=casework, finance=finance, development=development)
+        return build_today(inputs, casework=casework, finance=finance, development=development, view=view)
 
 
 async def _no_events() -> list[DecisionEvent]:

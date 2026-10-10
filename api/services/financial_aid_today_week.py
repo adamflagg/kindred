@@ -107,21 +107,17 @@ def _registrar(
     ]
 
 
-def _posted_dollars(events: Iterable[DecisionEvent]) -> Decimal:
-    return sum(
-        (_amount(e) if e.kind == "post" else -_amount(e) for e in events if e.kind in ("post", "unpost")), Decimal(0)
-    )
-
-
 def _finance(
     windows: _Counted, events: Sequence[DecisionEvent], request_household: Mapping[str, int]
 ) -> list[WeekFigureOut]:
+    """You approved, Avg award and Families helped. "Posted in CM" is not here: it is the budget's Posted by week, so it
+    is counted from the budget's own rows in the Today read (TodayResponse.posted_this_week)."""
+
     def of(kind: str) -> tuple[list[DecisionEvent], list[DecisionEvent]]:
         return windows.split((e for e in events if e.kind == kind), lambda e: _day(e.created))
 
     approved, approved_before = of("approve")
     posts, posts_before = of("post")
-    moved, moved_before = windows.split((e for e in events if e.kind in ("post", "unpost")), lambda e: _day(e.created))
 
     def average(items: Sequence[DecisionEvent]) -> float:
         return float(sum((_amount(e) for e in items), Decimal(0)) / len(items)) if items else 0.0
@@ -142,9 +138,6 @@ def _finance(
             float(sum((_amount(e) for e in approved), Decimal(0))),
             float(sum((_amount(e) for e in approved_before), Decimal(0))),
             "dollars",
-        ),
-        _figure(
-            "posted_cm", "Posted in CM", float(_posted_dollars(moved)), float(_posted_dollars(moved_before)), "dollars"
         ),
         _figure("avg", "Avg award", average(posts), average(posts_before), "dollars"),
         _figure("helped", "Families helped", helped(windows.this_end), helped(windows.last_end)),
@@ -174,8 +167,13 @@ def _development(
     ]
 
 
-def _overdue(events: Sequence[DecisionEvent], windows: _Counted) -> list[tuple[DecisionEvent, datetime]]:
-    """Posts with no later accept or unpost for the same request and round, whose 14th day falls in this week."""
+# The Waiting line is overdue past WAITING_TOO_LONG_DAYS (`> 14`), so the item is stamped on the day after the 14th.
+OVERDUE_STAMP: Final = timedelta(days=WAITING_TOO_LONG_DAYS + 1)
+
+
+def _overdue(events: Sequence[DecisionEvent], windows: _Counted, now: datetime) -> list[tuple[DecisionEvent, datetime]]:
+    """Posts with no later accept or unpost for the same request and round, stamped when the Waiting line counts them
+    overdue (post + 15 days), whose stamp falls in this week and is not later than now."""
     ordered = sorted(events, key=lambda e: e.created)
     last_post: dict[tuple[str, int], DecisionEvent] = {}
     for event in ordered:
@@ -184,8 +182,8 @@ def _overdue(events: Sequence[DecisionEvent], windows: _Counted) -> list[tuple[D
             last_post[key] = event
         elif event.kind in ("accept", "unpost"):
             last_post.pop(key, None)
-    due = [(e, e.created + timedelta(days=WAITING_TOO_LONG_DAYS)) for e in last_post.values()]
-    return [(e, at) for e, at in due if _in(_day(at), windows.this_start, windows.this_end)]
+    due = [(e, e.created + OVERDUE_STAMP) for e in last_post.values()]
+    return [(e, at) for e, at in due if at <= now and _in(_day(at), windows.this_start, windows.this_end)]
 
 
 def _funder_name(row: LogRow, names: Mapping[str, str]) -> str:
@@ -204,7 +202,8 @@ class TodayWeekService:
         self._clock = clock or (lambda: datetime.now(UTC))
 
     async def read(self, year: int, *, casework: bool, finance: bool, development: bool) -> TodayWeekResponse:
-        today = _day(self._clock())
+        now = self._clock()
+        today = _day(now)
         windows = _Counted(today)
         families = casework or finance  # family-level data, and the names that come with it
         shared = OneGrantsLoad(self._grants, year)
@@ -225,6 +224,7 @@ class TodayWeekService:
 
         feed = self._feed(
             windows,
+            now,
             events,
             register,
             funder_log,
@@ -247,6 +247,7 @@ class TodayWeekService:
     @staticmethod
     def _feed(
         windows: _Counted,
+        now: datetime,
         events: Sequence[DecisionEvent],
         register: Sequence[RegisterRow],
         funder_log: Sequence[LogRow],
@@ -299,7 +300,7 @@ class TodayWeekService:
                             href_kind="household" if household is not None else "none",
                         )
                     )
-            for event, at in _overdue(events, windows):
+            for event, at in _overdue(events, windows, now):
                 household, name = family(event.request_id)
                 items.append(
                     WeekFeedOut(

@@ -10,15 +10,19 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from bunking.auth_middleware import get_current_user
 from bunking.rbac.permissions import Permission
 from tests.unit.rbac.permission_personas import (
     PERSONA_DEVELOPMENT,
     PERSONA_FINANCE,
+    PERSONA_NONE,
     PERSONA_REGISTRAR,
     PERSONAS,
     persona_client,
+    persona_user,
 )
 
 VIEW, SUMMARY, CASEWORK, GRANTORS = (
@@ -153,21 +157,39 @@ def test_today_opens_to_every_camperships_role(persona: str) -> None:
     assert response.status_code == (200 if {VIEW, SUMMARY, GRANTORS} & set(PERSONAS[persona]) else 403), persona
 
 
+def _view_only_client() -> TestClient:
+    """A caller holding financial_aid.view alone (spec section 2's View only page); no shared persona holds just that."""
+    from api.routers.financial_aid import router
+
+    user = persona_user(PERSONA_NONE)
+    user.permissions = {VIEW}
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_current_user] = lambda: user
+    return TestClient(app, raise_server_exceptions=False)
+
+
+def _caller(persona: str) -> TestClient:
+    return _view_only_client() if persona == "view_only" else _client(persona)
+
+
 @pytest.mark.parametrize(
-    ("persona", "casework", "finance", "development"),
+    ("persona", "casework", "finance", "development", "view"),
     [
-        (PERSONA_REGISTRAR, True, False, False),
-        (PERSONA_FINANCE, True, True, True),
-        (PERSONA_DEVELOPMENT, False, False, True),
+        (PERSONA_REGISTRAR, True, False, False, True),
+        (PERSONA_FINANCE, True, True, True, True),
+        (PERSONA_DEVELOPMENT, False, False, True, False),
+        ("view_only", False, False, False, True),
     ],
 )
 def test_todays_sections_follow_the_users_permissions(
-    persona: str, casework: bool, finance: bool, development: bool
+    persona: str, casework: bool, finance: bool, development: bool, view: bool
 ) -> None:
-    """§6.4: Casework lines for casework, Finance lines for rules, funder upkeep for grantors or summary."""
+    """§6.4: Casework lines for casework, Finance lines for rules, funder upkeep for grantors or summary, and the
+    registrar hero for anyone holding view (spec section 2, section 9.3)."""
     service = _stub_today()
-    assert _client(persona).get("/api/financial-aid/today/2031").status_code == 200
-    service.read.assert_awaited_once_with(2031, casework=casework, finance=finance, development=development)
+    assert _caller(persona).get("/api/financial-aid/today/2031").status_code == 200
+    service.read.assert_awaited_once_with(2031, casework=casework, finance=finance, development=development, view=view)
 
 
 def test_today_counts_to_place_on_the_repository_it_prices_with() -> None:
@@ -324,3 +346,21 @@ def test_this_week_opens_like_today(persona: str) -> None:
     _stub_week()
     response = _client(persona).get("/api/financial-aid/today/2031/week")
     assert response.status_code == (200 if {VIEW, SUMMARY, GRANTORS} & set(PERSONAS[persona]) else 403), persona
+
+
+@pytest.mark.parametrize(
+    ("persona", "casework", "finance", "development"),
+    [
+        (PERSONA_REGISTRAR, True, False, False),
+        (PERSONA_FINANCE, True, True, True),
+        (PERSONA_DEVELOPMENT, False, False, True),
+        ("view_only", False, False, False),
+    ],
+)
+def test_this_weeks_sections_follow_the_users_permissions(
+    persona: str, casework: bool, finance: bool, development: bool
+) -> None:
+    """Section 8.3: the week read answers only the sections the caller holds, as Today does."""
+    service = _stub_week()
+    assert _caller(persona).get("/api/financial-aid/today/2031/week").status_code == 200
+    service.read.assert_awaited_once_with(2031, casework=casework, finance=finance, development=development)
