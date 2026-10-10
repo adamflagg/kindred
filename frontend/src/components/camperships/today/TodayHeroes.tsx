@@ -7,6 +7,7 @@ import type {
   ApiAidDevelopmentSource,
   ApiAidTodayStages,
 } from '../../../types/api-types'
+import { POOL_NEGATIVE_INK } from '../kit/aidStyles'
 import { aidHref, type AidView } from '../kit/asOf'
 import { CS_META } from '../kit/csType'
 import { AidHeroBar, AidHeroCard, AidHeroKeys, type HeroSegment } from '../kit/HeroBar'
@@ -138,7 +139,7 @@ export function FinanceHero({
         remaining === null ? (
           '—'
         ) : negative ? (
-          <span className="text-amber-700 dark:text-amber-400">{thousands(-remaining)}</span>
+          <span className={POOL_NEGATIVE_INK}>{thousands(-remaining)}</span>
         ) : (
           thousands(remaining)
         )

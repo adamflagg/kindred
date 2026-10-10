@@ -121,4 +121,92 @@ describe('TodayTodos', () => {
     expect(screen.queryByText('Nothing is waiting on you.')).toBeNull()
     expect(screen.getByText("The registrar's queue")).toBeInTheDocument()
   })
+  it('words every reason code, with no count on a named item', () => {
+    wrap(
+      <TodayTodos
+        lines={[
+          line('grants', 13, {
+            item_kind: 'grants',
+            reasons: [
+              { code: 'not_posted', families: null, items: 10 },
+              { code: 'needs_camper', families: null, items: 2 },
+            ],
+          }),
+          line('rules_sections', 1, {
+            item_kind: 'sections',
+            reasons: [{ code: 'award_tables', families: null, items: 1 }],
+          }),
+          line('intake', 1, {
+            reasons: [{ code: 'awaiting_approved_rules', families: null, items: 1 }],
+          }),
+        ]}
+        rest={[]}
+        view={VIEW}
+        ranked={false}
+        nextHead="Why"
+        empty=""
+      />
+    )
+    expect(
+      screen.getByText('Commitment not yet in CampMinder 10 · Needs a camper 2')
+    ).toBeInTheDocument()
+    expect(screen.getByText('Round 1 award table')).toBeInTheDocument()
+    expect(screen.getByText('Awaiting rules 1')).toBeInTheDocument()
+    expect(document.body.textContent).not.toMatch(/[a-z]+_[a-z]+/)
+  })
+  it('shows a count of one in the singular', () => {
+    wrap(
+      <TodayTodos
+        lines={[line('rules_sections', 1, { item_kind: 'sections' })]}
+        rest={[]}
+        view={VIEW}
+        ranked={false}
+        empty=""
+      />
+    )
+    expect(screen.getByText('1 section')).toBeInTheDocument()
+  })
+  it('drawer: household-level rows join only the parts they have, and name the household once', () => {
+    const l = line('needs_offer', 2, {
+      next_up: [
+        {
+          household_cm_id: 9100124,
+          label: 'Household 9100124',
+          tiebreak: '',
+          days: 3,
+          camper_name: '',
+          session_name: 'Family Camp 1',
+          session_type: 'family',
+          round: 1,
+          ask: 500,
+        },
+        {
+          household_cm_id: 1000002,
+          label: 'Garcia',
+          tiebreak: '',
+          days: 2,
+          camper_name: 'Liam Garcia',
+          session_name: 'Session 2',
+          session_type: 'main',
+          round: 1,
+          ask: 900,
+        },
+      ],
+    })
+    wrap(<TodayTodos lines={[l]} rest={[]} view={VIEW} empty="" />)
+    const drawer = screen.getByTestId('todo-drawer')
+    const rows = within(drawer).getAllByTestId('drawer-household')
+    expect(rows[0]).not.toHaveTextContent('· ·')
+    expect(rows[0]!.textContent.startsWith('Household 9100124')).toBe(true)
+    expect(within(rows[0]!).getByRole('link')).toHaveTextContent(/^Household 9100124$/)
+    expect(within(rows[1]!).getByRole('link')).toHaveTextContent('Garcia household')
+    const what = within(rows[0]!).getAllByRole('cell')[1]!
+    expect(what.textContent.startsWith('·')).toBe(false)
+  })
+  it('puts the expand caret in the To-do cell, leaving the rank cell as the number alone', () => {
+    wrap(<TodayTodos lines={top} rest={rest} view={VIEW} empty="" />)
+    const cells = within(row(0)).getAllByRole('cell')
+    expect(cells[0]).toHaveTextContent(/^1$/)
+    expect(cells[1]!.textContent.startsWith('▾')).toBe(true)
+  })
 })

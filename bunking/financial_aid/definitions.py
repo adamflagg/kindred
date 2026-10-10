@@ -858,8 +858,8 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="today_season_so_far",
         term="The season so far",
         text="The season so far: every live request by where it stands. Amber is waiting on you.",
-        spec="§7.1",
-        rulings=("D44",),
+        spec="§7.4",
+        rulings=("D24",),
     ),
     Definition(
         key="today_todos",
@@ -868,8 +868,8 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
             "To-dos: overdue lines first (Needs an offer past 10 days, Waiting on the family past 14), then a fixed "
             "order. Next up names the oldest households."
         ),
-        spec="§7.1",
-        rulings=("D44",),
+        spec="§7.4",
+        rulings=("D24",),
     ),
     Definition(
         key="today_remaining",
@@ -878,7 +878,7 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
             "Remaining: what's left once every request waiting for an offer is paid as the rules price it. Requests "
             "on hold are shown at what they asked, hatched, because they have no award yet."
         ),
-        spec="§7.2",
+        spec="§7.4",
         rulings=("D44", "D79"),
     ),
     Definition(
@@ -888,7 +888,7 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
             "Where this season's aid came from: the camp's Posted awards plus every outside grant, live. Awards "
             "count each attendee and session with any aid once."
         ),
-        spec="§7.3",
+        spec="§7.4",
         rulings=("D87",),
     ),
 )
@@ -932,7 +932,7 @@ SURFACES: Final[Mapping[str, tuple[str, ...]]] = {
     ),
     "reports-development-zip": ("zip_who_counts", "zip_dollars", "zip_zip", "zip_families", "zip_geography"),
     "reports-funding-sources": ("source_facts",),
-    # Today's three pages (spec 2026-10-10 §7.1-§7.3): at most two notes each.
+    # Today's three pages: at most two notes each; the wording comes from the 2026-10-10 Today spec (§7.1-§7.3).
     "today_registrar": ("today_season_so_far", "today_todos"),
     "today_finance": ("today_remaining",),
     "today_development": ("today_aid_came_from",),

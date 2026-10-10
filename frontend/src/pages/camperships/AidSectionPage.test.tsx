@@ -114,9 +114,11 @@ describe('AidHome', () => {
     expect(screen.getByTestId('where')).toHaveTextContent('/aid/today')
   })
 
-  it('keeps the season and the as-of when it redirects (Decision 9)', () => {
+  it('keeps the season but drops the as-of when it lands on Today, which is live only (D20)', () => {
     granted = ['financial_aid.summary']
-    renderAt('/aid?year=2027&as_of=2026-04-01')
-    expect(screen.getByTestId('where')).toHaveTextContent('/aid/today?year=2027&as_of=2026-04-01')
+    renderAt('/aid?year=2027&as_of=2026-04-01&as_of_axis=recorded')
+    const where = screen.getByTestId('where')
+    expect(where).toHaveTextContent('/aid/today?year=2027')
+    expect(where.textContent).not.toMatch(/as_of/)
   })
 })
