@@ -6061,6 +6061,14 @@ export type GridRowOut = {
    */
   session_type?: string
   /**
+   * Program Family
+   */
+  program_family?: string
+  /**
+   * Program Family Label
+   */
+  program_family_label?: string
+  /**
    * Household Label
    */
   household_label?: string

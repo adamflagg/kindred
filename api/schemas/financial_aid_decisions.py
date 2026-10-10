@@ -287,6 +287,11 @@ class GridRowOut(BaseModel):
     session_cm_id: int
     session_name: str
     session_type: str = ""  # camp_sessions.session_type of the row's session (main, quest, family, ...); "" for none
+    # ux3 taxonomy: the program family of the row's session type (PROGRAM_FAMILY_BY_SESSION_TYPE: summer, quest, teen,
+    # bmitzvah, family_camp, adult_weekend, family_school; "other" for none) and the one shared word for it, "" when
+    # unnamed. The Requests Program picker groups by these under the pool; the frontend holds no copy of the map.
+    program_family: str = "other"
+    program_family_label: str = ""
     # The household's label as Money and Grants name it (household_labels): filled for a household-level row (no
     # camper), "" for a camper row. household_label_tiebreak is "" unless another household-level row on the grid
     # reads the same. With no label read, a household row falls back to family_name.

@@ -89,3 +89,20 @@ def test_the_requests_route_names_households_with_the_household_pages_label_help
     with patch.object(router, "FinancialAidDecisionsService") as service:
         router._decisions()
     assert service.call_args.kwargs["labels"] is not None
+
+
+@pytest.mark.asyncio
+async def test_a_row_carries_its_program_family_and_the_shared_word_for_it() -> None:
+    """ux3 taxonomy: the family comes from the session type through PROGRAM_FAMILY_BY_SESSION_TYPE (no copy in
+    the frontend), and its words from the one family-words map the Ledger and Grants read."""
+    rows = await _rows(_store(), FakeLabels())
+    assert (rows[CAMPER].program_family, rows[CAMPER].program_family_label) == ("summer", "At Camp")
+    assert (rows[FAMILY_A].program_family, rows[FAMILY_A].program_family_label) == ("family_camp", "Family Camp")
+
+
+@pytest.mark.asyncio
+async def test_a_row_with_no_session_type_has_family_other() -> None:
+    store = _store()
+    seed_request(store, UNSET, household=1000003, person=1000031, session=0)
+    row = (await _rows(store, FakeLabels()))[UNSET]
+    assert row.program_family == "other"

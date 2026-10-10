@@ -107,12 +107,12 @@ async def test_a_season_before_the_first_ticked_one_shows_no_level_anywhere(monk
 
 @pytest.mark.asyncio
 async def test_each_line_carries_its_programs_label_from_the_seasons_rules() -> None:
-    """`program` is a key (a program family); `program_label` is the rules' own word for it (fictional_rules)."""
+    """`program` is a key (a program family); `program_label` is the shared family word (ux3 taxonomy)."""
     lines = await money_ledger_service(_families()).lines(YEAR, "in_campminder_net")
     pairs = {(ln.program, ln.program_label) for ln in lines.lines}
     assert pairs  # the season has lines
     assert all(label for program, label in pairs if program)  # every program the rules name reads as words
-    assert ("summer", "Summer") in pairs
+    assert ("summer", "At Camp") in pairs
 
 
 @pytest.mark.asyncio
