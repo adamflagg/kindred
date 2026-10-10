@@ -108,6 +108,35 @@ describe('Copy and CSV carry the as-of and the basis (RPT-33)', () => {
   })
 })
 
+describe('exportOnly columns and heading notes (owner A3, 2026-10-09)', () => {
+  const cols: ReportColumn[] = [
+    { key: 'asked', header: 'Asked' },
+    { key: 'typed', header: 'Asked (as typed)', exportOnly: true },
+    { key: 'csv', header: 'Hidden', csvOnly: true },
+  ]
+  const rows: ReportRow[] = [
+    { key: 'a', kind: 'body', cells: [moneyValue(100), moneyValue(150), moneyValue(7)] },
+  ]
+  const noted = { ...HEADING, notes: ['A first note.', 'A second note.'] }
+
+  it('writes an exportOnly column to Copy and to the CSV, where csvOnly stays out of Copy', () => {
+    const copy = copyText(HEADING, cols, rows)
+    expect(copy).toContain('Asked\tAsked (as typed)')
+    expect(copy).toContain('$100\t$150')
+    expect(copy).not.toContain('Hidden')
+    const csv = csvLines(HEADING, cols, rows, '/x')
+    expect(csv).toContainEqual(['Asked', 'Asked (as typed)', 'Hidden'])
+    expect(csv).toContainEqual(['100', '150', '7'])
+  })
+
+  it('appends each heading note as its own line, in Copy and in the CSV', () => {
+    expect(headingLines(noted).slice(-2)).toEqual(['A first note.', 'A second note.'])
+    expect(copyText(noted, cols, rows).split('\n')).toContain('A second note.')
+    expect(csvLines(noted, cols, rows, '/x')).toContainEqual(['A second note.'])
+    expect(headingLines(HEADING)).toHaveLength(3)
+  })
+})
+
 describe('a cell with a note under its figure (R3)', () => {
   it('carries the note on any kind of value, and keeps it out of the text, Copy and the CSV', () => {
     const cell = { ...pctValue(60), note: '51–55%: above' }

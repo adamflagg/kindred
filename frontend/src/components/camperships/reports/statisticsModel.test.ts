@@ -28,7 +28,11 @@ import {
   tierAppealsRows,
   tierColumns,
   tierRows,
+  cappedAskWords,
+  ROUND_CHIPS_NOTE,
+  tierNotes,
 } from './statisticsModel'
+import { copyText, csvLines } from '../kit/report'
 
 const noNotes = () => null
 const texts = (cells: ReadonlyArray<Parameters<typeof reportText>[0]>) => cells.map(reportText)
@@ -48,6 +52,7 @@ describe('the tier table', () => {
       '90.0%',
       '12',
       '$36,000',
+      '$36,000', // Asked (as typed), owner A3 (2026-10-09)
       '12',
       '$3,000',
       '$27,000',
@@ -168,6 +173,7 @@ describe('the tier table', () => {
       ['Eligible fee %', 106],
       ['Apps', 66],
       ['Asked', 92],
+      ['Asked (as typed)', null], // owner A3 (2026-10-09): an export-only column beside the capped Asked
       ['Asks', 58],
       ['Avg ask', 78],
       ['Awarded', 94],
@@ -180,8 +186,9 @@ describe('the tier table', () => {
     expect(columns.find((c) => c.key === 'fee')?.title).toBe(
       'The fee share this tier pays under the chosen award table; "varies" across tables'
     )
+    // owner A3 (2026-10-09): Asked is capped, and its title says so
     expect(columns.find((c) => c.key === 'asked')?.title).toBe(
-      "Every app's ask, cancelled and closed ones included"
+      "Every app's ask, cancelled and closed ones included, at most its session's cost (an appeal counts on top of the earlier awards, as Development's need)"
     )
     expect(columns.find((c) => c.key === 'asks')?.title).toBe('One per round asked')
     expect(columns.find((c) => c.key === 'apps')?.divider).toBe('before')
@@ -562,5 +569,66 @@ describe('the link and the file', () => {
     ).toBe(
       'camperships-reports-statistics-by-tier-camp-all-rounds-decided-through-deadline-2027-as-of-2027-03-08.csv'
     )
+  })
+})
+
+describe('Asked (as typed): the raw sum beside the capped Asked, in Copy and the CSV only (owner A3, 2026-10-09)', () => {
+  it('puts an export-only column right after Asked, with the raw figure in its cell', () => {
+    const columns = tierColumns(STATISTICS, noNotes)
+    const keys = columns.map((c) => c.key)
+    expect(keys.indexOf('askedTyped')).toBe(keys.indexOf('asked') + 1)
+    expect(columns[keys.indexOf('askedTyped')]).toMatchObject({
+      header: 'Asked (as typed)',
+      exportOnly: true,
+    })
+    const rows = tierRows(STATISTICS, CAMP_R1, linkOf)
+    const total = rows[rows.length - 1]
+    expect(texts(total?.cells ?? [])[keys.indexOf('askedTyped')]).toBe('$47,000')
+    expect(texts(total?.cells ?? [])[keys.indexOf('asked')]).toBe('$44,000')
+    expect(rows[0]?.cells).toHaveLength(columns.length)
+    expect(total?.cells).toHaveLength(columns.length)
+  })
+
+  it('keeps every count link on its own column', () => {
+    const keys = tierColumns(STATISTICS, noNotes).map((c) => c.key)
+    const tier1 = tierRows(STATISTICS, CAMP_R1, linkOf)[0]
+    expect(addressOf(tier1?.links?.[keys.indexOf('asks')])).toMatchObject({ count: 'asks' })
+    expect(addressOf(tier1?.links?.[keys.indexOf('awards')])).toMatchObject({ count: 'awarded' })
+  })
+
+  it('Copy and the CSV read Asked, then Asked (as typed)', () => {
+    const columns = tierColumns(STATISTICS, noNotes)
+    const rows = tierRows(STATISTICS, CAMP_R1, linkOf)
+    const heading = statisticsHeading(STATISTICS, 'By tier')
+    expect(copyText(heading, columns, rows)).toContain('Asked\tAsked (as typed)\tAsks')
+    expect(csvLines(heading, columns, rows, '/l')).toContainEqual(
+      expect.arrayContaining(['Asked', 'Asked (as typed)'])
+    )
+    expect(copyText(heading, columns, rows)).toContain('$44,000\t$47,000')
+  })
+})
+
+describe('the tier table footnote lines (owner A2 and A3, 2026-10-09)', () => {
+  it('always says round chips do not add up to All rounds, and adds the cap words when some were capped', () => {
+    expect(ROUND_CHIPS_NOTE).toBe(
+      "Round chips don't add up to All rounds: an appeal re-asks part of the earlier shortfall, so All rounds counts it once."
+    )
+    expect(tierNotes(STATISTICS.total)).toEqual([ROUND_CHIPS_NOTE])
+    const capped = { ...STATISTICS.total, requests_capped: 2 }
+    expect(tierNotes(capped)).toEqual([ROUND_CHIPS_NOTE, cappedAskWords(capped)])
+  })
+
+  it("carries them in By tier's Copy heading only when given as the heading notes", () => {
+    const capped = { ...STATISTICS.total, requests_capped: 2 }
+    const columns = tierColumns(STATISTICS, noNotes)
+    const rows = tierRows(STATISTICS, CAMP_R1, linkOf)
+    const text = copyText(
+      statisticsHeading(STATISTICS, 'By tier', true, tierNotes(capped)),
+      columns,
+      rows
+    )
+    expect(text).toContain(ROUND_CHIPS_NOTE)
+    expect(text).toContain("2 requests above their session's cost counted at the cost.")
+    expect(statisticsHeading(STATISTICS, 'By tier').notes).toBeUndefined()
   })
 })

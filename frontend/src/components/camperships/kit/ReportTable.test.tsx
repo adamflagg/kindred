@@ -903,6 +903,42 @@ describe('columns kept in the CSV only, and a note on a group (approved final mo
   })
 })
 
+describe('exportOnly columns (owner A3, 2026-10-09)', () => {
+  const COLS: ReportColumn[] = [
+    { key: 'season', header: 'Season' },
+    { key: 'asked', header: 'Asked' },
+    { key: 'typed', header: 'Asked (as typed)', exportOnly: true },
+  ]
+  const ROWS3: ReportRow[] = [
+    { key: 'a', kind: 'body', cells: [textValue('2027'), moneyValue(1000), moneyValue(1500)] },
+    {
+      key: 't',
+      kind: 'total',
+      span: 2,
+      cells: [textValue('All'), textValue(''), moneyValue(1500)],
+    },
+  ]
+
+  it('keeps an exportOnly column off the screen but writes it to Copy and the CSV', async () => {
+    render(
+      <MemoryRouter>
+        <ReportTable heading={HEADING} columns={COLS} rows={ROWS3} csvFilename="x.csv" link="/l" />
+      </MemoryRouter>
+    )
+    const grid = screen.getByRole('table', { name: 'Every camper' })
+    expect(within(grid).queryByText('Asked (as typed)')).toBeNull()
+    expect(within(grid).queryByText('$1,500')).toBeNull()
+    expect(within(grid).getByText('$1,000')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /copy/i }))
+    expect(writeText.mock.calls[0]?.[0]).toContain('Season\tAsked\tAsked (as typed)')
+    expect(writeText.mock.calls[0]?.[0]).toContain('2027\t$1,000\t$1,500')
+    await userEvent.click(screen.getByRole('button', { name: /download csv/i }))
+    const csv = downloadCsv.mock.calls[0]?.[0] ?? ''
+    expect(csv).toContain('Season,Asked,Asked (as typed)')
+    expect(csv).toContain('2027,1000,1500')
+  })
+})
+
 describe('an empty body in place of the grid (approved final mock reports-yoy.html, the refused cutoff table)', () => {
   const table = () =>
     render(

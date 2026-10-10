@@ -268,9 +268,11 @@ describe('StatisticsTab: Asked counts a request at most at its session cost (Rul
   it("says how many requests counted at the cost, under the tier table, as Development's footnote does", async () => {
     statistics = () => json({ ...STATISTICS, total: { ...STATISTICS.total, requests_capped: 2 } })
     renderTab()
+    // owner A2 (2026-10-09): the cap words share the footnote paragraph with the round chips note
     expect(
       await screen.findByText(
-        "Asked and Avg ask: 2 requests above their session's cost counted at the cost."
+        "Asked and Avg ask: 2 requests above their session's cost counted at the cost.",
+        { exact: false }
       )
     ).toBeInTheDocument()
   })
@@ -280,7 +282,8 @@ describe('StatisticsTab: Asked counts a request at most at its session cost (Rul
     const { unmount } = renderTab()
     expect(
       await screen.findByText(
-        "Asked and Avg ask: 1 request above its session's cost counted at the cost."
+        "Asked and Avg ask: 1 request above its session's cost counted at the cost.",
+        { exact: false }
       )
     ).toBeInTheDocument()
     unmount()
@@ -288,6 +291,75 @@ describe('StatisticsTab: Asked counts a request at most at its session cost (Rul
     renderTab()
     await screen.findByRole('table', { name: 'By tier' })
     expect(screen.queryByText(/counted at the cost/)).toBeNull()
+  })
+})
+
+describe('StatisticsTab: the cap note, the chips note and Asked (as typed) (owner A2 and A3, 2026-10-09)', () => {
+  const CHIPS =
+    "Round chips don't add up to All rounds: an appeal re-asks part of the earlier shortfall, so All rounds counts it once."
+
+  it('always says the round chips need not add up to All rounds, under the tier table', async () => {
+    renderTab()
+    await screen.findByRole('table', { name: 'By tier' })
+    expect(screen.getByText(CHIPS)).toBeInTheDocument()
+  })
+
+  it('puts the chips note and the cap words in one paragraph when requests were capped', async () => {
+    statistics = () => json({ ...STATISTICS, total: { ...STATISTICS.total, requests_capped: 2 } })
+    renderTab()
+    const note = await screen.findByText(CHIPS, { exact: false })
+    expect(note.textContent).toBe(
+      `${CHIPS} Asked and Avg ask: 2 requests above their session's cost counted at the cost.`
+    )
+  })
+
+  it('Copy of By tier carries the cap line, the chips note, and Asked then Asked (as typed)', async () => {
+    statistics = () => json({ ...STATISTICS, total: { ...STATISTICS.total, requests_capped: 2 } })
+    renderTab()
+    await screen.findByRole('table', { name: 'By tier' })
+    expect(screen.queryByText('Asked (as typed)')).toBeNull()
+    await userEvent.click(within(toolbar()).getByRole('button', { name: 'Copy' }))
+    const text = writeText.mock.calls[0]?.[0] ?? ''
+    expect(text).toContain(
+      "Asked and Avg ask: 2 requests above their session's cost counted at the cost."
+    )
+    expect(text).toContain(CHIPS)
+    expect(text).toContain('Asked\tAsked (as typed)')
+    expect(text).toContain('$44,000\t$47,000')
+  })
+
+  it('the CSV of By tier carries the same lines and the raw column', async () => {
+    renderTab()
+    await screen.findByRole('table', { name: 'By tier' })
+    await userEvent.click(within(toolbar()).getByRole('button', { name: 'Download CSV' }))
+    const [content] = downloadCsv.mock.calls[0] ?? ['']
+    expect(content).toContain(CHIPS)
+    expect(content).toContain('Asked (as typed)')
+  })
+
+  it('By session says how many requests were capped under its table, and Copy and the CSV carry it', async () => {
+    programs = { ...(PROGRAMS_TWO_POOLS as object), requests_capped: 3 }
+    renderTab('/aid/reports/statistics?rows=session')
+    await screen.findByRole('table', { name: 'By session' })
+    expect(
+      screen.getByText(
+        "Requested and Asked: 3 requests above their session's cost counted at the cost."
+      )
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Round 1 · Requested (as typed)')).toBeNull()
+    await userEvent.click(within(toolbar()).getByRole('button', { name: 'Copy' }))
+    const text = writeText.mock.calls[0]?.[0] ?? ''
+    expect(text).toContain(
+      "Requested and Asked: 3 requests above their session's cost counted at the cost."
+    )
+    expect(text).toContain('Round 1 · Requested (as typed)')
+    expect(text).toContain('Round 2 (appeals) · Asked (as typed)')
+  })
+
+  it('By session has no cap note when none were capped', async () => {
+    renderTab('/aid/reports/statistics?rows=session')
+    await screen.findByRole('table', { name: 'By session' })
+    expect(screen.queryByText(/Requested and Asked:/)).toBeNull()
   })
 })
 

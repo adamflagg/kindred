@@ -9,7 +9,9 @@ import {
   programsCsvName,
   programsHeading,
   programsLinkParams,
+  programsNotes,
 } from './programsModel'
+import { copyText, csvLines } from '../kit/report'
 import { PROGRAMS } from './programsFixtures'
 
 const ALL = { kind: 'all' } as const
@@ -173,12 +175,14 @@ describe('Programs (RPT-11)', () => {
       'Session 2',
       '2',
       '$6,000',
+      '$6,000', // (as typed), owner A3 (2026-10-09)
       '$1,500',
       '$3,000',
       '$1,500',
       '25.0%',
       '1',
       '$900',
+      '$900', // (as typed), owner A3 (2026-10-09)
       '$600',
       '$900',
       '$600',
@@ -209,16 +213,18 @@ describe('Programs (RPT-11)', () => {
       ),
     }
     const cells = programRows(withCents, ALL, linkOf)[1]?.cells.map(reportText) ?? []
-    expect(cells[4]).toBe('$2,744')
-    expect(cells[5]).toBe('$2,984')
+    // owner A3 (2026-10-09): each block gained an export-only (as typed) column, so these moved one right
+    expect(cells[5]).toBe('$2,744')
+    expect(cells[6]).toBe('$2,984')
   })
 
   it("draws an unawarded session's server ratios: its ask average, a real 0% and no award average", () => {
     const session = programRows(PROGRAMS, ALL, linkOf)[2]
-    expect(session?.cells.map(reportText).slice(0, 7)).toEqual([
+    expect(session?.cells.map(reportText).slice(0, 8)).toEqual([
       'Session 3',
       '1',
       '$2,000',
+      '$2,000', // (as typed), owner A3 (2026-10-09)
       '$0',
       '$2,000',
       '—',
@@ -228,16 +234,17 @@ describe('Programs (RPT-11)', () => {
 
   it("draws the subtotal and total with the server's pooled ratios, not averages of its rows", () => {
     const rows = programRows(PROGRAMS, ALL, linkOf)
-    expect(rows[3]?.cells.map(reportText).slice(0, 7)).toEqual([
+    expect(rows[3]?.cells.map(reportText).slice(0, 8)).toEqual([
       'Pool A subtotal',
       '3',
       '$8,000',
+      '$8,000', // (as typed), owner A3 (2026-10-09)
       '$1,500',
       '$2,667',
       '$1,500',
       '18.8%',
     ])
-    expect(rows[4]?.cells.map(reportText)[6]).toBe('18.8%')
+    expect(rows[4]?.cells.map(reportText)[7]).toBe('18.8%')
   })
 
   it('heads the table by session, live without a past day, and names no request set when all', () => {
@@ -252,10 +259,11 @@ describe('Programs (RPT-11)', () => {
 
   it('heads the rounds as groups, so a copied header reads "Round 1 · Apps"', () => {
     const columns = programColumns(() => null)
-    expect(columns).toHaveLength(16)
+    // owner A3 (2026-10-09): two export-only (as typed) columns joined the sixteen
+    expect(columns).toHaveLength(18)
     expect(columns[1]).toMatchObject({ header: 'Apps', group: 'Round 1' })
-    expect(columns[8]).toMatchObject({ header: 'Asked', group: 'Round 2 (appeals)' })
-    expect(columns[13]).toMatchObject({ header: 'Apps', group: 'Round 3' })
+    expect(columns[9]).toMatchObject({ header: 'Asked', group: 'Round 2 (appeals)' })
+    expect(columns[15]).toMatchObject({ header: 'Apps', group: 'Round 3' })
   })
 
   it('sizes, wraps and titles the session columns as the mock does', () => {
@@ -274,12 +282,14 @@ describe('Programs (RPT-11)', () => {
       null,
       56,
       84,
+      null,
       84,
       66,
       66,
       70,
       50,
       70,
+      null,
       76,
       62,
       62,
@@ -305,8 +315,9 @@ describe('Programs (RPT-11)', () => {
       block: '1',
       count: 'apps',
     })
-    expect(addressOf(rows[1]?.links?.[7])).toMatchObject({ block: '2' })
-    expect(addressOf(rows[3]?.links?.[13])).toMatchObject({ part: 'subtotal', block: '3' })
+    // owner A3 (2026-10-09): Round 2's Apps moved from cell 7 to 8, Round 3's from 13 to 15
+    expect(addressOf(rows[1]?.links?.[8])).toMatchObject({ block: '2' })
+    expect(addressOf(rows[3]?.links?.[15])).toMatchObject({ part: 'subtotal', block: '3' })
     expect(addressOf(rows[4]?.links?.[1])).toEqual({
       through_round1_deadline: 'true',
       part: 'total',
@@ -344,5 +355,55 @@ describe('Programs (RPT-11)', () => {
     expect(programsCsvName({ year: 2027, asOf: { kind: 'live' } }, { kind: 'deadline' })).toBe(
       'camperships-reports-statistics-by-session-through-deadline-2027.csv'
     )
+  })
+})
+
+describe('Requested and Asked (as typed): the raw sums beside the capped ones (owner A3, 2026-10-09)', () => {
+  it("puts an export-only column right after each round block's money column", () => {
+    const columns = programColumns(() => null)
+    expect(columns[3]).toMatchObject({
+      header: 'Requested (as typed)',
+      group: 'Round 1',
+      exportOnly: true,
+    })
+    expect(columns[10]).toMatchObject({
+      header: 'Asked (as typed)',
+      group: 'Round 2 (appeals)',
+      exportOnly: true,
+    })
+  })
+
+  it('carries the raw figure in the cell beside the capped one, and keeps cells aligned with columns', () => {
+    const rows = programRows(PROGRAMS, ALL, linkOf)
+    const total = rows[rows.length - 1]
+    const cells = total?.cells.map(reportText) ?? []
+    expect(cells[2]).toBe('$8,000')
+    expect(cells[3]).toBe('$9,500')
+    expect(total?.cells).toHaveLength(programColumns(() => null).length)
+  })
+
+  it('Copy and the CSV header read "Round 1 · Requested (as typed)" and "Round 2 (appeals) · Asked (as typed)"', () => {
+    const columns = programColumns(() => null)
+    const rows = programRows(PROGRAMS, ALL, linkOf)
+    const text = copyText(programsHeading(PROGRAMS), columns, rows)
+    expect(text).toContain('Round 1 · Requested\tRound 1 · Requested (as typed)')
+    expect(text).toContain('Round 2 (appeals) · Asked (as typed)')
+    const header = csvLines(programsHeading(PROGRAMS), columns, rows, '/l').find((l) =>
+      l.includes('Round 1 · Requested (as typed)')
+    )
+    expect(header).toContain('Round 2 (appeals) · Asked (as typed)')
+  })
+
+  it('says how many requests were counted at their session cost, naming Requested and Asked, only when some were', () => {
+    expect(programsNotes(PROGRAMS)).toEqual([])
+    expect(programsNotes({ ...PROGRAMS, requests_capped: 3 })).toEqual([
+      "Requested and Asked: 3 requests above their session's cost counted at the cost.",
+    ])
+    expect(programsNotes({ ...PROGRAMS, requests_capped: 1 })).toEqual([
+      "Requested and Asked: 1 request above its session's cost counted at the cost.",
+    ])
+    const heading = programsHeading({ ...PROGRAMS, requests_capped: 3 })
+    expect(heading.notes).toHaveLength(1)
+    expect(programsHeading(PROGRAMS).notes).toBeUndefined()
   })
 })
