@@ -8,6 +8,7 @@ decisions, grants and ledger reads. None is "nothing there"; 0 is a real zero (D
 
 from __future__ import annotations
 
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -187,3 +188,45 @@ class HouseholdSearchResponse(BaseModel):
     year: int
     matches: list[HouseholdMatchOut]  # by family name, then id; at most MAX_MATCHES
     truncated: bool  # more households matched than are listed: type more of the name
+
+
+# --- Today: This week (spec 2026-10-10 §8) ---------------------------------------------------------------
+
+WeekFeedKind = Literal["posted", "accepted", "approved", "refused", "grant", "overdue", "funder"]
+
+
+class WeekFigureOut(BaseModel):
+    """One figure: this week (Monday through today) against the same weekdays of last week."""
+
+    key: str
+    label: str
+    value: float
+    previous: float
+    unit: Literal["count", "dollars"]
+
+
+class WeekFeedOut(BaseModel):
+    """One feed item, built only from data the caller may see. Development's carry no household (§9.4)."""
+
+    kind: WeekFeedKind
+    at: datetime
+    words: str
+    household_cm_id: int | None = None
+    href_kind: Literal["household", "funders", "rules", "none"] = "none"
+
+
+class WeekPointOut(BaseModel):
+    week_of: date
+    posted: float  # cumulative posted camp money by the end of that week
+
+
+class TodayWeekResponse(BaseModel):
+    """Sections follow the caller's permissions, as TodayResponse's do. posted_by_week is finance only."""
+
+    year: int
+    week_of: date
+    registrar: list[WeekFigureOut] | None = None
+    finance: list[WeekFigureOut] | None = None
+    development: list[WeekFigureOut] | None = None
+    feed: list[WeekFeedOut]
+    posted_by_week: list[WeekPointOut] | None = None
