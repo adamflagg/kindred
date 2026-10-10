@@ -1,8 +1,9 @@
 /**
  * Money › Funders' words, choices and edit bodies (spec §8.1; D58, D88, D100, D105, D159, D160;
  * money-v2.html Sources; Decisions P-12 to P-14, ruling H). Pure. The registry is the server's; the
- * screen names its values and builds the bodies the routes take. Program words come from the rules
- * (`programLabel`); a source family shows as the server's key in words (`keyWords`); the
+ * screen names its values and builds the bodies the routes take. Program words are the shared family words
+ * the approved read sends (`requests/programLabel`'s `programWords`, shown through `programLabel`); a source family
+ * shows as the server's key in words (`keyWords`); the
  * funder-naming `source_family` Literal is never spelled out here (P-12).
  */
 import type {
@@ -18,7 +19,7 @@ import type {
 } from '../../../types/api-types'
 import { aidCsvFilename } from '../kit/csv'
 import { campToday, formatShortDate } from '../kit/dates'
-import { programLabel } from '../requests/programLabel'
+import { familyRank, programLabel } from '../requests/programLabel'
 
 /** "other_outside" → "other outside": a server key in words, never a hardcoded name. */
 export const keyWords = (key: string) => key.replaceAll('_', ' ')
@@ -99,7 +100,7 @@ export function incentiveWords(row: ApiAidSourceRow): '' | 'incentive' | 'need-b
   return row.incentive === true ? 'incentive' : 'need-based'
 }
 
-/** "Summer Sessions, Family Camp Weekends" in the rules' words, or "" when it names none. */
+/** "At Camp, Family Camp" in the shared program words (`names`), or "" when it names none. */
 export function programWords(
   programs: readonly string[],
   names: Readonly<Record<string, string>>
@@ -353,19 +354,14 @@ export function classifyPrograms(
   return families.filter(isProgramFamily)
 }
 
-/** A pool's families in the rules' program order (the names' own), then any the rules do not name, by key. */
-function inRulesOrder(families: readonly string[], names: Readonly<Record<string, string>>) {
-  const order = Object.keys(names)
-  const rank = (f: string) => (order.includes(f) ? order.indexOf(f) : order.length)
-  return [...families].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))
-}
-
+/** A pool's families in the shared family order (the Program picker's, `familyRank`), then any other by key. */
 const coverWords = (pool: Pool, names: Readonly<Record<string, string>>) =>
-  inRulesOrder(pool.families, names)
+  [...pool.families]
+    .sort((a, b) => familyRank(a) - familyRank(b) || a.localeCompare(b))
     .map((f) => programLabel(names, f))
     .join(', ')
 
-/** The muted line under the picker (mock `coversMulti`): the rules' programs the picked pools cover. */
+/** The muted line under the picker (mock `coversMulti`): the programs the picked pools cover, in the shared words. */
 export function coversWords(
   picked: readonly string[],
   pools: readonly Pool[],

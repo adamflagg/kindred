@@ -8,7 +8,9 @@ import {
   grantEffects,
   placedGrantWords,
   candidateSessions,
+  needsSessionPick,
   pickedSession,
+  sessionOptions,
   placementFor,
   stillNeedsCamper,
   suggestionCell,
@@ -55,7 +57,9 @@ describe('placeModel', () => {
     expect(placementFor(GARCIA, 2000009).session_cm_id).toBeNull()
   })
 
-  it("offers a candidate's sessions, pre-picked to the suggestion's, else the first", () => {
+  // Owner 2026-10-10: "one session automatic, and the rest as you said yes, no 'lowest/first' type bad guessing."
+  // (Was: else the first session. The ruling replaces that pin.)
+  it("offers a candidate's sessions: one is automatic, a suggestion pre-picks, otherwise nothing is guessed", () => {
     if (GARCIA === undefined) throw new Error('fixture')
     const sessions = [
       { session_cm_id: 1000101, name: 'Session 1', session_type: 'main' },
@@ -67,18 +71,73 @@ describe('placeModel', () => {
         { person_cm_id: 2000002, name: 'Liam Garcia', sessions },
         { person_cm_id: 2000009, name: 'Mia Garcia', sessions },
         { person_cm_id: 2000010, name: 'Noa Garcia' },
+        { person_cm_id: 2000011, name: 'Ava Garcia', sessions: [sessions[1]!] },
       ],
     }
     expect(candidateSessions(need, 2000002).map((s) => s.session_cm_id)).toEqual([1000101, 1000102])
     expect(candidateSessions(need, 2000010)).toEqual([])
     expect(candidateSessions(need, 7)).toEqual([])
-    // The suggestion names 1000102 for Liam; Mia has none suggested, so the first.
+    // The suggestion names 1000102 for Liam: pre-picked.
     expect(pickedSession(need, 2000002, '')).toBe(1000102)
-    expect(pickedSession(need, 2000009, '')).toBe(1000101)
+    expect(needsSessionPick(need, 2000002, '')).toBe(false)
+    // Mia: two sessions and no suggestion for her: none, never the first or lowest; Place waits for a pick.
+    expect(pickedSession(need, 2000009, '')).toBeNull()
+    expect(needsSessionPick(need, 2000009, '')).toBe(true)
     expect(pickedSession(need, 2000009, '1000102')).toBe(1000102)
-    // A pick that isn't one of the camper's sessions is ignored; no sessions known: the suggestion's, else none.
-    expect(pickedSession(need, 2000009, '5')).toBe(1000101)
+    expect(needsSessionPick(need, 2000009, '1000102')).toBe(false)
+    // A pick that isn't one of the camper's sessions is ignored.
+    expect(pickedSession(need, 2000009, '5')).toBeNull()
+    expect(needsSessionPick(need, 2000009, '5')).toBe(true)
+    // One session: used automatically.
+    expect(pickedSession(need, 2000011, '')).toBe(1000102)
+    expect(needsSessionPick(need, 2000011, '')).toBe(false)
+    // No sessions known: the suggestion's, else none (the server finds it); nothing to pick.
     expect(pickedSession(need, 2000010, '')).toBeNull()
+    expect(needsSessionPick(need, 2000010, '')).toBe(false)
+  })
+
+  it('pre-picks a suggestion only when it names one of the camper’s sessions', () => {
+    if (GARCIA?.suggestion == null) throw new Error('fixture')
+    const sessions = [
+      { session_cm_id: 1000101, name: 'Session 1', session_type: 'main' },
+      { session_cm_id: 1000102, name: 'Session 2', session_type: 'main' },
+    ]
+    const need = {
+      ...GARCIA,
+      suggestion: { ...GARCIA.suggestion, person_cm_id: 2000002, session_cm_id: 1000999 },
+      candidates: [{ person_cm_id: 2000002, name: 'Liam Garcia', sessions }],
+    }
+    expect(pickedSession(need, 2000002, '')).toBeNull()
+    expect(needsSessionPick(need, 2000002, '')).toBe(true)
+  })
+
+  // Scan of #3136: both In-Training sessions read "SCIT" in Camperships, so in this picker two options that would
+  // read the same show their full CampMinder names instead.
+  it('names the Session options short, but in full wherever two would read the same', () => {
+    expect(
+      sessionOptions([
+        { session_cm_id: 1000107, name: 'Counselor In-Training', session_type: 'scit' },
+        { session_cm_id: 1000108, name: 'Specialist In-Training', session_type: 'scit' },
+        {
+          session_cm_id: 1000103,
+          name: 'All-Gender Cabin-Session 2 (7th & 8th grades)',
+          session_type: 'ag',
+        },
+      ])
+    ).toEqual([
+      { value: '1000107', label: 'Counselor In-Training', title: 'Counselor In-Training' },
+      { value: '1000108', label: 'Specialist In-Training', title: 'Specialist In-Training' },
+      {
+        value: '1000103',
+        label: 'AG 2 (7-8)',
+        title: 'All-Gender Cabin-Session 2 (7th & 8th grades)',
+      },
+    ])
+    expect(
+      sessionOptions([
+        { session_cm_id: 1000107, name: 'Counselor In-Training', session_type: 'scit' },
+      ])[0]?.label
+    ).toBe('SCIT')
   })
 
   it('places on the session picked, over the suggestion', () => {

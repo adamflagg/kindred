@@ -261,7 +261,7 @@ from api.services.financial_aid_march_file import MarchFileService
 from api.services.financial_aid_money_ledger import LedgerFilters
 from api.services.financial_aid_money_ledger_service import MoneyLedgerService
 from api.services.financial_aid_payer_shares import ShareSpec
-from api.services.financial_aid_program_labels import program_labels
+from api.services.financial_aid_program_labels import program_labels, section_words
 from api.services.financial_aid_reconciliation import split_placed
 from api.services.financial_aid_reports_repository import ReportedFigureTakenError, ReportsRepository
 from api.services.financial_aid_reports_service import (
@@ -488,6 +488,7 @@ def _draft_out(draft: RulesDraft, *, branched_from: int | None = None) -> RulesD
 def _approved_out(rules: ApprovedRules) -> ApprovedRulesOut:
     return ApprovedRulesOut(
         year=rules.year,
+        program_words=section_words(next((s.content for s in rules.sections if s.section == "programs"), None)),
         version=rules.version,
         season_done=rules.season_done,
         configured_year=rules.configured_year,

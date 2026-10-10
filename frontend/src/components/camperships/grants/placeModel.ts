@@ -132,9 +132,11 @@ export function candidateSessions(
 }
 
 /**
- * The session Another Camper… places on: the one picked when it is one of the camper's, else the
- * suggestion's when it names this camper, else the first they have, else none (the server finds it).
- * `picked` is the picker's value ("" = untouched).
+ * The session Another Camper… places on (owner 2026-10-10: "one session automatic, and the rest as you said yes,
+ * no 'lowest/first' type bad guessing"): the one picked when it is one of the camper's; else their only session;
+ * else the suggestion's when it names this camper and one of their sessions; else none, and the picker waits
+ * (`needsSessionPick`). No sessions known: the suggestion's, else none (the server finds it). Never the first or
+ * lowest. `picked` is the picker's value ("" = untouched).
  */
 export function pickedSession(
   need: ApiAidNeedsCamper,
@@ -146,11 +148,36 @@ export function pickedSession(
   if (sessions.length === 0) return suggested
   const chosen = sessions.find((s) => String(s.session_cm_id) === picked)
   if (chosen !== undefined) return chosen.session_cm_id
+  const [only] = sessions
+  if (sessions.length === 1 && only !== undefined) return only.session_cm_id
+  return sessions.find((s) => s.session_cm_id === suggested)?.session_cm_id ?? null
+}
+
+/** Whether the camper has several sessions and none is chosen yet: the picker says "Pick a session" and Place waits. */
+export function needsSessionPick(
+  need: ApiAidNeedsCamper,
+  personCmId: number,
+  picked: string
+): boolean {
   return (
-    sessions.find((s) => s.session_cm_id === suggested)?.session_cm_id ??
-    sessions[0]?.session_cm_id ??
-    null
+    candidateSessions(need, personCmId).length > 1 &&
+    pickedSession(need, personCmId, picked) === null
   )
+}
+
+/**
+ * The Session picker's options: each session in its Camperships short form, the full name as its title. Two that
+ * would read the same (Counselor and Specialist In-Training both read "SCIT") show their full CampMinder names.
+ */
+export function sessionOptions(
+  sessions: readonly ApiAidCandidateSession[]
+): Array<{ value: string; label: string; title: string }> {
+  const short = sessions.map((s) => aidSessionName(s.name, s.session_type) || s.name)
+  return sessions.map((s, i) => {
+    const label = short[i] ?? s.name
+    const shared = short.filter((other) => other === label).length > 1
+    return { value: String(s.session_cm_id), label: shared ? s.name : label, title: s.name }
+  })
 }
 
 function suggestedSession(need: ApiAidNeedsCamper, personCmId: number): number | null {

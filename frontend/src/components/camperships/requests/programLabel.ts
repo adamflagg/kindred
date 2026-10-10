@@ -20,11 +20,21 @@ function stringField(entries: unknown, field: string): Record<string, string> {
 }
 
 /**
- * Program words come from the rules, never from this app: each rules program names itself
- * (`ProgramProfile.label`), and the approved-rules read sends them in its `programs` section.
+ * The rules' own program labels (`ProgramProfile.label`, from the approved read's `programs` section). Screens show
+ * `programWords`; this is its fallback for a read that sends no `program_words`.
  */
 export function programLabels(rules: ApiAidApprovedRules | undefined): Record<string, string> {
   return stringField(sectionContent(rules, 'programs'), 'label')
+}
+
+/**
+ * The program words every Camperships screen shares (#3131; owner 2026-10-10 for Funders and the household page):
+ * the approved read's `program_words`, the server's family words laid over the rules' labels (summer is At Camp,
+ * never the rules' "Summer"). A read that sends none falls back to the rules' own labels. No TypeScript copy.
+ */
+export function programWords(rules: ApiAidApprovedRules | undefined): Record<string, string> {
+  const words = rules?.program_words ?? {}
+  return Object.keys(words).length > 0 ? { ...words } : programLabels(rules)
 }
 
 /** Pool words, the same rule: the `budget` section's `pools`, each naming itself (`BudgetPool.label`). */
@@ -33,8 +43,8 @@ export function poolLabels(rules: ApiAidApprovedRules | undefined): Record<strin
 }
 
 /**
- * A program key in words: the rules' label when they name it. While the read loads, after it
- * fails or 404s ("no rules yet"), or for a key the rules do not name, the key spelled out:
+ * A program key in words: its word in `labels` (normally `programWords`). While the read loads, after it
+ * fails or 404s ("no rules yet"), or for a key `labels` does not name, the key spelled out:
  * underscores become spaces, first letter capital.
  */
 export function programLabel(labels: Readonly<Record<string, string>>, key: string): string {
@@ -69,6 +79,12 @@ const FAMILY_ORDER = [
   'family_school',
 ]
 
+/** A family's place in `FAMILY_ORDER`; a family it does not list goes after them. */
+export function familyRank(family: string): number {
+  const at = FAMILY_ORDER.indexOf(family)
+  return at === -1 ? FAMILY_ORDER.length : at
+}
+
 /**
  * The Program dropdown's groups (ux3 taxonomy): every program family the rows hold (`program_family`, with the
  * server's word for it), under the budget pool its rows carry. Pools run in the rules' order, then by key;
@@ -95,10 +111,6 @@ export function programGroups(
     if (pool === null) return Number.MAX_SAFE_INTEGER
     const at = order.indexOf(pool)
     return at === -1 ? order.length : at
-  }
-  const familyRank = (value: string) => {
-    const at = FAMILY_ORDER.indexOf(value)
-    return at === -1 ? FAMILY_ORDER.length : at
   }
   return [...byPool.entries()]
     .sort(([a], [b]) => rank(a) - rank(b) || (a ?? '').localeCompare(b ?? ''))

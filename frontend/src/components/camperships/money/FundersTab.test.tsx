@@ -402,7 +402,7 @@ describe('links in', () => {
     // groups arrive with the second read, so the first paint may say the programs; wait for the pool.
     await waitFor(() =>
       expect(left).toHaveTextContent(
-        'Reporting group: Pool A · covers Summer Sessions, Quest, Teen'
+        'Reporting group: Pool A · covers At Camp, Quests, Teen Programs'
       )
     )
     expect(left).not.toHaveTextContent('Programs it funds')
@@ -1143,8 +1143,9 @@ describe('the editors in the final design (§24)', () => {
     expect(
       within(editor).getByRole('button', { name: 'Reporting groups: Pool A' })
     ).toBeInTheDocument()
-    // "Covers:" names the rules' programs the pool covers, in the rules' words and order.
-    expect(within(editor).getByText('Covers: Summer Sessions, Quest, Teen')).toBeInTheDocument()
+    // "Covers:" names the programs the pool covers in the shared family words (owner 2026-10-10; was the rules'
+    // own "Summer Sessions").
+    expect(within(editor).getByText('Covers: At Camp, Quests, Teen Programs')).toBeInTheDocument()
     // Every select is the white picker.
     expect(editor.querySelectorAll('select')).toHaveLength(0)
   })
@@ -1162,7 +1163,7 @@ describe('the editors in the final design (§24)', () => {
     ).toBeInTheDocument()
     expect(
       within(editor).getByText(
-        'Covers: Summer Sessions, Quest, Teen (Pool A) · Family Camp Weekends (Pool B)'
+        'Covers: At Camp, Quests, Teen Programs (Pool A) · Family Camp (Pool B)'
       )
     ).toBeInTheDocument()
     await userEvent.type(noteOf(editor), 'Funds weekend families too')
@@ -1197,7 +1198,7 @@ describe('the editors in the final design (§24)', () => {
     ).toBeVisible()
     expect(editor.querySelectorAll('select')).toHaveLength(0)
     await pickGroups(editor, 'Pool A')
-    expect(within(editor).getByText('Covers: Summer Sessions, Quest, Teen')).toBeInTheDocument()
+    expect(within(editor).getByText('Covers: At Camp, Quests, Teen Programs')).toBeInTheDocument()
     expect(within(editor).queryByText('Nothing to save yet.')).toBeNull()
   })
 
@@ -1217,7 +1218,7 @@ describe('the editors in the final design (§24)', () => {
     ).toBeInTheDocument()
     expect(
       within(editor).getByText(
-        'Covers: Summer Sessions, Quest, Teen (Pool A) · Family Camp Weekends (Pool B)'
+        'Covers: At Camp, Quests, Teen Programs (Pool A) · Family Camp (Pool B)'
       )
     ).toBeInTheDocument()
     expect(

@@ -1,7 +1,31 @@
 import { describe, expect, it } from 'vitest'
 
 import { APPROVED_RULES_2026 } from './approvedRulesFixtures'
-import { programGroups, programLabel, programLabels, poolLabels, programRank } from './programLabel'
+import {
+  programGroups,
+  programLabel,
+  programLabels,
+  programWords,
+  poolLabels,
+  programRank,
+} from './programLabel'
+
+// Owner 2026-10-10: Funders and the household page read the server's shared family words (#3131's FAMILY_WORDS
+// laid over the rules' labels), so no TypeScript copy of the words exists.
+describe('programWords (the shared family words the approved read sends)', () => {
+  it("takes the server's words over the rules' own labels", () => {
+    const words = programWords({
+      ...APPROVED_RULES_2026,
+      program_words: { summer: 'At Camp', quest: 'Quests', bmitzvah: 'TBM' },
+    })
+    expect(words).toEqual({ summer: 'At Camp', quest: 'Quests', bmitzvah: 'TBM' })
+  })
+
+  it("falls back to the rules' labels on a read that sends none, and is empty with no read", () => {
+    expect(programWords(APPROVED_RULES_2026)).toEqual(programLabels(APPROVED_RULES_2026))
+    expect(programWords(undefined)).toEqual({})
+  })
+})
 
 describe('programLabels (the rules name their own programs)', () => {
   it("reads each program's label from the approved rules' programs section", () => {

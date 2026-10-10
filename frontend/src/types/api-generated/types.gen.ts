@@ -737,6 +737,12 @@ export type ApprovedRulesOut = {
    * Configured Year
    */
   configured_year?: number | null
+  /**
+   * Program Words
+   */
+  program_words?: {
+    [key: string]: string
+  }
 }
 
 /**

@@ -6,7 +6,7 @@ Unattributable buckets stay unnamed."""
 from __future__ import annotations
 
 from api.services.financial_aid_grants_register import PROGRAM_FAMILY_BY_SESSION_TYPE
-from api.services.financial_aid_program_labels import FAMILY_WORDS, program_labels
+from api.services.financial_aid_program_labels import FAMILY_WORDS, program_labels, section_words
 from bunking.financial_aid.rules.schema import AidRules
 from tests.unit.bunking.financial_aid.fixtures import fictional_rules
 
@@ -39,6 +39,14 @@ def test_every_family_has_one_fixed_word_whatever_the_rules_call_the_program() -
         "adult_weekend": "Adult Weekends",
         "family_school": "Family School",
     }
+
+
+def test_the_approved_reads_section_words_match_program_labels_for_the_same_rules() -> None:
+    """The approved read names programs from its `programs` section content (the document dumped to JSON); it must
+    say exactly what `program_labels` says for the same rules, or Funders and the Ledger disagree."""
+    for rules in (_rules(), _rules(drop=("bmitzvah",), add={"tbm": "Fictional TBM"})):
+        assert section_words(rules.model_dump(mode="json")["programs"]) == program_labels(rules)
+    assert section_words(None) == program_labels(None)
 
 
 def test_adult_weekend_is_named_so_the_ledger_never_reads_other_program() -> None:
