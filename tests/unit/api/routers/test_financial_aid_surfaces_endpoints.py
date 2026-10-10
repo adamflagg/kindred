@@ -20,10 +20,11 @@ from tests.unit.rbac.permission_personas import (
     persona_client,
 )
 
-VIEW, SUMMARY, CASEWORK = (
+VIEW, SUMMARY, CASEWORK, GRANTORS = (
     Permission.FINANCIAL_AID_VIEW,
     Permission.FINANCIAL_AID_SUMMARY,
     Permission.FINANCIAL_AID_CASEWORK,
+    Permission.FINANCIAL_AID_GRANTORS,
 )
 
 
@@ -144,20 +145,28 @@ def _stub_today() -> Any:
 
 
 @pytest.mark.parametrize("persona", sorted(PERSONAS))
-def test_today_is_view_only(persona: str) -> None:
+def test_today_opens_to_every_camperships_role(persona: str) -> None:
+    """Spec 2026-10-10 section 2: Today is everyone's home page in Camperships, development included."""
     _stub_today()
     response = _client(persona).get("/api/financial-aid/today/2031")
-    assert response.status_code == (200 if VIEW in PERSONAS[persona] else 403), persona
+    assert response.status_code == (200 if {VIEW, SUMMARY, GRANTORS} & set(PERSONAS[persona]) else 403), persona
 
 
 @pytest.mark.parametrize(
-    ("persona", "casework", "finance"), [(PERSONA_REGISTRAR, True, False), (PERSONA_FINANCE, True, True)]
+    ("persona", "casework", "finance", "development"),
+    [
+        (PERSONA_REGISTRAR, True, False, False),
+        (PERSONA_FINANCE, True, True, True),
+        (PERSONA_DEVELOPMENT, False, False, True),
+    ],
 )
-def test_todays_sections_follow_the_users_permissions(persona: str, casework: bool, finance: bool) -> None:
-    """§6.4: Casework lines for casework, Finance lines for rules."""
+def test_todays_sections_follow_the_users_permissions(
+    persona: str, casework: bool, finance: bool, development: bool
+) -> None:
+    """§6.4: Casework lines for casework, Finance lines for rules, funder upkeep for grantors or summary."""
     service = _stub_today()
     assert _client(persona).get("/api/financial-aid/today/2031").status_code == 200
-    service.read.assert_awaited_once_with(2031, casework=casework, finance=finance)
+    service.read.assert_awaited_once_with(2031, casework=casework, finance=finance, development=development)
 
 
 def test_today_counts_to_place_on_the_repository_it_prices_with() -> None:

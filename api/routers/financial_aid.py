@@ -1130,6 +1130,13 @@ _RequestIdPath = Annotated[str, Path(min_length=15, max_length=15, pattern=r"^[a
 # D48, D75: the Remaining line is for everyone with Camperships, summary-only users included.
 _VIEW_OR_SUMMARY = Depends(require_any_permission(Permission.FINANCIAL_AID_VIEW, Permission.FINANCIAL_AID_SUMMARY))
 
+# Spec 2026-10-10 §2: Today is every Camperships role's home page; its sections follow the permissions.
+_CAMPERSHIPS_OPEN = Depends(
+    require_any_permission(
+        Permission.FINANCIAL_AID_VIEW, Permission.FINANCIAL_AID_SUMMARY, Permission.FINANCIAL_AID_GRANTORS
+    )
+)
+
 
 @router.get("/decisions/{year}/grid", response_model=RequestsGridResponse)
 async def get_requests_grid(
@@ -1873,8 +1880,9 @@ def _holds(user: AuthUser, permission: str) -> bool:
 
 
 @router.get("/today/{year}", response_model=TodayResponse)
-async def get_today(year: _Year, user: AuthUser = _VIEW) -> TodayResponse:
-    """Today (§6.4): one dense line per waiting queue; its sections follow the user's permissions."""
+async def get_today(year: _Year, user: AuthUser = _CAMPERSHIPS_OPEN) -> TodayResponse:
+    """Today (spec 2026-10-10): the home page's one read. Casework lines for casework, finance lines for rules,
+    funder upkeep for grantors or summary; development's section carries no family data (§9.4)."""
     store = FinancialAidDecisionsRepository(pb)
     service = TodayService(
         store=store,
@@ -1889,6 +1897,7 @@ async def get_today(year: _Year, user: AuthUser = _VIEW) -> TodayResponse:
         year,
         casework=_holds(user, Permission.FINANCIAL_AID_CASEWORK),
         finance=_holds(user, Permission.FINANCIAL_AID_RULES),
+        development=_holds(user, Permission.FINANCIAL_AID_GRANTORS) or _holds(user, Permission.FINANCIAL_AID_SUMMARY),
     )
 
 
