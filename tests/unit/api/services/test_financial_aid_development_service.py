@@ -948,11 +948,20 @@ async def test_the_lookback_keeps_the_five_latest_historical_seasons_and_both_da
     assert [s for s, b, _ in _shape(shown) if b == "P"] == [2027]
 
 
-async def test_the_lookback_keeps_every_season_when_fewer_than_five_were_typed() -> None:
+async def test_the_lookback_keeps_every_season_in_the_window_when_fewer_than_five_were_typed() -> None:
     from api.services.financial_aid_development_service import _columns
 
     shown = _columns([_typed(2025), _typed(2026)], {2027: _native_column()}, date(2027, 4, 1), report_year=2027)
     assert [(s, b) for s, b, _ in _shape(shown)] == [(2025, "r"), (2026, "r"), (2027, "P")]
+
+
+async def test_the_lookback_is_a_calendar_window_so_gaps_in_the_typed_years_do_not_reach_back() -> None:
+    from api.services.financial_aid_development_service import _columns
+
+    typed = [_typed(2022), _typed(2023), _typed(2026)]
+    shown = _columns(typed, {2030: _native_column()}, date(2030, 4, 1), report_year=2030)
+    # 2030 shows 2025-2029: 2022 and 2023 are outside the window even though fewer than five were typed after them
+    assert [s for s, b, _ in _shape(shown) if b == "r"] == [2026]
 
 
 async def test_the_current_seasons_own_typed_column_is_not_a_historical_season() -> None:

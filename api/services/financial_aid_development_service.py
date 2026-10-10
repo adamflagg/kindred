@@ -1009,12 +1009,11 @@ def _columns(
     *,
     report_year: int,
 ) -> list[tuple[DevelopmentColumnOut, ColumnData]]:
-    """The seasons the report shows (owner 10-09 Q5): the DEVELOPMENT_LOOKBACK_SEASONS most recent historical seasons
-    with typed figures, as reported (counted by season: one typed on two dates keeps both columns), the report year's
+    """The seasons the report shows (owner 10-09 Q5): the DEVELOPMENT_LOOKBACK_SEASONS calendar seasons before the
+    report year (a gap in the typed years does not reach further back), as reported (counted by season: one typed on two dates keeps both columns), the report year's
     own typed column, and the dashboard's live season plus the last closed one. Each season: its typed column (one
     per as-of date), then its P column."""
-    kept = sorted({f.year for f in typed if f.year < report_year})[-DEVELOPMENT_LOOKBACK_SEASONS:]
-    typed = [f for f in typed if f.year in kept or f.year >= report_year]
+    typed = [f for f in typed if report_year - DEVELOPMENT_LOOKBACK_SEASONS <= f.year <= report_year]
     natives = {y: c for y, c in natives.items() if y >= report_year - 1}
     out: list[tuple[DevelopmentColumnOut, ColumnData]] = []
     by_season: dict[tuple[int, date], list[ReportedFigure]] = defaultdict(list)
