@@ -124,7 +124,8 @@ describe('ReportTable', () => {
       'Outside the US,20,0',
       'All · 2 ZIPs,31,1500',
       '',
-      'Link,/aid/reports/development/zip?year=2027',
+      // absolute: a relative path goes nowhere once the file leaves the app
+      `Link,${window.location.origin}/aid/reports/development/zip?year=2027`,
     ])
   })
 

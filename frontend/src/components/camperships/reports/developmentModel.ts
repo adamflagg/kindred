@@ -548,3 +548,15 @@ export function dayBefore(iso: string): string {
   const before = new Date(Date.UTC(day.year, day.month - 1, day.day - 1))
   return before.toISOString().slice(0, 10)
 }
+
+/**
+ * Why there is nothing to show, in plain words (the table's own empty body): a season with no columns has no figures
+ * yet, and 55 empty metric rows would only hide that. Before 2027 the dashboard has not decided the season.
+ */
+export function noFiguresWords(dev: ApiAidDevelopment): string | null {
+  if (dev.columns.length > 0) return null
+  const year = String(dev.year)
+  return dev.year < 2027
+    ? `No development figures for ${year}: it starts with 2027, the first season decided in the dashboard.`
+    : `No development figures for ${year} yet: they start with that season's decisions.`
+}

@@ -93,6 +93,16 @@ describe('DevelopmentReport (spec §9.4)', () => {
     expect(screen.queryByRole('table', { name: '2027 by source' })).not.toBeInTheDocument()
   })
 
+  it('says why there is nothing to show when the season has no data, not 55 empty metric rows', async () => {
+    liveAnswer = () => json({ ...DEVELOPMENT_LIVE, year: 2026, columns: [] })
+    renderReport()
+    expect(
+      await screen.findByText(/No development figures for 2026: it starts with 2027/)
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('table', { name: 'Development report' })).toBeNull()
+    expect(screen.getByRole('button', { name: /Download CSV/ })).toBeDisabled()
+  })
+
   it('heads the seasons short, grouped As reported⁶ and The dashboard, the long words in titles', async () => {
     renderReport()
     const table = await screen.findByRole('table', { name: 'Development report' })
@@ -389,11 +399,11 @@ describe('Show As Of a Date…: one on-demand column, not saved (D1), inline in 
   })
 
   it("names the server's own refusal, not the today advice, for a past day it still refuses", async () => {
-    columnAnswer = () => json({ detail: '2025-05-01 is not a past day of the 2027 season' }, 422)
+    columnAnswer = () => json({ detail: 'pick a past day of the 2027 season' }, 422)
     renderReport()
     await show('2025-05-01')
     const status = await within(bar()).findByText(
-      "⚠ Can't show May 1: 2025-05-01 is not a past day of the 2027 season"
+      "⚠ Can't show May 1: pick a past day of the 2027 season"
     )
     expect(status).toHaveClass('text-amber-700')
     expect(within(bar()).queryByText(/pick a day before today/)).not.toBeInTheDocument()

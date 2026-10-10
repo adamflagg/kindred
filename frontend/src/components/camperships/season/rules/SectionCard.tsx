@@ -75,6 +75,7 @@ export function SectionCardHead({
           <button
             type="button"
             data-testid={`card-meta-${section}`}
+            title={status.note === null ? status.meta : `${status.meta} · Notes: ${status.note}`}
             className={`${CS_SMALL} max-w-[40rem] min-w-0 cursor-pointer text-left ${full ? 'whitespace-normal' : 'truncate'}`}
             onClick={() => setFull(!full)}
           >

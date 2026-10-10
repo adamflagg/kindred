@@ -349,9 +349,16 @@ describe('Rounds & budget (spec §5)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Download CSV' }))
     const [content, name] = download.mock.calls[0] ?? ['', '']
     expect(name).toBe('camperships-season-rounds-budget-2027.csv')
-    expect(content.split('\n')[0]).toBe(
+    const lines = content.split('\n')
+    // the Reports CSVs' heading block: its name, then season and as-of, then a blank line, then the header
+    expect(lines[0]).toBe('Rounds & budget')
+    expect(lines[1]).toMatch(/^"Season 2027 · As of .+ \(live\)"$/)
+    expect(lines[2]).toBe('')
+    expect(lines[3]).toBe(
       'Pool,Round,Share %,Allocated,Committed,Posted,Accepted,Needs an offer,Needs an offer requests,Pending approval,Pending approval requests,Remaining'
     )
+    // and an absolute Link line, like every other CSV
+    expect(lines.at(-1)).toMatch(/^Link,http/)
   })
 
   it("names the scope on the tab bar's right with All Pools ›", () => {

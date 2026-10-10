@@ -45,7 +45,9 @@ export function useReportExport({
   const copied = current !== null && current.failed === null
   const failed = current?.failed ?? null
   const download = useCallback(() => {
-    const [first = [], ...rest] = csvLines(heading, columns, rows, link)
+    // absolute, like every other CSV's Link line: a relative path goes nowhere once the file leaves the app
+    const absolute = new URL(link, window.location.origin).href
+    const [first = [], ...rest] = csvLines(heading, columns, rows, absolute)
     downloadCsv(buildCsvContent(first, rest), csvFilename)
   }, [heading, columns, rows, link, csvFilename])
   return { copy, download, copied, failed }

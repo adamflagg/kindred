@@ -337,7 +337,7 @@ export function classLabel(key: string, document: Doc): string {
  * (`groupWords`); the class's own label when no pool does.
  */
 export function poolHeadLabel(key: string, document: Doc): string {
-  const pools = (document.budget?.pools ?? {}) as Record<string, { label?: unknown }>
+  const pools = document.budget.pools as Record<string, { label?: unknown }>
   const poolKeys = Object.keys(pools)
   const at = documentGroups(document).findIndex((g) => g.equity_class === key)
   const pool = at < 0 ? undefined : poolKeys[at]

@@ -12,7 +12,8 @@ import type { ApiAidBudget } from '../../../types/api-types'
 import { buildCsvContent, downloadCsv } from '../../../utils/csvExport'
 import { QueryGuard } from '../../QueryGuard'
 import { aidHref, type AidView } from '../kit/asOf'
-import { withLinkLine } from '../kit/csv'
+import { campToday } from '../kit/dates'
+import { headingLines } from '../kit/report'
 import { AidCsvButton } from '../kit/CsvButton'
 import { CS_LINK, CS_PANEL, CS_PILL } from '../kit/csType'
 import { scopePool, budgetCsvName } from './budgetModel'
@@ -55,14 +56,28 @@ export function RoundsBudgetCsv() {
   const budget = useAidBudget().data
   if (budget === undefined) return null
   const scope = pool === null ? null : (budget.pools.find((p) => p.pool === pool)?.label ?? null)
-  const download = () =>
+  const download = () => {
+    // The Reports CSVs' heading block (name; season and as-of), then the table, then the absolute Link line.
+    const heading = {
+      title: scope === null ? 'Rounds & budget' : `Rounds & budget · ${scope}`,
+      season: year,
+      figuresOn: budget.as_of ?? (asOf.kind === 'past' ? asOf.date : campToday()),
+      live: asOf.kind !== 'past',
+      basis: null,
+    }
+    const [first = [], ...rest] = [
+      ...headingLines(heading).map((line) => [line]),
+      [],
+      BUDGET_CSV_HEADERS,
+      ...budgetCsvRows(budget, pool),
+      [],
+      ['Link', window.location.href],
+    ]
     downloadCsv(
-      buildCsvContent(
-        BUDGET_CSV_HEADERS,
-        withLinkLine(budgetCsvRows(budget, pool), window.location.href)
-      ),
+      buildCsvContent(first, rest),
       budgetCsvName(year, scope, asOf.kind === 'past' ? asOf.date : null)
     )
+  }
   return <AidCsvButton onDownload={download} />
 }
 

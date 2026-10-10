@@ -285,7 +285,9 @@ describe('StatisticsTab: Copy and Download CSV of the first table, on the contro
     await userEvent.click(csv)
     const [content, name] = downloadCsv.mock.calls[0] ?? ['', '']
     expect(name).toContain('statistics-by-tier')
-    expect(content).toContain('Link,/aid/reports/statistics?table=camp&year=2027')
+    expect(content).toContain(
+      `Link,${window.location.origin}/aid/reports/statistics?table=camp&year=2027`
+    )
   })
 })
 
@@ -573,7 +575,7 @@ describe('StatisticsTab: Rows, Income tier | Session — no control disappears',
     await userEvent.click(within(toolbar()).getByRole('button', { name: 'Download CSV' }))
     const [content] = downloadCsv.mock.calls[0] ?? ['']
     expect(content).toContain(
-      'Link,/aid/reports/statistics?rows=session&through=deadline&year=2027'
+      `Link,${window.location.origin}/aid/reports/statistics?rows=session&through=deadline&year=2027`
     )
   })
 })

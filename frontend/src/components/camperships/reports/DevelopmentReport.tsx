@@ -23,6 +23,7 @@ import {
   developmentCsvName,
   developmentHeading,
   developmentTable,
+  noFiguresWords,
   rebuildReason,
   SHOW_REBUILD_SWITCH,
   type AsOfPick,
@@ -77,6 +78,7 @@ export function DevelopmentReport({ view }: { view: AidView }) {
     [data, asOf, asReportedAt]
   )
   const rows = table?.rows ?? []
+  const emptyWords = data ? noFiguresWords(data) : null
   const exporter = useReportExport({
     heading: data ? developmentHeading(data, TITLE) : EMPTY_HEADING,
     columns,
@@ -121,10 +123,13 @@ export function DevelopmentReport({ view }: { view: AidView }) {
           <>
             <AidCopyButton
               copied={exporter.copied}
-              disabled={data === undefined}
+              disabled={data === undefined || emptyWords !== null}
               onCopy={() => void exporter.copy()}
             />
-            <AidCsvButton disabled={data === undefined} onDownload={exporter.download} />
+            <AidCsvButton
+              disabled={data === undefined || emptyWords !== null}
+              onDownload={exporter.download}
+            />
           </>
         }
       />
@@ -145,6 +150,7 @@ export function DevelopmentReport({ view }: { view: AidView }) {
               rows={rows}
               csvFilename={developmentCsvName(view, 'report')}
               link={link}
+              {...(emptyWords === null ? {} : { emptyBody: emptyWords })}
               footnote={capped === null ? undefined : <p className={REPORT_NOTE}>{capped}</p>}
             />
           )
