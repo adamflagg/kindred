@@ -106,15 +106,24 @@ export function AidCopyButton({
   onCopy,
   title,
   disabled = false,
+  copied = false,
 }: {
   readonly onCopy: () => void
   readonly title?: string
   readonly disabled?: boolean
+  /** Just copied: the button says so in place, at the same fixed width, so nothing on the row moves. */
+  readonly copied?: boolean
 }) {
   return (
-    <button type="button" className={CS_BTN_CSV} title={title} disabled={disabled} onClick={onCopy}>
-      <Copy className={ICON} />
-      Copy
+    <button
+      type="button"
+      className={`${CS_BTN_CSV} w-[80px] justify-center`}
+      title={title}
+      disabled={disabled}
+      onClick={onCopy}
+    >
+      {copied ? null : <Copy className={ICON} />}
+      {copied ? '✓ Copied' : 'Copy'}
     </button>
   )
 }

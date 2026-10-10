@@ -16,6 +16,7 @@ import {
   cellKey,
   changeCount,
   classLabel,
+  poolHeadLabel,
   currentYearWords,
   enabledKey,
   fixFirstWords,
@@ -268,5 +269,27 @@ describe('a class or table key borrows its program label', () => {
     expect(fixFirstWords(applied.problems, named)).toBe(
       'Fix first: Round 1 % › Teen Program › Tier 3 (needs a figure)'
     )
+  })
+})
+
+describe('a tier grid head reads as the pool its class belongs to (as the Rules grid does)', () => {
+  const programs = SANDBOX_DOC.programs as Record<string, Record<string, unknown>>
+  const [first = 'a', second = 'b'] = Object.keys(programs)
+  const pooled = {
+    ...SANDBOX_DOC,
+    programs: {
+      ...programs,
+      [first]: { ...programs[first], equity_class: 'general', budget_pool: 'pool_a' },
+      [second]: { ...programs[second], equity_class: 'teen', budget_pool: 'pool_b' },
+    },
+  } as typeof SANDBOX_DOC
+
+  it("names the pool whose programs use the class, not the class's own key", () => {
+    expect(poolHeadLabel('general', pooled)).toBe('Pool A')
+    expect(poolHeadLabel('teen', pooled)).toBe('Pool B')
+  })
+
+  it('falls back to the class label when no pool uses it', () => {
+    expect(poolHeadLabel('other', pooled)).toBe('Other')
   })
 })

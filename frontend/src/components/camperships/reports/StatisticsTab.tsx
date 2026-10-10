@@ -128,12 +128,11 @@ export function StatisticsTab({ view }: { view: AidView }) {
     rows: first?.rows ?? NO_ROWS,
     csvFilename: first?.csvFilename ?? 'statistics.csv',
     link: first?.link ?? link,
-    copiedWords: '✓ Copied',
   })
 
   const decidedNote = entries.find((e) => e.key === 'decided_not_offered')?.text
   const pastWords = data ? notRebuiltWords(data) : null
-  const status = refusal ?? exporter.copied ?? pastWords ?? undefined
+  const status = refusal ?? exporter.failed ?? pastWords ?? undefined
   const onRequestSet = (next: AidRequestSet) => setParam('through', requestSetParam(next))
   const leftOut = data ? requestSetLeftOut(data) : null
 
@@ -216,6 +215,7 @@ export function StatisticsTab({ view }: { view: AidView }) {
       right={
         <>
           <AidCopyButton
+            copied={exporter.copied}
             disabled={first === null}
             title={`Copy the ${first?.title ?? 'first'} table, to paste into a deck`}
             onCopy={() => void exporter.copy()}

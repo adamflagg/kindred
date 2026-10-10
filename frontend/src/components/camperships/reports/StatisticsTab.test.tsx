@@ -265,7 +265,7 @@ describe('StatisticsTab (spec §9.2; approved final mock reports-statistics.html
 })
 
 describe('StatisticsTab: Copy and Download CSV of the first table, on the controls row', () => {
-  it('copies the By tier table to paste into a deck, and says so in the row', async () => {
+  it('copies the By tier table to paste into a deck, and says so on the button', async () => {
     renderTab()
     await screen.findByRole('table', { name: 'By tier' })
     const copy = within(toolbar()).getByRole('button', { name: 'Copy' })
@@ -273,7 +273,8 @@ describe('StatisticsTab: Copy and Download CSV of the first table, on the contro
     await userEvent.click(copy)
     expect(writeText.mock.calls[0]?.[0]).toContain('Table A · Round 1')
     expect(writeText.mock.calls[0]?.[0].split('\n')[0]).toBe('By tier')
-    expect(within(toolbar()).getByText('✓ Copied')).toBeInTheDocument()
+    expect(within(toolbar()).getByRole('button', { name: '✓ Copied' })).toBeInTheDocument()
+    expect(within(toolbar()).getAllByText('✓ Copied')).toHaveLength(1)
   })
 
   it("downloads By tier's CSV with this view's link on its last line", async () => {

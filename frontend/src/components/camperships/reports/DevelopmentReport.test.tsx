@@ -140,7 +140,7 @@ describe('DevelopmentReport (spec §9.4)', () => {
     expect(document.querySelector('.text-amber-700, .bg-amber-50')).toBeNull()
   })
 
-  it('puts Copy’s result in the toolbar’s status slot', async () => {
+  it('puts Copy’s result on the Copy button, not the status slot', async () => {
     Object.defineProperty(navigator, 'clipboard', {
       value: { writeText: vi.fn(() => Promise.resolve()) },
       configurable: true,
@@ -148,7 +148,9 @@ describe('DevelopmentReport (spec §9.4)', () => {
     renderReport()
     await screen.findByRole('table', { name: 'Development report' })
     await userEvent.click(screen.getByRole('button', { name: /Copy/ }))
-    expect(await within(screen.getByTestId('aid-toolbar')).findByText('✓ Copied')).toBeVisible()
+    expect(
+      await within(screen.getByTestId('aid-toolbar')).findByRole('button', { name: '✓ Copied' })
+    ).toBeVisible()
   })
 })
 

@@ -8,7 +8,7 @@ import type { ApiAidRulesDocument } from '../../../../types/api-types'
 import { formatWholeMoney } from '../../kit/money'
 import { CARD_SPECS, CHOICE_WORDS } from '../rules/rulesCards'
 import { keyLabel, keyWords, rulesVocabulary } from '../rules/rulesModel'
-import { bandsIn, bandsOf, evenOf, type TableShape } from '../rules/tierGrid'
+import { bandsIn, bandsOf, documentGroups, evenOf, type TableShape } from '../rules/tierGrid'
 
 type Doc = ApiAidRulesDocument
 type Json = Record<string, unknown>
@@ -330,6 +330,19 @@ export function classLabel(key: string, document: Doc): string {
     key,
     rulesVocabulary((section) => document[section])
   )
+}
+
+/**
+ * A tier grid's column head: the pool whose programs use that equity class ("Camp & Quest"), as Rules' grid words it
+ * (`groupWords`); the class's own label when no pool does.
+ */
+export function poolHeadLabel(key: string, document: Doc): string {
+  const pools = (document.budget?.pools ?? {}) as Record<string, { label?: unknown }>
+  const poolKeys = Object.keys(pools)
+  const at = documentGroups(document).findIndex((g) => g.equity_class === key)
+  const pool = at < 0 ? undefined : poolKeys[at]
+  const name = pool === undefined ? undefined : pools[pool]?.label
+  return typeof name === 'string' && name !== '' ? name : classLabel(key, document)
 }
 
 /** A box's label, for "Fix first": the card's own words (rulesCards.ts). */

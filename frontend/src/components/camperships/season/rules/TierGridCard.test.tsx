@@ -351,6 +351,20 @@ describe('the tier grid card (spec §6.2 E.2)', () => {
     )
   })
 
+  it("names a table in 'Changed since' by the pool's name when the grid heads do (one vocabulary)", () => {
+    grid({
+      label: (key) => (key === 'summer' ? 'Camp & Quest' : key),
+      changesBySection: {
+        award_tables: [
+          { path: ['summer', 'tiers', '2', 'r1_pct'], kind: 'changed', before: '75', after: '72' },
+        ],
+      },
+    })
+    expect(within(screen.getByTestId('changed-since')).getByRole('listitem')).toHaveTextContent(
+      'Camp & Quest › Tiers › Tier 2 › Round 1 %: 75% → 72%'
+    )
+  })
+
   it("a table editor takes the grid's place, and no header offers Edit… while it is open", () => {
     grid({ editing: { part: 'award_tables', node: <div>Round 1 table editor</div> } })
     expect(

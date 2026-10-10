@@ -21,7 +21,7 @@ import { useAidAsOf } from './useAidAsOf'
  * Inherits the app's cache defaults: every Camperships write refreshes it through
  * `invalidateAidMoneyQueries` (the reports prefix), and a sync through the 'financial-aid' prefix.
  */
-export function useAidStatistics(choice: StatisticsChoice) {
+export function useAidStatistics(choice: StatisticsChoice, enabled = true) {
   const year = useYear()
   const asOf = useAidAsOf()
   const { fetchWithAuth } = useApiWithAuth()
@@ -31,7 +31,7 @@ export function useAidStatistics(choice: StatisticsChoice) {
   return useQuery({
     queryKey: queryKeys.aidReport(year, 'statistics', params),
     queryFn: () => fetchAidStatistics(fetchWithAuth, year, params),
-    enabled: year > 0 && !authLoading && hasPermission(Permission.FINANCIAL_AID_VIEW),
+    enabled: enabled && year > 0 && !authLoading && hasPermission(Permission.FINANCIAL_AID_VIEW),
     retry: reportRetry,
   })
 }
