@@ -276,9 +276,12 @@ export function ApproveForm({
         <h3
           className={CS_CARD_HEADING}
         >{`Approve sections of the rules draft (v${String(seen.version)})`}</h3>
-        <span
-          className={CS_SMALL}
-        >{`Approving puts them in effect: v${String(seen.version)} then prices the season`}</span>
+        <span className={CS_SMALL}>
+          {/* Owner 10-09: the promise holds only when every section is ticked. */}
+          {sections.length > 0 && sections.every((section) => ticked.has(section))
+            ? `Approving puts them in effect: v${String(seen.version)} then prices the season`
+            : `Approving these sections: v${String(seen.version)} prices the season once every section is approved.`}
+        </span>
       </div>
       {sections.length === 0 ? (
         <p className={CS_MUTED}>No section of the draft waits for approval.</p>
