@@ -76,7 +76,7 @@ Where Camperships deliberately differs from summer, the reason is stated at that
 - **Import a role from `kit/csType.ts`, never a raw `text-*` size.** Every link carries a size: `CS_LINK` (13.5), `CS_LINK_SM` (12) or `CS_LINK_CELL` (14). An unsized link inherits 16px and wraps its row.
 - **One control height.** Every toolbar control is 26px with `box-sizing: border-box` (`CS_CTL_H`): picker, search, buttons, CSV, the segmented well and date fields. Filter chips are 22px (`CS_FCHIP`).
 - **Editors** use 30px fields at 13.5px: `CS_FIELD`, `CS_PICKER_FIELD` and `CS_DATE_FIELD`.
-- **One cell padding**, 5px 8px, for both table kits (`TD`, `TH` in `kitStyles.ts` and `reportStyles.ts`).
+- **One cell padding**, 5px 8px, for both table kits (`TD`, `TH` in `kitStyles.ts`; the `TD_*` / `TH_*` report cells in `reportStyles.ts`).
 - **Titles are DM Sans 13.5/700.** This covers section, group and table titles (`CS_CARD_HEADING`, `AidSectionHead`). The display serif is for the band title only. On a real `h2`/`h3` use `CS_CARD_HEADING`, whose `!` modifiers beat the unlayered heading styles (#2954). Never leave a heading bare.
 
 ## 2. Toolbars: one row, no sentence rows
@@ -111,7 +111,7 @@ A line that **replaces** the table (loading, failed, empty) is allowed. So is a 
 
 ## 3. Pickers and dates
 
-- **Every select is `AidPicker`** (`kit/AidPicker.tsx`), in toolbars and editors alike. It is a Headless UI `Listbox` dressed in `CS_PICKER*`: card white, a 26px button with a chevron and a light shadow, a white card popover with a 200ms fade, a ✓ on the picked option, and optional group headings (programs under their pool). `size="field"` gives the 30px editor size. **Camperships uses no native `<select>`.** `kitPrimitives.guard.test.ts` fails on a Headless UI `Listbox` imported outside `kit/`.
+- **Every select is `AidPicker`** (`kit/AidPicker.tsx`), in toolbars and editors alike. It is a Headless UI `Listbox` dressed in `CS_PICKER*`: card white, a 26px button with a chevron and a light shadow, a white card popover with a 200ms fade, a ✓ on the picked option, and optional group headings (programs under their pool). `size="field"` gives the 30px editor size. **New Camperships code uses no native `<select>`.** (Six remain in the household editors, `household/CaseworkForms.tsx`, `CancelForm.tsx` and `SetCostForm.tsx`; they move to `AidPicker size="field"`, and the guard grows to cover them then.) `kitPrimitives.guard.test.ts` fails on a Headless UI `Listbox` imported outside `kit/`.
 - **Multi-choice is `AidPickerMulti`.** Each option has a checkbox, and the popover stays open while staff check. The button names the picks while they fit (about 22 characters) and counts them past that ("2 groups"). The title lists every name (`multiPickerWords`, `kit/pickerWords.ts`).
 - **A date is `<input type="date">`** dressed as `CS_DATE` (26px) or `CS_DATE_FIELD` (30px). Never offer a list of preset dates.
 - **Why the fill differs from summer's picker:** summer's `.listbox-button-compact` is page cream. It reads as white only because it floats on a white card header. Camperships controls sit straight on the parchment page, where a cream control disappears. So `AidPicker` keeps summer's behaviour and shape and takes the card fill (`--card`, one step lighter than the page in dark mode).
