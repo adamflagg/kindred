@@ -35,6 +35,8 @@ from tests.unit.bunking.financial_aid.report_fixtures import req, rnd
 
 pytestmark = pytest.mark.asyncio
 
+# Both fictional sessions price at 2,000 (report_season): Emma's 5,000 and Liam's 2,000 ask count at the cost.
+CAPPED_ASKED = 4000.0
 NOW = datetime(2027, 4, 1, 17, 0, tzinfo=UTC)
 DEADLINE = date(2027, 2, 1)
 CORRECTED = datetime(2027, 3, 1, 18, 0, tzinfo=UTC)  # after the deadline
@@ -88,9 +90,11 @@ async def test_a_received_through_cut_filters_the_requests_and_reads_every_ask_a
     small ask into a live award. Only the committee's at-cutoff snapshot row freezes asks."""
     service = _service(_emma_asks_more_after_the_deadline())
     every = await service.statistics(YEAR, table="camp", round_=1)
-    assert every.total.asked == 7000.0
+    assert (
+        every.total.asked == CAPPED_ASKED
+    )  # Rule M (owner 10-09): Asked counts at the session cost; live_asked is as typed
     cut = await service.statistics(YEAR, table="camp", round_=1, through=date(2027, 2, 15))
-    assert (cut.total.apps, cut.total.asked, cut.total.live_asked) == (2, 7000.0, 7000.0)
+    assert (cut.total.apps, cut.total.asked, cut.total.live_asked) == (2, CAPPED_ASKED, 7000.0)
     assert cut.total.pct_of_ask == pytest.approx(1500 / 7000 * 100, abs=0.05)
     assert cut.request_set is not None
     assert "asks" not in StatisticsResponse.model_fields
@@ -166,7 +170,9 @@ async def test_asks_that_cant_be_rebuilt_fall_back_to_now_and_say_so(monkeypatch
     assert camp.asks_reason is not None
     assert "can't be rebuilt" in camp.asks_reason
     cut = await service.statistics(YEAR, table="camp", round_=1, through=DEADLINE)
-    assert cut.total.asked == 7000.0
+    assert (
+        cut.total.asked == CAPPED_ASKED
+    )  # Rule M (owner 10-09): Asked counts at the session cost; live_asked is as typed
 
 
 async def test_a_cut_on_or_after_the_reads_own_day_needs_no_past_read(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -178,7 +184,9 @@ async def test_a_cut_on_or_after_the_reads_own_day_needs_no_past_read(monkeypatc
 
     monkeypatch.setattr(service._decisions, "past_season", never)
     out = await service.statistics(YEAR, table="camp", round_=1, through=date(2027, 4, 1))
-    assert out.total.asked == 7000.0
+    assert (
+        out.total.asked == CAPPED_ASKED
+    )  # Rule M (owner 10-09): Asked counts at the session cost; live_asked is as typed
 
 
 def test_freezing_asks_replaces_round_1_only_and_leaves_appeal_asks_out_of_the_snapshot() -> None:

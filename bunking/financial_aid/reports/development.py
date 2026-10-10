@@ -50,7 +50,7 @@ from decimal import Decimal
 from typing import Final, Literal
 
 from bunking.financial_aid.money import ZERO
-from bunking.financial_aid.reports.facts import ReportRequest, average
+from bunking.financial_aid.reports.facts import ReportRequest, average, capped_at_cost
 from bunking.financial_aid.scenarios.committee import pct
 
 GroupKind = Literal["summer", "families", "campers"]
@@ -270,7 +270,7 @@ def need(request: ReportRequest) -> Decimal:
     """§5.10's need, at most the request's session cost (Rule M, owner 10-08: "cap it at the session cost", per
     request: its asks together count at most the cost). No cost known: as typed."""
     uncapped = _uncapped_need(request)
-    return uncapped if request.cost is None else min(uncapped, request.cost)
+    return capped_at_cost(uncapped, request.cost)
 
 
 @dataclass

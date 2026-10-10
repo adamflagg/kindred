@@ -61,6 +61,7 @@ class StatisticsRowOut(BaseModel):
     pct_of_ask: float | None
     grants: float | None  # Round 1 and All rounds only
     pct_of_ask_with_grants: float | None
+    requests_capped: int = 0  # Rule M: requests above their session's cost counted at the cost in `asked`
 
 
 class CancelledRowOut(BaseModel):

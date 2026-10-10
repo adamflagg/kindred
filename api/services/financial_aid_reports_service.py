@@ -913,6 +913,7 @@ def _statistics_row(row: StatisticsRow) -> StatisticsRowOut:
         pct_of_ask=_pct(row.pct_of_ask),
         grants=_money(row.grants),
         pct_of_ask_with_grants=_pct(row.pct_of_ask_with_grants),
+        requests_capped=row.requests_capped,
     )
 
 

@@ -264,6 +264,33 @@ describe('StatisticsTab (spec §9.2; approved final mock reports-statistics.html
   })
 })
 
+describe('StatisticsTab: Asked counts a request at most at its session cost (Rule M, owner 10-09)', () => {
+  it("says how many requests counted at the cost, under the tier table, as Development's footnote does", async () => {
+    statistics = () => json({ ...STATISTICS, total: { ...STATISTICS.total, requests_capped: 2 } })
+    renderTab()
+    expect(
+      await screen.findByText(
+        "Asked and Avg ask: 2 requests above their session's cost counted at the cost."
+      )
+    ).toBeInTheDocument()
+  })
+
+  it('says it in the singular for one, and not at all for none', async () => {
+    statistics = () => json({ ...STATISTICS, total: { ...STATISTICS.total, requests_capped: 1 } })
+    const { unmount } = renderTab()
+    expect(
+      await screen.findByText(
+        "Asked and Avg ask: 1 request above its session's cost counted at the cost."
+      )
+    ).toBeInTheDocument()
+    unmount()
+    statistics = () => json(STATISTICS)
+    renderTab()
+    await screen.findByRole('table', { name: 'By tier' })
+    expect(screen.queryByText(/counted at the cost/)).toBeNull()
+  })
+})
+
 describe('StatisticsTab: Copy and Download CSV of the first table, on the controls row', () => {
   it('copies the By tier table to paste into a deck, and says so on the button', async () => {
     renderTab()

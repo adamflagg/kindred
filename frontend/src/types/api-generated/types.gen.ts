@@ -16967,6 +16967,10 @@ export type StatisticsRowOut = {
    * Pct Of Ask With Grants
    */
   pct_of_ask_with_grants: number | null
+  /**
+   * Requests Capped
+   */
+  requests_capped?: number
 }
 
 /**

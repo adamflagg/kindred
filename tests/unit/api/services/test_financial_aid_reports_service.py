@@ -81,7 +81,13 @@ async def test_statistics_counts_received_requests_and_awards_only_what_posted()
     out = await _service(report_season()).statistics(YEAR, table="camp", round_=1)
     assert (out.figures_on, out.as_of, out.rules_version, out.basis) == (date(2027, 4, 1), None, 1, "posted")
     two, three = _tier(out.rows, 2), _tier(out.rows, 3)
-    assert (two.apps, two.asked, two.amount, two.awarded_count, two.pct_of_ask) == (1, 4000.0, 1500.0, 1, 37.5)
+    assert (two.apps, two.asked, two.amount, two.awarded_count, two.pct_of_ask) == (
+        1,
+        2000.0,
+        1500.0,
+        1,
+        37.5,
+    )  # Asked: the 4,000 ask counts at the 2,000 session cost (Rule M, owner 10-09)
     assert (three.apps, three.asked, three.amount, three.awarded_count) == (1, 2000.0, 0.0, 0)
     assert (out.total.apps, out.total.amount) == (2, 1500.0)
     # the rules' pool order, not award_tables key order (camp, family, teen)
@@ -264,7 +270,7 @@ async def test_an_outside_funders_full_cost_round_keeps_its_ask_but_leaves_the_p
     service = _service(store)
     out = await service.statistics(YEAR, table="camp", round_=1)
     two = _tier(out.rows, 2)
-    assert (two.apps, two.asked, two.amount, two.awarded_count) == (1, 4000.0, 0.0, 0)
+    assert (two.apps, two.asked, two.amount, two.awarded_count) == (1, 2000.0, 0.0, 0)
     assert (two.live_asked, two.pct_of_ask) == (0.0, None)
     assert out.total.live_asked == 2000.0  # Liam's alone
     block = (await service.programs(YEAR)).total.round1
@@ -571,8 +577,8 @@ async def test_a_legacy_include_override_row_excludes_nothing_from_reports() -> 
     )
     out = await _service(store).statistics(YEAR, table="camp", round_=1)
     two = _tier(out.rows, 2)
-    assert (two.apps, two.asked, two.amount, two.awarded_count) == (1, 4000.0, 1500.0, 1)
-    assert (out.total.apps, out.total.asked, out.total.amount) == (2, 6000.0, 1500.0)
+    assert (two.apps, two.asked, two.amount, two.awarded_count) == (1, 2000.0, 1500.0, 1)
+    assert (out.total.apps, out.total.asked, out.total.amount) == (2, 4000.0, 1500.0)
 
 
 async def test_an_unknown_table_is_refused() -> None:

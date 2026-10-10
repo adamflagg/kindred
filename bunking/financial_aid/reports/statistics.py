@@ -148,6 +148,9 @@ class StatisticsRow:
     pct_of_ask: Decimal | None
     grants: Decimal | None
     pct_of_ask_with_grants: Decimal | None
+    requests_capped: int = (
+        0  # Rule M: requests whose asks add up to more than their session's cost, counted at the cost
+    )
 
 
 @dataclass(frozen=True)
@@ -249,7 +252,7 @@ def _row(
     rounds = _rounds(round_)
     with_decided = basis == "posted_and_decided"
     asked = live_asked = live_full_asked = amount = decided = awarded = ZERO
-    asks = awarded_count = decided_count = cancelled = 0
+    asks = awarded_count = decided_count = cancelled = capped = 0
     grants = ZERO
     for request in requests:
         found = counts_in(request, rounds, with_decided=with_decided)
@@ -259,7 +262,8 @@ def _row(
         decided_count += "decided" in found
         ask = request.asked(rounds)  # bound every pass: the live branch below reads it too
         if request.counts_as_received and ask is not None:
-            asked += ask
+            asked += request.asked_capped(rounds) or ZERO  # Rule M (owner 10-09): at most the session's cost
+            capped += request.is_ask_capped(rounds)
         if not request.live:
             continue
         if ask is not None:
@@ -299,6 +303,7 @@ def _row(
         pct_of_ask=pct(amount, live_asked),
         grants=grants if shows_grants else None,
         pct_of_ask_with_grants=pct(amount + grants, live_full_asked) if shows_grants else None,
+        requests_capped=capped,
     )
 
 
