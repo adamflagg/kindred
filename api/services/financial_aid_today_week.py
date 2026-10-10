@@ -253,6 +253,7 @@ class TodayWeekService:
             names,
             grantor_names,
             families=families,
+            development=development,
             finance=finance,
         )
         return TodayWeekResponse(
@@ -277,6 +278,7 @@ class TodayWeekService:
         *,
         families: bool,
         finance: bool,
+        development: bool,
     ) -> list[WeekFeedOut]:
         items: list[WeekFeedOut] = []
 
@@ -295,7 +297,7 @@ class TodayWeekService:
                             at=event.created,
                             words=words,
                             household_cm_id=household,
-                            href_kind="household",
+                            href_kind="household" if household is not None else "none",
                         )
                     )
                 elif event.kind == "accept":
@@ -305,7 +307,7 @@ class TodayWeekService:
                             at=event.created,
                             words=f"{name} household accepted the offer",
                             household_cm_id=household,
-                            href_kind="household",
+                            href_kind="household" if household is not None else "none",
                         )
                     )
                 elif event.kind == "approve" and finance:
@@ -316,7 +318,7 @@ class TodayWeekService:
                             at=event.created,
                             words=words,
                             household_cm_id=household,
-                            href_kind="household",
+                            href_kind="household" if household is not None else "none",
                         )
                     )
             for event, at in _overdue(events, windows):
@@ -327,40 +329,41 @@ class TodayWeekService:
                         at=at,
                         words=f"{name} household passed {WAITING_TOO_LONG_DAYS} days waiting",
                         household_cm_id=household,
-                        href_kind="household",
+                        href_kind="household" if household is not None else "none",
                     )
                 )
-        for row in _live_grants(register):
-            grantor = grantor_names.get(row.grantor_key, "A funder")
-            if families:
-                name = names.get(row.household_cm_id, "Unknown")
-                items.append(
-                    WeekFeedOut(
-                        kind="grant",
-                        at=row.recorded_at,
-                        words=f"{grantor} grant entered for {name} household",
-                        household_cm_id=row.household_cm_id,
-                        href_kind="household",
+        if families or development:  # a caller with no section sees no funder or grant item
+            for row in _live_grants(register):
+                grantor = grantor_names.get(row.grantor_key, "A funder")
+                if families:
+                    name = names.get(row.household_cm_id, "Unknown")
+                    items.append(
+                        WeekFeedOut(
+                            kind="grant",
+                            at=row.recorded_at,
+                            words=f"{grantor} grant entered for {name} household",
+                            household_cm_id=row.household_cm_id,
+                            href_kind="household",
+                        )
                     )
-                )
-            else:
-                items.append(
-                    WeekFeedOut(
-                        kind="grant",
-                        at=row.recorded_at,
-                        words=f"{grantor} grant · {_money(row.amount)} posted",
-                        href_kind="funders",
+                else:
+                    items.append(
+                        WeekFeedOut(
+                            kind="grant",
+                            at=row.recorded_at,
+                            words=f"{grantor} grant · {_money(row.amount)} posted",
+                            href_kind="funders",
+                        )
                     )
+            items.extend(
+                WeekFeedOut(
+                    kind="funder",
+                    at=log.created,
+                    words=f"{_funder_name(log, grantor_names)} updated",
+                    href_kind="funders",
                 )
-        items.extend(
-            WeekFeedOut(
-                kind="funder",
-                at=log.created,
-                words=f"{_funder_name(log, grantor_names)} updated",
-                href_kind="funders",
+                for log in funder_log
             )
-            for log in funder_log
-        )
         items.sort(key=lambda i: i.at, reverse=True)
         return items[:FEED_SIZE]
 
