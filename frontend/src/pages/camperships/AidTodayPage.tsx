@@ -7,6 +7,7 @@ import {
   liveAwards,
 } from '../../components/camperships/reports/developmentModel'
 import { aidHref, type AidView } from '../../components/camperships/kit/asOf'
+import { AidBurnUp } from '../../components/camperships/kit/BurnUp'
 import { CS_CARD_HEADING, CS_EMPTY, CS_META } from '../../components/camperships/kit/csType'
 import { AidCopyButton, AidCsvButton } from '../../components/camperships/kit/CsvButton'
 import {
@@ -16,8 +17,10 @@ import {
   type ReportHeading,
   type ReportRow,
 } from '../../components/camperships/kit/report'
+import { formatShortDate } from '../../components/camperships/kit/dates'
 import { ReportTable } from '../../components/camperships/kit/ReportTable'
 import { useReportExport } from '../../components/camperships/kit/useReportExport'
+import { AidWeekCard } from '../../components/camperships/kit/WeekCard'
 import { AidDefinitionNotes } from '../../components/camperships/shell/AidDefinitionNotes'
 import { AidPageBand } from '../../components/camperships/shell/AidPageBand'
 import {
@@ -42,6 +45,7 @@ import { TodayTodos } from '../../components/camperships/today/TodayTodos'
 import { useAidBudget } from '../../hooks/camperships/useAidBudget'
 import { useAidDevelopment } from '../../hooks/camperships/useAidDevelopment'
 import { useAidToday } from '../../hooks/camperships/useAidToday'
+import { useAidTodayWeek } from '../../hooks/camperships/useAidTodayWeek'
 import { useYear } from '../../hooks/useCurrentYear'
 import { usePermissions } from '../../hooks/usePermissions'
 import type {
@@ -49,6 +53,10 @@ import type {
   ApiAidDevelopmentSource,
   ApiAidToday,
   ApiAidTodayLine,
+  ApiAidTodayWeek,
+  ApiAidWeekFeed,
+  ApiAidWeekFigure,
+  ApiAidWeekPoint,
 } from '../../types/api-types'
 import PermissionDeniedPage from '../PermissionDeniedPage'
 
@@ -65,6 +73,74 @@ function Heading({ title, meta }: { readonly title: string; readonly meta: strin
       <h2 className={CS_CARD_HEADING}>{title}</h2>
       <span className={CS_META}>{meta}</span>
     </div>
+  )
+}
+
+/** Where a feed item's words go; null leaves them plain. */
+function weekHref(f: ApiAidWeekFeed): string | null {
+  if (f.href_kind === 'household' && f.household_cm_id != null)
+    return `/aid/households/${String(f.household_cm_id)}`
+  if (f.href_kind === 'funders') return '/aid/money/funders'
+  if (f.href_kind === 'rules') return '/aid/season/rules'
+  return null
+}
+
+/**
+ * A persona's right column: its own read inside its own guard, so a failed week read says so here and the to-dos
+ * still render (spec 2026-10-10 §7.4). `extra` is the finance chart, drawn above the card.
+ */
+function WeekColumn({
+  pick,
+  extra,
+}: {
+  readonly pick: (week: ApiAidTodayWeek) => readonly ApiAidWeekFigure[] | null | undefined
+  readonly extra?: ReactNode
+}) {
+  const week = useAidTodayWeek()
+  return (
+    <QueryGuard
+      isLoading={week.isLoading}
+      error={week.data ? null : week.error}
+      data={week.data}
+      label="this week"
+    >
+      {(data) => (
+        <>
+          {extra}
+          <AidWeekCard
+            weekOf={data.week_of}
+            figures={pick(data) ?? []}
+            feed={data.feed}
+            hrefOf={weekHref}
+          />
+        </>
+      )}
+    </QueryGuard>
+  )
+}
+
+/** Finance's chart: posted by week against the budget, and what is committed once waiting requests are offered. */
+function CommittedByWeek({
+  points,
+  budget,
+}: {
+  readonly points: readonly ApiAidWeekPoint[]
+  readonly budget: ReturnType<typeof useAidBudget>
+}) {
+  const total = budget.data?.total.total
+  const first = points[0]
+  return (
+    <section className="border-border bg-card rounded-xl border px-3.5 py-3">
+      <Heading
+        title="Committed by week"
+        meta={first ? `all pools · ${formatShortDate(first.week_of)} – today` : 'all pools'}
+      />
+      <AidBurnUp
+        points={points}
+        budget={total?.allocated ?? null}
+        committed={total?.committed ?? null}
+      />
+    </section>
   )
 }
 
@@ -120,7 +196,7 @@ function RegistrarBody({ today, view }: { today: ApiAidToday; view: AidView }) {
         left={
           <TodayTodos lines={top} rest={rest} view={view} empty="Every casework queue is empty." />
         }
-        right={null}
+        right={<WeekColumn pick={(w) => w.registrar} />}
       />
       <AidDefinitionNotes surface="today_registrar" />
     </>
@@ -224,7 +300,12 @@ function FinanceBody({
             )}
           </>
         }
-        right={null}
+        right={
+          <WeekColumn
+            pick={(w) => w.finance}
+            extra={<CommittedByWeek points={today.posted_by_week ?? []} budget={budget} />}
+          />
+        }
       />
       <AidDefinitionNotes surface="today_finance" />
     </>
@@ -321,6 +402,8 @@ function DevelopmentBody({
 }) {
   const { top, rest } = rankLines(today.development ?? [], DEVELOPMENT_ORDER)
   const waiting = top.length + live(rest).length
+  // No last-week figure exists for upkeep, so previous equals value and no change shows.
+  const upkeepLeft = (today.development ?? []).reduce((sum, l) => sum + l.items, 0)
   return (
     <>
       <QueryGuard
@@ -347,7 +430,20 @@ function DevelopmentBody({
             empty="Every funder has a contact, eligibility and a reporting group."
           />
         }
-        right={null}
+        right={
+          <WeekColumn
+            pick={(w) => [
+              ...(w.development ?? []),
+              {
+                key: 'upkeep_left',
+                label: 'Upkeep left',
+                value: upkeepLeft,
+                previous: upkeepLeft,
+                unit: 'count',
+              },
+            ]}
+          />
+        }
       />
       {dev.data ? <ByGroup dev={dev.data} view={view} /> : null}
       <AidDefinitionNotes surface="today_development" />

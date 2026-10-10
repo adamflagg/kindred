@@ -197,6 +197,7 @@ from api.schemas.financial_aid_surfaces import (
     HouseholdSearchResponse,
     JumpIndexResponse,
     TodayResponse,
+    TodayWeekResponse,
 )
 from api.schemas.financial_aid_to_place import (
     LeaveLineIn,
@@ -318,6 +319,7 @@ from api.services.financial_aid_scenarios_service import (
 from api.services.financial_aid_season_history import HistoryFilter, HistoryNotFoundError, SeasonHistoryService
 from api.services.financial_aid_to_place_service import ToPlaceService
 from api.services.financial_aid_today import TodayService
+from api.services.financial_aid_today_week import TodayWeekService
 from api.services.financial_aid_write_service import FinancialAidWriteService
 from bunking.auth_middleware import AuthUser
 from bunking.branding import get_branding, get_camp_name
@@ -1893,6 +1895,19 @@ async def get_today(year: _Year, user: AuthUser = _CAMPERSHIPS_OPEN) -> TodayRes
         intake=FinancialAidIntakeRepository(pb),
         to_place=store,  # To place's own reads (SP11): Today counts its open lines as Money › To place does
     )
+    return await service.read(
+        year,
+        casework=_holds(user, Permission.FINANCIAL_AID_CASEWORK),
+        finance=_holds(user, Permission.FINANCIAL_AID_RULES),
+        development=_holds(user, Permission.FINANCIAL_AID_GRANTORS) or _holds(user, Permission.FINANCIAL_AID_SUMMARY),
+    )
+
+
+@router.get("/today/{year}/week", response_model=TodayWeekResponse)
+async def get_today_week(year: _Year, user: AuthUser = _CAMPERSHIPS_OPEN) -> TodayWeekResponse:
+    """This week (spec 2026-10-10 §8): its own read, so the to-dos never wait on it or fail with it."""
+    store = FinancialAidDecisionsRepository(pb)
+    service = TodayWeekService(store=store, grants=GrantsService(GrantsRepository(pb)))
     return await service.read(
         year,
         casework=_holds(user, Permission.FINANCIAL_AID_CASEWORK),

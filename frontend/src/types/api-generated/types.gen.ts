@@ -18170,6 +18170,8 @@ export type TodayReasonOut = {
  * Today's sections follow the user's permissions: casework None without financial_aid.casework,
  * finance None without financial_aid.rules, development None without financial_aid.grantors or .summary.
  * stages: casework or finance callers (the hero bar); None for development.
+ * posted_by_week: finance only (Committed by week); built from the priced rows the budget counts, so its last
+ * point is the budget's Posted.
  */
 export type TodayResponse = {
   /**
@@ -18189,6 +18191,10 @@ export type TodayResponse = {
    * Development
    */
   development?: Array<TodayLineOut> | null
+  /**
+   * Posted By Week
+   */
+  posted_by_week?: Array<WeekPointOut> | null
 }
 
 /**
@@ -18230,6 +18236,38 @@ export type TodayStagesOut = {
    * Posted This Week
    */
   posted_this_week: number
+}
+
+/**
+ * TodayWeekResponse
+ *
+ * Sections follow the caller's permissions, as TodayResponse's do.
+ */
+export type TodayWeekResponse = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Week Of
+   */
+  week_of: string
+  /**
+   * Registrar
+   */
+  registrar?: Array<WeekFigureOut> | null
+  /**
+   * Finance
+   */
+  finance?: Array<WeekFigureOut> | null
+  /**
+   * Development
+   */
+  development?: Array<WeekFigureOut> | null
+  /**
+   * Feed
+   */
+  feed: Array<WeekFeedOut>
 }
 
 /**
@@ -19160,6 +19198,62 @@ export type WaitlistedPerson = {
 }
 
 /**
+ * WeekFeedOut
+ *
+ * One feed item, built only from data the caller may see. Development's carry no household (§9.4).
+ */
+export type WeekFeedOut = {
+  /**
+   * Kind
+   */
+  kind: 'posted' | 'accepted' | 'approved' | 'refused' | 'grant' | 'overdue' | 'funder'
+  /**
+   * At
+   */
+  at: string
+  /**
+   * Words
+   */
+  words: string
+  /**
+   * Household Cm Id
+   */
+  household_cm_id?: number | null
+  /**
+   * Href Kind
+   */
+  href_kind?: 'household' | 'funders' | 'rules' | 'none'
+}
+
+/**
+ * WeekFigureOut
+ *
+ * One figure: this week (Monday through today) against the same weekdays of last week.
+ */
+export type WeekFigureOut = {
+  /**
+   * Key
+   */
+  key: string
+  /**
+   * Label
+   */
+  label: string
+  /**
+   * Value
+   */
+  value: number
+  /**
+   * Previous
+   */
+  previous: number
+  /**
+   * Unit
+   */
+  unit: 'count' | 'dollars'
+}
+
+/**
  * WeekOption
  */
 export type WeekOption = {
@@ -19187,6 +19281,20 @@ export type WeekOption = {
    * Whether this entry represents today's live data
    */
   is_today: boolean
+}
+
+/**
+ * WeekPointOut
+ */
+export type WeekPointOut = {
+  /**
+   * Week Of
+   */
+  week_of: string
+  /**
+   * Posted
+   */
+  posted: number
 }
 
 /**
@@ -26605,6 +26713,38 @@ export type GetTodayApiFinancialAidTodayYearGetResponses = {
 
 export type GetTodayApiFinancialAidTodayYearGetResponse =
   GetTodayApiFinancialAidTodayYearGetResponses[keyof GetTodayApiFinancialAidTodayYearGetResponses]
+
+export type GetTodayWeekApiFinancialAidTodayYearWeekGetData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: never
+  url: '/api/financial-aid/today/{year}/week'
+}
+
+export type GetTodayWeekApiFinancialAidTodayYearWeekGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetTodayWeekApiFinancialAidTodayYearWeekGetError =
+  GetTodayWeekApiFinancialAidTodayYearWeekGetErrors[keyof GetTodayWeekApiFinancialAidTodayYearWeekGetErrors]
+
+export type GetTodayWeekApiFinancialAidTodayYearWeekGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: TodayWeekResponse
+}
+
+export type GetTodayWeekApiFinancialAidTodayYearWeekGetResponse =
+  GetTodayWeekApiFinancialAidTodayYearWeekGetResponses[keyof GetTodayWeekApiFinancialAidTodayYearWeekGetResponses]
 
 export type GetHouseholdPageApiFinancialAidHouseholdPageYearHouseholdCmIdGetData = {
   body?: never

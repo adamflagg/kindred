@@ -5,6 +5,7 @@ imports api.main."""
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -305,3 +306,21 @@ def test_slice_3s_surfaces_serve_their_numbered_notes(surface: str, notes: int) 
     assert response.status_code == 200
     assert [n["n"] for n in response.json()["notes"]] == list(range(1, notes + 1))
     assert "{camp}" not in response.text
+
+
+# --- Today: This week (spec 2026-10-10 §8) --------------------------------------------------------------
+
+
+def _stub_week() -> Any:
+    from api.schemas.financial_aid_surfaces import TodayWeekResponse
+
+    service = patch("api.routers.financial_aid.TodayWeekService").start().return_value
+    service.read = AsyncMock(return_value=TodayWeekResponse(year=2031, week_of=date(2031, 4, 14), feed=[]))
+    return service
+
+
+@pytest.mark.parametrize("persona", sorted(PERSONAS))
+def test_this_week_opens_like_today(persona: str) -> None:
+    _stub_week()
+    response = _client(persona).get("/api/financial-aid/today/2031/week")
+    assert response.status_code == (200 if {VIEW, SUMMARY, GRANTORS} & set(PERSONAS[persona]) else 403), persona

@@ -10,6 +10,7 @@ import type {
   ApiAidAskIn,
   ApiAidBudget,
   ApiAidToday,
+  ApiAidTodayWeek,
   ApiAidCancellationIn,
   ApiAidCorrectionIn,
   ApiAidCorrectionOut,
@@ -576,6 +577,16 @@ export async function fetchAidToday(
   const response = await fetchWithAuth(`${BASE}/today/${String(year)}`)
   if (!response.ok) throw await toApiError(response, 'Failed to load Today', AidApiError)
   return (await response.json()) as ApiAidToday
+}
+
+/** Today's This week column (spec 2026-10-10 §8): figures against last week, the feed, posted by week. Live only. */
+export async function fetchAidTodayWeek(
+  fetchWithAuth: FetchWithAuth,
+  year: number
+): Promise<ApiAidTodayWeek> {
+  const response = await fetchWithAuth(`${BASE}/today/${String(year)}/week`)
+  if (!response.ok) throw await toApiError(response, 'Failed to load this week', AidApiError)
+  return (await response.json()) as ApiAidTodayWeek
 }
 
 /**
