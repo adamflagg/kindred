@@ -12,7 +12,7 @@ import {
   REGISTRAR_TODAY,
   SOURCES,
 } from '../../components/camperships/today/todayFixtures'
-import type { ApiAidDevelopment, ApiAidToday } from '../../types/api-types'
+import type { ApiAidDevelopment, ApiAidToday, ApiAidTodayWeek } from '../../types/api-types'
 import AidTodayPage from './AidTodayPage'
 
 let granted: string[] = []
@@ -20,6 +20,27 @@ let todayState: 'ok' | 'loading' | 'error' = 'ok'
 let todayData: ApiAidToday = REGISTRAR_TODAY
 let budgetFails = false
 let developmentFails = false
+let weekFails = false
+const weekData: ApiAidTodayWeek = {
+  year: 2027,
+  week_of: '2027-04-05',
+  registrar: [{ key: 'posted', label: 'Offers posted', value: 14, previous: 9, unit: 'count' }],
+  finance: [{ key: 'avg', label: 'Avg award', value: 2080, previous: 2140, unit: 'dollars' }],
+  development: [{ key: 'grants', label: 'Grants in', value: 2, previous: 1, unit: 'count' }],
+  feed: [
+    {
+      kind: 'grant',
+      at: '2027-04-06T17:14:00Z',
+      words: 'A grant came in',
+      household_cm_id: null,
+      href_kind: 'funders',
+    },
+  ],
+  posted_by_week: [
+    { week_of: '2027-01-04', posted: 0 },
+    { week_of: '2027-03-29', posted: 843380 },
+  ],
+}
 
 vi.mock('../../hooks/usePermissions', () => ({
   usePermissions: () => ({ hasPermission: (p: string) => granted.includes(p) }),
@@ -32,6 +53,12 @@ vi.mock('../../hooks/camperships/useAidToday', () => ({
       : todayState === 'error'
         ? { data: undefined, isLoading: false, error: new Error('boom') }
         : { data: todayData, isLoading: false, error: null },
+}))
+vi.mock('../../hooks/camperships/useAidTodayWeek', () => ({
+  useAidTodayWeek: () =>
+    weekFails
+      ? { data: undefined, isLoading: false, error: new Error('week down') }
+      : { data: weekData, isLoading: false, error: null },
 }))
 vi.mock('../../hooks/camperships/useAidBudget', () => ({
   useAidBudget: () =>
@@ -97,6 +124,7 @@ beforeEach(() => {
   todayState = 'ok'
   budgetFails = false
   developmentFails = false
+  weekFails = false
   todayData = FINANCE_TODAY
 })
 
@@ -238,5 +266,50 @@ describe('AidTodayPage', () => {
     expect(
       await screen.findByText('9 waiting · 2 overdue · on the registrar, open to review')
     ).toBeInTheDocument()
+  })
+
+  it('the registrar page gets This week beside its to-dos', async () => {
+    granted = ['financial_aid.view', 'financial_aid.casework']
+    todayData = REGISTRAR_TODAY
+    renderPage()
+    expect(await screen.findByText('This week')).toBeInTheDocument()
+    expect(screen.getByText('Offers posted')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'A grant came in' })).toHaveAttribute(
+      'href',
+      '/aid/money/funders'
+    )
+  })
+
+  it('finance gets Committed by week above This week', async () => {
+    granted = FINANCE
+    const { container } = renderPage()
+    expect(await screen.findByText('Committed by week')).toBeInTheDocument()
+    expect(container.querySelector('path[data-line="posted"]')).not.toBeNull()
+    expect(screen.getByText('Avg award')).toBeInTheDocument()
+  })
+
+  it('development gets This week with Upkeep left, the sum of its lines, and no change shown', async () => {
+    granted = DEVELOPMENT
+    renderPage()
+    expect(await screen.findByText('Grants in')).toBeInTheDocument()
+    const label = screen.getByText('Upkeep left')
+    expect(label.parentElement).toHaveTextContent('3')
+    expect(label.parentElement?.textContent).not.toMatch(/[▲▼]/)
+  })
+
+  it('a view-only user gets no right column', async () => {
+    granted = ['financial_aid.view']
+    renderPage()
+    await screen.findByText('Nothing is assigned to you.')
+    expect(screen.queryByText('This week')).toBeNull()
+  })
+
+  it('a failed week read blanks only the right column, not the to-dos', async () => {
+    granted = ['financial_aid.view', 'financial_aid.casework']
+    todayData = REGISTRAR_TODAY
+    weekFails = true
+    renderPage()
+    expect(await screen.findByText(/Failed to load this week/)).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Your to-dos' })).toBeInTheDocument()
   })
 })

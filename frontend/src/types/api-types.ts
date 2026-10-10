@@ -147,6 +147,7 @@ import type {
   TodayNextUpOut,
   TodayResponse,
   TodayStagesOut,
+  TodayWeekResponse,
   ToPlaceWriteOut,
   RequestOut,
   RequestsGridResponse,
@@ -212,6 +213,9 @@ import type {
   RequestShareOut,
   UnmappedDescriptionOut,
   WaitingCommitmentOut,
+  WeekFeedOut,
+  WeekFigureOut,
+  WeekPointOut,
   WithdrawIn,
   AppealsRowOut,
   ApplicationsRowOut,
@@ -370,6 +374,11 @@ export type ApiAidToday = TodayResponse
 export type ApiAidTodayLine = TodayLineOut
 export type ApiAidTodayNextUp = TodayNextUpOut
 export type ApiAidTodayStages = TodayStagesOut
+/** Today's week read (spec 2026-10-10 §8): this week against last, the feed, posted by week. */
+export type ApiAidTodayWeek = TodayWeekResponse
+export type ApiAidWeekFigure = WeekFigureOut
+export type ApiAidWeekFeed = WeekFeedOut
+export type ApiAidWeekPoint = WeekPointOut
 export type ApiAidRoundCounts = RoundCountsOut
 /** "3 families · 4 requests" (principle 7). Mirrors Python `CountOut`. */
 export type ApiAidCount = CountOut
