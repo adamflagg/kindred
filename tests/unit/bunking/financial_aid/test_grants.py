@@ -9,6 +9,7 @@ import pytest
 
 from bunking.financial_aid.calculator.grants import (
     grant_round,
+    grant_round_at,
     grants_offset,
     grants_since_round1,
     incentive_adjustments,
@@ -113,6 +114,30 @@ def test_the_round_a_grant_counts_in(
 ) -> None:
     request = req(r1_decided_at=r1, r2_decided_at=r2)
     assert grant_round(_input(recorded), request, fictional_rules()) == expected
+
+
+@pytest.mark.parametrize(
+    ("recorded", "r1", "r2", "expected"),
+    [
+        (None, DECIDED, None, "round_1"),
+        (EARLY_AT, DECIDED, None, "round_1"),
+        (LATE_AT, None, None, "round_1"),
+        (LATE_AT, DECIDED, None, "after_round_1"),
+        (LATE_AT, DECIDED, APPEAL, "after_round_1"),
+        (AFTER_APPEAL_AT, DECIDED, APPEAL, "after_appeal"),
+    ],
+)
+def test_the_round_from_a_program_and_the_two_decision_instants_alone(
+    recorded: datetime | None, r1: datetime | None, r2: datetime | None, expected: str
+) -> None:
+    """Season › History replays the rule as of a placement with no priced request: the program the rules give the
+    request and Round 1's and the appeal's Posted instants are all it reads, and it agrees with grant_round."""
+    rules = fictional_rules()
+    found = grant_round_at(_input(recorded), program_key="summer", r1_decided_at=r1, r2_decided_at=r2, rules=rules)
+    assert found == expected == grant_round(_input(recorded), req(r1_decided_at=r1, r2_decided_at=r2), rules)
+    assert grant_round_at(
+        _input(recorded), program_key="bmitzvah", r1_decided_at=r1, r2_decided_at=r2, rules=rules
+    ) == ("not_offset_program")
 
 
 @pytest.mark.parametrize("policy", ["ignore", "flag", "recalculate"])

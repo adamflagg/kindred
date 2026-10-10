@@ -15,9 +15,17 @@ import pytest
 
 from api.schemas.financial_aid_grants import GrantRowOut, GrantsResponse, RequestShareOut, WaitingCommitmentOut
 from api.services.financial_aid_decisions_service import FinancialAidDecisionsService, Season
-from api.services.financial_aid_grant_offsets import GrantsRegisterService, ShareOffset, share_offset, with_offsets
+from api.services.financial_aid_grant_offsets import (
+    GrantsRegisterService,
+    ShareOffset,
+    offset_as_of,
+    share_offset,
+    with_offsets,
+)
 from api.services.financial_aid_grants_register import RegisterRow, RequestShare, grant_inputs_by_request
 from bunking.financial_aid.decisions import DecisionEvent
+from bunking.financial_aid.decisions.rounds import EventKind
+from bunking.financial_aid.rules.schema import AidRules
 from tests.unit.api.services.decisions_fakes import T0, FakeDecisionsStore, FakeRules, approved, grant_row, seed_request
 from tests.unit.api.services.financial_aid_fakes import YEAR, intake_rules
 from tests.unit.api.services.test_financial_aid_decisions_service import EMMA, _posted
@@ -271,3 +279,82 @@ async def test_the_grants_read_prices_the_season_on_the_register_it_shows_from_o
     ((share,),) = [g.requests for g in out.grants]
     assert (share.offsets, share.round, share.round_amount) == ("round", 1, 1000.0)
     assert loader.calls == 1
+
+
+# --- as of a placement (Season › History's Round column, owner 2026-10-10 "k lets go w/B") ---------------------------
+
+MAR21 = datetime(2027, 3, 21, 17, 0, tzinfo=UTC)
+MAR25 = datetime(2027, 3, 25, 17, 0, tzinfo=UTC)
+
+
+def _tick(kind: EventKind, at: datetime, n: int = 1, request_id: str = EMMA, rid: str = "") -> DecisionEvent:
+    amount = Decimal(1000) if kind == "post" else None
+    return DecisionEvent(id=rid or f"{kind}{n}{at:%m%d}", request_id=request_id, round=n, kind=kind, created=at,
+                         amount=amount)  # fmt: skip
+
+
+def _as_of(
+    row: RegisterRow,
+    at: datetime,
+    events: Sequence[DecisionEvent] = (),
+    program: str | None = "summer",
+    rules: AidRules | None = None,
+) -> ShareOffset:
+    (share,) = row.requests
+    return offset_as_of(row, share, at, events=events, program_key=program, rules=rules or intake_rules())
+
+
+def test_as_of_a_placement_a_grant_known_before_round_1_posted_counts_in_round_1_for_good() -> None:
+    """The Register's rule replayed at the placement's instant: known before Round 1's Posted lock, it lowered Round 1,
+    whether Round 1 had posted by the placement or posted later. No amount: History records, it never re-prices."""
+    early = grant_row(EMMA, "500")  # known Feb 10
+    assert _as_of(early, MAR21, [_tick("post", T0)]) == ShareOffset("round", 1)
+    assert _as_of(early, T0 - (MAR21 - T0), [_tick("post", T0)]) == ShareOffset("round", 1)  # placed before the post
+    assert _as_of(_late(), MAR21, []) == ShareOffset("round", 1)  # Round 1 not posted: every grant counts there
+
+
+def test_as_of_a_placement_a_grant_known_after_round_1_posted_is_after_the_offer_unless_appeals_subtract() -> None:
+    assert _as_of(_late(), MAR21, [_tick("post", T0)]) == ShareOffset("after_offer")
+    for rules in SUBTRACTING.values():
+        assert _as_of(_late(), MAR21, [_tick("post", T0)], rules=rules) == ShareOffset("round", 2)
+    # Known after the appeal posted too: nothing counts it, whatever the levers.
+    appeal = [_tick("post", T0), _tick("post", datetime(2027, 3, 15, tzinfo=UTC), n=2)]
+    assert _as_of(_late(), MAR21, appeal, rules=SUBTRACTING["round2.cap_subtracts_grants"]) == ShareOffset(
+        "after_offer"
+    )
+
+
+def test_as_of_reads_the_decisions_recorded_by_the_placement_only() -> None:
+    """A Posted tick undone after the placement leaves it as it was then; a tick recorded after it never reaches back."""
+    undone_later = [_tick("post", T0), _tick("unpost", MAR25)]
+    assert _as_of(_late(), MAR21, undone_later) == ShareOffset("after_offer")
+    posted_later = [_tick("post", MAR25)]
+    assert _as_of(_late(), MAR21, posted_later) == ShareOffset("round", 1)
+    other_request = [_tick("post", T0, request_id=OTHER)]
+    assert _as_of(_late(), MAR21, other_request) == ShareOffset("round", 1)
+
+
+def test_as_of_says_why_no_round_counts_a_share() -> None:
+    assert _as_of(grant_row(EMMA, "500"), MAR21, program="family_camp") == ShareOffset("not_offset_program")
+    assert _as_of(grant_row(EMMA, "500", funder_type="incentive"), MAR21) == ShareOffset("incentive")
+    assert _as_of(grant_row(EMMA, "500", pays_after_camp_aid=True), MAR21) == ShareOffset("pays_after_camp_aid")
+    assert _as_of(grant_row(EMMA, "500"), MAR21, program=None) == ShareOffset("not_priced")  # no program then
+    (share,) = grant_row(EMMA, "500").requests
+    no_rules = offset_as_of(grant_row(EMMA, "500"), share, MAR21, events=[], program_key="summer", rules=None)
+    assert no_rules == ShareOffset("not_priced")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("posted", [False, True])
+@pytest.mark.parametrize("late", [False, True])
+async def test_as_of_now_agrees_with_the_registers_live_offset(posted: bool, late: bool) -> None:
+    """One rule, two reads: replayed at the season's own instant, the History answer is the Register's minus its
+    amount, so the two pages can't disagree."""
+    store = _emma()
+    if posted:
+        _posted(store, EMMA, 1, "1000")
+    row = _late() if late else grant_row(EMMA, "500")
+    live = await _offset(row, store)
+    (share,) = row.requests
+    replayed = offset_as_of(row, share, MAR25, events=store.events, program_key="summer", rules=intake_rules())
+    assert replayed == replace(live, round_amount=None)

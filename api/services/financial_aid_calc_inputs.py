@@ -138,12 +138,15 @@ def ag_parent_of(session: SessionRow, sessions: Mapping[int, SessionRow]) -> tup
 
 
 def rules_program_key(request: RequestRecord, sessions: Mapping[int, SessionRow], rules: AidRules) -> str | None:
-    session = sessions.get(request.session_cm_id)
+    return session_program_key(request.session_cm_id, sessions, rules)
+
+
+def session_program_key(session_cm_id: int, sessions: Mapping[int, SessionRow], rules: AidRules) -> str | None:
+    """The rules program a request in this session is priced under (rules_program_key, from the session alone)."""
+    session = sessions.get(session_cm_id)
     if session is None:
-        return resolve_program(rules, request.session_cm_id, None)
-    return resolve_program(
-        rules, request.session_cm_id, session.session_type, ag_parent=ag_parent_of(session, sessions)
-    )
+        return resolve_program(rules, session_cm_id, None)
+    return resolve_program(rules, session_cm_id, session.session_type, ag_parent=ag_parent_of(session, sessions))
 
 
 def to_request_inputs(

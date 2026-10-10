@@ -10,6 +10,7 @@ import type {
   ApiAidHistoryPage,
   ApiAidHistoryRow,
 } from '../../../types/api-types'
+import { OFFSET_WORDS } from '../grants/registerModel'
 import { aidHref, type AidView } from '../kit/asOf'
 import { formatCampDateTime, formatLongDate, parseIsoDay } from '../kit/dates'
 import { CANCEL_REASON_OPTIONS } from '../kit/editor'
@@ -897,7 +898,62 @@ export interface CompactRow {
   /** A family-level row: no camper, so the cell says "household request" in muted words. */
   readonly householdRequest: boolean
   readonly round: string | null
+  /** A placement's Round cell is muted when no round counts its grant ("after offer", "—"). */
+  readonly roundMuted: boolean
+  /** Why: the cell's title, one clause per distinct answer. Null when the row names no round. */
+  readonly roundTitle: string | null
   readonly amount: number | null
+}
+
+type CountsIn = NonNullable<ApiAidHistoryRow['counts_in']>[number]
+
+/** The Round column's head title on a placements table (season-history.html, owner 10-10 B). */
+export const COUNTS_IN_HELP =
+  "The round of the request this grant lowers, as of when it was placed (the Grants Register's rule)"
+
+/**
+ * One share's round as of its placement: R1 or R2, "after offer", else "—" with the Register's
+ * reason words (OFFSET_WORDS) in the title. History never re-prices, so a share that couldn't be
+ * priced says when.
+ */
+function countsInCell(share: CountsIn): { text: string; title: string } {
+  if (share.offsets === 'round') {
+    return share.round === 2
+      ? {
+          text: 'R2',
+          title:
+            'Counts in Round 2: known after Round 1 was posted, and these rules make an appeal subtract grants',
+        }
+      : { text: 'R1', title: 'Counts in Round 1: known before Round 1 was posted' }
+  }
+  if (share.offsets === 'after_offer') {
+    return {
+      text: 'after offer',
+      title: 'Counts in no round: known after Round 1 was posted, so the offer stands',
+    }
+  }
+  const why =
+    share.offsets === 'not_priced'
+      ? "it couldn't be priced when placed"
+      : OFFSET_WORDS[share.offsets]
+  return { text: '—', title: `Counts in no round: ${why}` }
+}
+
+/**
+ * A placement's Round cell: each share's answer, the distinct ones joined in share order ("R1 · after
+ * offer" for a grant split across requests). Null when the row carries none.
+ */
+export function countsInWords(
+  counts: readonly CountsIn[] | null | undefined
+): { text: string; title: string; muted: boolean } | null {
+  if (!counts || counts.length === 0) return null
+  const cells = counts.map(countsInCell)
+  const distinct = (values: string[]) => [...new Set(values)].join(' · ')
+  return {
+    text: distinct(cells.map((c) => c.text)),
+    title: distinct(cells.map((c) => c.title)),
+    muted: counts.every((c) => c.offsets !== 'round'),
+  }
 }
 
 export interface CompactGroup {
@@ -918,6 +974,7 @@ function compactRow(
   const household = r.household_cm_id
   const home = household === null ? null : householdHref(household, view)
   const roundText = r.after?.['round'] ?? r.before?.['round']
+  const counts = r.entity === PLACEMENTS ? countsInWords(r.counts_in) : null
   const ask = r.entity === 'aid_requests' && r.action === 'create'
   const sessionFull = r.session_cm_id
     ? (sessions?.get(r.session_cm_id) ?? `Session ${String(r.session_cm_id)}`)
@@ -931,7 +988,9 @@ function compactRow(
     householdHref: home,
     session: sessionFull === '' ? '—' : aidSessionName(sessionFull, undefined),
     sessionFull,
-    round: typeof roundText === 'number' ? `R${String(roundText)}` : null,
+    round: counts?.text ?? (typeof roundText === 'number' ? `R${String(roundText)}` : null),
+    roundMuted: counts?.muted ?? false,
+    roundTitle: counts?.title ?? null,
     amount: decimalOf(
       r.entity === PLACEMENTS
         ? (placementAmount(r.after) ?? placementAmount(r.before))

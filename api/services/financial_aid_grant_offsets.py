@@ -15,8 +15,8 @@ do. Nothing here writes.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Final
@@ -31,13 +31,18 @@ from api.services.financial_aid_decisions_service import (
 from api.services.financial_aid_grants_register import RegisterRow, RequestShare, bridge_input, reaches_calculator
 from api.services.financial_aid_grants_service import GrantsLoader, OneGrantsLoad
 from api.services.financial_aid_ledger_service import money
-from bunking.financial_aid.calculator.grants import GrantRound, grant_round
+from bunking.financial_aid.calculator.grants import GrantRound, grant_round_at
+from bunking.financial_aid.decisions import DecisionEvent, fold_rounds
 from bunking.financial_aid.rules.schema import AidRules
 
 _EXCLUDED: Final[Mapping[GrantRound, ShareOffsetOut]] = {
     "not_offset_program": "not_offset_program",
     "not_received": "not_received",
 }
+
+
+# What the rule reads off a request: its program under the rules, Round 1's and the appeal's Posted instants, the rules.
+_Basis = tuple[str, datetime | None, datetime | None, AidRules]
 
 
 @dataclass(frozen=True)
@@ -56,24 +61,72 @@ def _appeal_subtracts_grants(rules: AidRules) -> bool:
     return rules.round2.cap_subtracts_grants or (cap is not None and cap.include_grants)
 
 
-def share_offset(row: RegisterRow, share: RequestShare, season: Season) -> ShareOffset:
-    """The round of `share`'s request the rules count this share in, and that round's amount now. A share known after
-    Round 1 posted offsets Round 2 only where an appeal subtracts grants (D139); else the offer stands (D43)."""
+def _offset(row: RegisterRow, share: RequestShare, basis: _Basis | None) -> ShareOffset:
+    """The rule both reads share: why the bridge leaves a row out, else the round grant_round_at names under `basis`
+    (None: the request has no program or rules to read, so "not_priced"). No amount: the caller adds one."""
     if not reaches_calculator(row):
         # A share exists only on a counted row, and the register holds outside and incentive lines only, so the bridge
         # leaves it out for one of two reasons.
         return ShareOffset("incentive" if row.funder_type != "outside" else "pays_after_camp_aid")
-    priced = season.priced.get(share.request_id)
-    if priced is None or priced.inputs is None or season.rules is None:
+    if basis is None:
         return ShareOffset("not_priced")
-    rules = season.rules.document
-    found = grant_round(bridge_input(row, share), priced.inputs, rules)
+    program_key, r1_decided_at, r2_decided_at, rules = basis
+    found = grant_round_at(
+        bridge_input(row, share),
+        program_key=program_key,
+        r1_decided_at=r1_decided_at,
+        r2_decided_at=r2_decided_at,
+        rules=rules,
+    )
     if found == "round_1" or (found == "after_round_1" and _appeal_subtracts_grants(rules)):
-        n = 1 if found == "round_1" else 2
-        view = priced.view(n)
-        # RoundView.decided is the open round's decided amount, and the amount it locked once posted (pricing.py:332).
-        return ShareOffset("round", n, view.decided if view is not None else None)
+        return ShareOffset("round", 1 if found == "round_1" else 2)
     return ShareOffset(_EXCLUDED.get(found, "after_offer"))
+
+
+def share_offset(row: RegisterRow, share: RequestShare, season: Season) -> ShareOffset:
+    """The round of `share`'s request the rules count this share in, and that round's amount now. A share known after
+    Round 1 posted offsets Round 2 only where an appeal subtracts grants (D139); else the offer stands (D43)."""
+    priced = season.priced.get(share.request_id)
+    inputs = priced.inputs if priced is not None else None
+    basis = (
+        None
+        if inputs is None or season.rules is None
+        else (inputs.program_key, inputs.r1_decided_at, inputs.r2_decided_at, season.rules.document)
+    )
+    found = _offset(row, share, basis)
+    if found.round is None or priced is None:
+        return found
+    view = priced.view(found.round)
+    # RoundView.decided is the open round's decided amount, and the amount it locked once posted (pricing.py:332).
+    return replace(found, round_amount=view.decided if view is not None else None)
+
+
+def offset_as_of(
+    row: RegisterRow,
+    share: RequestShare,
+    at: datetime,
+    *,
+    events: Iterable[DecisionEvent],
+    program_key: str | None,
+    rules: AidRules | None,
+) -> ShareOffset:
+    """share_offset replayed at `at` (Season › History's Round column, owner 2026-10-10): the share's request's Round 1
+    and appeal Posted instants folded from the decisions recorded by then, under the program and rules that priced it
+    then. No round amount: History shows what was recorded and never re-prices. `events` may hold other requests'."""
+    if program_key is None or rules is None:
+        return _offset(row, share, None)
+    rounds = fold_rounds((e for e in events if e.request_id == share.request_id), as_of=at).get(share.request_id, {})
+    r1, r2 = rounds.get(1), rounds.get(2)
+    return _offset(
+        row,
+        share,
+        (
+            program_key,
+            r1.locked_at if r1 is not None and r1.posted else None,
+            r2.locked_at if r2 is not None and r2.posted else None,
+            rules,
+        ),
+    )
 
 
 def with_offsets(response: GrantsResponse, rows: Sequence[RegisterRow], season: Season) -> GrantsResponse:

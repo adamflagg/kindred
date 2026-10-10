@@ -22,6 +22,7 @@ import {
   changeItems,
   type ChangeItem,
   compactGroups,
+  COUNTS_IN_HELP,
   householdHref,
   KIND_LABELS,
   KIND_TONE,
@@ -53,6 +54,8 @@ function CompactTable({ group }: { group: CompactGroup }) {
   const [all, setAll] = useState(false)
   const rows = all ? group.rows : group.rows.slice(0, FIRST)
   const round = group.rows.some((r) => r.round !== null)
+  // A placement's Round reads "after offer" and says why in its head (season-history.html, owner 10-10 B).
+  const placements = group.amountLabel === 'Grant placed'
   const foot =
     all || group.rows.length <= FIRST
       ? 'Total, as recorded'
@@ -68,7 +71,7 @@ function CompactTable({ group }: { group: CompactGroup }) {
             <col style={{ width: 128 }} />
             <col style={{ width: 150 }} />
             <col />
-            {round && <col style={{ width: 56 }} />}
+            {round && <col style={{ width: placements ? 82 : 56 }} />}
             <col style={{ width: 100 }} />
           </colgroup>
           <thead>
@@ -76,7 +79,11 @@ function CompactTable({ group }: { group: CompactGroup }) {
               <th className={COMPACT_TH}>Camper</th>
               <th className={COMPACT_TH}>Household</th>
               <th className={COMPACT_TH}>Session</th>
-              {round && <th className={COMPACT_TH}>Round</th>}
+              {round && (
+                <th className={COMPACT_TH} title={placements ? COUNTS_IN_HELP : undefined}>
+                  Round
+                </th>
+              )}
               <th className={`${COMPACT_TH} text-right`}>{group.amountLabel}</th>
             </tr>
           </thead>
@@ -106,7 +113,15 @@ function CompactTable({ group }: { group: CompactGroup }) {
                 <td className={COMPACT_TD} title={r.sessionFull === '' ? undefined : r.sessionFull}>
                   {r.session}
                 </td>
-                {round && <td className={COMPACT_TD}>{r.round ?? ''}</td>}
+                {round && (
+                  <td className={COMPACT_TD} title={r.roundTitle ?? undefined}>
+                    {r.roundMuted ? (
+                      <span className="text-muted-foreground">{r.round}</span>
+                    ) : (
+                      (r.round ?? '')
+                    )}
+                  </td>
+                )}
                 <td className={`${COMPACT_TD} text-right tabular-nums`}>{formatMoney(r.amount)}</td>
               </tr>
             ))}

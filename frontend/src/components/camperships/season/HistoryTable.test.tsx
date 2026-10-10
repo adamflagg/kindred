@@ -466,6 +466,43 @@ describe('the opened row (spec §7.2 D)', () => {
     expect(document.querySelectorAll('[data-history-row]')).toHaveLength(0)
   })
 
+  it('adds a Round column to a placements table: the round each grant counted in, muted when none, each with its why', () => {
+    const [share] = DETAIL_SHARE.rows
+    if (share === undefined) throw new Error('fixture')
+    const place = (
+      i: number,
+      counts: NonNullable<ApiAidHistoryOperationDetail['rows'][number]['counts_in']>
+    ) => ({
+      ...share,
+      entity: 'aid_grant_placements',
+      entity_id: `commitment:g${String(i)}`,
+      action: 'place',
+      before: null,
+      after: { placement: { amount: '300.00' } },
+      changes: [],
+      counts_in: counts,
+    })
+    openWith(OP_SHARE, {
+      ...DETAIL_SHARE,
+      rows: [
+        place(1, [{ request_id: 'req000000000001', offsets: 'round', round: 1 }]),
+        place(2, [{ request_id: 'req000000000002', offsets: 'after_offer', round: null }]),
+      ],
+    })
+    const table = screen.getByTestId('compact-table')
+    expect(within(table).getByText('Round')).toHaveAttribute(
+      'title',
+      "The round of the request this grant lowers, as of when it was placed (the Grants Register's rule)"
+    )
+    expect(within(table).getByText('R1')).toHaveAttribute(
+      'title',
+      'Counts in Round 1: known before Round 1 was posted'
+    )
+    const after = within(table).getByText('after offer')
+    expect(after).toHaveClass('text-muted-foreground')
+    expect(table.querySelectorAll('col')[3]).toHaveStyle({ width: '82px' })
+  })
+
   it('draws no meta line for a row with no camper: the household is in Open', () => {
     openWith(OP_SHARE, {
       ...DETAIL_SHARE,
