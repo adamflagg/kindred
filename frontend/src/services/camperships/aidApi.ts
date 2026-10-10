@@ -9,6 +9,7 @@ import type {
   ApiAidApprovedRules,
   ApiAidAskIn,
   ApiAidBudget,
+  ApiAidToday,
   ApiAidCancellationIn,
   ApiAidCorrectionIn,
   ApiAidCorrectionOut,
@@ -565,6 +566,16 @@ export async function fetchAidBudget(
   )
   if (!response.ok) throw await toApiError(response, 'Failed to load Rounds & budget', AidApiError)
   return (await response.json()) as ApiAidBudget
+}
+
+/** Today's one read (spec 2026-10-10 §9): the sections follow the caller's permissions. Live only (D20). */
+export async function fetchAidToday(
+  fetchWithAuth: FetchWithAuth,
+  year: number
+): Promise<ApiAidToday> {
+  const response = await fetchWithAuth(`${BASE}/today/${String(year)}`)
+  if (!response.ok) throw await toApiError(response, 'Failed to load Today', AidApiError)
+  return (await response.json()) as ApiAidToday
 }
 
 /**
