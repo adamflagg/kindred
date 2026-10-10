@@ -89,6 +89,8 @@ export interface AidColumn<Row> {
   readonly header: string
   /** Explains the header on hover and click (the `Tooltip`); such a header does not sort. */
   readonly help?: string | undefined
+  /** A native title on the header (the full words behind a short one); the column still sorts. */
+  readonly headerTitle?: string | undefined
   /** The CSV's own header name, when it is fuller than the screen's. */
   readonly csvHeader?: string | undefined
   readonly width?: number | undefined
@@ -861,6 +863,7 @@ export function AidTable<Row>({
             <th
               key={c.key}
               style={pinStyle(c)}
+              title={c.headerTitle}
               className={join(thClass, heldClasses(c, 'top-0', 'z-20'))}
             >
               {c.help ? (
@@ -881,6 +884,7 @@ export function AidTable<Row>({
               }
               onSort={() => toggleSort(c.key)}
               style={pinStyle(c)}
+              title={c.headerTitle}
               className={join(thClass, heldClasses(c, 'top-0', 'z-20'))}
               {...(c.mark
                 ? {

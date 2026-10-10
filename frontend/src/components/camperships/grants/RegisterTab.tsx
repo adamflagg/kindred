@@ -5,6 +5,7 @@ import { Link, useSearchParams } from 'react-router'
 import { Permission } from '../../../constants/permissions'
 import { useAidDefinitions } from '../../../hooks/camperships/useAidDefinitions'
 import { useAidGrants } from '../../../hooks/camperships/useAidGrants'
+import { useAidProgramRank } from '../../../hooks/camperships/useAidProgramNames'
 import { usePermissions } from '../../../hooks/usePermissions'
 import type { ApiAidGrantRow } from '../../../types/api-types'
 import { QueryGuard } from '../../QueryGuard'
@@ -12,6 +13,7 @@ import { HouseholdLabelText } from '../household/HouseholdLabel'
 import { aidHref, type AidView } from '../kit/asOf'
 import { AidPicker } from '../kit/AidPicker'
 import { AidTable, type AidColumn, type AidCsvExtra } from '../kit/AidTable'
+import { ProgramWordsNote } from '../shell/ProgramWordsNote'
 import { CS_BTN, CS_CUT, CS_LINK_CELL, CS_OK_INK, CS_PMETA, CS_TOOLBAR_STATUS } from '../kit/csType'
 import { moneyCsv } from '../kit/money'
 import { Money } from '../kit/MoneyText'
@@ -142,6 +144,7 @@ function StandingCell({ row }: { row: ApiAidGrantRow }) {
  */
 export function RegisterTab({ view }: { view: AidView }) {
   const grants = useAidGrants()
+  const rank = useAidProgramRank()
   const defs = useAidDefinitions('grants')
   const { hasPermission } = usePermissions()
   const canWork = hasPermission(Permission.FINANCIAL_AID_CASEWORK)
@@ -218,7 +221,7 @@ export function RegisterTab({ view }: { view: AidView }) {
       {
         key: 'grantor',
         header: 'Grantor',
-        width: 196,
+        width: 180,
         value: (r) => (r.grantor_key === '' ? 'no grantor yet' : r.grantor_name),
         title: (r) =>
           r.grantor_key === ''
@@ -239,8 +242,8 @@ export function RegisterTab({ view }: { view: AidView }) {
       },
       {
         key: 'program',
-        header: 'Program',
-        width: 114,
+        header: 'Program (in CM)',
+        width: 168,
         value: (r) => programCsv(r, needsCamper),
         title: (r) =>
           programWords(r) !== '—'
@@ -253,7 +256,7 @@ export function RegisterTab({ view }: { view: AidView }) {
       {
         key: 'offsets',
         header: 'Aid request it offsets',
-        width: 192,
+        width: 176,
         value: (r) => offsetWords(r, needsCamper),
         title: (r) => offsetTitle(r, needsCamper),
         render: (r) =>
@@ -364,7 +367,7 @@ export function RegisterTab({ view }: { view: AidView }) {
         ]
         const programOptions: Array<AidPickerOption<string>> = [
           { value: '', label: 'All' },
-          ...programChoices(data.grants),
+          ...programChoices(data.grants, rank),
         ]
         const pickers = (
           <>
@@ -377,9 +380,9 @@ export function RegisterTab({ view }: { view: AidView }) {
                 className={GRANTOR_WIDTH}
               />
             </ToolbarLabel>
-            <ToolbarLabel text="Program" plain>
+            <ToolbarLabel text="Program (in CM)" plain>
               <AidPicker
-                label="Program"
+                label="Program (in CM)"
                 value={filters.program ?? ''}
                 options={programOptions}
                 onChange={(next) => setParam('program', next === '' ? null : next)}
@@ -406,9 +409,6 @@ export function RegisterTab({ view }: { view: AidView }) {
                 />
               }
             />
-            {recording && (
-              <CommitmentForm year={data.year} onCancel={() => setRecording(false)} onDone={done} />
-            )}
             <AidTable
               rows={rows}
               columns={columns}
@@ -419,6 +419,15 @@ export function RegisterTab({ view }: { view: AidView }) {
               highlighted={highlighted}
               onHighlight={onHighlight}
               nowrapHeaders
+              belowToolbar={
+                recording ? (
+                  <CommitmentForm
+                    year={data.year}
+                    onCancel={() => setRecording(false)}
+                    onDone={done}
+                  />
+                ) : undefined
+              }
               toolbarLead={pickers}
               searchWidth={190}
               toolbarStatus={
@@ -460,6 +469,7 @@ export function RegisterTab({ view }: { view: AidView }) {
               arrowKeys
               emptyText="No grants match."
             />
+            <ProgramWordsNote which="campminder" />
           </div>
         )
       }}

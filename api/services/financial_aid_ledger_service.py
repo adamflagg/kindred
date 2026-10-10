@@ -69,13 +69,15 @@ GRANT_FUNDER_TYPES: Final = frozenset({"outside", "incentive"})
 PLACED_BY_STAFF: Final = "override"
 
 # F10's camp-aid shares (R3-2): which share each attribution level counts in. Anything else ("none", or a
-# level Go adds later) is not placed.
+# level Go adds later) is not placed. program_family is money attributed to a program (a Family Camp household
+# request), so it is placed on a request; only "ambiguous" is at household level, the program table's "Household level"
+# row (owner ruling, final audit).
 _CAMP_AID_GROUP: Final[Mapping[str, CampAidGroup]] = {
     "override": "placed",
     "decision": "placed",
     "session": "placed",
     "person": "placed",
-    "program_family": "household",
+    "program_family": "placed",
     "ambiguous": "household",
 }
 _CAMP_AID_ORDER: Final[tuple[CampAidGroup, ...]] = ("placed", "household", "not_placed")

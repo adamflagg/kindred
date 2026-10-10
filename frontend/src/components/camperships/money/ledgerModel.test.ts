@@ -21,17 +21,23 @@ import {
   UNCLASSIFIED_NOTE,
 } from './ledgerModel'
 
-const NAMES = { summer: 'Summer Sessions', family_camp: 'Family Camp Weekends' }
+// The rules' order: summer first, then family camp (programRank's own pool order is tested with it).
+const ORDER = ['summer', 'family_camp']
+const RANK = (program: string) => {
+  const at = ORDER.indexOf(program)
+  return at === -1 ? 1 : at * 2
+}
 
 describe('ledgerModel', () => {
   it("orders the programs as the rules do, then the server's two no-program buckets (R3-10)", () => {
-    expect(pivotRows(SUMMARY, NAMES).map((r) => r.program)).toEqual([
+    expect(pivotRows(SUMMARY, RANK).map((r) => r.program)).toEqual([
       'summer',
       'family_camp',
       'ambiguous',
       'unattributed',
     ])
-    // A program the rules don't name comes after the named ones, before the buckets.
+    // Final audit M-E8: a family the rules don't name (Quest) sits in the camp & quest pool, so it
+    // follows Summer and comes before Family Camp; the buckets stay last.
     const quest = {
       program: 'quest',
       camp_aid: 100,
@@ -42,10 +48,10 @@ describe('ledgerModel', () => {
       households: 1,
     }
     const extra = { ...SUMMARY, by_program: [...(SUMMARY.by_program ?? []), quest] }
-    expect(pivotRows(extra, NAMES).map((r) => r.program)).toEqual([
+    expect(pivotRows(extra, RANK).map((r) => r.program)).toEqual([
       'summer',
-      'family_camp',
       'quest',
+      'family_camp',
       'ambiguous',
       'unattributed',
     ])
@@ -101,7 +107,7 @@ describe('ledgerModel', () => {
   })
 
   it('offers only the programs the summary has money under, labelled, buckets left out', () => {
-    expect(programChoicesOf(SUMMARY, NAMES)).toEqual([
+    expect(programChoicesOf(SUMMARY, RANK)).toEqual([
       { value: 'summer', label: 'Summer Sessions' },
       { value: 'family_camp', label: 'Family Camp Weekends' },
     ])
@@ -120,10 +126,10 @@ describe('ledgerModel', () => {
       households: 1,
     }
     const extra = { ...SUMMARY, by_program: [...(SUMMARY.by_program ?? []), quest] }
-    expect(programChoicesOf(extra, NAMES)).toEqual([
+    expect(programChoicesOf(extra, RANK)).toEqual([
       { value: 'summer', label: 'Summer Sessions' },
-      { value: 'family_camp', label: 'Family Camp Weekends' },
       { value: 'quest', label: 'Other program' },
+      { value: 'family_camp', label: 'Family Camp Weekends' },
     ])
   })
 

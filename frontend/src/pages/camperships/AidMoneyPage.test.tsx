@@ -112,13 +112,32 @@ describe('AidMoneyPage (spec §8.1; D62; owner 10-08)', () => {
     }
   })
 
-  it('refuses development the tabs that need view', () => {
+  // Final audit M-E6 (money-ledger.html?who=dev): an old Ledger / To place / Grants link keeps the
+  // Money band and the tabs development has, with one staff-words line, as Requests does.
+  it('tells development, in staff words, that the tab needs view, under the band and the Funders tab', () => {
     granted = DEVELOPMENT
-    for (const slug of ['ledger', 'to-place', 'grants']) {
+    for (const [slug, label] of [
+      ['ledger', 'Ledger'],
+      ['to-place', 'To place'],
+      ['grants', 'Grants'],
+    ] as const) {
       const { unmount } = renderAt(`/aid/money/${slug}`)
-      expect(screen.getByText('Permission denied')).toBeInTheDocument()
+      expect(screen.queryByText('Permission denied')).toBeNull()
+      expect(screen.getByRole('heading', { name: 'Money' })).toBeInTheDocument()
+      expect(screen.getByRole('link', { name: 'Funders', current: false })).toBeInTheDocument()
+      expect(screen.getByText(new RegExp(`${label} isn.t one of its tabs`))).toBeInTheDocument()
+      expect(screen.getByRole('link', { name: 'Money › Funders' })).toHaveAttribute(
+        'href',
+        expect.stringContaining('/aid/money/funders')
+      )
       unmount()
     }
+  })
+
+  it('still refuses a user with no Money tab at all', () => {
+    granted = ['financial_aid.rules']
+    renderAt('/aid/money/ledger')
+    expect(screen.getByText('Permission denied')).toBeInTheDocument()
   })
 
   it('shows the four tabs in order, and To place’s body on its tab', () => {

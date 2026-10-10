@@ -90,3 +90,36 @@ export function programGroups(
       programs: [...programs.values()].sort((x, y) => x.label.localeCompare(y.label)),
     }))
 }
+
+/**
+ * The ledger families the rules never key by their own name, and the budget pool each belongs to
+ * (the server's `RULES_KEY_ALIASES` and fixed families): Quest and Teen Leadership sit in the camp
+ * and quest pool, B*Mitzvah is the rules' `tbm`, adult weekends are the weekend pool.
+ */
+const FAMILY_POOLS: Readonly<Record<string, string>> = {
+  quest: 'camp_quest',
+  teen: 'camp_quest',
+  bmitzvah: 'tbm',
+  adult_weekend: 'weekend',
+}
+
+/**
+ * Where a program sits in the pool order (final audit M-E8; "pool order is the rules' order"): its
+ * budget pool's place in the rules' `budget.pools`, then its place among the rules' programs, the
+ * families the rules do not key (`FAMILY_POOLS`) after them. Any other unnamed family comes last.
+ * Ties go to the caller's own key or label order. With no rules every key ranks alike.
+ */
+export function programRank(rules: ApiAidApprovedRules | undefined): (program: string) => number {
+  const pools = Object.keys(poolLabels(rules))
+  const programs = Object.keys(sectionContent(rules, 'programs') ?? {})
+  const filed = stringField(sectionContent(rules, 'programs'), 'budget_pool')
+  return (program) => {
+    const known = programs.indexOf(program)
+    const home = known === -1 ? FAMILY_POOLS[program] : filed[program]
+    // A home the rules do not list ranks like no home: after every listed pool, never ahead of the first.
+    const at = home === undefined ? -1 : pools.indexOf(home)
+    const pool = at === -1 ? pools.length : at
+    // Inside a pool the rules' programs keep the rules' order, and the unkeyed families follow them.
+    return pool * 1000 + (known === -1 ? 999 : known)
+  }
+}

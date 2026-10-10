@@ -170,8 +170,11 @@ export function grantorChoices(rows: readonly ApiAidGrantRow[]): FilterChoice[] 
     .sort((a, b) => a.label.localeCompare(b.label))
 }
 
-/** The programs on the Register, by the server's `program_label` ("Other program" when it sends none). */
-export function programChoices(rows: readonly ApiAidGrantRow[]): FilterChoice[] {
+/** The programs on the Register, by the server's `program_label` ("Other program" when it sends none), in pool order. */
+export function programChoices(
+  rows: readonly ApiAidGrantRow[],
+  rank: (program: string) => number = () => 0
+): FilterChoice[] {
   const labels = new Map<string, string>()
   for (const row of rows) {
     if (row.program_family === '') continue
@@ -180,9 +183,10 @@ export function programChoices(rows: readonly ApiAidGrantRow[]): FilterChoice[] 
       labels.set(row.program_family, label === '' ? OTHER_PROGRAM : label)
     }
   }
+  // Pool order (the rules'), then A to Z: the Ledger's Program picker reads the same way.
   return [...labels]
     .map(([value, label]) => ({ value, label }))
-    .sort((a, b) => a.label.localeCompare(b.label))
+    .sort((a, b) => rank(a.value) - rank(b.value) || a.label.localeCompare(b.label))
 }
 
 /** D70's file name: the chip, then the grantor and program picked. */

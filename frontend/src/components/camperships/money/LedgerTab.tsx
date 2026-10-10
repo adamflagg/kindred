@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 
-import { useAidProgramNames } from '../../../hooks/camperships/useAidProgramNames'
+import { useAidProgramRank } from '../../../hooks/camperships/useAidProgramNames'
 import { useAidBudget } from '../../../hooks/camperships/useAidBudget'
 import { useAidSummary } from '../../../hooks/camperships/useAidSummary'
 import { useAidToPlace } from '../../../hooks/camperships/useAidToPlace'
@@ -16,6 +16,7 @@ import { formatLongDate } from '../kit/dates'
 import { moneyCsv } from '../kit/money'
 import { Money } from '../kit/MoneyText'
 import { AidDefinitionNotes } from '../shell/AidDefinitionNotes'
+import { ProgramWordsNote } from '../shell/ProgramWordsNote'
 import { LedgerFamilies } from './LedgerFamilies'
 import { useLedgerNotes, type NoteMark } from './useLedgerNotes'
 import {
@@ -69,7 +70,7 @@ function pivotColumns(
   return [
     {
       key: 'program',
-      header: 'Program',
+      header: 'Program (in CM)',
       width: 260,
       pinned: true,
       value: (r) => summaryProgramWords(r.program, r.program_label),
@@ -214,14 +215,14 @@ function TieOutLine({
  */
 export function LedgerTab({ view }: { view: AidView }) {
   const summary = useAidSummary()
-  const names = useAidProgramNames()
+  const rank = useAidProgramRank()
   const budget = useAidBudget()
   const toPlace = useAidToPlace(null)
   const [open, setOpen] = useState(true)
   const past = view.asOf.kind === 'past' ? view.asOf : null
   const data = summary.data
   const marks = useLedgerNotes(data !== undefined && hasUnclassified(data))
-  const rows = useMemo(() => (data ? pivotRows(data, names) : []), [data, names])
+  const rows = useMemo(() => (data ? pivotRows(data, rank) : []), [data, rank])
   const columns = useMemo(
     () => (data ? pivotColumns(data, marks) : []),
     // The marks are rebuilt each render; their numbers and words are what matter.
@@ -229,7 +230,7 @@ export function LedgerTab({ view }: { view: AidView }) {
     [data, marks.camp?.n, marks.outside?.n, marks.unclassified?.n]
   )
   const programLabels = useMemo(() => programLabelsOf(data), [data])
-  const programChoices = useMemo(() => (data ? programChoicesOf(data, names) : []), [data, names])
+  const programChoices = useMemo(() => (data ? programChoicesOf(data, rank) : []), [data, rank])
 
   // The section's heading row (§19): the fold caret is its close control, its Download CSV sits on
   // the same row (the table's own toolbar, once the table is drawn).
@@ -312,6 +313,7 @@ export function LedgerTab({ view }: { view: AidView }) {
         )}
       </section>
       <AidDefinitionNotes surface="money-ledger" extra={marks.extra} boldTerm />
+      <ProgramWordsNote which="campminder" />
     </div>
   )
 }

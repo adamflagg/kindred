@@ -173,7 +173,10 @@ export function PlaceCamperForm({
             )}
           </EditorGrid>
           {sessions.length === 1 && onlySession !== undefined && (
-            <p className={CS_PMETA}>{onlySession.name}, the camper’s one session</p>
+            <p className={CS_PMETA} title={onlySession.name}>
+              {aidSessionName(onlySession.name, onlySession.session_type) || onlySession.name}, the
+              camper’s one session
+            </p>
           )}
           <p className={CS_PMETA}>
             {sessions.length > 1

@@ -231,6 +231,32 @@ describe('the suggestion and what Confirm does (§4.10; D146, D152)', () => {
     ])
   })
 
+  // Owner ruling (final audit): one reason per line, never a run-on sentence of clauses.
+  it('lists several withheld reasons one per line, and keeps a single reason inline', () => {
+    const [why] = GARCIA_WITHHELD.suggestion?.would_not_tick ?? []
+    if (why === undefined) throw new Error('fixture')
+    const many = {
+      ...GARCIA_WITHHELD,
+      suggestion: GARCIA_WITHHELD.suggestion && {
+        ...GARCIA_WITHHELD.suggestion,
+        would_not_tick: [
+          {
+            ...why,
+            reasons: ['income corrected Apr 20', 'a request in this family was changed (Oct 8)'],
+          },
+        ],
+      },
+    }
+    const warn = confirmEffects(many).find((l) => l.sym === 'warn')
+    expect(warn?.text).toBe(': after the Apr 3 posting')
+    expect(warn?.items).toEqual([
+      'income corrected Apr 20',
+      'a request in this family was changed (Oct 8)',
+    ])
+    const one = confirmEffects(GARCIA_WITHHELD).find((l) => l.sym === 'warn')
+    expect(one?.items).toBeUndefined()
+  })
+
   it('says "the same changes as above" for a later round withheld for the same reasons, with no second next step', () => {
     const [part] = JOHNSON_SPLIT.suggestion?.parts ?? []
     const [garciaWhy] = GARCIA_WITHHELD.suggestion?.would_not_tick ?? []

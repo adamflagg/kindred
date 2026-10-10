@@ -73,13 +73,13 @@ export function switcherOptions(
 ): Array<{ value: FundersShow; label: string; count: number; title: string }> {
   const needs = sources.filter((r) => r.needs_group === true)
   const live = needs.filter((r) => (r.lines ?? 0) > 0)
+  const allWords = `All ${plural(c.funders, 'funder')} · ${plural(c.descriptions, 'description')}`
   return [
-    {
-      value: 'all',
-      label: 'All',
-      count: c.funders,
-      title: `All ${plural(c.funders, 'funder')} · ${plural(c.descriptions, 'description')}`,
-    },
+    // No funder yet but descriptions to show: a bare 0 would sit over a table of rows, so the count is the
+    // descriptions it shows (the title says which).
+    c.funders === 0 && c.descriptions > 0
+      ? { value: 'all', label: 'All', count: c.descriptions, title: allWords }
+      : { value: 'all', label: 'All', count: c.funders, title: allWords },
     {
       value: 'needs-group',
       label: 'Needs a group',

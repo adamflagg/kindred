@@ -139,8 +139,9 @@ export function LedgerLines({
       },
       {
         key: 'program',
-        header: 'Program',
-        width: 100,
+        header: 'Program (in CM)',
+        headerTitle: 'Program (in CampMinder): the program the money was posted under',
+        width: 124,
         value: (l) => (l.program === '' ? '' : summaryProgramWords(l.program, l.program_label)),
         title: (l) =>
           l.program === ''

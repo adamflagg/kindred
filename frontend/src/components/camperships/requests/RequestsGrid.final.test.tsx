@@ -99,6 +99,16 @@ describe('the Session column (§14: tiny everywhere)', () => {
   })
 })
 
+// Final audit D-E2: a money cell can be cut in its narrow column, so it carries its full figure.
+describe('a money cell title', () => {
+  it('titles the Ask with the full figure, cents included', () => {
+    const row = gridRow({ rounds: [roundOut(1, 'posted', { ask: 6866.41 })] })
+    render(<Grid rows={[row]} />)
+    const cells = screen.getAllByText('$6,866.41').map((el) => el.closest('td'))
+    expect(cells[0]).toHaveAttribute('title', '$6,866.41')
+  })
+})
+
 describe('a household-level request in the Camper column (§15)', () => {
   it('shows ⌂ and the household label as the usual name link, never "Household request"', () => {
     render(<Grid rows={[HOUSEHOLD]} />)
@@ -121,6 +131,17 @@ describe('a household-level request in the Camper column (§15)', () => {
     expect(screen.getByRole('link', { name: 'Mia & Noah Johnson' })).not.toHaveClass(
       'truncate-none'
     )
+  })
+
+  // Final audit M-E2: the label truncates WITH its own ellipsis (it can shrink: min-w-0, no
+  // flex-none), and the tiebreak gives way first (shrink-[999]).
+  it('lets the label shrink and truncate, and the tiebreak shrink first', () => {
+    render(<Grid rows={[HOUSEHOLD]} />)
+    const link = screen.getByRole('link', { name: 'Mia & Noah Johnson' })
+    expect(link).toHaveClass('min-w-0', 'truncate')
+    expect(link).not.toHaveClass('flex-none')
+    expect(link).not.toHaveClass('max-w-full')
+    expect(screen.getByText('Riverside')).toHaveClass('shrink-[999]')
   })
 
   // A household request with no label and no family name still has a link to open the household:

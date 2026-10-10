@@ -62,6 +62,7 @@ import {
 import { camperLabel } from '../../components/camperships/requests/cells'
 import { listOutside, OUTSIDE_FOOTNOTE } from '../../components/camperships/requests/outside'
 import { AidDefinitionNotes } from '../../components/camperships/shell/AidDefinitionNotes'
+import { ProgramWordsNote } from '../../components/camperships/shell/ProgramWordsNote'
 import { AidPageBand } from '../../components/camperships/shell/AidPageBand'
 import { Permission } from '../../constants/permissions'
 import { useAidAsOf } from '../../hooks/camperships/useAidAsOf'
@@ -669,6 +670,7 @@ export default function AidRequestsPage() {
         }
       </QueryGuard>
       <AidDefinitionNotes surface="requests" extra={outsideNotes} boldTerm />
+      <ProgramWordsNote which="priced" />
     </div>
   )
 }

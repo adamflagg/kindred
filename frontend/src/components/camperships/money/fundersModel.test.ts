@@ -170,6 +170,21 @@ describe('buildFunders: chips', () => {
     ])
   })
 
+  // Final audit: with no funder yet the count would read a bare 0 over a table of descriptions, so All counts the
+  // descriptions it shows; every choice carries a count, like the other options.
+  it('counts the descriptions in the All choice when there are no funder yet', () => {
+    const [all] = switcherOptions({ funders: 0, descriptions: 28, noFunder: 28 }, [])
+    expect(all).toEqual({
+      value: 'all',
+      label: 'All',
+      count: 28,
+      title: 'All 0 funders · 28 descriptions',
+    })
+    // Nothing at all keeps the plain chip and its 0.
+    const [empty] = switcherOptions({ funders: 0, descriptions: 0, noFunder: 0 }, [])
+    expect(empty).toMatchObject({ label: 'All', count: 0 })
+  })
+
   it('counts a retired funder once it is shown', () => {
     const { counts } = buildFunders({ ...ALL, show: 'all', showRetired: true })
     expect(counts.funders).toBe(6)

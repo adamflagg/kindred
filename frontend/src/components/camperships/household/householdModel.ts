@@ -17,6 +17,7 @@ import type {
 } from '../../../types/api-types'
 import { aidCsvFilename } from '../kit/csv'
 import { formatShortDate } from '../kit/dates'
+import { camperLabel } from '../requests/cells'
 import { CANCEL_REASON_OPTIONS } from '../kit/editor'
 import type { PillTone } from '../kit/kitStyles'
 import { formatMoney, moneyCsv, toCents } from '../kit/money'
@@ -236,8 +237,9 @@ export function cardCost(request: ApiAidHouseholdRequest): number | null {
   return Number.isFinite(value) ? value : null
 }
 
+/** A card's name: the camper, or for a household-level request the household's label, as Requests reads it. */
 export function camperOf(request: ApiAidHouseholdRequest): string {
-  return request.row.camper_name === '' ? 'Household request' : request.row.camper_name
+  return camperLabel(request.row)
 }
 
 /** CampMinder's person record, the one CampMinder link the app already uses. */

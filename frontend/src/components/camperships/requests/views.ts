@@ -350,7 +350,8 @@ export const GRID_COLUMNS: Readonly<Record<GridColumnKey, GridColumnSpec>> = {
     width: 84,
     pinned: true,
     align: 'right',
-    value: (r) => r.person_cm_id,
+    // A household-level request has no person (0): the cell draws "—", never the sentinel.
+    value: (r) => r.person_cm_id || null,
   },
   // Blank when the session didn't match (an unsettled request): the cell draws "—".
   session: { header: 'Session', width: 136, value: (r) => r.session_name || null },

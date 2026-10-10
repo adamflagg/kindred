@@ -134,6 +134,15 @@ describe('VersionInfo', () => {
     )
   })
 
+  // Owner ruling (final audit): in the user menu it is one muted line, "v0.7.0 +5", with no "Kindred".
+  it('should render a compact muted line without the product name', () => {
+    mockVersion('v0.7.0-5-gabc1234')
+    render(<VersionInfo compact />)
+    expect(screen.getByRole('link', { name: 'v0.7.0' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '+5' })).toBeInTheDocument()
+    expect(screen.queryByText(/Kindred/)).toBeNull()
+  })
+
   it('should render nothing for "dev"', () => {
     mockVersion('dev')
     const { container } = render(<VersionInfo />)

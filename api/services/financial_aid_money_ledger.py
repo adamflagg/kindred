@@ -76,13 +76,18 @@ class Piece:
     source_key: str
     source_family: str
     program: str  # its request's program when Kindred placed it, else CampMinder's attribution; "" for none
-    level: LedgerLevel | None  # None: on a request, not camp aid, or reversed
+    # The unplaced camp-aid level (D151) the family row and the Level filter read. None: on a request, not camp aid, or
+    # reversed. An outside grant never carries one; see `on_household` for what the lines card draws for it.
+    level: LedgerLevel | None
     person_cm_id: int  # the camper it names; 0 for none
     post_date: datetime | None
     reversal_date: datetime | None
     # The session of the household-level request (person_cm_id 0; Family Camp intake) this piece is placed on; 0 for
     # none: a camper's request, or no request.
     household_session_cm_id: int = 0
+    # Display only (owner ruling, final audit): an outside grant that sits on the household. The lines card draws it at
+    # household level, but it is not camp aid waiting off a request, so `level` stays None.
+    on_household: bool = False
 
 
 # LedgerSourceFilter's "outside" (api/schemas/financial_aid_money_ledger.py): every line of the Outside grants column.
@@ -133,6 +138,12 @@ class LineTotal:
     level: LedgerLevel | None
     person_cm_ids: tuple[int, ...]
     household_session_cm_id: int = 0  # the household request it sits on; 0 for none
+    on_household: bool = False  # an outside grant on the household (Piece.on_household)
+
+    @property
+    def display_level(self) -> LedgerLevel | None:
+        """The level the lines card draws: the camp-aid level, or household for an outside grant on the household."""
+        return self.level or ("household" if self.on_household else None)
 
 
 def _first_level(levels: Collection[LedgerLevel | None]) -> LedgerLevel | None:
@@ -223,6 +234,7 @@ def _piece(
     level: LedgerLevel | None,
     person: int,
     household_session: int = 0,
+    on_household: bool = False,
 ) -> Piece:
     line = ledger_line.line
     return Piece(
@@ -240,6 +252,7 @@ def _piece(
         post_date=line.post_date,
         reversal_date=line.reversal_date,
         household_session_cm_id=household_session,
+        on_household=on_household,
     )
 
 
@@ -272,8 +285,24 @@ def ledger_pieces(
             grant = grants.get(line.transaction_cm_id)
             program = (grant.program_family if grant is not None else "") or line.program_family
             person = grant.person_cm_id if grant is not None and grant.person_cm_id > 0 else line.person_cm_id
+            # An outside grant that sits on the household (a household program's line, or a household that never
+            # applied) is DRAWN as camp aid at household level is: the household pill and, for Family Camp, the
+            # session of the household request it is for (owner ruling, final audit). Display only: it carries no
+            # `level`, so the family row's Level column and the Level filter keep meaning unplaced camp aid.
+            on_household = grant is not None and grant.camper_basis == "household" and grant.person_cm_id <= 0
             out.append(
-                _piece(ledger_line, family, live, line.amount, camp=False, program=program, level=None, person=person)
+                _piece(
+                    ledger_line,
+                    family,
+                    live,
+                    line.amount,
+                    camp=False,
+                    program=program,
+                    level=None,
+                    person=person,
+                    household_session=grant.session_cm_id if on_household and grant is not None else 0,
+                    on_household=on_household and live and levels,
+                )
             )
             continue
         found = parts.get(line.transaction_cm_id, [])
@@ -363,6 +392,7 @@ def total_lines(pieces: Iterable[Piece], total: LedgerTotal) -> list[LineTotal]:
             level=_first_level({p.level for p in items}),
             person_cm_ids=tuple(sorted({p.person_cm_id for p in items if p.person_cm_id > 0})),
             household_session_cm_id=next((p.household_session_cm_id for p in items if p.household_session_cm_id), 0),
+            on_household=any(p.on_household for p in items),
         )
         for items in by_line.values()
     ]

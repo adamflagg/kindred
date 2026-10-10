@@ -89,11 +89,19 @@ const rowOf = (key: number) => {
 
 /** Opens a toolbar picker by its name and chooses an option by its words. */
 async function pick(picker: 'Source' | 'Program' | 'Level', option: string | RegExp) {
-  await userEvent.click(screen.getByRole('button', { name: new RegExp(`^${picker}:`) }))
+  await userEvent.click(
+    screen.getByRole('button', {
+      name: new RegExp(`^${picker === 'Program' ? 'Program \\(in CM\\)' : picker}:`),
+    })
+  )
   await userEvent.click(await screen.findByRole('option', { name: option }))
 }
 const optionWords = async (picker: 'Source' | 'Program' | 'Level') => {
-  await userEvent.click(screen.getByRole('button', { name: new RegExp(`^${picker}:`) }))
+  await userEvent.click(
+    screen.getByRole('button', {
+      name: new RegExp(`^${picker === 'Program' ? 'Program \\(in CM\\)' : picker}:`),
+    })
+  )
   return (await screen.findAllByRole('option')).map((o) => o.textContent.replace(/^✓/, ''))
 }
 const tfoot = () => {
@@ -226,7 +234,7 @@ describe('Money › Ledger family rows (P-22)', () => {
     const toolbars = document.querySelectorAll('[data-aid-toolbar]')
     expect(toolbars).toHaveLength(1)
     const bar = toolbars[0] as HTMLElement
-    for (const name of ['Source: All', 'Program: All', 'Level: All']) {
+    for (const name of ['Source: All', 'Program (in CM): All', 'Level: All']) {
       expect(within(bar).getByRole('button', { name })).toBeInTheDocument()
     }
     expect(within(bar).getByPlaceholderText('Family, camper or CM ID')).toBeInTheDocument()
@@ -370,7 +378,9 @@ describe('Money › Ledger family rows (P-22)', () => {
     expect(screen.getByRole('button', { name: 'Source: old family' })).toBeInTheDocument()
     // Ruled test edit (coordinator 10-08, program_label): a program with no label reads
     // 'Other program' (was 'Old program', the key spelled out).
-    expect(screen.getByRole('button', { name: 'Program: Other program' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Program (in CM): Other program' })
+    ).toBeInTheDocument()
     // A value the picker already offers is not listed twice.
     await userEvent.click(screen.getByRole('button', { name: /^Source:/ }))
     expect(await screen.findAllByRole('option', { name: 'camp fa' })).toHaveLength(1)
@@ -402,6 +412,11 @@ describe('the total row (★11)', () => {
     expect(within(foot).getByRole('button', { name: '$141,450' })).toBeInTheDocument()
     // 6 + 4 + 3 + 1 lines, 2 + 1 reversed.
     expect(within(foot).getByText('14 · 3 reversed')).toBeInTheDocument()
+    // Final audit D-E1: the Lines total can be cut in its column, so it carries its words.
+    expect(within(foot).getByText('14 · 3 reversed').closest('td')).toHaveAttribute(
+      'title',
+      '14 · 3 reversed'
+    )
     expect(within(foot).getByText('each total opens its lines')).toBeInTheDocument()
   })
 

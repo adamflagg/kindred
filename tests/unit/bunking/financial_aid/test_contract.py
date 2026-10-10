@@ -37,6 +37,7 @@ def test_request_inputs_are_per_request() -> None:
         "person_cm_id",
         "session_cm_id",
         "ag_parent_cm_id",
+        "session_name",
         "program_key",
         "ask",
         "equity_answers",

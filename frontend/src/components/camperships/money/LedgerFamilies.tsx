@@ -170,7 +170,7 @@ export function LedgerFamilies({
   const pickers = (
     <>
       {picker('source', 'Source', filters.source, sourceOptions)}
-      {picker('program', 'Program', filters.program, programOptions)}
+      {picker('program', 'Program (in CM)', filters.program, programOptions)}
       {picker('level', 'Level', filters.level, levelOptions)}
     </>
   )
@@ -322,6 +322,7 @@ function FamilyTable({
         width: 120,
         value: (r) => linesWords(r.lines, r.reversed_lines),
         footerNote: () => linesWords(lineCount, reversedCount),
+        footerTitle: () => linesWords(lineCount, reversedCount),
       },
       {
         key: 'level',

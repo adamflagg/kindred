@@ -153,7 +153,7 @@ class ProgramSplit(BaseModel):
 
 
 # How far camp aid was placed, for the mock's shares line: placed = override, decision, session, person;
-# household = program_family, ambiguous; not_placed = none (and any level Go adds later).
+# household = ambiguous only (program_family is placed on a program's request); not_placed = none (and any level Go adds later).
 CampAidGroup = Literal["placed", "household", "not_placed"]
 
 

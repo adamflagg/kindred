@@ -241,6 +241,12 @@ const tasteTiny: Render = (name) => {
   return cohortMatch ? `Taste ${cohortMatch[1]}` : 'Taste'
 }
 
+/**
+ * `short` for a quest — the name with CampMinder's quirks read as the camp means them: the digit
+ * zero in "H20" is the letter O, and the backticks round "n" in "Surf `n` Turf" are dropped.
+ */
+const questShort: Render = (name) => name.replace(/\bH20\b/g, 'H2O').replace(/`n`/g, 'n')
+
 /** `tiny` for AG (#2790) — "AG 2", "AG B": the AG session's own number. */
 const agTiny: Render = (name) => {
   const sessionId = name.match(/session\s*(\w+)/i)?.[1]
@@ -298,9 +304,15 @@ function bmitzvahYear(name: string): string | undefined {
 function region(
   name: string
 ): { abbr: 'EB' | 'SF'; words: 'East Bay' | 'San Francisco' } | undefined {
-  if (/east bay/i.test(name)) return { abbr: 'EB', words: 'East Bay' }
-  if (/san francisco/i.test(name)) return { abbr: 'SF', words: 'San Francisco' }
-  return undefined
+  // The cohort after the dash names the region ("Family School - San Francisco cohort"), even when
+  // the rest of the name mentions the other one; else the first region word anywhere.
+  const named =
+    name.match(/[-–]\s*(east bay|san francisco)\b/i)?.[1] ??
+    name.match(/east bay|san francisco/i)?.[0]
+  if (named === undefined) return undefined
+  return /east bay/i.test(named)
+    ? { abbr: 'EB', words: 'East Bay' }
+    : { abbr: 'SF', words: 'San Francisco' }
 }
 
 /** `tiny` for B*Mitzvah — "BM1 EB". Needs both a ruled year and region. */
@@ -386,7 +398,7 @@ const RULES: Readonly<Record<Program, Readonly<Record<SessionNameForm, Render>>>
     chart: agChart,
     tiny: agTiny,
   },
-  quest: { ...SUMMER_MAIN, chart: truncated, tiny: questTiny },
+  quest: { ...SUMMER_MAIN, chart: truncated, short: questShort, tiny: questTiny },
   // SCIT, TLI and Teen Winter Retreat: only `tiny` has a rule (#2790).
   teen: { ...SUMMER_MAIN, tiny: teenTiny },
   bmitzvah: { ...SUMMER_MAIN, short: bmitzvahShort, tiny: bmitzvahTiny },

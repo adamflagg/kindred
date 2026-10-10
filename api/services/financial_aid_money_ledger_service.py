@@ -223,7 +223,7 @@ class MoneyLedgerService:
                     if not lt.first.live and lt.first.reversal_date is not None
                     else None
                 ),
-                level=lt.level,
+                level=lt.display_level,
                 household_session=_session(read.sessions, lt.household_session_cm_id),
             )
             for lt in found

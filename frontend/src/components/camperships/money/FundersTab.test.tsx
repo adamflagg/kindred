@@ -1276,6 +1276,9 @@ describe('the editors in the final design (§24)', () => {
       expect(side?.contains(canteen)).toBe(true)
       expect(side?.contains(after)).toBe(true)
       expect(side?.contains(within(form).getByRole('textbox', { name: 'Name' }))).toBe(false)
+      // Final audit M-E3: both checkbox labels are the editor's 12.5px, not an inherited 16px.
+      expect(full.closest('label')).toHaveClass('text-[12.5px]')
+      expect(after.closest('label')).toHaveClass('text-[12.5px]')
       // Shown, switched off while Full coverage is off.
       expect(canteen).toBeDisabled()
       expect(after).toBeDisabled()

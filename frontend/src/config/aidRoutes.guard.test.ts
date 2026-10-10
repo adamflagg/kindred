@@ -14,6 +14,7 @@ type Guard = 'view' | 'open' | 'viewOrGrantors'
 // The route (relative to /aid) and the guard its surface demands (config/aidNav.ts).
 const ROUTES: Record<string, Guard> = {
   index: 'open',
+  today: 'view',
   requests: 'view',
   'money/:tab?': 'viewOrGrantors',
   'season/:tab?': 'view',

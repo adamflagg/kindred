@@ -175,7 +175,7 @@ export function GrantorForm({
             <EditorGrid columns={2}>
               <span className="col-span-2">
                 <label
-                  className="flex items-center gap-1.5"
+                  className="flex items-center gap-1.5 text-[12.5px]"
                   title="The funder pays the whole cost of the session"
                 >
                   <input
@@ -199,7 +199,7 @@ export function GrantorForm({
               </EditorField>
               <span className="col-span-2">
                 <label
-                  className={`flex items-center gap-1.5 ${full ? '' : 'opacity-50'}`}
+                  className={`flex items-center gap-1.5 text-[12.5px] ${full ? '' : 'opacity-50'}`}
                   title={
                     full
                       ? 'A named fund that pays what is left after camp aid'
