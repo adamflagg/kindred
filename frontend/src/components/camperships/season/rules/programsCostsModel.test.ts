@@ -17,6 +17,7 @@ import {
   pickTarget,
   pricePins,
   resolveProgram,
+  shareRows,
   SUBSECTION_LABELS,
   type EditField,
 } from './programsCostsModel'
@@ -176,6 +177,55 @@ const programsOf = (r: ReturnType<typeof save>) =>
 const costOf = (r: ReturnType<typeof save>) => ok(r).contents.cost as Record<string, unknown>
 const ids = (programs: Record<string, unknown>, key: string) =>
   (programs[key] as { session_cm_ids: number[] }).session_cm_ids
+
+// Owner 2026-10-10, "approved to combine SCIT": Counselor + Specialist In-Training, one row covering both on the
+// card when they read the same; side by side when their price or settings differ.
+describe('shareRows (SCIT, owner 2026-10-10)', () => {
+  const SPECIALIST = {
+    cmId: 1000108,
+    name: 'Specialist In-Training',
+    startDate: '2027-06-20',
+    endDate: '',
+    sortOrder: 6,
+    type: 'scit',
+    parentId: 0,
+  }
+  const scitDoc = (specialistPrice: string | null) => {
+    const doc = pcDoc()
+    doc.programs['summer']!.session_cm_ids = [...doc.programs['summer']!.session_cm_ids!, 1000108]
+    doc.cost.tuition = { ...doc.cost.tuition, '1000107': '5400' }
+    if (specialistPrice !== null) doc.cost.tuition['1000108'] = specialistPrice
+    return doc
+  }
+  const camp = (doc: ReturnType<typeof pcDoc>) =>
+    cardView(doc, GROUPS, [...CATALOG, SPECIALIST], new Set()).groups[0]!.running
+
+  it('makes a group’s SCIT sessions with the same price and settings one row, both sessions on it', () => {
+    const rows = shareRows(camp(scitDoc('5400')))
+    const scit = rows.filter((r) => r.session.type === 'scit')
+    expect(scit).toHaveLength(1)
+    expect(scit[0]!.session.cmId).toBe(1000107)
+    expect(scit[0]!.also?.map((s) => s.cmId)).toEqual([1000108])
+    expect(rows).toHaveLength(camp(scitDoc('5400')).length - 1)
+  })
+
+  it('keeps them two rows, side by side, when their prices differ', () => {
+    const rows = shareRows(camp(scitDoc(null)))
+    const at = rows.findIndex((r) => r.session.cmId === 1000107)
+    expect(rows[at + 1]?.session.cmId).toBe(1000108)
+    expect(rows.every((r) => r.also === undefined)).toBe(true)
+  })
+
+  it('keeps them two rows when the caller says they differ (a change since the version in effect)', () => {
+    const rows = shareRows(camp(scitDoc('5400')), () => false)
+    expect(rows.filter((r) => r.session.type === 'scit')).toHaveLength(2)
+  })
+
+  it('never shares a row between sessions of other types', () => {
+    const rows = camp(pcDoc())
+    expect(shareRows(rows)).toEqual(rows)
+  })
+})
 
 describe('the pick rule (spec §4.5)', () => {
   it('keeps an open program’s kind, and gives one from Not open to aid its type’s kind', () => {

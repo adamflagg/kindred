@@ -38,6 +38,13 @@ describe('sessionCell (§14: tiny everywhere, the full name in the title)', () =
     ).toBe('AG 2')
   })
 
+  // Owner 2026-10-10 ("approved to combine SCIT"): both In-Training sessions read "SCIT" in Camperships.
+  it('reads either SCIT session as "SCIT", the full CampMinder name in the title', () => {
+    expect(
+      sessionCell(gridRow({ session_name: 'Specialist In-Training', session_type: 'scit' }))
+    ).toEqual({ text: 'SCIT', title: 'Specialist In-Training' })
+  })
+
   it('falls back when the row carries no session_type (an older read)', () => {
     const cell = sessionCell(gridRow({ session_name: 'Session 3' }))
     expect(cell.title).toBe('Session 3')

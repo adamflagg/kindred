@@ -71,6 +71,57 @@ describe('ProgramsCostsCard', () => {
     ).toBeInTheDocument()
   })
 
+  // Owner 2026-10-10, "approved to combine SCIT": one row covering both when they read the same, "SCIT" with the
+  // full CampMinder names on hover; side by side, by their full names, when their price differs.
+  describe('SCIT', () => {
+    const SPECIALIST = {
+      cmId: 1000108,
+      name: 'Specialist In-Training',
+      startDate: '2027-06-20',
+      endDate: '',
+      sortOrder: 6,
+      type: 'scit',
+      parentId: 0,
+    }
+    const scitDoc = (specialistPrice: string | null) => {
+      const doc = pcDoc()
+      doc.programs['summer']!.session_cm_ids = [...doc.programs['summer']!.session_cm_ids!, 1000108]
+      doc.cost.tuition = { ...doc.cost.tuition, '1000107': '5400' }
+      if (specialistPrice !== null) doc.cost.tuition['1000108'] = specialistPrice
+      return doc
+    }
+    const scitProps = (price: string | null) => {
+      const doc = scitDoc(price)
+      return props({
+        document: wrap(doc),
+        approved: wrap(doc),
+        sessions: [...CATALOG, SPECIALIST],
+      })
+    }
+
+    it('draws one "SCIT" row covering both, the full names on hover, counted once', () => {
+      render(<ProgramsCostsCard {...scitProps('5400')} />)
+      const camp = within(screen.getByTestId('pc-group-camp_pool'))
+      const row = camp.getByTestId('pc-row-1000107')
+      expect(within(row).getByText('SCIT')).toHaveAttribute(
+        'title',
+        'Leader in Training + Specialist In-Training'
+      )
+      expect(camp.queryByTestId('pc-row-1000108')).toBeNull()
+      expect(camp.getByText('· 5 running')).toBeInTheDocument()
+    })
+
+    it('draws two rows side by side, by their full names, when their prices differ', () => {
+      render(<ProgramsCostsCard {...scitProps(null)} />)
+      const camp = within(screen.getByTestId('pc-group-camp_pool'))
+      expect(camp.getByTestId('pc-row-1000107')).toHaveTextContent('Leader in Training')
+      expect(camp.getByTestId('pc-row-1000108')).toHaveTextContent('Specialist In-Training')
+      expect(camp.queryByText('SCIT')).toBeNull()
+      const order = camp.getAllByTestId(/^pc-row-/).map((r) => r.dataset['testid'])
+      expect(order.indexOf('pc-row-1000108')).toBe(order.indexOf('pc-row-1000107') + 1)
+    })
+  })
+
   it('labels sub-sections only in a mixed group, with Teen Programs', () => {
     render(<ProgramsCostsCard {...props()} />)
     const camp = within(screen.getByTestId('pc-group-camp_pool'))

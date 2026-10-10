@@ -1,5 +1,6 @@
 /** Programs and costs' shared pieces: the flow box, the Per person head and formula, a row's name. */
 import { CS_META, CS_PILL, CS_SMALL } from '../../kit/csType'
+import { aidSessionName } from '../../kit/sessionShort'
 import { columnCount } from './programsCostsFlow'
 import type { FlowItem } from './programsCostsLayout'
 import type { CardRow } from './programsCostsModel'
@@ -90,7 +91,14 @@ export function RowName({
 }) {
   return (
     <span className={`min-w-0 flex-1 ${off ? 'text-muted-foreground line-through' : ''}`}>
-      {row.session.name}
+      {row.also === undefined ? (
+        row.session.name
+      ) : (
+        // a shared row (SCIT): the Camperships short name, every full CampMinder name on hover
+        <span title={[row.session, ...row.also].map((s) => s.name).join(' + ')}>
+          {aidSessionName(row.session.name, row.session.type)}
+        </span>
+      )}
       {row.tag !== null && <span className={`${CS_META} ml-1.5`}>{row.tag}</span>}
       {minimum && row.minimumOnly && (
         <span className={`${CS_PILL.muted} ml-1.5`}>minimum only</span>

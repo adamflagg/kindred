@@ -12287,6 +12287,14 @@ export type ProgramRowOut = {
    * Session Type
    */
   session_type?: string
+  /**
+   * Session Cm Ids
+   */
+  session_cm_ids?: Array<number>
+  /**
+   * Session Names
+   */
+  session_names?: Array<string>
   round1: RoundBlockOut
   round2: RoundBlockOut
   round3: RoundBlockOut

@@ -1,7 +1,7 @@
 /** The one-line session pairing (design-language §14, ruled 10-09): tiny for Family Camp, short for the rest. */
 import { describe, expect, it } from 'vitest'
 
-import { aidCellShortName, aidSessionName } from './sessionShort'
+import { aidCellShortName, aidSessionName, aidTinyName } from './sessionShort'
 
 describe('aidSessionName', () => {
   it('reads a Family Camp weekend in the tiny form, with no theme', () => {
@@ -27,6 +27,13 @@ describe('aidSessionName', () => {
   it('is empty for no session', () => {
     expect(aidSessionName('', 'main')).toBe('')
   })
+
+  // Owner 2026-10-10 ("approved to combine SCIT"): in Camperships both In-Training sessions read "SCIT"; the
+  // app-wide #2790 tiny (CIT / SIT) is untouched (sessionName.pins.test.ts).
+  it('reads either SCIT session as "SCIT"', () => {
+    expect(aidSessionName('Counselor In-Training', 'scit')).toBe('SCIT')
+    expect(aidSessionName('Specialist In-Training', 'scit')).toBe('SCIT')
+  })
 })
 
 /**
@@ -45,6 +52,11 @@ describe('aidCellShortName', () => {
     expect(aidCellShortName(name, 'family')).toBe(expected)
   })
 
+  it('reads either SCIT session, and a shared SCIT row, as "SCIT"', () => {
+    expect(aidCellShortName('Counselor In-Training', 'scit')).toBe('SCIT')
+    expect(aidCellShortName('Counselor In-Training + Specialist In-Training', 'scit')).toBe('SCIT')
+  })
+
   it('leaves every other name to the app-wide short form', () => {
     expect(aidCellShortName('Family Camp 5: Labor Day Weekend', 'family')).toBe('Family Camp 5')
     expect(aidCellShortName('Spring Family Camp', 'family')).toBe('Spring Family Camp')
@@ -53,5 +65,14 @@ describe('aidCellShortName', () => {
     )
     // the rule is a family one: a non-family name that happens to end so is not touched
     expect(aidCellShortName('Staff Winter Family Camp', 'other')).toBe('Staff Winter Family Camp')
+  })
+})
+
+/** The Camperships tiny form (Requests' Session cell, ruled 10-09 "tiny everywhere"): #2790's tiny, SCIT aside. */
+describe('aidTinyName', () => {
+  it('reads either SCIT session as "SCIT" and leaves the rest to the app-wide tiny', () => {
+    expect(aidTinyName('Counselor In-Training', 'scit')).toBe('SCIT')
+    expect(aidTinyName('Session 2', 'main')).toBe('S2')
+    expect(aidTinyName('Family Camp 4: Labor Day Weekend', 'family')).toBe('FC4')
   })
 })

@@ -144,6 +144,10 @@ class ProgramRowOut(BaseModel):
     session_cm_id: int  # 0: session not matched (or a subtotal / total)
     session_name: str
     session_type: str = ""  # the session's type ("family", "main", ...) for the short name; "" on a subtotal or total
+    # The CampMinder sessions the row counts and their full names, in the reader's order: one, or a shared row's two
+    # (SCIT: Counselor + Specialist In-Training, owner 2026-10-10); none on "session not matched", a subtotal or total.
+    session_cm_ids: list[int] = []
+    session_names: list[str] = []
     round1: RoundBlockOut
     round2: RoundBlockOut
     round3: RoundBlockOut

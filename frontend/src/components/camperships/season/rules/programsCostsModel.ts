@@ -70,6 +70,8 @@ export interface CardRow {
   readonly cancelledOnBoard: boolean
   readonly minimumOnly: boolean
   readonly tag: string | null
+  /** The sessions sharing this row on the read card (SCIT, `shareRows`); undefined on a row of its own. */
+  readonly also?: readonly CatalogSession[]
 }
 export interface CardGroup {
   readonly pool: string
@@ -214,6 +216,47 @@ export function cardView(
     }
   })
   return { groups: view, notOpen: rows.filter((r) => r.group === NOT_OPEN).sort(bySessionOrder) }
+}
+
+/** The session types whose sessions share one row on the read card (owner 2026-10-10: SCIT, CIT + SIT). */
+const SHARED_TYPES: ReadonlySet<string> = new Set(['scit'])
+
+/** Two rows that read the same on the card: one program, price, flag and tag. */
+const alike = (a: CardRow, b: CardRow) =>
+  a.program === b.program &&
+  a.kind === b.kind &&
+  a.sub === b.sub &&
+  a.tuition === b.tuition &&
+  a.standard === b.standard &&
+  a.infant === b.infant &&
+  a.notRunning === b.notRunning &&
+  a.cancelledOnBoard === b.cancelledOnBoard &&
+  a.minimumOnly === b.minimumOnly &&
+  a.tag === b.tag
+
+/**
+ * The read card's rows with a group's SCIT sessions on ONE row (owner 2026-10-10, "approved to combine SCIT"): the
+ * season's sessions of a shared type that read the same (`alike`, and `same` for what the card adds: a change since
+ * the version in effect, a price warning). Ones that differ stay rows of their own, side by side in the session
+ * order. By session type, never by id. The editor keeps every session its own row.
+ */
+export function shareRows(
+  rows: readonly CardRow[],
+  same: (a: CardRow, b: CardRow) => boolean = () => true
+): CardRow[] {
+  const out: CardRow[] = []
+  for (const row of rows) {
+    const at = SHARED_TYPES.has(row.session.type)
+      ? out.findIndex((r) => r.session.type === row.session.type && alike(r, row) && same(r, row))
+      : -1
+    const host = out[at]
+    if (host === undefined) {
+      out.push(row)
+    } else {
+      out[at] = { ...host, also: [...(host.also ?? []), row.session] }
+    }
+  }
+  return out
 }
 
 export type EditField = 't' | 's' | 'i' | 'g' | 'nr'

@@ -25,6 +25,7 @@ import {
   noGroupPins,
   priceWords,
   pricePins,
+  shareRows,
   type CardGroup,
   type CardRow,
   type ProgramsCostsDoc,
@@ -253,7 +254,13 @@ export function ProgramsCostsCard(p: ProgramsCostsCardProps) {
     const pill = groupPill(g, pins)
     const partly = pill !== 'No prices yet'
     const hasPerPerson = g.running.some((r) => r.kind === 'per_person')
-    const items = flowItems(g.running, g.subLabels, <PerPersonHead />, (row) => (
+    // SCIT shares a row only where nothing the card marks on a row (a change, a price warning) tells them apart
+    const marks = (r: CardRow) => {
+      const old = was.get(r.session.cmId)
+      return JSON.stringify([old?.tuition, old?.standard, old?.infant, pins.has(r.session.cmId)])
+    }
+    const shown = shareRows(g.running, (a, b) => marks(a) === marks(b))
+    const items = flowItems(shown, g.subLabels, <PerPersonHead />, (row) => (
       <ReadRow
         row={row}
         was={was.get(row.session.cmId)}
@@ -271,7 +278,7 @@ export function ProgramsCostsCard(p: ProgramsCostsCardProps) {
           <b data-testid="pc-group-name" className="text-foreground text-[13px] font-bold">
             {g.label}
           </b>
-          <span>{`· ${String(g.running.length)} running`}</span>
+          <span>{`· ${String(shown.length)} running`}</span>
           {pill !== null && (
             <button
               type="button"
