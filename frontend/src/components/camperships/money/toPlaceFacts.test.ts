@@ -122,6 +122,12 @@ describe('a no-request line says why', () => {
     expect(noSuggestionEffects(withdrawn)[0]?.text).toBe(": Riley's request was withdrawn")
   })
 
+  it("says the household's request was withdrawn when the request names no camper", () => {
+    const withdrawn = line({ kind: 'withdrawn', person: '' })
+    expect(evidenceLines(withdrawn)).toEqual(["○ the household's request was withdrawn"])
+    expect(noSuggestionEffects(withdrawn)[0]?.text).toBe(": the household's request was withdrawn")
+  })
+
   it('keeps the old words for a read that carries no reason', () => {
     expect(evidenceLines(line('absent'))).toEqual([])
     expect(noSuggestionEffects(line('absent'))[0]?.text).toBe(': no application this season')

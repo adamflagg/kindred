@@ -172,15 +172,18 @@ async def test_a_line_with_no_reversal_before_it_has_no_history() -> None:
 @pytest.mark.asyncio
 async def test_a_no_request_line_says_why_nothing_was_found() -> None:
     store = one_line()
-    seed_line(store, 9002, "700", household=1000009, person=0, posted=MAR8)  # nobody applied
+    # A household-level line: its household's only request was withdrawn, so someone DID apply.
+    seed_line(store, 9002, "700", household=1000009, person=0, posted=MAR8)
     seed_line(store, 9003, "300", household=1000009, person=1000091, posted=MAR8)  # a camper who did not apply
     seed_request(store, "reqwithdrawn001", household=1000009, person=1000092, status="withdrawn")
     seed_line(store, 9004, "250", household=1000009, person=1000092, posted=MAR8)
+    seed_line(store, 9005, "400", household=1000008, person=0, posted=MAR8)  # nobody in the household applied
     out = await to_place_service(store).read(YEAR)
     lines = {ln.transaction_cm_id: ln for g in out.groups for ln in g.lines}
     assert lines[9001].no_request is None  # it has a candidate
-    assert [(lines[t].no_request.kind, lines[t].no_request.person) for t in (9002, 9003, 9004)] == [  # type: ignore[union-attr]
-        ("household_no_application", ""),
+    assert [(lines[t].no_request.kind, lines[t].no_request.person) for t in (9002, 9003, 9004, 9005)] == [  # type: ignore[union-attr]
+        ("withdrawn", "Camper 1000092"),
         ("person_no_application", "Camper 1000091"),
         ("withdrawn", "Camper 1000092"),
+        ("household_no_application", ""),
     ]

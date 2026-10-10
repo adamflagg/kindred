@@ -300,6 +300,15 @@ export function equalMatches(line: ApiAidToPlaceLine): ApiAidToPlaceCandidate[] 
   )
 }
 
+/**
+ * "Riley's request was withdrawn" by first name, or "the household's request was withdrawn" when the withdrawn
+ * request names no camper (a household-level line whose household's request carries none).
+ */
+const withdrawnWords = (person: string | undefined): string => {
+  const first = (person ?? '').split(' ')[0] ?? ''
+  return `${first === '' ? 'the household' : first}'s request was withdrawn`
+}
+
 /** Why a no-request line found nothing (mock `evid`), from the server's reason; none for a read without one. */
 function noRequestEvidence(line: ApiAidToPlaceLine): string[] {
   const why = line.no_request
@@ -307,7 +316,7 @@ function noRequestEvidence(line: ApiAidToPlaceLine): string[] {
   const first = (why.person ?? '').split(' ')[0] ?? ''
   if (why.kind === 'household_no_application')
     return ['○ no one in the household applied this season']
-  if (why.kind === 'withdrawn') return [`○ ${first}'s request was withdrawn`]
+  if (why.kind === 'withdrawn') return [`○ ${withdrawnWords(why.person)}`]
   return [`○ ${first} has no application this season`]
 }
 
@@ -463,14 +472,13 @@ export function noSuggestionEffects(line: ApiAidToPlaceLine): EffectLine[] {
   if (line.suggestion !== null) return []
   if (line.reason === 'no_request') {
     const why = line.no_request
-    const first = (why?.person ?? '').split(' ')[0] ?? ''
     return [
       {
         sym: 'hand',
         lead: 'Nothing to mark Posted',
         text:
           why?.kind === 'withdrawn'
-            ? `: ${first}'s request was withdrawn`
+            ? `: ${withdrawnWords(why.person)}`
             : ': no application this season',
         // The posting's own note is what suggests the money is outside (mock n1).
         then:

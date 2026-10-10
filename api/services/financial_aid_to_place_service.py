@@ -471,16 +471,25 @@ class ToPlaceService:
             )
 
         def no_request_out(line: CampLine) -> NoRequestOut:
-            who = persons.get(line.person_cm_id, "") if line.person_cm_id > 0 else ""
-            if line.person_cm_id <= 0:
-                return NoRequestOut(kind="household_no_application")
-            withdrawn = any(
-                r.household_cm_id == line.household_cm_id
-                and r.person_cm_id == line.person_cm_id
-                and r.status == STATUS_WITHDRAWN
-                for r in season.requests.values()
+            withdrawn = sorted(
+                (
+                    r
+                    for r in season.requests.values()
+                    if r.household_cm_id == line.household_cm_id and r.status == STATUS_WITHDRAWN
+                ),
+                key=lambda r: r.id,
             )
-            return NoRequestOut(kind="withdrawn" if withdrawn else "person_no_application", person=who)
+            if line.person_cm_id <= 0:
+                # A household-level line: a withdrawn request in the household means someone did apply, so say
+                # whose request it was ("" when it names no camper; the client says "the household's").
+                if withdrawn:
+                    first = withdrawn[0]
+                    who = persons.get(first.person_cm_id, "") if first.person_cm_id > 0 else ""
+                    return NoRequestOut(kind="withdrawn", person=who)
+                return NoRequestOut(kind="household_no_application")
+            who = persons.get(line.person_cm_id, "")
+            mine = any(r.person_cm_id == line.person_cm_id for r in withdrawn)
+            return NoRequestOut(kind="withdrawn" if mine else "person_no_application", person=who)
 
         def line_out(item: ToPlaceItem, pending: str, note: str) -> ToPlaceLineOut:
             line = item.line
