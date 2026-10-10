@@ -276,3 +276,28 @@ def test_the_household_page_keeps_its_confirmation_note() -> None:
     """The Requests column's "CM ✓" is its own note; the household's per-Posted-figure Confirmation is untouched."""
     assert "confirmation" in SURFACES["household"]
     assert "cm_check" not in SURFACES["household"]
+
+
+TODAY_SURFACES = ("today_registrar", "today_finance", "today_development")
+
+
+@pytest.mark.parametrize("surface", TODAY_SURFACES)
+def test_each_today_surface_has_a_few_notes_and_no_internal_id(surface: str) -> None:
+    """Spec 2026-10-10 §7: Today's three pages each show at most six notes (the design language's ceiling), none of
+    which carries a ruling or report id."""
+    keys = SURFACES[surface]
+    assert 1 <= len(keys) <= 6
+    for key in keys:
+        assert not re.search(r"\bD\d+\b|RPT-\d+", f"{BY_KEY[key].term} {BY_KEY[key].text}"), key
+
+
+def test_today_notes_cite_the_main_specs_today_section_and_its_rulings() -> None:
+    expected = {
+        "today_season_so_far": ("D24",),
+        "today_todos": ("D24",),
+        "today_remaining": ("D44", "D79"),
+        "today_aid_came_from": ("D87",),
+    }
+    for key, rulings in expected.items():
+        assert BY_KEY[key].spec == "§7.4", key
+        assert BY_KEY[key].rulings == rulings, key
