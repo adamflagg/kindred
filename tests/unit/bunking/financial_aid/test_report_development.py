@@ -29,10 +29,9 @@ from bunking.financial_aid.reports.development import (
     SourceLine,
     development_column,
     gender_label,
-    is_capped,
-    need,
     rebuilt_ages,
 )
+from bunking.financial_aid.reports.facts import is_capped, need
 from tests.unit.bunking.financial_aid.report_fixtures import req, rnd
 
 CAMP = DevGroup("camp_pool", "Camp", "summer")
@@ -618,5 +617,5 @@ def test_development_shares_the_one_need_function_statistics_caps_asked_with() -
     copy, so the two can't drift. Development's figures don't move."""
     from bunking.financial_aid.reports import development, facts
 
-    assert development.need is facts.need
-    assert development.is_capped is facts.is_capped
+    assert vars(development)["need"] is facts.need
+    assert vars(development)["is_capped"] is facts.is_capped
