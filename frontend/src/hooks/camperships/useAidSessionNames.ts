@@ -20,9 +20,10 @@ export function useAidSessionNames(year: number): ReadonlyMap<number, string> | 
       const sessions = await pb.collection('camp_sessions').getFullList<{
         cm_id: number
         name: string
-        session_type: string
-        start_date: string
-        end_date: string | null
+        // Optional: a read that leaves a field out (an older fixture, a trimmed record) still lists, just later.
+        session_type?: string
+        start_date?: string
+        end_date?: string | null
         parent_id: number | null
       }>({
         filter: `year = ${String(year)}`,
@@ -33,8 +34,8 @@ export function useAidSessionNames(year: number): ReadonlyMap<number, string> | 
       const ordered = orderSessions(sessions, (s) => ({
         cm_id: s.cm_id,
         name: s.name,
-        session_type: s.session_type,
-        start_date: s.start_date,
+        session_type: s.session_type ?? '',
+        start_date: s.start_date ?? '',
         end_date: s.end_date ?? '',
         parent_cm_id: s.parent_id ?? 0,
       }))
