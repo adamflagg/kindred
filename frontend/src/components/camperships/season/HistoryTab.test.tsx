@@ -144,6 +144,13 @@ describe('HistoryTab', () => {
     expect(lastQuery()).toEqual({ per_page: '50' })
   })
 
+  it('sits the log 8px under the toolbar, as the mock draws it (chrome-7)', () => {
+    renderAt()
+    const wrap = screen.getByTestId('aid-toolbar').parentElement
+    expect(wrap).toHaveClass('space-y-2')
+    expect(wrap).not.toHaveClass('space-y-3')
+  })
+
   it('shows the registrar no Rules chip and no Scenarios note (D49, D76)', () => {
     renderAt()
     expect(screen.queryByRole('button', { name: /^Rules/ })).toBeNull()
