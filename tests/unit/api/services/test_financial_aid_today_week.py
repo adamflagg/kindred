@@ -182,3 +182,19 @@ async def test_an_offer_unanswered_for_fourteen_days_appears_once_as_overdue(
 ) -> None:
     week = await _service(*store_with_old_post).read(2031, casework=True, finance=False, development=False)
     assert [f.kind for f in week.feed].count("overdue") == 1
+
+
+@pytest.mark.asyncio
+async def test_a_caller_with_no_section_gets_an_empty_feed(store_with_posts: tuple[_Store, _Grants]) -> None:
+    week = await _service(*store_with_posts).read(2031, casework=False, finance=False, development=False)
+    assert week.feed == []
+
+
+@pytest.mark.asyncio
+async def test_a_feed_item_with_no_household_links_nowhere(store_with_old_post: tuple[_Store, _Grants]) -> None:
+    store, grants = store_with_old_post
+    _event(store, "reqmissing00001", "accept", _at(4, 15))  # its request is not in the season
+    week = await _service(store, grants).read(2031, casework=True, finance=False, development=False)
+    orphan = next(f for f in week.feed if f.kind == "accepted")
+    assert orphan.household_cm_id is None
+    assert orphan.href_kind == "none"
