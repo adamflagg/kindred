@@ -21,6 +21,7 @@ from api.schemas.financial_aid import UnclassifiedSource
 from api.schemas.financial_aid_decisions import GridRowOut, QueueOut
 from api.schemas.financial_aid_grants import GrantorOut, GrantorsResponse, GrantsResponse
 from api.schemas.financial_aid_surfaces import (
+    TodayItemKind,
     TodayKey,
     TodayLineOut,
     TodayNextUpOut,
@@ -61,6 +62,7 @@ FINANCE_LINES: Final[tuple[TodayKey, ...]] = (
     "intake",
     "equity_field_never_true",
 )
+DEVELOPMENT_LINES: Final[tuple[TodayKey, ...]] = ("no_contact", "no_eligibility", "needs_group", "no_grantor")
 WAITING_TOO_LONG_DAYS: Final = 14  # §6.4: "how many over 14 days"
 # Spec 2026-10-10 §5.2 (owner ruling 11, "fixed val"): a line past its threshold jumps to the top of Today. Code, not
 # settings: a change is a small PR.
@@ -426,6 +428,24 @@ def _finance(inputs: TodayInputs) -> list[TodayLineOut]:
     return [lines[key] for key in FINANCE_LINES]
 
 
+def _named(key: TodayKey, names: Iterable[str], kind: TodayItemKind) -> TodayLineOut:
+    listed = sorted(set(names), key=str.casefold)
+    return TodayLineOut(key=key, families=None, items=len(listed), item_kind=kind, names=listed)
+
+
+def _development(inputs: TodayInputs) -> list[TodayLineOut]:
+    """Spec 2026-10-10 §5.1/§7.3: funder upkeep. Funders by name (not families), descriptions by their key. A retired
+    funder is history and needs no upkeep."""
+    live = [g for g in inputs.grantors if not g.retired_at]
+    lines = {
+        "no_contact": _named("no_contact", (g.name for g in live if not g.contacts.strip()), "funders"),
+        "no_eligibility": _named("no_eligibility", (g.name for g in live if not g.eligibility.strip()), "funders"),
+        "needs_group": _named("needs_group", inputs.needs_group, "descriptions"),
+        "no_grantor": _named("no_grantor", (u.description_key for u in inputs.grants.unmapped), "descriptions"),
+    }
+    return [lines[key] for key in DEVELOPMENT_LINES]
+
+
 def pending_since(events: Iterable[DecisionEvent]) -> dict[tuple[str, int], date]:
     """(request, round) -> the camp-time day of the latest award keyed for approval (D79's needs_approval)."""
     out: dict[tuple[str, int], datetime] = {}
@@ -481,12 +501,13 @@ def _stages(inputs: TodayInputs) -> TodayStagesOut:
     )
 
 
-def build_today(inputs: TodayInputs, *, casework: bool, finance: bool) -> TodayResponse:
+def build_today(inputs: TodayInputs, *, casework: bool, finance: bool, development: bool = False) -> TodayResponse:
     return TodayResponse(
         year=inputs.year,
         casework=_casework(inputs) if casework else None,
         finance=_finance(inputs) if finance else None,
         stages=_stages(inputs) if casework or finance else None,
+        development=_development(inputs) if development else None,
     )
 
 
@@ -551,8 +572,8 @@ class TodayService:
         self._to_place = to_place
         self._clock: Callable[[], datetime] = clock or (lambda: datetime.now(UTC))
 
-    async def read(self, year: int, *, casework: bool, finance: bool) -> TodayResponse:
-        if not (casework or finance):
+    async def read(self, year: int, *, casework: bool, finance: bool, development: bool = False) -> TodayResponse:
+        if not (casework or finance or development):
             return TodayResponse(year=year, casework=None, finance=None)
         shared = OneGrantsLoad(self._grants, year)
         decisions = FinancialAidDecisionsService(self._store, self._pricing, shared.register, clock=self._clock)
@@ -569,9 +590,9 @@ class TodayService:
             decisions.season(year),
             shared.read(),
             # Retired grantors too: hidden from pickers, never from the grants that named them.
-            self._grants.list_grantors(include_retired=True) if casework else _no_grantors(),
+            self._grants.list_grantors(include_retired=True) if casework or development else _no_grantors(),
             _draft_sections(self._rules, year) if finance else _none(),
-            _descriptions(self._ledger, year) if finance else _no_descriptions(),
+            _descriptions(self._ledger, year) if finance or development else _no_descriptions(),
             _never_true(self._intake, year) if finance and self._intake is not None else _no_fields(),
         )
         events = await events_read
@@ -593,7 +614,7 @@ class TodayService:
             needs_group=needs_group,
             pending_since=pending_since(events),
         )
-        return build_today(inputs, casework=casework, finance=finance)
+        return build_today(inputs, casework=casework, finance=finance, development=development)
 
 
 async def _no_events() -> list[DecisionEvent]:
