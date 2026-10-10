@@ -362,10 +362,9 @@ describe('the control line (§S5 A; scenarios-2): one kit toolbar row', () => {
 
   it('disables Keep… with no change, and shows a refusal as one amber line', () => {
     setup({
-      error:
-        'Round 1 award table is locked: Round 1 is posted, so Scenarios models only what is still open.',
+      error: 'Update Applications first: every scenario is priced on the applications held',
     })
     expect(screen.getByRole('button', { name: 'Keep…' })).toBeDisabled()
-    expect(screen.getByText(/Round 1 award table is locked/)).toBeInTheDocument()
+    expect(screen.getByText(/Update Applications first/)).toBeInTheDocument()
   })
 })

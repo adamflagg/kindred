@@ -1289,61 +1289,68 @@ async def _post_round(world: World, round_: int) -> None:
 
 
 @pytest.mark.asyncio
-async def test_the_lock_reads_any_version_and_names_the_round_that_posted() -> None:
+async def test_the_workspace_reads_the_real_lock_from_any_version() -> None:
+    """`locked_sections` follows the real rules lock in any version: Spend and Compare word a posted round from it.
+    It no longer greys anything, so there is no `locked_by_round` for a lock note."""
     world = await _frozen()
     await _approved_v1(world)
-    before = await world.service.workspace(YEAR, FINANCE)
-    assert (before.locked_sections, before.locked_by_round) == ((), None)
+    assert (await world.service.workspace(YEAR, FINANCE)).locked_sections == ()
     await _post_round(world, 1)
     await world.rules.new_version(YEAR, 1, actor=FINANCE, unlock=["award_tables"])  # v2 lifts it; v1 keeps it
     after = await world.service.workspace(YEAR, FINANCE)
     assert after.locked_sections == ("income", "tiers", "equity", "award_tables", "awards")
-    assert after.locked_by_round == 1
-    await _post_round(world, 2)
-    assert (await world.service.workspace(YEAR, FINANCE)).locked_by_round == 2
+    assert not hasattr(after, "locked_by_round")
 
 
 @pytest.mark.asyncio
-async def test_a_release_that_changes_a_section_locked_since_the_screen_opened_is_refused_and_records_nothing() -> None:
-    """Review Focus 1: the screen still showed it editable; the edit is refused in staff words, the strip still
-    prices it, and nothing is recorded."""
+async def test_the_sandbox_never_locks_a_release_after_round_1_posts_records() -> None:
+    """Owner, 2026-10-10: "scenarios sandbox should never lock anything unlike the real rules". A Round 1 edit after
+    Round 1 posts is recorded like any other, and the rules are untouched."""
     world = await _frozen()
     await _approved_v1(world)
     await _post_round(world, 1)
+    versions = await world.rules_store.list_versions(YEAR)
     plus_five = _shifted(intake_rules(), "5")
-    with pytest.raises(ScenarioSectionLockedError) as refused:
-        await world.service.save_draft(YEAR, plus_five, FINANCE)
-    assert str(refused.value) == (
-        "Round 1 award table is locked: Round 1 is posted, so Scenarios models only what is still open."
-    )
-    assert refused.value.sections == ["award_tables"]
-    assert world.store.rows[AID_SCENARIO_TRAIL] == []
-    assert (await world.service.evaluate(YEAR, plus_five)).results.round1 == Decimal(2800)
+    draft = await world.service.save_draft(YEAR, plus_five, FINANCE)
+    assert draft.from_code == "rules"
+    assert len(world.store.rows[AID_SCENARIO_TRAIL]) == 1
+    both = with_minimum(plus_five, Decimal(150))
+    await world.service.save_draft(YEAR, both, FINANCE)
+    assert len(world.store.rows[AID_SCENARIO_TRAIL]) == 2
+    assert await world.rules_store.list_versions(YEAR) == versions  # a sandbox release never writes the rules
 
 
 @pytest.mark.asyncio
-async def test_two_locked_sections_are_named_together() -> None:
+async def test_the_sandbox_never_locks_the_cap_after_round_2_posts() -> None:
     world = await _frozen()
     await _approved_v1(world)
     await _post_round(world, 1)
-    both = with_minimum(_shifted(intake_rules(), "5"), Decimal(150))
-    with pytest.raises(
-        ScenarioSectionLockedError,
-        match=r"^Round 1 award table and Minimum award and named awards are locked: Round 1",
-    ):
-        await world.service.save_draft(YEAR, both, FINANCE)
-
-
-@pytest.mark.asyncio
-async def test_the_round_1_plus_2_cap_stays_open_until_round_2_posts() -> None:
-    world = await _frozen()
-    await _approved_v1(world)
-    await _post_round(world, 1)
+    await _post_round(world, 2)
     caps = with_lever(intake_rules(), "round2.tables.camp.tiers.4.total_pct", "60")
     assert (await world.service.save_draft(YEAR, caps, FINANCE)).from_code == "rules"
-    await _post_round(world, 2)
-    with pytest.raises(ScenarioSectionLockedError, match=r"^Appeal caps is locked: Round 2 is posted"):
-        await world.service.save_draft(YEAR, with_lever(caps, "round2.tables.camp.tiers.4.total_pct", "65"), FINANCE)
+    await world.service.save_draft(YEAR, with_lever(caps, "round2.tables.camp.tiers.4.total_pct", "65"), FINANCE)
+    assert len(world.store.rows[AID_SCENARIO_TRAIL]) == 2
+
+
+@pytest.mark.asyncio
+async def test_a_kept_option_after_the_lock_still_refuses_to_become_the_rules_draft() -> None:
+    """The sandbox is free; the real rules are not. An option kept after Round 1 posts, changing Round 1, is refused
+    by Make It the Rules Draft in words that no longer say Scenarios can't model it."""
+    world = await _frozen()
+    await _approved_v1(world)
+    await _post_round(world, 1)
+    await world.service.save_draft(YEAR, with_minimum(_shifted(intake_rules(), "5"), Decimal(150)), FINANCE)
+    await world.service.keep(YEAR, FINANCE, name="After the post")  # A
+    versions = len(await world.rules_store.list_versions(YEAR))
+    with pytest.raises(ScenarioSectionLockedError) as refused:
+        await world.service.rules_draft_preview(YEAR, "A")
+    assert str(refused.value) == (
+        "Round 1 award table and Minimum award and named awards are locked: Round 1 is posted, so a kept option "
+        "can't change them in the rules draft."
+    )
+    with pytest.raises(ScenarioSectionLockedError):
+        await world.service.make_rules_draft(YEAR, "A", base_version=1, acknowledged={}, actor=FINANCE)
+    assert len(await world.rules_store.list_versions(YEAR)) == versions  # nothing written
 
 
 @pytest.mark.asyncio
@@ -1356,7 +1363,10 @@ async def test_an_option_kept_before_the_lock_still_loads_and_prices_but_cannot_
     await world.service.load(YEAR, TREASURER, option="A")  # a load is no edit
     assert (await world.service.evaluate(YEAR, await _a(world))).results.round1 == Decimal(2800)
     versions = len(await world.rules_store.list_versions(YEAR))
-    with pytest.raises(ScenarioSectionLockedError, match="Round 1 award table is locked"):
+    with pytest.raises(
+        ScenarioSectionLockedError,
+        match=r"^Round 1 award table is locked: Round 1 is posted, so a kept option can't change it in the rules draft\.$",
+    ):
         await world.service.rules_draft_preview(YEAR, "A")
     with pytest.raises(ScenarioSectionLockedError):
         await world.service.make_rules_draft(YEAR, "A", base_version=1, acknowledged={}, actor=FINANCE)

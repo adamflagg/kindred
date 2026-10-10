@@ -22,8 +22,6 @@ import {
   currentYearWords,
   enabledKey,
   fixFirstWords,
-  keyLocked,
-  lockNote,
   readFigure,
   shownValue,
   tierLine,
@@ -176,27 +174,7 @@ describe('"was …" (§S5 F common rules)', () => {
   })
 })
 
-describe('the lock (§S5 F; §S11.3; §S15 item 5)', () => {
-  const ROUND1 = ['income', 'tiers', 'equity', 'award_tables', 'awards']
-
-  it('greys each card once a posted round read it, and says so once per card', () => {
-    expect(lockNote('tiers', [], null)).toBeNull()
-    expect(lockNote('tiers', ROUND1, 1)).toBe(
-      'Locked: Round 1 is posted · the Round 1 + 2 cap stays open'
-    )
-    expect(lockNote('equity', ROUND1, 1)).toBe('Locked: Round 1 is posted')
-    expect(lockNote('income', ROUND1, 1)).toBe('Locked: Round 1 is posted')
-    expect(lockNote('tiers', [...ROUND1, 'round2'], 2)).toBe('Locked: Round 2 is posted')
-  })
-
-  it('locks each box by its section; the cap only once Round 2 posts', () => {
-    expect(keyLocked(cellKey('r1', 'general', 1), ROUND1)).toBe(true)
-    expect(keyLocked(cellKey('cap', 'general', 1), ROUND1)).toBe(false)
-    expect(keyLocked(cellKey('cap', 'general', 1), [...ROUND1, 'round2'])).toBe(true)
-    expect(keyLocked(PRIOR_WEIGHT, ['income'])).toBe(true)
-    expect(keyLocked(MINIMUM, ['tiers'])).toBe(false)
-  })
-
+describe('the cells (§S5 F1)', () => {
   it('makes only a table’s own cells boxes', () => {
     expect([
       cellEditable(SANDBOX_DOC, 'r1', 'general'),
@@ -211,8 +189,6 @@ describe('the cards’ binding (§S5 F)', () => {
       recorded: SANDBOX_DOC,
       source: SANDBOX_DOC,
       edits: edits(entries),
-      locked: [],
-      byRound: null,
       canEdit: true,
       type: () => undefined,
       release: () => undefined,
@@ -229,14 +205,18 @@ describe('the cards’ binding (§S5 F)', () => {
     expect(binding.was(TIER_WIDTH)).toBe('was $40,000')
   })
 
+  it('carries no lock: the sandbox never locks (owner, 2026-10-10)', () => {
+    const binding = bind({})
+    expect('locked' in binding).toBe(false)
+    expect('byRound' in binding).toBe(false)
+  })
+
   it('words a fractional starting point in whole dollars (coordinator ruling 2026-10-07)', () => {
     const source = { ...SANDBOX_DOC, awards: { ...SANDBOX_DOC.awards, minimum: '125.50' } }
     const binding = bindingOf({
       recorded: SANDBOX_DOC,
       source,
       edits: edits({}),
-      locked: [],
-      byRound: null,
       canEdit: true,
       type: () => undefined,
       release: () => undefined,

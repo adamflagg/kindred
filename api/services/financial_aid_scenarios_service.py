@@ -143,7 +143,8 @@ def _fit_name(text: str) -> str:
 
 
 # The sections the sandbox edits (§S11.3). Of `awards` only the minimum is on screen, but a section locks whole, as on
-# Rules.
+# Rules. The sandbox itself never locks (owner, 2026-10-10): these are what a promotion refuses and what the workspace
+# reports, so Spend and Compare can say a posted round's amounts stand.
 SCENARIO_SECTIONS: Final[tuple[SectionName, ...]] = ("tiers", "award_tables", "round2", "awards", "equity", "income")
 
 
@@ -152,13 +153,15 @@ def _round_of(section: SectionName) -> int:
 
 
 def locked_words(sections: Sequence[SectionName]) -> str:
-    """§S11.3: "Income tiers and Round 1 award table are locked: Round 1 is posted, so Scenarios models only what is
-    still open." The card titles are the Rules tab's; the round is the latest that read any of them."""
+    """Make It the Rules Draft's refusal (§S11.3): "Income tiers and Round 1 award table are locked: Round 1 is posted,
+    so a kept option can't change them in the rules draft." The card titles are the Rules tab's; the round is the
+    latest that read any of them. The sandbox never says it: it models a locked section like any other."""
     titles = [CARD_TITLES.get(s, s) for s in sections]
-    names = titles[0] if len(titles) == 1 else f"{', '.join(titles[:-1])} and {titles[-1]}"
-    verb = "is" if len(titles) == 1 else "are"
+    one = len(titles) == 1
+    names = titles[0] if one else f"{', '.join(titles[:-1])} and {titles[-1]}"
+    verb, them = ("is", "it") if one else ("are", "them")
     posted = max(_round_of(s) for s in sections)
-    return f"{names} {verb} locked: Round {posted} is posted, so Scenarios models only what is still open."
+    return f"{names} {verb} locked: Round {posted} is posted, so a kept option can't change {them} in the rules draft."
 
 
 class ScenarioNotFoundError(FinancialAidError, LookupError):
@@ -174,8 +177,9 @@ class ScenarioConflictError(FinancialAidError, ValueError):
 
 
 class ScenarioSectionLockedError(FinancialAidError, ValueError):
-    """An edit or a promotion that changes a section a posted round locked (§S11.3): 409 {"message", "sections"},
-    the shape ReplacementNotAcknowledgedError has. Only Scenarios refuses: Rules can still correct a locked section."""
+    """A promotion that changes a section a posted round locked (§S11.3): 409 {"message", "sections"}, the shape
+    ReplacementNotAcknowledgedError has. A sandbox edit is never refused (owner, 2026-10-10); Rules can still correct a
+    locked section itself."""
 
     def __init__(self, sections: Sequence[SectionName]) -> None:
         super().__init__(locked_words(sections))
@@ -279,8 +283,8 @@ class Workspace:
     options: tuple[KeptOption, ...]
     pricing_version: int | None = None  # the version pricing the season; None while none does (final review 8)
     rules_draft_version: int | None = None  # the rules draft's version while it differs from the rules in effect
-    locked_sections: tuple[SectionName, ...] = ()  # a posted round locked these (§S11.3): the screen greys from them
-    locked_by_round: int | None = None  # 2 when round2 is locked, 1 when a Round 1 section is: the lock note's words
+    # a posted round locked these (§S11.3): Spend and Compare say its amounts stand. Nothing is greyed from them.
+    locked_sections: tuple[SectionName, ...] = ()
     last_rules_version: int | None = None  # last season's approved version: Start from's "(none approved)" (Task 67)
 
 
@@ -1021,7 +1025,6 @@ class FinancialAidScenariosService:
             )
             for option in options.values()
         ]
-        greyed = _scenario_locked(locked)
         return Workspace(
             year,
             rules.version,
@@ -1030,15 +1033,9 @@ class FinancialAidScenariosService:
             tuple(kept),
             pricing_version=pricing.version if pricing is not None else None,
             rules_draft_version=rules.version if rules.document != effect.document else None,
-            locked_sections=greyed,
-            locked_by_round=2 if "round2" in greyed else 1 if any(s in ROUND_SECTIONS[1] for s in greyed) else None,
+            locked_sections=_scenario_locked(locked),
             last_rules_version=last.version if last is not None else None,
         )
-
-    async def scenario_locked_sections(self, year: int) -> tuple[SectionName, ...]:
-        """The Scenarios sections a posted round has locked in any version (§S11.3), in section order. The screen
-        greys from these alone."""
-        return _scenario_locked(await self._rules.sections_locked_anywhere(year))
 
     async def _promotion(self, year: int, code: str) -> tuple[OptionRecord, AidRules, ScenarioPromotion]:
         """What "Make ‹B› the Rules Draft" would copy (§S11.3): the option with its fixed settings set back to the
@@ -1171,10 +1168,8 @@ class FinancialAidScenariosService:
             current, from_code, built_on = first.document, "rules", opened_version or first.version
         else:
             current, from_code, built_on = row.document, _from(row), row.built_on_version
-        locked = await self.scenario_locked_sections(year)
-        moved = [s for s in locked if getattr(derive_weights(current), s) != getattr(document, s)]
-        if moved:
-            raise ScenarioSectionLockedError(moved)
+        # Never refused for a locked section (owner, 2026-10-10: "scenarios sandbox should never lock anything unlike
+        # the real rules"): a release writes the trail only. Make It the Rules Draft keeps the real lock (_promotion).
         if document != current:
             await self._record(
                 year,

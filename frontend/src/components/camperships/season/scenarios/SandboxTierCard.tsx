@@ -1,8 +1,6 @@
 import type { ReactNode } from 'react'
 
 import { CS_AMBER_NOTE, CS_CARD_HEADING, CS_SMALL } from '../../kit/csType'
-import { DefRef } from '../../kit/DefinitionNotes'
-import { StatusPill } from '../../kit/Pills'
 import {
   RG_TABLE_FIT,
   RG_TD_GROUP_NUM,
@@ -35,10 +33,9 @@ import {
   classLabel,
   poolHeadLabel,
   fixFirstWords,
-  lockNote,
   type SandboxBinding,
 } from './sandboxModel'
-import { PAGE_NOTE, TITLE_WORDS } from './scenarioNotes'
+import { TITLE_WORDS } from './scenarioNotes'
 import { CARD_SHELL, GROUP_HEAD } from './scenarioStyles'
 
 type Tables = Readonly<Record<string, TableShape>>
@@ -47,18 +44,6 @@ type Programs = Readonly<Record<string, { readonly equity_class?: string | null 
 /** A settings-line label (the mock's `.sc-set label`): 13px/600, the unit beside its box muted. */
 const SET_LABEL =
   'text-foreground inline-flex items-center gap-1 text-[13px] font-semibold whitespace-nowrap'
-
-/** The lock marker (scenarios-8): the kit's stone pill, with note 5, in place of a lock icon. */
-export function LockNoteView({ text }: { text: string }) {
-  return (
-    <span className="inline-flex items-baseline gap-0.5">
-      <StatusPill tone="stone" title="A posted round read these settings">
-        {text}
-      </StatusPill>
-      <DefRef n={PAGE_NOTE.locked} />
-    </span>
-  )
-}
 
 function Cell({
   part,
@@ -114,7 +99,6 @@ export function SandboxTierCard({
   fitAnswer: ReactNode
 }) {
   const doc = binding.typed
-  const note = lockNote('tiers', binding.locked, binding.byRound)
   const awardTables = doc.award_tables as Tables
   const capTables = (doc.round2.tables ?? {}) as Tables
   // The server sends no groups here (the document is the one being typed): the pools come from the document itself.
@@ -126,7 +110,6 @@ export function SandboxTierCard({
     <section data-card="sandbox-tiers" className={CARD_SHELL}>
       <div className="flex flex-wrap items-center gap-2">
         <h3 className={CS_CARD_HEADING}>Tiers &amp; Round 1</h3>
-        {note !== null && <LockNoteView text={note} />}
         {fitButton}
       </div>
       {fixFirst !== null && <p className={CS_AMBER_NOTE}>{fixFirst}</p>}

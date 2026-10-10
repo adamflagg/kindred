@@ -29,11 +29,7 @@ describe('Fit to Budget on the Tiers card (§S5 G; scenarios-13)', () => {
     )
     await userEvent.click(on)
     expect(onFit).toHaveBeenCalledOnce()
-    for (const reason of [
-      'Off once Round 1 posts',
-      'Fit uses every application held',
-      'Nothing is held yet',
-    ]) {
+    for (const reason of ['Fit uses every application held', 'Nothing is held yet']) {
       rerender(<FitToBudgetButton disabled reason={reason} pending={false} onFit={onFit} />)
       expect(screen.getByRole('button', { name: 'Fit to Budget' })).toBeDisabled()
       expect(screen.getByRole('button', { name: 'Fit to Budget' })).toHaveAttribute('title', reason)

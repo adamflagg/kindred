@@ -4,7 +4,6 @@ import { AidPicker } from '../../kit/AidPicker'
 import { CS_AMBER_NOTE, CS_CARD_HEADING, CS_SMALL } from '../../kit/csType'
 import { CHOICE_WORDS } from '../rules/rulesCards'
 import { SandboxBox } from './SandboxBox'
-import { LockNoteView } from './SandboxTierCard'
 import {
   DEPENDENTS,
   INCOME_MONEY,
@@ -13,8 +12,6 @@ import {
   cardProblems,
   currentYearWords,
   fixFirstWords,
-  keyLocked,
-  lockNote,
   type SandboxBinding,
 } from './sandboxModel'
 import { CARD_SHELL } from './scenarioStyles'
@@ -40,11 +37,10 @@ function Kv({ name, children, aside }: { name: string; children: ReactNode; asid
 }
 
 /** Income counting (§S5 F3): which years count, the expense and savings thresholds, and Dependents (owner 10-06:
- * "Dependents back on the Income counting card: YES"), in the Rules tab's own words, as kit key–value rows. Before the
- * lock only. */
+ * "Dependents back on the Income counting card: YES"), in the Rules tab's own words, as kit key–value rows. Open after
+ * a round posts too: the sandbox never locks (owner, 2026-10-10). */
 export function SandboxIncomeCard({ binding }: { binding: SandboxBinding }) {
   const doc = binding.typed
-  const note = lockNote('income', binding.locked, binding.byRound)
   const lowers = doc.income.dependents_mode === 'income_reduction'
   const fixFirst = fixFirstWords(cardProblems(binding.problems, 'income'), doc)
   const dependentsWas = binding.was(DEPENDENTS)
@@ -55,10 +51,7 @@ export function SandboxIncomeCard({ binding }: { binding: SandboxBinding }) {
   )
   return (
     <section data-card="sandbox-income" className={CARD_SHELL}>
-      <div className="flex flex-wrap items-center gap-2">
-        <h3 className={CS_CARD_HEADING}>Income counting</h3>
-        {note !== null && <LockNoteView text={note} />}
-      </div>
+      <h3 className={CS_CARD_HEADING}>Income counting</h3>
       {fixFirst !== null && <p className={CS_AMBER_NOTE}>{fixFirst}</p>}
       <div className={KV_GROUP}>Which years count</div>
       <Kv
@@ -85,7 +78,7 @@ export function SandboxIncomeCard({ binding }: { binding: SandboxBinding }) {
             size="field"
             label="Dependents"
             value={binding.value(DEPENDENTS)}
-            disabled={!binding.canEdit || keyLocked(DEPENDENTS, binding.locked)}
+            disabled={!binding.canEdit}
             options={MODES.map((mode) => ({
               value: mode,
               label: CHOICE_WORDS['dependents_mode']?.[mode] ?? mode,

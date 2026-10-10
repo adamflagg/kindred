@@ -285,34 +285,6 @@ export const changeCount = (typed: Doc, source: Doc) => leaves(typed, source)
 
 export type SandboxCard = 'tiers' | 'equity' | 'income'
 
-const CARD_SECTIONS: Readonly<Record<SandboxCard, readonly string[]>> = {
-  tiers: ['tiers', 'award_tables', 'awards'],
-  equity: ['equity'],
-  income: ['income'],
-}
-
-/** "Locked: Round 1 is posted" once per card (§S5 F); the Tiers card adds that the cap stays open until Round 2
- * posts (owner, §S15 item 5: "yup"). */
-export function lockNote(
-  card: SandboxCard,
-  locked: readonly string[],
-  byRound: number | null
-): string | null {
-  const cap = locked.includes('round2')
-  if (
-    !CARD_SECTIONS[card].some((section) => locked.includes(section)) &&
-    !(card === 'tiers' && cap)
-  )
-    return null
-  const note = `Locked: Round ${String(byRound ?? 1)} is posted`
-  return card === 'tiers' && !cap ? `${note} · the Round 1 + 2 cap stays open` : note
-}
-
-export function keyLocked(key: string, locked: readonly string[]): boolean {
-  const section = TIER_KEYS.includes(key) ? 'tiers' : (key.split('.')[0] ?? '')
-  return locked.includes(section)
-}
-
 /** A money box's text with thousands separators (scenarios-6: "35,000"): whole dollars only. A fractional, empty or
  * half-typed figure shows as typed, and so does every box that is not money; typing strips the commas (`readFigure`). */
 export function boxText(key: string, raw: string): string {
@@ -396,14 +368,13 @@ export function cellEditable(document: Doc, part: 'r1' | 'cap', table: string): 
   return shape !== undefined && (shape.inherits === null || shape.inherits === undefined)
 }
 
-/** What a card reads and reports (§S5 F): the typed document, each box's text, its bad figure and "was", the lock,
- * and the two actions: typing prices live and records nothing; leaving a box or Enter records it. */
+/** What a card reads and reports (§S5 F): the typed document, each box's text, its bad figure and "was", and the two
+ * actions: typing prices live and records nothing; leaving a box or Enter records it. No lock: the sandbox never locks,
+ * whatever a posted round locked in the real rules (owner, 2026-10-10); only `canEdit` (the `rules` permission) greys. */
 export interface SandboxBinding {
   readonly typed: Doc
   readonly source: Doc | null
   readonly problems: ReadonlyMap<string, Problem>
-  readonly locked: readonly string[]
-  readonly byRound: number | null
   readonly canEdit: boolean
   value(key: string): string
   bad(key: string): boolean
@@ -416,8 +387,6 @@ export function bindingOf(input: {
   readonly recorded: Doc
   readonly source: Doc | null
   readonly edits: ReadonlyMap<string, string>
-  readonly locked: readonly string[]
-  readonly byRound: number | null
   readonly canEdit: boolean
   readonly type: (key: string, raw: string) => void
   readonly release: () => void
@@ -427,8 +396,6 @@ export function bindingOf(input: {
     typed: applied.document,
     source: input.source,
     problems: applied.problems,
-    locked: input.locked,
-    byRound: input.byRound,
     canEdit: input.canEdit,
     value: (key) => input.edits.get(key) ?? shownValue(key, applied.document),
     bad: (key) => applied.problems.has(key),

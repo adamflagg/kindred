@@ -100,8 +100,9 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
   const [refused, setRefused] = useState<string | null>(null)
   const draft = workspace.draft
   const snapshot = workspace.snapshot
-  const locked = workspace.locked_sections ?? []
-  const isLocked = locked.length > 0
+  // A posted round's lock in the real rules: Spend and Compare say its amounts stand. It never locks the sandbox
+  // (owner, 2026-10-10: "scenarios sandbox should never lock anything unlike the real rules").
+  const isLocked = (workspace.locked_sections ?? []).length > 0
 
   // A kept code in the URL this year doesn't hold (a year switch, an old link): left out, dropped, said once.
   const kept = useMemo(() => new Set(workspace.options.map((o) => o.code)), [workspace.options])
@@ -147,8 +148,6 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
     recorded: draft.document,
     source,
     edits: work.edits,
-    locked,
-    byRound: workspace.locked_by_round ?? null,
     canEdit,
     type: work.type,
     release: () => void work.release(),
@@ -280,15 +279,13 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
             fitButton={
               canEdit ? (
                 <FitToBudgetButton
-                  disabled={locked.includes('award_tables') || priceOff || snapshot === null}
+                  disabled={priceOff || snapshot === null}
                   reason={
-                    locked.includes('award_tables')
-                      ? 'Off once Round 1 posts'
-                      : priceOff
-                        ? 'Fit uses every application held'
-                        : snapshot === null
-                          ? 'Nothing is held yet'
-                          : null
+                    priceOff
+                      ? 'Fit uses every application held'
+                      : snapshot === null
+                        ? 'Nothing is held yet'
+                        : null
                   }
                   pending={fit.isPending}
                   onFit={() => {
@@ -343,7 +340,7 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
         />
       )}
       <div className="print:hidden">
-        {/* ONE list: the registry's four, then the page's Locked and Change colours (final mock: six). */}
+        {/* ONE list: the registry's four, then the page's Change colours (final mock's six, less Locked). */}
         <AidDefinitionNotes
           surface={SURFACE}
           extra={SCENARIO_PAGE_NOTES.map((note) => note.text)}
