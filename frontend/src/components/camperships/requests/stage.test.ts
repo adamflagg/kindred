@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import type { ApiAidRowStage } from '../../../types/api-types'
+import { STATUS_TONE } from '../kit/kitStyles'
 import { gridRow, roundOut } from './gridFixtures'
 import { latestRound, requestStage, ROUND_STATUS_WORDS, roundTone } from './stage'
 
@@ -44,12 +45,21 @@ describe('stage words (§6.1; slice 1 Decision 6)', () => {
       tone: 'emerald',
     })
     expect(stage(1, 'held', 'R1 · On hold')).toEqual({ text: 'R1 · On hold', tone: 'red' })
+    // Owner ruling 10-10 (Rev 3, confirmed for the stage chip): "Pending approval" is amber everywhere,
+    // on the household editor's pill and on this chip alike. Was: purple, the Round 3 tone.
     expect(stage(3, 'pending_approval', 'R3 · Pending approval')).toEqual({
       text: 'R3 · Pending approval',
-      tone: 'purple',
+      tone: 'amber',
     })
     expect(stage(null, 'cancelled', 'Cancelled')).toEqual({ text: 'Cancelled', tone: 'stone' })
     expect(stage(1, 'posted', 'R1 · Posted')).toEqual({ text: 'R1 · Posted', tone: 'muted' })
+  })
+
+  it("wear the household Pending approval pill's own token, so the two cannot drift", () => {
+    const pending = requestStage(
+      gridRow({ stage: { round: 3, code: 'pending_approval', label: 'R3 · Pending approval' } })
+    )
+    expect(pending?.tone).toBe(STATUS_TONE.note)
   })
 
   it('follow the server, not the rounds: a C1 round reads Posted though no tick is in', () => {

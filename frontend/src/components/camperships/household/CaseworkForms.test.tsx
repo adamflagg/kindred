@@ -377,6 +377,11 @@ describe('Correct… where the forms disagree: quick picks (round 3, section 3)'
     expect(screen.getByLabelText('Housing expenses')).toHaveFocus()
   })
 
+  it('an optional reason claims nothing: no "required" placeholder (owner 10-10)', async () => {
+    await open()
+    expect(screen.getByLabelText('Reason')).not.toHaveAttribute('placeholder')
+  })
+
   it('a click on the Used label focuses the typed box', async () => {
     await open()
     screen.getByLabelText('Reason').focus()
@@ -396,6 +401,14 @@ describe('Correct… where the forms disagree: quick picks (round 3, section 3)'
 })
 
 describe('ShareForm (main spec §9.2)', () => {
+  it('says the reason is required and logged with your name, as #g6-shares draws it (owner 10-10)', () => {
+    render(<ShareForm request={SPLIT_PAGE.requests[0]!} page={SPLIT_PAGE} onDone={done} />)
+    expect(screen.getByLabelText('Reason')).toHaveAttribute(
+      'placeholder',
+      'required, logged with your name'
+    )
+  })
+
   it("sets another household's share as a percentage", async () => {
     render(<ShareForm request={SPLIT_PAGE.requests[0]!} page={SPLIT_PAGE} onDone={done} />)
     await chooseAid('Household', '2 · The Garcia Family')
