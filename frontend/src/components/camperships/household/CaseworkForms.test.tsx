@@ -386,8 +386,10 @@ describe('Correct… where the forms disagree: quick picks (round 3, section 3)'
 
   it('says what saving settles, and opens on the Used field', async () => {
     await open()
+    // Conformance #g6-correct (owner 10-10): the sentence moved to the buttons row's end, joined with
+    // the key hint in one cut-with-a-title span, so it is no longer a text node of its own.
     expect(
-      screen.getByText('This settles 1 of the 3. The hold clears when all three agree.')
+      screen.getByText(/This settles 1 of the 3\. The hold clears when all three agree\./)
     ).toBeInTheDocument()
     expect(screen.getByLabelText('Housing expenses')).toHaveFocus()
   })
@@ -893,10 +895,11 @@ describe('casework forms in two columns (round 3)', () => {
     expect(screen.getByLabelText('Children')).toBeInTheDocument()
   })
 
-  it('ends each footer with Back and then the save', () => {
+  // Conformance #g6 (owner 10-10): the kit's one row, the action first, then Back (was: Back, then the save).
+  it('starts each buttons row with the save, then Back', () => {
     render(<ShareForm request={SPLIT_PAGE.requests[0]!} page={SPLIT_PAGE} onDone={done} />)
     const save = screen.getByRole('button', { name: 'Set the Share' })
-    expect(save.parentElement?.lastElementChild).toBe(save)
-    expect(screen.getByRole('button', { name: 'Back' }).nextElementSibling).toBe(save)
+    expect(save.parentElement?.firstElementChild).toBe(save)
+    expect(save.nextElementSibling).toBe(screen.getByRole('button', { name: 'Back' }))
   })
 })

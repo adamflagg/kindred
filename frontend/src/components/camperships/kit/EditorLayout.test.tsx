@@ -5,6 +5,7 @@
  * the required-field reason beside them.
  */
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 
 import { EditorActions, EditorField, EditorForm, EditorGrid } from './EditorLayout'
@@ -69,6 +70,31 @@ describe('EditorGrid and EditorField', () => {
     )
     expect(screen.getByText('Pays the rest')).toHaveClass('opacity-50')
     expect(screen.getByLabelText('Pays the rest')).toBeDisabled()
+  })
+
+  it('with htmlFor, the caption is a real label, so a click on it focuses the field', async () => {
+    render(
+      <EditorGrid>
+        <EditorField label="Used" htmlFor="used-box">
+          <input id="used-box" aria-label="Housing expenses" />
+        </EditorField>
+      </EditorGrid>
+    )
+    const caption = screen.getByText('Used')
+    expect(caption.tagName).toBe('LABEL')
+    await userEvent.click(caption)
+    expect(screen.getByLabelText('Housing expenses')).toHaveFocus()
+  })
+
+  it('without htmlFor, the caption stays a plain span', () => {
+    render(
+      <EditorGrid>
+        <EditorField label="Name">
+          <input aria-label="Name" />
+        </EditorField>
+      </EditorGrid>
+    )
+    expect(screen.getByText('Name').tagName).toBe('SPAN')
   })
 })
 
@@ -167,5 +193,26 @@ describe('EditorForm onWhite', () => {
       'py-2',
     ])
       expect(white.has(c) && tinted.has(c)).toBe(true)
+  })
+})
+
+// Rev 3 ruling 5 (owner 10-10): below a narrow width the right column stacks under the fields, as the
+// household editors always did. The classes key on the nearest @container, so they act only inside one.
+describe('EditorForm in a narrow container', () => {
+  it('stacks the dependent column under the fields inside a container under 40rem', () => {
+    render(
+      <div className="@container">
+        <EditorForm side={<span>side words</span>}>
+          <span>fields</span>
+        </EditorForm>
+      </div>
+    )
+    const form = screen.getByTestId('aid-editor-form')
+    expect(form).toHaveClass('@max-[40rem]:grid-cols-1')
+    expect(screen.getByText('side words').parentElement).toHaveClass(
+      '@max-[40rem]:border-l-0',
+      '@max-[40rem]:pl-0'
+    )
+    expect(screen.getByText('fields').parentElement).toHaveClass('@max-[40rem]:pr-0')
   })
 })
