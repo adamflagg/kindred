@@ -32,7 +32,7 @@ import { HH_LINK } from './householdStyles'
 import { EditorActions, EditorField, EditorForm, EditorGrid } from '../kit/EditorLayout'
 import { CS_BTN2 } from '../kit/csType'
 import { AidSegmented } from '../kit/Segmented'
-import { HouseholdForm } from './ReasonForm'
+import { HouseholdForm, REASON_PLACEHOLDER } from './ReasonForm'
 import { HH_GRID_ID, HH_GRID_NUMBER, HH_GRID_TEXT, HH_GRID_UNIT, HH_GRID_USED } from './gridFields'
 import { useSubmit } from './useSubmit'
 
@@ -122,6 +122,7 @@ function ReasonInput({
         id={boxId}
         aria-label="Reason"
         type="text"
+        placeholder={optional ? undefined : REASON_PLACEHOLDER}
         value={value}
         maxLength={2000}
         onChange={(event) => onChange(event.target.value)}

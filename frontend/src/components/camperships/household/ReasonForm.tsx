@@ -7,6 +7,9 @@ import { HH_AMBER_NOTE } from './householdStyles'
 /** The server's limit on a reason (`_Reason`, 2000). */
 const REASON_MAX = 2000
 
+/** What every required household reason box says while empty (owner 10-10, as #g6-shares draws it). */
+export const REASON_PLACEHOLDER = 'required, logged with your name'
+
 /** The words under every household editor, as the money editor has always said them. */
 export const EDITOR_KEYS = 'Enter saves · Esc cancels'
 
@@ -208,6 +211,7 @@ export function ReasonForm({
             ref={field}
             type="text"
             aria-label={label}
+            placeholder={required ? REASON_PLACEHOLDER : undefined}
             value={note}
             maxLength={REASON_MAX}
             onChange={(event) => setNote(event.target.value)}

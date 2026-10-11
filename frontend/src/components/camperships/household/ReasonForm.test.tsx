@@ -200,4 +200,26 @@ describe('ReasonForm: two columns and the footer (round 3)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Refuse' }))
     expect(screen.getByText("Say why you're refusing")).toBeInTheDocument()
   })
+
+  // Owner 10-10: every required household reason says it is required and logged, as #g6-shares draws it.
+  it('says a required reason is required and logged with your name', () => {
+    render(<ReasonForm label="Why" submitLabel="Send" onSubmit={vi.fn()} onCancel={vi.fn()} />)
+    expect(screen.getByLabelText('Why')).toHaveAttribute(
+      'placeholder',
+      'required, logged with your name'
+    )
+  })
+
+  it('claims nothing in an optional box', () => {
+    render(
+      <ReasonForm
+        label="Note (optional)"
+        required={false}
+        submitLabel="Reopen"
+        onSubmit={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+    expect(screen.getByLabelText('Note (optional)')).not.toHaveAttribute('placeholder')
+  })
 })

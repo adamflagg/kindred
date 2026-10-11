@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { REASON_POLICY } from './editor'
 import { EDITOR_PREVIEW_ROUND2 } from './fixtures'
+import { PILL, STATUS_TONE } from './kitStyles'
 import { RequestEditor, type EditorParts, type EditorPreview } from './RequestEditor'
 
 const READY: EditorPreview = EDITOR_PREVIEW_ROUND2
@@ -686,6 +687,10 @@ describe('RequestEditor: the Pending approval pill is amber (Rev 3)', () => {
   it('wears it in the panel too', () => {
     setup({ layout: 'panel', preview: { ...READY, pendingApproval: true } })
     expect(screen.getByText('Pending approval').className).toMatch(/amber/)
+  })
+  it('wears STATUS_TONE.note exactly, the token the Requests stage chip shares (owner 10-10)', () => {
+    setup({ preview: { ...READY, pendingApproval: true } })
+    expect(screen.getByText('Pending approval')).toHaveClass(...PILL[STATUS_TONE.note].split(' '))
   })
 })
 

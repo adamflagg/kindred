@@ -3,7 +3,7 @@
  * sends it on the row; the words are the server's (slice 1 Decision 6).
  */
 import type { ApiAidGridRow, ApiAidRound, ApiAidRowStage } from '../../../types/api-types'
-import type { PillTone } from '../kit/kitStyles'
+import { STATUS_TONE, type PillTone } from '../kit/kitStyles'
 
 /**
  * The server's ROUND_STATUS_LABELS (api/services/financial_aid_queues.py), word for word. The grid
@@ -45,11 +45,13 @@ export function roundTone(round: ApiAidRound): PillTone {
   return ROUND_TONE[round.round] ?? 'muted'
 }
 
-/** §4.5's tone for the server's stage code: on hold red, accepted emerald, cancelled stone, else the round's. */
+/** §4.5's tone for the server's stage code: on hold red, accepted emerald, cancelled stone, pending approval amber, else the round's. */
 function stageTone(stage: ApiAidRowStage): PillTone {
   if (stage.code === 'held') return 'red'
   if (stage.code === 'accepted') return 'emerald'
   if (stage.code === 'cancelled') return 'stone'
+  // Owner 10-10: "Pending approval" is amber everywhere, the household editor's pill's own token.
+  if (stage.code === 'pending_approval') return STATUS_TONE.note
   return stage.round === null ? 'muted' : (ROUND_TONE[stage.round] ?? 'muted')
 }
 
