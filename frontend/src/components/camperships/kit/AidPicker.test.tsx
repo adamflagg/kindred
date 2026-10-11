@@ -76,6 +76,30 @@ describe('AidPicker (single)', () => {
     expect(screen.getByRole('button', { name: /Program/ })).toHaveClass('h-[30px]', 'text-[13.5px]')
   })
 
+  // Owner 10-10 (conformance gap 1): a name picker (household or camper names) fills its column in the
+  // editor and cuts only beyond it; the other pickers stay compact, sized to what they hold.
+  it('fills its column when asked (`fill`), the label cut only past it; compact otherwise', () => {
+    const { rerender } = render(
+      <AidPicker
+        label="Program"
+        size="field"
+        fill
+        value="all"
+        options={PROGRAMS}
+        onChange={vi.fn()}
+      />
+    )
+    const button = screen.getByRole('button', { name: /Program/ })
+    expect(button).toHaveClass('w-full', 'min-w-0', 'justify-between')
+    expect(button.parentElement).toHaveClass('flex', 'w-full', 'min-w-0')
+    expect(button.querySelector('span')).toHaveClass('truncate')
+    rerender(
+      <AidPicker label="Program" size="field" value="all" options={PROGRAMS} onChange={vi.fn()} />
+    )
+    expect(screen.getByRole('button', { name: /Program/ })).not.toHaveClass('w-full')
+    expect(screen.getByRole('button', { name: /Program/ }).parentElement).toHaveClass('inline-flex')
+  })
+
   it('can be switched off', () => {
     render(<AidPicker label="Program" disabled value="all" options={PROGRAMS} onChange={vi.fn()} />)
     expect(screen.getByRole('button', { name: /Program/ })).toBeDisabled()

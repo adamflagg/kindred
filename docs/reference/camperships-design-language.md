@@ -57,11 +57,11 @@ Where Camperships deliberately differs from summer, the reason is stated at that
 | 7 | Grids: card-white cells, a rule on every column, headers on one line | `TD`, `TH`, `CS_RULE`, `CS_RULE_GROUP` |
 | 8 | One green band for every section row and total row | `CS_BAND`, `CS_BAND_WARN`, `TFOOT_CELL`, `ROW_TOTAL` |
 | 9 | Chips are one line, 11.5px/600, in sentence case | `StatusPill`, `PILL` |
-| 10 | Footnote marks are 0.72em. At most 6 notes, each with its term in bold | `DefRef`, `DefinitionNotes`, `NOTES_CAP` |
+| 10 | Footnote marks are 0.72em. At most 6 notes, each with its term in bold | `DefRef`, `DefinitionNotes`, `NOTES_CAP`, `notesCap.guard.test.ts` |
 | 11 | Every truncated text carries a native `title` | `Cut`, `AidColumn.title` |
 | 12 | A single-choice view filter is the segmented well. Only the Requests pipeline uses the stage strip | `AidSegmented`; `CS_STRIP` |
 | 13 | A scroll box is a bounded card in the page flow, never sticky to the window | `bounded`, `scrollBox`, `CS_BOUNDED`, `useFitToViewport` |
-| 14 | Editors are wide and short. Dependent choices are shown switched off, never hidden | `EditorForm`, `EditorGrid`, `EditorField`, `EditorActions` |
+| 14 | Editors are wide and short. Dependent choices are shown switched off, never hidden. The card is white on a surface that is not white, and band-tinted on a white one | `EditorForm` (`onWhite`), `EditorGrid`, `EditorField`, `EditorActions` |
 | 15 | Page chrome: the band is 80px, 4px to the tabs, 10px to the toolbar | `AidPageHead`, `AidPageBand`, `AidTabNav` |
 | 16 | Figures sit in figure cards | `AidFoldCard`, `AidCards`, `AidMeter` |
 | 17 | Session names use the ruled tiny, short and full forms | `aidSessionName`, `aidTinyName`, `aidCellShortName` |
@@ -111,7 +111,8 @@ A line that **replaces** the table (loading, failed, empty) is allowed. So is a 
 
 ## 3. Pickers and dates
 
-- **Every select is `AidPicker`** (`kit/AidPicker.tsx`), in toolbars and editors alike. It is a Headless UI `Listbox` dressed in `CS_PICKER*`: card white, a 26px button with a chevron and a light shadow, a white card popover with a 200ms fade, a ✓ on the picked option, and optional group headings (programs under their pool). `size="field"` gives the 30px editor size. **New Camperships code uses no native `<select>`.** (Six remain in the household editors, `household/CaseworkForms.tsx`, `CancelForm.tsx` and `SetCostForm.tsx`; they move to `AidPicker size="field"`, and the guard grows to cover them then.) `kitPrimitives.guard.test.ts` fails on a Headless UI `Listbox` imported outside `kit/`.
+- **Every select is `AidPicker`** (`kit/AidPicker.tsx`), in toolbars and editors alike. It is a Headless UI `Listbox` dressed in `CS_PICKER*`: card white, a 26px button with a chevron and a light shadow, a white card popover with a 200ms fade, a ✓ on the picked option, and optional group headings (programs under their pool). `size="field"` gives the 30px editor size. **Camperships uses no native `<select>`.** `kitPrimitives.guard.test.ts` fails on one anywhere in Camperships, and on a Headless UI `Listbox` imported outside `kit/`.
+- **A name picker fills its column; every other picker stays compact.** A picker of household or camper names (Payer Shares' Household, Keep the Other Request's Keep) takes `fill`: it fills its column in the editor and cuts the name only beyond it, with the whole name in its title. Any other picker is sized to what it holds.
 - **Multi-choice is `AidPickerMulti`.** Each option has a checkbox, and the popover stays open while staff check. The button names the picks while they fit (about 22 characters) and counts them past that ("2 groups"). The title lists every name (`multiPickerWords`, `kit/pickerWords.ts`).
 - **A date is `<input type="date">`** dressed as `CS_DATE` (26px) or `CS_DATE_FIELD` (30px). Never offer a list of preset dates.
 - **Why the fill differs from summer's picker:** summer's `.listbox-button-compact` is page cream. It reads as white only because it floats on a white card header. Camperships controls sit straight on the parchment page, where a cream control disappears. So `AidPicker` keeps summer's behaviour and shape and takes the card fill (`--card`, one step lighter than the page in dark mode).
@@ -141,12 +142,13 @@ A line that **replaces** the table (loading, failed, empty) is allowed. So is a 
 - **Words are short and in sentence case.** In chips, "CM" stands for CampMinder: `Committed · not in CM`, `✓ in CM · Apr 3`, `split · 2`. Sentences say CampMinder in full.
 - **A mark that must never be cut sits before text that may be cut.** For example, a cancellation is `CancelMark` (a muted ⊘ before the name), never a chip at the end of the row.
 - **A household-level request** shows ⌂ and the household label (`HouseholdLabelText`, `household/HouseholdLabel.tsx`), never "Household request".
+- **Household chips** (`HOUSEHOLD_CHIP`) are sky, purple and plain forest (`CS_OK_BG` / `CS_OK_INK`) for the first three households, and neutral after. Each household card's stripe matches its chip.
 
 ## 7. Footnotes
 
 - **A mark is `DefRef`:** a `<sup>` at **0.72em**, 500 weight, muted (`CS_SUP`). Its `title` carries the note's words.
 - **Notes are `DefinitionNotes`** (11.5/16 muted, `CS_NOTES`), fed from the server registry through `AidDefinitionNotes` (`shell/`). Each note reads **Term:** definition, with the term in bold, in one or two lines.
-- **At most 6 notes per page view** (`NOTES_CAP`, `notesOverCap` in `kit/notesCap.ts`). Merge overlapping definitions. Delete notes that restate a header, describe what is visible, or state a data rule rather than a figure. A surface's registry list lives in `bunking/financial_aid/definitions.py` `SURFACES`.
+- **At most 6 notes per page view** (`NOTES_CAP`, `notesOverCap` in `kit/notesCap.ts`). `notesCap.guard.test.ts` holds the cap: it counts each page's server notes (`SURFACES`) plus the notes the page adds itself, and fails above 6. A page that adds its own notes must be listed there. Merge overlapping definitions. Delete notes that restate a header, describe what is visible, or state a data rule rather than a figure. A surface's registry list lives in `bunking/financial_aid/definitions.py` `SURFACES`.
 - **No trailing paragraphs after a table**, and no internal ids (D123, RPT-9) in any note, header or label.
 
 ## 8. Truncation
@@ -181,6 +183,8 @@ A line that **replaces** the table (loading, failed, empty) is allowed. So is a 
 - **A dependent choice is shown switched off, never hidden**, while its parent is unchecked (`EditorField off`). The editor never changes height.
 - **Buttons sit on one row, in Title Case** ("Save Funder", "Back"). The required-field reason or the logged-with-who line sits on that same row (`EditorActions`). Any other sentence goes in the footer row, not a row of its own.
 - An editor opened from a row takes the whole opened row.
+- **White on not white, green on white** (owner, 2026-10-10). The editor card is white (`CS_EDITOR`) wherever it sits on a surface that is not white: the page, an opened row's cream, a popover. On a WHITE surface, inside a white card or table, it takes the band tint: `EditorForm onWhite` (`CS_EDITOR_ON_WHITE`: `CS_BAND` and the band's edge colour, `CS_BAND_BORDER`). That covers every household editor, the household's grant editors (Add a Commitment…, Place on a Camper…) and To place's "Left at family level › Reopen…". It is ONE card: `onWhite` swaps only the colour classes, and `EditorLayout.test.tsx` fails if the two ever differ in anything else. Never draw a second editor card.
+- **Season › Rules is a documented exception.** Its section editors keep the grouped single-column layout, so expenses and savings stay together and each help sentence stays visible. Its buttons, error paths included, are the kit's 26px `CS_BTN` / `CS_BTN2`.
 
 ## 12. Page chrome
 
@@ -233,7 +237,7 @@ A line that **replaces** the table (loading, failed, empty) is allowed. So is a 
 ## Adding to the kit
 
 1. **A pattern the kit lacks goes into `kit/` first, with its tests.** Then it gets a rule here naming the export. A page never grows a private near-copy of a picker, toolbar, table, CSV button or chip.
-2. **Tokens live in `kit/csType.ts`.** Exports marked `@deprecated` (`CS_SELECT`, `CS_SELECT_CTL`, `CS_INPUT`, `CS_BTN_TOOL`, `PILL.emerald`) exist only so older call sites keep rendering correctly. New code never uses them.
+2. **Tokens live in `kit/csType.ts`.** Exports marked `@deprecated` (`CS_BTN_TOOL`, `PILL.emerald`) exist only so older call sites keep rendering correctly. New code never uses them.
 3. **Visual changes hold for the owner.** Every Camperships screen has an approved mock. A change matches that mock and this guide before it is called merge-ready, and anything with visual impact waits for the owner's eyes before merge.
 4. **Change a rule here, not in one place.** If a rule turns out wrong, change it in this document and the kit together. Never work around it on a single page.
 

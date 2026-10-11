@@ -103,20 +103,14 @@ describe('CS_EMPTY (chrome-8)', () => {
 describe('csType carries the final design language (design-language.md)', () => {
   const classes = (value: string) => value.split(/\s+/)
 
-  it.each([
-    'CS_PICKER',
-    'CS_SELECT',
-    'CS_SEARCH',
-    'CS_BTN',
-    'CS_BTN2',
-    'CS_BTN_CSV',
-    'CS_DATE',
-    'CS_SEG_WELL',
-  ])('§2: %s is one 26px control', (name) => {
-    expect(classes((cs as unknown as Record<string, string>)[name] ?? '')).toContain('h-[26px]')
-  })
+  it.each(['CS_PICKER', 'CS_SEARCH', 'CS_BTN', 'CS_BTN2', 'CS_BTN_CSV', 'CS_DATE', 'CS_SEG_WELL'])(
+    '§2: %s is one 26px control',
+    (name) => {
+      expect(classes((cs as unknown as Record<string, string>)[name] ?? '')).toContain('h-[26px]')
+    }
+  )
 
-  it.each(['CS_PICKER', 'CS_SELECT', 'CS_SEARCH', 'CS_BTN2', 'CS_BTN_CSV', 'CS_DATE'])(
+  it.each(['CS_PICKER', 'CS_SEARCH', 'CS_BTN2', 'CS_BTN_CSV', 'CS_DATE'])(
     '§3: %s is card white at 12.5px',
     (name) => {
       const value = classes((cs as unknown as Record<string, string>)[name] ?? '')
@@ -126,7 +120,7 @@ describe('csType carries the final design language (design-language.md)', () => 
     }
   )
 
-  it.each(['CS_PICKER_FIELD', 'CS_INPUT', 'CS_FIELD', 'CS_DATE_FIELD'])(
+  it.each(['CS_PICKER_FIELD', 'CS_FIELD', 'CS_DATE_FIELD'])(
     '§2: %s is the 30px, 13.5px editor field on card white',
     (name) => {
       const value = classes((cs as unknown as Record<string, string>)[name] ?? '')
@@ -137,10 +131,17 @@ describe('csType carries the final design language (design-language.md)', () => 
   )
 
   it('keeps the retired names as aliases until the screens move off them', () => {
-    expect(cs.CS_SELECT_CTL).toBe(cs.CS_SELECT)
     expect(cs.CS_BTN_TOOL).toBe(cs.CS_BTN_CSV)
-    expect(cs.CS_INPUT).toBe(cs.CS_FIELD)
   })
+
+  // Conformance gap 5 (owner 10-10): the last screens moved off the native-select and old-box names
+  // (every select is AidPicker, every editor box CS_FIELD, the Scenarios date CS_DATE), so they are gone.
+  it.each(['CS_SELECT', 'CS_SELECT_CTL', 'CS_INPUT'])(
+    'no longer exports the retired %s',
+    (name) => {
+      expect(name in cs).toBe(false)
+    }
+  )
 
   it('§1: a filter label is 12.5px muted', () => {
     expect(classes(cs.CS_FLABEL)).toEqual(

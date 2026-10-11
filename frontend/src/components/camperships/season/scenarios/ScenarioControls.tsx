@@ -1,14 +1,7 @@
 import { useCallback, useRef, useState, type ReactNode } from 'react'
 
 import type { AidRequestSet } from '../../../../services/camperships/aidApi'
-import {
-  CS_BTN,
-  CS_BTN2,
-  CS_INPUT,
-  CS_SELECT_CTL,
-  CS_SMALL,
-  CS_TOOLBAR_LEAD,
-} from '../../kit/csType'
+import { CS_BTN, CS_BTN2, CS_FIELD, CS_DATE, CS_SMALL, CS_TOOLBAR_LEAD } from '../../kit/csType'
 import type { LoadFrom } from '../../../../hooks/camperships/useAidScenarioDraft'
 import { AidPicker } from '../../kit/AidPicker'
 import { campToday } from '../../kit/dates'
@@ -62,7 +55,7 @@ export function RenameBox({
   return (
     <input
       aria-label={`Name of ${code}`}
-      className={CS_INPUT}
+      className={CS_FIELD}
       style={{ width }}
       value={value}
       onChange={(event) => setValue(event.target.value)}
@@ -321,7 +314,7 @@ export function ScenarioControls(props: {
               <input
                 type="date"
                 aria-label="Price through"
-                className={CS_SELECT_CTL}
+                className={CS_DATE}
                 value={props.price.date}
                 onChange={(event) => {
                   if (event.target.value !== '')

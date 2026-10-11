@@ -382,6 +382,17 @@ describe('Money › To place (§8.1)', () => {
     })
   })
 
+  // Owner 10-10: the "Left at family level" table is white, so its Reopen editor takes the band tint
+  // (EditorForm onWhite); the editors in an opened line's cream stay the white card.
+  it('draws Reopen… in the band tint, as it opens inside the white left-lines table', async () => {
+    renderTab()
+    const left = await screen.findByTestId('left-lines')
+    await userEvent.click(within(left).getByRole('button', { name: 'Reopen…' }))
+    const card = within(left).getByTestId('aid-editor-form').parentElement
+    expect(card?.className).toContain('var(--color-forest-200)_24%')
+    expect(card).not.toHaveClass('bg-card')
+  })
+
   it('shows view-only staff the line and its preview, and no way to change it', async () => {
     granted = ['financial_aid.view']
     renderTab()

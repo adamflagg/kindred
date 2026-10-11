@@ -9,6 +9,10 @@ import { useEditorExits, type EditorExits } from './editorExits'
 import { applicationOut, householdPage, householdRequest, requestOut } from './householdFixtures'
 import type { DuplicateWaitingOut } from '../../../types/api-generated'
 import { WorkingRequestCard } from './WorkingRequestCard'
+import { aidPicker, chooseAid, queryAidPicker } from '../../../test/aidPicker'
+
+/** A form's field by its label: a typed box, or (conformance gap 1) the kit picker. */
+const queryField = (label: string) => screen.queryByLabelText(label) ?? queryAidPicker(label)
 
 const cancel = vi.fn()
 const manual = vi.fn()
@@ -187,7 +191,7 @@ describe('WorkingRequestCard (§6.3, casework)', () => {
   it('cancels a request with one of the nine reasons', async () => {
     renderCards([ROW_EMMA])
     await userEvent.click(screen.getByRole('button', { name: 'Cancel Request…' }))
-    await userEvent.selectOptions(screen.getByLabelText('Cancel reason'), 'medical')
+    await chooseAid('Cancel reason', 'medical')
     await userEvent.click(screen.getByRole('button', { name: 'Cancel the Request' }))
     expect(cancel).toHaveBeenCalledWith({
       requestId: 'reqemma00000001',
@@ -279,7 +283,7 @@ describe('WorkingRequestCard reopen, liveness and approval', () => {
     })
     renderCards([ROW_EMMA])
     await userEvent.click(screen.getByRole('button', { name: 'Cancel Request…' }))
-    await userEvent.selectOptions(screen.getByLabelText('Cancel reason'), 'medical')
+    await chooseAid('Cancel reason', 'medical')
     await userEvent.click(screen.getByRole('button', { name: 'Cancel the Request' }))
     await userEvent.click(screen.getByRole('button', { name: 'Put on Hold…' }))
     await act(async () => {
@@ -336,9 +340,9 @@ describe('WorkingRequestCard exits (F2 4/5: every page-owned exit goes through t
       requestId: 'reqolivia000003',
       body: { round: 2, amount: 1300, asked_on: '2027-04-09', note: 'Family emailed (Apr 9)' },
     })
-    expect(screen.queryByLabelText(field)).toBeNull()
+    expect(queryField(field)).toBeNull()
     settle()
-    expect(screen.getByLabelText(field)).toBeInTheDocument()
+    expect(queryField(field)).toBeInTheDocument()
     expect(screen.queryByLabelText('Round 2 ask')).toBeNull()
   })
 
@@ -351,7 +355,7 @@ describe('WorkingRequestCard exits (F2 4/5: every page-owned exit goes through t
     act(() => call?.onError?.(new Error('The server said no')))
     expect(screen.getByLabelText('Round 2 ask')).toHaveValue('1300')
     expect(screen.getByText('The server said no')).toBeInTheDocument()
-    expect(screen.queryByLabelText('Cancel reason')).toBeNull()
+    expect(queryAidPicker('Cancel reason')).toBeNull()
   })
 
   it('opens one editor per page: another card saves the open one first', async () => {
@@ -555,9 +559,9 @@ describe('WorkingRequestCard: the casework forms', () => {
   it('opens a form in place, and Back closes it', async () => {
     renderCards([ROW_EMMA])
     await userEvent.click(screen.getByRole('button', { name: 'Payer Shares…' }))
-    expect(screen.getByLabelText('Household')).toBeInTheDocument()
+    expect(aidPicker('Household')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Back' }))
-    expect(screen.queryByLabelText('Household')).toBeNull()
+    expect(queryAidPicker('Household')).toBeNull()
   })
 
   it("leaves the card's money editor before opening a form: one open editor", async () => {
@@ -566,7 +570,7 @@ describe('WorkingRequestCard: the casework forms', () => {
     expect(screen.getByLabelText('Round 2 ask')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Payer Shares…' }))
     expect(screen.queryByLabelText('Round 2 ask')).toBeNull()
-    expect(screen.getByLabelText('Household')).toBeInTheDocument()
+    expect(aidPicker('Household')).toBeInTheDocument()
   })
 
   it('closes the money editor of another card when a form opens on this one', async () => {
@@ -575,7 +579,7 @@ describe('WorkingRequestCard: the casework forms', () => {
     const shares = screen.getAllByRole('button', { name: 'Payer Shares…' })
     await userEvent.click(shares[1]!)
     expect(screen.queryByLabelText('Round 2 ask')).toBeNull()
-    expect(screen.getByLabelText('Household')).toBeInTheDocument()
+    expect(aidPicker('Household')).toBeInTheDocument()
   })
 
   const UNSETTLED = {
@@ -587,9 +591,9 @@ describe('WorkingRequestCard: the casework forms', () => {
   it('drops a form once the request no longer takes it (a refetch moved the status)', async () => {
     const { rerender } = render(<Cards rows={[UNSETTLED]} />)
     await userEvent.click(screen.getByRole('button', { name: 'Settle Session…' }))
-    expect(screen.getByLabelText('Session')).toBeInTheDocument()
+    expect(aidPicker('Session')).toBeInTheDocument()
     rerender(<Cards rows={[{ ...UNSETTLED, request_status: 'active' }]} />)
-    expect(screen.queryByLabelText('Session')).toBeNull()
+    expect(queryAidPicker('Session')).toBeNull()
   })
 
   it('a save that removes its own offer unmounts its form mid-save: no error, and the card is free after', async () => {
@@ -599,18 +603,18 @@ describe('WorkingRequestCard: the casework forms', () => {
     })
     const { rerender } = render(<Cards rows={[UNSETTLED]} />)
     await userEvent.click(screen.getByRole('button', { name: 'Settle Session…' }))
-    await userEvent.selectOptions(screen.getByLabelText('Session'), '1000101')
+    await chooseAid('Session', 'Session 2')
     await userEvent.type(screen.getByLabelText('Reason'), 'Registered for Session 2{Enter}')
     // The refetch lands before the write's promise resolves, and the row is no longer unmatched.
     rerender(<Cards rows={[{ ...UNSETTLED, request_status: 'active' }]} />)
-    expect(screen.queryByLabelText('Session')).toBeNull()
+    expect(queryAidPicker('Session')).toBeNull()
     await act(async () => {
       settle()
       await resolveGate
     })
     expect(screen.queryByText(/Couldn|required|refused/)).toBeNull()
     await userEvent.click(screen.getByRole('button', { name: 'Payer Shares…' }))
-    expect(screen.getByLabelText('Household')).toBeInTheDocument()
+    expect(aidPicker('Household')).toBeInTheDocument()
   })
 
   it("re-clicking a form's own button during its save is a no-op, so the saved form still closes (m1)", async () => {
@@ -627,7 +631,7 @@ describe('WorkingRequestCard: the casework forms', () => {
       settle()
       await shareGate
     })
-    expect(screen.queryByLabelText('Household')).toBeNull()
+    expect(queryAidPicker('Household')).toBeNull()
   })
 })
 
@@ -642,9 +646,9 @@ describe('WorkingRequestCard: every form closes on Esc as soon as it opens', () 
   ])('%s', async (button, field, row) => {
     renderCards([row])
     await userEvent.click(screen.getByRole('button', { name: button }))
-    expect(screen.getByLabelText(field)).toBeInTheDocument()
+    expect(queryField(field)).toBeInTheDocument()
     await userEvent.keyboard('{Escape}')
-    expect(screen.queryByLabelText(field)).toBeNull()
+    expect(queryField(field)).toBeNull()
   })
 })
 

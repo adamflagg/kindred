@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 import { householdPage, SPLIT_PAGE, TIED_PAGE } from './householdFixtures'
 import { HouseholdCards } from './HouseholdCards'
+import { stripeOf } from './householdStyles'
 
 describe('HouseholdCards (§6.3 item 2; D32)', () => {
   it('chips carry the short name when there is one, else the family name (O3)', () => {
@@ -200,5 +201,13 @@ describe('HouseholdCards (§6.3 item 2; D32)', () => {
       .closest('[data-household]') as HTMLElement
     expect(within(johnson).getByText('household 1000001')).toBeInTheDocument()
     expect(within(johnson).queryByText(/·\s*$/)).toBeNull()
+  })
+})
+
+// Conformance gap 3 (owner 10-10): chip 3 is forest now, and each card's stripe matches its chip (D32).
+describe('the household stripe', () => {
+  it('is forest on the third household, as its chip is: emerald is retired (design language §9)', () => {
+    expect(stripeOf(3)).toContain('--color-forest-')
+    expect(stripeOf(3)).not.toContain('emerald')
   })
 })

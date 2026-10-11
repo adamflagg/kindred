@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { aidOptions, aidPicker, chooseAid } from '../../../test/aidPicker'
 import { gridRow, ROW_EMMA } from '../requests/gridFixtures'
 import {
   DuplicateForm,
@@ -117,7 +118,7 @@ describe('IncomeCorrection (main spec §9.3)', () => {
     }
     render(<IncomeCorrection page={PAGE} income={income} answer={flag} />)
     await userEvent.click(screen.getByRole('button', { name: 'Correct…' }))
-    await userEvent.selectOptions(screen.getByLabelText(answerWords('single_parent')), 'false')
+    await chooseAid(answerWords('single_parent'), 'No')
     await userEvent.type(screen.getByLabelText('Reason'), 'Not single after all{Enter}')
     expect(spies.correction).toHaveBeenCalledWith({
       year: 2027,
@@ -388,7 +389,7 @@ describe('Correct… where the forms disagree: quick picks (round 3, section 3)'
 describe('ShareForm (main spec §9.2)', () => {
   it("sets another household's share as a percentage", async () => {
     render(<ShareForm request={SPLIT_PAGE.requests[0]!} page={SPLIT_PAGE} onDone={done} />)
-    await userEvent.selectOptions(screen.getByLabelText('Household'), '1000003')
+    await chooseAid('Household', '2 · The Garcia Family')
     await userEvent.type(screen.getByLabelText('Share'), '40')
     await userEvent.type(screen.getByLabelText('Reason'), 'Parents agreed 60/40{Enter}')
     expect(spies.share).toHaveBeenCalledWith({
@@ -400,11 +401,9 @@ describe('ShareForm (main spec §9.2)', () => {
 
   // #3025 (owner, 2026-10-05): the household list names each by its label, its tie-break after it
   // (an <option> holds plain text only, so the tie-break follows a separator rather than greyed).
-  it('lists the households by label, each tie-break after it, the chip number first', () => {
+  it('lists the households by label, each tie-break after it, the chip number first', async () => {
     render(<ShareForm request={TIED_PAGE.requests[0]!} page={TIED_PAGE} onDone={done} />)
-    const options = Array.from(screen.getByLabelText<HTMLSelectElement>('Household').options).map(
-      (o) => o.textContent
-    )
+    const options = await aidOptions('Household')
     expect(options).toEqual([
       '1 · Pat Garcia · Riverside, CA',
       '2 · Pat Garcia · #1000003',
@@ -412,11 +411,9 @@ describe('ShareForm (main spec §9.2)', () => {
     ])
   })
 
-  it('keeps the family name in the household list while the server sends no label', () => {
+  it('keeps the family name in the household list while the server sends no label', async () => {
     render(<ShareForm request={SPLIT_PAGE.requests[0]!} page={SPLIT_PAGE} onDone={done} />)
-    const options = Array.from(screen.getByLabelText<HTMLSelectElement>('Household').options).map(
-      (o) => o.textContent
-    )
+    const options = await aidOptions('Household')
     expect(options.slice(0, 2)).toEqual(['1 · The Johnson Family', '2 · The Garcia Family'])
   })
 
@@ -434,7 +431,7 @@ describe('ShareForm (main spec §9.2)', () => {
 
   it('adds a household that is not on the page by its CampMinder id', async () => {
     render(<ShareForm request={SPLIT_PAGE.requests[0]!} page={SPLIT_PAGE} onDone={done} />)
-    await userEvent.selectOptions(screen.getByLabelText('Household'), 'other')
+    await chooseAid('Household', 'Another household…')
     await userEvent.type(screen.getByLabelText('Household id'), '1000099')
     await userEvent.type(screen.getByLabelText('Share'), '25')
     await userEvent.type(screen.getByLabelText('Reason'), 'Third payer{Enter}')
@@ -500,8 +497,8 @@ describe('SessionForm, DuplicateForm, HeadcountForm', () => {
   it('settles the session from the candidates on the row, with no application read', async () => {
     application = undefined
     render(<SessionForm request={householdRequest(UNSETTLED)} onDone={done} />)
-    expect(screen.getByRole('option', { name: 'Session 3' })).toBeInTheDocument()
-    await userEvent.selectOptions(screen.getByLabelText('Session'), '1000101')
+    expect(await aidOptions('Session')).toContain('Session 3')
+    await chooseAid('Session', 'Session 2')
     await userEvent.type(screen.getByLabelText('Reason'), 'Registered for Session 2{Enter}')
     expect(spies.session).toHaveBeenCalledWith({
       requestId: 'reqemma00000001',
@@ -554,10 +551,8 @@ describe('SessionForm, DuplicateForm, HeadcountForm', () => {
         onDone={done}
       />
     )
-    expect(
-      // Owner call 10-05 late: plain words, no raw id, until duplicates_waiting names it.
-      screen.getByRole('option', { name: 'the request this one duplicates' })
-    ).toBeInTheDocument()
+    // Owner call 10-05 late: plain words, no raw id, until duplicates_waiting names it.
+    expect(await aidOptions('Keep')).toContain('the request this one duplicates')
     await userEvent.type(screen.getByLabelText('Reason'), 'Second parent filed it{Enter}')
     expect(spies.duplicate).toHaveBeenCalledWith({
       requestId: 'reqemmadup00009',
@@ -565,7 +560,7 @@ describe('SessionForm, DuplicateForm, HeadcountForm', () => {
     })
   })
 
-  it('names the holder intake named by camper and session when it is on this page, though the pending row names no program', () => {
+  it('names the holder intake named by camper and session when it is on this page, though the pending row names no program', async () => {
     // The live read sends a pending duplicate's program as null (synthetic seed 9100133), so the
     // camper-and-session match misses its holder; the holder is still the card beside it.
     const pending = householdRequest(
@@ -587,12 +582,12 @@ describe('SessionForm, DuplicateForm, HeadcountForm', () => {
     })
     const page = householdPage({ requests: [pending, householdRequest(ROW_EMMA)] })
     render(<DuplicateForm request={pending} page={page} onDone={done} />)
-    const options = screen.getAllByRole('option').map((option) => option.textContent)
+    const options = await aidOptions('Keep')
     // Owner call 10-05 late: camper · session, no raw id.
     expect(options).toEqual([`Emma Johnson · ${ROW_EMMA.session_name}`])
   })
 
-  it('shows the id only to tell apart two options that would read the same (owner 10-05, as the label tie-break)', () => {
+  it('shows the id only to tell apart two options that would read the same (owner 10-05, as the label tie-break)', async () => {
     const pending = householdRequest(
       gridRow({ ...ROW_EMMA, request_id: 'reqemmadup00009', request_status: 'duplicate_pending' })
     )
@@ -602,7 +597,7 @@ describe('SessionForm, DuplicateForm, HeadcountForm', () => {
     const twin = householdRequest(gridRow({ ...ROW_EMMA, request_id: 'reqemma00000002' }))
     const page = householdPage({ requests: [pending, householdRequest(ROW_EMMA), twin] })
     render(<DuplicateForm request={pending} page={page} onDone={done} />)
-    const options = screen.getAllByRole('option').map((option) => option.textContent)
+    const options = await aidOptions('Keep')
     expect(options).toEqual([
       `Emma Johnson · ${ROW_EMMA.session_name} · reqemma00000001`,
       `Emma Johnson · ${ROW_EMMA.session_name} · reqemma00000002`,
@@ -645,7 +640,7 @@ describe('SessionForm, DuplicateForm, HeadcountForm', () => {
     expect(done).toHaveBeenCalledTimes(2)
   })
 
-  it('does not list the named holder twice when it is on the page', () => {
+  it('does not list the named holder twice when it is on the page', async () => {
     const pending = householdRequest(
       gridRow({ request_id: 'reqemmadup00009', request_status: 'duplicate_pending' })
     )
@@ -654,7 +649,7 @@ describe('SessionForm, DuplicateForm, HeadcountForm', () => {
     })
     const page = householdPage({ requests: [householdRequest(ROW_EMMA), pending] })
     render(<DuplicateForm request={pending} page={page} onDone={done} />)
-    expect(screen.getAllByRole('option')).toHaveLength(1)
+    expect(await aidOptions('Keep')).toHaveLength(1)
   })
 
   it('sets a Family Camp headcount, starting from what the application holds', async () => {
@@ -878,7 +873,8 @@ describe('casework forms in two columns (round 3)', () => {
     expect(side()).toHaveTextContent(
       "With one other household on this request, this tool fills the other household's share."
     )
-    for (const label of ['Household', 'Share', 'Reason'])
+    expect(side()).not.toContainElement(aidPicker('Household'))
+    for (const label of ['Share', 'Reason'])
       expect(side()).not.toContainElement(screen.getByLabelText(label))
   })
 

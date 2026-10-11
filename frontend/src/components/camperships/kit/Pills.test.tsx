@@ -148,10 +148,18 @@ describe('HouseholdChip (D32)', () => {
   it.each([
     [1, 'Johnson', 'bg-sky-100'],
     [2, 'Garcia', 'bg-purple-100'],
-    [3, 'Chen', 'bg-emerald-100'],
+    // Conformance gap 3 (owner 10-10, "chip color is fine"): chip 3 is the kit's plain forest ok tone.
+    [3, 'Chen', 'text-forest-800'],
   ] as const)('shows household %i · %s in its colour', (index, name, hue) => {
     render(<HouseholdChip index={index} name={name} />)
     expect(screen.getByText(`${index} · ${name}`)).toHaveClass(hue)
+  })
+
+  it('draws chip 3 in the forest ok tone (CS_OK_BG / CS_OK_INK), never emerald', () => {
+    render(<HouseholdChip index={3} name="Chen" />)
+    const chip = screen.getByText('3 · Chen')
+    expect(chip.className).toContain('bg-[color-mix(in_oklab,var(--color-forest-200)_55%')
+    expect(chip.className).not.toContain('emerald')
   })
 
   it.each([4, 7, 12])(

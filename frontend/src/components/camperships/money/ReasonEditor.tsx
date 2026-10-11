@@ -24,6 +24,7 @@ export function ReasonEditor({
   cancelLabel = 'Back',
   requiredWords,
   placeholder = 'required',
+  onWhite = false,
 }: {
   title: string
   label: string
@@ -39,6 +40,8 @@ export function ReasonEditor({
   requiredWords?: string
   /** The field's placeholder: the mocks draw "required" (Funders' Retire: "required, logged"). */
   placeholder?: string
+  /** It opens inside a white table or card (To place's left lines): the band tint (EditorForm onWhite). */
+  onWhite?: boolean
 }) {
   const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -87,6 +90,7 @@ export function ReasonEditor({
         <EditorForm
           title={title}
           heading="phead"
+          onWhite={onWhite}
           actions={
             <EditorActions reason={hint}>
               <button type="submit" className={CS_BTN} disabled={busy}>

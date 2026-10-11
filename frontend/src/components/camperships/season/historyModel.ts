@@ -14,6 +14,7 @@ import { OFFSET_WORDS } from '../grants/registerModel'
 import { aidHref, type AidView } from '../kit/asOf'
 import { formatCampDateTime, formatLongDate, parseIsoDay } from '../kit/dates'
 import { CANCEL_REASON_OPTIONS } from '../kit/editor'
+import type { DefinitionNote } from '../kit/DefinitionNotes'
 import type { PillTone } from '../kit/kitStyles'
 import { formatMoney } from '../kit/money'
 import { aidSessionName } from '../kit/sessionShort'
@@ -1147,3 +1148,22 @@ export function openLinks(
       : null
   return { households, fullList, manyFamilies, rules, nothing }
 }
+
+/** The mock's notes (history-10): History defines no money figure, so they are the page's own words. */
+export const HISTORY_NOTES: readonly DefinitionNote[] = [
+  {
+    n: 1,
+    term: 'Amounts',
+    text: 'Amounts: as locked or entered at that moment; the log never recomputes them.',
+  },
+  {
+    n: 2,
+    term: 'Household timeline',
+    text: "Household timeline: each request's own history stays on its household page; this tab is the season-wide log.",
+  },
+  {
+    n: 3,
+    term: 'Scenarios',
+    text: 'Scenarios: its edits stay in Scenarios; making a kept option the rules draft shows here as a Rules operation.',
+  },
+]
