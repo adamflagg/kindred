@@ -12,6 +12,7 @@ import { DuplicateForm, HeadcountForm, KeepThisForm, SessionForm, ShareForm } fr
 import { ClearCostForm, SetCostForm } from './SetCostForm'
 import { twinName, useDuplicatePair } from './duplicatePair'
 import { isLiveRequest } from '../requests/gridEditor'
+import { cancelled } from '../requests/ticks'
 import type { EditorExits } from './editorExits'
 import { ReleasedHolds } from './HoldActions'
 import { PairKeepForm } from './PairKeepForm'
@@ -20,7 +21,12 @@ import { HH_BUTTON, HH_DETAILS_BUTTON } from './householdStyles'
 import { OtherRequestLink } from './OtherRequestLink'
 import { ReasonForm } from './ReasonForm'
 import { RequestCard } from './RequestCard'
-import { RoundChecklist, RoundNextAction } from './RoundActions'
+import {
+  RoundChecklist,
+  RoundDecisionForm,
+  RoundNextAction,
+  type DecisionKind,
+} from './RoundActions'
 
 type Open =
   | { readonly kind: 'edit'; readonly edit: CardEditKind }
@@ -72,6 +78,8 @@ export function WorkingRequestCard({
   const cancellation = useAidCancellation()
   const manual = useAidManualHold()
   const [open, setOpen] = useState<Open>(null)
+  // Finance's Approve… / Refuse…: its form is a full-width row under the Round 3 line (#g6-decide).
+  const [deciding, setDeciding] = useState<DecisionKind | null>(null)
   const editorRef = useRef<CardEditorHandle>(null)
   const requestId = request.row.request_id
   const leaveOwn = useCallback((go: () => void) => {
@@ -291,8 +299,23 @@ export function WorkingRequestCard({
           year={year}
           canApprove={canApprove}
           editing={editing}
+          decision={{ open: deciding, set: setDeciding }}
         />
       )}
+      lineDetail={(line) =>
+        deciding !== null &&
+        canApprove &&
+        !editing &&
+        !cancelled(request.row) &&
+        line.status === 'pending_approval' ? (
+          <RoundDecisionForm
+            request={request}
+            line={line}
+            kind={deciding}
+            onDone={() => setDeciding(null)}
+          />
+        ) : null
+      }
     />
   )
 }

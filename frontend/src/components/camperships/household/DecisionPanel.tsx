@@ -60,6 +60,7 @@ export function DecisionPanel({
   total,
   checklist,
   nextAction,
+  lineDetail,
 }: {
   lines: readonly RoundLine[]
   /** The rounds not reached yet, drawn muted so every live card has three rows (O2). */
@@ -67,6 +68,8 @@ export function DecisionPanel({
   total: number | null
   checklist?: ((line: RoundLine) => ReactNode) | undefined
   nextAction?: ((line: RoundLine) => ReactNode) | undefined
+  /** A full-width row under a round's line (the opened Approve… / Refuse… form); nothing draws no row. */
+  lineDetail?: ((line: RoundLine) => ReactNode) | undefined
 }) {
   return (
     <table aria-label="Decision panel" className="w-full border-collapse text-[13px]">
@@ -140,6 +143,13 @@ export function DecisionPanel({
               </td>
               <td className={HH_PANEL_TD}>{nextAction?.(line)}</td>
             </tr>
+            {lineDetail?.(line) != null && (
+              <tr>
+                <td colSpan={5} className="px-2 py-1.5">
+                  {lineDetail(line)}
+                </td>
+              </tr>
+            )}
             {line.cmPendingMessage !== null && (
               // The server's overnight-sync sentence, as the grid's detail line shows it.
               <tr>

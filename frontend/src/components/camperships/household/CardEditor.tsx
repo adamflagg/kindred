@@ -17,24 +17,10 @@ import {
 import type { CardEditKind } from './cardEdits'
 import { openingAmount } from './cardPreviews'
 import { householdChip, householdChipName, householdName } from './householdModel'
-import {
-  HH_BUTTON,
-  HH_BUTTON_PRIMARY,
-  HH_EDITOR_AREA,
-  HH_EDITOR_ASIDE,
-  HH_EDITOR_BOX,
-  HH_EDITOR_FOOT,
-  HH_EDITOR_FOOT_END,
-  HH_EDITOR_HEAD,
-  HH_EDITOR_KEYS,
-  HH_EDITOR_LABEL,
-  HH_EDITOR_MONEY,
-  HH_EDITOR_SIDE_LEAD,
-  HH_EDITOR_SIDE_NOTE,
-  HH_EDITOR_TEXT,
-  HH_NOTE,
-} from './householdStyles'
-import { EditorColumns } from './ReasonForm'
+import { CS_FIELD } from '../kit/csType'
+import { EditorGrid } from '../kit/EditorLayout'
+import { HH_EDITOR_SIDE_LEAD, HH_EDITOR_SIDE_NOTE, HH_NOTE } from './householdStyles'
+import { HouseholdForm } from './ReasonForm'
 
 const KIND = {
   appeal: { label: 'Round 2 ask', policy: REASON_POLICY.appeal_ask, submit: 'Save the Appeal' },
@@ -176,6 +162,16 @@ function CardEditorBody({ request, page, kind, onClose, onDraftChange, ref }: Ca
   // Only a ready preview of a priced edit (an ask alone prices nothing) with both figures. A Round 3
   // amount waiting on finance is not the award yet, and its total leaves it out: say so.
   const shown = preview.preview
+  // Owner Rev 3 (10-10, APPROVED): opened on an amount still waiting on finance, the server's total
+  // leaves that amount out while the receipt counts it. Say so: the amount typed is the pending one.
+  const round3 = row.rounds.find((r) => r.round === 3)
+  const retypedPending =
+    kind === 'round3_amount' &&
+    shown.status === 'ready' &&
+    shown.pendingApproval !== true &&
+    shown.award != null &&
+    round3?.pending_approval != null &&
+    round3.pending_approval === shown.award
   const totalLine =
     kind !== 'round3_ask' &&
     shown.status === 'ready' &&
@@ -183,65 +179,59 @@ function CardEditorBody({ request, page, kind, onClose, onDraftChange, ref }: Ca
     shown.totalDecided != null
       ? shown.pendingApproval === true
         ? `Round 3 would be ${formatMoney(shown.award)} once finance approves · total stays ${formatMoney(shown.totalDecided)}`
-        : `Round ${kind === 'appeal' ? '2' : '3'} now ${formatMoney(shown.award)} (new total ${formatMoney(shown.totalDecided)})`
+        : retypedPending
+          ? `Round 3 now ${formatMoney(shown.award)} (new total ${formatMoney(shown.totalDecided + shown.award)}, ${formatMoney(shown.award)} waiting for approval)`
+          : `Round ${kind === 'appeal' ? '2' : '3'} now ${formatMoney(shown.award)} (new total ${formatMoney(shown.totalDecided)})`
       : null
 
   const busy = writing.isPending
+  // Conformance #g6-appeal / #g6-r3 (owner 10-10): the kit EditorForm, band-tinted on the white card,
+  // the caption beside each field, the action first on one buttons row.
   const frame: EditorFrame = {
-    label: HH_EDITOR_LABEL,
-    amount: HH_EDITOR_MONEY,
-    text: HH_EDITOR_TEXT,
-    area: HH_EDITOR_AREA,
+    grid: true,
+    label: '',
+    amount: `${CS_FIELD} w-24 text-right tabular-nums`,
+    text: `${CS_FIELD} w-full`,
+    area: `${CS_FIELD} field-sizing-content h-auto min-h-[4.5rem] max-h-56 w-full resize-y py-1.5`,
     render: (parts) => (
-      <>
-        <EditorColumns
-          side={
-            !priced ? (
-              'An ask alone prices nothing: finance sets the Round 3 amount.'
-            ) : shown.status === 'idle' ? (
-              'Type an amount to see the award.'
-            ) : (
-              <>
-                {totalLine !== null && <div className={HH_EDITOR_SIDE_LEAD}>{totalLine}</div>}
-                <div className={totalLine !== null ? HH_EDITOR_SIDE_NOTE : HH_NOTE}>
-                  {parts.result}
-                </div>
-              </>
-            )
-          }
-        >
+      <HouseholdForm
+        head={`Editing · ${KIND[kind].label}`}
+        aside={`${householdName(page, row.household_cm_id)} · household ${row.household_cm_id} · person ${row.person_cm_id}`}
+        side={
+          !priced ? (
+            'An ask alone prices nothing: finance sets the Round 3 amount.'
+          ) : shown.status === 'idle' ? (
+            'Type an amount to see the award.'
+          ) : (
+            <>
+              {totalLine !== null && <div className={HH_EDITOR_SIDE_LEAD}>{totalLine}</div>}
+              <div className={totalLine !== null ? HH_EDITOR_SIDE_NOTE : HH_NOTE}>
+                {parts.result}
+              </div>
+            </>
+          )
+        }
+        submitLabel={KIND[kind].submit}
+        busy={busy}
+        refusals={parts.problemWords}
+        keys={parts.keys}
+        onSubmit={parts.save}
+        onCancel={parts.cancel}
+      >
+        <EditorGrid columns={2}>
           {parts.amount}
           {parts.note}
-        </EditorColumns>
-        <div className={HH_EDITOR_FOOT}>
-          {parts.problems}
-          <span className={HH_EDITOR_FOOT_END}>
-            <span className={HH_EDITOR_KEYS}>{parts.keys}</span>
-            {/* As the forms: a write in flight finishes here, so its refusal is seen. */}
-            <button type="button" className={HH_BUTTON} onClick={parts.cancel} disabled={busy}>
-              Back
-            </button>
-            <button
-              type="button"
-              className={HH_BUTTON_PRIMARY}
-              onClick={parts.save}
-              disabled={busy}
-            >
-              {KIND[kind].submit}
-            </button>
-          </span>
-        </div>
-      </>
+        </EditorGrid>
+      </HouseholdForm>
     ),
   }
 
   return (
-    // D23: the mock's editor box, headed with what is being edited ("Editing · Round 2 ask") and,
-    // beside it, whose request it is. Esc from the footer's buttons closes too (the fields hear
-    // their own, and mark it handled).
+    // D23: headed with what is being edited ("Editing · Round 2 ask") and whose request it is (the
+    // form's head). Esc from the footer's buttons closes too (the fields hear their own, and mark it
+    // handled).
     <div
       data-aid-editor=""
-      className={HH_EDITOR_BOX}
       onKeyDown={(event) => {
         if (event.key === 'Escape' && !event.defaultPrevented) {
           event.preventDefault()
@@ -249,12 +239,6 @@ function CardEditorBody({ request, page, kind, onClose, onDraftChange, ref }: Ca
         }
       }}
     >
-      <div className={HH_EDITOR_HEAD}>
-        <span>{`Editing · ${KIND[kind].label}`}</span>
-        <span className={HH_EDITOR_ASIDE}>
-          {`${householdName(page, row.household_cm_id)} · household ${row.household_cm_id} · person ${row.person_cm_id}`}
-        </span>
-      </div>
       <RequestEditor
         familyName={householdName(page, row.household_cm_id)}
         householdCmId={row.household_cm_id}

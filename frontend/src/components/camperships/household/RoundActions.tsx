@@ -167,6 +167,47 @@ export function RoundChecklist({
   )
 }
 
+export type DecisionKind = 'approve' | 'refuse'
+
+/** Which Round 3 decision is open, held by the page that draws its form. */
+export interface DecisionControl {
+  readonly open: DecisionKind | null
+  readonly set: (kind: DecisionKind | null) => void
+}
+
+/**
+ * Finance's decision on a Round 3 waiting on it: a note for the approval, a reason for the refusal
+ * (Rev 3 wording: "Say why you're refusing").
+ */
+export function RoundDecisionForm({
+  request,
+  line,
+  kind,
+  onDone,
+}: {
+  request: ApiAidHouseholdRequest
+  line: RoundLine
+  kind: DecisionKind
+  onDone: () => void
+}) {
+  const decide = useAidRound3Decision()
+  const approve = kind === 'approve'
+  return (
+    <ReasonForm
+      head={`${approve ? 'Approving' : 'Refusing'} Round ${String(line.round)}`}
+      label={approve ? 'Approval note' : 'Why refuse'}
+      submitLabel={approve ? 'Approve' : 'Refuse'}
+      requiredWords={approve ? undefined : "Say why you're refusing"}
+      onSubmit={(note) =>
+        decide
+          .mutateAsync({ requestId: request.row.request_id, body: { approve, note } })
+          .then(onDone)
+      }
+      onCancel={onDone}
+    />
+  )
+}
+
 /**
  * A round's next action (decision-panel.html; D51, D79; Decision 22): "Mark Posted · locks $X" once
  * the award is entered in CampMinder (the label is the confirmation); finance's decision on a Round 3
@@ -178,6 +219,7 @@ export function RoundNextAction({
   year,
   canApprove,
   editing = false,
+  decision,
 }: {
   request: ApiAidHouseholdRequest
   line: RoundLine
@@ -185,10 +227,17 @@ export function RoundNextAction({
   canApprove: boolean
   /** This card has a money editor open: Mark Posted and the decision wait for it. */
   editing?: boolean | undefined
+  /**
+   * Conformance #g6-decide (owner Rev 3, 10-10): the page owns which decision is open and draws its
+   * form (`RoundDecisionForm`) as a full-width row under the Round 3 line; this cell then shows only
+   * the Approve… / Refuse… pair. Without it the form opens in place, here.
+   */
+  decision?: DecisionControl | undefined
 }) {
   const posted = useAidTickPosted()
-  const decide = useAidRound3Decision()
-  const [deciding, setDeciding] = useState<'approve' | 'refuse' | null>(null)
+  const [localDeciding, setLocalDeciding] = useState<DecisionKind | null>(null)
+  const deciding = decision ? decision.open : localDeciding
+  const setDeciding = decision ? decision.set : setLocalDeciding
   const [error, setError] = useState<string | null>(null)
   // A withheld round's decided_now is what the tick WOULD lock, so refreshing and ticking again can
   // only be refused again: a 409 that names a different amount offers it (#2981).
@@ -293,16 +342,13 @@ export function RoundNextAction({
         </div>
       )
     }
-    const approve = deciding === 'approve'
+    if (decision) return null
     return (
-      <ReasonForm
-        head={`${approve ? 'Approving' : 'Refusing'} Round ${String(line.round)}`}
-        label={approve ? 'Approval note' : 'Why refuse'}
-        submitLabel={approve ? 'Approve' : 'Refuse'}
-        onSubmit={(note) =>
-          decide.mutateAsync({ requestId, body: { approve, note } }).then(() => setDeciding(null))
-        }
-        onCancel={() => setDeciding(null)}
+      <RoundDecisionForm
+        request={request}
+        line={line}
+        kind={deciding}
+        onDone={() => setDeciding(null)}
       />
     )
   }
