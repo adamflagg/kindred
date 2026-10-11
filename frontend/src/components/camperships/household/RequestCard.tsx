@@ -176,6 +176,8 @@ interface RequestCardProps {
   readonly view: AidView
   readonly checklist?: ((line: RoundLine) => ReactNode) | undefined
   readonly nextAction?: ((line: RoundLine) => ReactNode) | undefined
+  /** A full-width row under a round's line in the decision panel. */
+  readonly lineDetail?: ((line: RoundLine) => ReactNode) | undefined
   /** The card's own actions (PR 8): Edit…, Round 3…, Put on Hold…, Cancel… */
   readonly actions?: ReactNode | undefined
   /** The shared editor, opened in place on the card (§4.6). */
@@ -201,6 +203,7 @@ export function RequestCard({
   view,
   checklist,
   nextAction,
+  lineDetail,
   actions,
   editor,
   costAction,
@@ -310,6 +313,7 @@ export function RequestCard({
             total={row.total_decided}
             checklist={checklist}
             nextAction={nextAction}
+            lineDetail={lineDetail}
           />
         </div>
       )}

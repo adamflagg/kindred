@@ -462,7 +462,7 @@ describe('RequestEditor: the panel layout (the grid)', () => {
   it('shows a problem in the figures slot on the first line once Enter is tried', async () => {
     setup({ layout: 'panel', preview: { status: 'idle' } })
     await userEvent.keyboard('{Enter}')
-    expect(within(top()).getByText('Enter the round 2 ask')).toBeInTheDocument()
+    expect(within(top()).getByText('Enter the Round 2 ask')).toBeInTheDocument()
   })
 
   // Design-language §24 (owner 10-09): Title Case buttons on the one row of fields, beside the reason.
@@ -480,7 +480,7 @@ describe('RequestEditor: the panel layout (the grid)', () => {
     const { onSave } = setup({ layout: 'panel', preview: { status: 'idle' } })
     await userEvent.click(screen.getByRole('button', { name: 'Save Ask' }))
     expect(onSave).not.toHaveBeenCalled()
-    expect(within(top()).getByText('Enter the round 2 ask')).toBeInTheDocument()
+    expect(within(top()).getByText('Enter the Round 2 ask')).toBeInTheDocument()
     await userEvent.type(screen.getByLabelText('Round 2 ask'), '1300')
     await userEvent.click(screen.getByRole('button', { name: 'Save Ask' }))
     expect(onSave).toHaveBeenCalledTimes(1)
@@ -646,7 +646,7 @@ describe('RequestEditor: a framed card (the household page lays it out)', () => 
     const { onSave } = setup({ layout: 'card', frame: frame(), onMove: undefined })
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))
     expect(onSave).not.toHaveBeenCalled()
-    expect(within(foot()).getByText('Enter the round 2 ask')).toBeInTheDocument()
+    expect(within(foot()).getByText('Enter the Round 2 ask')).toBeInTheDocument()
     await userEvent.type(screen.getByLabelText('Round 2 ask'), '500')
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))
@@ -663,5 +663,81 @@ describe('RequestEditor: a framed card (the household page lays it out)', () => 
   it("shows a failed save's words among the problems", () => {
     setup({ layout: 'card', frame: frame(), onMove: undefined, saveError: 'The server said no' })
     expect(within(foot()).getByText('The server said no')).toBeInTheDocument()
+  })
+})
+
+// Owner Rev 3 wording ruling (10-10): the refusal keeps the amount label's own case, "Enter the Round 3
+// ask", never the lowercased "round 3 ask". (The three "Enter the Round 2 ask" pins above changed under it.)
+describe('RequestEditor: the Rev 3 refusal wording', () => {
+  it('keeps the amount label as written', async () => {
+    setup({ layout: 'card', amountLabel: 'Round 3 ask', policy: REASON_POLICY.round3_ask })
+    await userEvent.type(screen.getByLabelText('Statement of need'), 'x{Enter}')
+    expect(screen.getByText('Enter the Round 3 ask')).toBeInTheDocument()
+  })
+})
+
+describe('RequestEditor: the Pending approval pill is amber (Rev 3)', () => {
+  it('wears the hold tone, not the Round 3 purple, in the card result', () => {
+    setup({ preview: { ...READY, pendingApproval: true } })
+    const pill = screen.getByText('Pending approval')
+    expect(pill.className).toMatch(/amber/)
+    expect(pill.className).not.toMatch(/purple/)
+  })
+  it('wears it in the panel too', () => {
+    setup({ layout: 'panel', preview: { ...READY, pendingApproval: true } })
+    expect(screen.getByText('Pending approval').className).toMatch(/amber/)
+  })
+})
+
+// Conformance #g6 (owner 10-10): a grid frame draws the caption and the control as separate grid
+// cells (EditorField), so the household card's EditorGrid can lay them label · field.
+describe('RequestEditor: a grid frame (caption and control apart)', () => {
+  const gridFrame = {
+    grid: true,
+    label: 'unused',
+    amount: 'g-amount',
+    text: 'g-text',
+    area: 'g-area',
+    render: (parts: EditorParts) => (
+      <div>
+        <div data-grid="">
+          {parts.amount}
+          {parts.note}
+        </div>
+        <span data-keys="">{parts.keys}</span>
+        <span data-words="">{parts.problemWords.join('|')}</span>
+        <button type="button" onClick={parts.save}>
+          Save
+        </button>
+      </div>
+    ),
+  } as const
+
+  it('keeps the caption out of a <label> and names the control with aria-label', () => {
+    setup({ layout: 'card', frame: gridFrame, onMove: undefined })
+    const ask = screen.getByLabelText('Round 2 ask')
+    expect(ask).toHaveClass('g-amount')
+    expect(ask.closest('label')).toBeNull()
+    expect(screen.getByText('Round 2 ask', { selector: 'span' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Note')).toHaveClass('g-text')
+    expect(screen.getByLabelText('Note').closest('label')).toBeNull()
+  })
+
+  it("top-aligns the statement of need's caption", () => {
+    setup({
+      layout: 'card',
+      frame: gridFrame,
+      onMove: undefined,
+      policy: REASON_POLICY.round3_ask,
+      amountLabel: 'Round 3 ask',
+    })
+    expect(screen.getByText('Statement of need', { selector: 'span' })).toHaveClass('self-start')
+    expect(screen.getByText('Round 3 ask', { selector: 'span' })).not.toHaveClass('self-start')
+  })
+
+  it('hands over the refusal words as text', async () => {
+    setup({ layout: 'card', frame: gridFrame, onMove: undefined, saveError: 'No' })
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(document.querySelector('[data-words]')).toHaveTextContent('Enter the Round 2 ask|No')
   })
 })
