@@ -9,6 +9,7 @@ import {
   CS_FGRID_LABEL,
   CS_FGRID_TWO,
   CS_FORM2,
+  CS_FORM2_MAIN,
   CS_FORM2_SIDE,
   CS_PHEAD,
   CS_TOOLBAR_STATUS,
@@ -52,7 +53,7 @@ export function EditorForm({
           <h3 className={CS_CARD_HEADING}>{title}</h3>
         ))}
       <div data-testid="aid-editor-form" className={side !== undefined ? CS_FORM2 : undefined}>
-        <div className={side !== undefined ? 'min-w-0 pr-4' : undefined}>{children}</div>
+        <div className={side !== undefined ? CS_FORM2_MAIN : undefined}>{children}</div>
         {side !== undefined && <div className={CS_FORM2_SIDE}>{side}</div>}
       </div>
       {actions}

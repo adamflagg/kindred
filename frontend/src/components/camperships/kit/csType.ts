@@ -230,9 +230,16 @@ const EDITOR_SHAPE = 'flex flex-col gap-1.5 self-stretch rounded-[10px] border p
 export const CS_EDITOR = `bg-card border-border ${EDITOR_SHAPE}`
 /** The same card on a WHITE surface (inside a white card): the band tint and the band's edge colour. */
 export const CS_EDITOR_ON_WHITE = `${CS_BAND} ${CS_BAND_BORDER} ${EDITOR_SHAPE}`
-/** Fields left, dependent choices right (3 : 2), a dashed rule between. */
-export const CS_FORM2 = 'grid grid-cols-[minmax(0,3fr)_minmax(0,2fr)] items-start'
-export const CS_FORM2_SIDE = 'border-border border-l border-dashed pl-4'
+/**
+ * Fields left, dependent choices right (3 : 2), a dashed rule between. Inside a container under 40rem
+ * (the household page's editors, rev 3 ruling 5) the right column stacks under the fields, ruled above.
+ */
+export const CS_FORM2 =
+  'grid grid-cols-[minmax(0,3fr)_minmax(0,2fr)] items-start @max-[40rem]:grid-cols-1 @max-[40rem]:gap-y-2'
+export const CS_FORM2_SIDE =
+  'border-border border-l border-dashed pl-4 @max-[40rem]:border-l-0 @max-[40rem]:border-t @max-[40rem]:pl-0 @max-[40rem]:pt-2'
+/** The fields' column beside a right column: its gutter goes when the column stacks. */
+export const CS_FORM2_MAIN = 'min-w-0 pr-4 @max-[40rem]:pr-0'
 /** label · field · label · field. */
 export const CS_FGRID =
   'grid grid-cols-[max-content_minmax(0,1fr)_max-content_minmax(0,1fr)] items-center gap-x-2.5 gap-y-1.5'

@@ -169,3 +169,24 @@ describe('EditorForm onWhite', () => {
       expect(white.has(c) && tinted.has(c)).toBe(true)
   })
 })
+
+// Rev 3 ruling 5 (owner 10-10): below a narrow width the right column stacks under the fields, as the
+// household editors always did. The classes key on the nearest @container, so they act only inside one.
+describe('EditorForm in a narrow container', () => {
+  it('stacks the dependent column under the fields inside a container under 40rem', () => {
+    render(
+      <div className="@container">
+        <EditorForm side={<span>side words</span>}>
+          <span>fields</span>
+        </EditorForm>
+      </div>
+    )
+    const form = screen.getByTestId('aid-editor-form')
+    expect(form).toHaveClass('@max-[40rem]:grid-cols-1')
+    expect(screen.getByText('side words').parentElement).toHaveClass(
+      '@max-[40rem]:border-l-0',
+      '@max-[40rem]:pl-0'
+    )
+    expect(screen.getByText('fields').parentElement).toHaveClass('@max-[40rem]:pr-0')
+  })
+})

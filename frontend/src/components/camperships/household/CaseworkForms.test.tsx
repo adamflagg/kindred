@@ -893,10 +893,11 @@ describe('casework forms in two columns (round 3)', () => {
     expect(screen.getByLabelText('Children')).toBeInTheDocument()
   })
 
-  it('ends each footer with Back and then the save', () => {
+  // Conformance #g6 (owner 10-10): the kit's one row, the action first, then Back (was: Back, then the save).
+  it('starts each buttons row with the save, then Back', () => {
     render(<ShareForm request={SPLIT_PAGE.requests[0]!} page={SPLIT_PAGE} onDone={done} />)
     const save = screen.getByRole('button', { name: 'Set the Share' })
-    expect(save.parentElement?.lastElementChild).toBe(save)
-    expect(screen.getByRole('button', { name: 'Back' }).nextElementSibling).toBe(save)
+    expect(save.parentElement?.firstElementChild).toBe(save)
+    expect(save.nextElementSibling).toBe(screen.getByRole('button', { name: 'Back' }))
   })
 })

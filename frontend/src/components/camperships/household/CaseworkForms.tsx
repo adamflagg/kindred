@@ -29,7 +29,6 @@ import type { EditorExits } from './editorExits'
 import { correctLabel, correctionPicks, formsSayWords, settleWords } from './formsModel'
 import { answerWords, camperOf, labelOf, labelWords } from './householdModel'
 import {
-  HH_AMBER_NOTE as AMBER_NOTE,
   HH_BUTTON,
   HH_EDITOR_FIELD,
   HH_EDITOR_LABEL,
@@ -42,7 +41,7 @@ import {
   HH_PICK,
   HH_PICK_ON,
 } from './householdStyles'
-import { EditorBox, EditorColumns, FormActions } from './ReasonForm'
+import { EditorBox, HouseholdForm } from './ReasonForm'
 import { useSubmit } from './useSubmit'
 
 export function FormShell({
@@ -54,9 +53,10 @@ export function FormShell({
   onSubmit,
   onCancel,
   side,
+  foot,
   children,
 }: {
-  /** The editor box's head (D24): what the form does, in sentence case. */
+  /** The editor's head: what the form does, in sentence case. */
   head: string
   /** A muted aside beside the head (Correct…: the forms' figures). */
   aside?: string | undefined
@@ -65,9 +65,11 @@ export function FormShell({
   error: string | null
   onSubmit: () => void
   onCancel: () => void
-  /** What saving does, on the right (round 3, two columns); the fields alone without it. */
+  /** What saving does, on the right under "If you save"; the fields alone without it. */
   side?: ReactNode
-  /** The fields, top to bottom: short ones grouped in an `HH_EDITOR_PAIR` row, then the reason. */
+  /** Another sentence for the buttons' row, before the key hint (Correct…: what saving settles). */
+  foot?: string | null | undefined
+  /** The fields: an EditorGrid of EditorFields (conformance #g6). */
   children: ReactNode
 }) {
   // Esc is heard on the form, so the form takes focus as it opens, on its first field, as
@@ -82,26 +84,20 @@ export function FormShell({
       ?.focus()
   }, [])
   return (
-    <EditorBox head={head} aside={aside}>
-      <form
-        ref={form}
-        onSubmit={(event) => {
-          event.preventDefault()
-          onSubmit()
-        }}
-        onKeyDown={(event) => {
-          if (event.key === 'Escape') {
-            event.preventDefault()
-            if (!busy) onCancel()
-          }
-        }}
-      >
-        <EditorColumns side={side}>{children}</EditorColumns>
-        <FormActions submitLabel={submitLabel} busy={busy} onCancel={onCancel}>
-          {error !== null && <span className={AMBER_NOTE}>{error}</span>}
-        </FormActions>
-      </form>
-    </EditorBox>
+    <HouseholdForm
+      formRef={form}
+      head={head}
+      aside={aside}
+      side={side}
+      submitLabel={submitLabel}
+      busy={busy}
+      refusals={[error]}
+      foot={foot}
+      onSubmit={onSubmit}
+      onCancel={onCancel}
+    >
+      {children}
+    </HouseholdForm>
   )
 }
 
