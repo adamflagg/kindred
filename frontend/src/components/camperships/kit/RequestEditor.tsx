@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 
 
 import { AMBER_NOTE, FIELD, FIELD_INLINE } from '../../admin/lodging/lodgingStyles'
 import { CS_BTN, CS_BTN2 } from './csType'
+import { EditorField } from './EditorLayout'
 import { STATUS_TONE } from './kitStyles'
 import { initialReason, parseMoneyInput, reasonMissing, type TextReasonPolicy } from './editor'
 import { Money } from './MoneyText'
@@ -65,6 +66,8 @@ export interface EditorParts {
   readonly result: ReactNode
   /** Why a save was refused here, and a failed save's words. */
   readonly problems: ReactNode
+  /** The same words as text, for a surface that cuts each with a title (the refusal, then a failed save). */
+  readonly problemWords: readonly string[]
   /** The key hint, in words. */
   readonly keys: string
   /** Save as Enter does: once, and only what is valid (else the problem shows). */
@@ -81,6 +84,12 @@ export interface EditorFrame {
   readonly text: string
   /** The statement of need's box (three rows to start). */
   readonly area: string
+  /**
+   * Grid mode (conformance #g6): `amount` and `note` come as EditorField cells, the caption a span and
+   * the control apart (named by aria-label), for the surface's EditorGrid. The statement of need's
+   * caption is top-aligned. `label` is not used.
+   */
+  readonly grid?: boolean | undefined
   readonly render: (parts: EditorParts) => ReactNode
 }
 
@@ -181,7 +190,7 @@ function PanelFigures({ preview }: { preview: EditorPreview }) {
           Award <Money value={preview.award ?? null} className="font-semibold" />
         </span>
         {preview.pendingApproval === true && (
-          <StatusPill tone={STATUS_TONE.round3}>Pending approval</StatusPill>
+          <StatusPill tone={STATUS_TONE.note}>Pending approval</StatusPill>
         )}
       </span>
       {preview.stageChange ? (
@@ -206,7 +215,7 @@ function EditorResult({ preview }: { preview: EditorPreview }) {
         Award <Money value={preview.award ?? null} className="font-semibold" />
       </span>
       {preview.pendingApproval === true && (
-        <StatusPill tone={STATUS_TONE.round3}>Pending approval</StatusPill>
+        <StatusPill tone={STATUS_TONE.note}>Pending approval</StatusPill>
       )}
       {preview.trace !== undefined && preview.trace.length > 0 && (
         <ReceiptSentence trace={preview.trace} className="text-muted-foreground text-xs" />
@@ -322,7 +331,8 @@ export function RequestEditor(props: RequestEditorProps) {
     parsed.kind === 'invalid'
       ? parsed.reason
       : parsed.kind === 'empty'
-        ? `Enter the ${props.amountLabel.toLowerCase()}`
+        ? // Owner Rev 3 (10-10): the label keeps its case, "Enter the Round 3 ask".
+          `Enter the ${props.amountLabel}`
         : props.policy.kind === 'required' && reasonMissing(props.policy, reason)
           ? `${props.policy.label} is required`
           : null
@@ -404,31 +414,74 @@ export function RequestEditor(props: RequestEditorProps) {
   }
 
   const frame = props.layout === 'card' ? props.frame : undefined
-  const amountField = (
+  const grid = frame?.grid === true
+  const amountInput = (
+    <input
+      ref={amountRef}
+      aria-label={grid ? props.amountLabel : undefined}
+      type="text"
+      inputMode="decimal"
+      value={raw}
+      onChange={(event) => {
+        submitted.current = false
+        setRaw(event.target.value)
+        const next = parseMoneyInput(event.target.value)
+        props.onAmountChange(next.kind === 'ok' ? next.amount : null)
+      }}
+      onKeyDown={onKeyDown}
+      className={
+        frame
+          ? frame.amount
+          : `${props.layout === 'panel' ? FIELD_PANEL : FIELD_INLINE} w-28 text-right tabular-nums`
+      }
+    />
+  )
+  const amountField = grid ? (
+    <EditorField label={props.amountLabel}>{amountInput}</EditorField>
+  ) : (
     <label className={frame ? frame.label : 'flex items-center gap-2 whitespace-nowrap'}>
       {props.amountLabel}
-      <input
-        ref={amountRef}
-        type="text"
-        inputMode="decimal"
-        value={raw}
+      {amountInput}
+    </label>
+  )
+  const noteInput =
+    props.policy.kind === 'none' ? null : props.policy.maxLength > LONG_TEXT ? (
+      // The statement of need (4000 characters): a small text area that grows with its text.
+      // Enter still saves; Shift+Enter is a new line.
+      <textarea
+        aria-label={grid ? props.policy.label : undefined}
+        rows={frame ? 3 : 2}
+        maxLength={props.policy.maxLength}
+        value={reason}
         onChange={(event) => {
           submitted.current = false
-          setRaw(event.target.value)
-          const next = parseMoneyInput(event.target.value)
-          props.onAmountChange(next.kind === 'ok' ? next.amount : null)
+          setReason(event.target.value)
+        }}
+        onKeyDown={onKeyDown}
+        className={frame ? frame.area : `${FIELD} field-sizing-content max-h-48 min-h-[3.25rem]`}
+      />
+    ) : (
+      <input
+        aria-label={grid ? props.policy.label : undefined}
+        type="text"
+        maxLength={props.policy.maxLength}
+        value={reason}
+        onChange={(event) => {
+          submitted.current = false
+          setReason(event.target.value)
         }}
         onKeyDown={onKeyDown}
         className={
-          frame
-            ? frame.amount
-            : `${props.layout === 'panel' ? FIELD_PANEL : FIELD_INLINE} w-28 text-right tabular-nums`
+          frame ? frame.text : props.layout === 'panel' ? `${FIELD_PANEL} w-full min-w-0` : FIELD
         }
       />
-    </label>
-  )
+    )
   const noteField =
-    props.policy.kind === 'none' ? null : (
+    props.policy.kind === 'none' ? null : grid ? (
+      <EditorField label={props.policy.label} top={props.policy.maxLength > LONG_TEXT}>
+        {noteInput}
+      </EditorField>
+    ) : (
       <label
         className={
           frame
@@ -441,41 +494,7 @@ export function RequestEditor(props: RequestEditorProps) {
         }
       >
         {props.policy.label}
-        {props.policy.maxLength > LONG_TEXT ? (
-          // The statement of need (4000 characters): a small text area that grows with its text.
-          // Enter still saves; Shift+Enter is a new line.
-          <textarea
-            rows={frame ? 3 : 2}
-            maxLength={props.policy.maxLength}
-            value={reason}
-            onChange={(event) => {
-              submitted.current = false
-              setReason(event.target.value)
-            }}
-            onKeyDown={onKeyDown}
-            className={
-              frame ? frame.area : `${FIELD} field-sizing-content max-h-48 min-h-[3.25rem]`
-            }
-          />
-        ) : (
-          <input
-            type="text"
-            maxLength={props.policy.maxLength}
-            value={reason}
-            onChange={(event) => {
-              submitted.current = false
-              setReason(event.target.value)
-            }}
-            onKeyDown={onKeyDown}
-            className={
-              frame
-                ? frame.text
-                : props.layout === 'panel'
-                  ? `${FIELD_PANEL} w-full min-w-0`
-                  : FIELD
-            }
-          />
-        )}
+        {noteInput}
       </label>
     )
   const hint = (
@@ -503,6 +522,10 @@ export function RequestEditor(props: RequestEditorProps) {
           {saveErrorNote}
         </>
       ),
+      problemWords: [
+        (tried || props.showProblem === true) && problem !== null ? problem : null,
+        props.saveError ?? null,
+      ].filter((words): words is string => Boolean(words)),
       keys: statement
         ? 'Enter saves · Shift+Enter for a new line · Esc cancels'
         : 'Enter saves · Esc cancels',

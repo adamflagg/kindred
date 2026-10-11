@@ -89,6 +89,24 @@ describe('RoundNextAction (D51; Decision 22)', () => {
     })
   })
 
+  // Owner Rev 3 wording ruling (10-10): the refusal reads "Say why you're refusing", the approval
+  // keeps "<label> is required".
+  it("refuses an empty Refuse with 'Say why you're refusing'", async () => {
+    const pending = householdRequest(
+      gridRow({
+        rounds: [
+          roundOut(1, 'posted', { posted: 1420 }),
+          roundOut(3, 'pending_approval', { pending_approval: 450 }),
+        ],
+      })
+    )
+    render(<RoundNextAction request={pending} line={lineOf(pending, 3)} year={2027} canApprove />)
+    await userEvent.click(screen.getByRole('button', { name: 'Refuse…' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Refuse' }))
+    expect(screen.getByText("Say why you're refusing")).toBeInTheDocument()
+    expect(decide).not.toHaveBeenCalled()
+  })
+
   describe('where Mark Posted is hidden (D162)', () => {
     const MARK = { name: /Mark Posted/ }
     const untickedFor = (mark_posted: boolean): ApiAidUnticked => ({

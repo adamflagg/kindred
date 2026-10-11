@@ -306,6 +306,21 @@ describe('WorkingRequestCard reopen, liveness and approval', () => {
     expect(screen.getByRole('button', { name: 'Approve…' })).toBeInTheDocument()
   })
 
+  // Conformance #g6-decide (owner Rev 3, 10-10): Approve/Refuse opens as a full-width row under the
+  // Round 3 line, not inside the table cell, and the resting pair steps aside while it is open.
+  it('opens the decision as a full-width row under the Round 3 line', async () => {
+    renderCards([PENDING], true, true)
+    await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
+    const note = screen.getByLabelText('Approval note')
+    const cell = note.closest('td') as HTMLElement
+    expect(cell).toHaveAttribute('colspan', '5')
+    expect(cell.parentElement?.previousElementSibling).toHaveTextContent('Round 3')
+    expect(screen.queryByRole('button', { name: 'Approve…' })).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Back' }))
+    expect(screen.queryByLabelText('Approval note')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Approve…' })).toBeInTheDocument()
+  })
+
   it('offers no approval without it', () => {
     renderCards([PENDING], true, false)
     expect(screen.queryByRole('button', { name: 'Approve…' })).toBeNull()
