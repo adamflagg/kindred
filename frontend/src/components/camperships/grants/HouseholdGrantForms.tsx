@@ -38,6 +38,8 @@ export function HouseholdAddCommitment({
     <CommitmentForm
       year={page.year}
       household={{ rows: page.requests.map((r) => r.row) }}
+      // Inside the white household card: the band tint (owner 10-10, "green on white").
+      onWhite
       onCancel={() => opening.setOpen(false)}
       onDone={(words) => {
         opening.setOpen(false)
@@ -79,6 +81,7 @@ export function HouseholdPlaceOnCamper({
     <PlaceCamperForm
       need={need}
       year={page.year}
+      onWhite
       onCancel={() => opening.setOpen(false)}
       onDone={(words) => {
         opening.setOpen(false)

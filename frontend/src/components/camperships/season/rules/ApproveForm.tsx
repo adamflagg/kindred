@@ -21,7 +21,7 @@ import {
   CS_CARD,
   CS_CARD_HEADING,
   CS_FLABEL,
-  CS_INPUT,
+  CS_FIELD,
   CS_MUTED,
   CS_SMALL,
 } from '../../kit/csType'
@@ -354,7 +354,7 @@ export function ApproveForm({
         </label>
         <input
           id="approve-note"
-          className={`${CS_INPUT} min-w-60 flex-1`}
+          className={`${CS_FIELD} min-w-60 flex-1`}
           value={note}
           maxLength={2000}
           onChange={(event) => setNote(event.target.value)}

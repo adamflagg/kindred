@@ -117,3 +117,55 @@ describe('EditorForm heading', () => {
     expect(screen.getByText('Edit plan')).not.toHaveClass('uppercase')
   })
 })
+
+// Owner, 10-10 evening (editors.html option 3, scoped by a rule): "white on not white, and green on
+// white". ONE card: `onWhite` swaps only the colour classes for the band tint; nothing else may differ.
+describe('EditorForm onWhite', () => {
+  const classesOf = (onWhite: boolean) => {
+    const { container, unmount } = render(
+      <EditorForm onWhite={onWhite} title="Cost">
+        <span>fields</span>
+      </EditorForm>
+    )
+    const classes = new Set((container.firstElementChild as HTMLElement).className.split(/\s+/))
+    unmount()
+    return classes
+  }
+  const COLOUR = /^(dark:)?(bg|border(-[trbl])?)-(card|border|\[color-mix\(.*\)\])$/
+
+  it('is the white kit card by default, and takes the band tint on a white surface', () => {
+    const white = classesOf(false)
+    const tinted = classesOf(true)
+    expect(white.has('bg-card')).toBe(true)
+    expect(tinted.has('bg-card')).toBe(false)
+    expect(
+      [...tinted].some((c) => c.startsWith('bg-[color-mix(in_oklab,var(--color-forest-200)'))
+    ).toBe(true)
+    // Its edge is the band's edge colour on all four sides (option 3 draws a full green-grey border).
+    expect(
+      [...tinted].some((c) => c.startsWith('border-[color-mix(in_oklab,var(--color-forest-700)'))
+    ).toBe(true)
+  })
+
+  it('differs from the default ONLY in colour classes: the shape, padding and layout are the same', () => {
+    const white = classesOf(false)
+    const tinted = classesOf(true)
+    const onlyWhite = [...white].filter((c) => !tinted.has(c))
+    const onlyTinted = [...tinted].filter((c) => !white.has(c))
+    expect(onlyWhite.length).toBeGreaterThan(0)
+    expect(onlyTinted.length).toBeGreaterThan(0)
+    for (const c of [...onlyWhite, ...onlyTinted]) expect(c).toMatch(COLOUR)
+    // and the shared part carries the whole shape
+    for (const c of [
+      'flex',
+      'flex-col',
+      'gap-1.5',
+      'self-stretch',
+      'rounded-[10px]',
+      'border',
+      'px-2.5',
+      'py-2',
+    ])
+      expect(white.has(c) && tinted.has(c)).toBe(true)
+  })
+})

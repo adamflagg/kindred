@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
+import { aidPicked, aidPicker, aidOptions, chooseAid } from '../../../test/aidPicker'
 import { CancelForm } from './CancelForm'
 
 describe('CancelForm (D101, D141)', () => {
@@ -15,11 +16,12 @@ describe('CancelForm (D101, D141)', () => {
         onCancel={() => undefined}
       />
     )
-    expect(screen.getAllByRole('option')).toHaveLength(10)
+    // The kit picker (conformance gap 1): the nine reasons after "Pick a reason", as the native select had.
+    expect(await aidOptions('Cancel reason')).toHaveLength(10)
     await userEvent.click(screen.getByRole('button', { name: 'Cancel the Request' }))
     expect(screen.getByText('Pick a cancel reason')).toBeInTheDocument()
     expect(onSubmit).not.toHaveBeenCalled()
-    await userEvent.selectOptions(screen.getByLabelText('Cancel reason'), 'another_reason')
+    await chooseAid('Cancel reason', 'another reason')
     await userEvent.click(screen.getByRole('button', { name: 'Cancel the Request' }))
     expect(screen.getByText('"another reason" needs a note')).toBeInTheDocument()
     expect(onSubmit).not.toHaveBeenCalled()
@@ -37,7 +39,7 @@ describe('CancelForm (D101, D141)', () => {
         onCancel={() => undefined}
       />
     )
-    expect(screen.getByLabelText('Cancel reason')).toHaveValue('medical')
+    expect(aidPicked('Cancel reason')).toBe('medical')
   })
 
   it('keeps the form and shows the refusal when the save fails', async () => {
@@ -51,7 +53,7 @@ describe('CancelForm (D101, D141)', () => {
     )
     await userEvent.click(screen.getByRole('button', { name: 'Save the Reason' }))
     expect(await screen.findByText('Refused')).toBeInTheDocument()
-    expect(screen.getByLabelText('Cancel reason')).toHaveValue('medical')
+    expect(aidPicked('Cancel reason')).toBe('medical')
   })
 
   it('keeps the form open while a submit is in flight: Back is disabled and Esc does nothing', async () => {
@@ -64,7 +66,7 @@ describe('CancelForm (D101, D141)', () => {
         onCancel={onCancel}
       />
     )
-    await userEvent.selectOptions(screen.getByLabelText('Cancel reason'), 'medical')
+    await chooseAid('Cancel reason', 'medical')
     act(() => {
       fireEvent.click(screen.getByRole('button', { name: 'Cancel the Request' }))
     })
@@ -83,7 +85,7 @@ describe('CancelForm (D101, D141)', () => {
         onCancel={onCancel}
       />
     )
-    expect(screen.getByLabelText('Cancel reason')).toHaveFocus()
+    expect(aidPicker('Cancel reason')).toHaveFocus()
     await userEvent.keyboard('{Escape}')
     expect(onCancel).toHaveBeenCalledTimes(1)
   })
@@ -101,7 +103,24 @@ describe('CancelForm: two columns (round 3)', () => {
     )
     const side = document.querySelector('[data-editor-side]')
     expect(side).toHaveTextContent('A note is needed only for "another reason".')
-    expect(side).not.toContainElement(screen.getByLabelText('Cancel reason'))
+    expect(side).not.toContainElement(aidPicker('Cancel reason'))
     expect(side).not.toContainElement(screen.getByLabelText('Note'))
+  })
+
+  // Conformance gap 1: the mock draws the reason picker 330px wide; the width sits on its own box,
+  // since the picker's fill (w-full) would beat a width class set beside it.
+  it('draws the reason as the kit picker in a 330px box', () => {
+    render(
+      <CancelForm
+        initial={null}
+        submitLabel="Cancel the Request"
+        onSubmit={() => Promise.resolve()}
+        onCancel={() => undefined}
+      />
+    )
+    const wrap = aidPicker('Cancel reason').parentElement!
+    expect(wrap).toHaveClass('w-full')
+    expect(wrap).not.toHaveClass('w-[330px]')
+    expect(wrap.parentElement).toHaveClass('w-[330px]', 'max-w-full')
   })
 })

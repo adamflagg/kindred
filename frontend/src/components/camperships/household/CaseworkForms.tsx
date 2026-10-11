@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 
 import { useAidApplication } from '../../../hooks/camperships/useAidApplication'
+import { AidPicker } from '../kit/AidPicker'
 import {
   useAidCorrection,
   useAidDuplicate,
@@ -73,7 +74,12 @@ export function FormShell({
   // ReasonForm does.
   const form = useRef<HTMLFormElement>(null)
   useEffect(() => {
-    form.current?.querySelector<HTMLElement>('input:not(:disabled), select:not(:disabled)')?.focus()
+    // A kit picker's button (aria-haspopup="listbox") counts as a field, as the native select did.
+    form.current
+      ?.querySelector<HTMLElement>(
+        'input:not(:disabled), select:not(:disabled), button[aria-haspopup="listbox"]:not(:disabled)'
+      )
+      ?.focus()
   }, [])
   return (
     <EditorBox head={head} aside={aside}>
@@ -178,7 +184,8 @@ function CorrectionForm({
   const [value, setValue] = useState(answer.effective)
   const [reason, setReason] = useState('')
   const { busy, error, attempt } = useSubmit()
-  const field = useRef<HTMLInputElement & HTMLSelectElement>(null)
+  // The Used field's box: its typed box, or the Yes/No picker for a flag.
+  const field = useRef<HTMLDivElement & HTMLLabelElement>(null)
   const kind = fieldKind(answer)
   const picks = correctionPicks(page, income, answer)
   // The pick the field holds now, read from the figure itself: typing a form's figure picks it too.
@@ -213,19 +220,19 @@ function CorrectionForm({
   const settles = settleWords(income, answer)
   const used =
     kind === 'flag' ? (
-      <select
-        ref={field}
-        aria-label={label}
+      <AidPicker
+        label={label}
+        size="field"
         value={value}
-        onChange={(event) => setValue(event.target.value)}
-        className={HH_EDITOR_FIELD}
-      >
-        <option value="true">Yes</option>
-        <option value="false">No</option>
-      </select>
+        onChange={setValue}
+        options={[
+          { value: 'true', label: 'Yes' },
+          { value: 'false', label: 'No' },
+        ]}
+        className="self-start"
+      />
     ) : (
       <input
-        ref={field}
         aria-label={label}
         type="text"
         inputMode="decimal"
@@ -266,8 +273,9 @@ function CorrectionForm({
                 className={`${HH_PICK} ${picked === undefined ? HH_PICK_ON : ''}`}
                 disabled={busy}
                 onClick={() => {
-                  field.current?.focus()
-                  if (field.current instanceof HTMLInputElement) field.current.select()
+                  const used = field.current?.querySelector<HTMLElement>('input, button')
+                  used?.focus()
+                  if (used instanceof HTMLInputElement) used.select()
                 }}
               >
                 Another figure
@@ -275,10 +283,19 @@ function CorrectionForm({
             </span>
           </div>
         )}
-        <label className={HH_EDITOR_LABEL}>
-          Used
-          {used}
-        </label>
+        {kind === 'flag' ? (
+          // A picker's options inside a <label> would hand every click back to its button.
+          <div ref={field} className={HH_EDITOR_LABEL}>
+            Used
+            {used}
+          </div>
+        ) : (
+          // The typed box keeps its label, so a click on "Used" focuses it.
+          <label ref={field} className={HH_EDITOR_LABEL}>
+            Used
+            {used}
+          </label>
+        )}
       </div>
       <ReasonInput value={reason} onChange={setReason} optional />
       {settles !== null && <p className={HH_CORRECT_SETTLES}>{settles}</p>}
@@ -385,26 +402,28 @@ export function ShareForm({
       }
     >
       <div className={HH_EDITOR_PAIR}>
-        <label className={HH_EDITOR_LABEL}>
+        <div className={`${HH_EDITOR_LABEL} min-w-0`}>
           Household
-          <select
-            aria-label="Household"
+          {/* A name picker (owner 10-10): it fills its column and cuts only beyond it. */}
+          <AidPicker
+            label="Household"
+            size="field"
+            fill
             value={household}
-            onChange={(event) => setHousehold(event.target.value)}
-            className={HH_EDITOR_FIELD}
-          >
-            {page.households.map((h) => {
-              // #3025: the label (and its tie-break) tells two households apart; before it, the family name.
-              const label = labelOf(h)
-              return (
-                <option key={h.household_cm_id} value={String(h.household_cm_id)}>
-                  {`${String(h.chip)} · ${label === null ? h.family_name : labelWords(label)}`}
-                </option>
-              )
-            })}
-            <option value="other">Another household…</option>
-          </select>
-        </label>
+            onChange={setHousehold}
+            options={[
+              ...page.households.map((h) => {
+                // #3025: the label (and its tie-break) tells two households apart; before it, the family name.
+                const label = labelOf(h)
+                return {
+                  value: String(h.household_cm_id),
+                  label: `${String(h.chip)} · ${label === null ? h.family_name : labelWords(label)}`,
+                }
+              }),
+              { value: 'other', label: 'Another household…' },
+            ]}
+          />
+        </div>
         {household === 'other' && (
           <label className={HH_EDITOR_LABEL}>
             CampMinder id
@@ -482,22 +501,23 @@ export function SessionForm({
       onSubmit={submit}
       onCancel={onDone}
     >
-      <label className={HH_EDITOR_LABEL}>
+      <div className={HH_EDITOR_LABEL}>
         Session
-        <select
-          aria-label="Session"
+        <AidPicker
+          label="Session"
+          size="field"
           value={session}
-          onChange={(event) => setSession(event.target.value)}
-          className={`${HH_EDITOR_FIELD} self-start`}
-        >
-          <option value="">Pick a session</option>
-          {candidates.map((candidate) => (
-            <option key={candidate.session_cm_id} value={String(candidate.session_cm_id)}>
-              {candidate.name}
-            </option>
-          ))}
-        </select>
-      </label>
+          onChange={setSession}
+          options={[
+            { value: '', label: 'Pick a session' },
+            ...candidates.map((candidate) => ({
+              value: String(candidate.session_cm_id),
+              label: candidate.name,
+            })),
+          ]}
+          className="self-start"
+        />
+      </div>
       <ReasonInput value={reason} onChange={setReason} />
     </FormShell>
   )
@@ -590,22 +610,21 @@ export function DuplicateForm({
       onSubmit={submit}
       onCancel={onDone}
     >
-      <label className={HH_EDITOR_LABEL}>
+      <div className={`${HH_EDITOR_LABEL} min-w-0`}>
         Keep
-        <select
-          aria-label="Keep"
+        {/* A name picker (camper · session; owner 10-10): it fills its column and cuts only beyond it. */}
+        <AidPicker
+          label="Keep"
+          size="field"
+          fill
           value={keptNow ?? ''}
-          onChange={(event) => setKept(event.target.value)}
-          className={`${HH_EDITOR_FIELD} self-start`}
-        >
-          {keptNow === undefined && <option value="">Pick a request</option>}
-          {options.map((option) => (
-            <option key={option.id} value={option.id}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </label>
+          onChange={setKept}
+          options={[
+            ...(keptNow === undefined ? [{ value: '', label: 'Pick a request' }] : []),
+            ...options.map((option) => ({ value: option.id, label: option.label })),
+          ]}
+        />
+      </div>
       <ReasonInput value={reason} onChange={setReason} />
     </FormShell>
   )

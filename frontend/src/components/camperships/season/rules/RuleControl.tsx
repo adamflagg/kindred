@@ -1,7 +1,7 @@
 import { useState } from 'react'
 
 import { AidPicker } from '../../kit/AidPicker'
-import { CS_AMBER_NOTE, CS_INPUT, CS_PILL } from '../../kit/csType'
+import { CS_AMBER_NOTE, CS_FIELD, CS_PILL } from '../../kit/csType'
 import { CHOICE_WORDS } from './rulesCards'
 import { fieldName, type FieldSpec } from './sectionEdit'
 
@@ -51,7 +51,7 @@ function NumberBox({
         type="text"
         inputMode="decimal"
         aria-label={fieldName(path)}
-        className={`${CS_INPUT} w-28 text-right tabular-nums`}
+        className={`${CS_FIELD} w-28 text-right tabular-nums`}
         value={shown}
         placeholder={spec.nullable ? 'none' : undefined}
         onChange={(event) => {
@@ -128,7 +128,7 @@ export function RuleControl({
         <input
           type="date"
           aria-label={name}
-          className={CS_INPUT}
+          className={CS_FIELD}
           value={raw}
           onChange={(event) => onChange(event.target.value)}
         />

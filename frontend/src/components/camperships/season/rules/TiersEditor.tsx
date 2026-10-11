@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 
-import { CS_AMBER_NOTE, CS_FLABEL, CS_INPUT, CS_LINK_SM, CS_SMALL } from '../../kit/csType'
+import { CS_AMBER_NOTE, CS_FLABEL, CS_FIELD, CS_LINK_SM, CS_SMALL } from '../../kit/csType'
 import { DefRef } from '../../kit/DefinitionNotes'
 import { bandsOf, countNote, evenOf, type Band } from './tierGrid'
 
@@ -75,7 +75,7 @@ export function TiersEditor({
           Start $
           <input
             aria-label="Start"
-            className={`${CS_INPUT} w-24 text-right`}
+            className={`${CS_FIELD} w-24 text-right`}
             value={start}
             onChange={(e) => setStart(e.target.value)}
           />
@@ -84,7 +84,7 @@ export function TiersEditor({
           Band width $
           <input
             aria-label="Band width"
-            className={`${CS_INPUT} w-24 text-right`}
+            className={`${CS_FIELD} w-24 text-right`}
             value={byHand ? '' : width}
             placeholder={byHand ? 'by hand' : undefined}
             disabled={byHand}
@@ -95,7 +95,7 @@ export function TiersEditor({
           Tiers
           <input
             aria-label="Tiers"
-            className={`${CS_INPUT} w-14 text-right`}
+            className={`${CS_FIELD} w-14 text-right`}
             value={count}
             onChange={(e) => setCount(e.target.value)}
           />
@@ -108,7 +108,7 @@ export function TiersEditor({
           <DefRef n={3} /> $
           <input
             aria-label="Income ceiling"
-            className={`${CS_INPUT} w-28 text-right`}
+            className={`${CS_FIELD} w-28 text-right`}
             value={ceiling}
             placeholder="none"
             onChange={(e) => setCeiling(e.target.value)}
@@ -123,7 +123,7 @@ export function TiersEditor({
               {`Tier ${String(i + 1)} top $`}
               <input
                 aria-label={`Tier ${String(i + 1)} top`}
-                className={`${CS_INPUT} w-24 text-right`}
+                className={`${CS_FIELD} w-24 text-right`}
                 value={tops[i] ?? ''}
                 onChange={(e) =>
                   setTops((previous) => Object.assign([...previous], { [i]: e.target.value }))

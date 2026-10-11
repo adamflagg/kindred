@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { gridRow, roundOut, ROW_EMMA } from '../requests/gridFixtures'
 import { householdPage, householdRequest } from './householdFixtures'
+import { aidPicked, aidPicker, chooseAid } from '../../../test/aidPicker'
 import { ClearCostForm, SetCostForm } from './SetCostForm'
 
 const send = vi.fn()
@@ -81,7 +82,7 @@ describe('SetCostForm (cost override v2)', () => {
     })
     expect(screen.getByLabelText('Cost')).toHaveValue('1275')
     // The reason it was set for is filled in too, as the mock opens it.
-    expect(screen.getByLabelText('Reason')).toHaveValue('discount')
+    expect(aidPicked('Reason')).toBe('Discount')
   })
 
   it('reads a new cost against the one staff already set', async () => {
@@ -143,7 +144,7 @@ describe('SetCostForm (cost override v2)', () => {
   it('pairs the Cost and Reason boxes on one row', () => {
     renderSet({})
     const row = screen.getByLabelText('Cost').closest('div')!
-    expect(row).toContainElement(screen.getByLabelText('Reason'))
+    expect(row).toContainElement(aidPicker('Reason'))
     expect(row).not.toContainElement(screen.getByLabelText('Note'))
   })
 
@@ -164,7 +165,7 @@ describe('SetCostForm (cost override v2)', () => {
     await userEvent.type(screen.getByLabelText('Cost'), '1275')
     await userEvent.click(screen.getByRole('button', { name: 'Set the Cost' }))
     expect(screen.getByText('Choose a reason')).toBeInTheDocument()
-    await userEvent.selectOptions(screen.getByLabelText('Reason'), 'Discount')
+    await chooseAid('Reason', 'Discount')
     await userEvent.click(screen.getByRole('button', { name: 'Set the Cost' }))
     expect(screen.getByText('A note is required')).toBeInTheDocument()
     expect(send).not.toHaveBeenCalled()
@@ -176,11 +177,11 @@ describe('SetCostForm (cost override v2)', () => {
       rules_cost_from: 'per_person',
       rounds: [roundOut(1, 'posted', { posted: 900 })],
     })
-    await userEvent.selectOptions(screen.getByLabelText('Reason'), 'Discount')
+    await chooseAid('Reason', 'Discount')
     expect(screen.getByText(/A round is already posted/)).toBeInTheDocument()
     expect(screen.queryByText(/use Number of People… instead/)).toBeNull()
     // the approved mock offers "Number of people" (cost-override-v2 story step 4); choosing it points at the right tool
-    await userEvent.selectOptions(screen.getByLabelText('Reason'), 'Number of people')
+    await chooseAid('Reason', 'Number of people')
     expect(
       screen.getByText(
         'To change who is counted, use Number of People… instead: the cost then follows the per-person rates.'
@@ -192,7 +193,7 @@ describe('SetCostForm (cost override v2)', () => {
     const spy = mockCostOverride()
     renderSet({ rules_cost: 6695, rules_cost_from: 'catalog' })
     await userEvent.type(screen.getByLabelText('Cost'), '1,275')
-    await userEvent.selectOptions(screen.getByLabelText('Reason'), "Family's total from the form")
+    await chooseAid('Reason', "Family's total from the form")
     await userEvent.type(screen.getByLabelText('Note'), 'From the form')
     await userEvent.click(screen.getByRole('button', { name: 'Set the Cost' }))
     expect(spy).toHaveBeenCalledWith({

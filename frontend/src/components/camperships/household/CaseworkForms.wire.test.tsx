@@ -16,6 +16,7 @@ import {
   SPLIT_PAGE,
 } from './householdFixtures'
 import { gridRow } from '../requests/gridFixtures'
+import { chooseAid } from '../../../test/aidPicker'
 
 vi.mock('../../../lib/pocketbase', () => ({
   pb: { authStore: { token: 'test-jwt', clear: vi.fn() } },
@@ -128,7 +129,7 @@ describe('ShareForm on the wire', () => {
         <ShareForm request={SPLIT_PAGE.requests[0]!} page={SPLIT_PAGE} onDone={() => undefined} />
       </QueryClientProvider>
     )
-    await userEvent.selectOptions(screen.getByLabelText('Household'), '1000003')
+    await chooseAid('Household', '2 · The Garcia Family')
     await userEvent.type(screen.getByLabelText('Share'), '40')
     await userEvent.type(screen.getByLabelText('Reason'), 'Parents agreed 60/40{Enter}')
     const sent = sentBody()

@@ -1,7 +1,7 @@
 import { useState, type RefObject } from 'react'
 
 import { EditorActions, EditorField, EditorForm, EditorGrid } from '../../kit/EditorLayout'
-import { CS_BTN, CS_BTN2, CS_INPUT } from '../../kit/csType'
+import { CS_BTN, CS_BTN2, CS_FIELD } from '../../kit/csType'
 import { KEEP_NAME_MAX, keepName } from './controlsModel'
 import { ScenarioPopover } from './ScenarioPopover'
 
@@ -58,7 +58,7 @@ export function KeepPopover({
             <input
               aria-label="Name"
               maxLength={KEEP_NAME_MAX}
-              className={`${CS_INPUT} w-full`}
+              className={`${CS_FIELD} w-full`}
               value={name}
               onChange={(event) => setTyped(event.target.value)}
               onKeyDown={(event) => {

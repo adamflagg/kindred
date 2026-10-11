@@ -2,12 +2,12 @@ import { useState } from 'react'
 
 import { useAidCostOverride } from '../../../hooks/camperships/useAidWrites'
 import type { ApiAidHouseholdPage, ApiAidHouseholdRequest } from '../../../types/api-types'
+import { AidPicker } from '../kit/AidPicker'
 import { costReasonOptions } from '../kit/costReasons'
 import { parseMoneyInput } from '../kit/editor'
 import { formatMoney, toCents } from '../kit/money'
 import { FormShell } from './CaseworkForms'
 import {
-  HH_EDITOR_FIELD,
   HH_EDITOR_LABEL,
   HH_EDITOR_MONEY,
   HH_EDITOR_SIDE_LEAD,
@@ -146,22 +146,21 @@ export function SetCostForm({ request, page, onDone }: FormProps) {
             />
           </span>
         </label>
-        <label className={HH_EDITOR_LABEL}>
+        <div className={HH_EDITOR_LABEL}>
           Reason
-          <select
-            aria-label="Reason"
+          {/* The kit picker (design-language §3; conformance gap 1): compact, sized to its reasons. */}
+          <AidPicker
+            label="Reason"
+            size="field"
             value={reason}
-            onChange={(event) => setReason(event.target.value)}
-            className={`${HH_EDITOR_FIELD} self-start`}
-          >
-            <option value="">Choose a reason…</option>
-            {costReasonOptions(page.override_reasons ?? []).map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
+            onChange={setReason}
+            options={[
+              { value: '', label: 'Choose a reason…' },
+              ...costReasonOptions(page.override_reasons ?? []),
+            ]}
+            className="self-start"
+          />
+        </div>
       </div>
       <label className={HH_EDITOR_LABEL}>
         Note

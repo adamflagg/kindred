@@ -340,6 +340,29 @@ describe('someone else changed the section (Decision 16; owner ruling 2026-10-02
     expect(screen.getByRole('button', { name: 'Put My Edit on v5' })).toBeInTheDocument()
   })
 
+  // Conformance gap 2 (owner 10-10): the error-path buttons are the kit's 26px secondary, as Save and
+  // Cancel on the footer row already are; the rest of the Rules editor is a documented exception.
+  it('draws its error-path buttons as the kit 26px secondary (Try Again, Put My Edit on vN)', async () => {
+    outcome = { kind: 'refused', status: 409, message: CONFLICT }
+    server = [rulesDraft(), rulesDraft(), new Error('Network down'), movedDraft()]
+    await typeMinimum('150')
+    const conflict = await screen.findByTestId('rules-conflict')
+    const tryAgain = await within(conflict).findByRole('button', { name: 'Try Again' })
+    expect(tryAgain).toHaveClass('h-[26px]', 'text-[12.5px]', 'bg-card')
+    await userEvent.click(tryAgain)
+    const rebase = await screen.findByRole('button', { name: 'Put My Edit on v5' })
+    expect(rebase).toHaveClass('h-[26px]', 'text-[12.5px]', 'bg-card')
+  })
+
+  it('draws Try Again and Cancel as the kit 26px secondary when the draft cannot be read as it opens', async () => {
+    server = [new Error('Service unavailable')]
+    renderAt('/aid/season/rules?section=awards')
+    await editCard('awards')
+    const failed = await screen.findByTestId('rules-open-failed')
+    for (const name of ['Try Again', 'Cancel'])
+      expect(within(failed).getByRole('button', { name })).toHaveClass('h-[26px]', 'text-[12.5px]')
+  })
+
   it('says you both changed a list when your edit is inside a list someone else changed', async () => {
     // Someone else changed a band's lower edge: the change is reported at the list's path
     // (['bands']), mine at ['bands','1','upper']. Overlap is `touches`, never equality.

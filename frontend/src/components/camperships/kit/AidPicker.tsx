@@ -17,6 +17,11 @@ interface PickerBase<V extends string | number> {
   readonly options: ReadonlyArray<AidPickerOption<V>>
   /** `field` is the editor's 30px, 13.5px face; the default is the toolbar's 26px, 12.5px one. */
   readonly size?: 'control' | 'field'
+  /**
+   * Fill the column it sits in, cutting the label only past it (owner 10-10: a name picker, household or
+   * camper names, in an editor). Without it the picker is compact, sized to what it holds.
+   */
+  readonly fill?: boolean
   readonly disabled?: boolean
   readonly className?: string
   /** What the button reads while `value` matches no option (an "Add a …" picker that holds nothing). */
@@ -28,8 +33,13 @@ const BOX =
   'border-border bg-card text-primary-foreground absolute left-1.5 inline-flex h-3 w-3 items-center justify-center rounded-[3px] border text-[9px] leading-none'
 const BOX_ON = 'bg-primary border-primary'
 
-function faceOf(size: PickerBase<string>['size']): string {
-  return size === 'field' ? CS_PICKER_FIELD : CS_PICKER
+function faceOf(size: PickerBase<string>['size'], fill: boolean | undefined): string {
+  const face = size === 'field' ? CS_PICKER_FIELD : CS_PICKER
+  return fill === true ? `${face} w-full min-w-0 justify-between` : face
+}
+
+function wrapOf(fill: boolean | undefined, className: string | undefined): string {
+  return `relative ${fill === true ? 'flex w-full min-w-0' : 'inline-flex'} ${className ?? ''}`
 }
 
 /** The options, with a heading wherever the group changes. */
@@ -85,6 +95,7 @@ export function AidPicker<V extends string | number>({
   options,
   onChange,
   size,
+  fill,
   disabled,
   className,
   placeholder,
@@ -93,8 +104,13 @@ export function AidPicker<V extends string | number>({
   const shown = picked?.label ?? placeholder ?? String(value)
   return (
     <Listbox value={value} onChange={onChange} disabled={disabled ?? false}>
-      <div className={`relative inline-flex ${className ?? ''}`}>
-        <Face shown={shown} title={picked?.title ?? shown} label={label} className={faceOf(size)} />
+      <div className={wrapOf(fill, className)}>
+        <Face
+          shown={shown}
+          title={picked?.title ?? shown}
+          label={label}
+          className={faceOf(size, fill)}
+        />
         <ListboxOptions transition className={CS_PICKER_OPTIONS}>
           <OptionList
             options={options}
@@ -141,6 +157,7 @@ export function AidPickerMulti<V extends string | number>({
   faceText,
   onChange,
   size,
+  fill,
   disabled,
   className,
 }: PickerBase<V> & {
@@ -157,8 +174,8 @@ export function AidPickerMulti<V extends string | number>({
   const title = values.length === 0 ? none : namesOf(values, options)
   return (
     <Listbox value={[...values]} onChange={onChange} disabled={disabled ?? false} multiple>
-      <div className={`relative inline-flex ${className ?? ''}`}>
-        <Face shown={shown} title={title} label={label} className={faceOf(size)} />
+      <div className={wrapOf(fill, className)}>
+        <Face shown={shown} title={title} label={label} className={faceOf(size, fill)} />
         <ListboxOptions transition className={CS_PICKER_OPTIONS}>
           <OptionList
             options={options}

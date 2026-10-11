@@ -286,6 +286,20 @@ describe("the household page's grant buttons (rulings:340)", () => {
     expect(fetchSpy.mock.calls.some(([url]) => String(url).includes('/grid'))).toBe(false)
   })
 
+  // Owner 10-10 (editors.html option 3): "white on not white, and green on white". Both grant editors
+  // open inside the white household card, so the kit editor takes the band tint (EditorForm onWhite).
+  it('draws both grant editors in the band tint, as they sit inside the white household card', async () => {
+    const table = await openGrantsTab()
+    await userEvent.click(await within(table).findByRole('button', { name: 'Place on a Camper…' }))
+    const place = within(screen.getByTestId('place-camper-form')).getByTestId('aid-editor-form')
+    expect(place.parentElement?.className).toContain('var(--color-forest-200)_24%')
+    expect(place.parentElement).not.toHaveClass('bg-card')
+    await userEvent.click(screen.getByRole('button', { name: 'Add a Commitment…' }))
+    const add = within(screen.getByTestId('commitment-form')).getByTestId('aid-editor-form')
+    expect(add.parentElement?.className).toContain('var(--color-forest-200)_24%')
+    expect(add.parentElement).not.toHaveClass('bg-card')
+  })
+
   it('offers view-only staff neither button; the grants stay read-only', async () => {
     granted = ['financial_aid.view']
     await openGrantsTab()

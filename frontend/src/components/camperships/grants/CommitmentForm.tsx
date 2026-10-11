@@ -47,6 +47,7 @@ export function CommitmentForm({
   household,
   onCancel,
   onDone,
+  onWhite = false,
 }: {
   year: number
   /** The open commitment being edited; none records a new one. */
@@ -55,6 +56,8 @@ export function CommitmentForm({
   household?: CommitmentHousehold | undefined
   onCancel: () => void
   onDone: (words: string) => void
+  /** It opens inside a white card (the household page): the editor takes the band tint (EditorForm onWhite). */
+  onWhite?: boolean | undefined
 }) {
   // Retired included: an edit may hold a grantor retired since, and must show it.
   const grantors = useAidGrantors({ includeRetired: true })
@@ -200,6 +203,7 @@ export function CommitmentForm({
         <EditorForm
           title={initial === undefined ? 'Record a commitment' : 'Edit the commitment'}
           heading="phead"
+          onWhite={onWhite}
           side={
             <Effects
               items={[

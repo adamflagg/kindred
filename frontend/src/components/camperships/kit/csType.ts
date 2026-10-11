@@ -19,6 +19,7 @@ import {
 import {
   AID_SEARCH_INPUT,
   CS_BAND,
+  CS_BAND_BORDER,
   CS_BAND_EDGE,
   CS_BAND_WARN,
   CS_OK_BG,
@@ -163,15 +164,6 @@ export const CS_DATE = `${CS_CTL_H} ${CTL_FACE} ${CTL_FOCUS} pr-1.5 pl-2 tabular
 export const CS_DATE_FIELD = `${FIELD_FACE} ${CTL_FOCUS} pr-1.5 pl-2 tabular-nums [color-scheme:light] dark:[color-scheme:dark] disabled:cursor-not-allowed disabled:opacity-45`
 /** An editor's text or number field (.cf-field): 30px at 13.5px on card white. */
 export const CS_FIELD = `${FIELD_FACE} ${CTL_FOCUS} px-2`
-/**
- * @deprecated A native select. Every select becomes AidPicker (§3); until each screen PR moves its
- * selects, this dresses the native ones in the picker's face so no select stays page-cream.
- */
-export const CS_SELECT = `${CS_CTL_H} ${CTL_FACE} ${CTL_FOCUS} px-2`
-/** @deprecated Scenarios' control-line select; the same 26px white control now. */
-export const CS_SELECT_CTL = CS_SELECT
-/** @deprecated The editor's box; it is the 30px editor field now (CS_FIELD). */
-export const CS_INPUT = CS_FIELD
 
 // ── Buttons (§4; .cf-btn, .cf-btn2, .cf-csv): 26px, 12.5/600, radius 8, Title Case words ──
 const BTN_SHAPE = `${CS_CTL_H} box-border inline-flex flex-none cursor-pointer items-center gap-[5px] rounded-lg border px-2.5 text-[12.5px] leading-[18px] font-semibold whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-45`
@@ -231,8 +223,13 @@ export const CS_BOUNDED =
   'bg-card border-border shadow-lodge-sm max-h-[420px] overflow-auto rounded-xl border'
 
 // ── Editors (§24; .cf-ed, .cf-form2, .cf-fgrid, .cf-edrow): wide and short ──
-export const CS_EDITOR =
-  'bg-card border-border flex flex-col gap-1.5 self-stretch rounded-[10px] border px-2.5 py-2'
+// ONE card in two fills (owner 10-10, editors.html option 3): "white on not white, and green on white".
+// The shape is shared; only the colour part differs, and EditorLayout.test pins that.
+const EDITOR_SHAPE = 'flex flex-col gap-1.5 self-stretch rounded-[10px] border px-2.5 py-2'
+/** The card white, on a surface that is not white: the page, an opened row's cream, a popover. */
+export const CS_EDITOR = `bg-card border-border ${EDITOR_SHAPE}`
+/** The same card on a WHITE surface (inside a white card): the band tint and the band's edge colour. */
+export const CS_EDITOR_ON_WHITE = `${CS_BAND} ${CS_BAND_BORDER} ${EDITOR_SHAPE}`
 /** Fields left, dependent choices right (3 : 2), a dashed rule between. */
 export const CS_FORM2 = 'grid grid-cols-[minmax(0,3fr)_minmax(0,2fr)] items-start'
 export const CS_FORM2_SIDE = 'border-border border-l border-dashed pl-4'

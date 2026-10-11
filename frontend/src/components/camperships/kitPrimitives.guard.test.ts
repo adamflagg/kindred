@@ -4,9 +4,9 @@
  * near-copy of AidPicker that drifts from it, so this fails on one. Source-level, like the other *.guard
  * tests: what matters is the import, not a render.
  *
- * Not guarded here (yet): native <select>. The household editors still draw six of them
- * (household/CaseworkForms.tsx, CancelForm.tsx, SetCostForm.tsx); add that guard once they move to
- * AidPicker size="field".
+ * A native <select> is a one-off picker too (conformance gap 1, owner 10-10): the household editors'
+ * last six moved to AidPicker size="field", and this fails on a new one anywhere in Camperships,
+ * kit/ included (AidPicker is a Listbox, never a select).
  */
 import { describe, expect, it } from 'vitest'
 
@@ -26,6 +26,9 @@ const LISTBOX_IMPORT =
 
 const isKit = (path: string) => path.startsWith('./kit/')
 
+/** A native select element in JSX (`<select` followed by a space, `>` or a line break). */
+const NATIVE_SELECT = /<select[\s>]/
+
 describe('Camperships pickers come from the kit', () => {
   it('reads the Camperships sources (the glob is not empty)', () => {
     expect(Object.keys(SOURCES).some((path) => path === './kit/AidPicker.tsx')).toBe(true)
@@ -35,6 +38,13 @@ describe('Camperships pickers come from the kit', () => {
   it('imports no Headless UI Listbox outside kit/ (use AidPicker / AidPickerMulti)', () => {
     const offenders = Object.entries(SOURCES)
       .filter(([path, source]) => !isKit(path) && LISTBOX_IMPORT.test(source))
+      .map(([path]) => path)
+    expect(offenders).toEqual([])
+  })
+
+  it('draws no native <select> (use AidPicker size="field" in an editor)', () => {
+    const offenders = Object.entries(SOURCES)
+      .filter(([, source]) => NATIVE_SELECT.test(source))
       .map(([path]) => path)
     expect(offenders).toEqual([])
   })

@@ -14,7 +14,7 @@ import {
   CS_CARD,
   CS_CARD_HEADING,
   CS_FLABEL,
-  CS_INPUT,
+  CS_FIELD,
   CS_LINK,
   CS_PANEL,
   CS_PILL,
@@ -228,7 +228,7 @@ function UnlockForm() {
         </label>
         <input
           id="unlock-reason"
-          className={`${CS_INPUT} w-80`}
+          className={`${CS_FIELD} w-80`}
           value={reason}
           maxLength={2000}
           onChange={(event) => {

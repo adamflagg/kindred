@@ -32,11 +32,14 @@ export function PlaceCamperForm({
   year,
   onCancel,
   onDone,
+  onWhite = false,
 }: {
   need: ApiAidNeedsCamper
   year: number
   onCancel: () => void
   onDone: (words: string) => void
+  /** It opens inside a white card (the household page): the editor takes the band tint (EditorForm onWhite). */
+  onWhite?: boolean | undefined
 }) {
   const place = useAidPlaceGrants()
   const fresh = useFreshAidGrants()
@@ -126,6 +129,7 @@ export function PlaceCamperForm({
       >
         <EditorForm
           title="Put it on another camper"
+          onWhite={onWhite}
           side={
             <div className="space-y-1">
               <p className={CS_PANEL_HEAD}>What it does</p>

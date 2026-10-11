@@ -11,7 +11,7 @@ import type {
   ApiAidSectionSaveIn,
 } from '../../../../types/api-types'
 import { useOverlayEscape } from '../../../../hooks/useOverlayEscape'
-import { AMBER_NOTE, BUTTON_SECONDARY } from '../../../admin/lodging/lodgingStyles'
+import { AMBER_NOTE } from '../../../admin/lodging/lodgingStyles'
 import { CS_AMBER_NOTE, CS_BTN, CS_BTN2, CS_SMALL } from '../../kit/csType'
 import type { CellControl } from './CardTables'
 import { savePrecondition } from './precondition'
@@ -150,7 +150,7 @@ export function RulesSectionEditor({
         <div className="flex gap-2">
           <button
             type="button"
-            className={BUTTON_SECONDARY}
+            className={CS_BTN2}
             onClick={() => {
               setOpenError(null)
               open()
@@ -158,7 +158,7 @@ export function RulesSectionEditor({
           >
             Try Again
           </button>
-          <button type="button" className={BUTTON_SECONDARY} onClick={() => onDone(null)}>
+          <button type="button" className={CS_BTN2} onClick={() => onDone(null)}>
             Cancel
           </button>
         </div>
@@ -237,11 +237,7 @@ export function RulesSectionEditor({
           {refusal.kind === 'failed' && (
             <div className="flex items-center gap-2 text-xs">
               <span>{`Couldn't load what changed: ${refusal.reason}`}</span>
-              <button
-                type="button"
-                className={BUTTON_SECONDARY}
-                onClick={() => reload(refusal.server)}
-              >
+              <button type="button" className={CS_BTN2} onClick={() => reload(refusal.server)}>
                 Try Again
               </button>
             </div>
@@ -422,7 +418,7 @@ function Moved({
           yours in place of theirs.
         </p>
       )}
-      <button type="button" className={BUTTON_SECONDARY} onClick={onRebase}>
+      <button type="button" className={CS_BTN2} onClick={onRebase}>
         {`Put My Edit on v${String(fresh.version)}`}
       </button>
     </>

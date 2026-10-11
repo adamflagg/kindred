@@ -10,7 +10,7 @@ import type { ApiAidHistoryPage } from '../../../types/api-types'
 import { QueryGuard } from '../../QueryGuard'
 import type { AidView } from '../kit/asOf'
 import { CS_BAND, CS_BAND_EDGE, CS_PANEL, CS_SCROLL_BOX } from '../kit/csType'
-import { DefinitionNotes, type DefinitionNote } from '../kit/DefinitionNotes'
+import { DefinitionNotes } from '../kit/DefinitionNotes'
 import { useFitToViewport } from '../kit/useFitToViewport'
 import { HistoryFilters } from './HistoryFilters'
 import {
@@ -27,28 +27,11 @@ import {
   toggleOpen,
   withFilter,
   type HistoryFilterKey,
+  HISTORY_NOTES,
 } from './historyModel'
 import { HistoryTable } from './HistoryTable'
 
-/** The mock's notes (history-10): History defines no money figure, so they are the page's own words. */
-const NOTES: readonly DefinitionNote[] = [
-  {
-    n: 1,
-    term: 'Amounts',
-    text: 'Amounts: as locked or entered at that moment; the log never recomputes them.',
-  },
-  {
-    n: 2,
-    term: 'Household timeline',
-    text: "Household timeline: each request's own history stays on its household page; this tab is the season-wide log.",
-  },
-  {
-    n: 3,
-    term: 'Scenarios',
-    text: 'Scenarios: its edits stay in Scenarios; making a kept option the rules draft shows here as a Rules operation.',
-  },
-]
-const NOTES_WITHOUT_SCENARIOS = NOTES.slice(0, 2)
+const NOTES_WITHOUT_SCENARIOS = HISTORY_NOTES.slice(0, 2)
 /** What "Clear filters" resets (history-m3). */
 const CLEARED_BY_CLEAR: readonly HistoryFilterKey[] = ['kind', 'actor', 'since', 'until', 'q']
 const NO_ACTORS: readonly string[] = []
@@ -274,7 +257,7 @@ export function HistoryTab() {
           }
         </QueryGuard>
       </div>
-      <DefinitionNotes notes={canSeeRules ? NOTES : NOTES_WITHOUT_SCENARIOS} />
+      <DefinitionNotes notes={canSeeRules ? HISTORY_NOTES : NOTES_WITHOUT_SCENARIOS} />
     </div>
   )
 }

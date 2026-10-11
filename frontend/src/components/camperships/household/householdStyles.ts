@@ -1,6 +1,6 @@
 /**
  * The household page's own classes. Each card's stripe matches its chip (D32: sky / purple /
- * emerald). Every raw palette colour has its `dark:` partner.
+ * forest; conformance gap 3 retired emerald). Every raw palette colour has its `dark:` partner.
  *
  * The polish PR (sitting B's true-up) trues this page to the mock's grammar
  * (docs mock household-v2, "trued"): 1px cards at radius 12 with the small lodge shadow and no
@@ -13,7 +13,7 @@ import type { RoundStateTone } from './householdModel'
 const STRIPE: Readonly<Record<number, string>> = {
   1: 'shadow-[inset_4px_0_0_var(--color-sky-400),0_1px_2px_hsl(var(--shadow-color)/0.04),0_2px_8px_hsl(var(--shadow-color)/0.06)] dark:shadow-[inset_4px_0_0_var(--color-sky-500),0_1px_2px_hsl(var(--shadow-color)/0.04),0_2px_8px_hsl(var(--shadow-color)/0.06)]',
   2: 'shadow-[inset_4px_0_0_var(--color-purple-400),0_1px_2px_hsl(var(--shadow-color)/0.04),0_2px_8px_hsl(var(--shadow-color)/0.06)] dark:shadow-[inset_4px_0_0_var(--color-purple-500),0_1px_2px_hsl(var(--shadow-color)/0.04),0_2px_8px_hsl(var(--shadow-color)/0.06)]',
-  3: 'shadow-[inset_4px_0_0_var(--color-emerald-400),0_1px_2px_hsl(var(--shadow-color)/0.04),0_2px_8px_hsl(var(--shadow-color)/0.06)] dark:shadow-[inset_4px_0_0_var(--color-emerald-500),0_1px_2px_hsl(var(--shadow-color)/0.04),0_2px_8px_hsl(var(--shadow-color)/0.06)]',
+  3: 'shadow-[inset_4px_0_0_var(--color-forest-400),0_1px_2px_hsl(var(--shadow-color)/0.04),0_2px_8px_hsl(var(--shadow-color)/0.06)] dark:shadow-[inset_4px_0_0_var(--color-forest-500),0_1px_2px_hsl(var(--shadow-color)/0.04),0_2px_8px_hsl(var(--shadow-color)/0.06)]',
 }
 
 /** Each stripe carries shadow-lodge-sm's two layers too: a box-shadow utility replaces, it doesn't stack. */

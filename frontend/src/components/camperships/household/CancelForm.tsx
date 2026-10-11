@@ -1,17 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 
+import { AidPicker } from '../kit/AidPicker'
 import {
   CANCEL_REASON_OPTIONS,
   choiceProblem,
   REASON_POLICY,
   type CancelReason,
 } from '../kit/editor'
-import {
-  HH_AMBER_NOTE as AMBER_NOTE,
-  HH_EDITOR_FIELD,
-  HH_EDITOR_LABEL,
-  HH_EDITOR_TEXT,
-} from './householdStyles'
+import { HH_AMBER_NOTE as AMBER_NOTE, HH_EDITOR_LABEL, HH_EDITOR_TEXT } from './householdStyles'
 import { EditorBox, EditorColumns, FormActions } from './ReasonForm'
 
 /**
@@ -39,10 +35,10 @@ export function CancelForm({
   const [busy, setBusy] = useState(false)
   // One submit outstanding at a time, so a stale submit's error never lands after a newer one.
   const inFlight = useRef(false)
-  // Esc is heard on the form, so the form takes focus as it opens, as ReasonForm does.
-  const field = useRef<HTMLSelectElement>(null)
+  // Esc is heard on the form, so the form takes focus as it opens (on the reason picker), as ReasonForm does.
+  const field = useRef<HTMLDivElement>(null)
   useEffect(() => {
-    field.current?.focus()
+    field.current?.querySelector('button')?.focus()
   }, [])
   const problem = choiceProblem(policy, value === '' ? null : value, note)
   const option = CANCEL_REASON_OPTIONS.find((o) => o.value === value)
@@ -79,23 +75,20 @@ export function CancelForm({
         }}
       >
         <EditorColumns side={'A note is needed only for "another reason".'}>
-          <label className={HH_EDITOR_LABEL}>
+          <div ref={field} className={HH_EDITOR_LABEL}>
             {policy.label}
-            <select
-              ref={field}
-              aria-label="Cancel reason"
-              value={value}
-              onChange={(event) => setValue(event.target.value)}
-              className={`${HH_EDITOR_FIELD} w-[330px] max-w-full`}
-            >
-              <option value="">Pick a reason</option>
-              {policy.options.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </label>
+            {/* The kit picker (design-language §3; conformance gap 1), as wide as the mock draws it. */}
+            <div className="w-[330px] max-w-full">
+              <AidPicker
+                label="Cancel reason"
+                size="field"
+                fill
+                value={value}
+                onChange={setValue}
+                options={[{ value: '', label: 'Pick a reason' }, ...policy.options]}
+              />
+            </div>
+          </div>
           <label className={HH_EDITOR_LABEL}>
             Note
             <input

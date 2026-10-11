@@ -17,6 +17,9 @@ export const CS_BAND =
 /** The band's top rule. */
 export const CS_BAND_EDGE =
   'border-t border-t-[color-mix(in_oklab,var(--color-forest-700)_28%,var(--color-border))] dark:border-t-[color-mix(in_oklab,var(--color-forest-600)_45%,var(--color-border))]'
+/** The band's edge colour on all four sides: the editor card on a white surface (EditorForm `onWhite`). */
+export const CS_BAND_BORDER =
+  'border-[color-mix(in_oklab,var(--color-forest-700)_28%,var(--color-border))] dark:border-[color-mix(in_oklab,var(--color-forest-600)_45%,var(--color-border))]'
 /** A section that needs staff ("No funder yet"). */
 export const CS_BAND_WARN =
   'bg-[color-mix(in_oklab,var(--color-amber-100)_55%,var(--color-card))] dark:bg-[color-mix(in_oklab,var(--color-amber-900)_35%,var(--color-card))]'
@@ -68,7 +71,7 @@ export const STATUS_TONE = {
   cancelled: 'stone',
 } as const satisfies Record<string, PillTone>
 
-// ── Household chips (§4.9; D32: sky / purple / emerald) ───────────────────────
+// ── Household chips (§4.9; D32: sky / purple / forest) ────────────────────────
 
 const CHIP_SHAPE =
   'inline-flex items-center rounded-md px-1.5 py-px text-xs font-bold whitespace-nowrap'
@@ -76,7 +79,8 @@ const CHIP_SHAPE =
 export const HOUSEHOLD_CHIP: Record<number, string> = {
   1: `${CHIP_SHAPE} bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200`,
   2: `${CHIP_SHAPE} bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-200`,
-  3: `${CHIP_SHAPE} bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200`,
+  // Conformance gap 3 (owner 10-10): the kit's plain forest ok tone (CS_OK_BG / CS_OK_INK); emerald is retired.
+  3: `${CHIP_SHAPE} ${CS_OK_BG} ${CS_OK_INK}`,
 }
 
 /** The page-relative index is unbounded server-side: the fourth household onward wears the neutral chip. */

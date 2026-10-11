@@ -118,6 +118,17 @@ describe('the control line (§S5 A; scenarios-2): one kit toolbar row', () => {
     expect(props.onPrice).toHaveBeenLastCalledWith({ kind: 'date', date: '2027-02-10' })
   })
 
+  // Conformance gap 5 (owner 10-10): the date box is the kit's CS_DATE, whose color-scheme lights the
+  // calendar icon in dark (the retired CS_SELECT_CTL left it a dim icon on a dark field).
+  it('draws the Price through box as the kit date field (CS_DATE)', () => {
+    setup({ price: { kind: 'date', date: '2027-02-01' } })
+    expect(screen.getByLabelText('Price through')).toHaveClass(
+      'h-[26px]',
+      'dark:[color-scheme:dark]',
+      'tabular-nums'
+    )
+  })
+
   it('merges Start from and the kept chips into one From picker with two groups', async () => {
     const props = setup()
     expect(screen.getByRole('button', { name: 'From: B · Minimum $75' })).toBeInTheDocument()

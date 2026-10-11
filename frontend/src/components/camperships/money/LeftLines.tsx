@@ -108,6 +108,8 @@ export function LeftLines({
           reopening === line.transaction_cm_id ? (
             <ReasonEditor
               title="Reopen"
+              // The left-lines table is white: the band tint (owner 10-10, "green on white").
+              onWhite
               label="Reason"
               submitLabel="Reopen"
               hint="The line is open again · Reopen needs a reason"
