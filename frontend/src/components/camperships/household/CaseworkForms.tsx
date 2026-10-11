@@ -103,9 +103,11 @@ function ReasonInput({
   /** Say "(optional)" beside the label (Correct…: owner ruling 10-05). */
   optional?: boolean
 }) {
+  const boxId = useId()
   return (
     <EditorField
       wide
+      htmlFor={boxId}
       label={
         optional ? (
           <>
@@ -117,6 +119,7 @@ function ReasonInput({
       }
     >
       <input
+        id={boxId}
         aria-label="Reason"
         type="text"
         value={value}
@@ -248,7 +251,7 @@ function CorrectionForm({
         className={HH_GRID_USED}
       />
     )
-  // Round 3 (section 3): one column, as the mock's row in the answers; the picks fill Used.
+  // #g6-correct: the four-column grid (two for a Yes/No figure); a Use segment fills Used.
   return (
     <FormShell
       head={`Correcting · ${label}`}
@@ -373,6 +376,7 @@ export function ShareForm({
   const [otherId, setOtherId] = useState('')
   const [value, setValue] = useState('')
   const [reason, setReason] = useState('')
+  const ids = useId()
   const { busy, error, attempt } = useSubmit()
 
   const submit = () =>
@@ -426,8 +430,9 @@ export function ShareForm({
             ]}
           />
         </EditorField>
-        <EditorField label="Share">
+        <EditorField label="Share" htmlFor={`${ids}share`}>
           <input
+            id={`${ids}share`}
             aria-label="Share"
             type="text"
             inputMode="decimal"
@@ -438,8 +443,9 @@ export function ShareForm({
         </EditorField>
         <span className={HH_GRID_UNIT}>%</span>
         {/* Rule 14: a dependent choice is switched off, never hidden, until Another household… turns it on. */}
-        <EditorField label="CampMinder id" off={household !== 'other'}>
+        <EditorField label="CampMinder id" off={household !== 'other'} htmlFor={`${ids}id`}>
           <input
+            id={`${ids}id`}
             aria-label="Household id"
             type="text"
             inputMode="numeric"
@@ -703,6 +709,7 @@ export function HeadcountForm({
   const [nonInfant, setNonInfant] = useState<string | null>(null)
   const [infant, setInfant] = useState<string | null>(null)
   const [reason, setReason] = useState('')
+  const ids = useId()
   const { busy, error, attempt } = useSubmit()
   if (application.isLoading) {
     return (
@@ -754,8 +761,9 @@ export function HeadcountForm({
       onCancel={onDone}
     >
       <EditorGrid>
-        <EditorField label="Not infants">
+        <EditorField label="Not infants" htmlFor={`${ids}adults`}>
           <input
+            id={`${ids}adults`}
             aria-label="Not infants"
             type="text"
             inputMode="numeric"
@@ -764,8 +772,9 @@ export function HeadcountForm({
             className={HH_GRID_NUMBER}
           />
         </EditorField>
-        <EditorField label="Infants">
+        <EditorField label="Infants" htmlFor={`${ids}infants`}>
           <input
+            id={`${ids}infants`}
             aria-label="Infants"
             type="text"
             inputMode="numeric"

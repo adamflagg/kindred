@@ -20,6 +20,7 @@ import {
   ShareForm,
 } from './CaseworkForms'
 import { householdPage, householdRequest, SPLIT_PAGE } from './householdFixtures'
+import { ReasonForm } from './ReasonForm'
 import { ClearCostForm, SetCostForm } from './SetCostForm'
 import { income } from './sectionsFixtures'
 
@@ -104,7 +105,15 @@ describe('Payer Shares… (#g6-shares)', () => {
 
   it('has no label above a field: the old stacked captions are gone', () => {
     open()
-    expect(box().querySelector('label')).toBeNull()
+    // The old captions were a <label> wrapping its field, stacked above it. A caption now is a grid cell
+    // of its own, beside its field: a <label> only by htmlFor, never wrapping a control.
+    const captions = Array.from(box().querySelectorAll('label'))
+    expect(captions.length).toBeGreaterThan(0)
+    for (const caption of captions) {
+      expect(caption.parentElement).toBe(grid())
+      expect(caption.querySelector('input, button, select, textarea')).toBeNull()
+      expect(caption.htmlFor).not.toBe('')
+    }
   })
 })
 
@@ -335,5 +344,78 @@ describe('Correct… (#g6-correct)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Correct…' }))
     expect(grid().className).toBe(CS_FGRID_TWO)
     expect(labels()).toEqual(['Used', 'Reason (optional)'])
+  })
+})
+
+// The base wrapped every typed box in its <label>, so a click on the caption focused the box. The grid
+// keeps that for every typed box (EditorField htmlFor); only a picker's caption stays a plain span.
+describe('a typed box keeps its caption as a real label', () => {
+  /** Click the grid's caption cell whose words are `words`; the box named `name` must take focus. */
+  const clickCaption = async (words: string, name: string) => {
+    const caption = Array.from(grid().children).find((cell) => cell.textContent === words)
+    expect(caption?.tagName).toBe('LABEL')
+    await userEvent.click(caption as HTMLElement)
+    expect(screen.getByLabelText(name)).toHaveFocus()
+  }
+
+  it('Set Cost: Cost and Note', async () => {
+    const request = householdRequest(gridRow({ rules_cost: 6695, rules_cost_from: 'catalog' }))
+    render(<SetCostForm request={request} page={householdPage({})} onDone={done} />)
+    await clickCaption('Note', 'Note')
+    await clickCaption('Cost', 'Cost')
+  })
+
+  it('Clear: Why clear', async () => {
+    const request = householdRequest(gridRow({ rules_cost: 4800, rules_cost_from: 'catalog' }))
+    render(<ClearCostForm request={request} page={householdPage({})} onDone={done} />)
+    await clickCaption('Why clear', 'Why clear')
+  })
+
+  it('Cancel Request: Note', async () => {
+    render(
+      <CancelForm
+        initial={null}
+        submitLabel="Cancel the Request"
+        onSubmit={() => Promise.resolve()}
+        onCancel={done}
+      />
+    )
+    await clickCaption('Note', 'Note')
+  })
+
+  it('Payer Shares: Share and Reason', async () => {
+    render(<ShareForm request={SPLIT_PAGE.requests[0]!} page={SPLIT_PAGE} onDone={done} />)
+    await clickCaption('Reason', 'Reason')
+    await clickCaption('Share', 'Share')
+  })
+
+  it('Number of People: Not infants, Infants and Reason', async () => {
+    const family = householdRequest(
+      gridRow({ request_id: 'reqfamily000010', person_cm_id: 0, camper_name: '' })
+    )
+    render(<HeadcountForm request={family} onDone={done} />)
+    await clickCaption('Reason', 'Reason')
+    await clickCaption('Infants', 'Infants')
+    await clickCaption('Not infants', 'Not infants')
+  })
+
+  it('a reason form (Hold, Lift, Reopen…): its one box', async () => {
+    render(
+      <ReasonForm
+        label="Release note"
+        submitLabel="Release the Hold"
+        onSubmit={() => Promise.resolve()}
+        onCancel={done}
+      />
+    )
+    // It opens focused on its box, so take focus away first.
+    ;(document.activeElement as HTMLElement).blur()
+    await clickCaption('Release note', 'Release note')
+  })
+
+  it('a picker keeps a plain caption, so its options never hand a click back to its button', () => {
+    render(<ShareForm request={SPLIT_PAGE.requests[0]!} page={SPLIT_PAGE} onDone={done} />)
+    const caption = Array.from(grid().children).find((cell) => cell.textContent === 'Household')
+    expect(caption?.tagName).toBe('SPAN')
   })
 })

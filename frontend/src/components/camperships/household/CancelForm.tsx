@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 
 import { AidPicker } from '../kit/AidPicker'
 import {
@@ -31,6 +31,7 @@ export function CancelForm({
   const policy = REASON_POLICY.cancel
   const [value, setValue] = useState<string>(initial?.reason ?? '')
   const [note, setNote] = useState(initial?.note ?? '')
+  const noteId = useId()
   const [tried, setTried] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -87,8 +88,9 @@ export function CancelForm({
             />
           </div>
         </EditorField>
-        <EditorField label="Note" wide>
+        <EditorField label="Note" wide htmlFor={noteId}>
           <input
+            id={noteId}
             aria-label="Note"
             type="text"
             value={note}

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 
 import { useAidCostOverride } from '../../../hooks/camperships/useAidWrites'
 import type { ApiAidHouseholdPage, ApiAidHouseholdRequest } from '../../../types/api-types'
@@ -53,6 +53,7 @@ export function SetCostForm({ request, page, onDone }: FormProps) {
     set !== null && page.override_reasons?.includes(set.reason_code) === true ? set.reason_code : ''
   )
   const [note, setNote] = useState('')
+  const ids = useId()
   const { busy, error, attempt } = useSubmit()
   const typed = parseMoneyInput(cost)
   const price = rulesPrice(request)
@@ -125,10 +126,11 @@ export function SetCostForm({ request, page, onDone }: FormProps) {
       }
     >
       <EditorGrid>
-        <EditorField label="Cost">
+        <EditorField label="Cost" htmlFor={`${ids}cost`}>
           <span className={HH_GRID_UNIT}>
             $
             <input
+              id={`${ids}cost`}
               aria-label="Cost"
               type="text"
               inputMode="decimal"
@@ -152,8 +154,9 @@ export function SetCostForm({ request, page, onDone }: FormProps) {
             ]}
           />
         </EditorField>
-        <EditorField label="Note" wide>
+        <EditorField label="Note" wide htmlFor={`${ids}note`}>
           <input
+            id={`${ids}note`}
             aria-label="Note"
             type="text"
             value={note}
@@ -171,6 +174,7 @@ export function SetCostForm({ request, page, onDone }: FormProps) {
 export function ClearCostForm({ request, onDone }: FormProps) {
   const write = useAidCostOverride()
   const [note, setNote] = useState('')
+  const boxId = useId()
   const { busy, error, attempt } = useSubmit()
   const price = rulesPrice(request)
 
@@ -210,8 +214,9 @@ export function ClearCostForm({ request, onDone }: FormProps) {
       }
     >
       <EditorGrid columns={2}>
-        <EditorField label="Why clear" wide>
+        <EditorField label="Why clear" wide htmlFor={boxId}>
           <input
+            id={boxId}
             aria-label="Why clear"
             type="text"
             value={note}

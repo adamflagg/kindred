@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode, type Ref } from 'react'
+import { useEffect, useId, useRef, useState, type ReactNode, type Ref } from 'react'
 
 import { CS_BTN, CS_BTN2, CS_FIELD, CS_PHEAD } from '../kit/csType'
 import { EditorActions, EditorField, EditorForm, EditorGrid } from '../kit/EditorLayout'
@@ -250,6 +250,7 @@ export function ReasonForm({
 }) {
   const [note, setNote] = useState(initial)
   const [error, setError] = useState<string | null>(null)
+  const boxId = useId()
   const [busy, setBusy] = useState(false)
   const field = useRef<HTMLInputElement>(null)
   // A submit while one is in flight is ignored, so a stale submit's error can never land after a
@@ -294,8 +295,9 @@ export function ReasonForm({
       }}
     >
       <EditorGrid columns={2}>
-        <EditorField label={label}>
+        <EditorField label={label} htmlFor={boxId}>
           <input
+            id={boxId}
             ref={field}
             type="text"
             aria-label={label}
