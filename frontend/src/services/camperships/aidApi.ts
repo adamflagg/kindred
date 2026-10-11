@@ -579,7 +579,7 @@ export async function fetchAidToday(
   return (await response.json()) as ApiAidToday
 }
 
-/** Today's This week column (spec 2026-10-10 §8): figures against last week, the feed, posted by week. Live only. */
+/** Today's This week column (spec 2026-10-10 §8): figures against last week and the feed. Live only. */
 export async function fetchAidTodayWeek(
   fetchWithAuth: FetchWithAuth,
   year: number

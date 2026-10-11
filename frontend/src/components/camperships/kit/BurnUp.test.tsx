@@ -19,8 +19,31 @@ describe('AidBurnUp', () => {
     expect(container.querySelector('line[data-line="budget"]')).not.toBeNull()
     expect(container.querySelector('line[data-line="committed"]')).not.toBeNull()
     expect(screen.getByText('$843k posted')).toBeInTheDocument()
-    expect(screen.getByText('$984k once waiting is offered')).toBeInTheDocument()
-    expect(screen.getByText('Budget $1.11M')).toBeInTheDocument()
+    // One compact formatter (kit/money formatMoneyCompact): thousands round toward zero, as the hero's figures do.
+    expect(screen.getByText('$983k once waiting is offered')).toBeInTheDocument()
+    expect(screen.getByText('Budget $1,111k')).toBeInTheDocument()
+  })
+
+  it('labels money as the hero does, rounding toward zero ($116,600 is "$116k", never "$117k")', () => {
+    render(
+      <AidBurnUp
+        budget={null}
+        committed={null}
+        points={[{ week_of: '2031-01-06', posted: 116600 }]}
+      />
+    )
+    expect(screen.getByText('$116k posted')).toBeInTheDocument()
+  })
+
+  it('carries no ARIA role: the chart is not a test handle (frontend/CLAUDE.md)', () => {
+    const { container } = render(
+      <AidBurnUp
+        budget={null}
+        committed={null}
+        points={[{ week_of: '2031-01-06', posted: 5000 }]}
+      />
+    )
+    expect(container.querySelector('svg')?.getAttribute('role')).toBeNull()
   })
 
   it('draws no budget line without an allocation, and nothing for an empty season', () => {

@@ -11,6 +11,7 @@ import { POOL_NEGATIVE_INK } from '../kit/aidStyles'
 import { aidHref, type AidView } from '../kit/asOf'
 import { CS_META } from '../kit/csType'
 import { AidHeroBar, AidHeroCard, AidHeroKeys, type HeroSegment } from '../kit/HeroBar'
+import { formatMoneyCompact } from '../kit/money'
 import { StatusPill } from '../kit/Pills'
 import { REQUEST_VIEWS } from '../requests/views'
 import {
@@ -20,11 +21,19 @@ import {
   offerShare,
   overPools,
   registrarSegments,
-  thousands,
 } from './todayModel'
 
 /** The first mount plays the hero bar's reveal; a refetch redraws the page and must not replay it. */
 let revealed = false
+
+/** Whether this hero plays the page's one reveal (spec §3): only the first hero mounted since the page loaded. */
+function useRevealOnce(): boolean {
+  const [reveal] = useState(() => !revealed)
+  useEffect(() => {
+    revealed = true
+  }, [])
+  return reveal
+}
 
 /** A stage's Requests view slug, from the grid's own view list (`held` is the Holds view). */
 function stageSlug(stage: string): string {
@@ -39,10 +48,7 @@ export function RegistrarHero({
   readonly stages: ApiAidTodayStages
   readonly view: AidView
 }) {
-  const [reveal] = useState(() => !revealed)
-  useEffect(() => {
-    revealed = true
-  }, [])
+  const reveal = useRevealOnce()
   const total =
     stages.accepted +
     stages.waiting_on_family +
@@ -107,11 +113,11 @@ function PoolRow({ pool, view }: { readonly pool: ApiAidBudgetPool; readonly vie
         <StatusPill tone="muted">No allocation</StatusPill>
       ) : remaining >= 0 ? (
         <StatusPill tone="ok" title={`${money(remaining)} remaining`}>
-          {thousands(remaining)} remaining
+          {formatMoneyCompact(remaining)} remaining
         </StatusPill>
       ) : (
         <StatusPill tone="amber" title={`${money(-remaining)} over`}>
-          {thousands(-remaining)} over
+          {formatMoneyCompact(-remaining)} over
         </StatusPill>
       )}
     </div>
@@ -125,6 +131,7 @@ export function FinanceHero({
   readonly budget: ApiAidBudget
   readonly view: AidView
 }) {
+  const reveal = useRevealOnce()
   const { segments, total, allocated } = budgetSegments(budget.total.total, budget.total.below)
   const remaining = budget.total.total.remaining
   const over = overPools(budget)
@@ -139,9 +146,9 @@ export function FinanceHero({
         remaining === null ? (
           '—'
         ) : negative ? (
-          <span className={POOL_NEGATIVE_INK}>{thousands(-remaining)}</span>
+          <span className={POOL_NEGATIVE_INK}>{formatMoneyCompact(-remaining)}</span>
         ) : (
-          thousands(remaining)
+          formatMoneyCompact(remaining)
         )
       }
       figureLabel={
@@ -150,7 +157,12 @@ export function FinanceHero({
           : `remaining after everything waiting is offered${over.map((p) => ` · ${p.label} is ${money(p.over)} over`).join('')}`
       }
     >
-      <AidHeroBar segments={segments} total={total} {...(marker ? { marker } : {})} />
+      <AidHeroBar
+        segments={segments}
+        total={total}
+        reveal={reveal}
+        {...(marker ? { marker } : {})}
+      />
       <AidHeroKeys segments={segments} />
       <div className="border-border mt-2.5 divide-y border-t">
         {budget.pools.map((pool) => (
@@ -172,6 +184,7 @@ export function DevelopmentHero({
   readonly awards: number | null
   readonly view: AidView
 }) {
+  const reveal = useRevealOnce()
   const built = developmentSegments(sources)
   const href = aidHref(DEVELOPMENT_HREF, view)
   const withDoor = (list: HeroSegment[]): HeroSegment[] => list.map((s) => ({ ...s, href }))
@@ -186,7 +199,7 @@ export function DevelopmentHero({
       figure={awards === null ? '—' : String(awards)}
       figureLabel={`awards · ${String(pct)}% of the money from outside funders`}
     >
-      <AidHeroBar segments={main} />
+      <AidHeroBar segments={main} reveal={reveal} />
       <div className="mt-2.5 mb-1 text-[12.5px] font-semibold">
         <i className="mr-1.5 inline-block size-[9px] rounded-[2px] bg-sky-800" />
         {`Outside ${money(built.outside)}, by funder`}

@@ -23,13 +23,6 @@ export const WALKABLE: readonly TodayKey[] = [
   'pending_approval',
 ]
 
-/** Days past which a walkable line is overdue (the server's thresholds, shown in the pill's title). */
-const LIMIT: Readonly<Record<string, number>> = {
-  needs_offer: 10,
-  waiting_on_family: 14,
-  pending_approval: 3,
-}
-
 const FUNDERS = '/aid/money/funders'
 const DRAWER_N = 5
 
@@ -109,7 +102,7 @@ function NextUpCell({ line, view }: { line: ApiAidTodayLine; view: AidView }) {
     return <AidNameChips chips={chips} total={line.families ?? line.items} />
   }
   if (nextUp.length > 0) {
-    const limit = LIMIT[line.key]
+    const limit = line.overdue_after_days ?? undefined
     const walkable = isWalkableKey(line.key)
     const chips: NameChip[] = nextUp.map((n) => {
       const label = n.tiebreak ? `${n.label} ${n.tiebreak}` : n.label
@@ -132,7 +125,7 @@ function NextUpCell({ line, view }: { line: ApiAidTodayLine; view: AidView }) {
 }
 
 function Drawer({ line, view, slug }: { line: ApiAidTodayLine; view: AidView; slug: string }) {
-  const limit = LIMIT[line.key]
+  const limit = line.overdue_after_days ?? undefined
   const nextUp = nextUpOf(line)
   const first = nextUp[0]
   const open = openHref(line.key, view)
@@ -279,7 +272,7 @@ export function TodayTodos({
                 const expandable = canOpen(line)
                 const isOpen = expandable && open.has(line.key)
                 const href = openHref(line.key, view)
-                const limit = LIMIT[line.key]
+                const limit = line.overdue_after_days ?? undefined
                 const label = wordsFor(line.key)
                 const tone = isOpen ? ROW_HIGHLIGHT : ''
                 const slug = viewSlug(line.key)

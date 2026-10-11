@@ -5,6 +5,7 @@ import { POOL_NEGATIVE_INK } from './aidStyles'
 import { Cut } from './Cut'
 import { CS_CARD_HEADING, CS_META } from './csType'
 import { campToday, formatShortDate } from './dates'
+import { formatMoneyCompact } from './money'
 
 const CAMP_TIME_ZONE = 'America/Los_Angeles'
 /** The column holds the latest six items; the server sends no more, and the cap keeps it from growing if it did. */
@@ -16,7 +17,6 @@ const GLYPH: Record<ApiAidWeekFeed['kind'], string> = {
   posted: '✓',
   accepted: '↩',
   approved: '✓',
-  refused: '✕',
   grant: '＋',
   overdue: '!',
   funder: '✎',
@@ -28,22 +28,15 @@ function glyphInk(kind: ApiAidWeekFeed['kind']): string {
   return 'text-muted-foreground'
 }
 
-/** Whole dollars, or $Nk from ten thousand up (the column is 340px wide). */
-function dollars(n: number): string {
-  const abs = Math.abs(n)
-  if (abs >= 10000) return `$${String(Math.trunc(abs / 1000))}k`
-  return `$${Math.round(abs).toLocaleString('en-US')}`
-}
-
 function figureValue(f: ApiAidWeekFigure): string {
-  return f.unit === 'dollars' ? dollars(f.value) : f.value.toLocaleString('en-US')
+  return f.unit === 'dollars' ? formatMoneyCompact(f.value) : f.value.toLocaleString('en-US')
 }
 
 function Change({ figure }: { readonly figure: ApiAidWeekFigure }) {
   const delta = figure.value - figure.previous
   if (delta === 0) return null
   const size = Math.abs(delta)
-  const words = figure.unit === 'dollars' ? dollars(size) : size.toLocaleString('en-US')
+  const words = figure.unit === 'dollars' ? formatMoneyCompact(size) : size.toLocaleString('en-US')
   return (
     <span
       className={`text-xs font-semibold tabular-nums ${delta > 0 ? UP_INK : POOL_NEGATIVE_INK}`}

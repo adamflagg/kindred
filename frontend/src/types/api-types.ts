@@ -374,7 +374,7 @@ export type ApiAidToday = TodayResponse
 export type ApiAidTodayLine = TodayLineOut
 export type ApiAidTodayNextUp = TodayNextUpOut
 export type ApiAidTodayStages = TodayStagesOut
-/** Today's week read (spec 2026-10-10 §8): this week against last, the feed, posted by week. */
+/** Today's week read (spec 2026-10-10 §8): this week against last, and the feed. */
 export type ApiAidTodayWeek = TodayWeekResponse
 export type ApiAidWeekFigure = WeekFigureOut
 export type ApiAidWeekFeed = WeekFeedOut

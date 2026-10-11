@@ -1,5 +1,6 @@
 import { Inbox } from 'lucide-react'
 import { useMemo, type ReactNode } from 'react'
+import { Navigate, useLocation, useSearchParams } from 'react-router'
 
 import { QueryGuard } from '../../components/QueryGuard'
 import {
@@ -81,13 +82,13 @@ function weekHref(f: ApiAidWeekFeed): string | null {
   if (f.href_kind === 'household' && f.household_cm_id != null)
     return `/aid/households/${String(f.household_cm_id)}`
   if (f.href_kind === 'funders') return '/aid/money/funders'
-  if (f.href_kind === 'rules') return '/aid/season/rules'
   return null
 }
 
 /**
  * A persona's right column: its own read inside its own guard, so a failed week read says so here and the to-dos
- * still render (spec 2026-10-10 §7.4). `extra` is the finance chart, drawn above the card.
+ * still render (spec 2026-10-10 §7.4). `extra` is the finance chart, drawn above the card and outside the guard: it
+ * rides the Today read, so a slow or failed week read never hides it.
  */
 function WeekColumn({
   pick,
@@ -98,25 +99,39 @@ function WeekColumn({
 }) {
   const week = useAidTodayWeek()
   return (
-    <QueryGuard
-      isLoading={week.isLoading}
-      error={week.data ? null : week.error}
-      data={week.data}
-      label="this week"
-    >
-      {(data) => (
-        <>
-          {extra}
+    <>
+      {extra}
+      <QueryGuard
+        isLoading={week.isLoading}
+        error={week.data ? null : week.error}
+        data={week.data}
+        label="this week"
+      >
+        {(data) => (
           <AidWeekCard
             weekOf={data.week_of}
             figures={pick(data) ?? []}
             feed={data.feed}
             hrefOf={weekHref}
           />
-        </>
-      )}
-    </QueryGuard>
+        )}
+      </QueryGuard>
+    </>
   )
+}
+
+/**
+ * Finance's This week figures (spec §7.2): You approved, Posted in CM, Avg award, Families helped. Posted in CM is the
+ * budget's Posted by week, so it comes from the Today read's own rows (`posted_this_week`), not the week read.
+ */
+function financeFigures(
+  week: readonly ApiAidWeekFigure[] | null | undefined,
+  posted: ApiAidWeekFigure | null | undefined
+): readonly ApiAidWeekFigure[] {
+  const figures = week ?? []
+  if (!posted) return figures
+  const at = figures.findIndex((f) => f.key === 'approved') + 1
+  return [...figures.slice(0, at), posted, ...figures.slice(at)]
 }
 
 /** Finance's chart: posted by week against the budget, and what is committed once waiting requests are offered. */
@@ -302,7 +317,7 @@ function FinanceBody({
         }
         right={
           <WeekColumn
-            pick={(w) => w.finance}
+            pick={(w) => financeFigures(w.finance, today.posted_this_week)}
             extra={<CommittedByWeek points={today.posted_by_week ?? []} budget={budget} />}
           />
         }
@@ -514,6 +529,17 @@ export default function AidTodayPage() {
   const { hasPermission } = usePermissions()
   const year = useYear()
   const view = useMemo((): AidView => ({ year, asOf: LIVE }), [year])
+  const { pathname } = useLocation()
+  const [params] = useSearchParams()
+  // Today is live only (D20), and its budget read honours the URL's as-of: drop a past day from the URL rather than
+  // let one hook draw a past budget under a "(live)" band. One redirect covers every read on the page.
+  if (params.has('as_of') || params.has('as_of_axis')) {
+    const kept = new URLSearchParams(params)
+    kept.delete('as_of')
+    kept.delete('as_of_axis')
+    const search = kept.toString()
+    return <Navigate to={search ? `${pathname}?${search}` : pathname} replace />
+  }
   const page = pickTodayPage({ hasPermission })
   if (page === 'none') return <PermissionDeniedPage />
   if (page === 'finance') return <FinancePersona view={view} />

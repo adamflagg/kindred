@@ -33,9 +33,10 @@ describe('AidWeekCard', () => {
     expect(screen.getByText('Mon Apr 14 – today')).toBeInTheDocument()
     expect(screen.getByText('▲ 5').className).toMatch(/forest/)
     expect(screen.getByText('▼ $60').className).toMatch(/amber/)
-    expect(screen.getByText('$2,080')).toBeInTheDocument()
+    // One compact formatter (kit/money formatMoneyCompact): thousands round toward zero, as the hero and chart do.
+    expect(screen.getByText('$2k')).toBeInTheDocument()
     expect(screen.getByText('$52k')).toBeInTheDocument()
-    expect(screen.getByText('▲ $2,000')).toBeInTheDocument()
+    expect(screen.getByText('▲ $2k')).toBeInTheDocument()
   })
 
   it('shows no change when a figure did not move', () => {

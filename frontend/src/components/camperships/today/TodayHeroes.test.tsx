@@ -1,6 +1,6 @@
 import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { BUDGET, SOURCES, STAGES } from './todayFixtures'
 import { DevelopmentHero, FinanceHero, RegistrarHero } from './TodayHeroes'
@@ -95,5 +95,34 @@ describe('the Today heroes', () => {
     const doors = screen.getAllByTestId('hero-seg').map((s) => s.getAttribute('href'))
     expect(doors.length).toBeGreaterThan(0)
     expect(doors.every((h) => h === '/aid/reports/development?year=2027')).toBe(true)
+  })
+})
+
+describe('the one reveal (spec §3)', () => {
+  // The reveal is once per page load, held in the module: each case loads a fresh copy.
+  async function fresh() {
+    vi.resetModules()
+    return import('./TodayHeroes')
+  }
+
+  it('plays on the finance hero on first load, and not on a second mount', async () => {
+    const { FinanceHero } = await fresh()
+    const first = wrap(<FinanceHero budget={BUDGET} view={VIEW} />)
+    expect(first.container.querySelector('[data-reveal="true"]')).not.toBeNull()
+    first.unmount()
+    const again = wrap(<FinanceHero budget={BUDGET} view={VIEW} />)
+    expect(again.container.querySelector('[data-reveal="true"]')).toBeNull()
+  })
+
+  it('plays on the development hero on first load', async () => {
+    const { DevelopmentHero } = await fresh()
+    const { container } = wrap(<DevelopmentHero sources={SOURCES} awards={521} view={VIEW} />)
+    expect(container.querySelector('[data-reveal="true"]')).not.toBeNull()
+  })
+
+  it('plays on the registrar hero on first load', async () => {
+    const { RegistrarHero } = await fresh()
+    const { container } = wrap(<RegistrarHero stages={STAGES} view={VIEW} />)
+    expect(container.querySelector('[data-reveal="true"]')).not.toBeNull()
   })
 })

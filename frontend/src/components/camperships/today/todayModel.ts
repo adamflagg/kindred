@@ -9,6 +9,7 @@ import type {
   ApiAidTodayStages,
 } from '../../../types/api-types'
 import type { HeroSegment, HeroTone } from '../kit/HeroBar'
+import { formatMoneyCompact } from '../kit/money'
 import { codeWords } from '../requests/attention'
 import { SECTION_TITLES, isRulesSection } from '../season/rules/rulesModel'
 
@@ -119,8 +120,6 @@ export function countWords(line: ApiAidTodayLine): string {
 }
 
 export const money = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`
-export const thousands = (n: number) =>
-  Math.abs(n) < 1000 ? money(n) : `$${String(Math.trunc(n / 1000))}k`
 const awardsWord = (n: number) => `${String(n)} ${n === 1 ? 'award' : 'awards'}`
 
 export function registrarSegments(
@@ -174,22 +173,22 @@ export function budgetSegments(
       key: 'posted',
       value: posted,
       label: 'Posted',
-      figure: thousands(posted),
-      inner: `Posted ${thousands(posted)}`,
+      figure: formatMoneyCompact(posted),
+      inner: `Posted ${formatMoneyCompact(posted)}`,
       tone: 'done',
     },
     {
       key: 'needs_offer',
       value: offer,
       label: 'Needs an offer, as the rules price it',
-      figure: thousands(offer),
+      figure: formatMoneyCompact(offer),
       tone: 'progress',
     },
     {
       key: 'pending',
       value: pend,
       label: 'Pending your approval',
-      figure: thousands(pend),
+      figure: formatMoneyCompact(pend),
       tone: 'act',
       mine: true,
     },
@@ -197,15 +196,15 @@ export function budgetSegments(
       key: 'remaining',
       value: remaining,
       label: 'Remaining',
-      figure: thousands(remaining),
-      inner: `${thousands(remaining)} remaining`,
+      figure: formatMoneyCompact(remaining),
+      inner: `${formatMoneyCompact(remaining)} remaining`,
       tone: 'gap',
     },
     {
       key: 'over',
       value: over,
       label: 'Over',
-      figure: thousands(over),
+      figure: formatMoneyCompact(over),
       inner: '',
       tone: 'over',
       mine: true,
@@ -214,7 +213,7 @@ export function budgetSegments(
       key: 'held',
       value: held,
       label: 'On hold, at what they asked',
-      figure: thousands(held),
+      figure: formatMoneyCompact(held),
       inner: '',
       tone: 'est',
       title: `On hold, asked ${money(held)}: if the holds clear at what they asked`,
@@ -248,16 +247,16 @@ export function developmentSegments(sources: readonly ApiAidDevelopmentSource[])
       key: 'own',
       value: own,
       label: "This camp's own aid",
-      figure: thousands(own),
-      inner: `Camp ${thousands(own)}`,
+      figure: formatMoneyCompact(own),
+      inner: `Camp ${formatMoneyCompact(own)}`,
       tone: 'done',
     },
     {
       key: 'outside',
       value: outside,
       label: `Outside funders (${String(outsideList.length)})`,
-      figure: thousands(outside),
-      inner: `Outside ${thousands(outside)}`,
+      figure: formatMoneyCompact(outside),
+      inner: `Outside ${formatMoneyCompact(outside)}`,
       tone: 'sky0',
     },
   ]
@@ -268,8 +267,8 @@ export function developmentSegments(sources: readonly ApiAidDevelopmentSource[])
     key: s.source_key || s.name,
     value: s.amount,
     label: s.name,
-    figure: `${thousands(s.amount)} · ${awardsWord(s.awards)}`,
-    inner: thousands(s.amount),
+    figure: `${formatMoneyCompact(s.amount)} · ${awardsWord(s.awards)}`,
+    inner: formatMoneyCompact(s.amount),
     tone: SKY[i % SKY.length] ?? 'sky0',
     title: `${s.name}: ${money(s.amount)} · ${awardsWord(s.awards)}`,
   }))
@@ -280,7 +279,7 @@ export function developmentSegments(sources: readonly ApiAidDevelopmentSource[])
       key: 'others',
       value,
       label: `${String(others.length)} other funders`,
-      figure: `${thousands(value)} · ${awardsWord(awards)}`,
+      figure: `${formatMoneyCompact(value)} · ${awardsWord(awards)}`,
       inner: `${String(others.length)} others`,
       tone: 'mute',
       title: others.map((s) => `${s.name} ${money(s.amount)}`).join(' · '),

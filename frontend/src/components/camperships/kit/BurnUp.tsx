@@ -1,6 +1,7 @@
 import type { ApiAidWeekPoint } from '../../../types/api-types'
 import { CS_EMPTY } from './csType'
 import { campToday, parseIsoDay } from './dates'
+import { formatMoneyCompact } from './money'
 
 const W = 300
 const H = 150
@@ -17,13 +18,6 @@ const AMBER = 'var(--color-amber-600)'
 function dayNumber(iso: string): number {
   const d = parseIsoDay(iso.slice(0, 10))
   return d === null ? Number.NaN : Date.UTC(d.year, d.month - 1, d.day) / DAY_MS
-}
-
-/** $843k, $1.11M: thousands rounded, millions to `decimals` places. */
-function short(n: number, decimals: number): string {
-  if (n >= 999_500) return `$${(n / 1_000_000).toFixed(decimals)}M`
-  if (n >= 1000) return `$${String(Math.round(n / 1000))}k`
-  return `$${String(Math.round(n))}`
 }
 
 /**
@@ -88,7 +82,7 @@ export function AidBurnUp({
   const showStep = committed !== null && committed > lastPosted
 
   return (
-    <svg viewBox={`0 0 ${String(W)} ${String(H)}`} className="block w-full" role="img">
+    <svg viewBox={`0 0 ${String(W)} ${String(H)}`} className="block w-full">
       {ticks.map((v, i) => (
         <g key={i}>
           <line
@@ -101,7 +95,7 @@ export function AidBurnUp({
             strokeWidth={0.5}
           />
           <text x={PAD.left - 4} y={y(v) + 3} textAnchor="end" fontSize={FONT} fill={INK}>
-            {v === 0 ? '$0' : short(v, 1)}
+            {formatMoneyCompact(v)}
           </text>
         </g>
       ))}
@@ -125,7 +119,7 @@ export function AidBurnUp({
             strokeDasharray="4 3"
           />
           <text x={PAD.left + 4} y={y(budget) - 3} fontSize={FONT} fill={INK}>
-            {`Budget ${short(budget, 2)}`}
+            {`Budget ${formatMoneyCompact(budget)}`}
           </text>
         </>
       )}
@@ -149,7 +143,7 @@ export function AidBurnUp({
             fontSize={FONT}
             fill={AMBER}
           >
-            {`${short(committed, 2)} once waiting is offered`}
+            {`${formatMoneyCompact(committed)} once waiting is offered`}
           </text>
         </>
       )}
@@ -162,7 +156,7 @@ export function AidBurnUp({
         fontWeight={600}
         fill={POSTED}
       >
-        {`${short(lastPosted, 2)} posted`}
+        {`${formatMoneyCompact(lastPosted)} posted`}
       </text>
     </svg>
   )

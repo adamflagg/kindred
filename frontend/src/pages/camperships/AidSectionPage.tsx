@@ -1,11 +1,4 @@
-import {
-  CalendarCheck,
-  FileBarChart,
-  Inbox,
-  Landmark,
-  ListChecks,
-  type LucideIcon,
-} from 'lucide-react'
+import { CalendarCheck, FileBarChart, Landmark, ListChecks, type LucideIcon } from 'lucide-react'
 import { Navigate, useParams } from 'react-router'
 
 import { aidHref } from '../../components/camperships/kit/asOf'
@@ -19,8 +12,10 @@ import { useYear } from '../../hooks/useCurrentYear'
 import { usePermissions } from '../../hooks/usePermissions'
 import PermissionDeniedPage from '../PermissionDeniedPage'
 
-const ICONS: Record<AidSectionKey, LucideIcon> = {
-  today: Inbox,
+/** Today is never a placeholder: it has its own page (AidTodayPage). */
+type PlaceholderKey = Exclude<AidSectionKey, 'today'>
+
+const ICONS: Record<PlaceholderKey, LucideIcon> = {
   requests: ListChecks,
   money: Landmark,
   season: CalendarCheck,
@@ -33,7 +28,7 @@ const ICONS: Record<AidSectionKey, LucideIcon> = {
  * first visible one, keeping the season and the as-of; a known tab this user may not see is refused (D76).
  * Each slice replaces the body below the tabs and keeps the rest.
  */
-export default function AidSectionPage({ section: key }: { section: AidSectionKey }) {
+export default function AidSectionPage({ section: key }: { section: PlaceholderKey }) {
   const section = aidSection(key)
   const { tab } = useParams()
   const { hasPermission } = usePermissions()
@@ -54,8 +49,7 @@ export default function AidSectionPage({ section: key }: { section: AidSectionKe
             icon={ICONS[key]}
             title={section.label}
             subtitle={`Season ${String(year)}`}
-            // Today shows counts of work, not money: no as-of on its band (D20).
-            asOf={key === 'today' ? undefined : asOf}
+            asOf={asOf}
           />
         }
         tabs={

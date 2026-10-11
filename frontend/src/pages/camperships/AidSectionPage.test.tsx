@@ -34,7 +34,7 @@ function renderAt(path: string) {
           }
         >
           <Route index element={<AidHome />} />
-          <Route path="today" element={<AidSectionPage section="today" />} />
+          <Route path="today" element={<div>Today</div>} />
           <Route path="requests" element={<AidSectionPage section="requests" />} />
           <Route path="season/:tab?" element={<AidSectionPage section="season" />} />
           <Route path="reports/:tab?" element={<AidSectionPage section="reports" />} />
@@ -90,7 +90,7 @@ describe('AidSectionPage before its slice lands (Decision 4)', () => {
     expect(screen.queryByRole('link', { name: 'Statistics' })).toBeNull()
   })
 
-  it('dates a money page and leaves Today, a page of counts, undated (D20)', () => {
+  it('dates a money page (D20)', () => {
     renderAt('/aid/requests')
     expect(screen.getByText('Season 2027 · as of Oct 1 (live)')).toBeInTheDocument()
   })
@@ -100,12 +100,6 @@ describe('AidHome', () => {
   it('lands a view holder on Today, keeping the season', () => {
     renderAt('/aid?year=2027')
     expect(screen.getByTestId('where')).toHaveTextContent('/aid/today?year=2027')
-  })
-
-  it('draws the section placeholder at Today with no as-of (the real Today is AidTodayPage)', () => {
-    renderAt('/aid/today')
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Today')
-    expect(screen.queryByText(/as of/)).toBeNull()
   })
 
   it('lands a summary-only user on Today', () => {

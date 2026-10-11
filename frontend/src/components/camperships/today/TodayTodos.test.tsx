@@ -209,4 +209,31 @@ describe('TodayTodos', () => {
     expect(cells[0]).toHaveTextContent(/^1$/)
     expect(cells[1]!.textContent.startsWith('▾')).toBe(true)
   })
+  it("reads each line's overdue threshold from the server, for the chip's day colour and the pill's title", () => {
+    const tight = line('needs_offer', 2, {
+      oldest_days: 8,
+      overdue: true,
+      overdue_after_days: 7,
+      next_up: [
+        {
+          household_cm_id: 1000002,
+          label: 'Garcia',
+          tiebreak: '',
+          days: 8,
+          camper_name: 'Liam Garcia',
+          session_name: 'Session 2',
+          session_type: 'main',
+          round: 1,
+          ask: 1850,
+        },
+      ],
+    })
+    wrap(<TodayTodos lines={[tight]} rest={[]} view={VIEW} empty="" />)
+    const first = row(0)
+    expect(within(first).getByText('Overdue · 8 days')).toHaveAttribute(
+      'title',
+      "Past this line's 7-day threshold, so it moved to the top."
+    )
+    expect(within(first).getAllByText('8d')[0]?.className).toMatch(/amber/)
+  })
 })

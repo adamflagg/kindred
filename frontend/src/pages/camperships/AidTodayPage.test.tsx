@@ -3,7 +3,7 @@
  * the heroes, the to-do table and the model have their own tests.
  */
 import { render, screen } from '@testing-library/react'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
@@ -11,6 +11,7 @@ import {
   line,
   REGISTRAR_TODAY,
   SOURCES,
+  STAGES,
 } from '../../components/camperships/today/todayFixtures'
 import type { ApiAidDevelopment, ApiAidToday, ApiAidTodayWeek } from '../../types/api-types'
 import AidTodayPage from './AidTodayPage'
@@ -108,10 +109,25 @@ const FINANCE_TODAY: ApiAidToday = {
   ],
 }
 
-function renderPage() {
+function Where() {
+  const { pathname, search } = useLocation()
+  return <div data-testid="where">{pathname + search}</div>
+}
+
+function renderPage(path = '/aid/today') {
   return render(
-    <MemoryRouter initialEntries={['/aid/today']}>
-      <AidTodayPage />
+    <MemoryRouter initialEntries={[path]}>
+      <Routes>
+        <Route
+          path="/aid/today"
+          element={
+            <>
+              <AidTodayPage />
+              <Where />
+            </>
+          }
+        />
+      </Routes>
     </MemoryRouter>
   )
 }
@@ -313,5 +329,52 @@ describe('AidTodayPage', () => {
     renderPage()
     expect(await screen.findByText(/Failed to load this week/)).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Your to-dos' })).toBeInTheDocument()
+  })
+
+  // --- final review ---------------------------------------------------------------------------------------------
+
+  it('reads live whatever the URL says: an as-of on /aid/today is dropped, the season kept (D20)', async () => {
+    granted = FINANCE
+    renderPage('/aid/today?year=2027&as_of=2026-04-01&as_of_axis=recorded')
+    await screen.findByRole('heading', { name: 'Budget, all pools' })
+    const where = screen.getByTestId('where')
+    expect(where).toHaveTextContent('/aid/today?year=2027')
+    expect(where.textContent).not.toMatch(/as_of/)
+  })
+
+  it("finance's Posted in CM comes from the Today read's budget rows, second in the card", async () => {
+    granted = FINANCE
+    todayData = {
+      ...FINANCE_TODAY,
+      posted_this_week: {
+        key: 'posted_cm',
+        label: 'Posted in CM',
+        value: 41250,
+        previous: 30100,
+        unit: 'dollars',
+      },
+    }
+    renderPage()
+    const label = await screen.findByText('Posted in CM')
+    expect(label.parentElement).toHaveTextContent('$41k')
+    expect(label.parentElement).toHaveTextContent('▲ $11k')
+  })
+
+  it('a failed week read still shows Committed by week, which rides the Today read', async () => {
+    granted = FINANCE
+    weekFails = true
+    const { container } = renderPage()
+    expect(await screen.findByText(/Failed to load this week/)).toBeInTheDocument()
+    expect(screen.getByText('Committed by week')).toBeInTheDocument()
+    expect(container.querySelector('path[data-line="posted"]')).not.toBeNull()
+  })
+
+  it('a view-only user gets the registrar hero from the stages the server sends view (spec §2, §9.3)', async () => {
+    granted = ['financial_aid.view']
+    todayData = { year: 2027, casework: null, finance: null, development: null, stages: STAGES }
+    renderPage()
+    expect(await screen.findByRole('heading', { name: 'The season so far' })).toBeInTheDocument()
+    expect(screen.getAllByTestId('hero-key')[0]).toHaveTextContent('Accepted 318')
+    expect(screen.getByText('Nothing is assigned to you.')).toBeInTheDocument()
   })
 })

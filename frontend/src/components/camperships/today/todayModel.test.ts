@@ -139,6 +139,19 @@ describe('finance hero (ruling 12: the budget read, no estimate)', () => {
   it('names the pools that run over', () => {
     expect(overPools(BUDGET)).toEqual([{ label: 'TBM', over: 1300 }])
   })
+  it("words money with the kit's one compact formatter (formatMoneyCompact), as the chart and week card do", () => {
+    const cell = {
+      ...BUDGET.total.total,
+      posted: 116600,
+      needs_offer: 999.6,
+      remaining: 1110000,
+    }
+    const { segments } = budgetSegments(cell, BUDGET.total.below)
+    const seg = (key: string) => segments.find((s) => s.key === key)
+    expect(seg('posted')?.inner).toBe('Posted $116k')
+    expect(seg('needs_offer')?.figure).toBe('$999.60')
+    expect(seg('remaining')?.inner).toBe('$1,110k remaining')
+  })
 })
 
 describe('development hero (ruling 9: outside money gets its own bar)', () => {

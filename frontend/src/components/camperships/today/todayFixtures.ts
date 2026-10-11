@@ -50,6 +50,7 @@ export const REGISTRAR_TODAY: ApiAidToday = {
       families: 23,
       oldest_days: 12,
       overdue: true,
+      overdue_after_days: 10,
       next_up: [
         {
           household_cm_id: 1000002,
@@ -79,6 +80,7 @@ export const REGISTRAR_TODAY: ApiAidToday = {
     line('waiting_on_family', 9, {
       oldest_days: 19,
       overdue: true,
+      overdue_after_days: 14,
       next_up: [
         {
           household_cm_id: 1000004,
