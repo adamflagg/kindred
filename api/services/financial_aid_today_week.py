@@ -28,6 +28,9 @@ from bunking.financial_aid.change_replay import LogRow
 from bunking.financial_aid.decisions.rounds import DecisionEvent
 
 FEED_SIZE: Final = 6
+AWARDS_TITLE: Final = (
+    "Camp offers posted plus outside grants recorded, counted together the way the headline counts awards."
+)
 
 
 def _day(moment: datetime) -> date:
@@ -51,8 +54,8 @@ def _window(today: date) -> tuple[date, date, date, date]:
     return this_start, today, last_start, last_start + (today - this_start)
 
 
-def _figure(key: str, label: str, value: float, previous: float, unit: str = "count") -> WeekFigureOut:
-    return WeekFigureOut(key=key, label=label, value=value, previous=previous, unit=unit)
+def _figure(key: str, label: str, value: float, previous: float, unit: str = "count", title: str = "") -> WeekFigureOut:
+    return WeekFigureOut(key=key, label=label, value=value, previous=previous, unit=unit, title=title)
 
 
 class _Counted:
@@ -140,7 +143,7 @@ def _finance(
             "dollars",
         ),
         _figure("avg", "Avg award", average(posts), average(posts_before), "dollars"),
-        _figure("helped", "Families helped", helped(windows.this_end), helped(windows.last_end)),
+        _figure("helped", "Families helped so far", helped(windows.this_end), helped(windows.last_end)),
     ]
 
 
@@ -157,7 +160,14 @@ def _development(
 
     return [
         _figure("outside_in", "Outside grants in", dollars(now), dollars(before), "dollars"),
-        _figure("awards", "Awards", len(posts), len(posts_before)),
+        # Ruling 15: every award, camp aid and outside grants together, as the headline counts them.
+        _figure(
+            "awards",
+            "Awards",
+            len(posts) + len(now),
+            len(posts_before) + len(before),
+            title=AWARDS_TITLE,
+        ),
         _figure(
             "funders_edited",
             "Funders edited",

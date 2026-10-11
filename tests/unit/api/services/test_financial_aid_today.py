@@ -13,6 +13,7 @@ import pytest
 
 from api.schemas.financial_aid import UnclassifiedSource
 from api.schemas.financial_aid_decisions import (
+    CancellationOut,
     ConfirmationOut,
     GridRowOut,
     RoundOut,
@@ -35,13 +36,14 @@ from api.services.camp_calendar import CAMP_TZ
 from api.services.financial_aid_decisions_service import FinancialAidDecisionsService
 from api.services.financial_aid_grants_register import RegisterRow
 from api.services.financial_aid_intake_service import never_true_fields, never_true_labels
-from api.services.financial_aid_queues import row_queues
+from api.services.financial_aid_queues import row_queues, row_stage
 from api.services.financial_aid_rules_service import RulesNotFoundError, RulesVersion
 from api.services.financial_aid_today import (
     CASEWORK_LINES,
     DEVELOPMENT_LINES,
     FINANCE_LINES,
     NEXT_UP_CAP,
+    STRIP_STAGES,
     TODAY_OVERDUE_DAYS,
     TodayInputs,
     TodayService,
@@ -55,6 +57,7 @@ from bunking.financial_aid.decisions.rounds import DecisionEvent
 from bunking.financial_aid.rules.lifecycle import SectionStatus
 from tests.unit.api.services.decisions_fakes import T0, FakeDecisionsStore, FakeRules, approved, grant_row, seed_request
 from tests.unit.api.services.financial_aid_fakes import YEAR, fa_row, intake_rules
+from tests.unit.api.services.test_camperships_frontend_mirrors import MIRRORS
 from tests.unit.bunking.financial_aid.fixtures import with_levers
 
 TODAY = date(2031, 4, 20)
@@ -895,43 +898,94 @@ def test_week_starts_on_monday() -> None:
     assert week_start(date(2031, 4, 14)) == date(2031, 4, 14)
 
 
-def test_stages_bucket_every_row_by_its_stage_code() -> None:
-    rows = [
-        _staged("r1", 1000001, "accepted"),
-        _staged("r2", 1000001, "posted"),
-        _staged("r3", 1000002, "pending_approval"),
-        _staged("r4", 1000003, "needs_offer"),
-        _staged("r5", 1000003, "not_decided"),
-        _staged("r6", 1000004, "refused"),
-        _staged("r7", 1000005, "held"),
-        _staged("r8", 1000006, "cancelled"),
-    ]
-    stages = build_today(_inputs(rows), casework=True, finance=False).stages
-    assert stages is not None
-    assert (
-        stages.accepted,
-        stages.waiting_on_family,
-        stages.pending_approval,
-        stages.needs_offer,
-        stages.held,
-        stages.cancelled,
-        stages.families,
-    ) == (1, 1, 1, 3, 1, 1, 6)
+def _real(request_id: str, household: int, *rounds: RoundOut, **over: Any) -> GridRowOut:
+    """A grid row as the service builds it: its queues (row_queues, via _row) and its Stage column (row_stage)."""
+    row = _row(request_id, household, *rounds, **over)
+    return row.model_copy(update={"stage": row_stage(row)})
 
 
-def test_posted_this_week_counts_rows_posted_since_monday() -> None:
-    rows = [
-        _staged(
-            "r1", 1000001, "accepted", _round(1, "posted", posted=900.0, accepted=True, posted_on=date(2031, 4, 14))
+_CANCELLED = CancellationOut(by="kindred", on=date(2031, 4, 2), reason=None, note="")
+
+
+def _one_per_stage() -> list[GridRowOut]:
+    """One request on each of the strip's stages, one on none (accepted), and one cancelled with no aid live."""
+    posted_on = date(2031, 4, 10)
+    return [
+        _real("rpend", 1000001, _round(1, "pending_approval", pending_approval=300.0)),
+        _real("roffer", 1000002, _round(1, "needs_offer", decided=500.0, asked_on=posted_on)),
+        _real(
+            "runrec",
+            1000003,
+            _round(1, "posted", posted=800.0, posted_on=posted_on, accepted=True),
+            confirmation=_confirmation("short", -100.0),
         ),
-        _staged("r2", 1000002, "posted", _round(1, "posted", posted=900.0, posted_on=date(2031, 4, 13))),
-        _staged(
-            "r3", 1000003, "posted", _round(1, "posted", posted=900.0, posted_on=date(2031, 4, 20), clawed_back=True)
+        _real("rwait", 1000004, _round(1, "posted", posted=800.0, posted_on=posted_on)),
+        _real("rhold", 1000005, _round(1, "held"), holds=[_hold("household_income_conflict")]),
+        _real("rdupe", 1000006, _round(1, "not_decided"), request_status="duplicate_pending"),
+        _real("rsess", 1000007, _round(1, "not_decided"), request_status="unmatched_session"),
+        _real(
+            "rrev",
+            1000008,
+            _round(1, "posted", posted=600.0, posted_on=posted_on, accepted=True),
+            cancellation=_CANCELLED,
+            to_reverse=True,
         ),
+        _real("rdone", 1000009, _round(1, "posted", posted=900.0, posted_on=posted_on, accepted=True)),
+        # A cancelled request on no queue. (One with a round still to offer stays on Needs an offer's queue, so the
+        # strip lists it there, and so does the bar.)
+        _real("rgone", 1000010, _round(1, "not_decided"), cancellation=_CANCELLED),
     ]
+
+
+def test_the_hero_counts_each_request_once_on_the_strips_stages() -> None:
+    """Ruling 13: the registrar's bar is the Requests strip's stages, in the strip's order, plus the live requests on
+    none of them. A cancelled request with no aid live is on no stage and is not live, so it is on no segment."""
+    stages = build_today(_inputs(_one_per_stage()), casework=True, finance=False).stages
+    assert stages is not None
+    assert stages.model_dump() == {
+        "nothing_waiting": 1,
+        "pending_approval": 1,
+        "needs_offer": 1,
+        "not_reconciled": 1,
+        "waiting_on_family": 1,
+        "holds": 1,
+        "duplicates": 1,
+        "session_not_settled": 1,
+        "to_reverse": 1,
+        "families": 9,
+        "live": 8,
+        "offered": 4,
+    }
+
+
+def test_d21_the_hero_counts_equal_the_strips_stage_counts() -> None:
+    """Spec §12, D21: on the same rows, each segment counts what the strip counts for that stage, which is the rows
+    whose `queues` name it (frontend requests/views.ts filterRows with no filter)."""
+    rows = _one_per_stage()
     stages = build_today(_inputs(rows), casework=True, finance=False).stages
     assert stages is not None
-    assert stages.posted_this_week == 1
+    for stage in STRIP_STAGES:
+        assert getattr(stages, stage) == sum(1 for r in rows if r.queues and stage in r.queues), stage
+
+
+def test_a_request_on_two_stages_counts_once_under_the_strips_first() -> None:
+    """Round 1 waits on the family and Round 2 needs an offer: the strip lists the request under both, and the bar,
+    which counts each request once, puts it under the earlier stage (Needs an offer)."""
+    row = _real(
+        "rboth",
+        1000001,
+        _round(1, "posted", posted=800.0, posted_on=date(2031, 4, 10)),
+        _round(2, "needs_offer", decided=300.0, asked_on=date(2031, 4, 12)),
+    )
+    assert row.queues is not None
+    assert {"needs_offer", "waiting_on_family"} <= set(row.queues)
+    stages = build_today(_inputs([row]), casework=True, finance=False).stages
+    assert stages is not None
+    assert (stages.needs_offer, stages.waiting_on_family) == (1, 0)
+
+
+def test_the_strips_stage_order_is_the_frontends() -> None:
+    assert list(STRIP_STAGES) == MIRRORS["strip_stages"]
 
 
 def test_stages_are_sent_to_finance_and_registrar_alike() -> None:
@@ -1290,3 +1344,18 @@ def test_the_three_clocked_lines_carry_their_overdue_threshold() -> None:
     assert {line.key: line.overdue_after_days for line in lines if line.overdue_after_days is not None} == dict(
         TODAY_OVERDUE_DAYS
     )
+
+
+def test_posted_this_week_counts_an_undated_post_in_the_current_week() -> None:
+    """Controller ruling: as Committed by week does, so the two never disagree about this week."""
+    rows = [
+        _row("a", 1, _posted(1, 1000.0, date(2031, 4, 15))),
+        _row("b", 2, _round(1, "posted", posted=500.0, posted_on=None, accepted=True)),
+        _row("c", 3, _posted(1, 200.0, date(2031, 4, 1))),
+    ]
+    today = build_today(_inputs(rows), casework=False, finance=True)
+    assert today.posted_this_week is not None
+    assert today.posted_by_week is not None
+    assert today.posted_this_week.value == 1500.0
+    current, previous = today.posted_by_week[-1].posted, today.posted_by_week[-2].posted
+    assert today.posted_this_week.value == current - previous

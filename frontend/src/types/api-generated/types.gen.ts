@@ -18206,18 +18206,17 @@ export type TodayResponse = {
 /**
  * TodayStagesOut
  *
- * The registrar hero's one bar (spec 2026-10-10 §4.1): every request this season by its Stage column's code
- * (row_stage), in the bar's order. A request with no round yet has no stage and is counted in none.
+ * The registrar hero's one bar (spec 2026-10-10 §4.1, owner ruling 13): the Requests stage strip's stages, in the
+ * strip's order (STRIP_STAGES), each request counted once, under the first stage whose queue holds it, plus
+ * `nothing_waiting`, the live requests on none of them. A request on two stages (one round waiting, the next needing
+ * an offer) is on the strip under both but on the bar once. A cancelled request is on the bar only while a stage
+ * holds it (To reverse).
  */
 export type TodayStagesOut = {
   /**
-   * Accepted
+   * Nothing Waiting
    */
-  accepted: number
-  /**
-   * Waiting On Family
-   */
-  waiting_on_family: number
+  nothing_waiting: number
   /**
    * Pending Approval
    */
@@ -18227,21 +18226,41 @@ export type TodayStagesOut = {
    */
   needs_offer: number
   /**
-   * Held
+   * Not Reconciled
    */
-  held: number
+  not_reconciled: number
   /**
-   * Cancelled
+   * Waiting On Family
    */
-  cancelled: number
+  waiting_on_family: number
+  /**
+   * Holds
+   */
+  holds: number
+  /**
+   * Duplicates
+   */
+  duplicates: number
+  /**
+   * Session Not Settled
+   */
+  session_not_settled: number
+  /**
+   * To Reverse
+   */
+  to_reverse: number
   /**
    * Families
    */
   families: number
   /**
-   * Posted This Week
+   * Live
    */
-  posted_this_week: number
+  live: number
+  /**
+   * Offered
+   */
+  offered: number
 }
 
 /**
@@ -19257,6 +19276,10 @@ export type WeekFigureOut = {
    * Unit
    */
   unit: 'count' | 'dollars'
+  /**
+   * Title
+   */
+  title?: string
 }
 
 /**

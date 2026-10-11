@@ -148,17 +148,24 @@ class TodayLineOut(BaseModel):
 
 
 class TodayStagesOut(BaseModel):
-    """The registrar hero's one bar (spec 2026-10-10 §4.1): every request this season by its Stage column's code
-    (row_stage), in the bar's order. A request with no round yet has no stage and is counted in none."""
+    """The registrar hero's one bar (spec 2026-10-10 §4.1, owner ruling 13): the Requests stage strip's stages, in the
+    strip's order (STRIP_STAGES), each request counted once, under the first stage whose queue holds it, plus
+    `nothing_waiting`, the live requests on none of them. A request on two stages (one round waiting, the next needing
+    an offer) is on the strip under both but on the bar once. A cancelled request is on the bar only while a stage
+    holds it (To reverse)."""
 
-    accepted: int
-    waiting_on_family: int
+    nothing_waiting: int
     pending_approval: int
-    needs_offer: int  # needs_offer, not_decided and refused: an offer still has to be made
-    held: int
-    cancelled: int
-    families: int  # households with any request this season
-    posted_this_week: int  # requests with a round posted since Monday (camp time), the "+n" on Accepted
+    needs_offer: int
+    not_reconciled: int
+    waiting_on_family: int
+    holds: int
+    duplicates: int
+    session_not_settled: int
+    to_reverse: int
+    families: int  # households with a request on the bar
+    live: int  # requests not cancelled or withdrawn (the headline's denominator)
+    offered: int  # live requests with an offer: posted, waiting on the family or pending approval
 
 
 class WeekPointOut(BaseModel):
@@ -174,6 +181,7 @@ class WeekFigureOut(BaseModel):
     value: float
     previous: float
     unit: Literal["count", "dollars"]
+    title: str = ""  # a native title saying what the figure counts, where its label alone does not
 
 
 class TodayResponse(BaseModel):

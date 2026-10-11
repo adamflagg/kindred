@@ -220,3 +220,32 @@ async def test_an_overdue_item_later_than_now_is_not_shown() -> None:
     _event(store, "reqjohnson00001", "post", _at(4, 1, 19))
     week = await _service(store, _Grants([])).read(2031, casework=True, finance=False, development=False)
     assert [f for f in week.feed if f.kind == "overdue"] == []
+
+
+@pytest.mark.asyncio
+async def test_developments_awards_count_camp_posts_and_outside_grants_recorded(
+    store_with_posts: tuple[_Store, _Grants],
+) -> None:
+    """Ruling 15: development cares about all awards. This week: three camp posts and one outside grant recorded
+    (Apr 15); last week: two camp posts and no grant."""
+    week = await _service(*store_with_posts).read(2031, casework=False, finance=False, development=True)
+    awards = next(f for f in week.development or [] if f.key == "awards")
+    assert (awards.value, awards.previous) == (4, 2)
+    assert "outside grants" in awards.title
+
+
+@pytest.mark.asyncio
+async def test_a_reversed_or_uncounted_grant_is_no_award(store_with_posts: tuple[_Store, _Grants]) -> None:
+    store, grants = store_with_posts
+    grants.register = [
+        replace(grants.register[0], is_reversed=True),
+        replace(grants.register[0], counts=False),
+    ]
+    week = await _service(store, grants).read(2031, casework=False, finance=False, development=True)
+    assert next(f for f in week.development or [] if f.key == "awards").value == 3
+
+
+@pytest.mark.asyncio
+async def test_finances_families_helped_says_it_is_season_to_date(store_with_posts: tuple[_Store, _Grants]) -> None:
+    week = await _service(*store_with_posts).read(2031, casework=False, finance=True, development=False)
+    assert next(f for f in week.finance or [] if f.key == "helped").label == "Families helped so far"

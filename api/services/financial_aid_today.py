@@ -487,16 +487,19 @@ def pending_since(events: Iterable[DecisionEvent]) -> dict[tuple[str, int], date
     return {key: when.astimezone(CAMP_TZ).date() for key, when in out.items()}
 
 
-_STAGE_BUCKET: Final[Mapping[str, str]] = {
-    "accepted": "accepted",
-    "posted": "waiting_on_family",
-    "pending_approval": "pending_approval",
-    "needs_offer": "needs_offer",
-    "not_decided": "needs_offer",
-    "refused": "needs_offer",
-    "held": "held",
-    "cancelled": "cancelled",
-}
+# Ruling 13: the registrar's bar is the Requests stage strip's stages, in the strip's order (frontend requests/strip.ts:
+# PIPELINE_STAGES, then EXCEPTION_BADGES; tests/fixtures/camperships_frontend_mirrors.json pins the two together).
+STRIP_STAGES: Final[tuple[QueueOut, ...]] = (
+    "pending_approval",
+    "needs_offer",
+    "not_reconciled",
+    "waiting_on_family",
+    "holds",
+    "duplicates",
+    "session_not_settled",
+    "to_reverse",
+)
+_OFFERED: Final = frozenset({"accepted", "posted", "pending_approval"})  # Stage codes that have an offer
 
 
 def week_start(day: date) -> date:
@@ -505,29 +508,35 @@ def week_start(day: date) -> date:
 
 
 def _stages(inputs: TodayInputs) -> TodayStagesOut:
+    """Each request once, under the first strip stage its queues name (the same `queues` the strip counts, D21), else
+    under Nothing waiting when it is live. Live and offered read the Stage column, for the headline."""
     counts: dict[str, int] = defaultdict(int)
-    monday = week_start(inputs.today)
-    posted_now = 0
+    households: set[int] = set()
+    live = offered = 0
     for row in inputs.rows:
-        if row.stage is not None and row.stage.code in _STAGE_BUCKET:
-            counts[_STAGE_BUCKET[row.stage.code]] += 1
-        if any(
-            r.status == "posted"
-            and not r.clawed_back
-            and r.posted_on is not None
-            and monday <= r.posted_on <= inputs.today
-            for r in row.rounds
-        ):
-            posted_now += 1
+        code = row.stage.code if row.stage is not None else None
+        is_live = code is not None and code != "cancelled"
+        if is_live:
+            live += 1
+            offered += code in _OFFERED
+        stage = next((q for q in STRIP_STAGES if row.queues and q in row.queues), None)
+        if stage is None and not is_live:
+            continue
+        counts[stage or "nothing_waiting"] += 1
+        households.add(row.household_cm_id)
     return TodayStagesOut(
-        accepted=counts["accepted"],
-        waiting_on_family=counts["waiting_on_family"],
+        nothing_waiting=counts["nothing_waiting"],
         pending_approval=counts["pending_approval"],
         needs_offer=counts["needs_offer"],
-        held=counts["held"],
-        cancelled=counts["cancelled"],
-        families=_families(inputs.rows),
-        posted_this_week=posted_now,
+        not_reconciled=counts["not_reconciled"],
+        waiting_on_family=counts["waiting_on_family"],
+        holds=counts["holds"],
+        duplicates=counts["duplicates"],
+        session_not_settled=counts["session_not_settled"],
+        to_reverse=counts["to_reverse"],
+        families=len(households),
+        live=live,
+        offered=offered,
     )
 
 
@@ -563,15 +572,14 @@ def _posted_by_week(inputs: TodayInputs) -> list[WeekPointOut]:
 
 def _posted_this_week(inputs: TodayInputs) -> WeekFigureOut:
     """This week's "Posted in CM" (spec §7.2): the budget's Posted (`_posted_parts`) by `posted_on`, Monday through
-    today against the same weekdays of last week, as the week read's windows run. An undated post is in neither."""
+    today against the same weekdays of last week, as the week read's windows run. An undated post counts this week, as
+    `_posted_by_week` counts it in the current week, so the two never disagree."""
     this_start = week_start(inputs.today)
     last_start = this_start - timedelta(days=7)
     last_end = last_start + (inputs.today - this_start)
     now = before = Decimal(0)
     for posted_on, part in _posted_parts(inputs.rows):
-        if posted_on is None:
-            continue
-        if this_start <= posted_on <= inputs.today:
+        if posted_on is None or this_start <= posted_on <= inputs.today:
             now += part
         elif last_start <= posted_on <= last_end:
             before += part
