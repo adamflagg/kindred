@@ -377,6 +377,13 @@ describe('Correct… where the forms disagree: quick picks (round 3, section 3)'
     expect(screen.getByLabelText('Housing expenses')).toHaveFocus()
   })
 
+  it('a click on the Used label focuses the typed box', async () => {
+    await open()
+    screen.getByLabelText('Reason').focus()
+    await userEvent.click(screen.getByText('Used'))
+    expect(screen.getByLabelText('Housing expenses')).toHaveFocus()
+  })
+
   it('says what saving settles, and opens on the Used field', async () => {
     await open()
     expect(

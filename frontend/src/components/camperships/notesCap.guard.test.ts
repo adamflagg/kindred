@@ -113,6 +113,8 @@ describe('the six-note cap (design-language §7)', () => {
     '%s draws at most 6 notes, server plus its own',
     (_, { surface, local }) => {
       expect(local).toBeGreaterThan(0)
+      // A renamed or misspelled surface would count as 0 server notes and pass on `local` alone.
+      if (surface !== null) expect(SURFACES.has(surface), `${surface} is in SURFACES`).toBe(true)
       expect((surface === null ? 0 : server(surface)) + local).toBeLessThanOrEqual(NOTES_CAP)
     }
   )

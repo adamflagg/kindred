@@ -185,7 +185,7 @@ function CorrectionForm({
   const [reason, setReason] = useState('')
   const { busy, error, attempt } = useSubmit()
   // The Used field's box: its typed box, or the Yes/No picker for a flag.
-  const field = useRef<HTMLDivElement>(null)
+  const field = useRef<HTMLDivElement & HTMLLabelElement>(null)
   const kind = fieldKind(answer)
   const picks = correctionPicks(page, income, answer)
   // The pick the field holds now, read from the figure itself: typing a form's figure picks it too.
@@ -283,10 +283,19 @@ function CorrectionForm({
             </span>
           </div>
         )}
-        <div ref={field} className={HH_EDITOR_LABEL}>
-          Used
-          {used}
-        </div>
+        {kind === 'flag' ? (
+          // A picker's options inside a <label> would hand every click back to its button.
+          <div ref={field} className={HH_EDITOR_LABEL}>
+            Used
+            {used}
+          </div>
+        ) : (
+          // The typed box keeps its label, so a click on "Used" focuses it.
+          <label ref={field} className={HH_EDITOR_LABEL}>
+            Used
+            {used}
+          </label>
+        )}
       </div>
       <ReasonInput value={reason} onChange={setReason} optional />
       {settles !== null && <p className={HH_CORRECT_SETTLES}>{settles}</p>}

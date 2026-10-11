@@ -89,8 +89,8 @@ describe('csType aliases slice 1 (spec §1.1)', () => {
 
 /**
  * The final design language (2026-10-09, owner-approved kit final-v2/kit.html + cs-final.css). The
- * strings above that slice 1 owned and the kit now overrides (CS_SELECT, CS_INPUT, CS_BTN_TOOL,
- * CS_BTN/CS_BTN2, CS_SEG*, CS_FLABEL, CS_LINK) are pinned here instead, by what the kit requires.
+ * strings above that slice 1 owned and the kit now overrides (CS_BTN_TOOL, CS_BTN/CS_BTN2, CS_SEG*,
+ * CS_FLABEL, CS_LINK) are pinned here instead, by what the kit requires.
  */
 describe('CS_EMPTY (chrome-8)', () => {
   it("is the kit's dashed .cf-empty card", () => {
