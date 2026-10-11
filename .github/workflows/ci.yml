@@ -385,6 +385,10 @@ jobs:
             # The behavioural check of docker/Caddyfile's superuser-API gate
             # (the `Caddy superuser API gate` step) -- a real input of the job.
             - 'scripts/ci/probe-caddy-superuser-gate.sh'
+            # The behavioural check of docker/Caddyfile's Cache-Control policy
+            # (the `Caddy cache headers` step) -- also reads frontend/public.
+            - 'scripts/ci/probe-caddy-cache-headers.sh'
+            - 'frontend/public/**'
             # The job's own definition: HADOLINT_VERSION, the Dockerfile list
             # in the `for df in ...` loop, and both `caddy adapt` invocations
             # all live here. Same reasoning and the same accepted cost as
@@ -872,6 +876,13 @@ jobs:
     # at the Traefik layer. No bind mount: the script `docker cp`s the file in.
     - name: Caddy superuser API gate
       run: bash scripts/ci/probe-caddy-superuser-gate.sh
+
+    # Behavioural check of docker/Caddyfile's Cache-Control policy against stub
+    # upstreams that send a long-lived header: every API, PocketBase and HTML
+    # response must leave with exactly one `no-store`, hashed /assets/ bundles
+    # immutable, other static files no-cache.
+    - name: Caddy cache headers
+      run: bash scripts/ci/probe-caddy-cache-headers.sh
 
     # Rule: pocketbase/go.mod picks the minor; every build uses the latest
     # patch of it. The guard fails on a golang stage on another minor, a

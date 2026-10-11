@@ -233,7 +233,7 @@
 		# (a cheap 304 against the ETag file_server sends).
 		@unhashed_static {
 			file
-			not path /assets/* *.html */
+			not path /assets/* *.html
 		}
 
 		# `route` keeps this order: the default first, then the narrower

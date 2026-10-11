@@ -688,6 +688,40 @@ def test_docker_lint_gate_covers_the_superuser_gate_probe():
     assert _matches(probe, _patterns_gating("docker-lint")), f"{probe} cannot trigger docker-lint"
 
 
+def _docker_lint_cache_headers_probe() -> str:
+    """The script the `Caddy cache headers` step runs, derived by PARSING the step."""
+    steps = _ci()["jobs"]["docker-lint"]["steps"]
+    step = next((st for st in steps if st.get("name") == "Caddy cache headers"), None)
+    assert step, "docker-lint has no 'Caddy cache headers' step"
+    m = re.search(r"(scripts/\S+\.sh)", step["run"])
+    assert m, f"could not read the probe script out of the step: {step['run']!r}"
+    return m.group(1)
+
+
+def test_docker_lint_gate_covers_the_cache_headers_probe():
+    """The probe is a real input of the job: editing only the script must re-run it.
+
+    It checks docker/Caddyfile's Cache-Control policy by behaviour, against a stub
+    upstream that sends a long-lived header of its own.
+    """
+    probe = _docker_lint_cache_headers_probe()
+    assert (REPO_ROOT / probe).is_file(), f"{probe} does not exist"
+    assert _matches(probe, _patterns_gating("docker-lint")), f"{probe} cannot trigger docker-lint"
+
+
+def test_docker_lint_gate_covers_the_files_the_cache_headers_probe_serves():
+    """The probe serves every file in frontend/public and asserts a policy for each.
+
+    Adding one (a new HTML page, a new icon) changes what the probe checks, so it
+    must re-run the job.
+    """
+    public = sorted(str(f.relative_to(REPO_ROOT)) for f in (REPO_ROOT / "frontend/public").rglob("*") if f.is_file())
+    assert public, "frontend/public is empty -- the probe would check nothing there"
+    patterns = _patterns_gating("docker-lint")
+    uncovered = [f for f in public if not _matches(f, patterns)]
+    assert not uncovered, f"frontend/public files cannot trigger docker-lint: {uncovered}"
+
+
 def test_docker_lint_gate_covers_the_hadolint_config():
     """Mounted into the hadolint container as `/.hadolint.yaml`."""
     assert _matches(".hadolint.yaml", _patterns_gating("docker-lint"))
