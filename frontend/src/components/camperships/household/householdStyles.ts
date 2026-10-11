@@ -113,16 +113,6 @@ export const HH_TICK_BOX =
 export const HH_TICK_BOX_ON =
   'border-forest-700 bg-forest-700 dark:border-forest-400 dark:bg-forest-500'
 
-// ── The editor box and its forms (D23, D24) ───────────────────────────────────
-
-/** The card editor and every casework form (the mock's .editor): a forest border on a forest tint. */
-export const HH_EDITOR_BOX =
-  'rounded-[10px] border border-forest-700 bg-forest-200/20 px-3 py-2.5 whitespace-normal dark:border-forest-400 dark:bg-forest-900/25'
-/** Its head (the mock's .ehd): uppercase forest-800; a muted aside keeps sentence case. */
-export const HH_EDITOR_HEAD =
-  'mb-1.5 flex flex-wrap gap-x-2.5 text-[11.5px] font-bold tracking-[0.05em] text-forest-800 uppercase dark:text-forest-200'
-export const HH_EDITOR_ASIDE = 'text-muted-foreground font-normal tracking-normal normal-case'
-
 // round 3 · receipt versions (household-v3.html section 1 (B)) ─────────────────────────────────
 
 /** The version switcher (the mock's .seg): a tinted well of buttons, the picked one raised. */
@@ -161,42 +151,12 @@ export const HH_RECEIPT_TOTAL =
 
 // round 3 · editors in two columns (item 2) ───────────────────────────────────
 
-/**
- * Every household editor in two columns (the round 3 mock, section 2 option B): the fields on the
- * left, what saving does on the right. The wrapper is a size container, so a narrow box (Correct… in
- * the Income tab's answers column) stacks the right column under the fields instead of squashing.
- */
-export const HH_EDITOR_CONTAINER = '@container'
-export const HH_EDITOR_COLS =
-  'grid gap-y-3 @min-[40rem]:grid-cols-[minmax(0,1fr)_minmax(0,22.5rem)] @min-[40rem]:gap-x-[22px]'
-/** The left column: field groups stacked 10px apart. */
-export const HH_EDITOR_LEFT = 'flex min-w-0 flex-col gap-2.5'
-/** The right column (the mock's .aside): a faint forest rule on its left once there is room. */
-export const HH_EDITOR_SIDE =
-  'border-forest-700/20 dark:border-forest-400/25 min-w-0 py-0.5 text-[13px] leading-[1.55] @min-[40rem]:border-l @min-[40rem]:pl-[18px]'
-export const HH_EDITOR_SIDE_HEAD = 'text-muted-foreground mb-[3px] text-xs font-semibold'
 /** The right column's lead line: the preview's figures, or a plain hint. */
 export const HH_EDITOR_SIDE_LEAD = 'text-[15px] leading-snug'
 /** What follows it: the receipt sentence, the stage, the shares. */
 export const HH_EDITOR_SIDE_NOTE = 'text-muted-foreground mt-1 text-[12.5px]'
 /** A warning in the right column (the mock's .sw): amber, never muted. */
 export const HH_EDITOR_SIDE_WARN = 'mt-1 text-[12.5px] text-amber-700 dark:text-amber-400'
-/** A field's label, its caption above the control (the mock's .fl). */
-export const HH_EDITOR_LABEL = 'flex min-w-0 flex-col gap-1 text-[12.5px] font-semibold'
-/** A field (the mock's .in): white, 13.5px, a softened forest border. */
-export const HH_EDITOR_FIELD =
-  'rounded-[7px] border border-forest-700/55 bg-white px-[9px] py-1.5 text-[13.5px] leading-[1.4] font-normal focus:border-forest-700 focus:ring-[3px] focus:ring-forest-700/20 focus:outline-none dark:border-forest-500 dark:bg-card dark:focus:ring-forest-300/30'
-/** A typed reason or note: the left column's full width. */
-export const HH_EDITOR_TEXT = `${HH_EDITOR_FIELD} w-full`
-/** An amount: 150px, right-aligned. */
-export const HH_EDITOR_MONEY = `${HH_EDITOR_FIELD} w-[150px] text-right tabular-nums`
-/** The statement of need: at least three rows, growing with its text up to about ten. */
-export const HH_EDITOR_AREA = `${HH_EDITOR_TEXT} field-sizing-content min-h-[4.5rem] max-h-56 resize-y`
-/** The footer (the mock's .edfoot): a faint rule, problems left, keys and buttons bottom right. */
-export const HH_EDITOR_FOOT =
-  'mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-forest-700/20 pt-[9px] dark:border-forest-400/25'
-export const HH_EDITOR_FOOT_END = 'ml-auto flex flex-wrap items-center justify-end gap-2'
-export const HH_EDITOR_KEYS = 'text-muted-foreground text-xs'
 
 // round 3 · income tab without "What priced it" (household-v3.html section 4 (E)) ──────────────
 
