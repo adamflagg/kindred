@@ -1,8 +1,9 @@
-import { act, render, screen } from '@testing-library/react'
+import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createRef, useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { CS_EDITOR_ON_WHITE } from '../kit/csType'
 import type { EditorPreview } from '../kit/RequestEditor'
 import { gridRow, roundOut, ROW_OLIVIA } from '../requests/gridFixtures'
 import { CardEditor, type CardEditorHandle } from './CardEditor'
@@ -206,6 +207,54 @@ describe('CardEditor (§4.6: the editor in place on the request card)', () => {
       expect(
         screen.getByText('Round 3 would be $450 once finance approves · total stays $2,280')
       ).toBeInTheDocument()
+    })
+
+    // Owner Rev 3 (10-10, APPROVED number-meaning change): opened on an amount still waiting on
+    // finance, the server's total leaves it out while the receipt counts it; the headline now says so.
+    it('marks the pending part when Round 3 Amount opens on an amount waiting on finance', () => {
+      const waiting = householdRequest(
+        gridRow({
+          ...ROW_OLIVIA,
+          rounds: [
+            ...ROW_OLIVIA.rounds.slice(0, 1),
+            roundOut(3, 'pending_approval', { pending_approval: 450 }),
+          ],
+        })
+      )
+      previewNow = ready({ award: 450 })
+      render(
+        <CardEditor
+          request={waiting}
+          page={householdPage({ requests: [waiting] })}
+          kind="round3_amount"
+          onClose={onClose}
+        />
+      )
+      expect(
+        screen.getByText('Round 3 now $450 (new total $2,730, $450 waiting for approval)')
+      ).toBeInTheDocument()
+    })
+
+    it('does not mark it when the amount typed differs from the pending one', () => {
+      const waiting = householdRequest(
+        gridRow({
+          ...ROW_OLIVIA,
+          rounds: [
+            ...ROW_OLIVIA.rounds.slice(0, 1),
+            roundOut(3, 'pending_approval', { pending_approval: 300 }),
+          ],
+        })
+      )
+      previewNow = ready({ award: 450 })
+      render(
+        <CardEditor
+          request={waiting}
+          page={householdPage({ requests: [waiting] })}
+          kind="round3_amount"
+          onClose={onClose}
+        />
+      )
+      expect(screen.getByText('Round 3 now $450 (new total $2,280)')).toBeInTheDocument()
     })
 
     it('says a decided Round 3 amount as Round 3 now', () => {
@@ -417,12 +466,14 @@ describe('CardEditor: two columns (round 3)', () => {
     )
   })
 
-  it('saves from the footer button as Enter does, with Back beside it and the save last', async () => {
+  it('saves from the footer button as Enter does, with Back beside it and the save first', async () => {
     render(<CardEditor request={request} page={page} kind="appeal" onClose={onClose} />)
     const save = screen.getByRole('button', { name: 'Save the Appeal' })
     const back = screen.getByRole('button', { name: 'Back' })
-    expect(save.parentElement?.lastElementChild).toBe(save)
-    expect(back.nextElementSibling).toBe(save)
+    // Owner 10-10 (conformance #g6, the buttons ruling): the action first, then Back; this pinned the
+    // save last until the editors moved onto the kit card.
+    expect(save.nextElementSibling).toBe(back)
+    expect(save.parentElement?.firstElementChild).toBe(save)
     await userEvent.clear(screen.getByLabelText('Round 2 ask'))
     await userEvent.keyboard('1300')
     await userEvent.click(save)
@@ -464,7 +515,8 @@ describe('CardEditor: two columns (round 3)', () => {
   it("draws white fields, not the grid editor's grey ones", () => {
     render(<CardEditor request={request} page={page} kind="appeal" onClose={onClose} />)
     for (const field of [screen.getByLabelText('Round 2 ask'), screen.getByLabelText('Note')]) {
-      expect(field).toHaveClass('bg-white')
+      // The kit's field face (CS_FIELD, bg-card) replaces the household's bg-white (conformance #g6).
+      expect(field).toHaveClass('bg-card')
       expect(field).not.toHaveClass('bg-background')
     }
   })
@@ -501,5 +553,50 @@ describe('CardEditor: two columns (round 3)', () => {
     render(<CardEditor request={request} page={page} kind="appeal" onClose={onClose} />)
     await userEvent.keyboard('{Escape}')
     expect(onClose).toHaveBeenCalledTimes(1)
+  })
+})
+
+// Conformance #g6-appeal / #g6-r3 (owner 10-10): the editor is the kit EditorForm on white, labels
+// beside the fields, one buttons row with the action first.
+describe('CardEditor layout (the kit editor card)', () => {
+  const open = (kind: 'appeal' | 'round3_ask' | 'round3_amount') =>
+    render(<CardEditor request={request} page={page} kind={kind} onClose={onClose} />)
+
+  it('is the band-tinted EditorForm with a two-column grid, caption and field apart', () => {
+    open('appeal')
+    expect(screen.getByTestId('aid-editor-grid')).toBeInTheDocument()
+    const card = screen.getByTestId('aid-editor-form').parentElement as HTMLElement
+    expect(card.className).toContain(CS_EDITOR_ON_WHITE)
+    const ask = screen.getByLabelText('Round 2 ask')
+    expect(ask.closest('label')).toBeNull()
+    expect(ask).toHaveClass('w-24')
+    expect(screen.getByLabelText('Note')).toHaveClass('w-full')
+  })
+
+  it('puts the action first on the buttons row, then Back, then the key hint', () => {
+    open('appeal')
+    const buttons = screen.getAllByRole('button')
+    expect(buttons.map((b) => b.textContent)).toEqual(['Save the Appeal', 'Back'])
+    expect(screen.getByText('Enter saves · Esc cancels')).toBeInTheDocument()
+  })
+
+  it('draws the statement of need as a box with its caption at the top, and the long key hint', () => {
+    open('round3_ask')
+    expect(screen.getByText('Statement of need', { selector: 'span' })).toHaveClass('self-start')
+    expect(
+      screen.getByText('Enter saves · Shift+Enter for a new line · Esc cancels')
+    ).toBeInTheDocument()
+  })
+
+  it('shows a refusal on the buttons row after Back, in the Round 3 ask wording', async () => {
+    open('round3_ask')
+    await userEvent.click(screen.getByRole('button', { name: 'Save the Ask' }))
+    const row = screen.getByRole('button', { name: 'Back' }).parentElement as HTMLElement
+    expect(within(row).getByText('Enter the Round 3 ask')).toBeInTheDocument()
+  })
+
+  it('keeps its head and the household aside', () => {
+    open('round3_amount')
+    expect(screen.getByText(/Editing · Round 3 amount/)).toBeInTheDocument()
   })
 })

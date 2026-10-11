@@ -92,6 +92,7 @@ export function EditorField({
   off = false,
   wide = false,
   htmlFor,
+  top = false,
   children,
 }: {
   readonly label: ReactNode
@@ -101,9 +102,13 @@ export function EditorField({
   readonly htmlFor?: string | undefined
   /** The field takes the rest of the row (the mock's span3): a typed reason or note. */
   readonly wide?: boolean
+  /** A tall control (a text box): the label sits at the box's top line, not its middle. */
+  readonly top?: boolean
   readonly children: ReactNode
 }) {
-  const captionClass = off ? `${CS_FGRID_LABEL} opacity-50` : CS_FGRID_LABEL
+  const captionClass = [CS_FGRID_LABEL, off && 'opacity-50', top && 'self-start pt-[7px]']
+    .filter(Boolean)
+    .join(' ')
   return (
     <>
       {htmlFor === undefined ? (
