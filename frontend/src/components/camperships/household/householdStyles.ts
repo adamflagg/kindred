@@ -122,16 +122,6 @@ export const HH_EDITOR_BOX =
 export const HH_EDITOR_HEAD =
   'mb-1.5 flex flex-wrap gap-x-2.5 text-[11.5px] font-bold tracking-[0.05em] text-forest-800 uppercase dark:text-forest-200'
 export const HH_EDITOR_ASIDE = 'text-muted-foreground font-normal tracking-normal normal-case'
-/** A row of fields (the mock's .erow): 13px, labels that never wrap. */
-export const HH_FORM_ROW = 'flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px]'
-export const HH_FORM_LABEL = 'inline-flex items-center gap-2 whitespace-nowrap'
-/** A field (the mock's .erow input): sized to what it holds, never stretched to the row. */
-export const HH_FIELD =
-  'rounded-[7px] border border-forest-700 bg-white px-2 py-1 text-[13px] focus:ring-2 focus:ring-forest-700/30 focus:outline-none dark:border-forest-400 dark:focus:ring-forest-300/30 dark:bg-card'
-/** A typed reason or note (the mock's input.t): 300px. */
-export const HH_FIELD_TEXT = `${HH_FIELD} w-[300px] max-w-full`
-/** A figure (the mock's input.n): 90px, right-aligned. */
-export const HH_FIELD_NUMBER = `${HH_FIELD} w-[90px] text-right tabular-nums`
 
 // round 3 · receipt versions (household-v3.html section 1 (B)) ─────────────────────────────────
 
@@ -181,8 +171,6 @@ export const HH_EDITOR_COLS =
   'grid gap-y-3 @min-[40rem]:grid-cols-[minmax(0,1fr)_minmax(0,22.5rem)] @min-[40rem]:gap-x-[22px]'
 /** The left column: field groups stacked 10px apart. */
 export const HH_EDITOR_LEFT = 'flex min-w-0 flex-col gap-2.5'
-/** Short fields side by side (the mock's .pair): an amount, a select, a percentage. */
-export const HH_EDITOR_PAIR = 'flex flex-wrap items-start gap-x-4 gap-y-2.5'
 /** The right column (the mock's .aside): a faint forest rule on its left once there is room. */
 export const HH_EDITOR_SIDE =
   'border-forest-700/20 dark:border-forest-400/25 min-w-0 py-0.5 text-[13px] leading-[1.55] @min-[40rem]:border-l @min-[40rem]:pl-[18px]'
@@ -202,8 +190,6 @@ export const HH_EDITOR_FIELD =
 export const HH_EDITOR_TEXT = `${HH_EDITOR_FIELD} w-full`
 /** An amount: 150px, right-aligned. */
 export const HH_EDITOR_MONEY = `${HH_EDITOR_FIELD} w-[150px] text-right tabular-nums`
-/** A percentage or a count: 72px, right-aligned. */
-export const HH_EDITOR_NUMBER = `${HH_EDITOR_FIELD} w-[72px] text-right tabular-nums`
 /** The statement of need: at least three rows, growing with its text up to about ten. */
 export const HH_EDITOR_AREA = `${HH_EDITOR_TEXT} field-sizing-content min-h-[4.5rem] max-h-56 resize-y`
 /** The footer (the mock's .edfoot): a faint rule, problems left, keys and buttons bottom right. */
@@ -235,13 +221,6 @@ export const HH_FORMS_REASON =
   'w-[240px] max-w-full rounded-[7px] border border-forest-700/55 bg-white px-[9px] py-1 text-[13px] font-normal focus:border-forest-700 focus:ring-[3px] focus:ring-forest-700/20 focus:outline-none dark:border-forest-500 dark:bg-card'
 /** What a Use X's Form did, under the strip or beside the banner's buttons. */
 export const HH_FORMS_DONE = 'text-[12.5px] text-forest-800 dark:text-forest-200'
-/** The Correct… row's quick picks (the mock's .pick): a white chip, the picked one ringed in forest. */
-export const HH_PICK =
-  'inline-flex cursor-pointer items-center whitespace-nowrap rounded-[7px] border border-border bg-white px-2.5 py-[3px] text-[12.5px] font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-50 dark:bg-card'
-export const HH_PICK_ON =
-  'border-forest-700 ring-1 ring-forest-700 text-forest-800 dark:border-forest-300 dark:ring-forest-300 dark:text-forest-200'
-/** The Correct… row's line saying what saving settles: muted, just above the footer's rule. */
-export const HH_CORRECT_SETTLES = 'text-muted-foreground text-[12.5px]'
 
 // round 3 · receipt chip line (household-v4.html section 2 (B)) ────────────────────────────────
 

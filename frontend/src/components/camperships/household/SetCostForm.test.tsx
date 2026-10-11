@@ -141,11 +141,20 @@ describe('SetCostForm (cost override v2)', () => {
     expect(send).not.toHaveBeenCalled()
   })
 
+  // Conformance #g6-cost (owner 10-10): the rows are the kit grid's, not a flex pair. Cost and Reason
+  // share the grid's first row (before Note's); the old test's "row" was that flex wrapper.
   it('pairs the Cost and Reason boxes on one row', () => {
     renderSet({})
-    const row = screen.getByLabelText('Cost').closest('div')!
-    expect(row).toContainElement(aidPicker('Reason'))
-    expect(row).not.toContainElement(screen.getByLabelText('Note'))
+    const grid = screen.getByLabelText('Cost').closest('[data-testid="aid-editor-grid"]')!
+    expect(grid).toContainElement(aidPicker('Reason'))
+    expect(
+      screen.getByLabelText('Cost').compareDocumentPosition(aidPicker('Reason')) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+    expect(
+      aidPicker('Reason').compareDocumentPosition(screen.getByLabelText('Note')) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
   })
 
   it('draws the prompt at lead size, and the posted-round warning in amber', () => {

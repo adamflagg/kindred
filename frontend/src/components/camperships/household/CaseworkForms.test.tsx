@@ -386,8 +386,10 @@ describe('Correct… where the forms disagree: quick picks (round 3, section 3)'
 
   it('says what saving settles, and opens on the Used field', async () => {
     await open()
+    // Conformance #g6-correct (owner 10-10): the sentence moved to the buttons row's end, joined with
+    // the key hint in one cut-with-a-title span, so it is no longer a text node of its own.
     expect(
-      screen.getByText('This settles 1 of the 3. The hold clears when all three agree.')
+      screen.getByText(/This settles 1 of the 3\. The hold clears when all three agree\./)
     ).toBeInTheDocument()
     expect(screen.getByLabelText('Housing expenses')).toHaveFocus()
   })

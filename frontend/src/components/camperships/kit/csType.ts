@@ -245,6 +245,9 @@ export const CS_FGRID =
   'grid grid-cols-[max-content_minmax(0,1fr)_max-content_minmax(0,1fr)] items-center gap-x-2.5 gap-y-1.5'
 export const CS_FGRID_TWO =
   'grid grid-cols-[max-content_minmax(0,1fr)] items-center gap-x-2.5 gap-y-1.5'
+/** Payer Shares (#g6-shares): Household · Share · %, each in its own column, so the % is never covered. */
+export const CS_FGRID_PAYER =
+  'grid grid-cols-[max-content_minmax(0,1fr)_max-content_72px_max-content] items-center gap-x-2.5 gap-y-1.5'
 export const CS_FGRID_LABEL = 'text-muted-foreground text-[12.5px] whitespace-nowrap'
 /** The buttons on one row, with the required-field reason or logged-with-who line beside them. */
 export const CS_EDROW = 'flex min-w-0 flex-nowrap items-center gap-2'

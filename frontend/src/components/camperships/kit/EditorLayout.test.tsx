@@ -5,6 +5,7 @@
  * the required-field reason beside them.
  */
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 
 import { EditorActions, EditorField, EditorForm, EditorGrid } from './EditorLayout'
@@ -69,6 +70,31 @@ describe('EditorGrid and EditorField', () => {
     )
     expect(screen.getByText('Pays the rest')).toHaveClass('opacity-50')
     expect(screen.getByLabelText('Pays the rest')).toBeDisabled()
+  })
+
+  it('with htmlFor, the caption is a real label, so a click on it focuses the field', async () => {
+    render(
+      <EditorGrid>
+        <EditorField label="Used" htmlFor="used-box">
+          <input id="used-box" aria-label="Housing expenses" />
+        </EditorField>
+      </EditorGrid>
+    )
+    const caption = screen.getByText('Used')
+    expect(caption.tagName).toBe('LABEL')
+    await userEvent.click(caption)
+    expect(screen.getByLabelText('Housing expenses')).toHaveFocus()
+  })
+
+  it('without htmlFor, the caption stays a plain span', () => {
+    render(
+      <EditorGrid>
+        <EditorField label="Name">
+          <input aria-label="Name" />
+        </EditorField>
+      </EditorGrid>
+    )
+    expect(screen.getByText('Name').tagName).toBe('SPAN')
   })
 })
 

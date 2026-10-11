@@ -7,8 +7,9 @@ import {
   REASON_POLICY,
   type CancelReason,
 } from '../kit/editor'
-import { HH_AMBER_NOTE as AMBER_NOTE, HH_EDITOR_LABEL, HH_EDITOR_TEXT } from './householdStyles'
-import { EditorBox, EditorColumns, FormActions } from './ReasonForm'
+import { EditorField, EditorGrid } from '../kit/EditorLayout'
+import { HH_GRID_TEXT } from './gridFields'
+import { HouseholdForm } from './ReasonForm'
 
 /**
  * The cancel form (§6.3; D101, D141; Decision 24): one of the nine reasons, as the server's
@@ -61,51 +62,42 @@ export function CancelForm({
   }
 
   return (
-    <EditorBox head={head}>
-      <form
-        onSubmit={(event) => {
-          event.preventDefault()
-          void submit()
-        }}
-        onKeyDown={(event) => {
-          if (event.key === 'Escape') {
-            event.preventDefault()
-            if (!inFlight.current) onCancel()
-          }
-        }}
-      >
-        <EditorColumns side={'A note is needed only for "another reason".'}>
-          <div ref={field} className={HH_EDITOR_LABEL}>
-            {policy.label}
+    <HouseholdForm
+      head={head}
+      side={'A note is needed only for "another reason".'}
+      submitLabel={submitLabel}
+      busy={busy}
+      refusals={[tried ? problem : null, error]}
+      onSubmit={() => void submit()}
+      onCancel={() => {
+        if (!inFlight.current) onCancel()
+      }}
+    >
+      <EditorGrid columns={2}>
+        <EditorField label={policy.label}>
+          <div ref={field} className="w-[330px] max-w-full">
             {/* The kit picker (design-language §3; conformance gap 1), as wide as the mock draws it. */}
-            <div className="w-[330px] max-w-full">
-              <AidPicker
-                label="Cancel reason"
-                size="field"
-                fill
-                value={value}
-                onChange={setValue}
-                options={[{ value: '', label: 'Pick a reason' }, ...policy.options]}
-              />
-            </div>
-          </div>
-          <label className={HH_EDITOR_LABEL}>
-            Note
-            <input
-              aria-label="Note"
-              type="text"
-              value={note}
-              maxLength={2000}
-              onChange={(event) => setNote(event.target.value)}
-              className={HH_EDITOR_TEXT}
+            <AidPicker
+              label="Cancel reason"
+              size="field"
+              fill
+              value={value}
+              onChange={setValue}
+              options={[{ value: '', label: 'Pick a reason' }, ...policy.options]}
             />
-          </label>
-        </EditorColumns>
-        <FormActions submitLabel={submitLabel} busy={busy} onCancel={onCancel}>
-          {tried && problem !== null && <span className={AMBER_NOTE}>{problem}</span>}
-          {error !== null && <span className={AMBER_NOTE}>{error}</span>}
-        </FormActions>
-      </form>
-    </EditorBox>
+          </div>
+        </EditorField>
+        <EditorField label="Note" wide>
+          <input
+            aria-label="Note"
+            type="text"
+            value={note}
+            maxLength={2000}
+            onChange={(event) => setNote(event.target.value)}
+            className={HH_GRID_TEXT}
+          />
+        </EditorField>
+      </EditorGrid>
+    </HouseholdForm>
   )
 }
