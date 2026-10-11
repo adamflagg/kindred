@@ -56,7 +56,11 @@ const grid = () => screen.getByTestId('aid-editor-grid')
 /** The grid's label cells, in order: the muted span before each field. */
 const labels = () =>
   Array.from(grid().children)
-    .filter((cell) => (cell.tagName === 'SPAN' || cell.tagName === 'LABEL') && cell.className.includes('text-muted-foreground'))
+    .filter(
+      (cell) =>
+        (cell.tagName === 'SPAN' || cell.tagName === 'LABEL') &&
+        cell.className.includes('text-muted-foreground')
+    )
     .map((cell) => cell.textContent)
 const side = () => document.querySelector('[data-editor-side]') as HTMLElement
 const box = () => document.querySelector('[data-editor-box]') as HTMLElement
