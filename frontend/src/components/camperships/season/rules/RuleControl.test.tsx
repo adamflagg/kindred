@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
+import { CS_DATE_FIELD } from '../../kit/csType'
 import { RuleControl } from './RuleControl'
 import type { EditContext } from './sectionEdit'
 
@@ -97,6 +98,21 @@ describe('RuleControl', () => {
       />
     )
     expect(screen.getByLabelText('Round 1 run')).toHaveAttribute('type', 'date')
+  })
+
+  it('a milestone date uses the kit date token, so its calendar icon follows dark mode', () => {
+    render(
+      <RuleControl
+        path={['r1_run']}
+        value={null}
+        spec={{ kind: 'date' }}
+        raw=""
+        problem={null}
+        onChange={vi.fn()}
+      />
+    )
+    // CS_FIELD has no dark color-scheme, which left the native calendar icon dim in dark mode (#3147 scan).
+    expect(screen.getByLabelText('Round 1 run')).toHaveClass(...CS_DATE_FIELD.split(' '))
   })
 
   it('shows a fraction as a percent and sends it back as a fraction', () => {
