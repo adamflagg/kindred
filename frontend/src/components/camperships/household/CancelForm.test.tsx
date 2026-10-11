@@ -106,4 +106,21 @@ describe('CancelForm: two columns (round 3)', () => {
     expect(side).not.toContainElement(aidPicker('Cancel reason'))
     expect(side).not.toContainElement(screen.getByLabelText('Note'))
   })
+
+  // Conformance gap 1: the mock draws the reason picker 330px wide; the width sits on its own box,
+  // since the picker's fill (w-full) would beat a width class set beside it.
+  it('draws the reason as the kit picker in a 330px box', () => {
+    render(
+      <CancelForm
+        initial={null}
+        submitLabel="Cancel the Request"
+        onSubmit={() => Promise.resolve()}
+        onCancel={() => undefined}
+      />
+    )
+    const wrap = aidPicker('Cancel reason').parentElement!
+    expect(wrap).toHaveClass('w-full')
+    expect(wrap).not.toHaveClass('w-[330px]')
+    expect(wrap.parentElement).toHaveClass('w-[330px]', 'max-w-full')
+  })
 })

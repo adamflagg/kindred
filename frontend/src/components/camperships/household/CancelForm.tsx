@@ -78,15 +78,16 @@ export function CancelForm({
           <div ref={field} className={HH_EDITOR_LABEL}>
             {policy.label}
             {/* The kit picker (design-language §3; conformance gap 1), as wide as the mock draws it. */}
-            <AidPicker
-              label="Cancel reason"
-              size="field"
-              fill
-              value={value}
-              onChange={setValue}
-              options={[{ value: '', label: 'Pick a reason' }, ...policy.options]}
-              className="w-[330px] max-w-full"
-            />
+            <div className="w-[330px] max-w-full">
+              <AidPicker
+                label="Cancel reason"
+                size="field"
+                fill
+                value={value}
+                onChange={setValue}
+                options={[{ value: '', label: 'Pick a reason' }, ...policy.options]}
+              />
+            </div>
           </div>
           <label className={HH_EDITOR_LABEL}>
             Note
