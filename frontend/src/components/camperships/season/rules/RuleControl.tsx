@@ -1,7 +1,7 @@
 import { useState } from 'react'
 
 import { AidPicker } from '../../kit/AidPicker'
-import { CS_AMBER_NOTE, CS_FIELD, CS_PILL } from '../../kit/csType'
+import { CS_AMBER_NOTE, CS_DATE_FIELD, CS_FIELD, CS_PILL } from '../../kit/csType'
 import { CHOICE_WORDS } from './rulesCards'
 import { fieldName, type FieldSpec } from './sectionEdit'
 
@@ -128,7 +128,7 @@ export function RuleControl({
         <input
           type="date"
           aria-label={name}
-          className={CS_FIELD}
+          className={CS_DATE_FIELD}
           value={raw}
           onChange={(event) => onChange(event.target.value)}
         />

@@ -7,8 +7,10 @@ import {
   CS_EDROW,
   CS_FGRID,
   CS_FGRID_LABEL,
+  CS_FGRID_PAYER,
   CS_FGRID_TWO,
   CS_FORM2,
+  CS_FORM2_MAIN,
   CS_FORM2_SIDE,
   CS_PHEAD,
   CS_TOOLBAR_STATUS,
@@ -52,7 +54,7 @@ export function EditorForm({
           <h3 className={CS_CARD_HEADING}>{title}</h3>
         ))}
       <div data-testid="aid-editor-form" className={side !== undefined ? CS_FORM2 : undefined}>
-        <div className={side !== undefined ? 'min-w-0 pr-4' : undefined}>{children}</div>
+        <div className={side !== undefined ? CS_FORM2_MAIN : undefined}>{children}</div>
         {side !== undefined && <div className={CS_FORM2_SIDE}>{side}</div>}
       </div>
       {actions}
@@ -60,16 +62,22 @@ export function EditorForm({
   )
 }
 
-/** The fields' grid: label · field · label · field (or label · field with `columns={2}`). */
+/**
+ * The fields' grid: label · field · label · field (or label · field with `columns={2}`). `'payer'` is
+ * Payer Shares' five columns (name · share · %).
+ */
 export function EditorGrid({
   columns = 4,
   children,
 }: {
-  readonly columns?: 2 | 4
+  readonly columns?: 2 | 4 | 'payer'
   readonly children: ReactNode
 }) {
   return (
-    <div data-testid="aid-editor-grid" className={columns === 2 ? CS_FGRID_TWO : CS_FGRID}>
+    <div
+      data-testid="aid-editor-grid"
+      className={columns === 2 ? CS_FGRID_TWO : columns === 'payer' ? CS_FGRID_PAYER : CS_FGRID}
+    >
       {children}
     </div>
   )
@@ -82,16 +90,30 @@ export function EditorGrid({
 export function EditorField({
   label,
   off = false,
+  wide = false,
+  htmlFor,
   children,
 }: {
   readonly label: ReactNode
   readonly off?: boolean
+  /** The control's id: the caption becomes a real <label>, so a click on it focuses the field. Leave it
+   *  off for a picker, whose options inside a label would hand every click back to its button. */
+  readonly htmlFor?: string | undefined
+  /** The field takes the rest of the row (the mock's span3): a typed reason or note. */
+  readonly wide?: boolean
   readonly children: ReactNode
 }) {
+  const captionClass = off ? `${CS_FGRID_LABEL} opacity-50` : CS_FGRID_LABEL
   return (
     <>
-      <span className={off ? `${CS_FGRID_LABEL} opacity-50` : CS_FGRID_LABEL}>{label}</span>
-      <div className="min-w-0">{children}</div>
+      {htmlFor === undefined ? (
+        <span className={captionClass}>{label}</span>
+      ) : (
+        <label htmlFor={htmlFor} className={captionClass}>
+          {label}
+        </label>
+      )}
+      <div className={wide ? 'col-[2/-1] min-w-0' : 'min-w-0'}>{children}</div>
     </>
   )
 }

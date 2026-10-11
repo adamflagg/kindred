@@ -134,21 +134,70 @@ describe('ReasonForm: two columns and the footer (round 3)', () => {
     expect(side()).toBeNull()
   })
 
-  it('ends its footer with Back and then the submit, after the key hint', () => {
+  // Conformance #g6 (owner 10-10, rev 2: "the rest looks good"): the kit's one footer row replaces the
+  // old footer. The action goes first, then Back, a refusal after Back, and the key hint at the row's end.
+  it('puts the action first on one row, then Back, then the key hint at the end', () => {
     render(
       <ReasonForm label="Why" submitLabel="Send" onSubmit={vi.fn()} onCancel={() => undefined} />
     )
     const submit = screen.getByRole('button', { name: 'Send' })
     const back = screen.getByRole('button', { name: 'Back' })
-    expect(submit.parentElement?.lastElementChild).toBe(submit)
-    expect(back.nextElementSibling).toBe(submit)
-    expect(back.previousElementSibling).toHaveTextContent('Enter saves · Esc cancels')
+    expect(submit.nextElementSibling).toBe(back)
+    expect(submit.parentElement).toHaveClass('flex', 'flex-nowrap')
+    const keys = submit.parentElement?.lastElementChild
+    expect(keys).toHaveTextContent('Enter saves · Esc cancels')
+    expect(keys).toHaveAttribute('title', 'Enter saves · Esc cancels')
+    expect(submit).toHaveClass('h-[26px]')
   })
 
-  it('draws a white field', () => {
+  it('shows a refusal after Back, cut with its words in a title', async () => {
     render(
       <ReasonForm label="Why" submitLabel="Send" onSubmit={vi.fn()} onCancel={() => undefined} />
     )
-    expect(screen.getByLabelText('Why')).toHaveClass('bg-white')
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }))
+    const refusal = screen.getByText('Why is required')
+    expect(screen.getByRole('button', { name: 'Back' }).nextElementSibling).toBe(refusal)
+    expect(refusal).toHaveAttribute('title', 'Why is required')
+    expect(refusal).toHaveClass('truncate')
+  })
+
+  it('draws the kit field beside its label, in the band-tinted card (it sits in a white card)', () => {
+    render(
+      <ReasonForm label="Why" submitLabel="Send" onSubmit={vi.fn()} onCancel={() => undefined} />
+    )
+    expect(screen.getByLabelText('Why')).toHaveClass('h-[30px]', 'bg-card')
+    expect(screen.getByTestId('aid-editor-grid')).toHaveClass(
+      'grid-cols-[max-content_minmax(0,1fr)]'
+    )
+    const card = screen.getByTestId('aid-editor-form').parentElement
+    expect(card?.className).toContain('var(--color-forest-200)_24%')
+  })
+
+  it('heads the card with what it does, as the uppercase panel head', () => {
+    render(
+      <ReasonForm
+        head="Putting it on hold"
+        label="Why"
+        submitLabel="Put on Hold"
+        onSubmit={vi.fn()}
+        onCancel={() => undefined}
+      />
+    )
+    expect(screen.getByText('Putting it on hold').closest('.uppercase')).not.toBeNull()
+  })
+
+  // Rev 3 (owner 10-10): a refusal can say its own words ("Say why you're refusing").
+  it('says its own words for a missing reason when given them', async () => {
+    render(
+      <ReasonForm
+        label="Why refuse"
+        requiredWords="Say why you're refusing"
+        submitLabel="Refuse"
+        onSubmit={vi.fn()}
+        onCancel={() => undefined}
+      />
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Refuse' }))
+    expect(screen.getByText("Say why you're refusing")).toBeInTheDocument()
   })
 })

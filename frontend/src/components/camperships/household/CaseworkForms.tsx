@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 
 import { useAidApplication } from '../../../hooks/camperships/useAidApplication'
 import { AidPicker } from '../kit/AidPicker'
@@ -28,21 +28,12 @@ import {
 import type { EditorExits } from './editorExits'
 import { correctLabel, correctionPicks, formsSayWords, settleWords } from './formsModel'
 import { answerWords, camperOf, labelOf, labelWords } from './householdModel'
-import {
-  HH_AMBER_NOTE as AMBER_NOTE,
-  HH_BUTTON,
-  HH_EDITOR_FIELD,
-  HH_EDITOR_LABEL,
-  HH_EDITOR_MONEY,
-  HH_EDITOR_NUMBER,
-  HH_EDITOR_PAIR,
-  HH_CORRECT_SETTLES,
-  HH_EDITOR_TEXT,
-  HH_LINK,
-  HH_PICK,
-  HH_PICK_ON,
-} from './householdStyles'
-import { EditorBox, EditorColumns, FormActions } from './ReasonForm'
+import { HH_LINK } from './householdStyles'
+import { EditorActions, EditorField, EditorForm, EditorGrid } from '../kit/EditorLayout'
+import { CS_BTN2 } from '../kit/csType'
+import { AidSegmented } from '../kit/Segmented'
+import { HouseholdForm } from './ReasonForm'
+import { HH_GRID_ID, HH_GRID_NUMBER, HH_GRID_TEXT, HH_GRID_UNIT, HH_GRID_USED } from './gridFields'
 import { useSubmit } from './useSubmit'
 
 export function FormShell({
@@ -54,9 +45,10 @@ export function FormShell({
   onSubmit,
   onCancel,
   side,
+  foot,
   children,
 }: {
-  /** The editor box's head (D24): what the form does, in sentence case. */
+  /** The editor's head: what the form does, in sentence case. */
   head: string
   /** A muted aside beside the head (Correct…: the forms' figures). */
   aside?: string | undefined
@@ -65,9 +57,11 @@ export function FormShell({
   error: string | null
   onSubmit: () => void
   onCancel: () => void
-  /** What saving does, on the right (round 3, two columns); the fields alone without it. */
+  /** What saving does, on the right under "If you save"; the fields alone without it. */
   side?: ReactNode
-  /** The fields, top to bottom: short ones grouped in an `HH_EDITOR_PAIR` row, then the reason. */
+  /** Another sentence for the buttons' row, before the key hint (Correct…: what saving settles). */
+  foot?: string | null | undefined
+  /** The fields: an EditorGrid of EditorFields (conformance #g6). */
   children: ReactNode
 }) {
   // Esc is heard on the form, so the form takes focus as it opens, on its first field, as
@@ -82,26 +76,20 @@ export function FormShell({
       ?.focus()
   }, [])
   return (
-    <EditorBox head={head} aside={aside}>
-      <form
-        ref={form}
-        onSubmit={(event) => {
-          event.preventDefault()
-          onSubmit()
-        }}
-        onKeyDown={(event) => {
-          if (event.key === 'Escape') {
-            event.preventDefault()
-            if (!busy) onCancel()
-          }
-        }}
-      >
-        <EditorColumns side={side}>{children}</EditorColumns>
-        <FormActions submitLabel={submitLabel} busy={busy} onCancel={onCancel}>
-          {error !== null && <span className={AMBER_NOTE}>{error}</span>}
-        </FormActions>
-      </form>
-    </EditorBox>
+    <HouseholdForm
+      formRef={form}
+      head={head}
+      aside={aside}
+      side={side}
+      submitLabel={submitLabel}
+      busy={busy}
+      refusals={[error]}
+      foot={foot}
+      onSubmit={onSubmit}
+      onCancel={onCancel}
+    >
+      {children}
+    </HouseholdForm>
   )
 }
 
@@ -116,20 +104,27 @@ function ReasonInput({
   optional?: boolean
 }) {
   return (
-    <label className={HH_EDITOR_LABEL}>
-      <span>
-        Reason
-        {optional && <span className="text-muted-foreground font-normal"> (optional)</span>}
-      </span>
+    <EditorField
+      wide
+      label={
+        optional ? (
+          <>
+            Reason <span className="opacity-75">(optional)</span>
+          </>
+        ) : (
+          'Reason'
+        )
+      }
+    >
       <input
         aria-label="Reason"
         type="text"
         value={value}
         maxLength={2000}
         onChange={(event) => onChange(event.target.value)}
-        className={HH_EDITOR_TEXT}
+        className={HH_GRID_TEXT}
       />
-    </label>
+    </EditorField>
   )
 }
 
@@ -148,26 +143,36 @@ function Note({
     back.current?.focus()
   }, [])
   return (
-    <EditorBox head={head}>
-      <div
-        className="flex flex-wrap items-center gap-2 text-[13px]"
-        onKeyDown={(event) => {
-          if (event.key === 'Escape') {
-            event.preventDefault()
-            onBack()
-          }
-        }}
+    <div
+      data-editor-box=""
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') {
+          event.preventDefault()
+          onBack()
+        }
+      }}
+    >
+      <EditorForm
+        onWhite
+        heading="phead"
+        title={head}
+        actions={
+          <EditorActions>
+            <button ref={back} type="button" className={CS_BTN2} onClick={onBack}>
+              Back
+            </button>
+          </EditorActions>
+        }
       >
-        <span className="text-muted-foreground">{children}</span>
-        <button ref={back} type="button" className={HH_BUTTON} onClick={onBack}>
-          Back
-        </button>
-      </div>
-    </EditorBox>
+        <span className="text-muted-foreground text-[13px]">{children}</span>
+      </EditorForm>
+    </div>
   )
 }
 
 const REASON_REQUIRED = 'A reason is required'
+/** The Use control's last segment: no form's figure, the Used field typed by hand. */
+const ANOTHER_FIGURE = '\u0000another'
 
 function CorrectionForm({
   page,
@@ -216,6 +221,7 @@ function CorrectionForm({
           .then(onClose)
     })
 
+  const usedId = useId()
   const label = answerWords(answer.field)
   const settles = settleWords(income, answer)
   const used =
@@ -233,12 +239,13 @@ function CorrectionForm({
       />
     ) : (
       <input
+        id={usedId}
         aria-label={label}
         type="text"
         inputMode="decimal"
         value={value}
         onChange={(event) => setValue(event.target.value)}
-        className={HH_EDITOR_MONEY}
+        className={HH_GRID_USED}
       />
     )
   // Round 3 (section 3): one column, as the mock's row in the answers; the picks fill Used.
@@ -251,54 +258,50 @@ function CorrectionForm({
       error={error}
       onSubmit={() => send(picked?.revert === true ? null : value)}
       onCancel={onClose}
+      foot={settles}
     >
-      <div className={HH_EDITOR_PAIR}>
+      {/* #g6-correct: Use is the kit's segmented control; a Yes/No figure has nothing to pick between. */}
+      <EditorGrid columns={kind === 'flag' ? 2 : 4}>
         {picks.length > 0 && (
-          <div className={HH_EDITOR_LABEL}>
-            Use
-            <span className="flex flex-wrap gap-1.5">
-              {picks.map((pick) => (
-                <button
-                  key={pick.label}
-                  type="button"
-                  className={`${HH_PICK} ${pick === picked ? HH_PICK_ON : ''}`}
-                  disabled={busy}
-                  onClick={() => setValue(pick.value)}
-                >
-                  {pick.label}
-                </button>
-              ))}
-              <button
-                type="button"
-                className={`${HH_PICK} ${picked === undefined ? HH_PICK_ON : ''}`}
-                disabled={busy}
-                onClick={() => {
-                  const used = field.current?.querySelector<HTMLElement>('input, button')
-                  used?.focus()
-                  if (used instanceof HTMLInputElement) used.select()
-                }}
-              >
-                Another figure
-              </button>
-            </span>
-          </div>
+          <EditorField label="Use" wide>
+            <AidSegmented
+              label="Use"
+              value={picked === undefined ? ANOTHER_FIGURE : picked.label}
+              options={[
+                ...picks.map((pick) => ({
+                  value: pick.label,
+                  label: pick.label,
+                  disabled: busy,
+                })),
+                { value: ANOTHER_FIGURE, label: 'Another figure', disabled: busy },
+              ]}
+              onChange={(next) => {
+                const pick = picks.find((candidate) => candidate.label === next)
+                if (pick !== undefined) {
+                  setValue(pick.value)
+                  return
+                }
+                const used = field.current?.querySelector<HTMLElement>('input, button')
+                used?.focus()
+                if (used instanceof HTMLInputElement) used.select()
+              }}
+            />
+          </EditorField>
         )}
-        {kind === 'flag' ? (
-          // A picker's options inside a <label> would hand every click back to its button.
-          <div ref={field} className={HH_EDITOR_LABEL}>
-            Used
-            {used}
-          </div>
-        ) : (
-          // The typed box keeps its label, so a click on "Used" focuses it.
-          <label ref={field} className={HH_EDITOR_LABEL}>
-            Used
-            {used}
-          </label>
+        {/* The typed box keeps a real label, so a click on "Used" focuses it (#3147 scan). A picker's
+            options inside a <label> would hand every click back to its button, so it gets none. */}
+        <EditorField label="Used" htmlFor={kind === 'flag' ? undefined : usedId}>
+          <div ref={field}>{used}</div>
+        </EditorField>
+        {kind !== 'flag' && (
+          // The rest of the Used row stays empty, as the mock draws it, so Reason starts a new row.
+          <>
+            <span />
+            <span />
+          </>
         )}
-      </div>
-      <ReasonInput value={reason} onChange={setReason} optional />
-      {settles !== null && <p className={HH_CORRECT_SETTLES}>{settles}</p>}
+        <ReasonInput value={reason} onChange={setReason} optional />
+      </EditorGrid>
     </FormShell>
   )
 }
@@ -401,9 +404,8 @@ export function ShareForm({
         </>
       }
     >
-      <div className={HH_EDITOR_PAIR}>
-        <div className={`${HH_EDITOR_LABEL} min-w-0`}>
-          Household
+      <EditorGrid columns="payer">
+        <EditorField label="Household">
           {/* A name picker (owner 10-10): it fills its column and cuts only beyond it. */}
           <AidPicker
             label="Household"
@@ -423,36 +425,38 @@ export function ShareForm({
               { value: 'other', label: 'Another household…' },
             ]}
           />
-        </div>
-        {household === 'other' && (
-          <label className={HH_EDITOR_LABEL}>
-            CampMinder id
-            <input
-              aria-label="Household id"
-              type="text"
-              inputMode="numeric"
-              value={otherId}
-              onChange={(event) => setOtherId(event.target.value)}
-              className={`${HH_EDITOR_FIELD} w-28`}
-            />
-          </label>
-        )}
-        <label className={HH_EDITOR_LABEL}>
-          Share
-          <span className="inline-flex items-center gap-1.5 font-normal">
-            <input
-              aria-label="Share"
-              type="text"
-              inputMode="decimal"
-              value={value}
-              onChange={(event) => setValue(event.target.value)}
-              className={HH_EDITOR_NUMBER}
-            />
-            %
-          </span>
-        </label>
-      </div>
-      <ReasonInput value={reason} onChange={setReason} />
+        </EditorField>
+        <EditorField label="Share">
+          <input
+            aria-label="Share"
+            type="text"
+            inputMode="decimal"
+            value={value}
+            onChange={(event) => setValue(event.target.value)}
+            className={`${HH_GRID_TEXT} text-right tabular-nums`}
+          />
+        </EditorField>
+        <span className={HH_GRID_UNIT}>%</span>
+        {/* Rule 14: a dependent choice is switched off, never hidden, until Another household… turns it on. */}
+        <EditorField label="CampMinder id" off={household !== 'other'}>
+          <input
+            aria-label="Household id"
+            type="text"
+            inputMode="numeric"
+            value={otherId}
+            disabled={household !== 'other'}
+            title={
+              household === 'other'
+                ? undefined
+                : 'Pick Another household… to type its CampMinder id'
+            }
+            onChange={(event) => setOtherId(event.target.value)}
+            className={HH_GRID_ID}
+          />
+        </EditorField>
+        <span className="col-[3/-1]" />
+        <ReasonInput value={reason} onChange={setReason} />
+      </EditorGrid>
     </FormShell>
   )
 }
@@ -501,24 +505,24 @@ export function SessionForm({
       onSubmit={submit}
       onCancel={onDone}
     >
-      <div className={HH_EDITOR_LABEL}>
-        Session
-        <AidPicker
-          label="Session"
-          size="field"
-          value={session}
-          onChange={setSession}
-          options={[
-            { value: '', label: 'Pick a session' },
-            ...candidates.map((candidate) => ({
-              value: String(candidate.session_cm_id),
-              label: candidate.name,
-            })),
-          ]}
-          className="self-start"
-        />
-      </div>
-      <ReasonInput value={reason} onChange={setReason} />
+      <EditorGrid columns={2}>
+        <EditorField label="Session">
+          <AidPicker
+            label="Session"
+            size="field"
+            value={session}
+            onChange={setSession}
+            options={[
+              { value: '', label: 'Pick a session' },
+              ...candidates.map((candidate) => ({
+                value: String(candidate.session_cm_id),
+                label: candidate.name,
+              })),
+            ]}
+          />
+        </EditorField>
+        <ReasonInput value={reason} onChange={setReason} />
+      </EditorGrid>
     </FormShell>
   )
 }
@@ -610,22 +614,23 @@ export function DuplicateForm({
       onSubmit={submit}
       onCancel={onDone}
     >
-      <div className={`${HH_EDITOR_LABEL} min-w-0`}>
-        Keep
-        {/* A name picker (camper · session; owner 10-10): it fills its column and cuts only beyond it. */}
-        <AidPicker
-          label="Keep"
-          size="field"
-          fill
-          value={keptNow ?? ''}
-          onChange={setKept}
-          options={[
-            ...(keptNow === undefined ? [{ value: '', label: 'Pick a request' }] : []),
-            ...options.map((option) => ({ value: option.id, label: option.label })),
-          ]}
-        />
-      </div>
-      <ReasonInput value={reason} onChange={setReason} />
+      <EditorGrid columns={2}>
+        <EditorField label="Keep">
+          {/* A name picker (camper · session; owner 10-10): it fills its column and cuts only beyond it. */}
+          <AidPicker
+            label="Keep"
+            size="field"
+            fill
+            value={keptNow ?? ''}
+            onChange={setKept}
+            options={[
+              ...(keptNow === undefined ? [{ value: '', label: 'Pick a request' }] : []),
+              ...options.map((option) => ({ value: option.id, label: option.label })),
+            ]}
+          />
+        </EditorField>
+        <ReasonInput value={reason} onChange={setReason} />
+      </EditorGrid>
     </FormShell>
   )
 }
@@ -673,7 +678,9 @@ export function KeepThisForm({
       onCancel={onDone}
       side={`Marks the other request as the duplicate: ${otherName}`}
     >
-      <ReasonInput value={reason} onChange={setReason} />
+      <EditorGrid columns={2}>
+        <ReasonInput value={reason} onChange={setReason} />
+      </EditorGrid>
     </FormShell>
   )
 }
@@ -746,31 +753,29 @@ export function HeadcountForm({
       onSubmit={submit}
       onCancel={onDone}
     >
-      <div className={HH_EDITOR_PAIR}>
-        <label className={HH_EDITOR_LABEL}>
-          Not infants
+      <EditorGrid>
+        <EditorField label="Not infants">
           <input
             aria-label="Not infants"
             type="text"
             inputMode="numeric"
             value={shownNonInfant}
             onChange={(event) => setNonInfant(event.target.value)}
-            className={HH_EDITOR_NUMBER}
+            className={HH_GRID_NUMBER}
           />
-        </label>
-        <label className={HH_EDITOR_LABEL}>
-          Infants
+        </EditorField>
+        <EditorField label="Infants">
           <input
             aria-label="Infants"
             type="text"
             inputMode="numeric"
             value={shownInfant}
             onChange={(event) => setInfant(event.target.value)}
-            className={HH_EDITOR_NUMBER}
+            className={HH_GRID_NUMBER}
           />
-        </label>
-      </div>
-      <ReasonInput value={reason} onChange={setReason} />
+        </EditorField>
+        <ReasonInput value={reason} onChange={setReason} />
+      </EditorGrid>
     </FormShell>
   )
 }

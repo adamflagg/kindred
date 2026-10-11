@@ -3,19 +3,13 @@ import { useState } from 'react'
 import { useAidCostOverride } from '../../../hooks/camperships/useAidWrites'
 import type { ApiAidHouseholdPage, ApiAidHouseholdRequest } from '../../../types/api-types'
 import { AidPicker } from '../kit/AidPicker'
+import { EditorField, EditorGrid } from '../kit/EditorLayout'
 import { costReasonOptions } from '../kit/costReasons'
 import { parseMoneyInput } from '../kit/editor'
 import { formatMoney, toCents } from '../kit/money'
 import { FormShell } from './CaseworkForms'
-import {
-  HH_EDITOR_LABEL,
-  HH_EDITOR_MONEY,
-  HH_EDITOR_SIDE_LEAD,
-  HH_EDITOR_PAIR,
-  HH_EDITOR_SIDE_NOTE,
-  HH_EDITOR_SIDE_WARN,
-  HH_EDITOR_TEXT,
-} from './householdStyles'
+import { HH_EDITOR_SIDE_LEAD, HH_EDITOR_SIDE_NOTE, HH_EDITOR_SIDE_WARN } from './householdStyles'
+import { HH_GRID_TEXT, HH_GRID_UNIT, HH_GRID_MONEY } from './gridFields'
 import { useSubmit } from './useSubmit'
 
 /** The server's limit on a note (`_Note`, 2000). */
@@ -130,10 +124,9 @@ export function SetCostForm({ request, page, onDone }: FormProps) {
         </>
       }
     >
-      <div className={HH_EDITOR_PAIR}>
-        <label className={HH_EDITOR_LABEL}>
-          Cost
-          <span className="inline-flex items-center gap-1.5 font-normal">
+      <EditorGrid>
+        <EditorField label="Cost">
+          <span className={HH_GRID_UNIT}>
             $
             <input
               aria-label="Cost"
@@ -142,13 +135,12 @@ export function SetCostForm({ request, page, onDone }: FormProps) {
               value={cost}
               placeholder={placeholder}
               onChange={(event) => setCost(event.target.value)}
-              className={HH_EDITOR_MONEY}
+              className={HH_GRID_MONEY}
             />
           </span>
-        </label>
-        <div className={HH_EDITOR_LABEL}>
-          Reason
-          {/* The kit picker (design-language §3; conformance gap 1): compact, sized to its reasons. */}
+        </EditorField>
+        <EditorField label="Reason">
+          {/* The kit picker (design-language §3; conformance gap 1): not a name, so compact. */}
           <AidPicker
             label="Reason"
             size="field"
@@ -158,21 +150,19 @@ export function SetCostForm({ request, page, onDone }: FormProps) {
               { value: '', label: 'Choose a reason…' },
               ...costReasonOptions(page.override_reasons ?? []),
             ]}
-            className="self-start"
           />
-        </div>
-      </div>
-      <label className={HH_EDITOR_LABEL}>
-        Note
-        <input
-          aria-label="Note"
-          type="text"
-          value={note}
-          maxLength={NOTE_MAX}
-          onChange={(event) => setNote(event.target.value)}
-          className={HH_EDITOR_TEXT}
-        />
-      </label>
+        </EditorField>
+        <EditorField label="Note" wide>
+          <input
+            aria-label="Note"
+            type="text"
+            value={note}
+            maxLength={NOTE_MAX}
+            onChange={(event) => setNote(event.target.value)}
+            className={HH_GRID_TEXT}
+          />
+        </EditorField>
+      </EditorGrid>
     </FormShell>
   )
 }
@@ -219,17 +209,18 @@ export function ClearCostForm({ request, onDone }: FormProps) {
         </>
       }
     >
-      <label className={HH_EDITOR_LABEL}>
-        Why clear
-        <input
-          aria-label="Why clear"
-          type="text"
-          value={note}
-          maxLength={NOTE_MAX}
-          onChange={(event) => setNote(event.target.value)}
-          className={HH_EDITOR_TEXT}
-        />
-      </label>
+      <EditorGrid columns={2}>
+        <EditorField label="Why clear" wide>
+          <input
+            aria-label="Why clear"
+            type="text"
+            value={note}
+            maxLength={NOTE_MAX}
+            onChange={(event) => setNote(event.target.value)}
+            className={HH_GRID_TEXT}
+          />
+        </EditorField>
+      </EditorGrid>
     </FormShell>
   )
 }
