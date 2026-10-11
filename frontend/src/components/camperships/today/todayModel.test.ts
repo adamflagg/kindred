@@ -87,7 +87,7 @@ describe('showRegistrarQueue (ruling 3)', () => {
   })
 })
 
-describe('registrar hero (ruling 16: stages on the bar, flags as chips)', () => {
+describe('registrar hero (ruling 17: five stages on the bar, four flags as chips)', () => {
   const VIEW = { year: 2027, asOf: { kind: 'live' } } as const
   const stripStage = (href: string | undefined) => {
     const url = new URL(href ?? '', 'http://x')
@@ -97,13 +97,13 @@ describe('registrar hero (ruling 16: stages on the bar, flags as chips)', () => 
       resolveStrip(url.searchParams.get('view'), url.searchParams.get('lens')).stage?.key ?? null
     )
   }
-  it('draws the linear stages in order, then Not ready to offer and Accepted, summing to the live season', () => {
+  it('draws Needs an offer, Pending approval, Waiting on the family, On hold and Accepted, summing to the live season', () => {
     const segs = registrarSegments(STAGES, VIEW)
     expect(segs.map((s) => [s.key, s.label, s.value])).toEqual([
       ['needs_offer', 'Needs an offer', 31],
       ['pending_approval', 'Pending approval', 6],
       ['waiting_on_family', 'Waiting on the family', 9],
-      ['not_ready', 'Not ready to offer', 6],
+      ['on_hold', 'On hold', 6],
       ['accepted', 'Accepted', 318],
     ])
     for (const s of segs.slice(0, 3)) {
@@ -111,13 +111,13 @@ describe('registrar hero (ruling 16: stages on the bar, flags as chips)', () => 
     }
     expect(segs.reduce((sum, s) => sum + s.value, 0)).toBe(STAGES.live)
   })
-  it('opens each linear stage on the strip, and the rest on the whole season', () => {
+  it('opens each linear stage on the strip, On hold on Holds, and Accepted on the whole season', () => {
     const segs = registrarSegments(STAGES, VIEW)
     expect(segs.map((s) => stripStage(s.href))).toEqual([
       'needs_offer',
       'pending_approval',
       'waiting_on_family',
-      null,
+      'holds',
       null,
     ])
   })
@@ -125,17 +125,29 @@ describe('registrar hero (ruling 16: stages on the bar, flags as chips)', () => 
     const mine = registrarSegments(STAGES, VIEW)
       .filter((s) => s.mine)
       .map((s) => s.key)
-    expect(mine).toEqual(['needs_offer', 'not_ready'])
+    expect(mine).toEqual(['needs_offer', 'on_hold'])
   })
   it("gives each flag the strip's count, word and view, in the strip's order, and hides zeros", () => {
     const chips = registrarFlags(STAGES, VIEW)
     expect(chips.map((c) => [c.key, c.label, c.count])).toEqual([
       ['not_reconciled', 'Not reconciled', 8],
-      ['holds', 'On hold', 7],
       ['session_not_settled', 'Session unclear', 2],
       ['to_reverse', 'To reverse', 1],
     ])
     for (const c of chips) expect(stripStage(c.href)).toBe(c.key)
+  })
+  it('says honestly that the Holds list can show more than the On hold segment, and never that a segment always matches', () => {
+    const segs = registrarSegments(STAGES, VIEW)
+    const hold = segs.find((s) => s.key === 'on_hold')
+    expect(hold?.title).toMatch(/Holds list can show more/)
+    expect(hold?.title).toMatch(/after an offer/)
+    for (const s of segs) expect(s.title ?? '').not.toMatch(/always/i)
+  })
+  it('has no chip for holds and no Not ready to offer segment', () => {
+    expect(
+      registrarFlags({ ...STAGES, flags: { ...STAGES.flags } }, VIEW).map((c) => c.key)
+    ).not.toContain('holds')
+    expect(registrarSegments(STAGES, VIEW).map((s) => s.label)).not.toContain('Not ready to offer')
   })
   it('counts the share of live requests with an offer, consistent with the bar', () => {
     expect(offerShare(STAGES)).toBe(

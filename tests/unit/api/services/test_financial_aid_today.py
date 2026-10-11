@@ -31,7 +31,7 @@ from api.schemas.financial_aid_grants import (
     WaitingCommitmentOut,
 )
 from api.schemas.financial_aid_intake import IssueOut
-from api.schemas.financial_aid_surfaces import TodayKey
+from api.schemas.financial_aid_surfaces import TodayFlagsOut, TodayKey
 from api.services.camp_calendar import CAMP_TZ
 from api.services.financial_aid_decisions_service import FinancialAidDecisionsService
 from api.services.financial_aid_grants_register import RegisterRow
@@ -933,9 +933,9 @@ def _flagged() -> list[GridRowOut]:
             _round(1, "posted", posted=800.0, posted_on=posted_on),
             confirmation=_confirmation("short", -100.0),
         ),
-        # Latest round held: the bar's Not ready to offer, and the On hold chip
+        # Latest round held: the bar's On hold (and the Holds view lists it)
         _real("rhold", 1000006, _round(1, "held"), holds=[_hold("household_income_conflict")]),
-        # Accepted, with a hold issue on top: the On hold chip counts it, the bar counts it Accepted
+        # Accepted, with a hold issue on top: the Holds view lists it, the bar counts it Accepted
         _real(
             "racch",
             1000007,
@@ -965,21 +965,62 @@ def _members(rows: list[GridRowOut], queue: str) -> int:
 
 
 def test_the_bar_counts_each_live_request_once_by_its_stage_and_sums_to_the_live_season() -> None:
-    """Ruling 16: Needs an offer · Pending approval · Waiting on the family · Not ready to offer · Accepted, by the
-    row's own Stage (row_stage, the latest round). A cancelled request is not live and is on no segment."""
+    """Ruling 17: Needs an offer · Pending approval · Waiting on the family · On hold · Accepted, by the row's own
+    Stage (row_stage, the latest round). A cancelled request is not live and is on no segment."""
     rows = _flagged()
     stages = build_today(_inputs(rows), casework=True, finance=False).stages
     assert stages is not None
     assert _bar(stages) == {
-        "needs_offer": 1,
+        "needs_offer": 3,  # and the duplicate and unclear-session requests' undecided rounds (not_decided)
         "pending_approval": 1,
         "waiting_on_family": 2,
-        "not_ready": 3,  # held, and the duplicate and unclear-session requests' undecided rounds
+        "on_hold": 1,
         "accepted": 2,
     }
     assert sum(_bar(stages).values()) == stages.live == 9
     assert stages.offered == stages.pending_approval + stages.waiting_on_family + stages.accepted
     assert stages.families == 9
+
+
+def test_each_segment_counts_its_own_stage_codes_with_distinct_counts() -> None:
+    """Ruling 17, pinned segment by segment (a swap between segments fails): not_decided reads Needs an offer, held
+    reads On hold, and a refused Round 3 appeal reads Accepted, because the family keeps the grant it accepted."""
+    posted_on = date(2031, 4, 10)
+    rows: list[GridRowOut] = [
+        _real("p1", 1000001, _round(1, "pending_approval", pending_approval=300.0)),  # Pending approval: 1
+        _real("w1", 1000002, _round(1, "posted", posted=800.0, posted_on=posted_on)),  # Waiting: 2
+        _real("w2", 1000003, _round(1, "posted", posted=800.0, posted_on=posted_on)),
+        _real("n1", 1000004, _round(1, "needs_offer", decided=500.0, asked_on=posted_on)),  # Needs an offer: 3
+        _real("n2", 1000005, _round(1, "not_decided")),
+        _real("n3", 1000006, _round(1, "not_decided")),
+    ]
+    rows += [_real(f"h{i}", 1000010 + i, _round(1, "held")) for i in range(4)]  # On hold: 4
+    accepted = [
+        _real(f"a{i}", 1000020 + i, _round(1, "posted", posted=700.0, posted_on=posted_on, accepted=True))
+        for i in range(3)
+    ]
+    refused = [  # Round 1 accepted, Round 3 appeal refused by finance: the latest round reads refused
+        _real(
+            f"r{i}",
+            1000030 + i,
+            _round(1, "posted", posted=700.0, posted_on=posted_on, accepted=True),
+            _round(3, "refused"),
+        )
+        for i in range(2)
+    ]
+    assert {r.stage.code for r in refused if r.stage} == {"refused"}
+    rows += accepted + refused  # Accepted: 5
+    stages = build_today(_inputs(rows), casework=True, finance=False).stages
+    assert stages is not None
+    assert _bar(stages) == {
+        "needs_offer": 3,
+        "pending_approval": 1,
+        "waiting_on_family": 2,
+        "on_hold": 4,
+        "accepted": 5,
+    }
+    assert stages.live == 15
+    assert stages.offered == 1 + 2 + 5
 
 
 def test_d21_each_linear_segment_counts_what_its_strip_stage_lists() -> None:
@@ -1007,6 +1048,11 @@ def test_waiting_and_not_reconciled_counts_once_on_the_bar_and_once_in_the_chip(
     assert stages.flags.not_reconciled == 1
 
 
+def test_the_flags_are_only_the_four_chips_and_holds_is_not_one() -> None:
+    assert FLAG_STAGES == ("not_reconciled", "duplicates", "session_not_settled", "to_reverse")
+    assert set(TodayFlagsOut.model_fields) == set(FLAG_STAGES)
+
+
 def test_each_chip_counts_its_queue_membership_exactly() -> None:
     """The flags are the strip's own counts: every row whose queues name it, whatever its stage, cancelled included."""
     rows = _flagged()
@@ -1015,7 +1061,6 @@ def test_each_chip_counts_its_queue_membership_exactly() -> None:
     assert stages.flags.model_dump() == {flag: _members(rows, flag) for flag in FLAG_STAGES}
     assert stages.flags.model_dump() == {
         "not_reconciled": 1,
-        "holds": 2,  # the held row, and the accepted row with a hold on top: On hold is not "latest round held"
         "duplicates": 1,
         "session_not_settled": 1,
         "to_reverse": 1,
@@ -1023,7 +1068,8 @@ def test_each_chip_counts_its_queue_membership_exactly() -> None:
 
 
 def test_the_bar_and_the_chips_together_are_the_strips_stages() -> None:
-    assert set(BAR_STAGES) | set(FLAG_STAGES) == set(MIRRORS["strip_stages"])
+    # Holds is a strip stage that is neither a flag chip nor a queue-backed bar stage: On hold reads the Stage column.
+    assert set(BAR_STAGES) | set(FLAG_STAGES) | {"holds"} == set(MIRRORS["strip_stages"])
     assert list(FLAG_STAGES) == [s for s in MIRRORS["strip_stages"] if s in FLAG_STAGES]
     assert BAR_STAGES == ("needs_offer", "pending_approval", "waiting_on_family")
 

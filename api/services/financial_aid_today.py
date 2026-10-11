@@ -500,20 +500,23 @@ STRIP_STAGES: Final[tuple[QueueOut, ...]] = (
     "session_not_settled",
     "to_reverse",
 )
-# Ruling 16: the bar holds the linear stages; every other strip stage is a flag that can sit on top of any stage, so it
-# is a chip with the strip's own count. On hold is a flag: the strip's Holds is any hold issue, at any stage.
+# Ruling 17: the bar is five stages. Needs an offer, Pending approval and Waiting on the family are strip stages whose
+# queues the segments mirror for requests moving through the normal stages; On hold reads the Stage column (latest round
+# held), so the strip's Holds list can show more (it also lists holds raised after an offer). The other strip stages are
+# flags that sit on top of any stage: chips with the strip's own count.
 BAR_STAGES: Final[tuple[QueueOut, ...]] = ("needs_offer", "pending_approval", "waiting_on_family")
-FLAG_STAGES: Final[tuple[QueueOut, ...]] = tuple(q for q in STRIP_STAGES if q not in BAR_STAGES)
-BAR_SEGMENTS: Final[tuple[str, ...]] = (*BAR_STAGES, "not_ready", "accepted")
-# Each live Stage code (row_stage) on its one segment.
+FLAG_STAGES: Final[tuple[QueueOut, ...]] = tuple(q for q in STRIP_STAGES if q not in (*BAR_STAGES, "holds"))
+BAR_SEGMENTS: Final[tuple[str, ...]] = ("needs_offer", "pending_approval", "waiting_on_family", "on_hold", "accepted")
+# Each live Stage code (row_stage) on its one segment. not_decided is a Round 3 ask with no amount keyed yet (Needs an
+# offer); refused is finance refusing the Round 3 appeal, and the family keeps the grant it already accepted (Accepted).
 _SEGMENT_OF_STAGE: Final[Mapping[str, str]] = {
     "needs_offer": "needs_offer",
+    "not_decided": "needs_offer",
     "pending_approval": "pending_approval",
     "posted": "waiting_on_family",
-    "held": "not_ready",
-    "not_decided": "not_ready",
-    "refused": "not_ready",
+    "held": "on_hold",
     "accepted": "accepted",
+    "refused": "accepted",
 }
 _OFFERED: Final = frozenset({"pending_approval", "waiting_on_family", "accepted"})
 
@@ -541,11 +544,10 @@ def _stages(inputs: TodayInputs) -> TodayStagesOut:
         needs_offer=segments["needs_offer"],
         pending_approval=segments["pending_approval"],
         waiting_on_family=segments["waiting_on_family"],
-        not_ready=segments["not_ready"],
+        on_hold=segments["on_hold"],
         accepted=segments["accepted"],
         flags=TodayFlagsOut(
             not_reconciled=flags["not_reconciled"],
-            holds=flags["holds"],
             duplicates=flags["duplicates"],
             session_not_settled=flags["session_not_settled"],
             to_reverse=flags["to_reverse"],

@@ -18006,7 +18006,7 @@ export type ToPlaceWriteOut = {
 /**
  * TodayFlagsOut
  *
- * The registrar hero's chips (owner ruling 16): the strip's flags, which can sit on top of any stage, each the
+ * The registrar hero's chips (owner ruling 17): the four strip flags, which can sit on top of any stage, each the
  * strip's own count (every row whose `queues` name it, as Requests lists it).
  */
 export type TodayFlagsOut = {
@@ -18014,10 +18014,6 @@ export type TodayFlagsOut = {
    * Not Reconciled
    */
   not_reconciled: number
-  /**
-   * Holds
-   */
-  holds: number
   /**
    * Duplicates
    */
@@ -18235,10 +18231,11 @@ export type TodayResponse = {
 /**
  * TodayStagesOut
  *
- * The registrar hero's one bar (spec 2026-10-10 §4.1, owner ruling 16): every live request once, by its own Stage
- * (row_stage, the latest round), in the bar's order. Needs an offer, Pending approval and Waiting on the family are the
- * strip's linear stages; Not ready to offer is a latest round on hold, not decided or refused by finance; Accepted is
- * nothing waiting. A cancelled or withdrawn request is not live and is on no segment.
+ * The registrar hero's one bar (spec 2026-10-10 §4.1, owner ruling 17): every live request once, by its own Stage
+ * (row_stage, the latest round), in the bar's order. Needs an offer (also a Round 3 ask not yet decided), Pending
+ * approval, Waiting on the family, On hold (latest round held) and Accepted (also a refused Round 3 appeal: the family
+ * keeps the grant it accepted). A cancelled or withdrawn request, or one with no round, is not live and is on no
+ * segment. For requests moving through the normal stages a segment matches its strip list.
  */
 export type TodayStagesOut = {
   /**
@@ -18254,9 +18251,9 @@ export type TodayStagesOut = {
    */
   waiting_on_family: number
   /**
-   * Not Ready
+   * On Hold
    */
-  not_ready: number
+  on_hold: number
   /**
    * Accepted
    */

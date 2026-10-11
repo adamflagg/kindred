@@ -125,7 +125,7 @@ export function countWords(line: ApiAidTodayLine): string {
 export const money = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`
 const awardsWord = (n: number) => `${String(n)} ${n === 1 ? 'award' : 'awards'}`
 
-/** The bar's linear stages (ruling 16), each a strip stage: the strip's word and its view. */
+/** The bar's linear stages (ruling 17), each a strip stage: the strip's word and its view. */
 const LINEAR: ReadonlyArray<{
   key: 'needs_offer' | 'pending_approval' | 'waiting_on_family'
   tone: HeroTone
@@ -139,12 +139,13 @@ const LINEAR: ReadonlyArray<{
 const stripView = (key: string) => REQUEST_VIEWS.find((v) => v.key === key)
 
 /**
- * The registrar's bar (owner ruling 16): every live request once, by its own Stage. The linear stages carry the strip's
- * words and open that stage, with a matching count; Not ready to offer (a latest round on hold, not decided or refused)
- * and Accepted (nothing waiting) open the whole season. It sums to `live`.
+ * The registrar's bar (owner ruling 17): every live request once, by its own Stage. The linear stages carry the strip's
+ * words and open that stage, with a count that matches its list for requests moving through the normal stages; On hold
+ * (latest round held) opens Holds, which can list more; Accepted opens the whole season. It sums to `live`.
  */
 export function registrarSegments(stages: ApiAidTodayStages, view: AidView): HeroSegment[] {
   const season = aidHref('/aid/requests', view)
+  const holdsView = stripView('holds')
   return [
     ...LINEAR.map(({ key, tone, mine }): HeroSegment => {
       const stage = stripView(key)
@@ -159,14 +160,14 @@ export function registrarSegments(stages: ApiAidTodayStages, view: AidView): Her
       }
     }),
     {
-      key: 'not_ready',
-      value: stages.not_ready,
-      label: 'Not ready to offer',
-      figure: String(stages.not_ready),
+      key: 'on_hold',
+      value: stages.on_hold,
+      label: holdsView?.label ?? 'On hold',
+      figure: String(stages.on_hold),
       tone: 'act2',
       mine: true,
-      title: `Not ready to offer: ${String(stages.not_ready)} requests whose latest round is on hold, not decided, or refused by finance`,
-      href: season,
+      title: `On hold: ${String(stages.on_hold)} requests whose latest round is on hold. The Holds list can show more requests, because it also lists holds raised after an offer was made.`,
+      href: holdsView ? aidHref('/aid/requests', view, { view: holdsView.slug }) : season,
     },
     {
       key: 'accepted',
@@ -174,7 +175,7 @@ export function registrarSegments(stages: ApiAidTodayStages, view: AidView): Her
       label: 'Accepted',
       figure: String(stages.accepted),
       tone: 'done',
-      title: `Accepted: ${String(stages.accepted)} requests with nothing waiting`,
+      title: `Accepted: ${String(stages.accepted)} requests whose family has accepted the offer, including a refused appeal (they keep the grant they accepted)`,
       href: season,
     },
   ]
@@ -188,7 +189,7 @@ export interface HeroFlag {
 }
 
 /**
- * The registrar hero's chips (ruling 16): the strip's flags, which sit on top of any stage, in the strip's order. Each
+ * The registrar hero's chips (ruling 17): the strip's flags, which sit on top of any stage, in the strip's order. Each
  * is the strip's own count (the server's queue membership), opening its list; a flag at zero is not drawn.
  */
 export function registrarFlags(stages: ApiAidTodayStages, view: AidView): HeroFlag[] {

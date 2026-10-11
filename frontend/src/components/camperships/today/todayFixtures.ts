@@ -33,11 +33,10 @@ export const STAGES = {
   needs_offer: 31,
   pending_approval: 6,
   waiting_on_family: 9,
-  not_ready: 6,
+  on_hold: 6,
   accepted: 318,
   flags: {
     not_reconciled: 8,
-    holds: 7,
     duplicates: 0,
     session_not_settled: 2,
     to_reverse: 1,
