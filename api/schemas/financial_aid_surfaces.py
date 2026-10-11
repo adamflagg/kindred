@@ -147,25 +147,32 @@ class TodayLineOut(BaseModel):
     )  # development lines: the funders or descriptions it counts, by name; no family data (§9.4)
 
 
-class TodayStagesOut(BaseModel):
-    """The registrar hero's one bar (spec 2026-10-10 §4.1, owner ruling 13): the Requests stage strip's stages, in the
-    strip's order (STRIP_STAGES), each request counted once, under the first stage whose queue holds it, plus
-    `nothing_waiting`, the live requests on none of them. A request on two stages (one round waiting, the next needing
-    an offer) is on the strip under both but on the bar once. A cancelled request is on the bar only while a stage
-    holds it (To reverse)."""
+class TodayFlagsOut(BaseModel):
+    """The registrar hero's chips (owner ruling 16): the strip's flags, which can sit on top of any stage, each the
+    strip's own count (every row whose `queues` name it, as Requests lists it)."""
 
-    nothing_waiting: int
-    pending_approval: int
-    needs_offer: int
     not_reconciled: int
-    waiting_on_family: int
-    holds: int
+    holds: int  # any hold issue (row.holds), at any stage: not "latest round held", so a chip, not a segment
     duplicates: int
     session_not_settled: int
     to_reverse: int
-    families: int  # households with a request on the bar
-    live: int  # requests not cancelled or withdrawn (the headline's denominator)
-    offered: int  # live requests with an offer: posted, waiting on the family or pending approval
+
+
+class TodayStagesOut(BaseModel):
+    """The registrar hero's one bar (spec 2026-10-10 §4.1, owner ruling 16): every live request once, by its own Stage
+    (row_stage, the latest round), in the bar's order. Needs an offer, Pending approval and Waiting on the family are the
+    strip's linear stages; Not ready to offer is a latest round on hold, not decided or refused by finance; Accepted is
+    nothing waiting. A cancelled or withdrawn request is not live and is on no segment."""
+
+    needs_offer: int
+    pending_approval: int
+    waiting_on_family: int
+    not_ready: int
+    accepted: int
+    flags: TodayFlagsOut
+    families: int  # households with a live request
+    live: int  # the bar's total: requests not cancelled or withdrawn
+    offered: int  # pending approval + waiting on the family + accepted (the headline's numerator)
 
 
 class WeekPointOut(BaseModel):

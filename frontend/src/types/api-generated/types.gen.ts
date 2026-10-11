@@ -18004,6 +18004,35 @@ export type ToPlaceWriteOut = {
 }
 
 /**
+ * TodayFlagsOut
+ *
+ * The registrar hero's chips (owner ruling 16): the strip's flags, which can sit on top of any stage, each the
+ * strip's own count (every row whose `queues` name it, as Requests lists it).
+ */
+export type TodayFlagsOut = {
+  /**
+   * Not Reconciled
+   */
+  not_reconciled: number
+  /**
+   * Holds
+   */
+  holds: number
+  /**
+   * Duplicates
+   */
+  duplicates: number
+  /**
+   * Session Not Settled
+   */
+  session_not_settled: number
+  /**
+   * To Reverse
+   */
+  to_reverse: number
+}
+
+/**
  * TodayLineOut
  *
  * One queue's dense line: "5 fam · 7 req", its reasons inline, and Open › to the view that lists
@@ -18206,49 +18235,33 @@ export type TodayResponse = {
 /**
  * TodayStagesOut
  *
- * The registrar hero's one bar (spec 2026-10-10 §4.1, owner ruling 13): the Requests stage strip's stages, in the
- * strip's order (STRIP_STAGES), each request counted once, under the first stage whose queue holds it, plus
- * `nothing_waiting`, the live requests on none of them. A request on two stages (one round waiting, the next needing
- * an offer) is on the strip under both but on the bar once. A cancelled request is on the bar only while a stage
- * holds it (To reverse).
+ * The registrar hero's one bar (spec 2026-10-10 §4.1, owner ruling 16): every live request once, by its own Stage
+ * (row_stage, the latest round), in the bar's order. Needs an offer, Pending approval and Waiting on the family are the
+ * strip's linear stages; Not ready to offer is a latest round on hold, not decided or refused by finance; Accepted is
+ * nothing waiting. A cancelled or withdrawn request is not live and is on no segment.
  */
 export type TodayStagesOut = {
-  /**
-   * Nothing Waiting
-   */
-  nothing_waiting: number
-  /**
-   * Pending Approval
-   */
-  pending_approval: number
   /**
    * Needs Offer
    */
   needs_offer: number
   /**
-   * Not Reconciled
+   * Pending Approval
    */
-  not_reconciled: number
+  pending_approval: number
   /**
    * Waiting On Family
    */
   waiting_on_family: number
   /**
-   * Holds
+   * Not Ready
    */
-  holds: number
+  not_ready: number
   /**
-   * Duplicates
+   * Accepted
    */
-  duplicates: number
-  /**
-   * Session Not Settled
-   */
-  session_not_settled: number
-  /**
-   * To Reverse
-   */
-  to_reverse: number
+  accepted: number
+  flags: TodayFlagsOut
   /**
    * Families
    */

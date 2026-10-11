@@ -1568,6 +1568,7 @@ export type {
   TiersSectionInput,
   TiersSectionOutput,
   TimeBucket,
+  TodayFlagsOut,
   TodayLineOut,
   TodayNextUpOut,
   TodayReasonOut,

@@ -125,49 +125,93 @@ export function countWords(line: ApiAidTodayLine): string {
 export const money = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`
 const awardsWord = (n: number) => `${String(n)} ${n === 1 ? 'award' : 'awards'}`
 
-/** How the registrar's bar inks each strip stage: amber where the registrar acts, as the to-dos do. */
-const STAGE_TONE: Readonly<Record<StripStage, { tone: HeroTone; mine: boolean }>> = {
-  pending_approval: { tone: 'light', mine: false },
-  needs_offer: { tone: 'act', mine: true },
-  not_reconciled: { tone: 'act2', mine: true },
-  waiting_on_family: { tone: 'progress', mine: false },
-  holds: { tone: 'act2', mine: true },
-  duplicates: { tone: 'mute', mine: true },
-  session_not_settled: { tone: 'mute', mine: true },
-  to_reverse: { tone: 'mute', mine: true },
-}
-type StripStage = (typeof PIPELINE_STAGES)[number] & keyof ApiAidTodayStages
+/** The bar's linear stages (ruling 16), each a strip stage: the strip's word and its view. */
+const LINEAR: ReadonlyArray<{
+  key: 'needs_offer' | 'pending_approval' | 'waiting_on_family'
+  tone: HeroTone
+  mine: boolean
+}> = [
+  { key: 'needs_offer', tone: 'act', mine: true },
+  { key: 'pending_approval', tone: 'light', mine: false },
+  { key: 'waiting_on_family', tone: 'progress', mine: false },
+]
+
+const stripView = (key: string) => REQUEST_VIEWS.find((v) => v.key === key)
 
 /**
- * The registrar's bar (owner ruling 13): the Requests strip's stages, in the strip's order and words, each opening that
- * stage on the strip, after the live requests on none of them (which open the whole season). The server counts each
- * request once, under the first stage its queues name (TodayStagesOut).
+ * The registrar's bar (owner ruling 16): every live request once, by its own Stage. The linear stages carry the strip's
+ * words and open that stage, with a matching count; Not ready to offer (a latest round on hold, not decided or refused)
+ * and Accepted (nothing waiting) open the whole season. It sums to `live`.
  */
 export function registrarSegments(stages: ApiAidTodayStages, view: AidView): HeroSegment[] {
-  const strip = [...PIPELINE_STAGES, ...EXCEPTION_BADGES] as StripStage[]
+  const season = aidHref('/aid/requests', view)
   return [
-    {
-      key: 'nothing_waiting',
-      value: stages.nothing_waiting,
-      label: 'Nothing waiting',
-      figure: String(stages.nothing_waiting),
-      tone: 'done',
-      title: `Nothing waiting: ${String(stages.nothing_waiting)} live requests on no stage of the strip`,
-      href: aidHref('/aid/requests', view),
-    },
-    ...strip.map((key): HeroSegment => {
-      const stage = REQUEST_VIEWS.find((v) => v.key === key)
+    ...LINEAR.map(({ key, tone, mine }): HeroSegment => {
+      const stage = stripView(key)
       return {
         key,
         value: stages[key],
         label: stage?.label ?? key,
         figure: String(stages[key]),
-        ...STAGE_TONE[key],
-        href: aidHref('/aid/requests', view, stage ? { view: stage.slug } : {}),
+        tone,
+        mine,
+        href: stage ? aidHref('/aid/requests', view, { view: stage.slug }) : season,
       }
     }),
+    {
+      key: 'not_ready',
+      value: stages.not_ready,
+      label: 'Not ready to offer',
+      figure: String(stages.not_ready),
+      tone: 'act2',
+      mine: true,
+      title: `Not ready to offer: ${String(stages.not_ready)} requests whose latest round is on hold, not decided, or refused by finance`,
+      href: season,
+    },
+    {
+      key: 'accepted',
+      value: stages.accepted,
+      label: 'Accepted',
+      figure: String(stages.accepted),
+      tone: 'done',
+      title: `Accepted: ${String(stages.accepted)} requests with nothing waiting`,
+      href: season,
+    },
   ]
 }
+
+export interface HeroFlag {
+  readonly key: string
+  readonly label: string
+  readonly count: number
+  readonly href: string
+}
+
+/**
+ * The registrar hero's chips (ruling 16): the strip's flags, which sit on top of any stage, in the strip's order. Each
+ * is the strip's own count (the server's queue membership), opening its list; a flag at zero is not drawn.
+ */
+export function registrarFlags(stages: ApiAidTodayStages, view: AidView): HeroFlag[] {
+  return EXCEPTION_KEYS.flatMap((key) => {
+    const stage = stripView(key)
+    const count = stages.flags[key]
+    return stage && count > 0
+      ? [
+          {
+            key,
+            label: stage.label,
+            count,
+            href: aidHref('/aid/requests', view, { view: stage.slug }),
+          },
+        ]
+      : []
+  })
+}
+
+/** The strip's flags, in its order: Not reconciled from the pipeline, then the exception badges. */
+const EXCEPTION_KEYS = [...PIPELINE_STAGES, ...EXCEPTION_BADGES].filter(
+  (k): k is keyof ApiAidTodayStages['flags'] => !LINEAR.some((l) => l.key === k)
+)
 
 /** Percent of live (not cancelled) requests that already have an offer; null with nothing live. */
 export function offerShare(s: ApiAidTodayStages): number | null {

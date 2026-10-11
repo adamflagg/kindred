@@ -30,15 +30,18 @@ export const line = (
 })
 
 export const STAGES = {
-  nothing_waiting: 318,
-  pending_approval: 6,
   needs_offer: 31,
-  not_reconciled: 8,
+  pending_approval: 6,
   waiting_on_family: 9,
-  holds: 6,
-  duplicates: 0,
-  session_not_settled: 2,
-  to_reverse: 1,
+  not_ready: 6,
+  accepted: 318,
+  flags: {
+    not_reconciled: 8,
+    holds: 7,
+    duplicates: 0,
+    session_not_settled: 2,
+    to_reverse: 1,
+  },
   families: 389,
   live: 370,
   offered: 333,

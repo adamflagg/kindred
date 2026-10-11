@@ -19,6 +19,7 @@ import {
   money,
   offerShare,
   overPools,
+  registrarFlags,
   registrarSegments,
 } from './todayModel'
 
@@ -43,7 +44,8 @@ export function RegistrarHero({
 }) {
   const reveal = useRevealOnce()
   const segments = registrarSegments(stages, view)
-  const total = segments.reduce((sum, s) => sum + s.value, 0)
+  const flags = registrarFlags(stages, view)
+  const total = stages.live
   const share = offerShare(stages)
   return (
     <AidHeroCard
@@ -54,6 +56,23 @@ export function RegistrarHero({
     >
       <AidHeroBar segments={segments} reveal={reveal} />
       <AidHeroKeys segments={segments} />
+      {flags.length > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          {flags.map((f) => (
+            <Link
+              key={f.key}
+              data-testid="hero-flag"
+              to={f.href}
+              title={`${f.label}: ${String(f.count)} on the Requests strip, at any stage`}
+              className="hover:underline"
+            >
+              <StatusPill tone="amber">
+                {f.label} <b className="tabular-nums">{String(f.count)}</b>
+              </StatusPill>
+            </Link>
+          ))}
+        </div>
+      )}
     </AidHeroCard>
   )
 }

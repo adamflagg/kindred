@@ -21,6 +21,7 @@ from api.schemas.financial_aid import UnclassifiedSource
 from api.schemas.financial_aid_decisions import GridRowOut, QueueOut, RoundOut
 from api.schemas.financial_aid_grants import GrantorOut, GrantorsResponse, GrantsResponse
 from api.schemas.financial_aid_surfaces import (
+    TodayFlagsOut,
     TodayItemKind,
     TodayKey,
     TodayLineOut,
@@ -487,8 +488,8 @@ def pending_since(events: Iterable[DecisionEvent]) -> dict[tuple[str, int], date
     return {key: when.astimezone(CAMP_TZ).date() for key, when in out.items()}
 
 
-# Ruling 13: the registrar's bar is the Requests stage strip's stages, in the strip's order (frontend requests/strip.ts:
-# PIPELINE_STAGES, then EXCEPTION_BADGES; tests/fixtures/camperships_frontend_mirrors.json pins the two together).
+# The Requests stage strip's stages, in the strip's order (frontend requests/strip.ts: PIPELINE_STAGES, then
+# EXCEPTION_BADGES; tests/fixtures/camperships_frontend_mirrors.json pins the two together).
 STRIP_STAGES: Final[tuple[QueueOut, ...]] = (
     "pending_approval",
     "needs_offer",
@@ -499,7 +500,22 @@ STRIP_STAGES: Final[tuple[QueueOut, ...]] = (
     "session_not_settled",
     "to_reverse",
 )
-_OFFERED: Final = frozenset({"accepted", "posted", "pending_approval"})  # Stage codes that have an offer
+# Ruling 16: the bar holds the linear stages; every other strip stage is a flag that can sit on top of any stage, so it
+# is a chip with the strip's own count. On hold is a flag: the strip's Holds is any hold issue, at any stage.
+BAR_STAGES: Final[tuple[QueueOut, ...]] = ("needs_offer", "pending_approval", "waiting_on_family")
+FLAG_STAGES: Final[tuple[QueueOut, ...]] = tuple(q for q in STRIP_STAGES if q not in BAR_STAGES)
+BAR_SEGMENTS: Final[tuple[str, ...]] = (*BAR_STAGES, "not_ready", "accepted")
+# Each live Stage code (row_stage) on its one segment.
+_SEGMENT_OF_STAGE: Final[Mapping[str, str]] = {
+    "needs_offer": "needs_offer",
+    "pending_approval": "pending_approval",
+    "posted": "waiting_on_family",
+    "held": "not_ready",
+    "not_decided": "not_ready",
+    "refused": "not_ready",
+    "accepted": "accepted",
+}
+_OFFERED: Final = frozenset({"pending_approval", "waiting_on_family", "accepted"})
 
 
 def week_start(day: date) -> date:
@@ -508,35 +524,35 @@ def week_start(day: date) -> date:
 
 
 def _stages(inputs: TodayInputs) -> TodayStagesOut:
-    """Each request once, under the first strip stage its queues name (the same `queues` the strip counts, D21), else
-    under Nothing waiting when it is live. Live and offered read the Stage column, for the headline."""
-    counts: dict[str, int] = defaultdict(int)
+    """The bar: each live request once, by its own Stage. The chips: each flag's queue membership, every row the strip
+    counts for it (D21)."""
+    segments: dict[str, int] = dict.fromkeys(BAR_SEGMENTS, 0)
+    flags: dict[str, int] = dict.fromkeys(FLAG_STAGES, 0)
     households: set[int] = set()
-    live = offered = 0
     for row in inputs.rows:
-        code = row.stage.code if row.stage is not None else None
-        is_live = code is not None and code != "cancelled"
-        if is_live:
-            live += 1
-            offered += code in _OFFERED
-        stage = next((q for q in STRIP_STAGES if row.queues and q in row.queues), None)
-        if stage is None and not is_live:
+        for flag in FLAG_STAGES:
+            flags[flag] += bool(row.queues and flag in row.queues)
+        segment = _SEGMENT_OF_STAGE.get(row.stage.code) if row.stage is not None else None
+        if segment is None:  # cancelled, or no round yet: not live
             continue
-        counts[stage or "nothing_waiting"] += 1
+        segments[segment] += 1
         households.add(row.household_cm_id)
     return TodayStagesOut(
-        nothing_waiting=counts["nothing_waiting"],
-        pending_approval=counts["pending_approval"],
-        needs_offer=counts["needs_offer"],
-        not_reconciled=counts["not_reconciled"],
-        waiting_on_family=counts["waiting_on_family"],
-        holds=counts["holds"],
-        duplicates=counts["duplicates"],
-        session_not_settled=counts["session_not_settled"],
-        to_reverse=counts["to_reverse"],
+        needs_offer=segments["needs_offer"],
+        pending_approval=segments["pending_approval"],
+        waiting_on_family=segments["waiting_on_family"],
+        not_ready=segments["not_ready"],
+        accepted=segments["accepted"],
+        flags=TodayFlagsOut(
+            not_reconciled=flags["not_reconciled"],
+            holds=flags["holds"],
+            duplicates=flags["duplicates"],
+            session_not_settled=flags["session_not_settled"],
+            to_reverse=flags["to_reverse"],
+        ),
         families=len(households),
-        live=live,
-        offered=offered,
+        live=sum(segments.values()),
+        offered=sum(segments[s] for s in _OFFERED),
     )
 
 

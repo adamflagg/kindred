@@ -374,7 +374,7 @@ describe('AidTodayPage', () => {
     todayData = { year: 2027, casework: null, finance: null, development: null, stages: STAGES }
     renderPage()
     expect(await screen.findByRole('heading', { name: 'The season so far' })).toBeInTheDocument()
-    expect(screen.getAllByTestId('hero-key')[0]).toHaveTextContent('Nothing waiting 318')
+    expect(screen.getAllByTestId('hero-key')[0]).toHaveTextContent('Needs an offer 31')
     expect(screen.getByText('Nothing is assigned to you.')).toBeInTheDocument()
   })
 })

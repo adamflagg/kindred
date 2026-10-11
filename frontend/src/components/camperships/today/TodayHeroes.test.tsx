@@ -9,14 +9,34 @@ const VIEW = { year: 2027, asOf: { kind: 'live' } } as const
 const wrap = (ui: React.ReactElement) => render(<MemoryRouter>{ui}</MemoryRouter>)
 
 describe('the Today heroes', () => {
-  it("registrar hero: title, offer share, the strip's words and no +n pill (rulings 13, 14)", () => {
+  it('registrar hero: title, offer share, the stages on the bar and no +n pill (rulings 14, 16)', () => {
     wrap(<RegistrarHero stages={STAGES} view={VIEW} />)
     expect(screen.getByRole('heading', { name: 'The season so far' })).toBeInTheDocument()
     expect(screen.getByTestId('hero-figure')).toHaveTextContent('of live requests have an offer90%')
-    expect(screen.getAllByTestId('hero-key')[0]).toHaveTextContent('Nothing waiting 318')
-    expect(screen.getAllByTestId('hero-key')[1]).toHaveTextContent('Pending approval 6')
+    const keys = screen.getAllByTestId('hero-key').map((k) => k.textContent)
+    expect(keys).toEqual([
+      'Needs an offer 31',
+      'Pending approval 6',
+      'Waiting on the family 9',
+      'Not ready to offer 6',
+      'Accepted 318',
+    ])
     expect(screen.queryByTitle('Posted this week')).toBeNull()
-    expect(screen.getByText(/381 requests from 389 families/)).toBeInTheDocument()
+    expect(screen.getByText(/370 requests from 389 families/)).toBeInTheDocument()
+  })
+
+  it("registrar hero: the flags are amber chips with the strip's counts, each opening its list, zeros hidden", () => {
+    wrap(<RegistrarHero stages={STAGES} view={VIEW} />)
+    const chips = screen.getAllByTestId('hero-flag')
+    expect(chips.map((c) => c.textContent)).toEqual([
+      'Not reconciled 8',
+      'On hold 7',
+      'Session unclear 2',
+      'To reverse 1',
+    ])
+    expect(chips[0]).toHaveAttribute('href', '/aid/requests?view=not-reconciled&year=2027')
+    expect(chips[0]?.querySelector('span')?.className).toMatch(/amber/)
+    expect(screen.queryByText(/Duplicates/)).toBeNull()
   })
 
   it('registrar hero: each part opens its Requests view', () => {
@@ -24,10 +44,9 @@ describe('the Today heroes', () => {
     const hrefs = screen.getAllByTestId('hero-seg').map((s) => s.getAttribute('href'))
     expect(hrefs).toContain('/aid/requests?view=waiting&year=2027')
     expect(hrefs).toContain('/aid/requests?view=needs-offer&year=2027')
-    expect(hrefs).toContain('/aid/requests?view=holds&year=2027')
     expect(hrefs).toContain('/aid/requests?view=pending-approval&year=2027')
-    expect(hrefs).toContain('/aid/requests?view=not-reconciled&year=2027')
-    expect(hrefs[0]).toBe('/aid/requests?year=2027')
+    expect(hrefs).not.toContain('/aid/requests?view=not-reconciled&year=2027')
+    expect(hrefs.at(-1)).toBe('/aid/requests?year=2027')
   })
 
   it('registrar hero: no offer share with nothing live', () => {

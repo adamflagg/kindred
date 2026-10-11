@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { EXCEPTION_BADGES, PIPELINE_STAGES, resolveStrip } from '../requests/strip'
+import { resolveStrip } from '../requests/strip'
 import { REQUEST_VIEWS } from '../requests/views'
 import { BUDGET, REGISTRAR_TODAY, STAGES, line } from './todayFixtures'
 import {
@@ -14,6 +14,7 @@ import {
   rankLines,
   reasonWords,
   REGISTRAR_ORDER,
+  registrarFlags,
   registrarSegments,
   showRegistrarQueue,
 } from './todayModel'
@@ -86,54 +87,62 @@ describe('showRegistrarQueue (ruling 3)', () => {
   })
 })
 
-describe("registrar hero (ruling 13: the Requests strip's stages)", () => {
+describe('registrar hero (ruling 16: stages on the bar, flags as chips)', () => {
   const VIEW = { year: 2027, asOf: { kind: 'live' } } as const
-  it("draws the strip's stages in the strip's order and words, after the requests on none", () => {
+  const stripStage = (href: string | undefined) => {
+    const url = new URL(href ?? '', 'http://x')
+    expect(url.pathname).toBe('/aid/requests')
+    expect(url.searchParams.get('year')).toBe('2027')
+    return (
+      resolveStrip(url.searchParams.get('view'), url.searchParams.get('lens')).stage?.key ?? null
+    )
+  }
+  it('draws the linear stages in order, then Not ready to offer and Accepted, summing to the live season', () => {
     const segs = registrarSegments(STAGES, VIEW)
-    expect(segs.map((s) => s.key)).toEqual([
-      'nothing_waiting',
-      ...PIPELINE_STAGES,
-      ...EXCEPTION_BADGES,
+    expect(segs.map((s) => [s.key, s.label, s.value])).toEqual([
+      ['needs_offer', 'Needs an offer', 31],
+      ['pending_approval', 'Pending approval', 6],
+      ['waiting_on_family', 'Waiting on the family', 9],
+      ['not_ready', 'Not ready to offer', 6],
+      ['accepted', 'Accepted', 318],
     ])
-    for (const s of segs.slice(1)) {
+    for (const s of segs.slice(0, 3)) {
       expect(s.label).toBe(REQUEST_VIEWS.find((v) => v.key === s.key)?.label)
     }
-    expect(segs.map((s) => s.label)).toEqual([
-      'Nothing waiting',
-      'Pending approval',
-      'Needs an offer',
-      'Not reconciled',
-      'Waiting on the family',
-      'On hold',
-      'Duplicates',
-      'Session unclear',
-      'To reverse',
-    ])
-    expect(segs.map((s) => s.value)).toEqual([318, 6, 31, 8, 9, 6, 0, 2, 1])
+    expect(segs.reduce((sum, s) => sum + s.value, 0)).toBe(STAGES.live)
   })
-  it('opens each stage on the strip, and Nothing waiting on the whole season', () => {
-    for (const s of registrarSegments(STAGES, VIEW)) {
-      const url = new URL(s.href ?? '', 'http://x')
-      expect(url.pathname).toBe('/aid/requests')
-      expect(url.searchParams.get('year')).toBe('2027')
-      const strip = resolveStrip(url.searchParams.get('view'), url.searchParams.get('lens'))
-      expect(strip.stage?.key ?? 'nothing_waiting').toBe(s.key)
-    }
-  })
-  it("marks the registrar's own stages in amber", () => {
+  it('opens each linear stage on the strip, and the rest on the whole season', () => {
     const segs = registrarSegments(STAGES, VIEW)
-    const mine = segs.filter((s) => s.mine).map((s) => s.key)
-    expect(mine).toEqual([
+    expect(segs.map((s) => stripStage(s.href))).toEqual([
       'needs_offer',
-      'not_reconciled',
-      'holds',
-      'duplicates',
-      'session_not_settled',
-      'to_reverse',
+      'pending_approval',
+      'waiting_on_family',
+      null,
+      null,
     ])
   })
-  it('counts the share of live requests with an offer', () => {
-    expect(offerShare(STAGES)).toBe(Math.round((333 / 370) * 100))
+  it("marks the registrar's own segments in amber", () => {
+    const mine = registrarSegments(STAGES, VIEW)
+      .filter((s) => s.mine)
+      .map((s) => s.key)
+    expect(mine).toEqual(['needs_offer', 'not_ready'])
+  })
+  it("gives each flag the strip's count, word and view, in the strip's order, and hides zeros", () => {
+    const chips = registrarFlags(STAGES, VIEW)
+    expect(chips.map((c) => [c.key, c.label, c.count])).toEqual([
+      ['not_reconciled', 'Not reconciled', 8],
+      ['holds', 'On hold', 7],
+      ['session_not_settled', 'Session unclear', 2],
+      ['to_reverse', 'To reverse', 1],
+    ])
+    for (const c of chips) expect(stripStage(c.href)).toBe(c.key)
+  })
+  it('counts the share of live requests with an offer, consistent with the bar', () => {
+    expect(offerShare(STAGES)).toBe(
+      Math.round(
+        ((STAGES.pending_approval + STAGES.waiting_on_family + STAGES.accepted) / 370) * 100
+      )
+    )
     expect(offerShare({ ...STAGES, live: 0, offered: 0 })).toBeNull()
   })
 })

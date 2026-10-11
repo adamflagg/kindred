@@ -39,11 +39,13 @@ from api.services.financial_aid_intake_service import never_true_fields, never_t
 from api.services.financial_aid_queues import row_queues, row_stage
 from api.services.financial_aid_rules_service import RulesNotFoundError, RulesVersion
 from api.services.financial_aid_today import (
+    BAR_SEGMENTS,
+    BAR_STAGES,
     CASEWORK_LINES,
     DEVELOPMENT_LINES,
     FINANCE_LINES,
+    FLAG_STAGES,
     NEXT_UP_CAP,
-    STRIP_STAGES,
     TODAY_OVERDUE_DAYS,
     TodayInputs,
     TodayService,
@@ -907,85 +909,123 @@ def _real(request_id: str, household: int, *rounds: RoundOut, **over: Any) -> Gr
 _CANCELLED = CancellationOut(by="kindred", on=date(2031, 4, 2), reason=None, note="")
 
 
-def _one_per_stage() -> list[GridRowOut]:
-    """One request on each of the strip's stages, one on none (accepted), and one cancelled with no aid live."""
+def _linear() -> list[GridRowOut]:
+    """The linear workflow (ruling 16), one request a stage, each on its own queue and nothing else: Needs an offer,
+    Pending approval, Waiting on the family, Accepted."""
     posted_on = date(2031, 4, 10)
     return [
-        _real("rpend", 1000001, _round(1, "pending_approval", pending_approval=300.0)),
-        _real("roffer", 1000002, _round(1, "needs_offer", decided=500.0, asked_on=posted_on)),
+        _real("roffer", 1000001, _round(1, "needs_offer", decided=500.0, asked_on=posted_on)),
+        _real("rpend", 1000002, _round(1, "pending_approval", pending_approval=300.0)),
+        _real("rwait", 1000003, _round(1, "posted", posted=800.0, posted_on=posted_on)),
+        _real("rdone", 1000004, _round(1, "posted", posted=900.0, posted_on=posted_on, accepted=True)),
+    ]
+
+
+def _flagged() -> list[GridRowOut]:
+    """The linear rows plus a row per flag, and a cancelled one with nothing to reverse (on no segment, no chip)."""
+    posted_on = date(2031, 4, 10)
+    return [
+        *_linear(),
+        # Waiting on the family, and Not reconciled on top
         _real(
-            "runrec",
-            1000003,
-            _round(1, "posted", posted=800.0, posted_on=posted_on, accepted=True),
+            "rwunr",
+            1000005,
+            _round(1, "posted", posted=800.0, posted_on=posted_on),
             confirmation=_confirmation("short", -100.0),
         ),
-        _real("rwait", 1000004, _round(1, "posted", posted=800.0, posted_on=posted_on)),
-        _real("rhold", 1000005, _round(1, "held"), holds=[_hold("household_income_conflict")]),
-        _real("rdupe", 1000006, _round(1, "not_decided"), request_status="duplicate_pending"),
-        _real("rsess", 1000007, _round(1, "not_decided"), request_status="unmatched_session"),
+        # Latest round held: the bar's Not ready to offer, and the On hold chip
+        _real("rhold", 1000006, _round(1, "held"), holds=[_hold("household_income_conflict")]),
+        # Accepted, with a hold issue on top: the On hold chip counts it, the bar counts it Accepted
+        _real(
+            "racch",
+            1000007,
+            _round(1, "posted", posted=700.0, posted_on=posted_on, accepted=True),
+            holds=[_hold("payer_shares_incomplete")],
+        ),
+        _real("rdupe", 1000008, _round(1, "not_decided"), request_status="duplicate_pending"),
+        _real("rsess", 1000009, _round(1, "not_decided"), request_status="unmatched_session"),
         _real(
             "rrev",
-            1000008,
+            1000010,
             _round(1, "posted", posted=600.0, posted_on=posted_on, accepted=True),
             cancellation=_CANCELLED,
             to_reverse=True,
         ),
-        _real("rdone", 1000009, _round(1, "posted", posted=900.0, posted_on=posted_on, accepted=True)),
-        # A cancelled request on no queue. (One with a round still to offer stays on Needs an offer's queue, so the
-        # strip lists it there, and so does the bar.)
-        _real("rgone", 1000010, _round(1, "not_decided"), cancellation=_CANCELLED),
+        _real("rgone", 1000011, _round(1, "not_decided"), cancellation=_CANCELLED),
     ]
 
 
-def test_the_hero_counts_each_request_once_on_the_strips_stages() -> None:
-    """Ruling 13: the registrar's bar is the Requests strip's stages, in the strip's order, plus the live requests on
-    none of them. A cancelled request with no aid live is on no stage and is not live, so it is on no segment."""
-    stages = build_today(_inputs(_one_per_stage()), casework=True, finance=False).stages
+def _bar(stages: Any) -> dict[str, int]:
+    return {key: getattr(stages, key) for key in BAR_SEGMENTS}
+
+
+def _members(rows: list[GridRowOut], queue: str) -> int:
+    """What the strip counts for a stage: the rows whose `queues` name it (requests/views.ts filterRows, no filter)."""
+    return sum(1 for r in rows if r.queues and queue in r.queues)
+
+
+def test_the_bar_counts_each_live_request_once_by_its_stage_and_sums_to_the_live_season() -> None:
+    """Ruling 16: Needs an offer · Pending approval · Waiting on the family · Not ready to offer · Accepted, by the
+    row's own Stage (row_stage, the latest round). A cancelled request is not live and is on no segment."""
+    rows = _flagged()
+    stages = build_today(_inputs(rows), casework=True, finance=False).stages
     assert stages is not None
-    assert stages.model_dump() == {
-        "nothing_waiting": 1,
-        "pending_approval": 1,
+    assert _bar(stages) == {
         "needs_offer": 1,
+        "pending_approval": 1,
+        "waiting_on_family": 2,
+        "not_ready": 3,  # held, and the duplicate and unclear-session requests' undecided rounds
+        "accepted": 2,
+    }
+    assert sum(_bar(stages).values()) == stages.live == 9
+    assert stages.offered == stages.pending_approval + stages.waiting_on_family + stages.accepted
+    assert stages.families == 9
+
+
+def test_d21_each_linear_segment_counts_what_its_strip_stage_lists() -> None:
+    """Spec §12, D21, on the linear fixture: each segment that opens a strip stage counts that stage's list."""
+    rows = _linear()
+    stages = build_today(_inputs(rows), casework=True, finance=False).stages
+    assert stages is not None
+    for stage in BAR_STAGES:
+        assert getattr(stages, stage) == _members(rows, stage), stage
+
+
+def test_waiting_and_not_reconciled_counts_once_on_the_bar_and_once_in_the_chip() -> None:
+    row = _real(
+        "rwunr",
+        1000005,
+        _round(1, "posted", posted=800.0, posted_on=date(2031, 4, 10)),
+        confirmation=_confirmation("short", -100.0),
+    )
+    assert row.queues is not None
+    assert {"waiting_on_family", "not_reconciled"} <= set(row.queues)
+    stages = build_today(_inputs([row]), casework=True, finance=False).stages
+    assert stages is not None
+    assert sum(_bar(stages).values()) == 1
+    assert stages.waiting_on_family == 1
+    assert stages.flags.not_reconciled == 1
+
+
+def test_each_chip_counts_its_queue_membership_exactly() -> None:
+    """The flags are the strip's own counts: every row whose queues name it, whatever its stage, cancelled included."""
+    rows = _flagged()
+    stages = build_today(_inputs(rows), casework=True, finance=False).stages
+    assert stages is not None
+    assert stages.flags.model_dump() == {flag: _members(rows, flag) for flag in FLAG_STAGES}
+    assert stages.flags.model_dump() == {
         "not_reconciled": 1,
-        "waiting_on_family": 1,
-        "holds": 1,
+        "holds": 2,  # the held row, and the accepted row with a hold on top: On hold is not "latest round held"
         "duplicates": 1,
         "session_not_settled": 1,
         "to_reverse": 1,
-        "families": 9,
-        "live": 8,
-        "offered": 4,
     }
 
 
-def test_d21_the_hero_counts_equal_the_strips_stage_counts() -> None:
-    """Spec §12, D21: on the same rows, each segment counts what the strip counts for that stage, which is the rows
-    whose `queues` name it (frontend requests/views.ts filterRows with no filter)."""
-    rows = _one_per_stage()
-    stages = build_today(_inputs(rows), casework=True, finance=False).stages
-    assert stages is not None
-    for stage in STRIP_STAGES:
-        assert getattr(stages, stage) == sum(1 for r in rows if r.queues and stage in r.queues), stage
-
-
-def test_a_request_on_two_stages_counts_once_under_the_strips_first() -> None:
-    """Round 1 waits on the family and Round 2 needs an offer: the strip lists the request under both, and the bar,
-    which counts each request once, puts it under the earlier stage (Needs an offer)."""
-    row = _real(
-        "rboth",
-        1000001,
-        _round(1, "posted", posted=800.0, posted_on=date(2031, 4, 10)),
-        _round(2, "needs_offer", decided=300.0, asked_on=date(2031, 4, 12)),
-    )
-    assert row.queues is not None
-    assert {"needs_offer", "waiting_on_family"} <= set(row.queues)
-    stages = build_today(_inputs([row]), casework=True, finance=False).stages
-    assert stages is not None
-    assert (stages.needs_offer, stages.waiting_on_family) == (1, 0)
-
-
-def test_the_strips_stage_order_is_the_frontends() -> None:
-    assert list(STRIP_STAGES) == MIRRORS["strip_stages"]
+def test_the_bar_and_the_chips_together_are_the_strips_stages() -> None:
+    assert set(BAR_STAGES) | set(FLAG_STAGES) == set(MIRRORS["strip_stages"])
+    assert list(FLAG_STAGES) == [s for s in MIRRORS["strip_stages"] if s in FLAG_STAGES]
+    assert BAR_STAGES == ("needs_offer", "pending_approval", "waiting_on_family")
 
 
 def test_stages_are_sent_to_finance_and_registrar_alike() -> None:
