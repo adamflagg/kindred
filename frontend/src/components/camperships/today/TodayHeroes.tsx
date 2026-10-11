@@ -13,7 +13,6 @@ import { CS_META } from '../kit/csType'
 import { AidHeroBar, AidHeroCard, AidHeroKeys, type HeroSegment } from '../kit/HeroBar'
 import { formatMoneyCompact } from '../kit/money'
 import { StatusPill } from '../kit/Pills'
-import { REQUEST_VIEWS } from '../requests/views'
 import {
   budgetSegments,
   developmentSegments,
@@ -35,12 +34,6 @@ function useRevealOnce(): boolean {
   return reveal
 }
 
-/** A stage's Requests view slug, from the grid's own view list (`held` is the Holds view). */
-function stageSlug(stage: string): string {
-  const key = stage === 'held' ? 'holds' : stage
-  return REQUEST_VIEWS.find((v) => v.key === key)?.slug ?? 'all'
-}
-
 export function RegistrarHero({
   stages,
   view,
@@ -49,28 +42,9 @@ export function RegistrarHero({
   readonly view: AidView
 }) {
   const reveal = useRevealOnce()
-  const total =
-    stages.accepted +
-    stages.waiting_on_family +
-    stages.pending_approval +
-    stages.needs_offer +
-    stages.held +
-    stages.cancelled
+  const segments = registrarSegments(stages, view)
+  const total = segments.reduce((sum, s) => sum + s.value, 0)
   const share = offerShare(stages)
-  const segments = registrarSegments(stages, (stage) =>
-    aidHref('/aid/requests', view, { view: stageSlug(stage) })
-  ).map((s): HeroSegment =>
-    s.key === 'accepted' && stages.posted_this_week > 0
-      ? {
-          ...s,
-          pill: (
-            <StatusPill tone="ok" title="Posted this week">
-              +{stages.posted_this_week}
-            </StatusPill>
-          ),
-        }
-      : s
-  )
   return (
     <AidHeroCard
       title="The season so far"

@@ -21,7 +21,8 @@ describe('AidBurnUp', () => {
     expect(screen.getByText('$843k posted')).toBeInTheDocument()
     // One compact formatter (kit/money formatMoneyCompact): thousands round toward zero, as the hero's figures do.
     expect(screen.getByText('$983k once waiting is offered')).toBeInTheDocument()
-    expect(screen.getByText('Budget $1,111k')).toBeInTheDocument()
+    // Millions on the budget label and the axis only (formatMoneyScale, controller ruling).
+    expect(screen.getByText('Budget $1.11M')).toBeInTheDocument()
   })
 
   it('labels money as the hero does, rounding toward zero ($116,600 is "$116k", never "$117k")', () => {
@@ -33,6 +34,18 @@ describe('AidBurnUp', () => {
       />
     )
     expect(screen.getByText('$116k posted')).toBeInTheDocument()
+  })
+
+  it('labels an axis tick past a million in millions', () => {
+    render(
+      <AidBurnUp
+        budget={2400000}
+        committed={null}
+        points={[{ week_of: '2031-01-06', posted: 1000 }]}
+      />
+    )
+    // top = 2,400,000 × 1.08 = 2,592,000; the upper tick is two thirds of it, 1,728,000.
+    expect(screen.getByText('$1.72M')).toBeInTheDocument()
   })
 
   it('carries no ARIA role: the chart is not a test handle (frontend/CLAUDE.md)', () => {

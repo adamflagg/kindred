@@ -33,10 +33,36 @@ describe('AidWeekCard', () => {
     expect(screen.getByText('Mon Apr 14 – today')).toBeInTheDocument()
     expect(screen.getByText('▲ 5').className).toMatch(/forest/)
     expect(screen.getByText('▼ $60').className).toMatch(/amber/)
-    // One compact formatter (kit/money formatMoneyCompact): thousands round toward zero, as the hero and chart do.
-    expect(screen.getByText('$2k')).toBeInTheDocument()
+    // formatMoneyFigure: exact under $10,000, formatMoneyCompact from there up (controller ruling).
+    expect(screen.getByText('$2,080')).toBeInTheDocument()
     expect(screen.getByText('$52k')).toBeInTheDocument()
-    expect(screen.getByText('▲ $2k')).toBeInTheDocument()
+    expect(screen.getByText('▲ $2,000')).toBeInTheDocument()
+  })
+
+  it("gives a figure the server's native title, where it sends one", () => {
+    render(
+      <MemoryRouter>
+        <AidWeekCard
+          weekOf="2031-04-14"
+          figures={[
+            {
+              key: 'awards',
+              label: 'Awards',
+              value: 4,
+              previous: 2,
+              unit: 'count',
+              title: 'Camp offers posted plus outside grants recorded',
+            },
+          ]}
+          feed={[]}
+          hrefOf={() => null}
+        />
+      </MemoryRouter>
+    )
+    expect(screen.getByText('Awards').closest('[title]')).toHaveAttribute(
+      'title',
+      'Camp offers posted plus outside grants recorded'
+    )
   })
 
   it('shows no change when a figure did not move', () => {

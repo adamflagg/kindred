@@ -8,9 +8,12 @@ import type {
   ApiAidTodayLine,
   ApiAidTodayStages,
 } from '../../../types/api-types'
+import { aidHref, type AidView } from '../kit/asOf'
 import type { HeroSegment, HeroTone } from '../kit/HeroBar'
 import { formatMoneyCompact } from '../kit/money'
 import { codeWords } from '../requests/attention'
+import { EXCEPTION_BADGES, PIPELINE_STAGES } from '../requests/strip'
+import { REQUEST_VIEWS } from '../requests/views'
 import { SECTION_TITLES, isRulesSection } from '../season/rules/rulesModel'
 
 export type TodayKey = ApiAidTodayLine['key']
@@ -122,40 +125,53 @@ export function countWords(line: ApiAidTodayLine): string {
 export const money = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`
 const awardsWord = (n: number) => `${String(n)} ${n === 1 ? 'award' : 'awards'}`
 
-export function registrarSegments(
-  stages: ApiAidTodayStages,
-  href: (stage: string) => string
-): HeroSegment[] {
-  const seg = (
-    key: Exclude<keyof ApiAidTodayStages, 'families' | 'posted_this_week'>,
-    label: string,
-    tone: HeroTone,
-    mine = false
-  ): HeroSegment => ({
-    key,
-    value: stages[key],
-    label,
-    figure: String(stages[key]),
-    tone,
-    mine,
-    href: href(key),
-  })
+/** How the registrar's bar inks each strip stage: amber where the registrar acts, as the to-dos do. */
+const STAGE_TONE: Readonly<Record<StripStage, { tone: HeroTone; mine: boolean }>> = {
+  pending_approval: { tone: 'light', mine: false },
+  needs_offer: { tone: 'act', mine: true },
+  not_reconciled: { tone: 'act2', mine: true },
+  waiting_on_family: { tone: 'progress', mine: false },
+  holds: { tone: 'act2', mine: true },
+  duplicates: { tone: 'mute', mine: true },
+  session_not_settled: { tone: 'mute', mine: true },
+  to_reverse: { tone: 'mute', mine: true },
+}
+type StripStage = (typeof PIPELINE_STAGES)[number] & keyof ApiAidTodayStages
+
+/**
+ * The registrar's bar (owner ruling 13): the Requests strip's stages, in the strip's order and words, each opening that
+ * stage on the strip, after the live requests on none of them (which open the whole season). The server counts each
+ * request once, under the first stage its queues name (TodayStagesOut).
+ */
+export function registrarSegments(stages: ApiAidTodayStages, view: AidView): HeroSegment[] {
+  const strip = [...PIPELINE_STAGES, ...EXCEPTION_BADGES] as StripStage[]
   return [
-    seg('accepted', 'Accepted', 'done'),
-    seg('waiting_on_family', 'Waiting on the family', 'progress'),
-    seg('pending_approval', 'Pending approval', 'light'),
-    seg('needs_offer', 'Need an offer', 'act', true),
-    seg('held', 'On hold', 'act2', true),
-    seg('cancelled', 'Cancelled or withdrawn', 'mute'),
+    {
+      key: 'nothing_waiting',
+      value: stages.nothing_waiting,
+      label: 'Nothing waiting',
+      figure: String(stages.nothing_waiting),
+      tone: 'done',
+      title: `Nothing waiting: ${String(stages.nothing_waiting)} live requests on no stage of the strip`,
+      href: aidHref('/aid/requests', view),
+    },
+    ...strip.map((key): HeroSegment => {
+      const stage = REQUEST_VIEWS.find((v) => v.key === key)
+      return {
+        key,
+        value: stages[key],
+        label: stage?.label ?? key,
+        figure: String(stages[key]),
+        ...STAGE_TONE[key],
+        href: aidHref('/aid/requests', view, stage ? { view: stage.slug } : {}),
+      }
+    }),
   ]
 }
 
 /** Percent of live (not cancelled) requests that already have an offer; null with nothing live. */
 export function offerShare(s: ApiAidTodayStages): number | null {
-  const live = s.accepted + s.waiting_on_family + s.pending_approval + s.needs_offer + s.held
-  return live > 0
-    ? Math.round(((s.accepted + s.waiting_on_family + s.pending_approval) / live) * 100)
-    : null
+  return s.live > 0 ? Math.round((s.offered / s.live) * 100) : null
 }
 
 export function budgetSegments(

@@ -1,7 +1,7 @@
 import type { ApiAidWeekPoint } from '../../../types/api-types'
 import { CS_EMPTY } from './csType'
 import { campToday, parseIsoDay } from './dates'
-import { formatMoneyCompact } from './money'
+import { formatMoneyCompact, formatMoneyScale } from './money'
 
 const W = 300
 const H = 150
@@ -95,7 +95,7 @@ export function AidBurnUp({
             strokeWidth={0.5}
           />
           <text x={PAD.left - 4} y={y(v) + 3} textAnchor="end" fontSize={FONT} fill={INK}>
-            {formatMoneyCompact(v)}
+            {formatMoneyScale(v)}
           </text>
         </g>
       ))}
@@ -119,7 +119,7 @@ export function AidBurnUp({
             strokeDasharray="4 3"
           />
           <text x={PAD.left + 4} y={y(budget) - 3} fontSize={FONT} fill={INK}>
-            {`Budget ${formatMoneyCompact(budget)}`}
+            {`Budget ${formatMoneyScale(budget)}`}
           </text>
         </>
       )}

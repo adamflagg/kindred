@@ -9,12 +9,14 @@ const VIEW = { year: 2027, asOf: { kind: 'live' } } as const
 const wrap = (ui: React.ReactElement) => render(<MemoryRouter>{ui}</MemoryRouter>)
 
 describe('the Today heroes', () => {
-  it('registrar hero: title, offer share, Accepted with its +n this-week pill', () => {
+  it("registrar hero: title, offer share, the strip's words and no +n pill (rulings 13, 14)", () => {
     wrap(<RegistrarHero stages={STAGES} view={VIEW} />)
     expect(screen.getByRole('heading', { name: 'The season so far' })).toBeInTheDocument()
     expect(screen.getByTestId('hero-figure')).toHaveTextContent('of live requests have an offer90%')
-    expect(screen.getAllByTestId('hero-key')[0]).toHaveTextContent('Accepted 318 +14')
-    expect(screen.getByText(/389 families/)).toBeInTheDocument()
+    expect(screen.getAllByTestId('hero-key')[0]).toHaveTextContent('Nothing waiting 318')
+    expect(screen.getAllByTestId('hero-key')[1]).toHaveTextContent('Pending approval 6')
+    expect(screen.queryByTitle('Posted this week')).toBeNull()
+    expect(screen.getByText(/381 requests from 389 families/)).toBeInTheDocument()
   })
 
   it('registrar hero: each part opens its Requests view', () => {
@@ -24,25 +26,13 @@ describe('the Today heroes', () => {
     expect(hrefs).toContain('/aid/requests?view=needs-offer&year=2027')
     expect(hrefs).toContain('/aid/requests?view=holds&year=2027')
     expect(hrefs).toContain('/aid/requests?view=pending-approval&year=2027')
+    expect(hrefs).toContain('/aid/requests?view=not-reconciled&year=2027')
+    expect(hrefs[0]).toBe('/aid/requests?year=2027')
   })
 
-  it('registrar hero: no offer share with nothing live, and no pill at zero this week', () => {
-    wrap(
-      <RegistrarHero
-        stages={{
-          ...STAGES,
-          accepted: 0,
-          waiting_on_family: 0,
-          pending_approval: 0,
-          needs_offer: 0,
-          held: 0,
-          posted_this_week: 0,
-        }}
-        view={VIEW}
-      />
-    )
+  it('registrar hero: no offer share with nothing live', () => {
+    wrap(<RegistrarHero stages={{ ...STAGES, live: 0, offered: 0 }} view={VIEW} />)
     expect(screen.getByTestId('hero-figure')).toHaveTextContent('of live requests have an offer—')
-    expect(screen.queryByTitle('Posted this week')).toBeNull()
   })
 
   it('finance hero: remaining headline, the pool over, pool rows with Remaining chips', () => {

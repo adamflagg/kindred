@@ -30,14 +30,18 @@ export const line = (
 })
 
 export const STAGES = {
-  accepted: 318,
-  waiting_on_family: 9,
+  nothing_waiting: 318,
   pending_approval: 6,
   needs_offer: 31,
-  held: 6,
-  cancelled: 42,
+  not_reconciled: 8,
+  waiting_on_family: 9,
+  holds: 6,
+  duplicates: 0,
+  session_not_settled: 2,
+  to_reverse: 1,
   families: 389,
-  posted_this_week: 14,
+  live: 370,
+  offered: 333,
 }
 
 export const REGISTRAR_TODAY: ApiAidToday = {

@@ -57,8 +57,6 @@ export interface HeroSegment {
   readonly mine?: boolean
   /** Native title; default "{label}: {figure}". */
   readonly title?: string
-  /** Drawn after the key's figure (the "+14" this-week pill). */
-  readonly pill?: ReactNode
   /** The door. */
   readonly href?: string
 }
@@ -137,7 +135,6 @@ export function AidHeroKeys({ segments }: { readonly segments: readonly HeroSegm
           >
             <i className={`mr-1.5 inline-block size-[9px] rounded-[2px] ${SWATCH[s.tone]}`} />
             {s.label} <b className="tabular-nums">{s.figure}</b>
-            {s.pill ? <> {s.pill}</> : null}
           </span>
         ))}
     </div>

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
+import { EXCEPTION_BADGES, PIPELINE_STAGES, resolveStrip } from '../requests/strip'
+import { REQUEST_VIEWS } from '../requests/views'
 import { BUDGET, REGISTRAR_TODAY, STAGES, line } from './todayFixtures'
 import {
   bandSentence,
@@ -84,32 +86,55 @@ describe('showRegistrarQueue (ruling 3)', () => {
   })
 })
 
-describe('registrar hero', () => {
-  it("orders the stages and marks the viewer's own in amber", () => {
-    const segs = registrarSegments(STAGES, (s) => `/aid/requests/${s}`)
-    expect(segs.map((s) => [s.key, s.value, s.tone, s.mine ?? false])).toEqual([
-      ['accepted', 318, 'done', false],
-      ['waiting_on_family', 9, 'progress', false],
-      ['pending_approval', 6, 'light', false],
-      ['needs_offer', 31, 'act', true],
-      ['held', 6, 'act2', true],
-      ['cancelled', 42, 'mute', false],
+describe("registrar hero (ruling 13: the Requests strip's stages)", () => {
+  const VIEW = { year: 2027, asOf: { kind: 'live' } } as const
+  it("draws the strip's stages in the strip's order and words, after the requests on none", () => {
+    const segs = registrarSegments(STAGES, VIEW)
+    expect(segs.map((s) => s.key)).toEqual([
+      'nothing_waiting',
+      ...PIPELINE_STAGES,
+      ...EXCEPTION_BADGES,
     ])
-    expect(at(segs, 0).label).toBe('Accepted')
+    for (const s of segs.slice(1)) {
+      expect(s.label).toBe(REQUEST_VIEWS.find((v) => v.key === s.key)?.label)
+    }
+    expect(segs.map((s) => s.label)).toEqual([
+      'Nothing waiting',
+      'Pending approval',
+      'Needs an offer',
+      'Not reconciled',
+      'Waiting on the family',
+      'On hold',
+      'Duplicates',
+      'Session unclear',
+      'To reverse',
+    ])
+    expect(segs.map((s) => s.value)).toEqual([318, 6, 31, 8, 9, 6, 0, 2, 1])
+  })
+  it('opens each stage on the strip, and Nothing waiting on the whole season', () => {
+    for (const s of registrarSegments(STAGES, VIEW)) {
+      const url = new URL(s.href ?? '', 'http://x')
+      expect(url.pathname).toBe('/aid/requests')
+      expect(url.searchParams.get('year')).toBe('2027')
+      const strip = resolveStrip(url.searchParams.get('view'), url.searchParams.get('lens'))
+      expect(strip.stage?.key ?? 'nothing_waiting').toBe(s.key)
+    }
+  })
+  it("marks the registrar's own stages in amber", () => {
+    const segs = registrarSegments(STAGES, VIEW)
+    const mine = segs.filter((s) => s.mine).map((s) => s.key)
+    expect(mine).toEqual([
+      'needs_offer',
+      'not_reconciled',
+      'holds',
+      'duplicates',
+      'session_not_settled',
+      'to_reverse',
+    ])
   })
   it('counts the share of live requests with an offer', () => {
-    expect(offerShare(STAGES)).toBe(Math.round(((318 + 9 + 6) / (412 - 42)) * 100))
-    expect(
-      offerShare({
-        ...STAGES,
-        accepted: 0,
-        waiting_on_family: 0,
-        pending_approval: 0,
-        needs_offer: 0,
-        held: 0,
-        cancelled: 0,
-      })
-    ).toBeNull()
+    expect(offerShare(STAGES)).toBe(Math.round((333 / 370) * 100))
+    expect(offerShare({ ...STAGES, live: 0, offered: 0 })).toBeNull()
   })
 })
 

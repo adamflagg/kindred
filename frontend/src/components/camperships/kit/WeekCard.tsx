@@ -5,7 +5,7 @@ import { POOL_NEGATIVE_INK } from './aidStyles'
 import { Cut } from './Cut'
 import { CS_CARD_HEADING, CS_META } from './csType'
 import { campToday, formatShortDate } from './dates'
-import { formatMoneyCompact } from './money'
+import { formatMoneyFigure } from './money'
 
 const CAMP_TIME_ZONE = 'America/Los_Angeles'
 /** The column holds the latest six items; the server sends no more, and the cap keeps it from growing if it did. */
@@ -29,14 +29,14 @@ function glyphInk(kind: ApiAidWeekFeed['kind']): string {
 }
 
 function figureValue(f: ApiAidWeekFigure): string {
-  return f.unit === 'dollars' ? formatMoneyCompact(f.value) : f.value.toLocaleString('en-US')
+  return f.unit === 'dollars' ? formatMoneyFigure(f.value) : f.value.toLocaleString('en-US')
 }
 
 function Change({ figure }: { readonly figure: ApiAidWeekFigure }) {
   const delta = figure.value - figure.previous
   if (delta === 0) return null
   const size = Math.abs(delta)
-  const words = figure.unit === 'dollars' ? formatMoneyCompact(size) : size.toLocaleString('en-US')
+  const words = figure.unit === 'dollars' ? formatMoneyFigure(size) : size.toLocaleString('en-US')
   return (
     <span
       className={`text-xs font-semibold tabular-nums ${delta > 0 ? UP_INK : POOL_NEGATIVE_INK}`}
@@ -87,7 +87,11 @@ export function AidWeekCard({
       </div>
       <div className="grid grid-cols-2 gap-x-3 gap-y-2.5 px-3.5 py-3">
         {figures.map((f) => (
-          <div key={f.key} className="flex min-w-0 flex-col">
+          <div
+            key={f.key}
+            className="flex min-w-0 flex-col"
+            title={f.title === '' ? undefined : f.title}
+          >
             <span className={CS_META}>{f.label}</span>
             <span className="text-[20px] leading-[26px] font-bold tabular-nums">
               {figureValue(f)}
