@@ -41,9 +41,10 @@ const ignore = () => undefined
  * Round 3 amount show the preview (an ask alone prices nothing). Enter saves; Esc closes. A failed
  * save keeps the editor open with what was typed (the kit's editor holds it) and shows the error.
  * Beside the fields, the card says what the edit makes the round and the request's new total
- * (Decision 40): the card's own line, the grid has its New total cell. Round 3 (mock section 2,
- * option B): the fields on the left, that line and the award's working on the right, and a footer
- * with the save bottom right and Back beside it. Opening on an amount asks for its preview at once
+ * (Decision 40): the card's own line, the grid has its New total cell. Conformance #g6-r3 /
+ * #g6-appeal: the kit form (HouseholdForm), its captions beside the fields on the left, that line
+ * and the award's working on the right, and one buttons row with the save first, then Back. Opening
+ * on an amount asks for its preview at once
  * (B24), so the line is there before any typing.
  */
 export interface CardEditorHandle {
