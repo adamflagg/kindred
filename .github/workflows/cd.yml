@@ -1038,7 +1038,8 @@ jobs:
     # Every file and directory the stack created under pb_data -- the SQLite
     # databases and their -wal/-shm, storage/, anything init wrote -- must be
     # private to the uid that made it (pocketbase/fileperm). The pb_data dir
-    # itself was made by the step above, so only what is below it is checked.
+    # itself was made by "Create CI environment file", not by the stack, so
+    # only what is below it is checked.
     - name: Verify pb_data files are private
       env:
         GH_RUN_ID: ${{ github.run_id }}
