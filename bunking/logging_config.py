@@ -168,6 +168,20 @@ _QUERY_KEY_RE = re.compile(r"(?<=[?&])([A-Za-z_][A-Za-z0-9_.-]*)=")
 # operator, an opening paren or a space); anywhere else at top level it closes the URL
 # itself, as in ``URL('...?filter=x')`` or ``"url": "...?filter=x"``.
 _QUOTE_OPENERS = frozenset("=~<>!(,|&")
+# Filter operator characters. Top-level whitespace next to one of these is inside the
+# expression (``first_name ~ "x" && year = 2025``), not the end of the value.
+_FILTER_OPERATORS = frozenset("=~<>!?&|")
+
+
+def _space_inside_expression(text: str, start: int, i: int) -> bool:
+    """Whether the top-level whitespace at ``i`` sits between filter operands."""
+    before = text[start:i].rstrip(" \t")
+    j = i
+    while j < len(text) and text[j] in " \t":
+        j += 1
+    if not before or j >= len(text):
+        return False
+    return before[-1] in _FILTER_OPERATORS or text[j] in _FILTER_OPERATORS
 
 
 def _query_value_end(text: str, start: int) -> int:
@@ -175,8 +189,9 @@ def _query_value_end(text: str, start: int) -> int:
 
     A URL-encoded value ends at the next ``&``, whitespace or line end. An
     unencoded PocketBase filter can also hold quoted strings with spaces,
-    parenthesised groups with spaces and ``&&``; those are consumed whole so no
-    part of a name is left behind. Errs towards redacting too much.
+    parenthesised groups with spaces, ``&&``, and spaces around its operators;
+    those are consumed whole so no part of a name is left behind. Errs towards
+    redacting too much.
     """
     depth = 0
     quote = ""
@@ -201,7 +216,8 @@ def _query_value_end(text: str, start: int) -> int:
                 break
             depth -= 1
         elif depth == 0 and c.isspace():
-            break
+            if not _space_inside_expression(text, start, i):
+                break
         elif depth == 0 and c == "&":
             if not text.startswith("&&", i):
                 break

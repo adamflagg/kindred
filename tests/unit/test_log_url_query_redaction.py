@@ -56,6 +56,8 @@ class TestRedactSensitiveQueryValues:
             '((first_name ~ "Emma") && (last_name ~ "Johnson"))',
             'first_name~"Emma"&&last_name~"Johnson"',
             "(first_name='Emma Johnson' || preferred_name='Emma')",
+            'first_name ~ "Emma Johnson" && last_name != "Chen"',
+            "first_name ?= 'Emma'",
         ],
     )
     def test_unencoded_filter_with_spaces_quotes_and_operators_is_redacted(self, value: str) -> None:
