@@ -18118,6 +18118,10 @@ export type TodayLineOut = {
    * Names
    */
   names?: Array<string>
+  /**
+   * Links
+   */
+  links?: Array<string>
 }
 
 /**

@@ -102,7 +102,7 @@ async def test_today_counts_a_description_needing_a_group_only_when_it_has_a_liv
     repo.fetch_postings.assert_awaited_once_with(2027)
     # Today's development chips (audit D8): the same descriptions, each as CampMinder writes it.
     named = await FinancialAidLedgerService(repo).needs_group_descriptions(2027)
-    assert named == {"regional grant": "Regional Grant"}
+    assert named == {"regional grant": ("Regional Grant", "src000000000001")}
 
 
 # --- the list read: the season's lines, the grantor's name, the last change ----------------------------------

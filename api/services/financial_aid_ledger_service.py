@@ -24,7 +24,7 @@ from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import ROUND_HALF_UP, Decimal
-from typing import Any, Final
+from typing import Any, Final, NamedTuple
 
 from api.schemas.financial_aid import (
     AidLikeOutside,
@@ -89,6 +89,13 @@ def _who_paid_bucket(funder_type: str) -> str:
     if funder_type == "camp":
         return "camp"
     return "outside" if funder_type in GRANT_FUNDER_TYPES else "unclassified"
+
+
+class NamedSource(NamedTuple):
+    """A description as CampMinder writes it, and its aid_sources record id (Money › Funders' `?row=`)."""
+
+    description: str
+    source_id: str
 
 
 def needs_group(source: Any) -> bool:
@@ -581,13 +588,13 @@ class FinancialAidLedgerService:
         D100), by key. A line counts under the description that classifies it now (effective_source_key)."""
         return list(await self.needs_group_descriptions(year))
 
-    async def needs_group_descriptions(self, year: int) -> dict[str, str]:
-        """`needs_group_sources`, each key with its description as CampMinder writes it (Today's development chips,
-        audit D8), in key order."""
+    async def needs_group_descriptions(self, year: int) -> dict[str, NamedSource]:
+        """`needs_group_sources`, each key with its description as CampMinder writes it and its record id (Today's
+        development chips name the description and open its Funders row, audit D8/X5), in key order."""
         postings, sources = await asyncio.gather(self.repo.fetch_postings(year), self._sources_by_key())
         used = {str(p.effective_source_key or p.source_key) for p in postings}
         return {
-            key: str(getattr(sources[key], "description", "") or key)
+            key: NamedSource(str(getattr(sources[key], "description", "") or key), str(sources[key].id))
             for key in sorted(used)
             if key in sources and needs_group(sources[key])
         }

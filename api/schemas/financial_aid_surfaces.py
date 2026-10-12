@@ -145,6 +145,9 @@ class TodayLineOut(BaseModel):
     names: list[str] = Field(
         default_factory=list
     )  # development lines: the funders or descriptions it counts, by name; no family data (§9.4)
+    # development lines: where each name opens in Money › Funders, in `names` order: "funder:<grantor key>" or
+    # "row:<aid_sources id>" ("" for a name with nowhere of its own to open; audit X5)
+    links: list[str] = Field(default_factory=list)
 
 
 class TodayFlagsOut(BaseModel):

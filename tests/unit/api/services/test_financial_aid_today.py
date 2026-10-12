@@ -36,6 +36,7 @@ from api.services.camp_calendar import CAMP_TZ
 from api.services.financial_aid_decisions_service import FinancialAidDecisionsService
 from api.services.financial_aid_grants_register import RegisterRow
 from api.services.financial_aid_intake_service import never_true_fields, never_true_labels
+from api.services.financial_aid_ledger_service import NamedSource
 from api.services.financial_aid_queues import row_queues, row_stage
 from api.services.financial_aid_rules_service import RulesNotFoundError, RulesVersion
 from api.services.financial_aid_today import (
@@ -501,10 +502,10 @@ class _Ledger:
         self.calls += 1
         return []
 
-    async def needs_group_descriptions(self, year: int) -> dict[str, str]:
-        """Each description needing a group, by key, as CampMinder writes it."""
+    async def needs_group_descriptions(self, year: int) -> dict[str, NamedSource]:
+        """Each description needing a group, by key, as CampMinder writes it, with its record id."""
         self.group_calls += 1
-        return {key: f"{key.title()} (as written)" for key in self.needs_group}
+        return {key: NamedSource(f"{key.title()} (as written)", f"src-{key}") for key in self.needs_group}
 
 
 def _service(store: FakeDecisionsStore, grants: _Grants, drafts: _Drafts, ledger: _Ledger) -> TodayService:
@@ -1624,3 +1625,35 @@ async def test_today_reads_the_descriptions_campminder_names_for_development() -
     )
     out = await service.read(YEAR, casework=False, finance=False, development=True)
     assert _line(out.development, "needs_group").names == ["Scholarship Other (as written)"]
+
+
+def test_development_chips_open_their_own_funders_row() -> None:
+    """Audit X5 (spec §5.5: "Money › Funders filtered to that funder"): each name carries where it opens, a funder by
+    its key and a description by its record, in the names' order."""
+    grantors = [
+        _named_grantor("riverbend", "Riverbend Community Foundation"),
+        _named_grantor("alder", "Alder Trust"),
+    ]
+    grants = _grants(
+        unmapped=[
+            UnmappedDescriptionOut(
+                source_id="src1", description_key="outside award", description="Outside Award", lines=1, amount=10.0
+            )
+        ]
+    )
+    inputs = _inputs(
+        [],
+        grantors=grantors,
+        grants=grants,
+        needs_group=["scholarship other"],
+        descriptions={"scholarship other": "Scholarship (other)"},
+        source_ids={"scholarship other": "src2"},
+    )
+    dev = build_today(inputs, casework=False, finance=False, development=True).development
+    contact = _line(dev, "no_contact")
+    assert list(zip(contact.names, contact.links, strict=True)) == [
+        ("Alder Trust", "funder:alder"),
+        ("Riverbend Community Foundation", "funder:riverbend"),
+    ]
+    assert _line(dev, "no_grantor").links == ["row:src1"]
+    assert _line(dev, "needs_group").links == ["row:src2"]

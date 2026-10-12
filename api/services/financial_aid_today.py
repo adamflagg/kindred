@@ -45,7 +45,7 @@ from api.services.financial_aid_grants_service import GrantsLoader, OneGrantsLoa
 from api.services.financial_aid_household_page import HouseholdLabeler
 from api.services.financial_aid_intake_service import never_true_labels
 from api.services.financial_aid_intake_types import FLAG_AWAITING_RULES, FaRow
-from api.services.financial_aid_ledger_service import money
+from api.services.financial_aid_ledger_service import NamedSource, money
 from api.services.financial_aid_queues import UNRECONCILED, UNTICKED_LABELS, offer_rounds
 from api.services.financial_aid_rules_service import RulesNotFoundError, RulesVersion
 from api.services.financial_aid_to_place_service import NO_OPEN_LINES, OpenToPlace, ToPlaceCounts, open_to_place
@@ -106,6 +106,7 @@ class TodayInputs:
     hold_since: Mapping[str, date] = field(default_factory=dict)
     # Development's chips (audit D8): each description key -> the description as CampMinder writes it.
     descriptions: Mapping[str, str] = field(default_factory=dict)
+    source_ids: Mapping[str, str] = field(default_factory=dict)  # each description key -> its aid_sources record id
 
 
 def _families(rows: Iterable[GridRowOut]) -> int:
@@ -528,9 +529,17 @@ def _finance(inputs: TodayInputs) -> list[TodayLineOut]:
     return [lines[key] for key in FINANCE_LINES]
 
 
-def _named(key: TodayKey, names: Iterable[str], kind: TodayItemKind) -> TodayLineOut:
-    listed = sorted(set(names), key=str.casefold)
-    return TodayLineOut(key=key, families=None, items=len(listed), item_kind=kind, names=listed)
+def _named(key: TodayKey, named: Iterable[tuple[str, str]], kind: TodayItemKind) -> TodayLineOut:
+    """`named`: (name, where it opens in Money › Funders: "funder:<key>" or "row:<source id>"), each name once."""
+    listed = sorted(dict(named).items(), key=lambda pair: pair[0].casefold())
+    return TodayLineOut(
+        key=key,
+        families=None,
+        items=len(listed),
+        item_kind=kind,
+        names=[name for name, _ in listed],
+        links=[link for _, link in listed],
+    )
 
 
 def _development(inputs: TodayInputs) -> list[TodayLineOut]:
@@ -538,13 +547,24 @@ def _development(inputs: TodayInputs) -> list[TodayLineOut]:
     them (audit D8). A retired funder is history and needs no upkeep."""
     live = [g for g in inputs.grantors if not g.retired_at]
     lines = {
-        "no_contact": _named("no_contact", (g.name for g in live if not g.contacts.strip()), "funders"),
-        "no_eligibility": _named("no_eligibility", (g.name for g in live if not g.eligibility.strip()), "funders"),
+        "no_contact": _named(
+            "no_contact", ((g.name, f"funder:{g.key}") for g in live if not g.contacts.strip()), "funders"
+        ),
+        "no_eligibility": _named(
+            "no_eligibility", ((g.name, f"funder:{g.key}") for g in live if not g.eligibility.strip()), "funders"
+        ),
         "needs_group": _named(
-            "needs_group", (inputs.descriptions.get(key, key) for key in inputs.needs_group), "descriptions"
+            "needs_group",
+            (
+                (inputs.descriptions.get(key, key), f"row:{inputs.source_ids[key]}" if key in inputs.source_ids else "")
+                for key in inputs.needs_group
+            ),
+            "descriptions",
         ),
         "no_grantor": _named(
-            "no_grantor", (u.description or u.description_key for u in inputs.grants.unmapped), "descriptions"
+            "no_grantor",
+            ((u.description or u.description_key, f"row:{u.source_id}") for u in inputs.grants.unmapped),
+            "descriptions",
         ),
     }
     return [lines[key] for key in DEVELOPMENT_LINES]
@@ -705,7 +725,7 @@ class RulesDrafts(Protocol):
 
 class LedgerReads(Protocol):
     async def unclassified_sources(self, year: int) -> list[UnclassifiedSource]: ...
-    async def needs_group_descriptions(self, year: int) -> dict[str, str]: ...
+    async def needs_group_descriptions(self, year: int) -> dict[str, NamedSource]: ...
 
 
 async def _draft_sections(rules: RulesDrafts, year: int) -> list[str] | None:
@@ -778,7 +798,7 @@ class TodayService:
             (grants, register),
             grantors,
             draft,
-            (unclassified, descriptions),
+            (unclassified, named_sources),
             never_labels,
         ) = await asyncio.gather(
             decisions.named_season(year) if named else _season_only(decisions, year) if priced else _none(),
@@ -816,10 +836,11 @@ class TodayService:
             never_true=tuple(never_labels),
             never_true_labels=never_labels,
             to_place=open_lines,
-            needs_group=sorted(descriptions),
+            needs_group=sorted(named_sources),
             pending_since=pending_since(events),
             hold_since=hold_since,
-            descriptions=descriptions,
+            descriptions={key: named.description for key, named in named_sources.items()},
+            source_ids={key: named.source_id for key, named in named_sources.items()},
         )
         out = build_today(inputs, casework=casework, finance=finance, development=development, view=view)
         return await self._labelled(year, out) if named else out
@@ -866,7 +887,7 @@ async def _none() -> None:
     return None
 
 
-async def _descriptions(ledger: LedgerReads, year: int) -> tuple[list[UnclassifiedSource], dict[str, str]]:
+async def _descriptions(ledger: LedgerReads, year: int) -> tuple[list[UnclassifiedSource], dict[str, NamedSource]]:
     """Finance's two description reads: the unclassified ones, and those that need a group (D100), by key with the
     description as CampMinder writes it."""
     unclassified, needs_group = await asyncio.gather(
@@ -875,7 +896,7 @@ async def _descriptions(ledger: LedgerReads, year: int) -> tuple[list[Unclassifi
     return unclassified, needs_group
 
 
-async def _no_descriptions() -> tuple[list[UnclassifiedSource], dict[str, str]]:
+async def _no_descriptions() -> tuple[list[UnclassifiedSource], dict[str, NamedSource]]:
     return [], {}
 
 
