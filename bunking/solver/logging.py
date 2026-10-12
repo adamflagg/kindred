@@ -18,9 +18,14 @@ from bunking.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-# Run logs older than this are deleted each time a new one is written. They sit
-# on a persisted volume outside the app's RBAC, so they must not pile up forever.
+# Run logs older than this are deleted each time a new one is written, and once
+# when the API starts (api/main.py lifespan), so the off-season clears them too.
+# They sit on a persisted volume outside the app's RBAC, so they must not pile up
+# forever.
 SOLVER_LOG_RETENTION_DAYS = 30
+
+# Relative to the API's working directory, which is the persisted logs volume's parent.
+SOLVER_LOGS_DIR = Path("logs/solver")
 
 # Exactly what save_to_file writes: session_<id>_solver_log_<YYYYmmdd_HHMMSS>[_<run id>].json
 _SOLVER_LOG_NAME = re.compile(r"session_-?\d+_solver_log_\d{8}_\d{6}(?:_[A-Za-z0-9-]+)?\.json")
@@ -111,7 +116,7 @@ class ConstraintLogger:
     def save_to_file(self, session_id: int, solver_run_id: str | None = None) -> str:
         """Save logs to a file and return the file path."""
         # Create logs directory if it doesn't exist
-        logs_dir = Path("logs/solver")
+        logs_dir = SOLVER_LOGS_DIR
         logs_dir.mkdir(parents=True, exist_ok=True)
 
         # Generate filename with timestamp

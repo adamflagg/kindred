@@ -33,6 +33,7 @@ from bunking.rbac.permissions import (
     PERMISSION_DESCRIPTIONS,
     PERMISSION_INFO,
 )
+from bunking.solver.logging import SOLVER_LOGS_DIR, prune_solver_logs
 
 from .dependencies import (
     auth_state,
@@ -77,6 +78,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
 
     # Startup
+    # Expired solver run logs go at startup too, not only after a solve, so a
+    # deploy in the off-season still clears them. Never raises.
+    prune_solver_logs(SOLVER_LOGS_DIR)
     refresh_task = None
     lodging_refresh_task = None
     if not settings.skip_pb_auth:
