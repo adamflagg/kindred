@@ -109,6 +109,8 @@ class TodayNextUpOut(BaseModel):
     the development section never carries one (§9.4)."""
 
     household_cm_id: int
+    # Owner ruling 18: as the Requests grid names the request: the camper's full name for a camper request, the
+    # household label (with `tiebreak`) only for a household-level (Family Camp) request, whose camper_name is "".
     label: str
     tiebreak: str = ""
     days: int | None = None

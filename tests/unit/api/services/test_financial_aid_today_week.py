@@ -24,8 +24,12 @@ def _at(month: int, day: int, hour: int = 17) -> datetime:
 
 class _Store(FakeDecisionsStore):
     async def fetch_names(self, year: int, household_cm_ids: Any, person_cm_ids: Any) -> Any:
-        names = {1000001: "Johnson", 1000002: "Garcia"}
-        return {h: names[h] for h in household_cm_ids if h in names}, {}
+        names = {1000001: "Johnson", 1000002: "Garcia", 1000003: "Chen"}
+        campers = {1000011: "Emma Johnson", 1000012: "Liam Garcia"}
+        return (
+            {h: names[h] for h in household_cm_ids if h in names},
+            {p: campers[p] for p in person_cm_ids if p in campers},
+        )
 
     async def fetch_decision_events(self, year: int) -> list[DecisionEvent]:
         return list(self.events)  # the fixtures' requests are the fake's season, not 2031
@@ -275,38 +279,75 @@ class _Drafts:
 
 
 def _labelled(store: FakeDecisionsStore, grants: _Grants, **kw: Any) -> TodayWeekService:
-    labels = _Labels({1000001: "Pat Johnson & Alex Garcia", 1000002: "Liam & Olivia Becker"})
+    labels = _Labels(
+        {1000001: "Pat Johnson & Alex Garcia", 1000002: "Liam & Olivia Becker", 1000003: "Olivia & Wei Chen"}
+    )
     return TodayWeekService(store=store, grants=grants, labels=labels, clock=lambda: NOW, **kw)
 
 
 @pytest.mark.asyncio
-async def test_the_feed_names_each_household_by_its_label_and_marks_the_name_to_link(
+async def test_the_feed_names_each_household_as_the_grid_does_and_marks_the_name_to_link(
     store_with_posts: tuple[_Store, _Grants],
 ) -> None:
-    """Audit R23/R24: the household is named as the grid names it (never "The X Family household"), and the feed
-    item says which words are the name, so only the name is the link."""
-    week = await _labelled(*store_with_posts).read(2031, casework=True, finance=False, development=False)
-    accepted = next(f for f in week.feed if f.kind == "accepted")
-    assert accepted.words == "Liam & Olivia Becker accepted the offer"
-    assert accepted.name == "Liam & Olivia Becker"
+    """Owner ruling 18 (audit N1, R23/R24): a camper request's item reads the camper's full name, a household-level
+    (Family Camp) request's the adults' label, never "The X Family household". The item says which words are the
+    name, so only the name is the link. The label is read only for the household-level items."""
+    store, grants = store_with_posts
+    seed_request(store, "reqchenfc000001", household=1000003, person=0)
+    _event(store, "reqchenfc000001", "accept", _at(4, 16, 16))
+    service = _labelled(store, grants)
+    week = await service.read(2031, casework=True, finance=False, development=False)
+    accepted = {f.household_cm_id: f for f in week.feed if f.kind == "accepted"}
+    assert (accepted[1000002].words, accepted[1000002].name) == ("Liam Garcia accepted the offer", "Liam Garcia")
+    assert (accepted[1000003].words, accepted[1000003].name) == (
+        "Olivia & Wei Chen accepted the offer",
+        "Olivia & Wei Chen",
+    )
     posted = next(f for f in week.feed if f.kind == "posted" and f.household_cm_id == 1000001)
-    assert posted.words == "Pat Johnson & Alex Garcia · R1 posted · $1,500"
-    assert posted.name == "Pat Johnson & Alex Garcia"
+    assert (posted.words, posted.name) == ("Emma Johnson · R1 posted · $1,500", "Emma Johnson")
     assert all("household" not in f.words for f in week.feed)
+    assert service._labels.asked == [frozenset({1000003})]  # type: ignore[union-attr]
 
 
 @pytest.mark.asyncio
-async def test_a_grant_from_no_known_funder_says_unmatched_not_a_funder(
+async def test_a_grant_line_leads_with_the_name_and_says_unmatched_not_a_funder(
     store_with_posts: tuple[_Store, _Grants],
 ) -> None:
-    """Audit R25: "A funder" reads like a real funder's name."""
+    """Audit N4 / ruling W2: the name leads the line, so what a narrow column cuts is never the name. Audit R25:
+    a grant no funder claims says "Unmatched", since "A funder" reads like a real funder's name."""
     store, grants = store_with_posts
+    week = await _labelled(store, grants).read(2031, casework=True, finance=False, development=False)
+    grant = next(f for f in week.feed if f.kind == "grant")
+    assert (grant.words, grant.name) == ("Emma Johnson · Regional Fund grant entered", "Emma Johnson")
     grants.register = [replace(grants.register[0], grantor_key="")]
     week = await _labelled(store, grants).read(2031, casework=True, finance=False, development=True)
-    grant = next(f for f in week.feed if f.kind == "grant")
-    assert grant.words == "Unmatched grant entered for Pat Johnson & Alex Garcia"
+    assert next(f for f in week.feed if f.kind == "grant").words == "Emma Johnson · Unmatched grant entered"
     dev = await _labelled(store, grants).read(2031, casework=False, finance=False, development=True)
     assert next(f for f in dev.feed if f.kind == "grant").words == "Unmatched grant · $800 posted"
+
+
+@pytest.mark.asyncio
+async def test_the_feed_shows_this_week_only_and_nothing_in_the_future(
+    store_with_posts: tuple[_Store, _Grants],
+) -> None:
+    """Ruling W6 (audit N5): Monday 00:00 camp time through now, newest first. Last week's items, and a grant
+    recorded after now (a future-dated row), never appear; a quiet week is an empty feed."""
+    store, grants = store_with_posts
+    grants.register = [
+        replace(grants.register[0], recorded_at=_at(4, 13)),  # last Sunday
+        replace(grants.register[0], recorded_at=datetime(2031, 4, 14, 7, 30, tzinfo=UTC)),  # Mon 00:30 camp time
+        replace(grants.register[0], recorded_at=_at(4, 20)),  # next Sunday: future
+    ]
+    week = await _labelled(store, grants).read(2031, casework=True, finance=True, development=False)
+    start = datetime(2031, 4, 14, 7, tzinfo=UTC)  # Monday 00:00 camp time
+    assert week.feed
+    assert all(start <= f.at <= NOW for f in week.feed)
+    assert [f.at for f in week.feed if f.kind == "grant"] == [datetime(2031, 4, 14, 7, 30, tzinfo=UTC)]
+    quiet = _Store()
+    seed_request(quiet, "reqjohnson00001", household=1000001)
+    _event(quiet, "reqjohnson00001", "post", _at(4, 8))  # last week only
+    empty = await _labelled(quiet, _Grants([])).read(2031, casework=True, finance=True, development=True)
+    assert empty.feed == []
 
 
 @pytest.mark.asyncio

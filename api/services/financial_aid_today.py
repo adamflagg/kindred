@@ -241,6 +241,12 @@ def _newest_round(row: GridRowOut) -> RoundOut | None:
     return max(row.rounds, key=lambda r: r.round) if row.rounds else None
 
 
+def _grid_name(camper_name: str, household: str) -> str:
+    """Owner ruling 18: a household is named as the Requests grid names it: the camper's full name for a camper
+    request, the household's own label only for a household-level (Family Camp) request, which has no camper."""
+    return camper_name or household
+
+
 def _next_up(rows: Sequence[GridRowOut], today: date, clock: Clock | None) -> list[TodayNextUpOut]:
     """Each household once, at its oldest request, oldest first (ties by household id), capped. On a clocked line the
     dated households come first, by their clock, and the undated after them (by first ask) with `days` None; the
@@ -259,8 +265,8 @@ def _next_up(rows: Sequence[GridRowOut], today: date, clock: Clock | None) -> li
         out.append(
             TodayNextUpOut(
                 household_cm_id=row.household_cm_id,
-                label=row.household_label or row.family_name,
-                tiebreak=row.household_label_tiebreak,
+                label=_grid_name(row.camper_name, row.household_label or row.family_name),
+                tiebreak="" if row.camper_name else row.household_label_tiebreak,
                 days=(today - when).days if when is not None else None,
                 camper_name=row.camper_name,
                 session_name=row.session_name,
@@ -445,7 +451,7 @@ def _grant_next_up(inputs: TodayInputs) -> list[TodayNextUpOut]:
     return [
         TodayNextUpOut(
             household_cm_id=household,
-            label=grant.family_name,
+            label=_grid_name(grant.camper_name, grant.family_name),
             days=age if age >= 0 else None,
             camper_name=grant.camper_name,
             session_name=grant.session_name,
@@ -846,11 +852,12 @@ class TodayService:
         return await self._labelled(year, out) if named else out
 
     async def _labelled(self, year: int, out: TodayResponse) -> TodayResponse:
-        """Every next-up household named by its household label (audit R2; spec §5.5 "the household label the grid
-        uses"), the tie-break scoped to the households this response names. Without a labeler, or for a household
-        the helper does not name, the chip keeps its family name."""
+        """Every household-level next-up chip named by its household label (audit R2, owner ruling 18: as the grid
+        names a household-level row), the tie-break scoped to the household-level chips this response names. A camper
+        chip keeps its camper's name. Without a labeler, or for a household the helper does not name, the chip keeps
+        its family name."""
         lines = [*(out.casework or []), *(out.finance or [])]
-        households = {n.household_cm_id for line in lines for n in line.next_up}
+        households = {n.household_cm_id for line in lines for n in line.next_up if not n.camper_name}
         if self._labels is None or not households:
             return out
         named = await self._labels(year, households)
@@ -863,7 +870,7 @@ class TodayService:
                     update={
                         "next_up": [
                             n.model_copy(update={"label": label.label or n.label, "tiebreak": label.tiebreak})
-                            if (label := named.get(n.household_cm_id)) is not None
+                            if not n.camper_name and (label := named.get(n.household_cm_id)) is not None
                             else n
                             for n in line.next_up
                         ]

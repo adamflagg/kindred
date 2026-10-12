@@ -792,9 +792,10 @@ def test_next_up_names_households_oldest_first_once_each() -> None:
         ),
     ]
     line = _line(build_today(_inputs(rows), casework=True, finance=False).casework, "needs_offer")
+    # Owner ruling 18: a camper request is named by the camper's full name, as the Requests grid names it.
     assert [(n.household_cm_id, n.label, n.days, n.camper_name, n.round, n.ask) for n in line.next_up] == [
-        (1000001, "Johnson", 12, "Samuel Johnson", 1, 1300.0),
-        (1000002, "Garcia", 9, "Liam Garcia", 1, None),
+        (1000001, "Samuel Johnson", 12, "Samuel Johnson", 1, 1300.0),
+        (1000002, "Liam Garcia", 9, "Liam Garcia", 1, None),
     ]
 
 
@@ -1485,51 +1486,77 @@ def _labelled_service(store: FakeDecisionsStore, labels: Any) -> TodayService:
 
 
 @pytest.mark.asyncio
-async def test_next_up_households_are_named_by_their_household_label_never_their_number() -> None:
-    """Audit R2 (owner: "has the household numbers instead of the household names"): every next-up chip reads the
-    household label the grid names a household-level row by (household_labels), with its tie-break."""
+async def test_next_up_names_a_camper_request_by_its_camper_and_a_household_request_by_its_label() -> None:
+    """Owner ruling 18 (audit N1): Today names a household exactly as the Requests grid does: the camper's full name
+    for a camper request, the adults' label (household_labels, with its tie-break) only for a household-level (Family
+    Camp) request. The label is read once, scoped to the household-level chips the response names."""
     store = FakeDecisionsStore()
     seed_request(store, "reqemma00000001")
-    seed_request(store, "reqliam00000001", household=1000002, person=1000021)
+    seed_request(store, "reqfc0000000001", household=1000002, person=0)
     labels = _Labels({1000001: ("Pat Johnson & Alex Garcia", ""), 1000002: ("Liam & Olivia Becker", "Oakland")})
     out = await _labelled_service(store, labels).read(YEAR, casework=True, finance=True)
     chips = {n.household_cm_id: (n.label, n.tiebreak) for n in _line(out.casework, "needs_offer").next_up}
-    assert chips == {1000001: ("Pat Johnson & Alex Garcia", ""), 1000002: ("Liam & Olivia Becker", "Oakland")}
-    assert labels.asked == [frozenset({1000001, 1000002})]  # one read, scoped to the households the response names
+    assert chips == {1000001: ("Camper 1000011", ""), 1000002: ("Liam & Olivia Becker", "Oakland")}
+    assert labels.asked == [frozenset({1000002})]
 
 
 @pytest.mark.asyncio
 async def test_next_up_names_the_camper_so_the_drawer_can_say_who_is_asked_for() -> None:
-    """Audit R3: the drawer's "Liam · Session 2 · R1" needs the camper's name, so the season is read with names."""
+    """Audit R3: the drawer needs the camper's name, so the season is read with names; with no labeler a camper
+    chip still reads its camper (ruling 18), never "Household 1000001"."""
     store = FakeDecisionsStore()
     seed_request(store, "reqemma00000001")
     out = await _labelled_service(store, None).read(YEAR, casework=True, finance=False)
     chip = _line(out.casework, "needs_offer").next_up[0]
     assert chip.camper_name == "Camper 1000011"
-    assert chip.label == "Family 1000001"  # no labeler: the family name, never "Household 1000001"
+    assert chip.label == "Camper 1000011"
 
 
 @pytest.mark.asyncio
 async def test_a_development_only_read_never_names_a_household() -> None:
-    """Spec §9.4: development never receives family data, so it never asks for a household label either."""
+    """Spec §9.4: development never receives family data, so it never asks for a household label either. The
+    grants carry households that need a camper and waiting commitments (audit N11), so a leak through Grants
+    needing attention's next-up would fail here."""
+    needs = NeedsCamperOut(
+        grant=_grant(person_cm_id=0, camper_name="", household_cm_id=1000003, family_name="Thornbury"),
+        household_applied=True,
+        suggestion=None,
+        candidates=[],
+    )
+    waiting = WaitingCommitmentOut(
+        grant=_grant(
+            kind="commitment",
+            transaction_cm_id=0,
+            commitment_id="com000000000001",
+            household_cm_id=1000002,
+            family_name="Quillfeather",
+            camper_name="Ivy Quillfeather",
+        ),
+        days_waiting=30,
+        reason="not_posted",
+        transaction_cm_id=0,
+    )
     service = TodayService(
         store=_NoSeasonStore(),
         pricing=FakeRules(approved()),
         rules=_Drafts(None),
-        grants=_Grants(_grants(year=YEAR)),
+        grants=_Grants(_grants(year=YEAR, needs_camper=[needs], waiting=[waiting])),
         ledger=_Ledger(),
         labels=_NoLabels(),
         clock=lambda: T0,
     )
-    out = await service.read(YEAR, casework=False, finance=False, development=True)
-    assert "household" not in out.model_dump_json()
+    body = (await service.read(YEAR, casework=False, finance=False, development=True)).model_dump_json()
+    for leak in ("household", "Thornbury", "Quillfeather", "1000003", "1000002"):
+        assert leak not in body
 
 
 def test_grants_needing_attention_name_their_households_oldest_first() -> None:
     """Audit R12 (spec §9.2 lists Grants for next_up): needs-a-camper grants by days since recorded, waiting
     commitments by their own days waiting."""
     needs = NeedsCamperOut(
-        grant=_grant(person_cm_id=0, household_cm_id=1000003, family_name="Chen", recorded_on="2031-04-17"),
+        grant=_grant(
+            person_cm_id=0, camper_name="", household_cm_id=1000003, family_name="Chen", recorded_on="2031-04-17"
+        ),
         household_applied=True,
         suggestion=None,
         candidates=[],
@@ -1548,8 +1575,9 @@ def test_grants_needing_attention_name_their_households_oldest_first() -> None:
     )
     grants = _grants(needs_camper=[needs], waiting=[waiting])
     line = _line(build_today(_inputs([], grants=grants), casework=True, finance=False).casework, "grants")
+    # Ruling 18: the waiting commitment sits on a camper, so it reads the camper; the grant that needs one, the family.
     assert [(n.household_cm_id, n.label, n.days) for n in line.next_up] == [
-        (1000002, "Garcia", 30),
+        (1000002, "Emma Johnson", 30),
         (1000003, "Chen", 3),
     ]
 

@@ -1,7 +1,7 @@
 """Today's This week (spec 2026-10-10 §8): a read of its own, so the to-dos never wait on it or fail with it.
 
-Figures run Monday through today against the same weekdays of last week. The feed is the latest six events the caller
-may see; development's carries grant postings (funder and amount) and funder edits only, and no household id, family
+Figures run Monday through today against the same weekdays of last week. The feed is this week's latest six events
+the caller may see; development's carries grant postings (funder and amount) and funder edits only, and no household id, family
 name, camper name or request id (§9.4). Every datetime becomes camp time before it is read as a date."""
 
 from __future__ import annotations
@@ -227,6 +227,7 @@ class _Item:
     household: int | None = None
     href_kind: HrefKind = "none"
     name: str = ""  # the link's words when they do not come from a household (a funder, a rules section)
+    person: int = 0  # the camper a camper request's item names (ruling 18); 0 = a household-level item
 
 
 def _fmt(template: str, **fixed: str | int) -> Callable[[str], str]:
@@ -280,6 +281,7 @@ class TodayWeekService:
             self._latest_rules(year) if finance else _no_rules(),
         )
         request_household = {r.id: r.household_cm_id for r in requests}
+        request_person = {r.id: r.person_cm_id for r in requests}
         grantor_names = {g.key: g.name for g in grantors.grantors}
 
         kept = self._feed(
@@ -290,13 +292,14 @@ class TodayWeekService:
             funder_log,
             request_household,
             grantor_names,
+            request_person=request_person,
             families=families,
             development=development,
             finance=finance,
             sections=_section_items(rules, windows),
         )
         households = {i.household for i in kept if i.household is not None}
-        names = await self._names(year, households) if families and households else {}
+        names = await self._names(year, kept) if families and households else _Names({}, {})
         feed = [_out(item, names) for item in kept]
         return TodayWeekResponse(
             year=year,
@@ -315,16 +318,20 @@ class TodayWeekService:
         except RulesNotFoundError:
             return None
 
-    async def _names(self, year: int, households: set[int]) -> dict[int, str]:
-        """The households the kept items name, as the grid names them (household_labels, the tie-break scoped to
-        them); without a labeler, or for a household the helper does not name, the family name."""
-        found, _ = await self._store.fetch_names(year, households, set())
+    async def _names(self, year: int, kept: Sequence[_Item]) -> _Names:
+        """The kept items' names as the Requests grid gives them (owner ruling 18): a camper's full name for a camper
+        request's item, the household label (household_labels, the tie-break scoped to the household-level items)
+        for a household-level one; without a labeler, or for a household the helper does not name, the family name."""
+        households = {i.household for i in kept if i.household is not None}
+        persons = {i.person for i in kept if i.household is not None and i.person > 0}
+        level = {i.household for i in kept if i.household is not None and i.person <= 0}
+        found, campers = await self._store.fetch_names(year, households, persons)
         named = dict(found)
-        if self._labels is not None:
-            for household, label in (await self._labels(year, households)).items():
+        if self._labels is not None and level:
+            for household, label in (await self._labels(year, level)).items():
                 text = f"{label.label} ({label.tiebreak})" if label.tiebreak else label.label
                 named[household] = text or named.get(household, "")
-        return named
+        return _Names(named, dict(campers))
 
     @staticmethod
     def _feed(
@@ -336,17 +343,23 @@ class TodayWeekService:
         request_household: Mapping[str, int],
         grantor_names: Mapping[str, str],
         *,
+        request_person: Mapping[str, int] | None = None,
         families: bool,
         finance: bool,
         development: bool,
         sections: Sequence[_Item] = (),
     ) -> list[_Item]:
-        """The latest six items, newest first, before their households are named (only the kept ones are)."""
+        """This week's latest six items (ruling W6: Monday 00:00 camp time through now, so nothing older and nothing
+        future-dated), newest first, before their households are named (only the kept ones are)."""
         items: list[_Item] = list(sections) if finance else []
+        persons = request_person or {}
 
         def at_home(request_id: str) -> tuple[int | None, HrefKind]:
             household = request_household.get(request_id)
             return household, "household" if household is not None else "none"
+
+        def who(request_id: str) -> int:
+            return persons.get(request_id, 0)
 
         if families:
             for event in events:
@@ -355,11 +368,25 @@ class TodayWeekService:
                 if event.kind == "post":
                     items.append(
                         _Item(
-                            "posted", event.created, _fmt("{n} · R{r} posted · {m}", r=round_, m=money), household, href
+                            "posted",
+                            event.created,
+                            _fmt("{n} · R{r} posted · {m}", r=round_, m=money),
+                            household,
+                            href,
+                            person=who(event.request_id),
                         )
                     )
                 elif event.kind == "accept":
-                    items.append(_Item("accepted", event.created, _fmt("{n} accepted the offer"), household, href))
+                    items.append(
+                        _Item(
+                            "accepted",
+                            event.created,
+                            _fmt("{n} accepted the offer"),
+                            household,
+                            href,
+                            person=who(event.request_id),
+                        )
+                    )
                 elif event.kind == "approve" and finance:
                     items.append(
                         _Item(
@@ -368,21 +395,35 @@ class TodayWeekService:
                             _fmt("Approved {n} · R{r} · {m}", r=round_, m=money),
                             household,
                             href,
+                            person=who(event.request_id),
                         )
                     )
             for event, at in _overdue(events, windows, now):
                 household, href = at_home(event.request_id)
                 items.append(
-                    _Item("overdue", at, _fmt(f"{{n}} passed {WAITING_TOO_LONG_DAYS} days waiting"), household, href)
+                    _Item(
+                        "overdue",
+                        at,
+                        _fmt(f"{{n}} passed {WAITING_TOO_LONG_DAYS} days waiting"),
+                        household,
+                        href,
+                        person=who(event.request_id),
+                    )
                 )
         if families or development:  # a caller with no section sees no funder or grant item
             for row in _live_grants(register):
                 grantor = grantor_names.get(row.grantor_key, UNMATCHED)
                 at = row.recorded_at or now
                 if families:
+                    # Audit N4 / ruling W2: the name leads, so a narrow column never cuts it.
                     items.append(
                         _Item(
-                            "grant", at, _fmt("{g} grant entered for {n}", g=grantor), row.household_cm_id, "household"
+                            "grant",
+                            at,
+                            _fmt("{n} · {g} grant entered", g=grantor),
+                            row.household_cm_id,
+                            "household",
+                            person=row.person_cm_id,
                         )
                     )
                 else:  # the mock: development's grant lines are plain, and name no family (§9.4)
@@ -390,15 +431,23 @@ class TodayWeekService:
             for log in funder_log:
                 funder = _funder_name(log, grantor_names)
                 items.append(_Item("funder", log.created, _fmt("{n} updated"), None, "funders", funder))
-        items.sort(key=lambda i: i.at, reverse=True)
-        return items[:FEED_SIZE]
+        this_week = [i for i in items if _day(i.at) >= windows.this_start and i.at <= now]
+        this_week.sort(key=lambda i: i.at, reverse=True)
+        return this_week[:FEED_SIZE]
 
 
-def _out(item: _Item, names: Mapping[int, str]) -> WeekFeedOut:
-    """The item's words, its household named (`names`), and the words that are its link."""
+@dataclass(frozen=True)
+class _Names:
+    households: Mapping[int, str]
+    campers: Mapping[int, str]
+
+
+def _out(item: _Item, names: _Names) -> WeekFeedOut:
+    """The item's words, its household named (`names`, ruling 18), and the words that are its link."""
     name = item.name
     if item.household is not None:
-        name = names.get(item.household, "") or "Unknown"
+        camper = names.campers.get(item.person, "") if item.person > 0 else ""
+        name = camper or names.households.get(item.household, "") or "Unknown"
     elif item.kind in {"posted", "accepted", "approved", "overdue"}:
         name = "Unknown"
     words = item.words(name)
