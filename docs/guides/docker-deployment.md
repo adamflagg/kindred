@@ -277,9 +277,11 @@ bunk-request CSV uploads, and the solver logs. kindred-api reads PocketBase's
 Two things the umask cannot do:
 
 - **It does not change existing files.** Files created before it keep their
-  modes. SQLite also gives `data.db-wal` and `data.db-shm` the mode of `data.db`
-  itself, ignoring the umask, so an existing `data.db` left at `0644` keeps
-  producing `0644` `-wal`/`-shm` files until you `chmod 600` it.
+  modes. SQLite also gives a new `-wal` or `-shm` file the mode of its database,
+  ignoring the umask, so an existing `data.db` left at `0644` keeps producing
+  `0644` sidecars. It leaves a sidecar that already holds data at whatever mode
+  it has. Restrict each database and its existing sidecars together:
+  `data.db`, `data.db-wal`, `data.db-shm`, and the same three for `auxiliary.db`.
 - **It does not cover files you place.** The Google service-account key and
   `lodging_registry.json` in the config directory are read, never written, by
   Kindred. Set their owner and mode yourself (`65532:65532`, `0600`).

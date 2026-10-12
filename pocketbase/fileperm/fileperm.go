@@ -14,9 +14,11 @@
 // its first statement.
 //
 // A umask only governs files created after it is set. Files that already exist
-// keep their modes. SQLite in particular creates data.db-wal and data.db-shm
-// with the mode of data.db itself, not from the umask, so an existing data.db
-// left at 0644 keeps producing 0644 -wal/-shm files until it is chmodded.
+// keep their modes. SQLite in particular gives a new (empty) data.db-wal or
+// data.db-shm the mode of data.db itself, not one from the umask, and leaves a
+// sidecar that already holds data as it is. So an existing 0644 data.db keeps
+// producing 0644 sidecars, and an existing database is only private once it
+// and its existing -wal/-shm are all chmodded.
 package fileperm
 
 // PrivateUmask withholds every group and other permission bit.
