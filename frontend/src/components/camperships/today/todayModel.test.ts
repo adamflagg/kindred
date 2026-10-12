@@ -193,18 +193,22 @@ describe('finance hero (ruling 12: the budget read, no estimate)', () => {
   it('names the pools that run over', () => {
     expect(overPools(BUDGET)).toEqual([{ label: 'TBM', over: 1300 }])
   })
-  it("words money with the kit's one compact formatter (formatMoneyCompact), as the chart and week card do", () => {
+  it('words money in the bar compactly, and its key figures as the week card does (audit N9)', () => {
     const cell = {
       ...BUDGET.total.total,
       posted: 116600,
       needs_offer: 999.6,
+      pending_approval: 1750,
       remaining: 1110000,
     }
     const { segments } = budgetSegments(cell, BUDGET.total.below)
     const seg = (key: string) => segments.find((s) => s.key === key)
     expect(seg('posted')?.inner).toBe('Posted $116k')
-    expect(seg('needs_offer')?.figure).toBe('$999.60')
     expect(seg('remaining')?.inner).toBe('$1,110k remaining')
+    // A key figure under $10,000 is exact (formatMoneyFigure): $1,750 never reads "$1k", about half its value.
+    expect(seg('pending')?.figure).toBe('$1,750')
+    expect(seg('needs_offer')?.figure).toBe('$1,000')
+    expect(seg('posted')?.figure).toBe('$116k')
   })
 })
 
@@ -258,7 +262,7 @@ describe('development hero (ruling 9: outside money gets its own bar)', () => {
       ['Community Foundation A', 1750],
       ['Lakeside', 1000],
     ])
-    expect(at(funders, 0).figure).toBe('$1k · 3 awards') // formatMoneyCompact: thousands toward zero
+    expect(at(funders, 0).figure).toBe('$1,750 · 3 awards') // audit N9: exact under $10,000, never "$1k"
   })
   it('has no "others" with seven or fewer funders', () => {
     const seven = Array.from({ length: 7 }, (_, i) => src(`F${String(i)}`, 100, 'another funder'))
@@ -299,7 +303,7 @@ describe('bandSentence (spec §3)', () => {
       ],
     }
     expect(bandSentence('development', t, undefined, 172400)).toBe(
-      '$172,400 from outside funders so far · 4 funder records need a look'
+      '$172,400 from outside funders so far · 4 upkeep items need a look'
     )
   })
   it('development: counts every upkeep item, funders and descriptions alike (audit D18)', () => {
@@ -310,12 +314,13 @@ describe('bandSentence (spec §3)', () => {
         line('needs_group', 1, { item_kind: 'descriptions' }),
       ],
     }
-    expect(bandSentence('development', t, undefined, null)).toBe('3 funder records need a look')
+    // Ruling W3 (audit N7): the count holds descriptions too, so the words say upkeep items, not funder records.
+    expect(bandSentence('development', t, undefined, null)).toBe('3 upkeep items need a look')
     expect(upkeepItems(t.development)).toBe(3)
   })
-  it('development: singular wording for one funder record', () => {
+  it('development: singular wording for one upkeep item', () => {
     const t = { ...REGISTRAR_TODAY, development: [line('no_contact', 1, { item_kind: 'funders' })] }
-    expect(bandSentence('development', t, undefined, null)).toBe('1 funder record needs a look')
+    expect(bandSentence('development', t, undefined, null)).toBe('1 upkeep item needs a look')
   })
 })
 
@@ -332,7 +337,7 @@ describe('reasonWords: staff text never shows a snake_case code', () => {
   })
   it.each([
     ['needs_camper', 'Needs a camper'],
-    ['not_posted', 'Commitment not yet in CampMinder'],
+    ['not_posted', 'Not yet in CM'], // audit N13: the mock's words
     ['posted_then_reversed', 'Posted, then reversed'],
     ['possible_match', 'Possible match'],
     ['camper_cancelled', 'Camper cancelled'],

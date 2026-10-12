@@ -22,7 +22,14 @@ import { AidNameChips, type NameChip } from '../kit/NameChips'
 import { StatusPill } from '../kit/Pills'
 import { aidSessionName, aidTinyName } from '../kit/sessionShort'
 import { REQUEST_VIEWS } from '../requests/views'
-import { countParts, countWords, LINE_WORDS, reasonsLine, type TodayKey } from './todayModel'
+import {
+  clockWords,
+  countParts,
+  countWords,
+  LINE_WORDS,
+  reasonsLine,
+  type TodayKey,
+} from './todayModel'
 
 /** The lines whose next households a queue walk can step through (spec: the three casework queues with a Requests view). */
 // eslint-disable-next-line react-refresh/only-export-components -- constant shared with the Today pages
@@ -34,15 +41,16 @@ export const WALKABLE: readonly TodayKey[] = [
 
 const FUNDERS = '/aid/money/funders'
 const DRAWER_N = 5
-// Column widths: rank, to-do, count, next up (the rest), status, open. The mock draws 34 / 230 / 130 / rest / 150 /
-// 64; ruling V9 (next-up chips never cut, "only as many as fit") gives Next up the room for one whole household
-// label at 1280-1440px, so the To-do label (which wraps), the count and the status give some back. The status still
-// holds "Overdue · 48 days" on one line.
+// Column widths: rank, to-do, count, next up (the rest), status, open: the mock's 34 / 230 / 130 / rest / 150 / 64.
+// Owner ruling 18 names a camper request by the camper's full name, so one whole chip fits Next up at 1280-1440px
+// (ruling V9: never cut) with the mock's widths, and the To-do labels stay on one line.
 const RANK_W = 34
-const LABEL_W = 196
-const COUNT_W = 112
-const STATUS_W = 132
 const OPEN_W = 64
+const MOCK_W = { label: 230, count: 130, status: 150 }
+// Development's chips are funder names and CampMinder descriptions, far longer than a camper's name, and its lines
+// carry no overdue pill: the mock's widths leave a description a bare "+N", so its table gives Next up the Status
+// column's room and some of the label's (which wraps) and the count's (ruling 18: the widest that keep one chip).
+const NAMES_W = { label: 196, count: 112, status: 40 }
 
 const isWalkableKey = (key: string): boolean => (WALKABLE as readonly string[]).includes(key)
 
@@ -116,6 +124,10 @@ function CountCell({ line }: { line: ApiAidTodayLine }) {
 const householdWords = (label: string): string =>
   /household/i.test(label) ? label : `${label} household`
 
+/** A chip's or drawer link's title. A camper request is named by its camper (ruling 18), so it opens their household. */
+const openTitle = (n: ApiAidTodayNextUp, label: string): string =>
+  n.camper_name ? `Open ${label}'s household` : `Open the ${householdWords(label)}`
+
 const householdHref = (id: number, view: AidView, extra: Record<string, string> = {}) =>
   aidHref(`/aid/households/${String(id)}`, view, extra)
 
@@ -147,8 +159,8 @@ function NextUpCell({ line, view }: { line: ApiAidTodayLine; view: AidView }) {
         href: householdHref(n.household_cm_id, view),
         title:
           days === null
-            ? `Open the ${householdWords(label)}`
-            : `Open the ${householdWords(label)} · waiting ${String(days)} days`,
+            ? openTitle(n, label)
+            : `${openTitle(n, label)} · ${clockWords(line.key, days)}`,
       }
     })
     return <AidNameChips chips={chips} total={line.families ?? line.items} />
@@ -183,8 +195,8 @@ function Drawer({ line, view, slug }: { line: ApiAidTodayLine; view: AidView; sl
         </colgroup>
         <tbody>
           {entries.map((n) => {
+            // The link already names the camper (ruling 18), so the what is the session and round.
             const what = [
-              (n.camper_name ?? '').split(' ')[0] ?? '',
               drawerSession(n.session_name ?? '', n.session_type ?? ''),
               n.round === null || n.round === undefined ? '' : `R${String(n.round)}`,
             ]
@@ -202,9 +214,9 @@ function Drawer({ line, view, slug }: { line: ApiAidTodayLine; view: AidView; sl
                   <Link
                     className={CS_LINK_CELL}
                     to={householdHref(n.household_cm_id, view)}
-                    title={`Open the ${householdWords(label)}`}
+                    title={openTitle(n, label)}
                   >
-                    {householdWords(label)}
+                    {label}
                   </Link>
                 </td>
                 <td
@@ -299,6 +311,7 @@ export function TodayTodos({
       .filter((s) => s !== '')
       .join(' · ')
   const cell = (isOpen: boolean) => `${TD} ${isOpen ? ROW_HIGHLIGHT : CELL_BG}`
+  const w = lines.some((l) => namesOf(l).length > 0) ? NAMES_W : MOCK_W
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -315,10 +328,10 @@ export function TodayTodos({
             <colgroup>
               {/* Unranked (Concerns) keeps the rank column empty, so its columns line up with the table above. */}
               <col style={{ width: RANK_W }} />
-              <col style={{ width: LABEL_W }} />
-              <col style={{ width: COUNT_W }} />
+              <col style={{ width: w.label }} />
+              <col style={{ width: w.count }} />
               <col />
-              <col style={{ width: STATUS_W }} />
+              <col style={{ width: w.status }} />
               <col style={{ width: OPEN_W }} />
             </colgroup>
             <thead>
@@ -422,8 +435,8 @@ export function TodayTodos({
             <table className={TABLE}>
               <colgroup>
                 {/* Lined up with the to-do table: rank and label, then count (audit R18). */}
-                <col style={{ width: RANK_W + LABEL_W }} />
-                <col style={{ width: COUNT_W }} />
+                <col style={{ width: RANK_W + w.label }} />
+                <col style={{ width: w.count }} />
                 <col />
                 <col style={{ width: OPEN_W }} />
               </colgroup>

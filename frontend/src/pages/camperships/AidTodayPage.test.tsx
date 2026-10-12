@@ -274,7 +274,7 @@ describe('AidTodayPage', () => {
     expect(
       await screen.findByText('3 waiting · keep these complete so reports come out right')
     ).toBeInTheDocument()
-    expect(screen.getByText(/3 funder records need a look/)).toBeInTheDocument()
+    expect(screen.getByText(/3 upkeep items need a look/)).toBeInTheDocument()
     expect(screen.getByText('Upkeep left').parentElement).toHaveTextContent('3')
   })
 

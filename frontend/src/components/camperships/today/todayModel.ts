@@ -11,7 +11,7 @@ import type {
 } from '../../../types/api-types'
 import { aidHref, type AidView } from '../kit/asOf'
 import type { HeroSegment, HeroTone } from '../kit/HeroBar'
-import { formatMoneyCompact, formatWholeMoney } from '../kit/money'
+import { formatMoneyCompact, formatMoneyFigure, formatWholeMoney } from '../kit/money'
 import { liveColumnIndex } from '../reports/developmentModel'
 import { codeWords } from '../requests/attention'
 import { EXCEPTION_BADGES, PIPELINE_STAGES } from '../requests/strip'
@@ -134,6 +134,21 @@ export function countParts(line: ApiAidTodayLine): Array<{ figure: string; unit:
   return parts
 }
 
+/** What a next-up chip's days count, in its line's words (audit N6): each line's clock starts somewhere else. */
+const CLOCK_WORDS: Readonly<Partial<Record<TodayKey, (d: string) => string>>> = {
+  needs_offer: (d) => `asked ${d} ago`,
+  waiting_on_family: (d) => `offer posted ${d} ago`,
+  pending_approval: (d) => `sent for approval ${d} ago`,
+  holds: (d) => `on hold ${d}`,
+  not_reconciled: (d) => `posted ${d} ago`,
+  grants: (d) => `${d} old`,
+}
+export function clockWords(key: TodayKey | string, days: number): string {
+  const d = `${String(days)} ${days === 1 ? 'day' : 'days'}`
+  const words = (CLOCK_WORDS as Readonly<Record<string, ((d: string) => string) | undefined>>)[key]
+  return words ? words(d) : d
+}
+
 export const money = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`
 const awardsWord = (n: number) => `${String(n)} ${n === 1 ? 'award' : 'awards'}`
 
@@ -231,6 +246,8 @@ export function offerShare(s: ApiAidTodayStages): number | null {
   return s.live > 0 ? Math.round((s.offered / s.live) * 100) : null
 }
 
+/** The hero's key figures read as the week card's (audit N9: exact under $10,000, so $1,750 never reads "$1k");
+ *  the words inside a bar stay compact. */
 export function budgetSegments(
   cell: ApiAidBudgetPool['total'],
   below: ApiAidBudgetPool['below']
@@ -246,7 +263,7 @@ export function budgetSegments(
       key: 'posted',
       value: posted,
       label: 'Posted',
-      figure: formatMoneyCompact(posted),
+      figure: formatMoneyFigure(posted),
       inner: `Posted ${formatMoneyCompact(posted)}`,
       tone: 'done',
     },
@@ -254,14 +271,14 @@ export function budgetSegments(
       key: 'needs_offer',
       value: offer,
       label: 'Needs an offer, as the rules price it',
-      figure: formatMoneyCompact(offer),
+      figure: formatMoneyFigure(offer),
       tone: 'progress',
     },
     {
       key: 'pending',
       value: pend,
       label: 'Pending your approval',
-      figure: formatMoneyCompact(pend),
+      figure: formatMoneyFigure(pend),
       tone: 'act',
       mine: true,
     },
@@ -269,7 +286,7 @@ export function budgetSegments(
       key: 'remaining',
       value: remaining,
       label: 'Remaining',
-      figure: formatMoneyCompact(remaining),
+      figure: formatMoneyFigure(remaining),
       inner: `${formatMoneyCompact(remaining)} remaining`,
       tone: 'gap',
     },
@@ -277,7 +294,7 @@ export function budgetSegments(
       key: 'over',
       value: over,
       label: 'Over',
-      figure: formatMoneyCompact(over),
+      figure: formatMoneyFigure(over),
       inner: '',
       tone: 'over',
       mine: true,
@@ -286,7 +303,7 @@ export function budgetSegments(
       key: 'held',
       value: held,
       label: 'On hold, at what they asked',
-      figure: formatMoneyCompact(held),
+      figure: formatMoneyFigure(held),
       inner: '',
       tone: 'est',
       title: `On hold, asked ${money(held)}: if the holds clear at what they asked`,
@@ -327,7 +344,7 @@ export function developmentSegments(sources: readonly ApiAidDevelopmentSource[])
       key: 'own',
       value: own,
       label: "This camp's own aid",
-      figure: formatMoneyCompact(own),
+      figure: formatMoneyFigure(own),
       inner: `Camp ${formatMoneyCompact(own)}`,
       tone: 'done',
     },
@@ -335,7 +352,7 @@ export function developmentSegments(sources: readonly ApiAidDevelopmentSource[])
       key: 'outside',
       value: outside,
       label: `Outside funders (${String(outsideList.length)})`,
-      figure: formatMoneyCompact(outside),
+      figure: formatMoneyFigure(outside),
       inner: `Outside ${formatMoneyCompact(outside)}`,
       tone: 'sky0',
     },
@@ -347,7 +364,7 @@ export function developmentSegments(sources: readonly ApiAidDevelopmentSource[])
     key: s.source_key || s.name,
     value: s.amount,
     label: s.name,
-    figure: `${formatMoneyCompact(s.amount)} · ${awardsWord(s.awards)}`,
+    figure: `${formatMoneyFigure(s.amount)} · ${awardsWord(s.awards)}`,
     inner: formatMoneyCompact(s.amount),
     tone: SKY[i % SKY.length] ?? 'sky0',
     title: `${s.name}: ${money(s.amount)} · ${awardsWord(s.awards)}`,
@@ -359,7 +376,7 @@ export function developmentSegments(sources: readonly ApiAidDevelopmentSource[])
       key: 'others',
       value,
       label: `${String(others.length)} other funders`,
-      figure: `${formatMoneyCompact(value)} · ${awardsWord(awards)}`,
+      figure: `${formatMoneyFigure(value)} · ${awardsWord(awards)}`,
       inner: `${String(others.length)} others`,
       tone: 'mute',
       title: others.map((s) => `${s.name} ${money(s.amount)}`).join(' · '),
@@ -414,8 +431,8 @@ export function bandSentence(
       outside ? `${money(outside)} from outside funders so far` : '',
       upkeep > 0
         ? upkeep === 1
-          ? '1 funder record needs a look'
-          : `${String(upkeep)} funder records need a look`
+          ? '1 upkeep item needs a look'
+          : `${String(upkeep)} upkeep items need a look`
         : '',
     ].filter(Boolean)
     return parts.length > 0 ? parts.join(' · ') : none
@@ -431,7 +448,7 @@ export function upkeepItems(lines: readonly ApiAidTodayLine[] | null | undefined
 /** Words for the reason codes Today's lines carry that the server sends without a label. */
 const REASON_WORDS: Readonly<Record<string, string>> = {
   needs_camper: 'needs a camper',
-  not_posted: 'commitment not yet in CampMinder',
+  not_posted: 'not yet in CM',
   posted_then_reversed: 'posted, then reversed',
   possible_match: 'possible match',
   camper_cancelled: 'camper cancelled',

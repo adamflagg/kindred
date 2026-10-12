@@ -129,17 +129,25 @@ export function AidWeekCard({
           </div>
         ))}
       </div>
-      {feed.length > 0 && (
+      {feed.length === 0 ? (
+        // Ruling W6: the feed is this week only, so a quiet week says so in one muted line.
+        <p
+          className={`border-border text-muted-foreground border-t px-3.5 pt-1.5 pb-2.5 ${CS_BODY}`}
+        >
+          Nothing yet this week
+        </p>
+      ) : (
         <ul className="border-border flex flex-col border-t px-3.5 pt-1.5 pb-2.5">
           {feed.slice(0, FEED_CAP).map((item, i) => (
             <li
               key={`${item.at}-${String(i)}`}
-              className="border-border grid grid-cols-[18px_minmax(0,1fr)_auto] items-baseline gap-x-2 border-b border-dashed py-1 last:border-b-0"
+              // Audit N3: the kit's card text size (CS_BODY's 13.5px) on the mock's 17px lines, so a row is ~25px.
+              className="border-border grid grid-cols-[18px_minmax(0,1fr)_auto] items-baseline gap-x-2 border-b border-dashed py-1 text-[13.5px] leading-[17px] last:border-b-0"
             >
               <span className={`text-center font-bold ${glyphInk(item.kind)}`}>
                 {GLYPH[item.kind]}
               </span>
-              <span className={`${CS_BODY} min-w-0 truncate`} title={item.words}>
+              <span className="min-w-0 truncate" title={item.words}>
                 <FeedWords item={item} href={hrefOf(item)} />
               </span>
               <span className={`${CS_SMALL} whitespace-nowrap tabular-nums`}>

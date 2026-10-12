@@ -36,7 +36,7 @@ describe('TodayTodos', () => {
       'title',
       "Past this line's 10-day threshold, so it moved to the top."
     )
-    expect(within(first).getByRole('link', { name: /Garcia/ })).toHaveAttribute(
+    expect(within(first).getByRole('link', { name: /Liam Garcia/ })).toHaveAttribute(
       'href',
       '/aid/households/1000002?year=2027'
     )
@@ -45,7 +45,11 @@ describe('TodayTodos', () => {
     wrap(<TodayTodos lines={top} rest={rest} view={VIEW} empty="" />)
     const drawer = screen.getByTestId('todo-drawer')
     expect(within(drawer).getAllByTestId('drawer-household')).toHaveLength(2)
-    expect(within(drawer).getByText('Liam · Session 2 · R1')).toBeInTheDocument()
+    // Ruling 18: the link is the camper's full name, as the grid names it, so the what drops the first name.
+    const first = within(drawer).getAllByTestId('drawer-household')[0]!
+    expect(within(first).getByRole('link')).toHaveTextContent(/^Liam Garcia$/)
+    expect(within(first).getByRole('link')).toHaveAttribute('title', "Open Liam Garcia's household")
+    expect(within(drawer).getByText('Session 2 · R1')).toBeInTheDocument()
     expect(within(drawer).getByRole('link', { name: 'Start Queue Walk' })).toHaveAttribute(
       'href',
       expect.stringContaining('/aid/households/1000002?from=needs-offer')
@@ -158,7 +162,7 @@ describe('TodayTodos', () => {
     )
     expect(
       // Audit R13: one sentence, capitalised once.
-      screen.getByText('Commitment not yet in CampMinder 10 · needs a camper 2')
+      screen.getByText('Not yet in CM 10 · needs a camper 2') // audit N13: the mock's words
     ).toBeInTheDocument()
     expect(screen.getByText('Round 1 award table')).toBeInTheDocument()
     expect(screen.getByText('Awaiting rules 1')).toBeInTheDocument()
@@ -192,7 +196,7 @@ describe('TodayTodos', () => {
         },
         {
           household_cm_id: 1000002,
-          label: 'Garcia',
+          label: 'Liam Garcia',
           tiebreak: '',
           days: 2,
           camper_name: 'Liam Garcia',
@@ -209,7 +213,7 @@ describe('TodayTodos', () => {
     expect(rows[0]).not.toHaveTextContent('· ·')
     expect(rows[0]!.textContent.startsWith('Household 9100124')).toBe(true)
     expect(within(rows[0]!).getByRole('link')).toHaveTextContent(/^Household 9100124$/)
-    expect(within(rows[1]!).getByRole('link')).toHaveTextContent('Garcia household')
+    expect(within(rows[1]!).getByRole('link')).toHaveTextContent(/^Liam Garcia$/)
     const what = within(rows[0]!).getAllByRole('cell')[1]!
     expect(what.textContent.startsWith('·')).toBe(false)
   })
@@ -286,6 +290,72 @@ describe('TodayTodos', () => {
     })
     wrap(<TodayTodos lines={[holds]} rest={[]} view={VIEW} empty="" />)
     expect(screen.getByRole('link', { name: /Moreau/ })).toHaveTextContent('Moreau6d')
+  })
+  it("restores the mock's column widths, now that a chip is a short name (ruling 18)", () => {
+    const { container } = wrap(<TodayTodos lines={top} rest={rest} view={VIEW} empty="" />)
+    const widths = [
+      ...container.querySelectorAll('table')[0]!.querySelectorAll(':scope > colgroup > col'),
+    ].map((c) => (c as HTMLElement).style.width)
+    expect(widths).toEqual(['34px', '230px', '130px', '', '150px', '64px'])
+  })
+  it('gives development\'s quoted descriptions the room for one whole chip (ruling 18, "widest widths that keep one")', () => {
+    // A CampMinder description is far longer than a camper's name, and development has no overdue pill, so its
+    // table gives Next up the Status column's room and some of the label's and count's.
+    const { container } = wrap(
+      <TodayTodos
+        lines={[
+          line('needs_group', 1, {
+            item_kind: 'descriptions',
+            families: null,
+            names: ['Harbor Family Services emergency fund 2027'],
+          }),
+        ]}
+        rest={[]}
+        view={VIEW}
+        nextHead="Which"
+        empty=""
+      />
+    )
+    const widths = [
+      ...container.querySelectorAll('table')[0]!.querySelectorAll(':scope > colgroup > col'),
+    ].map((c) => (c as HTMLElement).style.width)
+    expect(widths).toEqual(['34px', '196px', '112px', '', '40px', '64px'])
+  })
+  it("each chip's title says what its days count, per line (audit N6)", () => {
+    const chip = (key: Parameters<typeof line>[0], camper: string) =>
+      line(key, 1, {
+        next_up: [
+          {
+            household_cm_id: 1000009,
+            label: camper || 'Ada & Ben Moreau',
+            tiebreak: '',
+            days: 6,
+            camper_name: camper,
+            session_name: '',
+            session_type: '',
+            round: null,
+            ask: null,
+          },
+        ],
+      })
+    const lines = [
+      chip('needs_offer', 'Ivy Moreau'),
+      chip('waiting_on_family', 'Ivy Moreau'),
+      chip('holds', ''),
+      chip('not_reconciled', 'Ivy Moreau'),
+      chip('grants', ''),
+    ]
+    wrap(<TodayTodos lines={lines} rest={[]} view={VIEW} empty="" ranked={false} />)
+    const titles = screen
+      .getAllByTestId('todo-row')
+      .map((r) => within(r).getAllByRole('link')[0]!.getAttribute('title'))
+    expect(titles).toEqual([
+      "Open Ivy Moreau's household · asked 6 days ago",
+      "Open Ivy Moreau's household · offer posted 6 days ago",
+      'Open the Ada & Ben Moreau household · on hold 6 days',
+      "Open Ivy Moreau's household · posted 6 days ago",
+      'Open the Ada & Ben Moreau household · 6 days old',
+    ])
   })
   it('the Concerns table keeps an empty rank column, so its columns line up with the table above (audit F10)', () => {
     wrap(

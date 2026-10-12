@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { AidBurnUp } from './BurnUp'
 
 describe('AidBurnUp', () => {
-  it('draws the posted line, the dashed budget line and the committed step at today', () => {
+  it('draws the posted line, the dashed budget line and the committed step', () => {
     const { container } = render(
       <AidBurnUp
         budget={1111125}
@@ -26,6 +26,58 @@ describe('AidBurnUp', () => {
     )
     // Millions on the budget label and the axis only (formatMoneyScale, controller ruling).
     expect(screen.getByText('Budget $1.11M')).toBeInTheDocument()
+  })
+
+  it("starts the committed step at the line's last point, tops it with a dot and labels the dot (audit N2)", () => {
+    const { container } = render(
+      <AidBurnUp
+        budget={1111125}
+        committed={983995}
+        points={[
+          { week_of: '2026-01-05', posted: 0 },
+          { week_of: '2026-03-09', posted: 843380 },
+        ]}
+      />
+    )
+    const num = (el: Element | null, attr: string) => Number(el?.getAttribute(attr))
+    const step = container.querySelector('line[data-line="committed"]')
+    const posted = container.querySelector('circle[data-dot="posted"]')
+    const top = container.querySelector('circle[data-dot="committed"]')
+    // No float: the step stands on the posted dot, whatever today is.
+    expect(num(step, 'x1')).toBe(num(posted, 'cx'))
+    expect(num(step, 'x2')).toBe(num(posted, 'cx'))
+    expect(num(step, 'y1')).toBe(num(posted, 'cy'))
+    // Its top carries an amber dot of its own, at the committed total.
+    expect(num(top, 'cx')).toBe(num(posted, 'cx'))
+    expect(num(top, 'cy')).toBe(num(step, 'y2'))
+    expect(num(top, 'r')).toBe(3)
+    expect(top?.getAttribute('fill')).toBe('var(--color-amber-600)')
+    // The label reads beside the dot it names, its first line level with it.
+    const label = container.querySelector('text[data-label="committed"]')
+    expect(num(label, 'y')).toBeCloseTo(num(top, 'cy') + 3.5, 1)
+    // The posted label sits below the committed label, so the two never overlap.
+    const postedLabel = container.querySelector('text[data-label="posted"]')
+    expect(num(postedLabel, 'y')).toBeGreaterThanOrEqual(num(label, 'y') + 12 + 12)
+  })
+
+  it('keeps both labels above the axis when the line runs along the bottom (audit N2)', () => {
+    const { container } = render(
+      <AidBurnUp
+        budget={1200000}
+        committed={215000}
+        points={[
+          { week_of: '2026-01-05', posted: 0 },
+          { week_of: '2026-03-09', posted: 100000 },
+        ]}
+      />
+    )
+    const zero = Number(
+      [...container.querySelectorAll('line')]
+        .find((l) => l.nextElementSibling?.textContent === '$0')
+        ?.getAttribute('y1')
+    )
+    const postedLabel = container.querySelector('text[data-label="posted"]')
+    expect(Number(postedLabel?.getAttribute('y'))).toBeLessThan(zero)
   })
 
   it('labels money as the hero does, rounding toward zero ($116,600 is "$116k", never "$117k")', () => {

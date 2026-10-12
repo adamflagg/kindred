@@ -78,9 +78,8 @@ function Heading({ title, meta }: { readonly title: string; readonly meta: strin
   return (
     <div className="flex items-baseline gap-2.5">
       <h2 className={CS_CARD_HEADING}>{title}</h2>
-      <span className={`${CS_SMALL} min-w-0 truncate`} title={meta}>
-        {meta}
-      </span>
+      {/* Audit N10: the meta fits, so it is never cut behind a hover title. */}
+      <span className={CS_SMALL}>{meta}</span>
     </div>
   )
 }

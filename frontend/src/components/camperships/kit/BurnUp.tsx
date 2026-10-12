@@ -17,6 +17,7 @@ const STRONG = 'var(--color-foreground)'
 const POSTED = 'var(--color-forest-700)'
 const FILL = 'var(--color-forest-300)'
 const AMBER = 'var(--color-amber-600)'
+const AMBER_INK = 'var(--color-amber-700)' // amber type: amber-600 is the stroke, too light for 10.5px text
 const RULE = 'var(--color-border)'
 
 /** The steps an axis may count in (×10ⁿ): round enough to read at a glance. */
@@ -100,15 +101,22 @@ export function AidBurnUp({
 
   const dotX = x(lastDay)
   const dotY = y(lastPosted)
-  const todayX = x(nowDay)
   const leftSide = dotX < W / 2
   const showStep = committed !== null && committed > lastPosted
-  // The posted label sits just above the line, beside its dot (the line rises to the dot, so the room above it is
-  // clear); the step's two-line label sits above the step's top, clear of the posted label.
   const labelX = leftSide ? dotX + 8 : dotX - 8
   const anchor = leftSide ? 'start' : 'end'
-  const postedY = dotY - 7
-  const stepY = showStep ? Math.max(Math.min(y(committed) - 5, postedY - 13), PAD.top + 22) : 0
+  // Audit N2: the step stands on the posted dot (the mock), never at today's x, so it reads as the line going on up
+  // to the committed total. Its top has a dot of its own, and its two-line label starts level with that dot; the
+  // posted label sits under it, level with its own dot when there is room (the mock). When that would put the posted
+  // label on the axis (a line running along the bottom), the posted label goes just above its dot, clear of the line
+  // that rises to it, and the committed label stacks above it. With no step, the posted label sits above its dot.
+  const stepTop = showStep ? y(committed) : 0
+  let committedY = stepTop + 3.5
+  let postedY = showStep ? Math.max(dotY + 3.5, committedY + 12 + 13) : dotY - 7
+  if (showStep && postedY > y(0) - 2) {
+    postedY = dotY - 7
+    committedY = Math.max(Math.min(committedY, postedY - 12 - 13), PAD.top + 10)
+  }
 
   return (
     <svg viewBox={`0 0 ${String(W)} ${String(H)}`} className="block w-full">
@@ -171,32 +179,37 @@ export function AidBurnUp({
         <>
           <line
             data-line="committed"
-            x1={todayX}
-            x2={todayX}
+            x1={dotX}
+            x2={dotX}
             y1={dotY}
-            y2={y(committed)}
+            y2={stepTop}
             stroke={AMBER}
             strokeWidth={2}
-            strokeDasharray="3 4"
+            strokeDasharray="3 2"
           />
+          <circle data-dot="committed" cx={dotX} cy={stepTop} r={3} fill={AMBER} />
           {/* Ruling V6: a season total (posted + needs an offer + pending approval), so it says "committed". */}
           <text
             data-label="committed"
             x={labelX}
-            y={stepY - 12}
+            y={committedY}
             textAnchor={anchor}
             fontSize={FONT}
             fill={INK}
           >
-            <tspan>{`${formatMoneyCompact(committed)} committed `}</tspan>
+            {/* The figure takes the step's amber, so the words read with the dot they name (audit N2). */}
+            <tspan fill={AMBER_INK} fontWeight={700}>
+              {`${formatMoneyCompact(committed)} committed `}
+            </tspan>
             <tspan x={labelX} dy={12}>
               once waiting is offered
             </tspan>
           </text>
         </>
       )}
-      <circle cx={dotX} cy={dotY} r={3.5} fill={POSTED} />
+      <circle data-dot="posted" cx={dotX} cy={dotY} r={3.5} fill={POSTED} />
       <text
+        data-label="posted"
         x={labelX}
         y={postedY}
         textAnchor={anchor}

@@ -168,6 +168,26 @@ describe('AidWeekCard', () => {
     expect(screen.getByRole('listitem')).toHaveTextContent('✎')
   })
 
+  it("sets feed rows in the kit's card text, with the mock's row height (audit N3)", () => {
+    renderCard([{ kind: 'posted', at: '2031-04-17T17:14:00Z', words: 'Item' }], () => null)
+    const row = screen.getByRole('listitem')
+    // 13.5px (CS_BODY's size) on 17px lines plus 4px padding a side: about 25px a row, as the mock's 12.5/17 is.
+    expect(row.className).toMatch(/text-\[13\.5px\]/)
+    expect(row.className).toMatch(/leading-\[17px\]/)
+    expect(row.className).toMatch(/\bpy-1\b/)
+    // The glyph and the words inherit the row's type, never body 16px/24px.
+    for (const span of row.querySelectorAll('span')) {
+      expect(span.className).not.toMatch(/leading-normal|text-base/)
+    }
+  })
+
+  it('says "Nothing yet this week" in one muted line when the week has no item (ruling W6)', () => {
+    renderCard([], () => null)
+    const empty = screen.getByText('Nothing yet this week')
+    expect(empty.className).toMatch(/text-muted-foreground/)
+    expect(screen.queryAllByRole('listitem')).toHaveLength(0)
+  })
+
   it('shows at most the latest six feed items', () => {
     const feed = Array.from({ length: 9 }, (_, n) => ({
       kind: 'posted' as const,
