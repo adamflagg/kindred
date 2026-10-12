@@ -1416,6 +1416,33 @@ jobs:
           fi
         done
 
+    # pocketbase/main_anonymous_access_test.go applies every migration to a
+    # fresh in-process app and sends real record requests to every collection:
+    # anonymous ones (all must be refused) and ones from a signed-in user with
+    # no role (personal data must not be readable, bar a shrinking list of
+    # known gaps). Its file carries `//go:build !race`, so the -race shards in
+    # tests-go do not build it -- the goja runtime that applies the migrations
+    # took it from ~5s to ~208s under the race detector, and its probes are
+    # serial. This step is therefore the ONLY place CI runs it. It lives in
+    # this job because the job's gate is `migrations || go`: a migration that
+    # loosens a rule and an edit to the test itself both trigger it.
+    # tests/unit/scripts/test_ci_path_filters.py holds this step to that file.
+    - name: Collection rule probes (no race detector)
+      working-directory: ./pocketbase
+      run: |
+        set -o pipefail
+        # `go test -run` exits 0 on a pattern that matches nothing, so each
+        # test must be seen to PASS by name, or this step asserted nothing.
+        TESTS="TestNoCollectionIsReachableAnonymously TestNoPersonalDataIsReadableByAnySignedInUser TestAnyAuthReadRatchet"
+        go test -count=1 . -run "^($(echo "$TESTS" | tr ' ' '|'))\$" -v 2>&1 \
+          | tee "$RUNNER_TEMP/rule-probes.log"
+        for t in $TESTS; do
+          if ! grep -q "^--- PASS: $t (" "$RUNNER_TEMP/rule-probes.log"; then
+            echo "::error::$t did not run to PASS (renamed, filtered out, or skipped) -- this step asserted nothing"
+            exit 1
+          fi
+        done
+
     - name: Grain declaration index agreement (kindred#2627)
       working-directory: ./pocketbase
       env:

@@ -851,3 +851,67 @@ def test_ci_runs_on_pull_requests_whatever_they_target() -> None:
     on = raw.get("on", raw.get(True))  # PyYAML reads a bare `on:` key as True
     trigger = on["pull_request"]
     assert not (isinstance(trigger, dict) and ("branches" in trigger or "branches-ignore" in trigger)), trigger
+
+
+# The PocketBase collection-rule probes (pocketbase/main_anonymous_access_test.go)
+# are built only WITHOUT the race detector: under -race the goja runtime that
+# applies pb_migrations took them from ~5s to ~208s on a CI shard, and the probes
+# are serial, so there is nothing for it to find. That is only safe while some
+# non-race step still runs them on every PR that can change a collection rule.
+RULE_PROBE_STEP = "Collection rule probes (no race detector)"
+RULE_PROBE_FILE = "pocketbase/main_anonymous_access_test.go"
+
+
+def _rule_probe_step() -> tuple[str, dict[str, Any]]:
+    job = _job_with_step(RULE_PROBE_STEP)
+    step = next(st for st in _ci()["jobs"][job]["steps"] if st.get("name") == RULE_PROBE_STEP)
+    return job, step
+
+
+def _go_test_names(path: str) -> list[str]:
+    return re.findall(r"^func (Test\w+)\(t \*testing\.T\)", (REPO_ROOT / path).read_text(), re.MULTILINE)
+
+
+def test_rule_probe_file_is_excluded_from_the_race_shards():
+    """The build constraint is what keeps ~200s off a race shard.
+
+    go_test_shard.py lists tests with the same flags it runs them with, so a
+    file the -race build excludes drops out of the shard inventory cleanly
+    rather than being reported as selected-but-never-ran.
+    """
+    first = (REPO_ROOT / RULE_PROBE_FILE).read_text().splitlines()[0]
+    assert first == "//go:build !race", f"{RULE_PROBE_FILE} must start with //go:build !race, got {first!r}"
+
+
+def test_rule_probe_step_runs_every_probe_test_without_race():
+    """Every Test in the file is named by the non-race step, and the step never adds -race.
+
+    The step greps `--- PASS: <name> (` for each name it lists, so a test the
+    step forgets to list is the only way one could silently stop running.
+    """
+    _, step = _rule_probe_step()
+    run = step["run"]
+    assert "-race" not in run, "the rule probes are excluded from -race builds; -race here runs nothing"
+    assert step.get("working-directory") == "./pocketbase"
+    names = _go_test_names(RULE_PROBE_FILE)
+    assert names, f"no tests found in {RULE_PROBE_FILE}"
+    missing = [n for n in names if n not in run]
+    assert not missing, f"{RULE_PROBE_STEP} does not run {missing}"
+    assert "--- PASS: $t (" in run, "the step must prove each named test PASSED, not merely that go test exited 0"
+
+
+def test_rule_probe_step_can_be_triggered_by_everything_that_changes_a_rule():
+    """A collection rule lives in a migration; the guard itself lives in a .go file.
+
+    Either changing alone must run the step, or a PR loosening a rule (or
+    weakening the guard) skips it -- and ci-summary counts skipped as OK.
+    """
+    job, _ = _rule_probe_step()
+    patterns = _patterns_gating_step(job, RULE_PROBE_STEP)
+    required = [
+        "pocketbase/pb_migrations/1500000999_example.js",
+        RULE_PROBE_FILE,
+        ".github/workflows/ci.yml",
+    ]
+    uncovered = [f for f in required if not _matches(f, patterns)]
+    assert not uncovered, f"{RULE_PROBE_STEP} cannot be triggered by {uncovered}"
