@@ -81,8 +81,13 @@ TodayKey = Literal[
     "sources",
     "intake",
     "equity_field_never_true",
+    # development (financial_aid.grantors or .summary), spec 2026-10-10 §5.1
+    "no_contact",
+    "no_eligibility",
+    "needs_group",
+    "no_grantor",
 ]
-TodayItemKind = Literal["requests", "grants", "sections", "descriptions", "fields", "lines"]
+TodayItemKind = Literal["requests", "grants", "sections", "descriptions", "fields", "lines", "funders"]
 
 
 class TodayReasonOut(BaseModel):
@@ -94,6 +99,23 @@ class TodayReasonOut(BaseModel):
     families: int | None
     items: int
     label: str | None = None
+
+
+class TodayNextUpOut(BaseModel):
+    """One household Today's home page names on a queue line (spec 2026-10-10 §5.5): the household once, at its oldest
+    request on the line. `days` is on the line's own clock (Needs an offer: since asked; Waiting on the family: since
+    posted; Pending approval: since keyed for approval) and None on a line that has no clock. Casework and finance only:
+    the development section never carries one (§9.4)."""
+
+    household_cm_id: int
+    label: str
+    tiebreak: str = ""
+    days: int | None = None
+    camper_name: str = ""
+    session_name: str = ""
+    session_type: str = ""
+    round: int | None = None
+    ask: float | None = None
 
 
 class TodayLineOut(BaseModel):
@@ -109,20 +131,44 @@ class TodayLineOut(BaseModel):
     item_kind: TodayItemKind
     reasons: list[TodayReasonOut] = Field(default_factory=list)
     amount: float | None = None  # pending_approval: the keyed amounts awaiting finance (D79)
-    oldest_days: int | None = None  # waiting_on_family: days since the oldest waiting round was posted
+    oldest_days: int | None = None  # needs_offer, waiting_on_family, pending_approval: days on the line's clock (§5.2)
     over_14_days: int | None = None  # waiting_on_family: requests waiting more than 14 days
     largest_gap: float | None = None  # not_reconciled: the largest short or over, in dollars (positive)
     request_ids: list[str] = Field(default_factory=list)  # what Open › shows, for a line that is no view
     skipped: str = ""  # to_place: why To place has nothing this season (before 2027, SP11 Decision 12); else ""
+    overdue: bool = (
+        False  # past the line's TODAY_OVERDUE_DAYS threshold (spec 2026-10-10 §5.2); never on a line without one
+    )
+    next_up: list[TodayNextUpOut] = Field(default_factory=list)  # oldest first, at most NEXT_UP_CAP households
+    names: list[str] = Field(
+        default_factory=list
+    )  # development lines: the funders or descriptions it counts, by name; no family data (§9.4)
+
+
+class TodayStagesOut(BaseModel):
+    """The registrar hero's one bar (spec 2026-10-10 §4.1): every request this season by its Stage column's code
+    (row_stage), in the bar's order. A request with no round yet has no stage and is counted in none."""
+
+    accepted: int
+    waiting_on_family: int
+    pending_approval: int
+    needs_offer: int  # needs_offer, not_decided and refused: an offer still has to be made
+    held: int
+    cancelled: int
+    families: int  # households with any request this season
+    posted_this_week: int  # requests with a round posted since Monday (camp time), the "+n" on Accepted
 
 
 class TodayResponse(BaseModel):
     """Today's sections follow the user's permissions: casework None without financial_aid.casework,
-    finance None without financial_aid.rules."""
+    finance None without financial_aid.rules, development None without financial_aid.grantors or .summary.
+    stages: casework or finance callers (the hero bar); None for development."""
 
     year: int
     casework: list[TodayLineOut] | None
     finance: list[TodayLineOut] | None
+    stages: TodayStagesOut | None = None
+    development: list[TodayLineOut] | None = None
 
 
 class HouseholdMatchOut(BaseModel):
