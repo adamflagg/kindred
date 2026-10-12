@@ -377,6 +377,9 @@ jobs:
         VERSION: ${{ steps.version.outputs.version }}
       run: |
         BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+        # The commit this rebuild is made from. It becomes :latest, so it carries
+        # the same OCI labels cd.yml's build-and-scan puts on every image.
+        REVISION=$(git rev-parse HEAD)
         DOCKER_TAG=${VERSION#v}
         MINOR_TAG=$(echo "$DOCKER_TAG" | cut -d. -f1-2)
         IMAGE="${REGISTRY}/${USERNAME}/kindred-caddy"
@@ -385,6 +388,8 @@ jobs:
         docker build \
           -f docker/Dockerfile.caddy \
           -t "${IMAGE}:${DOCKER_TAG}" \
+          --label "org.opencontainers.image.revision=${REVISION}" \
+          --label "org.opencontainers.image.created=${BUILD_DATE}" \
           --build-arg VERSION="${VERSION}" \
           --build-arg BUILD_DATE="${BUILD_DATE}" \
           .

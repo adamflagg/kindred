@@ -755,10 +755,20 @@ jobs:
         CACHE_TO="--cache-to type=gha,mode=max,scope=${IMAGE}"
 
         # --push instead of --load: ferries the image to integration-test via ghcr.
+        #
+        # The OCI labels say which commit an image was built from and when, so
+        # `docker inspect` on a running container answers "what is deployed".
+        # They are set here rather than as ARG+LABEL in each Dockerfile, and they
+        # survive every later retag (promote's imagetools create copies the
+        # manifest, never rebuilds). An image that is retagged from :latest
+        # instead of rebuilt keeps the commit it was actually built from.
+        # integration-test's "Verify image revision labels" checks them.
         docker buildx build \
           --platform linux/amd64 \
           -f "$DOCKERFILE" \
           -t "$STAGING_TAG" \
+          --label "org.opencontainers.image.revision=$BUILD_GIT_SHA" \
+          --label "org.opencontainers.image.created=$BUILD_DATE" \
           --build-arg VERSION="$BUILD_VERSION" \
           --build-arg BUILD_DATE="$BUILD_DATE" \
           --build-arg GIT_SHA="$BUILD_GIT_SHA" \
@@ -917,6 +927,39 @@ jobs:
           docker pull "${REGISTRY}/${USERNAME}/${IMAGE}:test-${SHORT_SHA}"
         done
 
+    # Each image REBUILT in this run must carry this run's commit as its
+    # revision label. One retagged from :latest carries the commit it was built
+    # from -- or nothing, if :latest predates the labels -- which is reported,
+    # not failed: that is the image actually being shipped.
+    - name: Verify image revision labels
+      env:
+        SHORT_SHA: ${{ needs.detect-changes.outputs.short_sha }}
+        EXPECTED_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        BUILD_CADDY: ${{ needs.detect-changes.outputs.build_caddy }}
+        BUILD_POCKETBASE: ${{ needs.detect-changes.outputs.build_pocketbase }}
+        BUILD_API: ${{ needs.detect-changes.outputs.build_api }}
+        BUILD_INIT: ${{ needs.detect-changes.outputs.build_init }}
+      run: |
+        FAILED=0
+        for IMG in caddy pocketbase api init; do
+          UPPER=$(echo "$IMG" | tr a-z A-Z)
+          BUILT_VAR="BUILD_${UPPER}"
+          REF="${REGISTRY}/${USERNAME}/kindred-${IMG}:test-${SHORT_SHA}"
+          REVISION=$(docker inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$REF")
+          CREATED=$(docker inspect -f '{{index .Config.Labels "org.opencontainers.image.created"}}' "$REF")
+          if [ "${!BUILT_VAR}" = "true" ]; then
+            if [ "$REVISION" != "$EXPECTED_SHA" ] || [ -z "$CREATED" ]; then
+              echo "::error::kindred-${IMG} was rebuilt but its labels are revision='${REVISION}' created='${CREATED}' (want revision=${EXPECTED_SHA} and a created time)"
+              FAILED=1
+            else
+              echo "kindred-${IMG}: revision=${REVISION} created=${CREATED}"
+            fi
+          else
+            echo "kindred-${IMG}: retagged from :latest, revision='${REVISION:-<none>}' created='${CREATED:-<none>}'"
+          fi
+        done
+        exit "$FAILED"
+
     - name: Start test stack
       run: |
         if docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml up -d --wait --wait-timeout 180; then
@@ -991,6 +1034,28 @@ jobs:
           tests/unit/api/test_retention_trends.py \
           tests/unit/api/test_metrics_registration.py \
           -v --tb=short -p no:cacheprovider
+
+    # Every file and directory the stack created under pb_data -- the SQLite
+    # databases and their -wal/-shm, storage/, anything init wrote -- must be
+    # private to the uid that made it (pocketbase/fileperm). The pb_data dir
+    # itself was made by the step above, so only what is below it is checked.
+    - name: Verify pb_data files are private
+      env:
+        GH_RUN_ID: ${{ github.run_id }}
+      run: |
+        PB_DIR="/tmp/kindred-ci-${GH_RUN_ID}/kindred/pocketbase"
+        sudo ls -la "$PB_DIR"
+        if ! sudo test -f "$PB_DIR/data.db"; then
+          echo "::error::no data.db under $PB_DIR -- nothing to check"
+          exit 1
+        fi
+        OPEN=$(sudo find "$PB_DIR" -mindepth 1 -perm /077 -printf '%m %p\n')
+        if [ -n "$OPEN" ]; then
+          echo "::error::files under pb_data are readable or writable beyond their owner:"
+          echo "$OPEN"
+          exit 1
+        fi
+        echo "Everything under pb_data is owner-only"
 
     - name: Verify non-root user and distroless containers
       run: |
