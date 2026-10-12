@@ -56,6 +56,9 @@ NAME_IDENTIFIERS = frozenset(
 # `<var>.name` is a person's name when <var> is one of these.
 PERSON_VARIABLES = frozenset({"person", "p", "camper", "attendee", "candidate", "best_candidate"})
 
+# `<mapping>[cm_id].name` is a person's name when <mapping> is one of these.
+PERSON_MAPPINGS = frozenset({"person_by_cm_id", "persons_by_cm_id", "person_lookup"})
+
 # Bare variables that hold a person's name in most logging contexts.
 NAME_LIKE_VARIABLES = frozenset({"name", "target"})
 
@@ -92,6 +95,17 @@ def _is_checked_call(node: ast.Call) -> bool:
     return func.attr in LOGGER_LEVEL_METHODS and "log" in _receiver_name(func).lower()
 
 
+def _is_person_expression(node: ast.expr) -> bool:
+    """`person`, or a lookup such as `self.input.person_by_cm_id[cm_id]`."""
+    if isinstance(node, ast.Name):
+        return node.id in PERSON_VARIABLES
+    if isinstance(node, ast.Subscript):
+        mapping = node.value
+        mapping_name = mapping.attr if isinstance(mapping, ast.Attribute) else getattr(mapping, "id", "")
+        return mapping_name in PERSON_MAPPINGS
+    return False
+
+
 def _flagged_identifiers(node: ast.Call) -> list[str]:
     found: list[str] = []
     for arg in [*node.args, *(kw.value for kw in node.keywords)]:
@@ -101,8 +115,8 @@ def _flagged_identifiers(node: ast.Call) -> list[str]:
             elif isinstance(sub, ast.Attribute):
                 if sub.attr in NAME_IDENTIFIERS:
                     found.append(sub.attr)
-                elif sub.attr == "name" and isinstance(sub.value, ast.Name) and sub.value.id in PERSON_VARIABLES:
-                    found.append(f"{sub.value.id}.name")
+                elif sub.attr == "name" and _is_person_expression(sub.value):
+                    found.append(f"{ast.unparse(sub.value)}.name")
             elif (
                 isinstance(sub, ast.Subscript)
                 and isinstance(sub.slice, ast.Constant)
@@ -167,8 +181,15 @@ def test_guard_flags_the_shapes_it_claims_to() -> None:
         "    logger.warning('%s', req.requester_name)\n"
         "    log.error(row['target_name'])\n"
         "    self.constraint_logger.log_violation('x', f'{first_name}')\n"
+        "    logger.info(f'{self.input.person_by_cm_id[1].name}')\n"
         "    logger.debug(f'{person.name}')\n"
     )
     call_nodes = [n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.Call) and _is_checked_call(n)]
     flagged = [ident for n in call_nodes for ident in _flagged_identifiers(n)]
-    assert flagged == ["person.name", "requester_name", "target_name", "first_name"]
+    assert flagged == [
+        "person.name",
+        "requester_name",
+        "target_name",
+        "first_name",
+        "self.input.person_by_cm_id[1].name",
+    ]
