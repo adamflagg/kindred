@@ -96,7 +96,11 @@ touch `sync/orchestrator.go`, `sync/api.go`, `sync/scheduler.go`, or anything el
 a goroutine, and leave it off for the ordinary edit-test loop.
 
 CI does run `-race` over everything, split across a four-way matrix so no single shard is the
-critical path. To reproduce one shard locally:
+critical path. One file is excluded: `main_anonymous_access_test.go` carries
+`//go:build !race` (applying every JS migration under the race detector cost ~200s, and its
+probes are serial), and the tests-migrations job runs it in a non-race step instead.
+
+To reproduce one shard locally:
 
 ```bash
 python3 scripts/ci/go_test_shard.py --shard 0 --total 4 -- -race   # from the repo root
