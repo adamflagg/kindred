@@ -1,18 +1,16 @@
 # Production Caddyfile for multi-container deployment.
-# Sits behind Traefik on the VPS (and historically behind Traefik on Unraid).
-# Traefik terminates TLS, runs WAF/rate-limit, and forwards over the local
-# Docker network. Cloudflare Tunnel fronts Traefik at the edge. There is NO
-# Cloudflare Access (or any other auth) gate in front of this Caddy: requests
-# arrive unauthenticated, and PocketBase's collection rules and Go hooks are
-# the only auth on /api/collections/*.
+# Sits behind an upstream reverse proxy that terminates TLS and forwards over
+# the local Docker network. Treat every request as unauthenticated:
+# PocketBase's collection rules and Go hooks are the only auth on
+# /api/collections/*.
 #
 # Routes to upstream services via env vars (with defaults for compose service names):
 #   POCKETBASE_HOST (default: pocketbase) → port 8090
 #   API_HOST (default: api) → port 8000
 #
-# Transport-layer concerns kept here (rest delegated to Traefik / CF):
+# Transport-layer concerns kept here (the rest belongs to the upstream proxy):
 #   - trusted_proxies private_ranges  → real client IP from X-Forwarded-For
-#   - security_headers snippet        → defense-in-depth; harmless if Traefik also sets them
+#   - security_headers snippet        → defense-in-depth; harmless if the proxy also sets them
 #   - cors snippet                    → app-layer; lives near the API/PB split
 #   - no_store snippet + static route → Cache-Control on every response
 #
@@ -24,19 +22,17 @@
 {
 	admin off
 
-	# Traefik (or cloudflared in legacy deploys) is the immediate upstream on
-	# the local Docker network. Trust private ranges so {client_ip} and logs
-	# reflect the real origin IP, not the proxy peer. Safe because the VPS is
-	# port-closed with ufw; there is no untrusted internal network. Required
-	# for the IP gates below (/_/ and the superuser API) that key on
-	# {client_ip}.
+	# The upstream proxy is the immediate peer on the local Docker network.
+	# Trust private ranges so {client_ip} and logs reflect the real origin IP,
+	# not the proxy peer. This assumes only trusted proxies can reach this
+	# container. Required for the IP gates below (/_/ and the superuser API)
+	# that key on {client_ip}.
 	#
-	# CF-Connecting-IP is read FIRST. Production ingress is Cloudflare Tunnel
-	# only, and Cloudflare sets that header itself and rejects a client-supplied
-	# one, so it cannot be forged. X-Forwarded-For can: Caddy takes its
-	# left-most entry, so a client that prepends an allowlisted address would
-	# pass the gates. XFF remains the fallback for paths without Cloudflare
-	# (dev). Do NOT switch on trusted_proxies_strict instead: it reads XFF
+	# The first header is read FIRST because the edge in front of production
+	# sets it itself and discards any client-supplied value, so it cannot be
+	# forged. X-Forwarded-For can: Caddy takes its left-most entry, so a client
+	# that prepends an allowlisted address would pass the gates. XFF remains the
+	# fallback for paths where the first header is absent (dev). Do NOT switch on trusted_proxies_strict instead: it reads XFF
 	# right-to-left and resolves an admin on a private-range address to the
 	# proxy's own IP, locking them out of /_/.
 	# scripts/ci/probe-caddy-superuser-gate.sh pins all of this.
@@ -53,7 +49,7 @@
 	}
 }
 
-# Traefik's secure-headers middleware equivalent. X-XSS-Protection is omitted
+# Secure-headers middleware equivalent. X-XSS-Protection is omitted
 # on purpose — modern browsers ignore the legacy header. Server response
 # header is stripped so we don't leak the upstream identity.
 (security_headers) {
@@ -97,14 +93,14 @@
 	import security_headers
 	import cors
 
-	# Compression and rate-limiting are handled by Traefik upstream of this
-	# Caddy. Adding them here would double-count rate-limit buckets and
-	# duplicate Traefik's compression for no gain.
+	# Compression and rate-limiting belong to the upstream proxy. Adding them
+	# here would double-count rate-limit buckets and duplicate its compression
+	# for no gain.
 	#
 	# #1966 read the absence of `encode` here as an oversight. It is not — but
-	# note the dev path has no Traefik in front of it, which is why the API
+	# note the dev path has no proxy in front of it, which is why the API
 	# compresses its own large JSON (`GZipMiddleware`, api/main.py) and why
-	# frontend/Caddyfile DOES carry `encode`. Traefik passes an
+	# frontend/Caddyfile DOES carry `encode`. The proxy passes an
 	# already-encoded response through rather than recompressing it.
 
 	# PocketBase-specific patterns (explicit)
@@ -118,8 +114,8 @@
 		# The superuser collection's API -- password login, OTP, record CRUD --
 		# is IP-gated like /_/ below. Both spellings, because PocketBase
 		# resolves {collection} by name OR id and folds its case (Unicode, not
-		# just ASCII -- see the matcher below). The Traefik rule this backs up
-		# was a literal PathPrefix that `_SUPERUSERS` and the id walked past.
+		# just ASCII -- see the matcher below). A literal path-prefix rule is not
+		# enough: `_SUPERUSERS` and the id walk past one.
 		# scripts/ci/probe-caddy-superuser-gate.sh checks every spelling.
 		# Internal superuser logins (kindred-api, sync, scripts on the host) go
 		# straight to pocketbase:8090 and never pass through here.
@@ -181,8 +177,8 @@
 	# "0.0.0.0/0 ::/0" to explicitly opt into "open to all" if that's the intent.
 	# With OAuth's redirect rewritten above, gating /_/* does NOT break user login —
 	# the popup never lands at /_/ anymore; only superuser admin access does.
-	# Use client_ip (not remote_ip) so we match the real origin behind CF Tunnel
-	# / Traefik / any other trusted proxy. client_ip resolves via the
+	# Use client_ip (not remote_ip) so we match the real origin behind any
+	# trusted proxy. client_ip resolves via the
 	# trusted_proxies + client_ip_headers config in the global server block.
 	# (remote_ip would be the Docker bridge IP of whichever proxy handed off,
 	# which is the same for every real user — gate would fail open or closed.)
