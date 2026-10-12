@@ -258,10 +258,21 @@ export function budgetSegments(
   const held = below.held_asked ?? 0
   const remaining = Math.max(cell.remaining ?? 0, 0)
   const over = Math.max(-(cell.remaining ?? 0), 0)
+  // Final check S3: over budget, the spending is drawn only up to the allocation (Posted first, then Needs an offer,
+  // then Pending) and the `over` segment carries the rest, so the overrun is drawn once and the marker sits where the
+  // spending ends. The key row keeps every amount.
+  let room = over > 0 ? Math.max(cell.allocated ?? 0, 0) : Infinity
+  const upTo = (amount: number) => {
+    const drawn = Math.min(amount, room)
+    room -= drawn
+    return drawn
+  }
+  const [postedDrawn, offerDrawn, pendDrawn] = [upTo(posted), upTo(offer), upTo(pend)]
   const segments: HeroSegment[] = [
     {
       key: 'posted',
       value: posted,
+      drawn: postedDrawn,
       label: 'Posted',
       figure: formatMoneyFigure(posted),
       inner: `Posted ${formatMoneyCompact(posted)}`,
@@ -270,6 +281,7 @@ export function budgetSegments(
     {
       key: 'needs_offer',
       value: offer,
+      drawn: offerDrawn,
       label: 'Needs an offer, as the rules price it',
       figure: formatMoneyFigure(offer),
       tone: 'progress',
@@ -277,6 +289,7 @@ export function budgetSegments(
     {
       key: 'pending',
       value: pend,
+      drawn: pendDrawn,
       label: 'Pending your approval',
       figure: formatMoneyFigure(pend),
       tone: 'act',

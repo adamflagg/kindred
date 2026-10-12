@@ -84,12 +84,13 @@ function Heading({ title, meta }: { readonly title: string; readonly meta: strin
   )
 }
 
-/** Where a feed item's words go; null leaves them plain. */
-function weekHref(f: ApiAidWeekFeed): string | null {
+/** Where a feed item's words go, in the page's season as every other Today link (final check S4); null leaves them
+ *  plain. */
+function weekHref(f: ApiAidWeekFeed, view: AidView): string | null {
   if (f.href_kind === 'household' && f.household_cm_id != null)
-    return `/aid/households/${String(f.household_cm_id)}`
-  if (f.href_kind === 'funders') return '/aid/money/funders'
-  if (f.href_kind === 'rules') return '/aid/season/rules'
+    return aidHref(`/aid/households/${String(f.household_cm_id)}`, view)
+  if (f.href_kind === 'funders') return aidHref('/aid/money/funders', view)
+  if (f.href_kind === 'rules') return aidHref('/aid/season/rules', view)
   return null
 }
 
@@ -100,9 +101,11 @@ function weekHref(f: ApiAidWeekFeed): string | null {
  */
 function WeekColumn({
   pick,
+  view,
   extra,
 }: {
   readonly pick: (week: ApiAidTodayWeek) => readonly ApiAidWeekFigure[] | null | undefined
+  readonly view: AidView
   readonly extra?: ReactNode
 }) {
   const week = useAidTodayWeek()
@@ -120,7 +123,7 @@ function WeekColumn({
             weekOf={data.week_of}
             figures={pick(data) ?? []}
             feed={data.feed}
-            hrefOf={weekHref}
+            hrefOf={(f) => weekHref(f, view)}
           />
         )}
       </QueryGuard>
@@ -224,7 +227,7 @@ function RegistrarBody({ today, view }: { today: ApiAidToday; view: AidView }) {
         left={
           <TodayTodos lines={top} rest={rest} view={view} empty="Every casework queue is empty." />
         }
-        right={<WeekColumn pick={(w) => w.registrar} />}
+        right={<WeekColumn pick={(w) => w.registrar} view={view} />}
       />
       <AidDefinitionNotes surface="today_registrar" />
     </>
@@ -338,7 +341,17 @@ function FinanceBody({
         right={
           <WeekColumn
             pick={(w) => financeFigures(w.finance, today.posted_this_week)}
-            extra={<CommittedByWeek points={today.posted_by_week ?? []} budget={budget} />}
+            view={view}
+            extra={
+              today.posts_undated ? (
+                // Owner ruling 20: a season whose posts carry no post date has no week to put them in.
+                <p className={CS_EMPTY}>
+                  Committed by week needs post dates; this season's posts have none.
+                </p>
+              ) : (
+                <CommittedByWeek points={today.posted_by_week ?? []} budget={budget} />
+              )
+            }
           />
         }
       />
@@ -454,6 +467,7 @@ function DevelopmentBody({
         }
         right={
           <WeekColumn
+            view={view}
             pick={(w) => [
               ...(w.development ?? []),
               {

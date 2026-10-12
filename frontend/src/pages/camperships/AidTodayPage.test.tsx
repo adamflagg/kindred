@@ -22,6 +22,16 @@ let todayData: ApiAidToday = REGISTRAR_TODAY
 let budgetFails = false
 let developmentFails = false
 let weekFails = false
+const FUNDER_FEED: ApiAidTodayWeek['feed'] = [
+  {
+    kind: 'funder',
+    at: '2027-04-06T17:14:00Z',
+    words: 'Regional Fund updated',
+    name: 'Regional Fund',
+    household_cm_id: null,
+    href_kind: 'funders',
+  },
+]
 const weekData: ApiAidTodayWeek = {
   year: 2027,
   week_of: '2027-04-05',
@@ -143,6 +153,7 @@ beforeEach(() => {
   developmentFails = false
   weekFails = false
   todayData = FINANCE_TODAY
+  weekData.feed = FUNDER_FEED
 })
 
 describe('AidTodayPage', () => {
@@ -335,7 +346,7 @@ describe('AidTodayPage', () => {
     // Audit R23: only the name the item marks is the link.
     expect(screen.getByRole('link', { name: 'Regional Fund' })).toHaveAttribute(
       'href',
-      '/aid/money/funders'
+      '/aid/money/funders?year=2027'
     )
   })
 
@@ -419,5 +430,82 @@ describe('AidTodayPage', () => {
     expect(await screen.findByRole('heading', { name: 'The season so far' })).toBeInTheDocument()
     expect(screen.getAllByTestId('hero-key')[0]).toHaveTextContent('Needs an offer 31')
     expect(screen.getByText('Nothing is assigned to you.')).toBeInTheDocument()
+  })
+
+  // --- Final check (2026-10-11) -------------------------------------------------------------------------------
+
+  it("S4: every feed link keeps the page's season, as the page's other links do", async () => {
+    granted = ['financial_aid.view', 'financial_aid.casework', 'financial_aid.rules']
+    weekData.feed = [
+      ...FUNDER_FEED,
+      {
+        kind: 'accepted',
+        at: '2027-04-07T17:14:00Z',
+        words: 'Rivera accepted',
+        name: 'Rivera',
+        household_cm_id: 1000001,
+        href_kind: 'household',
+      },
+      {
+        kind: 'section',
+        at: '2027-04-07T18:14:00Z',
+        words: 'Tiers section approved',
+        name: 'Tiers',
+        household_cm_id: null,
+        href_kind: 'rules',
+      },
+    ]
+    renderPage() // the season the page resolved (useYear: 2027), as aidHref carries it
+    expect(await screen.findByRole('link', { name: 'Rivera' })).toHaveAttribute(
+      'href',
+      '/aid/households/1000001?year=2027'
+    )
+    expect(screen.getByRole('link', { name: 'Regional Fund' })).toHaveAttribute(
+      'href',
+      '/aid/money/funders?year=2027'
+    )
+    expect(screen.getByRole('link', { name: 'Tiers' })).toHaveAttribute(
+      'href',
+      '/aid/season/rules?year=2027'
+    )
+  })
+
+  it('R20: a season whose posts have no post dates draws no Committed by week and no Posted in CM figure', async () => {
+    granted = FINANCE
+    todayData = {
+      ...FINANCE_TODAY,
+      posted_by_week: [],
+      posts_undated: true,
+      posted_this_week: {
+        key: 'posted_cm',
+        label: 'Posted in CM',
+        value: 0,
+        previous: 0,
+        unit: 'dollars',
+        title: "This season's posts have no post dates",
+        blank: true,
+      },
+    }
+    const { container } = renderPage()
+    expect(
+      await screen.findByText("Committed by week needs post dates; this season's posts have none.")
+    ).toBeInTheDocument()
+    expect(container.querySelector('path[data-line="posted"]')).toBeNull()
+    const label = screen.getByText('Posted in CM')
+    expect(label.parentElement).toHaveTextContent('—')
+    expect(label.parentElement).not.toHaveTextContent('$0')
+    expect(label.closest('[title]')).toHaveAttribute(
+      'title',
+      "This season's posts have no post dates"
+    )
+  })
+
+  it('R20: with some posts dated, Committed by week draws as before', async () => {
+    granted = FINANCE
+    todayData = { ...FINANCE_TODAY, posts_undated: false }
+    const { container } = renderPage()
+    expect(await screen.findByText('Committed by week')).toBeInTheDocument()
+    expect(container.querySelector('path[data-line="posted"]')).not.toBeNull()
+    expect(screen.queryByText(/needs post dates/)).toBeNull()
   })
 })

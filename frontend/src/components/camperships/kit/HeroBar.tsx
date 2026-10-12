@@ -44,8 +44,11 @@ const SWATCH: Record<HeroTone, string> = { ...FILL, gap: 'bg-muted' }
 
 export interface HeroSegment {
   readonly key: string
-  /** Its size on the bar; 0 is drawn nowhere. */
+  /** Its amount: the key row's, and its size on the bar unless `drawn` says otherwise; 0 is drawn nowhere. */
   readonly value: number
+  /** Its size on the bar when that differs from `value`: an over-budget bar draws spending up to the allocation and
+   *  the overrun once, in its own segment (final check S3). The key row keeps `value`. */
+  readonly drawn?: number
   /** The key row's words, e.g. "Need an offer". */
   readonly label: string
   /** The key row's bold figure, e.g. "31" or "$125k". */
@@ -79,18 +82,19 @@ export function AidHeroBar({
   readonly reveal?: boolean
   readonly labelMinPct?: number
 }) {
-  const live = segments.filter((s) => s.value > 0)
-  const sum = total ?? live.reduce((a, s) => a + s.value, 0)
+  const size = (s: HeroSegment) => s.drawn ?? s.value
+  const live = segments.filter((s) => size(s) > 0)
+  const sum = total ?? live.reduce((a, s) => a + size(s), 0)
   return (
     <div
       data-reveal={reveal ? 'true' : undefined}
       className={`bg-muted relative flex overflow-hidden ${compact ? 'h-2.5 rounded-full' : mid ? 'mt-1 h-[26px] rounded-lg' : 'mt-2.5 h-[34px] rounded-lg'} ${reveal ? 'motion-safe:animate-[cs-hero-reveal_900ms_cubic-bezier(.2,.7,.2,1)_both]' : ''}`}
     >
       {live.map((s) => {
-        const pct = sum > 0 ? (s.value / sum) * 100 : 0
+        const pct = sum > 0 ? (size(s) / sum) * 100 : 0
         const words = !compact && pct > labelMinPct ? (s.inner ?? s.figure) : ''
         const cls = `border-card flex min-w-1 items-center justify-center overflow-hidden border-r-2 text-[12.5px] font-bold whitespace-nowrap tabular-nums last:border-r-0 ${FILL[s.tone]}`
-        const style = { flexGrow: s.value, flexShrink: 1, flexBasis: 0 }
+        const style = { flexGrow: size(s), flexShrink: 1, flexBasis: 0 }
         const title = s.title ?? `${s.label}: ${s.figure}`
         return s.href ? (
           <Link

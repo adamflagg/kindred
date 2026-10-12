@@ -198,4 +198,33 @@ describe('AidWeekCard', () => {
     expect(screen.getAllByRole('listitem')).toHaveLength(6)
     expect(screen.queryByText('Item 6')).toBeNull()
   })
+
+  it('R20: a blank figure reads "—" with its title, and no change', () => {
+    render(
+      <MemoryRouter>
+        <AidWeekCard
+          weekOf="2031-04-14"
+          figures={[
+            {
+              key: 'posted_cm',
+              label: 'Posted in CM',
+              value: 0,
+              previous: 5000,
+              unit: 'dollars',
+              title: "This season's posts have no post dates",
+              blank: true,
+            },
+          ]}
+          feed={[]}
+          hrefOf={() => null}
+        />
+      </MemoryRouter>
+    )
+    const label = screen.getByText('Posted in CM')
+    expect(label.parentElement?.textContent).toBe('Posted in CM—')
+    expect(label.closest('[title]')).toHaveAttribute(
+      'title',
+      "This season's posts have no post dates"
+    )
+  })
 })

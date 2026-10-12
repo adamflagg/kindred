@@ -187,6 +187,49 @@ describe('finance hero (ruling 12: the budget read, no estimate)', () => {
     expect(over.find((s) => s.key === 'over')?.value).toBe(1300)
     expect(over.find((s) => s.key === 'remaining')?.value).toBe(0)
   })
+  it('an over-budget bar draws the overrun once, ending its spending at the allocation (final check S3)', () => {
+    // Allocated 100; Posted 120 + Needs an offer 50 + Pending 30 = 200, so 100 over.
+    const cell = {
+      ...BUDGET.total.total,
+      allocated: 100,
+      posted: 120,
+      needs_offer: 50,
+      pending_approval: 30,
+      remaining: -100,
+    }
+    const { segments, total, allocated } = budgetSegments(cell, {
+      ...BUDGET.total.below,
+      held_asked: 0,
+    })
+    const width = (key: string) => {
+      const s = segments.find((x) => x.key === key)
+      return s ? (s.drawn ?? s.value) : 0
+    }
+    const spent = width('posted') + width('needs_offer') + width('pending')
+    expect(spent).toBe(allocated)
+    expect(width('over')).toBe(100)
+    expect(segments.reduce((a, s) => a + (s.drawn ?? s.value), 0)).toBe(total)
+    // The key row still reads every amount.
+    expect(segments.map((s) => [s.key, s.value])).toEqual([
+      ['posted', 120],
+      ['needs_offer', 50],
+      ['pending', 30],
+      ['remaining', 0],
+      ['over', 100],
+      ['held', 0],
+    ])
+  })
+  it('the TBM pool, $1,300 over, ends its spending at its $60,000 allocation', () => {
+    const tbm = at(BUDGET.pools, 1)
+    const { segments, total } = budgetSegments(tbm.total, tbm.below)
+    const drawn = segments.map((s) => s.drawn ?? s.value)
+    expect(drawn).toEqual([46300, 12000, 1700, 0, 1300, 0])
+    expect(drawn.reduce((a, b) => a + b, 0)).toBe(total)
+  })
+  it('a pool within budget draws every amount as it is', () => {
+    const { segments } = budgetSegments(BUDGET.total.total, BUDGET.total.below)
+    expect(segments.every((s) => (s.drawn ?? s.value) === s.value)).toBe(true)
+  })
   it('a pool with no allocation draws no marker', () => {
     const none = { ...at(BUDGET.pools, 0).total, allocated: null, remaining: null }
     expect(budgetSegments(none, at(BUDGET.pools, 0).below).allocated).toBeNull()

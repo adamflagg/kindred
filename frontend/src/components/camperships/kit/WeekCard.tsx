@@ -30,6 +30,7 @@ function glyphInk(kind: ApiAidWeekFeed['kind']): string {
 }
 
 function figureValue(f: ApiAidWeekFigure): string {
+  if (f.blank) return '—' // owner ruling 20: nothing could be counted; the title says why
   return f.unit === 'dollars' ? formatMoneyFigure(f.value) : f.value.toLocaleString('en-US')
 }
 
@@ -118,7 +119,7 @@ export function AidWeekCard({
               <span className="text-[20px] leading-[26px] font-bold tabular-nums">
                 {figureValue(f)}
               </span>
-              {f.note ? (
+              {f.blank ? null : f.note ? (
                 <span className="text-muted-foreground ml-1 text-xs font-semibold tabular-nums">
                   {f.note}
                 </span>
