@@ -25,6 +25,7 @@ import (
 	"github.com/camp/kindred/pocketbase/audit"
 	bunkrequests "github.com/camp/kindred/pocketbase/bunk_requests"
 	"github.com/camp/kindred/pocketbase/feedback"
+	"github.com/camp/kindred/pocketbase/fileperm"
 	"github.com/camp/kindred/pocketbase/lodging"
 	"github.com/camp/kindred/pocketbase/logging"
 	"github.com/camp/kindred/pocketbase/oidclogout"
@@ -133,6 +134,10 @@ func resetBootFailure() {
 }
 
 func main() {
+	// Before anything can create a file: every file this process makes, in
+	// pb_data or anywhere else, is private to its uid. See pocketbase/fileperm.
+	fileperm.RestrictNewFiles()
+
 	// Initialize unified logging format
 	// Format: 2026-01-06T14:05:52Z [pocketbase] LEVEL message
 	logging.Init("pocketbase")

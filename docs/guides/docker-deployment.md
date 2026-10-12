@@ -250,6 +250,42 @@ Kindred uses **4 Docker images**:
 | `ghcr.io/adamflagg/kindred-api` | FastAPI solver, metrics, social graphs |
 | `ghcr.io/adamflagg/kindred-init` | One-shot admin user + OIDC configuration |
 
+### Which commit is running
+
+Every image carries the OCI labels `org.opencontainers.image.revision` (the full
+commit SHA it was built from) and `org.opencontainers.image.created` (the build
+time). Retagging never changes them, so an image promoted from `:test-<sha>` to
+`:latest` and a release tag still names the commit it was built from:
+
+```bash
+docker inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' kindred-api
+```
+
+An image that a later run only retagged, rather than rebuilt, names the older
+commit it was actually built from. Images built before the labels existed print
+an empty line.
+
+### File permissions
+
+Every container runs as the same nonroot user, `65532:65532`. kindred-pocketbase,
+kindred-init and kindred-api set a `0077` umask before they open anything, so
+every file they create is `0600` and every directory `0700`: the PocketBase
+databases and their `-wal`/`-shm`, `pb_data/storage`, `pb_data/backups`, the
+bunk-request CSV uploads, and the solver logs. kindred-api reads PocketBase's
+`data.db` across containers, as that same uid, so it needs no group access.
+
+Two things the umask cannot do:
+
+- **It does not change existing files.** Files created before it keep their
+  modes. SQLite also gives a new `-wal` or `-shm` file the mode of its database,
+  ignoring the umask, so an existing `data.db` left at `0644` keeps producing
+  `0644` sidecars. It leaves a sidecar that already holds data at whatever mode
+  it has. Restrict each database and its existing sidecars together:
+  `data.db`, `data.db-wal`, `data.db-shm`, and the same three for `auxiliary.db`.
+- **It does not cover files you place.** The Google service-account key and
+  `lodging_registry.json` in the config directory are read, never written, by
+  Kindred. Set their owner and mode yourself (`65532:65532`, `0600`).
+
 ## CI/CD Workflow
 
 ### CI (runs on every push)

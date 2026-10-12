@@ -109,6 +109,7 @@ pocketbase/pb_migrations/*_updated_users.js
 !pocketbase/bunk_requests/
 !pocketbase/jotform/
 !pocketbase/oidclogout/
+!pocketbase/fileperm/
 !pocketbase/cmd/
 !pocketbase/README.md
 !pocketbase/CLAUDE.md
