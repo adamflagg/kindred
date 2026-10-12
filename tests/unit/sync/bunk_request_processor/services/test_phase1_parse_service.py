@@ -621,3 +621,47 @@ class TestPhase1ParseServiceSanitization:
         assert result.row_data == req.row_data
         # Benign input records no security metadata
         assert metadata == {}
+
+
+class TestPhase1FailureLogsCarryNoNames:
+    """Failure logs name the requester by CampMinder ID, never by name or request text.
+
+    These run at WARNING, which production (LOG_LEVEL=INFO) emits to the
+    container log -- outside the app's RBAC.
+    """
+
+    @staticmethod
+    def _failed(reason: str = "AI timeout") -> ParseResult:
+        return ParseResult(
+            parsed_requests=[],
+            needs_historical_context=False,
+            is_valid=False,
+            parse_request=_create_parse_request(
+                request_text="Please put me with Liam Garcia",
+                requester_name="Emma Johnson",
+                requester_cm_id=1000001,
+            ),
+            metadata={"failure_reason": reason},
+        )
+
+    def test_parse_failure_log_uses_cm_id(self, caplog: pytest.LogCaptureFixture) -> None:
+        service = Phase1ParseService(ai_service=Mock(), context_builder=Mock())
+
+        with caplog.at_level("INFO"):
+            service._update_stats([self._failed()])
+
+        assert "1000001" in caplog.text
+        assert "Emma" not in caplog.text
+        assert "Johnson" not in caplog.text
+
+    def test_reconciliation_log_omits_request_text(self, caplog: pytest.LogCaptureFixture) -> None:
+        service = Phase1ParseService(ai_service=Mock(), context_builder=Mock())
+        failed = self._failed()
+        assert failed.parse_request is not None
+
+        with caplog.at_level("INFO"):
+            service._log_reconciliation([failed.parse_request], [failed], [failed])
+
+        assert "1000001" in caplog.text
+        assert "Liam" not in caplog.text
+        assert "Garcia" not in caplog.text

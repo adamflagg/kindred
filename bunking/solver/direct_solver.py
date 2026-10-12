@@ -1495,7 +1495,7 @@ class DirectBunkingSolver:
                         gender_violations += 1
                         self.constraint_logger.log_violation(
                             "gender",
-                            f"Gender mismatch: {person.name} ({person.gender}) in {bunk.gender}-only cabin {bunk.name}",
+                            f"Gender mismatch: person {person_cm_id} ({person.gender}) in {bunk.gender}-only cabin {bunk.name}",
                             severity="error",
                         )
 
@@ -1756,10 +1756,9 @@ class DirectBunkingSolver:
                 f"(parent input issue: requestee in another session or absent from solver)"
             )
             for person_cm_id in no_possible[:10]:
-                person = self.input.person_by_cm_id[person_cm_id]
                 self.constraint_logger.log_violation(
                     "must_satisfy_one_no_possible",
-                    f"{person.name} (ID: {person_cm_id}): all requests impossible — fix parent input",
+                    f"Person {person_cm_id}: all requests impossible — fix parent input",
                     severity="info",
                 )
             if len(no_possible) > 10:
@@ -1771,11 +1770,10 @@ class DirectBunkingSolver:
                 f"left unsatisfied by the solver"
             )
             for person_cm_id in material_parent_unmet[:10]:
-                person = self.input.person_by_cm_id[person_cm_id]
                 possible_count = resolved_possible_count[person_cm_id]
                 self.constraint_logger.log_violation(
                     "must_satisfy_one_material_parent_unmet",
-                    f"{person.name} (ID: {person_cm_id}): {possible_count} possible requests, none satisfied",
+                    f"Person {person_cm_id}: {possible_count} possible requests, none satisfied",
                     severity="error",
                 )
             if len(material_parent_unmet) > 10:
@@ -1798,11 +1796,10 @@ class DirectBunkingSolver:
                 f"left unsatisfied"
             )
             for person_cm_id in other_unmet[:10]:
-                person = self.input.person_by_cm_id[person_cm_id]
                 possible_count = resolved_possible_count[person_cm_id]
                 self.constraint_logger.log_violation(
                     "must_satisfy_one_other_unmet",
-                    f"{person.name} (ID: {person_cm_id}): {possible_count} possible requests, none satisfied",
+                    f"Person {person_cm_id}: {possible_count} possible requests, none satisfied",
                     severity="info",
                 )
             if len(other_unmet) > 10:

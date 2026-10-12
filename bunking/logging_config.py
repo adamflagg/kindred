@@ -142,6 +142,50 @@ class HealthCheckFilter(logging.Filter):
         return not any(path.startswith(prefix) for prefix in self.HEALTH_PATH_PREFIXES)
 
 
+class AccessLogQueryRedactionFilter(logging.Filter):
+    """Replace free-text and credential query values in uvicorn access-log lines.
+
+    Uvicorn logs every request at INFO with its full path and query string.
+    Some query values are what staff typed -- the pipeline debug person search
+    sends a camper's name as ``?q=`` on each keystroke, the audit log filters by
+    a staff email in ``?actor=`` -- and an OAuth-style ``code``/``state`` or a
+    ``token`` must never reach a log. Parameter names are kept, so a line still
+    says what was asked for; only the listed values are replaced.
+
+    Attached to the ``uvicorn.access`` logger, it rewrites the path argument of
+    uvicorn's ``'%s - "%s %s HTTP/%s" %d'`` call and never drops a record.
+    """
+
+    REDACTED_PARAMS: ClassVar[frozenset[str]] = frozenset(
+        {"q", "search", "actor", "email", "name", "token", "access_token", "refresh_token", "code", "state"}
+    )
+    REDACTED_VALUE: ClassVar[str] = "[REDACTED]"
+    _PATH_ARG_INDEX: ClassVar[int] = 2
+
+    @classmethod
+    def redact_path(cls, path: str) -> str:
+        """Return ``path`` with each listed query parameter's value replaced."""
+        base, sep, query = path.partition("?")
+        if not sep:
+            return path
+        parts = []
+        for pair in query.split("&"):
+            key, eq, _value = pair.partition("=")
+            redact = eq and key.lower() in cls.REDACTED_PARAMS
+            parts.append(f"{key}={cls.REDACTED_VALUE}" if redact else pair)
+        return f"{base}?{'&'.join(parts)}"
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Rewrite the path argument in place; always keep the record."""
+        args = record.args
+        if isinstance(args, tuple) and len(args) > self._PATH_ARG_INDEX:
+            path = args[self._PATH_ARG_INDEX]
+            if isinstance(path, str) and "?" in path:
+                i = self._PATH_ARG_INDEX
+                record.args = (*args[:i], self.redact_path(path), *args[i + 1 :])
+        return True
+
+
 def configure_logging(
     source: str = "app",
     level: int | None = None,
@@ -190,6 +234,12 @@ def configure_logging(
         uvicorn_logger.addHandler(handler)
         uvicorn_logger.setLevel(level)
         uvicorn_logger.propagate = False  # Prevent double logging
+
+    # Logger-level, so it runs before any handler formats the line. Idempotent:
+    # configure_logging may be called more than once in a process.
+    access_logger = logging.getLogger("uvicorn.access")
+    if not any(isinstance(f, AccessLogQueryRedactionFilter) for f in access_logger.filters):
+        access_logger.addFilter(AccessLogQueryRedactionFilter())
 
     # Suppress noisy third-party loggers
     logging.getLogger("httpx").setLevel(logging.WARNING)

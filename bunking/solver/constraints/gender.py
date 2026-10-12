@@ -50,11 +50,13 @@ def add_gender_constraints(ctx: SolverContext) -> None:
 
                 # Log constraint for debugging
                 ctx.constraint_logger.log_constraint(
-                    "hard", "gender", f"Person {person.name} ({person.gender}) cannot be in {bunk.name} ({bunk.gender})"
+                    "hard",
+                    "gender",
+                    f"Person {person_cm_id} ({person.gender}) cannot be in {bunk.name} ({bunk.gender})",
                 )
             elif not person.gender:
                 # If person has no gender data, log warning but don't constrain
-                logger.warning(f"Person {person_cm_id} ({person.name}) has no gender data")
+                logger.warning(f"Person {person_cm_id} has no gender data")
 
     logger.debug(f"Added {constraints_added} gender constraint restrictions")
 

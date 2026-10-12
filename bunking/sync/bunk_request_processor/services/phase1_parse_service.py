@@ -188,11 +188,11 @@ class Phase1ParseService:
         )
         for result in all_failed[:10]:  # Cap at 10 to avoid log spam
             req = result.parse_request
-            req_text = req.request_text[:60] if req else "unknown"
-            req_info = f"cm_id={req.requester_cm_id}" if req else "unknown"
+            # The field and requester, never the text: it names other campers.
+            req_info = f"field={req.field_name} cm_id={req.requester_cm_id}" if req else "unknown"
             reason = result.metadata.get("failure_reason", "unknown")
             kind = "transient" if result.metadata.get("transient_error") else "permanent"
-            logger.warning(f'  Failed ({kind}): "{req_text}" ({req_info}) — {reason}')
+            logger.warning(f"  Failed ({kind}): {req_info} — {reason}")
 
         if len(all_failed) > 10:
             logger.warning(f"  ... and {len(all_failed) - 10} more")
@@ -223,12 +223,12 @@ class Phase1ParseService:
                 if result.risk_level in (RiskLevel.HIGH, RiskLevel.CRITICAL):
                     self._stats["high_risk_inputs"] += 1
                     logger.warning(
-                        f"HIGH RISK input from {req.requester_name} (cm_id={req.requester_cm_id}): "
+                        f"HIGH RISK input from requester {req.requester_cm_id}: "
                         f"patterns={result.detected_patterns}, risk={result.risk_level.value}"
                     )
                 else:
                     logger.info(
-                        f"Suspicious input from {req.requester_name}: "
+                        f"Suspicious input from requester {req.requester_cm_id}: "
                         f"patterns={result.detected_patterns}, risk={result.risk_level.value}"
                     )
 
@@ -316,7 +316,7 @@ class Phase1ParseService:
                     self._first_failure_reason = failure_reason
                 requester_info = ""
                 if result.parse_request:
-                    requester_info = f" (requester: {result.parse_request.requester_name})"
+                    requester_info = f" (requester: {result.parse_request.requester_cm_id})"
                 logger.warning(f"Parse failed{requester_info}: {failure_reason}")
 
     def get_stats(self) -> dict[str, Any]:
