@@ -4,7 +4,7 @@ the caller may see. Development's feed names funders, never families (§9.4). Fi
 from dataclasses import replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 
@@ -23,6 +23,10 @@ def _at(month: int, day: int, hour: int = 17) -> datetime:
 
 
 class _Store(FakeDecisionsStore):
+    def __init__(self) -> None:
+        super().__init__()
+        self.camper_names = {1000011: ("Emma", "Johnson"), 1000012: ("Liam", "Garcia")}
+
     async def fetch_names(self, year: int, household_cm_ids: Any, person_cm_ids: Any) -> Any:
         names = {1000001: "Johnson", 1000002: "Garcia", 1000003: "Chen"}
         campers = {1000011: "Emma Johnson", 1000012: "Liam Garcia"}
@@ -259,6 +263,14 @@ async def test_finances_families_helped_says_it_is_season_to_date(store_with_pos
 
 
 class _Labels:
+    """The household page's labeler: each household's adults' label, and the adults' surnames (short_family_name)."""
+
+    SURNAMES: ClassVar[dict[str, str]] = {
+        "Pat Johnson & Alex Garcia": "Johnson & Garcia",
+        "Liam & Olivia Becker": "Becker",
+        "Olivia & Wei Chen": "Chen",
+    }
+
     def __init__(self, labels: dict[int, str]) -> None:
         self.labels = labels
         self.asked: list[frozenset[int]] = []
@@ -267,7 +279,11 @@ class _Labels:
         from api.services.financial_aid_household_page import HouseholdLabel
 
         self.asked.append(frozenset(households))
-        return {h: HouseholdLabel(self.labels[h], "") for h in households if h in self.labels}
+        return {
+            h: HouseholdLabel(self.labels[h], "", self.SURNAMES.get(self.labels[h], ""))
+            for h in households
+            if h in self.labels
+        }
 
 
 class _Drafts:
@@ -286,27 +302,54 @@ def _labelled(store: FakeDecisionsStore, grants: _Grants, **kw: Any) -> TodayWee
 
 
 @pytest.mark.asyncio
-async def test_the_feed_names_each_household_as_the_grid_does_and_marks_the_name_to_link(
+async def test_the_feed_names_a_household_by_surname_and_marks_the_name_to_link(
     store_with_posts: tuple[_Store, _Grants],
 ) -> None:
-    """Owner ruling 18 (audit N1, R23/R24): a camper request's item reads the camper's full name, a household-level
-    (Family Camp) request's the adults' label, never "The X Family household". The item says which words are the
-    name, so only the name is the link. The label is read only for the household-level items."""
+    """Owner ruling 19 (1a, 2026-10-11): feed names are last names only, so a line fits one line. A camper request's
+    item reads the camper's surname (CampMinder's last name); a household-level (Family Camp) request's the adults'
+    surnames, a shared one once. The item says which words are the name, so only the name is the link. The label is
+    read only for the household-level items. (Chips and to-dos keep ruling 18's full names.)"""
     store, grants = store_with_posts
     seed_request(store, "reqchenfc000001", household=1000003, person=0)
     _event(store, "reqchenfc000001", "accept", _at(4, 16, 16))
     service = _labelled(store, grants)
     week = await service.read(2031, casework=True, finance=False, development=False)
     accepted = {f.household_cm_id: f for f in week.feed if f.kind == "accepted"}
-    assert (accepted[1000002].words, accepted[1000002].name) == ("Liam Garcia accepted the offer", "Liam Garcia")
-    assert (accepted[1000003].words, accepted[1000003].name) == (
-        "Olivia & Wei Chen accepted the offer",
-        "Olivia & Wei Chen",
-    )
+    assert (accepted[1000002].words, accepted[1000002].name) == ("Garcia accepted", "Garcia")
+    assert (accepted[1000003].words, accepted[1000003].name) == ("Chen accepted", "Chen")
     posted = next(f for f in week.feed if f.kind == "posted" and f.household_cm_id == 1000001)
-    assert (posted.words, posted.name) == ("Emma Johnson · R1 posted · $1,500", "Emma Johnson")
+    assert (posted.words, posted.name) == ("Johnson · R1 $1,500", "Johnson")
     assert all("household" not in f.words for f in week.feed)
     assert service._labels.asked == [frozenset({1000003})]  # type: ignore[union-attr]
+
+
+@pytest.mark.asyncio
+async def test_a_family_camp_item_with_two_surnames_names_both(store_with_posts: tuple[_Store, _Grants]) -> None:
+    """Ruling 19 (1a): adults with different surnames read "Johnson & Garcia", as the household chip's short name
+    (short_family_name) joins them."""
+    store, grants = store_with_posts
+    seed_request(store, "reqjohnfc000001", household=1000001, person=0)
+    _event(store, "reqjohnfc000001", "accept", _at(4, 16, 16))
+    week = await _labelled(store, grants).read(2031, casework=True, finance=False, development=False)
+    fc = next(f for f in week.feed if f.kind == "accepted" and f.household_cm_id == 1000001)
+    assert (fc.words, fc.name) == ("Johnson & Garcia accepted", "Johnson & Garcia")
+
+
+@pytest.mark.asyncio
+async def test_every_family_line_is_short_and_leads_with_the_name(store_with_posts: tuple[_Store, _Grants]) -> None:
+    """Ruling 19 (1a): shorter words, one line, as the mock: "Hart · R1 $1,200", not "Samuel Hart · R1 posted ·
+    $1,200". The name still leads every family line (ruling W2). The grant line has its own test (six items cap the feed)."""
+    store, grants = store_with_posts
+    _event(store, "reqgarcia000001", "approve", _at(4, 16, 17), amount="1200")
+    seed_request(store, "reqoldpost00001", household=1000002, person=1000012)
+    _event(store, "reqoldpost00001", "post", _at(3, 31, 18))  # 15 days unanswered on Tue 4/15
+    week = await _labelled(store, grants).read(2031, casework=True, finance=True, development=False)
+    words = {f.kind: f.words for f in week.feed}
+    assert words["approved"] == "Garcia · R1 approved $1,200"
+    assert words["overdue"] == "Garcia waiting 14+ days"
+    family = [f for f in week.feed if f.household_cm_id is not None]
+    assert family
+    assert all(f.words.startswith(f.name) for f in family)
 
 
 @pytest.mark.asyncio
@@ -314,14 +357,15 @@ async def test_a_grant_line_leads_with_the_name_and_says_unmatched_not_a_funder(
     store_with_posts: tuple[_Store, _Grants],
 ) -> None:
     """Audit N4 / ruling W2: the name leads the line, so what a narrow column cuts is never the name. Audit R25:
-    a grant no funder claims says "Unmatched", since "A funder" reads like a real funder's name."""
+    a grant no funder claims says "Unmatched", since "A funder" reads like a real funder's name. Development's
+    funder lines are unchanged by ruling 19."""
     store, grants = store_with_posts
     week = await _labelled(store, grants).read(2031, casework=True, finance=False, development=False)
     grant = next(f for f in week.feed if f.kind == "grant")
-    assert (grant.words, grant.name) == ("Emma Johnson · Regional Fund grant entered", "Emma Johnson")
+    assert (grant.words, grant.name) == ("Johnson · Regional Fund grant", "Johnson")
     grants.register = [replace(grants.register[0], grantor_key="")]
     week = await _labelled(store, grants).read(2031, casework=True, finance=False, development=True)
-    assert next(f for f in week.feed if f.kind == "grant").words == "Emma Johnson · Unmatched grant entered"
+    assert next(f for f in week.feed if f.kind == "grant").words == "Johnson · Unmatched grant"
     dev = await _labelled(store, grants).read(2031, casework=False, finance=False, development=True)
     assert next(f for f in dev.feed if f.kind == "grant").words == "Unmatched grant · $800 posted"
 

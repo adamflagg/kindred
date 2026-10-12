@@ -564,10 +564,13 @@ def name_households(
 @dataclass(frozen=True)
 class HouseholdLabel:
     """A household named as the household page names one with no camper on it (`label`), and its muted tie-breaker
-    (`tiebreak`). That is its card's label unless the page has a camper of it and CampMinder names it no adults."""
+    (`tiebreak`). That is its card's label unless the page has a camper of it and CampMinder names it no adults.
+    `surnames`: the same adults' surnames joined as a household chip's short name joins them (short_family_name), for a
+    line that names a family by last name only (Today's feed, owner ruling 19); "" when no adult is named."""
 
     label: str
     tiebreak: str
+    surnames: str = ""
 
 
 # A read's way to name families as the household page does: `labels(year, households)`, the routes' household_labels
@@ -597,8 +600,12 @@ async def household_labels(
     people: defaultdict[int, list[Any]] = defaultdict(list)
     for person in await reads.fetch_household_members(year, unnamed) if unnamed else []:
         people[_household_of(person)].append(person)
-    naming = name_households({h: household_adult_pairs(rows.get(h), people[h], members=True) for h in wanted}, rows.get)
-    return {h: HouseholdLabel(n.label, n.tiebreak) for h, n in naming.items()}
+    pairs = {h: household_adult_pairs(rows.get(h), people[h], members=True) for h in wanted}
+    naming = name_households(pairs, rows.get)
+    return {
+        h: HouseholdLabel(n.label, n.tiebreak, short_family_name((last for _, last in pairs[h]), ""))
+        for h, n in naming.items()
+    }
 
 
 def _link_row(link: Any, household: Any | None, naming: _Naming) -> HouseholdPageLinkOut:

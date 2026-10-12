@@ -1910,6 +1910,16 @@ async def test_household_labels_fall_back_to_the_members_adults_then_the_mailing
 
 
 @pytest.mark.asyncio
+async def test_household_labels_carry_the_adults_surnames_for_a_short_name() -> None:
+    """Ruling 19 (1a, 2026-10-11): Today's feed names a Family Camp household by its adults' surnames, joined as the
+    household chip's short name joins them (short_family_name): a shared surname once, else "A & B"; none named: ""."""
+    labels = await household_labels(_Ledger(), YEAR, [JOHNSON, LINKED])
+    assert {h: found.surnames for h, found in labels.items()} == {JOHNSON: "", LINKED: "Sam & Chen"}
+    beckers = await household_labels(_Beckers(), YEAR, [JOHNSON])
+    assert beckers[JOHNSON].surnames == "Becker"
+
+
+@pytest.mark.asyncio
 async def test_household_labels_read_members_only_where_campminder_names_no_adults() -> None:
     ledger = _AidAdults()
     await household_labels(ledger, YEAR, [JOHNSON, GARCIA, LINKED])

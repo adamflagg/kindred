@@ -319,19 +319,23 @@ class TodayWeekService:
             return None
 
     async def _names(self, year: int, kept: Sequence[_Item]) -> _Names:
-        """The kept items' names as the Requests grid gives them (owner ruling 18): a camper's full name for a camper
-        request's item, the household label (household_labels, the tie-break scoped to the household-level items)
-        for a household-level one; without a labeler, or for a household the helper does not name, the family name."""
+        """The kept items' names, last names only (owner ruling 19, 1a), so a line fits one line: a camper request's
+        item reads the camper's surname (CampMinder's last name); a household-level one the adults' surnames as the
+        household labeler joins them (a shared one once, else "A & B"). Without a labeler, or for a camper or a
+        household the reads do not name, the grid's name: the camper's full name, else the family name."""
         households = {i.household for i in kept if i.household is not None}
         persons = {i.person for i in kept if i.household is not None and i.person > 0}
         level = {i.household for i in kept if i.household is not None and i.person <= 0}
-        found, campers = await self._store.fetch_names(year, households, persons)
+        (found, campers), legal = await asyncio.gather(
+            self._store.fetch_names(year, households, persons),
+            self._store.fetch_camper_names(year, persons) if persons else _no_campers(),
+        )
         named = dict(found)
         if self._labels is not None and level:
             for household, label in (await self._labels(year, level)).items():
-                text = f"{label.label} ({label.tiebreak})" if label.tiebreak else label.label
-                named[household] = text or named.get(household, "")
-        return _Names(named, dict(campers))
+                named[household] = label.surnames or label.label or named.get(household, "")
+        surnames = {p: last for p, (_, last) in legal.items() if last}
+        return _Names(named, {**campers, **surnames})
 
     @staticmethod
     def _feed(
@@ -370,7 +374,7 @@ class TodayWeekService:
                         _Item(
                             "posted",
                             event.created,
-                            _fmt("{n} · R{r} posted · {m}", r=round_, m=money),
+                            _fmt("{n} · R{r} {m}", r=round_, m=money),
                             household,
                             href,
                             person=who(event.request_id),
@@ -381,7 +385,7 @@ class TodayWeekService:
                         _Item(
                             "accepted",
                             event.created,
-                            _fmt("{n} accepted the offer"),
+                            _fmt("{n} accepted"),
                             household,
                             href,
                             person=who(event.request_id),
@@ -392,7 +396,7 @@ class TodayWeekService:
                         _Item(
                             "approved",
                             event.created,
-                            _fmt("Approved {n} · R{r} · {m}", r=round_, m=money),
+                            _fmt("{n} · R{r} approved {m}", r=round_, m=money),
                             household,
                             href,
                             person=who(event.request_id),
@@ -404,7 +408,7 @@ class TodayWeekService:
                     _Item(
                         "overdue",
                         at,
-                        _fmt(f"{{n}} passed {WAITING_TOO_LONG_DAYS} days waiting"),
+                        _fmt(f"{{n}} waiting {WAITING_TOO_LONG_DAYS}+ days"),
                         household,
                         href,
                         person=who(event.request_id),
@@ -415,12 +419,12 @@ class TodayWeekService:
                 grantor = grantor_names.get(row.grantor_key, UNMATCHED)
                 at = row.recorded_at or now
                 if families:
-                    # Audit N4 / ruling W2: the name leads, so a narrow column never cuts it.
+                    # Audit N4 / ruling W2: the name leads, so a narrow column never cuts it; ruling 19: short words.
                     items.append(
                         _Item(
                             "grant",
                             at,
-                            _fmt("{n} · {g} grant entered", g=grantor),
+                            _fmt("{n} · {g} grant", g=grantor),
                             row.household_cm_id,
                             "household",
                             person=row.person_cm_id,
@@ -468,3 +472,7 @@ async def _none() -> list[RequestRecord]:
 
 async def _no_rules() -> RulesVersion | None:
     return None
+
+
+async def _no_campers() -> dict[int, tuple[str, str]]:
+    return {}
