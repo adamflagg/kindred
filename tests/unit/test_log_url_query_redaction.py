@@ -18,7 +18,7 @@ import logging
 from collections.abc import Iterator
 
 import pytest
-from pocketbase.utils import ClientResponseError
+from pocketbase.errors import ClientResponseError
 
 ENCODED_URL = (
     "http://127.0.0.1:8090/api/collections/persons/records"
