@@ -11,8 +11,8 @@ import "testing"
 const usersAuthTokenSeconds = 43200 // 12h
 
 // TestBootedUsersAuthTokenDuration: a fresh PocketBase gives auth collections
-// its own default (5 days at v0.40), and a database created on an older
-// version keeps whatever that version defaulted to (7 days before v0.40). Only
+// its own default (5 days since v0.39), and a database created on an older
+// version keeps whatever that version defaulted to (7 days before v0.39). Only
 // the migration makes both the same, so assert it on the migrated database.
 func TestBootedUsersAuthTokenDuration(t *testing.T) {
 	app := newBootedTestApp(t)

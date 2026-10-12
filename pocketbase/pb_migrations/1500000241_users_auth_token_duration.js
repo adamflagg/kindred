@@ -8,8 +8,8 @@
  * hold. How long it keeps working is this duration.
  *
  * Neither database had chosen one. A fresh database takes PocketBase's
- * default for the version it is created on (5 days at v0.40); one created on
- * an earlier version keeps that version's default (7 days before v0.40).
+ * default for the version it is created on (5 days since v0.39); one created on
+ * an earlier version keeps that version's default (7 days before v0.39).
  *
  * 12 hours is a sliding window, not an absolute cap: AuthContext calls
  * authRefresh on every app load, and PocketBase mints the new token from the
