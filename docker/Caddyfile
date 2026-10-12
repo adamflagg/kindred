@@ -215,31 +215,33 @@
 	handle {
 		root * /pb_public
 
-		# Vite's build output: every file under /assets/ carries a content hash
-		# in its name, so a URL's bytes never change. `file` means it exists on
-		# disk -- a missing bundle falls back to index.html below and must not
-		# take this policy.
+		# Vite's build output: `<name>-<8-char hash>.<ext>` under /assets/, so a
+		# URL's bytes never change. The filename shape is checked too, because
+		# anything in frontend/public/assets/ is copied there unhashed. `file`
+		# means it exists on disk -- a missing bundle falls back to index.html
+		# below and must not take this policy.
 		@hashed_asset {
-			path /assets/*
+			path_regexp ^/assets/[^/]+-[A-Za-z0-9_-]{8}\.[A-Za-z0-9]+$
 			file
 		}
-		# Any other real file that is not an HTML document: frontend/public's
-		# icons and the /local/ branding. Their names do not change when their
-		# bytes do, so a cache may keep them but must revalidate on every use
-		# (a cheap 304 against the ETag file_server sends).
-		@unhashed_static {
+		# Any real file that is not an HTML document: frontend/public's icons,
+		# the /local/ branding, an unhashed file under /assets/. Their names do
+		# not change when their bytes do, so a cache may keep them but must
+		# revalidate on every use (a cheap 304 against the ETag file_server
+		# sends). A hashed bundle matches too; @hashed_asset overwrites it.
+		@static_file {
 			file
-			not path /assets/* *.html
+			not path *.html
 		}
 
-		# `route` keeps this order: the default first, then the narrower
-		# matches overwrite it. Whatever falls through -- index.html, the SPA
-		# fallback for every unknown path, oauth2-complete.html -- is an HTML
-		# document and is never stored.
+		# `route` keeps this order: the default first, then each narrower match
+		# overwrites it. Whatever falls through -- index.html, the SPA fallback
+		# for every unknown path, oauth2-complete.html -- is an HTML document
+		# and is never stored.
 		route {
 			header Cache-Control no-store
+			header @static_file Cache-Control no-cache
 			header @hashed_asset Cache-Control "public, max-age=31536000, immutable"
-			header @unhashed_static Cache-Control no-cache
 			try_files {path} /index.html
 			file_server
 		}

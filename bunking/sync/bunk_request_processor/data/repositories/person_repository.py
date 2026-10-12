@@ -373,7 +373,7 @@ class PersonRepository(Repository):
             return matches
 
         except Exception as e:
-            logger.error("Error finding people by normalized name: %s", e)
+            logger.error("Error finding people by normalized name: %s", _describe_search_error(e))
             return []
 
     def bulk_find_by_cm_ids(self, cm_ids: list[int]) -> dict[int, Person]:
