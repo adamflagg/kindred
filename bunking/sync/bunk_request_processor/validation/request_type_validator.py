@@ -55,9 +55,10 @@ def validate_request_type_for_field(parsed: ParsedRequest) -> ParsedRequest | No
 
         # Correct the type if needed
         if parsed.request_type != expected_type:
+            target_given = "yes" if parsed.target_name else "no"
             logger.warning(
                 f"Request type mismatch: {parsed.request_type} from field {source_field} "
-                f"(target: {parsed.target_name or 'none'}). Correcting to {expected_type}"
+                f"(target given: {target_given}). Correcting to {expected_type}"
             )
 
             # Create corrected request with new type and note about correction

@@ -105,3 +105,50 @@ class TestPersonRepositoryMapsHouseholdId:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+class TestNameSearchErrorLogsCarryNoNames:
+    """A failed name search must not write the searched-for name to an ERROR line.
+
+    The PocketBase client's ``ClientResponseError`` renders the request URL --
+    and with it the ``filter`` that holds the name -- in ``str(e)``. Logging the
+    exception as-is would put the name back in the production log the message
+    text was cleaned of.
+    """
+
+    NAME_URL = (
+        "http://127.0.0.1:8090/api/collections/persons/records"
+        "?filter=%28first_name+%3D+%27Emma%27+%7C%7C+preferred_name+%3D+%27Emma%27%29"
+        "+%26%26+last_name+%3D+%27Johnson%27"
+    )
+
+    @pytest.fixture
+    def repo(self):
+        from pocketbase.errors import ClientResponseError
+
+        pb = MagicMock()
+        error = ClientResponseError("Response error. Status code:400", url=self.NAME_URL, status=400)
+        pb.collection.return_value.get_list.side_effect = error
+        pb.collection.return_value.get_full_list.side_effect = error
+        PersonRepository._from_factory = True
+        repo = PersonRepository(pb)
+        PersonRepository._from_factory = False
+        return repo
+
+    @pytest.mark.parametrize(
+        ("method", "args"),
+        [
+            ("find_by_name", ("Emma", "Johnson")),
+            ("find_by_first_name", ("Emma",)),
+            ("find_by_last_name", ("Johnson",)),
+            ("find_by_first_and_parent_surname", ("Emma", "Johnson")),
+        ],
+    )
+    def test_error_line_omits_the_name_but_keeps_the_status(self, repo, caplog, method, args):
+        with caplog.at_level("ERROR"):
+            assert getattr(repo, method)(*args, year=2025) == []
+
+        assert caplog.records, "the failure is still logged"
+        assert "Emma" not in caplog.text
+        assert "Johnson" not in caplog.text
+        assert "400" in caplog.text, "the status stays, so the line is still diagnosable"

@@ -121,9 +121,10 @@ class OpenAIProvider(AIProvider):
 
             logger.log(TRACE, f"AI prompt: {prompt[:500]}..." if len(prompt) > 500 else f"AI prompt: {prompt}")
 
-            # Debug logging: show exact AI input
+            # Debug logging: show exact AI input. DEBUG, like the output line
+            # below: it carries the requester's name and the text a family wrote.
             if self.debug:
-                logger.info(
+                logger.debug(
                     f"[AI-PARSE] Input: field='{context.field_type}' "
                     f"requester='{context.requester_name}' text='{request_text}'"
                 )

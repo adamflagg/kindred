@@ -801,7 +801,7 @@ class Phase2ResolutionService:
         total_requests = sum(len(resolution_results) for _, resolution_results in results)
         self._stats["total_processed"] += total_requests
 
-        for _parse_result, resolution_results in results:
+        for parse_result, resolution_results in results:
             for resolution_result in resolution_results:
                 if resolution_result.is_resolved:
                     if resolution_result.confidence >= 0.85:
@@ -819,8 +819,9 @@ class Phase2ResolutionService:
                     pass
                 else:
                     self._stats["failed"] += 1
+                    requester = parse_result.parse_request.requester_cm_id if parse_result.parse_request else "unknown"
                     logger.warning(
-                        f"Resolution failed for '{resolution_result.target_name}': "
+                        f"Resolution failed for a target named by requester {requester}: "
                         f"method={resolution_result.method}, "
                         f"confidence={resolution_result.confidence}"
                     )
@@ -1211,8 +1212,8 @@ class Phase2ResolutionService:
             elif has_any_overlap and match_certainty == "exact":
                 # Some name overlap - might be nickname or partial match
                 logger.warning(
-                    f"AI validation partial mismatch: '{parsed_request.target_name}' "
-                    f"mapped to {person_name} (ID: {target_cm_id}) - proceeding with caution"
+                    f"AI validation partial mismatch: the requested name only partly matches "
+                    f"person {target_cm_id} - proceeding with caution"
                 )
                 return ResolutionResult(
                     person=person,
@@ -1222,10 +1223,7 @@ class Phase2ResolutionService:
                 ), False
             else:
                 # Complete mismatch - AI hallucination
-                logger.error(
-                    f"AI hallucination detected: '{parsed_request.target_name}' "
-                    f"mapped to {person_name} (ID: {target_cm_id})"
-                )
+                logger.error(f"AI hallucination detected: the requested name does not match person {target_cm_id}")
                 # Return None to fall through to regular resolution
                 return None, True  # hallucination_detected = True
 

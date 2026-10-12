@@ -514,7 +514,7 @@ async def get_bunk_social_graph(
                 years_at_camp = getattr(person, "years_at_camp", None)
                 if years_at_camp == 1:
                     first_year_campers.add(node_id)
-                    logger.info(f"Person {node_id} ({name}) is a first-year camper (years_at_camp={years_at_camp})")
+                    logger.info(f"Person {node_id} is a first-year camper (years_at_camp={years_at_camp})")
 
                 logger.debug(f"Bunk graph - Person {node_id} ({name}): grade={grade}, years_at_camp={years_at_camp}")
             else:

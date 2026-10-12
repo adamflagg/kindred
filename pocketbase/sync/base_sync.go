@@ -1033,15 +1033,15 @@ func (b *BaseSyncService) ProcessCompositeRecord(
 
 // Helper functions
 
-// getRecordName tries to extract a human-readable name from a record
+// getRecordName returns the label an orphan-deletion log line uses for a record.
+//
+// The label lands in an INFO log line, so a person's row is labeled by its
+// CampMinder ID and never by first and last name: production logs sit outside
+// the app's RBAC. Reference rows (sessions, bunks, divisions) keep their own
+// `name`, which identifies no one.
 func (b *BaseSyncService) getRecordName(record *core.Record, entityType string) string {
-	// Try common name fields
 	if name := record.GetString("name"); name != "" {
 		return name
-	}
-	if firstName := record.GetString("first_name"); firstName != "" {
-		lastName := record.GetString("last_name")
-		return fmt.Sprintf("%s %s", firstName, lastName)
 	}
 
 	// For composite entities like attendees
@@ -1051,6 +1051,10 @@ func (b *BaseSyncService) getRecordName(record *core.Record, entityType string) 
 		if personID != "" && sessionID != "" {
 			return fmt.Sprintf("person %s in session %s", personID, sessionID)
 		}
+	}
+
+	if cmID := record.GetInt("cm_id"); cmID != 0 {
+		return fmt.Sprintf("cm_id %d", cmID)
 	}
 
 	// Fallback to ID

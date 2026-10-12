@@ -804,7 +804,8 @@ class SocialGraph:
         # Auto-resolve if all conditions met
         if score_diff >= threshold and best_score >= min_connections and confidence >= min_confidence:
             logger.info(
-                f"Smart resolution auto-resolved '{name}' to {best_candidate.cm_id} "
+                f"Smart resolution auto-resolved a target named by requester {requester_cm_id} "
+                f"to {best_candidate.cm_id} "
                 f"(score={best_score:.1f}, diff={score_diff:.1f}, conf={confidence:.2f})"
             )
             return ((best_candidate.cm_id, confidence, "social_graph_auto"), sorted_candidates)

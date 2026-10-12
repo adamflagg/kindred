@@ -34,6 +34,17 @@ def _escape_filter_value(value: str) -> str:
     return value.replace("'", "''")
 
 
+def _describe_search_error(e: Exception) -> str:
+    """Name a failed name search's error without its request URL.
+
+    PocketBase's ``ClientResponseError`` renders the request URL in ``str(e)``,
+    and a name search's URL carries the name in its ``filter``. The error type
+    and HTTP status are enough to diagnose the failure.
+    """
+    status = getattr(e, "status", None)
+    return f"{type(e).__name__} (status {status})" if status else type(e).__name__
+
+
 class PersonRepository(Repository):
     """Repository for Person data access
 
@@ -153,7 +164,7 @@ class PersonRepository(Repository):
             return [p for p in (self._map_to_person(item) for item in result.items) if p is not None]
 
         except Exception as e:
-            logger.error("Error finding people by name %s %s: %s", first_name, last_name, e)
+            logger.error("Error finding people by name: %s", _describe_search_error(e))
             return []
 
     def find_by_first_name(self, first_name: str, year: int | None = None) -> list[Person]:
@@ -198,7 +209,7 @@ class PersonRepository(Repository):
             return [p for p in (self._map_to_person(item) for item in result.items) if p is not None]
 
         except Exception as e:
-            logger.error("Error finding people by first name %s: %s", first_name, e)
+            logger.error("Error finding people by first name: %s", _describe_search_error(e))
             return []
 
     def find_by_last_name(self, last_name: str, year: int | None = None) -> list[Person]:
@@ -234,7 +245,7 @@ class PersonRepository(Repository):
             return [p for p in (self._map_to_person(item) for item in pb_result.items) if p is not None]
 
         except Exception as e:
-            logger.error("Error finding people by last name %s: %s", last_name, e)
+            logger.error("Error finding people by last name: %s", _describe_search_error(e))
             return []
 
     def find_by_first_and_parent_surname(
@@ -277,7 +288,7 @@ class PersonRepository(Repository):
             return matches
 
         except Exception as e:
-            logger.error("Error finding people by first name and parent surname: %s", e)
+            logger.error("Error finding people by first name and parent surname: %s", _describe_search_error(e))
             return []
 
     def find_by_session(self, session_cm_id: int, year: int) -> list[Person]:
@@ -362,7 +373,7 @@ class PersonRepository(Repository):
             return matches
 
         except Exception as e:
-            logger.error("Error finding people by normalized name %s: %s", normalized_name, e)
+            logger.error("Error finding people by normalized name: %s", e)
             return []
 
     def bulk_find_by_cm_ids(self, cm_ids: list[int]) -> dict[int, Person]:

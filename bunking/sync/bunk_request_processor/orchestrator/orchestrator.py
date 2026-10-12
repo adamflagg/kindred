@@ -441,8 +441,8 @@ class RequestOrchestrator:
             for req in result.parsed_requests:
                 if req.is_superseded:
                     logger.info(
-                        f"Filtered superseded request: {req.request_type.value} {req.target_name} "
-                        f"(reason: {req.supersedes_reason})"
+                        f"Filtered superseded {req.request_type.value} request from requester "
+                        f"{result.parse_request.requester_cm_id if result.parse_request else 'unknown'}"
                     )
                     filtered_count += 1
                 else:
@@ -455,7 +455,7 @@ class RequestOrchestrator:
                 target_groups.setdefault(target, []).append(req)
 
             final_requests = []
-            for target, reqs in target_groups.items():
+            for reqs in target_groups.values():
                 if len(reqs) == 1:
                     final_requests.append(reqs[0])
                     kept_count += 1
@@ -473,7 +473,11 @@ class RequestOrchestrator:
                     final_requests.append(winner)
                     kept_count += 1
                     filtered_count += len(all_conflicting) - 1
-                    logger.info(f"Resolved conflict for '{target}': kept {winner.request_type.value}")
+                    logger.info(
+                        f"Resolved a bunk_with/not_bunk_with conflict for requester "
+                        f"{result.parse_request.requester_cm_id if result.parse_request else 'unknown'}: "
+                        f"kept {winner.request_type.value}"
+                    )
                 else:
                     # No conflict - keep all
                     final_requests.extend(reqs)
@@ -2068,10 +2072,14 @@ class RequestOrchestrator:
                         # Check if this was filtered as a staff/parent name
                         if resolution_result and resolution_result.method == "staff_filtered":
                             resolution_info["likely_staff"] = True
-                            logger.warning(f"Flagged likely staff/parent name: '{parsed_req.target_name}'")
+                            logger.warning(
+                                f"Flagged likely staff/parent name in a request from requester "
+                                f"{parse_result.parse_request.requester_cm_id} (unresolved ID {unresolved_id})"
+                            )
                         else:
                             logger.info(
-                                f"Created unresolved request for '{parsed_req.target_name}' with ID {unresolved_id}"
+                                f"Created unresolved request with ID {unresolved_id} for requester "
+                                f"{parse_result.parse_request.requester_cm_id}"
                             )
                     else:
                         # No target name - skip this request (log warning for data quality visibility)

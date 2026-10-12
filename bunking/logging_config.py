@@ -142,6 +142,197 @@ class HealthCheckFilter(logging.Filter):
         return not any(path.startswith(prefix) for prefix in self.HEALTH_PATH_PREFIXES)
 
 
+# Query parameters whose values never reach a log. ``q``/``search``/``name``/``email``/``actor``
+# carry what staff typed or a staff identity; ``filter`` is the PocketBase filter the API
+# builds for a name search, which a failing SDK call echoes back inside its error's URL;
+# the rest are credentials. Shared by the access-log filter and the catch-all below.
+SENSITIVE_QUERY_PARAMS: frozenset[str] = frozenset(
+    {
+        "q",
+        "search",
+        "actor",
+        "email",
+        "name",
+        "filter",
+        "token",
+        "access_token",
+        "refresh_token",
+        "code",
+        "state",
+    }
+)
+REDACTED_VALUE = "[REDACTED]"
+
+_QUERY_KEY_RE = re.compile(r"(?<=[?&])([A-Za-z_][A-Za-z0-9_.-]*)=")
+# A quote opens a quoted segment only where a filter expression would put one (after an
+# operator, an opening paren or a space); anywhere else at top level it closes the URL
+# itself, as in ``URL('...?filter=x')`` or ``"url": "...?filter=x"``.
+_QUOTE_OPENERS = frozenset("=~<>!(,|&")
+# Filter operator characters. Top-level whitespace next to one of these is inside the
+# expression (``first_name ~ "x" && year = 2025``), not the end of the value.
+_FILTER_OPERATORS = frozenset("=~<>!?&|")
+
+
+def _space_inside_expression(text: str, start: int, i: int) -> bool:
+    """Whether the top-level whitespace at ``i`` sits between filter operands."""
+    before = text[start:i].rstrip(" \t")
+    j = i
+    while j < len(text) and text[j] in " \t":
+        j += 1
+    if not before or j >= len(text):
+        return False
+    return before[-1] in _FILTER_OPERATORS or text[j] in _FILTER_OPERATORS
+
+
+def _query_value_end(text: str, start: int) -> int:
+    """Index just past the query value that begins at ``start``.
+
+    A URL-encoded value ends at the next ``&``, whitespace or line end. An
+    unencoded PocketBase filter can also hold quoted strings with spaces,
+    parenthesised groups with spaces, ``&&``, and spaces around its operators;
+    those are consumed whole so no part of a name is left behind. Errs towards
+    redacting too much.
+    """
+    depth = 0
+    quote = ""
+    i, n = start, len(text)
+    while i < n:
+        c = text[i]
+        if c == "\n":
+            break
+        if quote:
+            if c == quote:
+                # A doubled quote is an escaped one (``'O''Brien'``), not the close.
+                if text.startswith(quote * 2, i):
+                    i += 1
+                else:
+                    quote = ""
+        elif c in "\"'":
+            prev = text[i - 1] if i > 0 else "="
+            if prev in _QUOTE_OPENERS or prev.isspace():
+                quote = c
+            elif depth == 0:
+                break
+        elif c == "(":
+            depth += 1
+        elif c == ")":
+            if depth == 0:
+                break
+            depth -= 1
+        elif depth == 0 and c.isspace():
+            if not _space_inside_expression(text, start, i):
+                break
+        elif depth == 0 and c == "&":
+            if not text.startswith("&&", i):
+                break
+            i += 1
+        i += 1
+    return i
+
+
+def redact_sensitive_query_values(text: str) -> str:
+    """Replace the value of every sensitive query parameter found in ``text``.
+
+    Works on free text -- a log message, an exception's ``str()``, a whole
+    traceback -- not only on a bare URL. Parameter names and every other
+    parameter are kept, so the line still says what was requested.
+    """
+    if "=" not in text:
+        return text
+    out: list[str] = []
+    copied = pos = 0
+    while (m := _QUERY_KEY_RE.search(text, pos)) is not None:
+        if m.group(1).lower() not in SENSITIVE_QUERY_PARAMS:
+            pos = m.end()
+            continue
+        end = _query_value_end(text, m.end())
+        out.append(text[copied : m.end()])
+        out.append(REDACTED_VALUE)
+        copied = pos = end
+    if not out:
+        return text
+    out.append(text[copied:])
+    return "".join(out)
+
+
+class SensitiveQueryRedactingFormatter(logging.Formatter):
+    """Wrap a handler's formatter so its finished line has sensitive query values redacted.
+
+    It runs on the fully formatted output, so it covers the message, its ``%``
+    arguments, the exception text and stack info alike -- whatever the wrapped
+    formatter chooses to print. The traceback text the stdlib caches on the
+    record is redacted too, so no other handler can reuse an unredacted copy.
+    """
+
+    def __init__(self, inner: logging.Formatter | None = None) -> None:
+        super().__init__()
+        self.inner = inner or logging.Formatter()
+
+    def format(self, record: logging.LogRecord) -> str:
+        """Format with the wrapped formatter, then redact."""
+        line = self.inner.format(record)
+        if record.exc_text:
+            record.exc_text = redact_sensitive_query_values(record.exc_text)
+        return redact_sensitive_query_values(line)
+
+
+def install_sensitive_query_redaction() -> None:
+    """Wrap the formatter of every handler currently attached to any logger.
+
+    Idempotent. ``configure_logging`` calls it last; a process that sets logging
+    up another way (``logging.basicConfig``) calls it after that setup. A handler
+    added afterwards is not covered, so add handlers before calling it.
+    """
+    loggers: list[logging.Logger] = [logging.getLogger()]
+    loggers += [lg for lg in logging.Logger.manager.loggerDict.values() if isinstance(lg, logging.Logger)]
+    for lg in loggers:
+        for handler in lg.handlers:
+            if not isinstance(handler.formatter, SensitiveQueryRedactingFormatter):
+                handler.setFormatter(SensitiveQueryRedactingFormatter(handler.formatter))
+
+
+class AccessLogQueryRedactionFilter(logging.Filter):
+    """Replace free-text and credential query values in uvicorn access-log lines.
+
+    Uvicorn logs every request at INFO with its full path and query string.
+    Some query values are what staff typed -- the pipeline debug person search
+    sends a camper's name as ``?q=`` on each keystroke, the audit log filters by
+    a staff email in ``?actor=`` -- and an OAuth-style ``code``/``state`` or a
+    ``token`` must never reach a log. Parameter names are kept, so a line still
+    says what was asked for; only the listed values are replaced.
+
+    Attached to the ``uvicorn.access`` logger, it rewrites the path argument of
+    uvicorn's ``'%s - "%s %s HTTP/%s" %d'`` call and never drops a record.
+    """
+
+    REDACTED_PARAMS: ClassVar[frozenset[str]] = SENSITIVE_QUERY_PARAMS
+    REDACTED_VALUE: ClassVar[str] = REDACTED_VALUE
+    _PATH_ARG_INDEX: ClassVar[int] = 2
+
+    @classmethod
+    def redact_path(cls, path: str) -> str:
+        """Return ``path`` with each listed query parameter's value replaced."""
+        base, sep, query = path.partition("?")
+        if not sep:
+            return path
+        parts = []
+        for pair in query.split("&"):
+            key, eq, _value = pair.partition("=")
+            redact = eq and key.lower() in cls.REDACTED_PARAMS
+            parts.append(f"{key}={cls.REDACTED_VALUE}" if redact else pair)
+        return f"{base}?{'&'.join(parts)}"
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Rewrite the path argument in place; always keep the record."""
+        args = record.args
+        if isinstance(args, tuple) and len(args) > self._PATH_ARG_INDEX:
+            path = args[self._PATH_ARG_INDEX]
+            if isinstance(path, str) and "?" in path:
+                i = self._PATH_ARG_INDEX
+                record.args = (*args[:i], self.redact_path(path), *args[i + 1 :])
+        return True
+
+
 def configure_logging(
     source: str = "app",
     level: int | None = None,
@@ -190,6 +381,17 @@ def configure_logging(
         uvicorn_logger.addHandler(handler)
         uvicorn_logger.setLevel(level)
         uvicorn_logger.propagate = False  # Prevent double logging
+
+    # Logger-level, so it runs before any handler formats the line. Idempotent:
+    # configure_logging may be called more than once in a process.
+    access_logger = logging.getLogger("uvicorn.access")
+    if not any(isinstance(f, AccessLogQueryRedactionFilter) for f in access_logger.filters):
+        access_logger.addFilter(AccessLogQueryRedactionFilter())
+
+    # Catch-all, last so it wraps every handler set up above (root's, which uvicorn's
+    # loggers share): a failed PocketBase call's error carries its request URL, and a
+    # name search's URL carries the name in ``filter``, in the message or the traceback.
+    install_sensitive_query_redaction()
 
     # Suppress noisy third-party loggers
     logging.getLogger("httpx").setLevel(logging.WARNING)

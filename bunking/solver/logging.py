@@ -5,6 +5,10 @@ Tracks constraints added, violations, and solver progress.
 """
 
 import json
+import os
+import re
+import stat
+import time
 from collections import defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
@@ -13,6 +17,53 @@ from typing import Any
 from bunking.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+# Run logs older than this are deleted each time a new one is written, and once
+# when the API starts (api/main.py lifespan), so the off-season clears them too.
+# They sit on a persisted volume outside the app's RBAC, so they must not pile up
+# forever.
+SOLVER_LOG_RETENTION_DAYS = 30
+
+# Relative to the API's working directory, which is the persisted logs volume's parent.
+SOLVER_LOGS_DIR = Path("logs/solver")
+
+# Exactly what save_to_file writes: session_<id>_solver_log_<YYYYmmdd_HHMMSS>[_<run id>].json
+_SOLVER_LOG_NAME = re.compile(r"session_-?\d+_solver_log_\d{8}_\d{6}(?:_[A-Za-z0-9-]+)?\.json")
+
+
+def prune_solver_logs(logs_dir: Path, now: float | None = None, max_age_days: int = SOLVER_LOG_RETENTION_DAYS) -> int:
+    """Delete solver run logs in ``logs_dir`` whose mtime is older than ``max_age_days``.
+
+    Only regular files directly inside ``logs_dir`` whose name matches the run-log
+    pattern are considered: symlinks, subdirectories and other files are never
+    touched. Never raises -- a failure is logged by exception type and the solve
+    that triggered the prune carries on. Returns the number of files deleted.
+    """
+    cutoff = (time.time() if now is None else now) - max_age_days * 86_400
+    deleted = failed = 0
+    last_error = ""
+    try:
+        with os.scandir(logs_dir) as entries:
+            for entry in entries:
+                if not _SOLVER_LOG_NAME.fullmatch(entry.name):
+                    continue
+                try:
+                    st = entry.stat(follow_symlinks=False)
+                    if not stat.S_ISREG(st.st_mode) or st.st_mtime >= cutoff:
+                        continue
+                    Path(entry.path).unlink()
+                    deleted += 1
+                except OSError as e:
+                    failed += 1
+                    last_error = type(e).__name__
+    except FileNotFoundError:
+        return 0
+    except Exception as e:
+        logger.warning(f"Solver log pruning failed: {type(e).__name__}")
+        return deleted
+    if failed:
+        logger.warning(f"Solver log pruning could not delete {failed} file(s): {last_error}")
+    return deleted
 
 
 class ConstraintLogger:
@@ -65,7 +116,7 @@ class ConstraintLogger:
     def save_to_file(self, session_id: int, solver_run_id: str | None = None) -> str:
         """Save logs to a file and return the file path."""
         # Create logs directory if it doesn't exist
-        logs_dir = Path("logs/solver")
+        logs_dir = SOLVER_LOGS_DIR
         logs_dir.mkdir(parents=True, exist_ok=True)
 
         # Generate filename with timestamp
@@ -94,4 +145,5 @@ class ConstraintLogger:
             json.dump(log_data, f, indent=2, default=str)
 
         logger.info(f"Solver logs saved to {filepath}")
+        prune_solver_logs(logs_dir)
         return str(filepath)
