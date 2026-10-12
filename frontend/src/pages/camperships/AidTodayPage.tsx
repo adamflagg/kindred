@@ -445,6 +445,7 @@ function DevelopmentBody({
               rest={rest}
               view={view}
               nextHead="Which"
+              statusColumn={false}
               empty="Every funder has a contact, eligibility and a reporting group."
             />
             {/* Under Funder upkeep, in the left column (audit D10), as the mock lays it out. */}

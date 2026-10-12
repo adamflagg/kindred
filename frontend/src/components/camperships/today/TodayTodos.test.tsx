@@ -2,7 +2,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { describe, expect, it } from 'vitest'
 
-import { DETAIL_ROW, HIGHLIGHT_EDGE, ROW_HIGHLIGHT } from '../kit/kitStyles'
+import { CELL_BG, DETAIL_ROW, HIGHLIGHT_EDGE, ROW_HIGHLIGHT, TD } from '../kit/kitStyles'
 import { line, REGISTRAR_TODAY } from './todayFixtures'
 import { rankLines, REGISTRAR_ORDER } from './todayModel'
 import { TodayTodos } from './TodayTodos'
@@ -127,6 +127,22 @@ describe('TodayTodos', () => {
     expect(screen.getByText('TBM $1,300 over')).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /Open/ })).toBeNull()
   })
+  it("a to-do row's reasons wrap in Next up rather than cut (owner 2a: readable without a hover)", () => {
+    const sources = line('sources', 4, {
+      item_kind: 'descriptions',
+      families: null,
+      reasons: [
+        { code: 'no_grantor', families: null, items: 2 },
+        { code: 'needs_group', families: null, items: 1 },
+        { code: 'unclassified', families: null, items: 1 },
+      ],
+    })
+    wrap(<TodayTodos lines={[sources]} rest={[]} view={VIEW} empty="" />)
+    const why = within(row(0)).getAllByRole('cell')[3]!.firstElementChild as HTMLElement
+    expect(why.className).toContain('whitespace-normal')
+    expect(why.className).not.toMatch(/truncate|text-ellipsis/)
+    expect(why).toHaveAttribute('title')
+  })
   it('draws no empty card when it has no words for one (the registrar fold)', () => {
     wrap(
       <TodayTodos lines={[]} rest={top} view={VIEW} empty="" restTitle="The registrar's queue" />
@@ -214,8 +230,33 @@ describe('TodayTodos', () => {
     expect(rows[0]!.textContent.startsWith('Household 9100124')).toBe(true)
     expect(within(rows[0]!).getByRole('link')).toHaveTextContent(/^Household 9100124$/)
     expect(within(rows[1]!).getByRole('link')).toHaveTextContent(/^Liam Garcia$/)
-    const what = within(rows[0]!).getAllByRole('cell')[1]!
+    const what = within(rows[0]!).getAllByRole('cell')[3]!
     expect(what.textContent.startsWith('·')).toBe(false)
+  })
+  it("names a drawer's session with the kit's central short form (owner 3b): a TBM cohort reads BM2 EB", () => {
+    const l = line('needs_offer', 1, {
+      next_up: [
+        {
+          household_cm_id: 1000002,
+          label: 'Liam Garcia',
+          tiebreak: '',
+          days: 2,
+          camper_name: 'Liam Garcia',
+          session_name: 'B*Mitzvah Program Year 2 - East Bay',
+          session_type: 'bmitzvah',
+          round: 1,
+          ask: 900,
+        },
+      ],
+    })
+    wrap(<TodayTodos lines={[l]} rest={[]} view={VIEW} empty="" />)
+    const r = within(screen.getByTestId('todo-drawer')).getByTestId('drawer-household')
+    const what = within(r).getAllByRole('cell')[3]!
+    expect(what).toHaveTextContent(/^BM2 EB · R1$/)
+    expect(what).toHaveAttribute(
+      'title',
+      expect.stringContaining('B*Mitzvah Program Year 2 - East Bay')
+    )
   })
   it('puts the expand caret in the To-do cell, leaving the rank cell as the number alone', () => {
     wrap(<TodayTodos lines={top} rest={rest} view={VIEW} empty="" />)
@@ -251,18 +292,73 @@ describe('TodayTodos', () => {
     expect(within(first).getAllByText('8d')[0]?.className).toMatch(/amber/)
   })
 
-  it('the opened row carries the amber edge and its drawer is the kit detail line (ruling V1)', () => {
+  it('the opened row carries the amber edge; its drawer is rows of the same grid, white kit cells in its columns (ruling 19)', () => {
+    // Owner ruling 19 reverses V1: the pop-out is a grid, styled as the development grid (white TD cells with the
+    // column rules), and its columns are the to-do table's own, so every boundary lines up with the table above.
     wrap(<TodayTodos lines={top} rest={rest} view={VIEW} empty="" />)
     expect(within(row(0)).getAllByRole('cell')[0]!.className).toContain(HIGHLIGHT_EDGE)
-    const drawerCell = screen.getByTestId('todo-drawer').closest('td')!
-    expect(drawerCell.className).toContain(DETAIL_ROW)
-    expect(drawerCell.closest('tr')!.className).not.toContain(ROW_HIGHLIGHT)
+    const drawer = screen.getByTestId('todo-drawer')
+    expect(drawer.closest('table')).toBe(row(0).closest('table'))
+    expect(drawer.querySelector('table')).toBeNull()
+    const households = within(drawer).getAllByTestId('drawer-household')
+    for (const r of households) {
+      const cells = within(r).getAllByRole('cell')
+      expect(cells).toHaveLength(6)
+      for (const c of cells) {
+        expect(c.className).toContain(TD)
+        expect(c.className).toContain(CELL_BG)
+        expect(c.className).not.toContain(DETAIL_ROW)
+        expect(c.className).not.toContain(ROW_HIGHLIGHT)
+        expect(c.className).not.toMatch(/dashed/)
+      }
+    }
+    // Name under To-do, the ask under Count, the session and round under Next up, the days under the overdue pill.
+    const cells = within(households[0]!).getAllByRole('cell')
+    expect(cells[0]).toHaveTextContent(/^$/)
+    expect(within(cells[1]!).getByRole('link')).toHaveTextContent(/^Liam Garcia$/)
+    expect(cells[2]).toHaveTextContent(/^\$\d[\d,]* ask$/)
+    expect(cells[3]).toHaveTextContent(/^Session 2 · R1$/)
+    expect(cells[4]).toHaveTextContent(/^\d+ days$/)
+    expect(cells[5]).toHaveTextContent(/^$/)
+    // A name is never cut (owner 10-10), nor the session words: a long one wraps in its column.
+    expect(cells[1]!.className).not.toContain('whitespace-nowrap')
+    expect(cells[3]!.className).not.toContain('whitespace-nowrap')
+    // The walk row: Start Queue Walk from the To-do column, Open › in the Open column.
+    const walk = within(drawer).getByRole('link', { name: 'Start Queue Walk' }).closest('tr')!
+    const walkCells = within(walk).getAllByRole('cell')
+    expect(walkCells.map((c) => (c as HTMLTableCellElement).colSpan)).toEqual([1, 4, 1])
+    expect(within(walkCells[2]!).getByRole('link')).toHaveTextContent('Open ›')
+    for (const c of walkCells) expect(c.className).toContain(CELL_BG)
+  })
+  it("Everything else is the same grid: the to-do table's columns, white kit cells (ruling 19)", () => {
+    const { container } = wrap(<TodayTodos lines={top} rest={rest} view={VIEW} empty="" />)
+    fireEvent.click(screen.getByRole('button', { name: /Everything else/ }))
+    const tables = container.querySelectorAll('table')
+    const widths = (t: Element) =>
+      [...t.querySelectorAll(':scope > colgroup > col')].map((c) => (c as HTMLElement).style.width)
+    expect(widths(tables[1]!)).toEqual(widths(tables[0]!))
+    const head = [...tables[1]!.querySelectorAll('thead th')] as HTMLTableCellElement[]
+    expect(head.map((th) => [th.textContent, th.colSpan])).toEqual([
+      ['', 1],
+      ['Queue', 1],
+      ['Count', 1],
+      ['Why', 2],
+      ['', 1],
+    ])
+    const first = tables[1]!.querySelector('tbody tr')!
+    const cells = [...first.querySelectorAll('td')]
+    expect(cells[0]).toHaveTextContent(/^$/)
+    for (const c of cells) {
+      expect(c.className).toContain(TD)
+      expect(c.className).toContain(CELL_BG)
+    }
   })
   it('Everything else says "none" at zero and offers no Open › (audit R16)', () => {
     wrap(<TodayTodos lines={[]} rest={[line('duplicates', 0)]} view={VIEW} empty="" />)
     fireEvent.click(screen.getByRole('button', { name: /Everything else/ }))
     const zero = screen.getByText('Duplicates').closest('tr')!
-    expect(within(zero).getAllByRole('cell')[1]).toHaveTextContent(/^none$/)
+    // Ruling 19: the fold keeps the grid's empty rank column, so Count is the third cell.
+    expect(within(zero).getAllByRole('cell')[2]).toHaveTextContent(/^none$/)
     expect(within(zero).queryByRole('link')).toBeNull()
   })
   it("Everything else shows To place's money in Why (audit R17)", () => {
@@ -298,28 +394,39 @@ describe('TodayTodos', () => {
     ].map((c) => (c as HTMLElement).style.width)
     expect(widths).toEqual(['34px', '230px', '130px', '', '150px', '64px'])
   })
-  it('gives development\'s quoted descriptions the room for one whole chip (ruling 18, "widest widths that keep one")', () => {
-    // A CampMinder description is far longer than a camper's name, and development has no overdue pill, so its
-    // table gives Next up the Status column's room and some of the label's and count's.
+  it("development: the mock's 230 / 130, and no status column, since its lines are never overdue (ruling 19)", () => {
+    const dev = [
+      line('needs_group', 1, {
+        item_kind: 'descriptions',
+        families: null,
+        names: ['Harbor Family Services emergency fund 2027'],
+      }),
+    ]
     const { container } = wrap(
       <TodayTodos
-        lines={[
-          line('needs_group', 1, {
-            item_kind: 'descriptions',
+        lines={dev}
+        rest={[
+          line('no_eligibility', 1, {
+            item_kind: 'funders',
             families: null,
-            names: ['Harbor Family Services emergency fund 2027'],
+            names: ['Lakeside Partners'],
           }),
         ]}
-        rest={[]}
         view={VIEW}
         nextHead="Which"
+        statusColumn={false}
         empty=""
       />
     )
-    const widths = [
-      ...container.querySelectorAll('table')[0]!.querySelectorAll(':scope > colgroup > col'),
-    ].map((c) => (c as HTMLElement).style.width)
-    expect(widths).toEqual(['34px', '196px', '112px', '', '40px', '64px'])
+    fireEvent.click(screen.getByRole('button', { name: /Everything else/ }))
+    const tables = container.querySelectorAll('table')
+    const widths = (t: Element) =>
+      [...t.querySelectorAll(':scope > colgroup > col')].map((c) => (c as HTMLElement).style.width)
+    expect(widths(tables[0]!)).toEqual(['34px', '230px', '130px', '', '64px'])
+    expect(widths(tables[1]!)).toEqual(widths(tables[0]!))
+    expect(within(row(0)).getAllByRole('cell')).toHaveLength(5)
+    const why = [...tables[1]!.querySelectorAll('thead th')].find((th) => th.textContent === 'Why')!
+    expect((why as HTMLTableCellElement).colSpan).toBe(1)
   })
   it("each chip's title says what its days count, per line (audit N6)", () => {
     const chip = (key: Parameters<typeof line>[0], camper: string) =>

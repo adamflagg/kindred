@@ -491,20 +491,31 @@ const midSentence = (words: string): string => {
     : words.charAt(0).toLowerCase() + words.slice(1)
 }
 
+/** Reasons shown in full up to this many; past it, the top two and "+N more" (owner 2a, 2026-10-11). */
+const REASONS_SHOWN = 3
+
 /**
- * A line's reasons as one sentence (audit R13): "Short 4 · missing in CM 3 · over 1", capitalised once. A named
- * thing (a rules section, an equity field) carries no count. A line with money and no reasons says its money (To
- * place, audit R17).
+ * A line's reasons as one sentence (audit R13): "Short 4 · missing in CM 3 · over 1", most common first and
+ * capitalised once. Owner 2a: three reasons or fewer all show; more, and the cell shows the two most common then a
+ * plain "+N more", so it reads without a hover. A named thing (a rules section, an equity field) carries no count. A
+ * line with money and no reasons says its money (To place, audit R17). `all`: every reason (the cell's title).
  */
-export function reasonsLine(line: ApiAidTodayLine): string {
-  const parts = (line.reasons ?? []).map((r, i) => {
+export function reasonsLine(line: ApiAidTodayLine, all = false): string {
+  // Stable: equal counts keep the server's order.
+  const reasons = [...(line.reasons ?? [])].sort((a, b) => b.items - a.items)
+  const shown = all || reasons.length <= REASONS_SHOWN ? reasons : reasons.slice(0, 2)
+  const parts = shown.map((r, i) => {
     const words = i === 0 ? reasonWords(line.key, r) : midSentence(reasonWords(line.key, r))
     return r.items > 0 && !NAMED_REASONS.includes(line.key) ? `${words} ${String(r.items)}` : words
   })
   if (parts.length === 0 && line.key === 'to_place' && line.amount != null)
     return formatWholeMoney(line.amount)
-  return parts.join(' · ')
+  const more = reasons.length - shown.length
+  return [...parts, ...(more > 0 ? [`+${String(more)} more`] : [])].join(' · ')
 }
+
+/** Every reason, for the Why cell's title (owner 2a: the cell itself shows the top ones). */
+export const reasonsTitle = (line: ApiAidTodayLine): string => reasonsLine(line, true)
 
 export interface GroupRow {
   readonly key: string

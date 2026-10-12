@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { Fragment, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 
 import type { ApiAidTodayLine, ApiAidTodayNextUp } from '../../../types/api-types'
@@ -7,16 +7,7 @@ import { aidHref, type AidView } from '../kit/asOf'
 import { AidFoldCard } from '../kit/Cards'
 import { CS_BTN, CS_EMPTY, CS_LINK_CELL, CS_LINK_SM, CS_SMALL } from '../kit/csType'
 import { Cut } from '../kit/Cut'
-import {
-  CELL_BG,
-  DETAIL_ROW,
-  HIGHLIGHT_EDGE,
-  ROW_HIGHLIGHT,
-  TABLE,
-  TABLE_CARD,
-  TD,
-  TH,
-} from '../kit/kitStyles'
+import { CELL_BG, HIGHLIGHT_EDGE, ROW_HIGHLIGHT, TABLE, TABLE_CARD, TD, TH } from '../kit/kitStyles'
 import { Money } from '../kit/MoneyText'
 import { AidNameChips, type NameChip } from '../kit/NameChips'
 import { StatusPill } from '../kit/Pills'
@@ -28,6 +19,7 @@ import {
   countWords,
   LINE_WORDS,
   reasonsLine,
+  reasonsTitle,
   type TodayKey,
 } from './todayModel'
 
@@ -43,14 +35,28 @@ const FUNDERS = '/aid/money/funders'
 const DRAWER_N = 5
 // Column widths: rank, to-do, count, next up (the rest), status, open: the mock's 34 / 230 / 130 / rest / 150 / 64.
 // Owner ruling 18 names a camper request by the camper's full name, so one whole chip fits Next up at 1280-1440px
-// (ruling V9: never cut) with the mock's widths, and the To-do labels stay on one line.
+// (ruling V9: never cut) with the mock's widths, and the To-do labels stay on one line. Development takes the same
+// widths (ruling 19) with no status column, since none of its lines has an overdue threshold: its longest
+// description chip (~274px) still fits the wider Next up.
 const RANK_W = 34
 const OPEN_W = 64
-const MOCK_W = { label: 230, count: 130, status: 150 }
-// Development's chips are funder names and CampMinder descriptions, far longer than a camper's name, and its lines
-// carry no overdue pill: the mock's widths leave a description a bare "+N", so its table gives Next up the Status
-// column's room and some of the label's (which wraps) and the count's (ruling 18: the widest that keep one chip).
-const NAMES_W = { label: 196, count: 112, status: 40 }
+const LABEL_W = 230
+const COUNT_W = 130
+const STATUS_W = 150
+
+/** The to-do grid's columns. The drawer and Everything else are the same grid, so they draw exactly these (ruling 19). */
+function Columns({ status }: { status: boolean }) {
+  return (
+    <colgroup>
+      <col style={{ width: RANK_W }} />
+      <col style={{ width: LABEL_W }} />
+      <col style={{ width: COUNT_W }} />
+      <col />
+      {status && <col style={{ width: STATUS_W }} />}
+      <col style={{ width: OPEN_W }} />
+    </colgroup>
+  )
+}
 
 const isWalkableKey = (key: string): boolean => (WALKABLE as readonly string[]).includes(key)
 
@@ -165,7 +171,13 @@ function NextUpCell({ line, view }: { line: ApiAidTodayLine; view: AidView }) {
     })
     return <AidNameChips chips={chips} total={line.families ?? line.items} />
   }
-  return <Cut text={reasonsLine(line)} />
+  // Owner 2a: the top reasons then "+N more", wrapping in the column rather than cut, so they read without a hover;
+  // the title lists every reason.
+  return (
+    <span className="whitespace-normal" title={reasonsTitle(line)}>
+      {reasonsLine(line)}
+    </span>
+  )
 }
 
 /** The drawer's session (audit X10): the short form, or the tiny one where the short form is still a long name
@@ -175,92 +187,113 @@ function drawerSession(name: string, type: string): string {
   return short.length > 20 ? aidTinyName(name, type) || short : short
 }
 
-/** Drawer cells: 14px rows with dashed rules (the mock's .v2-dw), indented to the To-do column. */
-const DW_TD = 'border-border border-b border-dashed py-[3px] pr-2 whitespace-nowrap'
+/** A drawer or fold cell: the to-do grid's own white kit cell (ruling 19: the development grid's style). */
+const GRID_TD = `${TD} ${CELL_BG}`
 
-function Drawer({ line, view, slug }: { line: ApiAidTodayLine; view: AidView; slug: string }) {
+/**
+ * The opened line's households as rows of the to-do grid itself (owner ruling 19: a popped-open row, but a grid,
+ * styled as the development grid, its columns the table's own): the name under To-do, the ask under Count, the
+ * session and round under Next up, the days under the overdue pill. Then the walk row.
+ */
+function Drawer({
+  line,
+  view,
+  slug,
+  status,
+}: {
+  line: ApiAidTodayLine
+  view: AidView
+  slug: string
+  status: boolean
+}) {
   const limit = line.overdue_after_days ?? undefined
   const nextUp = nextUpOf(line)
   const first = nextUp[0]
   const open = openHref(line.key, view)
   const entries = nextUp.slice(0, DRAWER_N)
   return (
-    <div data-testid="todo-drawer" className="flex flex-col gap-1.5 pt-0.5 pr-3 pb-1 pl-[42px]">
-      <table className="w-full table-fixed border-collapse text-sm">
-        <colgroup>
-          <col style={{ width: '42%' }} />
-          <col />
-          <col style={{ width: 104 }} />
-          <col style={{ width: 76 }} />
-        </colgroup>
-        <tbody>
-          {entries.map((n) => {
-            // The link already names the camper (ruling 18), so the what is the session and round.
-            const what = [
-              drawerSession(n.session_name ?? '', n.session_type ?? ''),
-              n.round === null || n.round === undefined ? '' : `R${String(n.round)}`,
-            ]
-              .filter((part) => part !== '')
-              .join(' · ')
-            const days = n.days ?? null
-            const late = limit !== undefined && days !== null && days > limit
-            const label = n.tiebreak ? `${n.label} ${n.tiebreak}` : n.label
-            return (
-              <tr
-                key={`${String(n.household_cm_id)}-${n.tiebreak ?? ''}`}
-                data-testid="drawer-household"
-              >
-                <td className={`${DW_TD} overflow-hidden text-ellipsis`}>
-                  <Link
-                    className={CS_LINK_CELL}
-                    to={householdHref(n.household_cm_id, view)}
-                    title={openTitle(n, label)}
-                  >
-                    {label}
-                  </Link>
-                </td>
-                <td
-                  className={`${DW_TD} overflow-hidden text-ellipsis`}
-                  title={[what, n.session_name].filter(Boolean).join(' · ')}
-                >
-                  {what}
-                </td>
-                <td className={`${DW_TD} text-right tabular-nums`}>
-                  {n.ask === null || n.ask === undefined ? null : (
-                    <>
-                      <Money value={n.ask} />
-                      {' ask'}
-                    </>
-                  )}
-                </td>
-                <td
-                  className={`${DW_TD} pr-0 text-right tabular-nums ${late ? `${POOL_NEGATIVE_INK} font-bold` : 'text-muted-foreground'}`}
-                >
-                  {days === null ? '' : `${String(days)} days`}
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-      <div className="flex items-center gap-2">
-        {first !== undefined && (
-          <Link
-            className={CS_BTN}
-            to={householdHref(first.household_cm_id, view, { from: slug })}
-            title="Walk this queue one household at a time, oldest first"
+    <tbody data-testid="todo-drawer">
+      {entries.map((n) => {
+        // The link already names the camper (ruling 18), so the what is the session and round.
+        const what = [
+          drawerSession(n.session_name ?? '', n.session_type ?? ''),
+          n.round === null || n.round === undefined ? '' : `R${String(n.round)}`,
+        ]
+          .filter((part) => part !== '')
+          .join(' · ')
+        const days = n.days ?? null
+        const late = limit !== undefined && days !== null && days > limit
+        const label = n.tiebreak ? `${n.label} ${n.tiebreak}` : n.label
+        const dayCell = (
+          <td
+            className={`${GRID_TD} whitespace-nowrap tabular-nums ${late ? `${POOL_NEGATIVE_INK} font-bold` : 'text-muted-foreground'}`}
           >
-            Start Queue Walk
-          </Link>
-        )}
-        <span className={CS_SMALL}>oldest first · {String(line.items)} in the queue</span>
-        {open !== undefined && (
-          <Link className={`${CS_LINK_SM} ml-auto`} to={open}>
-            Open ›
-          </Link>
-        )}
-      </div>
-    </div>
+            {days === null ? '' : `${String(days)} days`}
+          </td>
+        )
+        return (
+          <tr
+            key={`${String(n.household_cm_id)}-${n.tiebreak ?? ''}`}
+            data-testid="drawer-household"
+          >
+            <td className={GRID_TD} />
+            {/* A name is never cut (owner 10-10): a long one wraps in its column, as the To-do label does. */}
+            <td className={GRID_TD}>
+              <Link
+                className={CS_LINK_CELL}
+                to={householdHref(n.household_cm_id, view)}
+                title={openTitle(n, label)}
+              >
+                {label}
+              </Link>
+            </td>
+            <td className={`${GRID_TD} text-right whitespace-nowrap tabular-nums`}>
+              {n.ask === null || n.ask === undefined ? null : (
+                <>
+                  <Money value={n.ask} />
+                  {' ask'}
+                </>
+              )}
+            </td>
+            <td className={GRID_TD} title={[what, n.session_name].filter(Boolean).join(' · ')}>
+              {what}
+            </td>
+            {status ? (
+              <>
+                {dayCell}
+                <td className={GRID_TD} />
+              </>
+            ) : (
+              dayCell
+            )}
+          </tr>
+        )
+      })}
+      <tr>
+        <td className={GRID_TD} />
+        <td className={`${GRID_TD} whitespace-nowrap`} colSpan={status ? 4 : 3}>
+          <span className="flex items-center gap-2">
+            {first !== undefined && (
+              <Link
+                className={CS_BTN}
+                to={householdHref(first.household_cm_id, view, { from: slug })}
+                title="Walk this queue one household at a time, oldest first"
+              >
+                Start Queue Walk
+              </Link>
+            )}
+            <span className={CS_SMALL}>oldest first · {String(line.items)} in the queue</span>
+          </span>
+        </td>
+        <td className={`${GRID_TD} align-middle whitespace-nowrap`}>
+          {open !== undefined && (
+            <Link className={CS_LINK_SM} to={open}>
+              Open ›
+            </Link>
+          )}
+        </td>
+      </tr>
+    </tbody>
   )
 }
 
@@ -273,6 +306,7 @@ export function TodayTodos({
   restTitle = 'Everything else',
   restMeta,
   restActions = [],
+  statusColumn: status = true,
   empty,
 }: {
   readonly lines: readonly ApiAidTodayLine[]
@@ -284,6 +318,8 @@ export function TodayTodos({
   readonly restMeta?: string
   /** The fold's header actions (finance's registrar queue: Open Requests ›, ruling V4). */
   readonly restActions?: readonly ReactNode[]
+  /** The overdue-pill column. Development's lines have no threshold, so its grid draws none (ruling 19). */
+  readonly statusColumn?: boolean
   readonly empty: string
 }) {
   const canOpen = (l: ApiAidTodayLine) =>
@@ -311,7 +347,6 @@ export function TodayTodos({
       .filter((s) => s !== '')
       .join(' · ')
   const cell = (isOpen: boolean) => `${TD} ${isOpen ? ROW_HIGHLIGHT : CELL_BG}`
-  const w = lines.some((l) => namesOf(l).length > 0) ? NAMES_W : MOCK_W
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -325,99 +360,90 @@ export function TodayTodos({
       ) : (
         <div className={TABLE_CARD}>
           <table className={TABLE}>
-            <colgroup>
-              {/* Unranked (Concerns) keeps the rank column empty, so its columns line up with the table above. */}
-              <col style={{ width: RANK_W }} />
-              <col style={{ width: w.label }} />
-              <col style={{ width: w.count }} />
-              <col />
-              <col style={{ width: w.status }} />
-              <col style={{ width: OPEN_W }} />
-            </colgroup>
+            {/* Unranked (Concerns) keeps the rank column empty, so its columns line up with the table above. */}
+            <Columns status={status} />
             <thead>
               <tr>
                 <th className={TH} />
                 <th className={TH}>{ranked ? 'To-do' : 'Concern'}</th>
                 <th className={TH}>Count</th>
                 <th className={TH}>{nextHead}</th>
-                <th className={TH} />
+                {status && <th className={TH} />}
                 <th className={TH} />
               </tr>
             </thead>
-            <tbody>
-              {lines.map((line, i) => {
-                const expandable = canOpen(line)
-                const isOpen = expandable && open.has(line.key)
-                const href = openHref(line.key, view)
-                const limit = line.overdue_after_days ?? undefined
-                const label = wordsFor(line.key)
-                const slug = viewSlug(line.key)
-                return [
-                  <tr
-                    key={line.key}
-                    data-testid="todo-row"
-                    className={expandable ? 'cursor-pointer' : ''}
-                    onClick={(e) => {
-                      if (!expandable || (e.target as HTMLElement).closest('a, button')) return
-                      toggle(line.key)
-                    }}
-                  >
-                    <td
-                      className={`${cell(isOpen)} text-muted-foreground text-right tabular-nums ${isOpen ? HIGHLIGHT_EDGE : ''}`}
+            {lines.map((line, i) => {
+              const expandable = canOpen(line)
+              const isOpen = expandable && open.has(line.key)
+              const href = openHref(line.key, view)
+              const limit = line.overdue_after_days ?? undefined
+              const label = wordsFor(line.key)
+              const slug = viewSlug(line.key)
+              return (
+                <Fragment key={line.key}>
+                  <tbody>
+                    <tr
+                      data-testid="todo-row"
+                      className={expandable ? 'cursor-pointer' : ''}
+                      onClick={(e) => {
+                        if (!expandable || (e.target as HTMLElement).closest('a, button')) return
+                        toggle(line.key)
+                      }}
                     >
-                      {ranked ? String(i + 1) : ''}
-                    </td>
-                    {/* The label is the row's identity: it wraps rather than cuts (audit F11, D5). */}
-                    <td className={`${cell(isOpen)} font-bold`}>
-                      {expandable && (
-                        <span className="text-muted-foreground mr-1 inline-block w-3 align-middle text-[10px] leading-none">
-                          {isOpen ? '▾' : '▸'}
-                        </span>
+                      <td
+                        className={`${cell(isOpen)} text-muted-foreground text-right tabular-nums ${isOpen ? HIGHLIGHT_EDGE : ''}`}
+                      >
+                        {ranked ? String(i + 1) : ''}
+                      </td>
+                      {/* The label is the row's identity: it wraps rather than cuts (audit F11, D5). */}
+                      <td className={`${cell(isOpen)} font-bold`}>
+                        {expandable && (
+                          <span className="text-muted-foreground mr-1 inline-block w-3 align-middle text-[10px] leading-none">
+                            {isOpen ? '▾' : '▸'}
+                          </span>
+                        )}
+                        <span data-testid="todo-label">{label}</span>
+                      </td>
+                      <td
+                        className={`${cell(isOpen)} whitespace-nowrap tabular-nums`}
+                        title={countWords(line)}
+                      >
+                        <CountCell line={line} />
+                      </td>
+                      <td className={`${cell(isOpen)} whitespace-nowrap`}>
+                        <NextUpCell line={line} view={view} />
+                      </td>
+                      {status && (
+                        <td className={`${cell(isOpen)} whitespace-nowrap`}>
+                          {line.overdue && (
+                            <StatusPill
+                              tone="amber"
+                              title={
+                                limit === undefined
+                                  ? 'Past its threshold, so it moved to the top.'
+                                  : `Past this line's ${String(limit)}-day threshold, so it moved to the top.`
+                              }
+                            >
+                              Overdue · {String(line.oldest_days)} days
+                            </StatusPill>
+                          )}
+                        </td>
                       )}
-                      <span data-testid="todo-label">{label}</span>
-                    </td>
-                    <td
-                      className={`${cell(isOpen)} whitespace-nowrap tabular-nums`}
-                      title={countWords(line)}
-                    >
-                      <CountCell line={line} />
-                    </td>
-                    <td className={`${cell(isOpen)} whitespace-nowrap`}>
-                      <NextUpCell line={line} view={view} />
-                    </td>
-                    <td className={`${cell(isOpen)} whitespace-nowrap`}>
-                      {line.overdue && (
-                        <StatusPill
-                          tone="amber"
-                          title={
-                            limit === undefined
-                              ? 'Past its threshold, so it moved to the top.'
-                              : `Past this line's ${String(limit)}-day threshold, so it moved to the top.`
-                          }
-                        >
-                          Overdue · {String(line.oldest_days)} days
-                        </StatusPill>
-                      )}
-                    </td>
-                    <td className={`${cell(isOpen)} whitespace-nowrap`}>
-                      {href !== undefined && (
-                        <Link className={CS_LINK_SM} to={href}>
-                          Open ›
-                        </Link>
-                      )}
-                    </td>
-                  </tr>,
-                  isOpen && slug !== undefined ? (
-                    // Ruling V1: the opened row's detail is the kit's detail line, as Requests opens a row.
-                    <tr key={`${line.key}-drawer`}>
-                      <td className={DETAIL_ROW} colSpan={6}>
-                        <Drawer line={line} view={view} slug={slug} />
+                      <td className={`${cell(isOpen)} whitespace-nowrap`}>
+                        {href !== undefined && (
+                          <Link className={CS_LINK_SM} to={href}>
+                            Open ›
+                          </Link>
+                        )}
                       </td>
                     </tr>
-                  ) : null,
-                ]
-              })}
-            </tbody>
+                  </tbody>
+                  {isOpen && slug !== undefined && (
+                    <Drawer line={line} view={view} slug={slug} status={status} />
+                  )}
+                </Fragment>
+              )
+            })}
           </table>
         </div>
       )}
@@ -432,19 +458,18 @@ export function TodayTodos({
               setFoldOpen((o) => !o)
             }}
           >
+            {/* The same grid as the to-dos (ruling 19): its columns, its white kit cells. Why spans Next up and the
+                status column, which no queue line here fills, so its reasons have room. */}
             <table className={TABLE}>
-              <colgroup>
-                {/* Lined up with the to-do table: rank and label, then count (audit R18). */}
-                <col style={{ width: RANK_W + w.label }} />
-                <col style={{ width: w.count }} />
-                <col />
-                <col style={{ width: OPEN_W }} />
-              </colgroup>
+              <Columns status={status} />
               <thead>
                 <tr>
+                  <th className={TH} />
                   <th className={TH}>Queue</th>
                   <th className={TH}>Count</th>
-                  <th className={TH}>Why</th>
+                  <th className={TH} colSpan={status ? 2 : 1}>
+                    Why
+                  </th>
                   <th className={TH} />
                 </tr>
               </thead>
@@ -456,16 +481,23 @@ export function TodayTodos({
                   const label = wordsFor(line.key)
                   return (
                     <tr key={line.key}>
-                      <td className={`${TD} ${CELL_BG} ${muted} whitespace-nowrap`} title={label}>
+                      <td className={GRID_TD} />
+                      <td className={`${GRID_TD} ${muted} whitespace-nowrap`} title={label}>
                         {label}
                       </td>
-                      <td className={`${TD} ${CELL_BG} whitespace-nowrap tabular-nums`}>
+                      <td className={`${GRID_TD} whitespace-nowrap tabular-nums`}>
                         <CountCell line={line} />
                       </td>
-                      <td className={`${TD} ${CELL_BG} ${muted} whitespace-nowrap`}>
-                        <Cut text={zero ? '' : reasonsLine(line)} />
+                      <td
+                        className={`${GRID_TD} ${muted} whitespace-nowrap`}
+                        colSpan={status ? 2 : 1}
+                      >
+                        <Cut
+                          text={zero ? '' : reasonsLine(line)}
+                          title={zero ? '' : reasonsTitle(line)}
+                        />
                       </td>
-                      <td className={`${TD} ${CELL_BG} whitespace-nowrap`}>
+                      <td className={`${GRID_TD} whitespace-nowrap`}>
                         {href !== undefined && (
                           <Link className={CS_LINK_SM} to={href}>
                             Open ›

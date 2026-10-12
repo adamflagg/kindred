@@ -12,6 +12,7 @@ import {
   countWords,
   LINE_WORDS,
   reasonsLine,
+  reasonsTitle,
   reportingGroupRows,
   reportingGroupTotal,
   upkeepItems,
@@ -396,6 +397,41 @@ describe('reasonsLine (audit R13: one sentence, capitalised once)', () => {
       reasons: [{ code: 'round3', families: null, items: 1 }],
     })
     expect(reasonsLine(l)).toBe('Who can ask, and how much')
+  })
+  it('owner 2a: the two most common reasons, then "+N more" as plain text, when there are more than three', () => {
+    const l = line('holds', 20, {
+      reasons: [
+        { code: 'short', families: null, items: 1 },
+        { code: 'not_in_campminder', families: null, items: 6 },
+        { code: 'over', families: null, items: 2 },
+        { code: 'session_not_settled', families: null, items: 9 },
+        { code: 'duplicates', families: null, items: 2 },
+      ],
+    })
+    expect(reasonsLine(l)).toMatch(/^\S.* 9 · .* 6 · \+3 more$/)
+    expect(reasonsLine(l).split(' · ')).toHaveLength(3)
+  })
+  it('owner 2a: three reasons or fewer all show, most common first', () => {
+    const l = line('not_reconciled', 8, {
+      reasons: [
+        { code: 'over', families: null, items: 1 },
+        { code: 'short', families: null, items: 4 },
+        { code: 'not_in_campminder', families: null, items: 3 },
+      ],
+    })
+    expect(reasonsLine(l)).toBe('Short 4 · missing in CM 3 · over 1')
+  })
+  it('owner 2a: reasonsTitle keeps every reason, for the cell title', () => {
+    const l = line('holds', 20, {
+      reasons: [
+        { code: 'short', families: null, items: 1 },
+        { code: 'not_in_campminder', families: null, items: 6 },
+        { code: 'over', families: null, items: 2 },
+        { code: 'session_not_settled', families: null, items: 9 },
+      ],
+    })
+    expect(reasonsTitle(l).split(' · ')).toHaveLength(4)
+    expect(reasonsTitle(l)).not.toContain('more')
   })
   it("words To place's money when it has no reasons (audit R17)", () => {
     expect(reasonsLine(line('to_place', 3, { item_kind: 'lines', amount: 2150 }))).toBe('$2,150')
