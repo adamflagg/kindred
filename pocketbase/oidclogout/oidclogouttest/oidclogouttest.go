@@ -73,9 +73,10 @@ type Provider struct {
 	Server *httptest.Server
 	Issuer string
 
-	mu        sync.Mutex
-	published []Key
-	jwksHits  atomic.Int32
+	mu              sync.Mutex
+	published       []Key
+	discoveryIssuer string
+	jwksHits        atomic.Int32
 }
 
 // New starts a fake provider publishing one RS256 key with kid "key-1".
@@ -91,8 +92,14 @@ func NewWithKeys(t testing.TB, keys ...Key) *Provider {
 	p := &Provider{published: keys}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /.well-known/openid-configuration", func(w http.ResponseWriter, _ *http.Request) {
+		p.mu.Lock()
+		issuer := p.Issuer
+		if p.discoveryIssuer != "" {
+			issuer = p.discoveryIssuer
+		}
+		p.mu.Unlock()
 		writeJSON(w, map[string]any{
-			"issuer":                               p.Issuer,
+			"issuer":                               issuer,
 			"jwks_uri":                             p.Issuer + "/.well-known/jwks.json",
 			"backchannel_logout_supported":         true,
 			"backchannel_logout_session_supported": false,
@@ -119,6 +126,21 @@ func (p *Provider) Publish(k Key) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.published = append(p.published, k)
+}
+
+// SetDiscoveryIssuer makes the discovery document name another issuer, as a
+// misconfigured or impostor provider would.
+func (p *Provider) SetDiscoveryIssuer(issuer string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.discoveryIssuer = issuer
+}
+
+// SigningKey is the key Mint signs with.
+func (p *Provider) SigningKey() Key {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.published[0]
 }
 
 // JWKSFetches is how many times the JWKS has been fetched.

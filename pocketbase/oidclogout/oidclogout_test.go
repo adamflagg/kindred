@@ -497,3 +497,50 @@ func TestNonRSAKeysVerify(t *testing.T) {
 		})
 	}
 }
+
+func TestKeysOlderThanAnHourAreRefetched(t *testing.T) {
+	f := newFixture(t)
+	if rec := logout(f.mux, f.idp.Mint(t, f.idp.Claims("sub-bob", f.clk.Now()))); rec.Code != http.StatusOK {
+		t.Fatalf("first token: status = %d, want 200", rec.Code)
+	}
+	f.clk.Advance(30 * time.Minute)
+	if rec := logout(f.mux, f.idp.Mint(t, f.idp.Claims("sub-bob", f.clk.Now()))); rec.Code != http.StatusOK {
+		t.Fatalf("token at 30 minutes: status = %d, want 200", rec.Code)
+	}
+	if got := f.idp.JWKSFetches(); got != 1 {
+		t.Fatalf("JWKS fetches at 30 minutes = %d, want 1 (keys still fresh)", got)
+	}
+	f.clk.Advance(31 * time.Minute)
+	if rec := logout(f.mux, f.idp.Mint(t, f.idp.Claims("sub-alice", f.clk.Now()))); rec.Code != http.StatusOK {
+		t.Fatalf("token at 61 minutes: status = %d, want 200", rec.Code)
+	}
+	if got := f.idp.JWKSFetches(); got != 2 {
+		t.Errorf("JWKS fetches at 61 minutes = %d, want 2 (keys refetched)", got)
+	}
+}
+
+func TestTokenAlgMustMatchTheKeysDeclaredAlg(t *testing.T) {
+	f := newFixture(t)
+	k := f.idp.SigningKey() // published with alg RS256
+	k.Alg = jwt.SigningMethodPS256
+	assertInvalidRequest(t, logout(f.mux, oidclogouttest.Sign(t, k, f.idp.Claims("sub-alice", f.clk.Now()))))
+}
+
+func TestDiscoveryMustNameTheConfiguredIssuer(t *testing.T) {
+	f := newFixture(t)
+	f.idp.SetDiscoveryIssuer("https://impostor.example.com")
+	assertInvalidRequest(t, logout(f.mux, f.idp.Mint(t, f.idp.Claims("sub-alice", f.clk.Now()))))
+	if got := f.idp.JWKSFetches(); got != 0 {
+		t.Errorf("JWKS fetched %d times from a discovery document naming another issuer", got)
+	}
+}
+
+func TestIssuerWithATrailingSlashStillMatches(t *testing.T) {
+	app := newApp(t)
+	idp := oidclogouttest.New(t)
+	linkedUser(t, app, "alice@example.com", "oidc", "sub-alice")
+	mux := serve(t, app, oidclogout.Config{Issuer: idp.Issuer + "/"})
+	if rec := logout(mux, idp.Mint(t, idp.Claims("sub-alice", time.Now()))); rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200 (body %s)", rec.Code, rec.Body)
+	}
+}
