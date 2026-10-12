@@ -33,10 +33,12 @@ const testSessionEnd = "2025-05-26 07:00:00.000Z"
 //
 // It deliberately builds collections in Go rather than replaying pb_migrations:
 // `pocketbase migrate up` silently skips JS migrations (jsvm captures its
-// MigrationsDir at plugin-registration time, before flag parsing), so a Go test
-// cannot apply them. Schema fidelity against the real migrations is the job of
-// scripts/dev/verify-lodging-schema.sh; these fixtures only need the fields the
-// code under test touches.
+// MigrationsDir at plugin-registration time, before flag parsing). A Go test
+// CAN apply them by registering jsvm itself -- newMigratedTestApp in package
+// main does -- but replaying all of them costs seconds per app (minutes under
+// -race), far too slow for a per-test fixture. Schema fidelity against the
+// real migrations is the job of scripts/dev/verify-lodging-schema.sh; these
+// fixtures only need the fields the code under test touches.
 func newSyncTestApp(t *testing.T) core.App {
 	t.Helper()
 	app, err := tests.NewTestApp()
