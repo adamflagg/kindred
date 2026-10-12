@@ -197,6 +197,18 @@ describe('AppLayout on a Camperships page', () => {
     expect(grants.startsWith('/aid/money?')).toBe(true)
   })
 
+  it('keeps the season but carries no as-of on the Today link: Today is live only (D20)', () => {
+    granted = [VIEW]
+    renderAt('/aid/requests?year=2025&as_of=2026-04-01&as_of_axis=recorded')
+
+    const today = screen.getByRole('link', { name: 'Today' }).getAttribute('href') ?? ''
+    const query = new URLSearchParams(today.split('?')[1])
+    expect(today.startsWith('/aid/today')).toBe(true)
+    expect(query.get('year')).toBe('2027')
+    expect(query.get('as_of')).toBeNull()
+    expect(query.get('as_of_axis')).toBeNull()
+  })
+
   it('points the logo at /aid', () => {
     granted = [VIEW]
     renderAt('/aid/money/ledger')

@@ -8,6 +8,7 @@ decisions, grants and ledger reads. None is "nothing there"; 0 is a real zero (D
 
 from __future__ import annotations
 
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -108,6 +109,8 @@ class TodayNextUpOut(BaseModel):
     the development section never carries one (§9.4)."""
 
     household_cm_id: int
+    # Owner ruling 18: as the Requests grid names the request: the camper's full name for a camper request, the
+    # household label (with `tiebreak`) only for a household-level (Family Camp) request, whose camper_name is "".
     label: str
     tiebreak: str = ""
     days: int | None = None
@@ -139,36 +142,82 @@ class TodayLineOut(BaseModel):
     overdue: bool = (
         False  # past the line's TODAY_OVERDUE_DAYS threshold (spec 2026-10-10 §5.2); never on a line without one
     )
+    overdue_after_days: int | None = None  # the line's TODAY_OVERDUE_DAYS threshold; None on a line without one
     next_up: list[TodayNextUpOut] = Field(default_factory=list)  # oldest first, at most NEXT_UP_CAP households
     names: list[str] = Field(
         default_factory=list
     )  # development lines: the funders or descriptions it counts, by name; no family data (§9.4)
+    # development lines: where each name opens in Money › Funders, in `names` order: "funder:<grantor key>" or
+    # "row:<aid_sources id>" ("" for a name with nowhere of its own to open; audit X5)
+    links: list[str] = Field(default_factory=list)
+
+
+class TodayFlagsOut(BaseModel):
+    """The registrar hero's chips (owner ruling 17): the four strip flags, which can sit on top of any stage, each the
+    strip's own count (every row whose `queues` name it, as Requests lists it)."""
+
+    not_reconciled: int
+    duplicates: int
+    session_not_settled: int
+    to_reverse: int
 
 
 class TodayStagesOut(BaseModel):
-    """The registrar hero's one bar (spec 2026-10-10 §4.1): every request this season by its Stage column's code
-    (row_stage), in the bar's order. A request with no round yet has no stage and is counted in none."""
+    """The registrar hero's one bar (spec 2026-10-10 §4.1, owner ruling 17): every live request once, by its own Stage
+    (row_stage, the latest round), in the bar's order. Needs an offer (also a Round 3 ask not yet decided), Pending
+    approval, Waiting on the family, On hold (latest round held) and Accepted (also a refused Round 3 appeal: the family
+    keeps the grant it accepted). A cancelled or withdrawn request, or one with no round, is not live and is on no
+    segment. For requests moving through the normal stages a segment matches its strip list."""
 
-    accepted: int
-    waiting_on_family: int
+    needs_offer: int
     pending_approval: int
-    needs_offer: int  # needs_offer, not_decided and refused: an offer still has to be made
-    held: int
-    cancelled: int
-    families: int  # households with any request this season
-    posted_this_week: int  # requests with a round posted since Monday (camp time), the "+n" on Accepted
+    waiting_on_family: int
+    on_hold: int
+    accepted: int
+    flags: TodayFlagsOut
+    families: int  # households with a live request
+    live: int  # the bar's total: requests not cancelled or withdrawn
+    offered: int  # pending approval + waiting on the family + accepted (the headline's numerator)
+
+
+class WeekPointOut(BaseModel):
+    week_of: date
+    posted: float  # cumulative posted camp money by the end of that week, as the budget's Posted counts it
+
+
+class WeekFigureOut(BaseModel):
+    """One figure: this week (Monday through today) against the same weekdays of last week."""
+
+    key: str
+    label: str
+    value: float
+    previous: float
+    unit: Literal["count", "dollars"]
+    title: str = ""  # a native title saying what the figure counts, where its label alone does not
+    note: str = ""  # a short muted word after the figure, in place of a change ("4 req": You approved's requests)
+    # Owner ruling 20: nothing can be counted (Posted in CM on a season whose posts carry no post date). The card shows
+    # "—" with `title` saying why, and no change; value and previous are 0 and mean nothing.
+    blank: bool = False
 
 
 class TodayResponse(BaseModel):
     """Today's sections follow the user's permissions: casework None without financial_aid.casework,
     finance None without financial_aid.rules, development None without financial_aid.grantors or .summary.
-    stages: casework or finance callers (the hero bar); None for development."""
+    stages: casework, finance or view callers (the hero bar); None for a development-only caller.
+    posted_by_week: finance only (Committed by week); built from the priced rows the budget counts, so its last
+    point is the budget's Posted.
+    posted_this_week: finance only (This week's "Posted in CM"), from the same rows, by posted_on.
+    posts_undated: finance only (owner ruling 20): the season has posted rounds and not one carries a post date (the
+    2026 reproduced load), so Committed by week is not drawn (posted_by_week is empty) and Posted in CM is blank."""
 
     year: int
     casework: list[TodayLineOut] | None
     finance: list[TodayLineOut] | None
     stages: TodayStagesOut | None = None
     development: list[TodayLineOut] | None = None
+    posted_by_week: list[WeekPointOut] | None = None
+    posted_this_week: WeekFigureOut | None = None
+    posts_undated: bool | None = None
 
 
 class HouseholdMatchOut(BaseModel):
@@ -187,3 +236,32 @@ class HouseholdSearchResponse(BaseModel):
     year: int
     matches: list[HouseholdMatchOut]  # by family name, then id; at most MAX_MATCHES
     truncated: bool  # more households matched than are listed: type more of the name
+
+
+# --- Today: This week (spec 2026-10-10 §8) ---------------------------------------------------------------
+
+WeekFeedKind = Literal["posted", "accepted", "approved", "grant", "overdue", "funder", "section"]
+
+
+class WeekFeedOut(BaseModel):
+    """One feed item, built only from data the caller may see. Development's carry no household (§9.4)."""
+
+    kind: WeekFeedKind
+    at: datetime
+    words: str
+    # The words within `words` that are the link, bold (the household, the funder or the rules section, audit R23);
+    # "" when nothing on the line is a link.
+    name: str = ""
+    household_cm_id: int | None = None
+    href_kind: Literal["household", "funders", "rules", "none"] = "none"
+
+
+class TodayWeekResponse(BaseModel):
+    """Sections follow the caller's permissions, as TodayResponse's do."""
+
+    year: int
+    week_of: date
+    registrar: list[WeekFigureOut] | None = None
+    finance: list[WeekFigureOut] | None = None
+    development: list[WeekFigureOut] | None = None
+    feed: list[WeekFeedOut]

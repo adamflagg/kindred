@@ -51,6 +51,41 @@ describe('AidNameChips', () => {
     expect(garcia).toHaveTextContent('Garcia12d')
     expect(screen.getByTestId('chips-more')).toHaveTextContent('+3') // jsdom measures 0px: every chip fits, 5 − 2 = 3
   })
+  it('the chips are links in the kit link ink, primary green (ruling V11)', () => {
+    render(
+      <MemoryRouter>
+        <AidNameChips
+          total={1}
+          chips={[
+            {
+              key: '1',
+              label: 'Garcia',
+              href: '/aid/households/1',
+              title: 'Open the Garcia household',
+            },
+          ]}
+        />
+      </MemoryRouter>
+    )
+    const chip = screen.getByRole('link', { name: 'Garcia' })
+    expect(chip.className).toMatch(/text-primary/)
+    expect(chip.className).not.toMatch(/text-foreground/)
+  })
+  it('"+N" says who it stands for, never nobody (audit X1)', () => {
+    render(
+      <MemoryRouter>
+        <AidNameChips
+          total={5}
+          chips={[
+            { key: '1', label: 'Garcia', title: 'Open the Garcia household' },
+            { key: '2', label: 'Chen', title: 'Open the Chen household' },
+          ]}
+        />
+      </MemoryRouter>
+    )
+    // jsdom measures 0px, so both chips show and the three past the list are unnamed.
+    expect(screen.getByTestId('chips-more')).toHaveAttribute('title', '3 more')
+  })
 })
 
 describe('AidNameChips measured layout', () => {
@@ -85,6 +120,23 @@ describe('AidNameChips measured layout', () => {
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
     resizeCallback = undefined
+  })
+
+  it('"+N" names the hidden chips, then counts the households past the list (audit X1)', () => {
+    render(
+      <MemoryRouter>
+        <AidNameChips
+          total={5}
+          chips={[
+            { key: '1', label: 'Garcia', title: 'Garcia' },
+            { key: '2', label: 'Chen', title: 'Chen' },
+            { key: '3', label: 'Patel', title: 'Patel' },
+          ]}
+        />
+      </MemoryRouter>
+    )
+    expect(screen.getByTestId('chips-more')).toHaveTextContent('+3')
+    expect(screen.getByTestId('chips-more')).toHaveAttribute('title', 'Patel · 2 more')
   })
 
   it('keeps a chip hidden after a re-measure that leaves the count unchanged', () => {

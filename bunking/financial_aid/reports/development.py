@@ -246,7 +246,7 @@ def rebuilt_ages(
 
 
 @dataclass
-class _Awards:
+class Awards:
     """Item 32 (owner rule 2026-10-02): an award is a distinct attendee/session combo that gets ANY aid, the camp's or
     an outside funder's. The attendee is the camper (a household in a families group; a household-level line in a
     camper group is its own household's). A line with no session joins the attendee's session combo when they have
@@ -268,7 +268,7 @@ class _Awards:
 
 @dataclass
 class _Tally:
-    awards: _Awards = field(default_factory=_Awards)
+    awards: Awards = field(default_factory=Awards)
     camp: Decimal = ZERO
     outside: Decimal = ZERO
     camp_count: int = 0

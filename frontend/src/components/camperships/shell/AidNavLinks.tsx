@@ -6,6 +6,8 @@ import { useYear } from '../../../hooks/useCurrentYear'
 import { usePermissions } from '../../../hooks/usePermissions'
 import { aidHref } from '../kit/asOf'
 
+const LIVE = { kind: 'live' } as const
+
 function isActive(section: AidSection, pathname: string): boolean {
   return pathname === section.path || pathname.startsWith(`${section.path}/`)
 }
@@ -25,7 +27,8 @@ export function AidNavLinks() {
       {visibleSections({ hasPermission }).map((section) => (
         <Link
           key={section.key}
-          to={aidHref(section.path, { year, asOf })}
+          // Today is live only (D20): its link never carries the page's as-of.
+          to={aidHref(section.path, { year, asOf: section.key === 'today' ? LIVE : asOf })}
           className={`nav-link-lodge ${isActive(section, pathname) ? 'active' : ''}`}
         >
           {section.label}

@@ -18004,6 +18004,31 @@ export type ToPlaceWriteOut = {
 }
 
 /**
+ * TodayFlagsOut
+ *
+ * The registrar hero's chips (owner ruling 17): the four strip flags, which can sit on top of any stage, each the
+ * strip's own count (every row whose `queues` name it, as Requests lists it).
+ */
+export type TodayFlagsOut = {
+  /**
+   * Not Reconciled
+   */
+  not_reconciled: number
+  /**
+   * Duplicates
+   */
+  duplicates: number
+  /**
+   * Session Not Settled
+   */
+  session_not_settled: number
+  /**
+   * To Reverse
+   */
+  to_reverse: number
+}
+
+/**
  * TodayLineOut
  *
  * One queue's dense line: "5 fam · 7 req", its reasons inline, and Open › to the view that lists
@@ -18082,6 +18107,10 @@ export type TodayLineOut = {
    */
   overdue?: boolean
   /**
+   * Overdue After Days
+   */
+  overdue_after_days?: number | null
+  /**
    * Next Up
    */
   next_up?: Array<TodayNextUpOut>
@@ -18089,6 +18118,10 @@ export type TodayLineOut = {
    * Names
    */
   names?: Array<string>
+  /**
+   * Links
+   */
+  links?: Array<string>
 }
 
 /**
@@ -18169,7 +18202,12 @@ export type TodayReasonOut = {
  *
  * Today's sections follow the user's permissions: casework None without financial_aid.casework,
  * finance None without financial_aid.rules, development None without financial_aid.grantors or .summary.
- * stages: casework or finance callers (the hero bar); None for development.
+ * stages: casework, finance or view callers (the hero bar); None for a development-only caller.
+ * posted_by_week: finance only (Committed by week); built from the priced rows the budget counts, so its last
+ * point is the budget's Posted.
+ * posted_this_week: finance only (This week's "Posted in CM"), from the same rows, by posted_on.
+ * posts_undated: finance only (owner ruling 20): the season has posted rounds and not one carries a post date (the
+ * 2026 reproduced load), so Committed by week is not drawn (posted_by_week is empty) and Posted in CM is blank.
  */
 export type TodayResponse = {
   /**
@@ -18189,47 +18227,92 @@ export type TodayResponse = {
    * Development
    */
   development?: Array<TodayLineOut> | null
+  /**
+   * Posted By Week
+   */
+  posted_by_week?: Array<WeekPointOut> | null
+  posted_this_week?: WeekFigureOut | null
+  /**
+   * Posts Undated
+   */
+  posts_undated?: boolean | null
 }
 
 /**
  * TodayStagesOut
  *
- * The registrar hero's one bar (spec 2026-10-10 §4.1): every request this season by its Stage column's code
- * (row_stage), in the bar's order. A request with no round yet has no stage and is counted in none.
+ * The registrar hero's one bar (spec 2026-10-10 §4.1, owner ruling 17): every live request once, by its own Stage
+ * (row_stage, the latest round), in the bar's order. Needs an offer (also a Round 3 ask not yet decided), Pending
+ * approval, Waiting on the family, On hold (latest round held) and Accepted (also a refused Round 3 appeal: the family
+ * keeps the grant it accepted). A cancelled or withdrawn request, or one with no round, is not live and is on no
+ * segment. For requests moving through the normal stages a segment matches its strip list.
  */
 export type TodayStagesOut = {
-  /**
-   * Accepted
-   */
-  accepted: number
-  /**
-   * Waiting On Family
-   */
-  waiting_on_family: number
-  /**
-   * Pending Approval
-   */
-  pending_approval: number
   /**
    * Needs Offer
    */
   needs_offer: number
   /**
-   * Held
+   * Pending Approval
    */
-  held: number
+  pending_approval: number
   /**
-   * Cancelled
+   * Waiting On Family
    */
-  cancelled: number
+  waiting_on_family: number
+  /**
+   * On Hold
+   */
+  on_hold: number
+  /**
+   * Accepted
+   */
+  accepted: number
+  flags: TodayFlagsOut
   /**
    * Families
    */
   families: number
   /**
-   * Posted This Week
+   * Live
    */
-  posted_this_week: number
+  live: number
+  /**
+   * Offered
+   */
+  offered: number
+}
+
+/**
+ * TodayWeekResponse
+ *
+ * Sections follow the caller's permissions, as TodayResponse's do.
+ */
+export type TodayWeekResponse = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Week Of
+   */
+  week_of: string
+  /**
+   * Registrar
+   */
+  registrar?: Array<WeekFigureOut> | null
+  /**
+   * Finance
+   */
+  finance?: Array<WeekFigureOut> | null
+  /**
+   * Development
+   */
+  development?: Array<WeekFigureOut> | null
+  /**
+   * Feed
+   */
+  feed: Array<WeekFeedOut>
 }
 
 /**
@@ -19160,6 +19243,78 @@ export type WaitlistedPerson = {
 }
 
 /**
+ * WeekFeedOut
+ *
+ * One feed item, built only from data the caller may see. Development's carry no household (§9.4).
+ */
+export type WeekFeedOut = {
+  /**
+   * Kind
+   */
+  kind: 'posted' | 'accepted' | 'approved' | 'grant' | 'overdue' | 'funder' | 'section'
+  /**
+   * At
+   */
+  at: string
+  /**
+   * Words
+   */
+  words: string
+  /**
+   * Name
+   */
+  name?: string
+  /**
+   * Household Cm Id
+   */
+  household_cm_id?: number | null
+  /**
+   * Href Kind
+   */
+  href_kind?: 'household' | 'funders' | 'rules' | 'none'
+}
+
+/**
+ * WeekFigureOut
+ *
+ * One figure: this week (Monday through today) against the same weekdays of last week.
+ */
+export type WeekFigureOut = {
+  /**
+   * Key
+   */
+  key: string
+  /**
+   * Label
+   */
+  label: string
+  /**
+   * Value
+   */
+  value: number
+  /**
+   * Previous
+   */
+  previous: number
+  /**
+   * Unit
+   */
+  unit: 'count' | 'dollars'
+  /**
+   * Title
+   */
+  title?: string
+  /**
+   * Note
+   */
+  note?: string
+  /**
+   * Blank
+   */
+  blank?: boolean
+}
+
+/**
  * WeekOption
  */
 export type WeekOption = {
@@ -19187,6 +19342,20 @@ export type WeekOption = {
    * Whether this entry represents today's live data
    */
   is_today: boolean
+}
+
+/**
+ * WeekPointOut
+ */
+export type WeekPointOut = {
+  /**
+   * Week Of
+   */
+  week_of: string
+  /**
+   * Posted
+   */
+  posted: number
 }
 
 /**
@@ -26605,6 +26774,38 @@ export type GetTodayApiFinancialAidTodayYearGetResponses = {
 
 export type GetTodayApiFinancialAidTodayYearGetResponse =
   GetTodayApiFinancialAidTodayYearGetResponses[keyof GetTodayApiFinancialAidTodayYearGetResponses]
+
+export type GetTodayWeekApiFinancialAidTodayYearWeekGetData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: never
+  url: '/api/financial-aid/today/{year}/week'
+}
+
+export type GetTodayWeekApiFinancialAidTodayYearWeekGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetTodayWeekApiFinancialAidTodayYearWeekGetError =
+  GetTodayWeekApiFinancialAidTodayYearWeekGetErrors[keyof GetTodayWeekApiFinancialAidTodayYearWeekGetErrors]
+
+export type GetTodayWeekApiFinancialAidTodayYearWeekGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: TodayWeekResponse
+}
+
+export type GetTodayWeekApiFinancialAidTodayYearWeekGetResponse =
+  GetTodayWeekApiFinancialAidTodayYearWeekGetResponses[keyof GetTodayWeekApiFinancialAidTodayYearWeekGetResponses]
 
 export type GetHouseholdPageApiFinancialAidHouseholdPageYearHouseholdCmIdGetData = {
   body?: never

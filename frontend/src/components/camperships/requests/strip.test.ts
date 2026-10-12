@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import { GRID_ROWS, ROW_EMMA, ROW_OLIVIA } from './gridFixtures'
@@ -275,5 +277,17 @@ describe('stripCsvName (D70)', () => {
     expect(stripCsvName('all', requestView('holds'), filters, 2027, null)).toBe(
       'camperships-requests-holds-2027.csv'
     )
+  })
+})
+
+describe("the strip's stage order is the server's (Today's registrar bar, ruling 13)", () => {
+  it('matches strip_stages in the shared mirrors fixture, which STRIP_STAGES is held to', () => {
+    const mirrors = JSON.parse(
+      readFileSync(
+        resolve(__dirname, '../../../../../tests/fixtures/camperships_frontend_mirrors.json'),
+        'utf-8'
+      )
+    ) as { strip_stages: string[] }
+    expect([...PIPELINE_STAGES, ...EXCEPTION_BADGES]).toEqual(mirrors.strip_stages)
   })
 })

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 
-import { CS_HERO_CARD, CS_HERO_FIG, CS_HERO_TITLE, CS_META } from './csType'
+import { CS_HERO_CARD, CS_HERO_FIG, CS_HERO_TITLE, CS_SMALL } from './csType'
 
 /** Design-language section 13 "The hero bar": the one bold element on Today. The fills use the kit's forest, amber,
  *  stone and sky scales; `est` is the hatch for the one estimate (on hold, at what was asked) and `over` the amber
@@ -44,8 +44,11 @@ const SWATCH: Record<HeroTone, string> = { ...FILL, gap: 'bg-muted' }
 
 export interface HeroSegment {
   readonly key: string
-  /** Its size on the bar; 0 is drawn nowhere. */
+  /** Its amount: the key row's, and its size on the bar unless `drawn` says otherwise; 0 is drawn nowhere. */
   readonly value: number
+  /** Its size on the bar when that differs from `value`: an over-budget bar draws spending up to the allocation and
+   *  the overrun once, in its own segment (final check S3). The key row keeps `value`. */
+  readonly drawn?: number
   /** The key row's words, e.g. "Need an offer". */
   readonly label: string
   /** The key row's bold figure, e.g. "31" or "$125k". */
@@ -57,8 +60,6 @@ export interface HeroSegment {
   readonly mine?: boolean
   /** Native title; default "{label}: {figure}". */
   readonly title?: string
-  /** Drawn after the key's figure (the "+14" this-week pill). */
-  readonly pill?: ReactNode
   /** The door. */
   readonly href?: string
 }
@@ -81,18 +82,19 @@ export function AidHeroBar({
   readonly reveal?: boolean
   readonly labelMinPct?: number
 }) {
-  const live = segments.filter((s) => s.value > 0)
-  const sum = total ?? live.reduce((a, s) => a + s.value, 0)
+  const size = (s: HeroSegment) => s.drawn ?? s.value
+  const live = segments.filter((s) => size(s) > 0)
+  const sum = total ?? live.reduce((a, s) => a + size(s), 0)
   return (
     <div
       data-reveal={reveal ? 'true' : undefined}
       className={`bg-muted relative flex overflow-hidden ${compact ? 'h-2.5 rounded-full' : mid ? 'mt-1 h-[26px] rounded-lg' : 'mt-2.5 h-[34px] rounded-lg'} ${reveal ? 'motion-safe:animate-[cs-hero-reveal_900ms_cubic-bezier(.2,.7,.2,1)_both]' : ''}`}
     >
       {live.map((s) => {
-        const pct = sum > 0 ? (s.value / sum) * 100 : 0
+        const pct = sum > 0 ? (size(s) / sum) * 100 : 0
         const words = !compact && pct > labelMinPct ? (s.inner ?? s.figure) : ''
         const cls = `border-card flex min-w-1 items-center justify-center overflow-hidden border-r-2 text-[12.5px] font-bold whitespace-nowrap tabular-nums last:border-r-0 ${FILL[s.tone]}`
-        const style = { flexGrow: s.value, flexShrink: 1, flexBasis: 0 }
+        const style = { flexGrow: size(s), flexShrink: 1, flexBasis: 0 }
         const title = s.title ?? `${s.label}: ${s.figure}`
         return s.href ? (
           <Link
@@ -123,6 +125,9 @@ export function AidHeroBar({
   )
 }
 
+/** Past about this many characters a key's label is cut (about 260px at 12.5px). */
+const KEY_LABEL_CHARS = 40
+
 export function AidHeroKeys({ segments }: { readonly segments: readonly HeroSegment[] }) {
   return (
     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[12.5px] leading-[18px]">
@@ -136,8 +141,14 @@ export function AidHeroKeys({ segments }: { readonly segments: readonly HeroSegm
             className={`whitespace-nowrap ${s.mine ? 'font-semibold text-amber-800 dark:text-amber-300' : 'text-foreground'}`}
           >
             <i className={`mr-1.5 inline-block size-[9px] rounded-[2px] ${SWATCH[s.tone]}`} />
-            {s.label} <b className="tabular-nums">{s.figure}</b>
-            {s.pill ? <> {s.pill}</> : null}
+            {s.label.length > KEY_LABEL_CHARS ? (
+              // A long funder name is cut at about 260px, its title the whole name (audit D4), so one name never
+              // pushes the key row onto a third line. Short labels (every registrar and finance key) stay as they are.
+              <span className="inline-block max-w-[260px] truncate align-top">{s.label}</span>
+            ) : (
+              s.label
+            )}{' '}
+            <b className="tabular-nums">{s.figure}</b>
           </span>
         ))}
     </div>
@@ -162,13 +173,13 @@ export function AidHeroCard({
       <div className="flex items-center gap-4">
         <div className="min-w-0">
           <h2 className={CS_HERO_TITLE}>{title}</h2>
-          <div className={CS_META}>{description}</div>
+          <div className={CS_SMALL}>{description}</div>
         </div>
         <div
           data-testid="hero-figure"
           className="ml-auto flex items-baseline gap-2 whitespace-nowrap"
         >
-          <span className={CS_META}>{figureLabel}</span>
+          <span className={CS_SMALL}>{figureLabel}</span>
           <b className={CS_HERO_FIG}>{figure}</b>
         </div>
       </div>

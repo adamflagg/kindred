@@ -882,6 +882,16 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         rulings=("D44", "D79"),
     ),
     Definition(
+        key="today_committed_by_week",
+        term="Committed by week",
+        text=(
+            "Committed by week: money posted to date against the budget, with what's waiting dotted on to today's "
+            "committed total."
+        ),
+        spec="§7.4",
+        rulings=("D44",),
+    ),
+    Definition(
         key="today_aid_came_from",
         term="Where this season's aid came from",
         text=(
@@ -934,7 +944,7 @@ SURFACES: Final[Mapping[str, tuple[str, ...]]] = {
     "reports-funding-sources": ("source_facts",),
     # Today's three pages: at most two notes each; the wording comes from the 2026-10-10 Today spec (§7.1-§7.3).
     "today_registrar": ("today_season_so_far", "today_todos"),
-    "today_finance": ("today_remaining",),
+    "today_finance": ("today_remaining", "today_committed_by_week"),
     "today_development": ("today_aid_came_from",),
     "reports-development": (
         "dev_budget",

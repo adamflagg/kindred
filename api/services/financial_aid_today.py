@@ -13,14 +13,15 @@ import asyncio
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Final, Protocol
 
 from api.schemas.financial_aid import UnclassifiedSource
-from api.schemas.financial_aid_decisions import GridRowOut, QueueOut
-from api.schemas.financial_aid_grants import GrantorOut, GrantorsResponse, GrantsResponse
+from api.schemas.financial_aid_decisions import GridRowOut, QueueOut, RoundOut
+from api.schemas.financial_aid_grants import GrantorOut, GrantorsResponse, GrantRowOut, GrantsResponse
 from api.schemas.financial_aid_surfaces import (
+    TodayFlagsOut,
     TodayItemKind,
     TodayKey,
     TodayLineOut,
@@ -28,14 +29,23 @@ from api.schemas.financial_aid_surfaces import (
     TodayReasonOut,
     TodayResponse,
     TodayStagesOut,
+    WeekFigureOut,
+    WeekPointOut,
 )
 from api.services.camp_calendar import CAMP_TZ
-from api.services.financial_aid_decisions_service import DecisionsStore, FinancialAidDecisionsService, PricingRules
+from api.services.financial_aid_decisions_service import (
+    DecisionsStore,
+    FinancialAidDecisionsService,
+    Names,
+    PricingRules,
+    Season,
+)
 from api.services.financial_aid_grants_register import RegisterRow
 from api.services.financial_aid_grants_service import GrantsLoader, OneGrantsLoad
+from api.services.financial_aid_household_page import HouseholdLabeler
 from api.services.financial_aid_intake_service import never_true_labels
 from api.services.financial_aid_intake_types import FLAG_AWAITING_RULES, FaRow
-from api.services.financial_aid_ledger_service import money
+from api.services.financial_aid_ledger_service import NamedSource, money
 from api.services.financial_aid_queues import UNRECONCILED, UNTICKED_LABELS, offer_rounds
 from api.services.financial_aid_rules_service import RulesNotFoundError, RulesVersion
 from api.services.financial_aid_to_place_service import NO_OPEN_LINES, OpenToPlace, ToPlaceCounts, open_to_place
@@ -91,6 +101,12 @@ class TodayInputs:
     pending_since: Mapping[tuple[str, int], date] = field(
         default_factory=dict
     )  # finance: (request, round) -> the day its award was keyed for approval
+    # Holds' clock (ruling V12, 2026-10-11): request -> the day staff placed its manual hold. A check the calculator
+    # raises has no date of its own, so its household has no day count.
+    hold_since: Mapping[str, date] = field(default_factory=dict)
+    # Development's chips (audit D8): each description key -> the description as CampMinder writes it.
+    descriptions: Mapping[str, str] = field(default_factory=dict)
+    source_ids: Mapping[str, str] = field(default_factory=dict)  # each description key -> its aid_sources record id
 
 
 def _families(rows: Iterable[GridRowOut]) -> int:
@@ -144,6 +160,7 @@ def _line(
         largest_gap=largest_gap,
         request_ids=[row.request_id for row in rows] if listed else [],
         overdue=overdue,
+        overdue_after_days=TODAY_OVERDUE_DAYS.get(key),
         next_up=next_up or [],
     )
 
@@ -152,26 +169,78 @@ def _in(rows: Sequence[GridRowOut], queue: QueueOut) -> list[GridRowOut]:
     return [row for row in rows if row.queues and queue in row.queues]
 
 
+Clock = Callable[[GridRowOut], tuple[date | None, RoundOut | None]]
+"""A line's clock on one row: (when it started, the round that started it). The date is None when no round on the line
+is dated (a C1 `cm_pending` round waiting on the family, a pending round with no keyed award); the round is still the
+line's own when it has one."""
+
+
+def _clocked(
+    rounds: Iterable[RoundOut], when: Callable[[RoundOut], date | None]
+) -> tuple[date | None, RoundOut | None]:
+    """The round that sets a line's clock: its oldest dated round (ties by round), else its first undated one."""
+    listed = list(rounds)
+    dated = [(day, r) for r in listed if (day := when(r)) is not None]
+    if dated:
+        return min(dated, key=lambda pair: (pair[0], pair[1].round))
+    return None, (listed[0] if listed else None)
+
+
+def _waiting_clock(row: GridRowOut) -> tuple[date | None, RoundOut | None]:
+    """Waiting on the family's clock: the oldest post among the rounds waiting (a C1 round waits too, undated)."""
+    waiting = [r for r in row.rounds if (r.status == "posted" or r.cm_pending) and not r.accepted and not r.clawed_back]
+    return _clocked(waiting, lambda r: r.posted_on if r.status == "posted" else None)
+
+
 def _waiting_since(row: GridRowOut) -> date | None:
-    days = [r.posted_on for r in row.rounds if r.status == "posted" and not r.accepted and not r.clawed_back]
-    return min((d for d in days if d is not None), default=None)
+    return _waiting_clock(row)[0]
+
+
+def waiting_overdue_on(row: GridRowOut) -> date | None:
+    """The day Waiting on the family first counts `row` over WAITING_TOO_LONG_DAYS (`> 14`, so the 15th day after its
+    clock's CampMinder post day). None when the row waits on no one (not in the queue: cancelled, on To reverse, every
+    round accepted or clawed back) or its clock is undated. This week's overdue item reads the same day (final check
+    S2), so the feed and the line never disagree."""
+    if not row.queues or "waiting_on_family" not in row.queues:
+        return None
+    since = _waiting_since(row)
+    return since + timedelta(days=WAITING_TOO_LONG_DAYS + 1) if since is not None else None
+
+
+def _asked_clock(row: GridRowOut) -> tuple[date | None, RoundOut | None]:
+    """Needs an offer's clock: the oldest ask among the rounds the queue holds."""
+    return _clocked(offer_rounds(row), lambda r: r.asked_on)
 
 
 def _asked_since(row: GridRowOut) -> date | None:
-    """Needs an offer's clock: the oldest ask among the rounds the queue holds."""
-    return min((r.asked_on for r in offer_rounds(row) if r.asked_on is not None), default=None)
+    return _asked_clock(row)[0]
+
+
+def _pending_clock(row: GridRowOut, keyed: Mapping[tuple[str, int], date]) -> tuple[date | None, RoundOut | None]:
+    """Pending approval's clock: when the oldest of the row's pending rounds was keyed for approval."""
+    pending = [r for r in row.rounds if r.status == "pending_approval"]
+    return _clocked(pending, lambda r: keyed.get((row.request_id, r.round)))
 
 
 def _pending_since(row: GridRowOut, keyed: Mapping[tuple[str, int], date]) -> date | None:
-    """Pending approval's clock: when the oldest of the row's pending rounds was keyed for approval."""
-    return min(
-        (
-            keyed[(row.request_id, r.round)]
-            for r in row.rounds
-            if r.status == "pending_approval" and (row.request_id, r.round) in keyed
-        ),
-        default=None,
-    )
+    return _pending_clock(row, keyed)[0]
+
+
+def _posted_clock(row: GridRowOut) -> tuple[date | None, RoundOut | None]:
+    """Not reconciled's clock (ruling V12): the oldest post among its posted rounds. Money CampMinder holds with no
+    Posted tick (D162) has no post, so such a row is undated."""
+    posted = [r for r in row.rounds if r.status == "posted" and not r.clawed_back]
+    return _clocked(posted, lambda r: r.posted_on)
+
+
+def _hold_clock(since: Mapping[str, date]) -> Clock:
+    """Holds' clock (ruling V12): the day staff placed the row's manual hold; a check hold is undated."""
+
+    def clock(row: GridRowOut) -> tuple[date | None, RoundOut | None]:
+        held = [r for r in row.rounds if r.status == "held"]
+        return since.get(row.request_id), (held[-1] if held else None)
+
+    return clock
 
 
 def _first_ask(row: GridRowOut) -> date:
@@ -179,28 +248,37 @@ def _first_ask(row: GridRowOut) -> date:
     return min((r.asked_on for r in row.rounds if r.asked_on is not None), default=date.max)
 
 
-def _next_up(
-    rows: Sequence[GridRowOut], today: date, since: Callable[[GridRowOut], date | None] | None
-) -> list[TodayNextUpOut]:
-    """Each household once, at its oldest request, oldest first (ties by household id), capped. With no clock the
-    order is the first ask and `days` is None."""
-    best: dict[int, tuple[date, GridRowOut]] = {}
+def _newest_round(row: GridRowOut) -> RoundOut | None:
+    return max(row.rounds, key=lambda r: r.round) if row.rounds else None
+
+
+def _grid_name(camper_name: str, household: str) -> str:
+    """Owner ruling 18: a household is named as the Requests grid names it: the camper's full name for a camper
+    request, the household's own label only for a household-level (Family Camp) request, which has no camper."""
+    return camper_name or household
+
+
+def _next_up(rows: Sequence[GridRowOut], today: date, clock: Clock | None) -> list[TodayNextUpOut]:
+    """Each household once, at its oldest request, oldest first (ties by household id), capped. On a clocked line the
+    dated households come first, by their clock, and the undated after them (by first ask) with `days` None; the
+    round and ask named are the round that set the clock. With no clock the order is the first ask, `days` is None and
+    the round is the newest."""
+    best: dict[int, tuple[tuple[bool, date], date | None, RoundOut | None, GridRowOut]] = {}
     for row in rows:
-        when = (since(row) if since else None) or _first_ask(row)
+        when, rnd = clock(row) if clock is not None else (None, None)
+        order = (when is None, when or _first_ask(row))
         held = best.get(row.household_cm_id)
-        if held is None or when < held[0]:
-            best[row.household_cm_id] = (when, row)
-    ordered = sorted(best.values(), key=lambda pair: (pair[0], pair[1].household_cm_id))[:NEXT_UP_CAP]
+        if held is None or order < held[0]:
+            best[row.household_cm_id] = (order, when, rnd or _newest_round(row), row)
+    ordered = sorted(best.values(), key=lambda entry: (entry[0], entry[3].household_cm_id))[:NEXT_UP_CAP]
     out: list[TodayNextUpOut] = []
-    for when, row in ordered:
-        offers = offer_rounds(row)
-        rnd = offers[0] if offers else (max(row.rounds, key=lambda r: r.round) if row.rounds else None)
+    for _, when, rnd, row in ordered:
         out.append(
             TodayNextUpOut(
                 household_cm_id=row.household_cm_id,
-                label=row.household_label or row.family_name,
-                tiebreak=row.household_label_tiebreak,
-                days=(today - when).days if since is not None and when != date.max else None,
+                label=_grid_name(row.camper_name, row.household_label or row.family_name),
+                tiebreak="" if row.camper_name else row.household_label_tiebreak,
+                days=(today - when).days if when is not None else None,
                 camper_name=row.camper_name,
                 session_name=row.session_name,
                 session_type=row.session_type,
@@ -314,21 +392,23 @@ def _casework(inputs: TodayInputs) -> list[TodayLineOut]:
             reasons=_reasons((f"r{r.round}", row.household_cm_id) for row in needs_offer for r in offer_rounds(row)),
             oldest_days=offer_oldest,
             overdue=_overdue("needs_offer", offer_oldest),
-            next_up=_next_up(needs_offer, inputs.today, _asked_since),
+            next_up=_next_up(needs_offer, inputs.today, _asked_clock),
         ),
         "holds": _line(
             "holds",
             holds,
             reasons=_reasons((h.code, row.household_cm_id) for row in holds for h in row.holds),
-            next_up=_next_up(holds, inputs.today, None),
+            next_up=_next_up(holds, inputs.today, _hold_clock(inputs.hold_since)),
         ),
         "waiting_on_family": _line(
             "waiting_on_family",
             waiting,
             oldest_days=waiting_oldest,
-            over_14_days=sum(1 for d in since if (inputs.today - d).days > WAITING_TOO_LONG_DAYS),
+            over_14_days=sum(
+                1 for row in waiting if (day := waiting_overdue_on(row)) is not None and day <= inputs.today
+            ),
             overdue=_overdue("waiting_on_family", waiting_oldest),
-            next_up=_next_up(waiting, inputs.today, _waiting_since),
+            next_up=_next_up(waiting, inputs.today, _waiting_clock),
         ),
         "not_reconciled": _line(
             "not_reconciled",
@@ -340,7 +420,7 @@ def _casework(inputs: TodayInputs) -> list[TodayLineOut]:
             # D150, unchanged by D162: the largest disagreement between a Posted figure and CampMinder. Direction (b)'s
             # money has no Posted figure to disagree with, so it adds no gap.
             largest_gap=max(gaps) if gaps else None,
-            next_up=_next_up(unreconciled, inputs.today, None),
+            next_up=_next_up(unreconciled, inputs.today, _posted_clock),
         ),
         "to_reverse": _line("to_reverse", _in(rows, "to_reverse")),
         "session_not_settled": _line("session_not_settled", _in(rows, "session_not_settled")),
@@ -354,11 +434,51 @@ def _casework(inputs: TodayInputs) -> list[TodayLineOut]:
                 [("needs_camper", n.grant.household_cm_id) for n in needs_camper]
                 + [(w.reason, w.grant.household_cm_id) for w in waiting_grants]
             ),
+            next_up=_grant_next_up(inputs),
         ),
         "late_full_coverage": _line("late_full_coverage", _late_full_coverage(inputs), listed=True),
         "to_place": _to_place_line(inputs.to_place),
     }
     return [lines[key] for key in CASEWORK_LINES]
+
+
+def _grant_next_up(inputs: TodayInputs) -> list[TodayNextUpOut]:
+    """Grants needing attention's households (audit R12, spec §9.2): each once, at its oldest grant, oldest first. A
+    grant that needs a camper is aged from the day it was recorded; a waiting commitment by its own days waiting."""
+    best: dict[int, tuple[int, GrantRowOut]] = {}
+
+    def seen(grant: GrantRowOut, days: int | None) -> None:
+        if grant.household_cm_id <= 0:
+            return
+        age = days if days is not None else -1
+        held = best.get(grant.household_cm_id)
+        if held is None or age > held[0]:
+            best[grant.household_cm_id] = (age, grant)
+
+    for needs in inputs.grants.needs_camper:
+        recorded = _iso_day(needs.grant.recorded_on)
+        seen(needs.grant, (inputs.today - recorded).days if recorded is not None else None)
+    for waiting in inputs.grants.waiting:
+        seen(waiting.grant, waiting.days_waiting)
+    ordered = sorted(best.items(), key=lambda kv: (-kv[1][0], kv[0]))[:NEXT_UP_CAP]
+    return [
+        TodayNextUpOut(
+            household_cm_id=household,
+            label=_grid_name(grant.camper_name, grant.family_name),
+            days=age if age >= 0 else None,
+            camper_name=grant.camper_name,
+            session_name=grant.session_name,
+            session_type=grant.session_type,
+        )
+        for household, (age, grant) in ordered
+    ]
+
+
+def _iso_day(text: str) -> date | None:
+    try:
+        return date.fromisoformat(text[:10])
+    except ValueError:
+        return None
 
 
 def _sources_line(inputs: TodayInputs) -> TodayLineOut:
@@ -399,7 +519,7 @@ def _finance(inputs: TodayInputs) -> list[TodayLineOut]:
             amount=money(pending_amount),
             oldest_days=pending_oldest,
             overdue=_overdue("pending_approval", pending_oldest),
-            next_up=_next_up(pending, inputs.today, lambda row: _pending_since(row, inputs.pending_since)),
+            next_up=_next_up(pending, inputs.today, lambda row: _pending_clock(row, inputs.pending_since)),
         ),
         "rules_sections": TodayLineOut(
             key="rules_sections",
@@ -428,20 +548,43 @@ def _finance(inputs: TodayInputs) -> list[TodayLineOut]:
     return [lines[key] for key in FINANCE_LINES]
 
 
-def _named(key: TodayKey, names: Iterable[str], kind: TodayItemKind) -> TodayLineOut:
-    listed = sorted(set(names), key=str.casefold)
-    return TodayLineOut(key=key, families=None, items=len(listed), item_kind=kind, names=listed)
+def _named(key: TodayKey, named: Iterable[tuple[str, str]], kind: TodayItemKind) -> TodayLineOut:
+    """`named`: (name, where it opens in Money › Funders: "funder:<key>" or "row:<source id>"), each name once."""
+    listed = sorted(dict(named).items(), key=lambda pair: pair[0].casefold())
+    return TodayLineOut(
+        key=key,
+        families=None,
+        items=len(listed),
+        item_kind=kind,
+        names=[name for name, _ in listed],
+        links=[link for _, link in listed],
+    )
 
 
 def _development(inputs: TodayInputs) -> list[TodayLineOut]:
-    """Spec 2026-10-10 §5.1/§7.3: funder upkeep. Funders by name (not families), descriptions by their key. A retired
-    funder is history and needs no upkeep."""
+    """Spec 2026-10-10 §5.1/§7.3: funder upkeep. Funders by name (not families), descriptions as CampMinder writes
+    them (audit D8). A retired funder is history and needs no upkeep."""
     live = [g for g in inputs.grantors if not g.retired_at]
     lines = {
-        "no_contact": _named("no_contact", (g.name for g in live if not g.contacts.strip()), "funders"),
-        "no_eligibility": _named("no_eligibility", (g.name for g in live if not g.eligibility.strip()), "funders"),
-        "needs_group": _named("needs_group", inputs.needs_group, "descriptions"),
-        "no_grantor": _named("no_grantor", (u.description_key for u in inputs.grants.unmapped), "descriptions"),
+        "no_contact": _named(
+            "no_contact", ((g.name, f"funder:{g.key}") for g in live if not g.contacts.strip()), "funders"
+        ),
+        "no_eligibility": _named(
+            "no_eligibility", ((g.name, f"funder:{g.key}") for g in live if not g.eligibility.strip()), "funders"
+        ),
+        "needs_group": _named(
+            "needs_group",
+            (
+                (inputs.descriptions.get(key, key), f"row:{inputs.source_ids[key]}" if key in inputs.source_ids else "")
+                for key in inputs.needs_group
+            ),
+            "descriptions",
+        ),
+        "no_grantor": _named(
+            "no_grantor",
+            ((u.description or u.description_key, f"row:{u.source_id}") for u in inputs.grants.unmapped),
+            "descriptions",
+        ),
     }
     return [lines[key] for key in DEVELOPMENT_LINES]
 
@@ -457,16 +600,37 @@ def pending_since(events: Iterable[DecisionEvent]) -> dict[tuple[str, int], date
     return {key: when.astimezone(CAMP_TZ).date() for key, when in out.items()}
 
 
-_STAGE_BUCKET: Final[Mapping[str, str]] = {
-    "accepted": "accepted",
-    "posted": "waiting_on_family",
-    "pending_approval": "pending_approval",
+# The Requests stage strip's stages, in the strip's order (frontend requests/strip.ts: PIPELINE_STAGES, then
+# EXCEPTION_BADGES; tests/fixtures/camperships_frontend_mirrors.json pins the two together).
+STRIP_STAGES: Final[tuple[QueueOut, ...]] = (
+    "pending_approval",
+    "needs_offer",
+    "not_reconciled",
+    "waiting_on_family",
+    "holds",
+    "duplicates",
+    "session_not_settled",
+    "to_reverse",
+)
+# Ruling 17: the bar is five stages. Needs an offer, Pending approval and Waiting on the family are strip stages whose
+# queues the segments mirror for requests moving through the normal stages; On hold reads the Stage column (latest round
+# held), so the strip's Holds list can show more (it also lists holds raised after an offer). The other strip stages are
+# flags that sit on top of any stage: chips with the strip's own count.
+BAR_STAGES: Final[tuple[QueueOut, ...]] = ("needs_offer", "pending_approval", "waiting_on_family")
+FLAG_STAGES: Final[tuple[QueueOut, ...]] = tuple(q for q in STRIP_STAGES if q not in (*BAR_STAGES, "holds"))
+BAR_SEGMENTS: Final[tuple[str, ...]] = ("needs_offer", "pending_approval", "waiting_on_family", "on_hold", "accepted")
+# Each live Stage code (row_stage) on its one segment. not_decided is a Round 3 ask with no amount keyed yet (Needs an
+# offer); refused is finance refusing the Round 3 appeal, and the family keeps the grant it already accepted (Accepted).
+_SEGMENT_OF_STAGE: Final[Mapping[str, str]] = {
     "needs_offer": "needs_offer",
     "not_decided": "needs_offer",
-    "refused": "needs_offer",
-    "held": "held",
-    "cancelled": "cancelled",
+    "pending_approval": "pending_approval",
+    "posted": "waiting_on_family",
+    "held": "on_hold",
+    "accepted": "accepted",
+    "refused": "accepted",
 }
+_OFFERED: Final = frozenset({"pending_approval", "waiting_on_family", "accepted"})
 
 
 def week_start(day: date) -> date:
@@ -475,39 +639,125 @@ def week_start(day: date) -> date:
 
 
 def _stages(inputs: TodayInputs) -> TodayStagesOut:
-    counts: dict[str, int] = defaultdict(int)
-    monday = week_start(inputs.today)
-    posted_now = 0
+    """The bar: each live request once, by its own Stage. The chips: each flag's queue membership, every row the strip
+    counts for it (D21)."""
+    segments: dict[str, int] = dict.fromkeys(BAR_SEGMENTS, 0)
+    flags: dict[str, int] = dict.fromkeys(FLAG_STAGES, 0)
+    households: set[int] = set()
     for row in inputs.rows:
-        if row.stage is not None and row.stage.code in _STAGE_BUCKET:
-            counts[_STAGE_BUCKET[row.stage.code]] += 1
-        if any(
-            r.status == "posted"
-            and not r.clawed_back
-            and r.posted_on is not None
-            and monday <= r.posted_on <= inputs.today
-            for r in row.rounds
-        ):
-            posted_now += 1
+        for flag in FLAG_STAGES:
+            flags[flag] += bool(row.queues and flag in row.queues)
+        segment = _SEGMENT_OF_STAGE.get(row.stage.code) if row.stage is not None else None
+        if segment is None:  # cancelled, or no round yet: not live
+            continue
+        segments[segment] += 1
+        households.add(row.household_cm_id)
     return TodayStagesOut(
-        accepted=counts["accepted"],
-        waiting_on_family=counts["waiting_on_family"],
-        pending_approval=counts["pending_approval"],
-        needs_offer=counts["needs_offer"],
-        held=counts["held"],
-        cancelled=counts["cancelled"],
-        families=_families(inputs.rows),
-        posted_this_week=posted_now,
+        needs_offer=segments["needs_offer"],
+        pending_approval=segments["pending_approval"],
+        waiting_on_family=segments["waiting_on_family"],
+        on_hold=segments["on_hold"],
+        accepted=segments["accepted"],
+        flags=TodayFlagsOut(
+            not_reconciled=flags["not_reconciled"],
+            duplicates=flags["duplicates"],
+            session_not_settled=flags["session_not_settled"],
+            to_reverse=flags["to_reverse"],
+        ),
+        families=len(households),
+        live=sum(segments.values()),
+        offered=sum(segments[s] for s in _OFFERED),
     )
 
 
-def build_today(inputs: TodayInputs, *, casework: bool, finance: bool, development: bool = False) -> TodayResponse:
+def _posted_parts(rows: Iterable[GridRowOut]) -> Iterable[tuple[date | None, Decimal]]:
+    """Each posted round's money as budget.py's `_tally_round` counts it in Posted, with its `posted_on`: nothing when
+    clawed back (D54), and otherwise only its inside part, the round's amount less the money below the line
+    (`outside_budget`, the grid's tag of counted_part's second half)."""
+    for row in rows:
+        for r in row.rounds:
+            if r.status == "posted" and not r.clawed_back:
+                yield r.posted_on, Decimal(str(r.posted or 0)) - Decimal(str(r.outside_budget or 0))
+
+
+POSTS_UNDATED_TITLE: Final = (
+    "This season's posts have no post dates, so what was posted in CampMinder can't be counted by week."
+)
+
+
+def posts_undated(inputs: TodayInputs) -> bool:
+    """Owner ruling 20: the season has posted rounds (as the budget counts them) and not one carries a post date, as
+    the 2026 reproduced load writes them. With some dated, an undated post still counts in the current week."""
+    days = [posted_on for posted_on, _ in _posted_parts(inputs.rows)]
+    return bool(days) and all(day is None for day in days)
+
+
+def _posted_by_week(inputs: TodayInputs) -> list[WeekPointOut]:
+    """Committed by week: the budget's Posted (`_posted_parts`), week by week, dated by `posted_on`, accumulated, with
+    empty weeks filled, from the first week with a post through the current one. A post with no `posted_on` counts in
+    the current week, so the last point is always the budget's Posted. A season with no dated post has no series
+    (ruling 20)."""
+    if posts_undated(inputs):
+        return []
+    current = week_start(inputs.today)
+    per_week: dict[date, Decimal] = defaultdict(Decimal)
+    for posted_on, part in _posted_parts(inputs.rows):
+        per_week[week_start(posted_on) if posted_on is not None else current] += part
+    if not per_week:
+        return []
+    points: list[WeekPointOut] = []
+    running = Decimal(0)
+    cursor, last = min(per_week), max(max(per_week), current)
+    while cursor <= last:
+        running += per_week.get(cursor, Decimal(0))
+        points.append(WeekPointOut(week_of=cursor, posted=float(running)))
+        cursor += timedelta(days=7)
+    return points
+
+
+def _posted_this_week(inputs: TodayInputs) -> WeekFigureOut:
+    """This week's "Posted in CM" (spec §7.2): the budget's Posted (`_posted_parts`) by `posted_on`, Monday through
+    today against the same weekdays of last week, as the week read's windows run. An undated post counts this week, as
+    `_posted_by_week` counts it in the current week, so the two never disagree. A season with no dated post has no
+    figure (ruling 20): blank, its title saying why."""
+    if posts_undated(inputs):
+        return WeekFigureOut(
+            key="posted_cm",
+            label="Posted in CM",
+            value=0,
+            previous=0,
+            unit="dollars",
+            title=POSTS_UNDATED_TITLE,
+            blank=True,
+        )
+    this_start = week_start(inputs.today)
+    last_start = this_start - timedelta(days=7)
+    last_end = last_start + (inputs.today - this_start)
+    now = before = Decimal(0)
+    for posted_on, part in _posted_parts(inputs.rows):
+        if posted_on is None or this_start <= posted_on <= inputs.today:
+            now += part
+        elif last_start <= posted_on <= last_end:
+            before += part
+    return WeekFigureOut(
+        key="posted_cm", label="Posted in CM", value=float(now), previous=float(before), unit="dollars"
+    )
+
+
+def build_today(
+    inputs: TodayInputs, *, casework: bool, finance: bool, development: bool = False, view: bool = False
+) -> TodayResponse:
+    """`view`: the caller holds financial_aid.view, so a view-only page still draws the registrar hero (spec §2, §9.3).
+    A development-only caller gets no stages."""
     return TodayResponse(
         year=inputs.year,
         casework=_casework(inputs) if casework else None,
         finance=_finance(inputs) if finance else None,
-        stages=_stages(inputs) if casework or finance else None,
+        stages=_stages(inputs) if casework or finance or view else None,
         development=_development(inputs) if development else None,
+        posted_by_week=_posted_by_week(inputs) if finance else None,
+        posted_this_week=_posted_this_week(inputs) if finance else None,
+        posts_undated=posts_undated(inputs) if finance else None,
     )
 
 
@@ -521,7 +771,7 @@ class RulesDrafts(Protocol):
 
 class LedgerReads(Protocol):
     async def unclassified_sources(self, year: int) -> list[UnclassifiedSource]: ...
-    async def needs_group_sources(self, year: int) -> list[str]: ...
+    async def needs_group_descriptions(self, year: int) -> dict[str, NamedSource]: ...
 
 
 async def _draft_sections(rules: RulesDrafts, year: int) -> list[str] | None:
@@ -561,8 +811,11 @@ class TodayService:
         ledger: LedgerReads,
         intake: IntakeWarningReads | None = None,
         to_place: ToPlaceCounts | None = None,
+        labels: HouseholdLabeler | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
+        """`labels`: the household page's label helper (household_labels), naming every next-up household as the grid
+        names a household-level row. None: the family name."""
         self._store = store
         self._pricing = pricing
         self._rules = rules
@@ -570,11 +823,18 @@ class TodayService:
         self._ledger = ledger
         self._intake = intake
         self._to_place = to_place
+        self._labels = labels
         self._clock: Callable[[], datetime] = clock or (lambda: datetime.now(UTC))
 
-    async def read(self, year: int, *, casework: bool, finance: bool, development: bool = False) -> TodayResponse:
-        if not (casework or finance or development):
+    async def read(
+        self, year: int, *, casework: bool, finance: bool, development: bool = False, view: bool = False
+    ) -> TodayResponse:
+        if not (casework or finance or development or view):
             return TodayResponse(year=year, casework=None, finance=None)
+        # A development-only caller gets funder upkeep alone: no family line and no hero stages, so the season is
+        # never priced for it. View needs the season for the registrar hero (spec §2, §9.3).
+        priced = casework or finance or view
+        named = casework or finance  # the lines that name households (and their campers, for the drawer)
         shared = OneGrantsLoad(self._grants, year)
         decisions = FinancialAidDecisionsService(self._store, self._pricing, shared.register, clock=self._clock)
         # asyncio.gather types six awaitables at most, so the events ride a task of their own.
@@ -584,10 +844,10 @@ class TodayService:
             (grants, register),
             grantors,
             draft,
-            (unclassified, needs_group),
+            (unclassified, named_sources),
             never_labels,
         ) = await asyncio.gather(
-            decisions.season(year),
+            decisions.named_season(year) if named else _season_only(decisions, year) if priced else _none(),
             shared.read(),
             # Retired grantors too: hidden from pickers, never from the grants that named them.
             self._grants.list_grantors(include_retired=True) if casework or development else _no_grantors(),
@@ -596,9 +856,20 @@ class TodayService:
             _never_true(self._intake, year) if finance and self._intake is not None else _no_fields(),
         )
         events = await events_read
-        season = await decisions.with_unticked(season)
-        rows = [decisions.row_of(season, ({}, {}), request_id) for request_id in season.priced]
-        open_lines = await open_to_place(season, self._to_place) if casework and self._to_place is not None else None
+        rows: list[GridRowOut] = []
+        open_lines: OpenToPlace | None = None
+        hold_since: dict[str, date] = {}
+        if season is not None:
+            live, names = season
+            live = await decisions.with_unticked(live)
+            rows = [decisions.row_of(live, names, request_id) for request_id in live.priced]
+            hold_since = {
+                rid: state.manual.placed_at.astimezone(CAMP_TZ).date()
+                for rid, state in live.holds.items()
+                if state.manual is not None
+            }
+            if casework and self._to_place is not None:
+                open_lines = await open_to_place(live, self._to_place)
         inputs = TodayInputs(
             year=year,
             rows=rows,
@@ -611,10 +882,44 @@ class TodayService:
             never_true=tuple(never_labels),
             never_true_labels=never_labels,
             to_place=open_lines,
-            needs_group=needs_group,
+            needs_group=sorted(named_sources),
             pending_since=pending_since(events),
+            hold_since=hold_since,
+            descriptions={key: named.description for key, named in named_sources.items()},
+            source_ids={key: named.source_id for key, named in named_sources.items()},
         )
-        return build_today(inputs, casework=casework, finance=finance, development=development)
+        out = build_today(inputs, casework=casework, finance=finance, development=development, view=view)
+        return await self._labelled(year, out) if named else out
+
+    async def _labelled(self, year: int, out: TodayResponse) -> TodayResponse:
+        """Every household-level next-up chip named by its household label (audit R2, owner ruling 18: as the grid
+        names a household-level row), the tie-break scoped to the household-level chips this response names. A camper
+        chip keeps its camper's name. Without a labeler, or for a household the helper does not name, the chip keeps
+        its family name."""
+        lines = [*(out.casework or []), *(out.finance or [])]
+        households = {n.household_cm_id for line in lines for n in line.next_up if not n.camper_name}
+        if self._labels is None or not households:
+            return out
+        named = await self._labels(year, households)
+
+        def relabel(section: list[TodayLineOut] | None) -> list[TodayLineOut] | None:
+            if section is None:
+                return None
+            return [
+                line.model_copy(
+                    update={
+                        "next_up": [
+                            n.model_copy(update={"label": label.label or n.label, "tiebreak": label.tiebreak})
+                            if not n.camper_name and (label := named.get(n.household_cm_id)) is not None
+                            else n
+                            for n in line.next_up
+                        ]
+                    }
+                )
+                for line in section
+            ]
+
+        return out.model_copy(update={"casework": relabel(out.casework), "finance": relabel(out.finance)})
 
 
 async def _no_events() -> list[DecisionEvent]:
@@ -629,13 +934,19 @@ async def _none() -> None:
     return None
 
 
-async def _descriptions(ledger: LedgerReads, year: int) -> tuple[list[UnclassifiedSource], list[str]]:
-    """Finance's two description reads: the unclassified ones, and those that need a group (D100)."""
+async def _descriptions(ledger: LedgerReads, year: int) -> tuple[list[UnclassifiedSource], dict[str, NamedSource]]:
+    """Finance's two description reads: the unclassified ones, and those that need a group (D100), by key with the
+    description as CampMinder writes it."""
     unclassified, needs_group = await asyncio.gather(
-        ledger.unclassified_sources(year), ledger.needs_group_sources(year)
+        ledger.unclassified_sources(year), ledger.needs_group_descriptions(year)
     )
     return unclassified, needs_group
 
 
-async def _no_descriptions() -> tuple[list[UnclassifiedSource], list[str]]:
-    return [], []
+async def _no_descriptions() -> tuple[list[UnclassifiedSource], dict[str, NamedSource]]:
+    return [], {}
+
+
+async def _season_only(decisions: FinancialAidDecisionsService, year: int) -> tuple[Season, Names]:
+    """A view-only caller's season: the hero's stages need no family or camper name, so none is read."""
+    return await decisions.season(year), ({}, {})

@@ -336,6 +336,7 @@ class DecisionsStore(Protocol):
     async def fetch_names(
         self, year: int, household_cm_ids: Collection[int], person_cm_ids: Collection[int]
     ) -> tuple[dict[int, str], dict[int, str]]: ...
+    async def fetch_camper_names(self, year: int, person_cm_ids: Collection[int]) -> dict[int, tuple[str, str]]: ...
     async def fetch_fa_contacts(self, year: int) -> list[FaContact]: ...
     async def fetch_camp_lines(self, year: int, *, recorded_times: bool = False) -> list[CampLine]: ...
     async def fetch_line_placements(self, year: int) -> dict[int, Placement]: ...
@@ -1574,6 +1575,11 @@ class FinancialAidDecisionsService:
     async def season(self, year: int) -> Season:
         """Every request of the season priced now, with its rounds and its holds (D21: the server decides)."""
         return (await self._season(year, names=False))[0]
+
+    async def named_season(self, year: int) -> tuple[Season, Names]:
+        """The season as `season` prices it, with the family and camper names the grid reads (Today's next-up lines
+        name households and the drawer names campers, audit R2/R3)."""
+        return await self._season(year, names=True)
 
     async def _season(self, year: int, *, names: bool) -> tuple[Season, Names]:
         """The season's loads run as five concurrent branches: the requests with what hangs off them

@@ -30,14 +30,20 @@ export const line = (
 })
 
 export const STAGES = {
-  accepted: 318,
-  waiting_on_family: 9,
-  pending_approval: 6,
   needs_offer: 31,
-  held: 6,
-  cancelled: 42,
+  pending_approval: 6,
+  waiting_on_family: 9,
+  on_hold: 6,
+  accepted: 318,
+  flags: {
+    not_reconciled: 8,
+    duplicates: 0,
+    session_not_settled: 2,
+    to_reverse: 1,
+  },
   families: 389,
-  posted_this_week: 14,
+  live: 370,
+  offered: 333,
 }
 
 export const REGISTRAR_TODAY: ApiAidToday = {
@@ -45,15 +51,17 @@ export const REGISTRAR_TODAY: ApiAidToday = {
   finance: null,
   development: null,
   stages: STAGES,
+  // Owner ruling 18: the server names a camper request's household by the camper's full name, as the grid does.
   casework: [
     line('needs_offer', 31, {
       families: 23,
       oldest_days: 12,
       overdue: true,
+      overdue_after_days: 10,
       next_up: [
         {
           household_cm_id: 1000002,
-          label: 'Garcia',
+          label: 'Liam Garcia',
           tiebreak: '',
           days: 12,
           camper_name: 'Liam Garcia',
@@ -64,7 +72,7 @@ export const REGISTRAR_TODAY: ApiAidToday = {
         },
         {
           household_cm_id: 1000003,
-          label: 'Chen',
+          label: 'Olivia Chen',
           tiebreak: '',
           days: 11,
           camper_name: 'Olivia Chen',
@@ -79,10 +87,11 @@ export const REGISTRAR_TODAY: ApiAidToday = {
     line('waiting_on_family', 9, {
       oldest_days: 19,
       overdue: true,
+      overdue_after_days: 14,
       next_up: [
         {
           household_cm_id: 1000004,
-          label: 'Okafor',
+          label: 'Noah Okafor',
           tiebreak: '',
           days: 19,
           camper_name: 'Noah Okafor',

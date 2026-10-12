@@ -67,6 +67,29 @@ describe('AidHeroBar', () => {
     expect(screen.getByTestId('hero-marker')).toHaveStyle({ left: '75%' })
     expect(screen.getByTestId('hero-marker')).toHaveAttribute('title', 'Allocated $300')
   })
+  it('sizes a segment by what it draws when that differs from its value; the key keeps the value (final check S3)', () => {
+    const segs: HeroSegment[] = [
+      { key: 'posted', value: 120, drawn: 100, label: 'Posted', figure: '$120', tone: 'done' },
+      { key: 'pending', value: 30, drawn: 0, label: 'Pending', figure: '$30', tone: 'act' },
+      { key: 'over', value: 50, label: 'Over', figure: '$50', tone: 'over' },
+    ]
+    wrap(
+      <>
+        <AidHeroBar segments={segs} total={150} marker={{ at: 100, title: 'Allocated $100' }} />
+        <AidHeroKeys segments={segs} />
+      </>
+    )
+    const drawn = screen.getAllByTestId('hero-seg')
+    expect(drawn).toHaveLength(2)
+    expect(drawn[0]).toHaveStyle({ flexGrow: '100' })
+    expect(drawn[1]).toHaveStyle({ flexGrow: '50' })
+    expect(screen.getByTestId('hero-marker')).toHaveStyle({ left: `${String((100 / 150) * 100)}%` })
+    expect(screen.getAllByTestId('hero-key').map((k) => k.textContent)).toEqual([
+      'Posted $120',
+      'Pending $30',
+      'Over $50',
+    ])
+  })
   it('reveals only when asked, and the compact bar never labels', () => {
     const { container, rerender } = wrap(<AidHeroBar segments={SEGS} reveal />)
     expect(container.querySelector('[data-reveal="true"]')).not.toBeNull()

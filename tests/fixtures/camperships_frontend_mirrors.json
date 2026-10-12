@@ -10,6 +10,16 @@
     "not_rebuilt": "Not rebuilt for that date"
   },
   "live_request_statuses": ["active", "unmatched_session"],
+  "strip_stages": [
+    "pending_approval",
+    "needs_offer",
+    "not_reconciled",
+    "waiting_on_family",
+    "holds",
+    "duplicates",
+    "session_not_settled",
+    "to_reverse"
+  ],
   "unreleasable": [
     "award_above_cost",
     "awaiting_approved_rules",

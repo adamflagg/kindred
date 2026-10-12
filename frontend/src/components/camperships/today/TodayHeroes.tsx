@@ -9,27 +9,31 @@ import type {
 } from '../../../types/api-types'
 import { POOL_NEGATIVE_INK } from '../kit/aidStyles'
 import { aidHref, type AidView } from '../kit/asOf'
-import { CS_META } from '../kit/csType'
+import { CS_SMALL } from '../kit/csType'
 import { AidHeroBar, AidHeroCard, AidHeroKeys, type HeroSegment } from '../kit/HeroBar'
+import { formatMoneyCompact } from '../kit/money'
+import { Money } from '../kit/MoneyText'
 import { StatusPill } from '../kit/Pills'
-import { REQUEST_VIEWS } from '../requests/views'
 import {
   budgetSegments,
   developmentSegments,
   money,
   offerShare,
   overPools,
+  registrarFlags,
   registrarSegments,
-  thousands,
 } from './todayModel'
 
 /** The first mount plays the hero bar's reveal; a refetch redraws the page and must not replay it. */
 let revealed = false
 
-/** A stage's Requests view slug, from the grid's own view list (`held` is the Holds view). */
-function stageSlug(stage: string): string {
-  const key = stage === 'held' ? 'holds' : stage
-  return REQUEST_VIEWS.find((v) => v.key === key)?.slug ?? 'all'
+/** Whether this hero plays the page's one reveal (spec §3): only the first hero mounted since the page loaded. */
+function useRevealOnce(): boolean {
+  const [reveal] = useState(() => !revealed)
+  useEffect(() => {
+    revealed = true
+  }, [])
+  return reveal
 }
 
 export function RegistrarHero({
@@ -39,32 +43,11 @@ export function RegistrarHero({
   readonly stages: ApiAidTodayStages
   readonly view: AidView
 }) {
-  const [reveal] = useState(() => !revealed)
-  useEffect(() => {
-    revealed = true
-  }, [])
-  const total =
-    stages.accepted +
-    stages.waiting_on_family +
-    stages.pending_approval +
-    stages.needs_offer +
-    stages.held +
-    stages.cancelled
+  const reveal = useRevealOnce()
+  const segments = registrarSegments(stages, view)
+  const flags = registrarFlags(stages, view)
+  const total = stages.live
   const share = offerShare(stages)
-  const segments = registrarSegments(stages, (stage) =>
-    aidHref('/aid/requests', view, { view: stageSlug(stage) })
-  ).map((s): HeroSegment =>
-    s.key === 'accepted' && stages.posted_this_week > 0
-      ? {
-          ...s,
-          pill: (
-            <StatusPill tone="ok" title="Posted this week">
-              +{stages.posted_this_week}
-            </StatusPill>
-          ),
-        }
-      : s
-  )
   return (
     <AidHeroCard
       title="The season so far"
@@ -74,12 +57,33 @@ export function RegistrarHero({
     >
       <AidHeroBar segments={segments} reveal={reveal} />
       <AidHeroKeys segments={segments} />
+      {flags.length > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          {flags.map((f) => (
+            <Link
+              key={f.key}
+              data-testid="hero-flag"
+              to={f.href}
+              title={`${f.label}: ${String(f.count)} on the Requests strip, at any stage`}
+              className="hover:underline"
+            >
+              <StatusPill tone="amber">
+                {f.label} <b className="tabular-nums">{String(f.count)}</b>
+              </StatusPill>
+            </Link>
+          ))}
+        </div>
+      )}
     </AidHeroCard>
   )
 }
 
 const POOLS_HREF = '/aid/season/rounds-budget'
-const POOL_ROW = 'grid grid-cols-[150px_minmax(0,1fr)_120px_130px] items-center gap-x-3 py-1.5'
+/** The mock's pool rows: 150px name, the bar, 120px Allocated, 130px Remaining; 13px, 6px apart, no rules between. */
+const POOL_GRID = 'grid grid-cols-[150px_minmax(0,1fr)_120px_130px] items-center gap-x-3.5'
+const POOL_ROW = `${POOL_GRID} py-[3px] text-[13px]`
+/** Rounds & budget's no-pool bucket: money on programs the rules give no pool (budget.py NO_POOL). */
+const NO_POOL = ''
 
 function PoolRow({ pool, view }: { readonly pool: ApiAidBudgetPool; readonly view: AidView }) {
   const { segments, total, allocated } = budgetSegments(pool.total, pool.below)
@@ -90,7 +94,7 @@ function PoolRow({ pool, view }: { readonly pool: ApiAidBudgetPool; readonly vie
     <div data-testid="pool-row" className={POOL_ROW}>
       <Link
         to={aidHref(POOLS_HREF, view)}
-        className="text-foreground truncate text-[13.5px] font-semibold hover:underline"
+        className="text-foreground truncate font-semibold hover:underline"
         title={pool.label}
       >
         {pool.label}
@@ -100,20 +104,22 @@ function PoolRow({ pool, view }: { readonly pool: ApiAidBudgetPool; readonly vie
       ) : (
         <AidHeroBar segments={segments} total={total} compact {...(marker ? { marker } : {})} />
       )}
-      <span className={`${CS_META} tabular-nums`}>
-        {allocated === null ? '' : `${money(allocated)} allocated`}
+      <span className="text-right tabular-nums">
+        {allocated === null ? '' : <Money value={allocated} />}
       </span>
-      {allocated === null || remaining === null ? (
-        <StatusPill tone="muted">No allocation</StatusPill>
-      ) : remaining >= 0 ? (
-        <StatusPill tone="ok" title={`${money(remaining)} remaining`}>
-          {thousands(remaining)} remaining
-        </StatusPill>
-      ) : (
-        <StatusPill tone="amber" title={`${money(-remaining)} over`}>
-          {thousands(-remaining)} over
-        </StatusPill>
-      )}
+      <span className="justify-self-end">
+        {allocated === null || remaining === null ? (
+          <StatusPill tone="muted">No allocation</StatusPill>
+        ) : remaining >= 0 ? (
+          <StatusPill tone="ok" title={`${money(remaining)} remaining`}>
+            {formatMoneyCompact(remaining)} remaining
+          </StatusPill>
+        ) : (
+          <StatusPill tone="amber" title={`${money(-remaining)} over`}>
+            {formatMoneyCompact(-remaining)} over
+          </StatusPill>
+        )}
+      </span>
     </div>
   )
 }
@@ -125,6 +131,7 @@ export function FinanceHero({
   readonly budget: ApiAidBudget
   readonly view: AidView
 }) {
+  const reveal = useRevealOnce()
   const { segments, total, allocated } = budgetSegments(budget.total.total, budget.total.below)
   const remaining = budget.total.total.remaining
   const over = overPools(budget)
@@ -139,9 +146,9 @@ export function FinanceHero({
         remaining === null ? (
           '—'
         ) : negative ? (
-          <span className={POOL_NEGATIVE_INK}>{thousands(-remaining)}</span>
+          <span className={POOL_NEGATIVE_INK}>{formatMoneyCompact(-remaining)}</span>
         ) : (
-          thousands(remaining)
+          formatMoneyCompact(remaining)
         )
       }
       figureLabel={
@@ -150,12 +157,27 @@ export function FinanceHero({
           : `remaining after everything waiting is offered${over.map((p) => ` · ${p.label} is ${money(p.over)} over`).join('')}`
       }
     >
-      <AidHeroBar segments={segments} total={total} {...(marker ? { marker } : {})} />
+      <AidHeroBar
+        segments={segments}
+        total={total}
+        reveal={reveal}
+        {...(marker ? { marker } : {})}
+      />
       <AidHeroKeys segments={segments} />
-      <div className="border-border mt-2.5 divide-y border-t">
-        {budget.pools.map((pool) => (
-          <PoolRow key={pool.pool} pool={pool} view={view} />
-        ))}
+      {/* One rule above the pool rows, none between them, under their own header (audit F2, F3). Money on no pool
+          is not a pool: it is already in the bar's hatch, so it gets no row (ruling V3). */}
+      <div className="border-border mt-3 border-t pt-2.5">
+        <div data-testid="pool-head" className={`${POOL_GRID} ${CS_SMALL} pb-1`}>
+          <span>Pool</span>
+          <span />
+          <span className="text-right">Allocated</span>
+          <span className="text-right">Remaining</span>
+        </div>
+        {budget.pools
+          .filter((pool) => pool.pool !== NO_POOL)
+          .map((pool) => (
+            <PoolRow key={pool.pool} pool={pool} view={view} />
+          ))}
       </div>
     </AidHeroCard>
   )
@@ -172,6 +194,7 @@ export function DevelopmentHero({
   readonly awards: number | null
   readonly view: AidView
 }) {
+  const reveal = useRevealOnce()
   const built = developmentSegments(sources)
   const href = aidHref(DEVELOPMENT_HREF, view)
   const withDoor = (list: HeroSegment[]): HeroSegment[] => list.map((s) => ({ ...s, href }))
@@ -186,7 +209,7 @@ export function DevelopmentHero({
       figure={awards === null ? '—' : String(awards)}
       figureLabel={`awards · ${String(pct)}% of the money from outside funders`}
     >
-      <AidHeroBar segments={main} />
+      <AidHeroBar segments={main} reveal={reveal} />
       <div className="mt-2.5 mb-1 text-[12.5px] font-semibold">
         <i className="mr-1.5 inline-block size-[9px] rounded-[2px] bg-sky-800" />
         {`Outside ${money(built.outside)}, by funder`}

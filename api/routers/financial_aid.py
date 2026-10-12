@@ -197,6 +197,7 @@ from api.schemas.financial_aid_surfaces import (
     HouseholdSearchResponse,
     JumpIndexResponse,
     TodayResponse,
+    TodayWeekResponse,
 )
 from api.schemas.financial_aid_to_place import (
     LeaveLineIn,
@@ -318,6 +319,7 @@ from api.services.financial_aid_scenarios_service import (
 from api.services.financial_aid_season_history import HistoryFilter, HistoryNotFoundError, SeasonHistoryService
 from api.services.financial_aid_to_place_service import ToPlaceService
 from api.services.financial_aid_today import TodayService
+from api.services.financial_aid_today_week import TodayWeekService
 from api.services.financial_aid_write_service import FinancialAidWriteService
 from bunking.auth_middleware import AuthUser
 from bunking.branding import get_branding, get_camp_name
@@ -1892,6 +1894,27 @@ async def get_today(year: _Year, user: AuthUser = _CAMPERSHIPS_OPEN) -> TodayRes
         ledger=_ledger(),
         intake=FinancialAidIntakeRepository(pb),
         to_place=store,  # To place's own reads (SP11): Today counts its open lines as Money › To place does
+        labels=_household_labels(),  # next-up households read as the grid names them (audit R2)
+    )
+    return await service.read(
+        year,
+        casework=_holds(user, Permission.FINANCIAL_AID_CASEWORK),
+        finance=_holds(user, Permission.FINANCIAL_AID_RULES),
+        development=_holds(user, Permission.FINANCIAL_AID_GRANTORS) or _holds(user, Permission.FINANCIAL_AID_SUMMARY),
+        view=_holds(user, Permission.FINANCIAL_AID_VIEW),  # the registrar hero, for a view-only page too (§2, §9.3)
+    )
+
+
+@router.get("/today/{year}/week", response_model=TodayWeekResponse)
+async def get_today_week(year: _Year, user: AuthUser = _CAMPERSHIPS_OPEN) -> TodayWeekResponse:
+    """This week (spec 2026-10-10 §8): its own read, so the to-dos never wait on it or fail with it."""
+    store = FinancialAidDecisionsRepository(pb)
+    service = TodayWeekService(
+        store=store,
+        grants=GrantsService(GrantsRepository(pb)),
+        pricing=_rules(),  # the waiting-14+-days items are the Waiting on the family line's own rows (final check S2)
+        labels=_household_labels(),  # households named as the grid names them (audit R24)
+        rules=_rules(),  # finance's rules-section edits (spec §8.1)
     )
     return await service.read(
         year,

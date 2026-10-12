@@ -2,8 +2,8 @@
  * Today (spec 2026-10-10 §2-§7): one page per permission set, drawn from one read. The hooks are mocked;
  * the heroes, the to-do table and the model have their own tests.
  */
-import { render, screen } from '@testing-library/react'
-import { MemoryRouter } from 'react-router'
+import { render, screen, within } from '@testing-library/react'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
@@ -11,8 +11,9 @@ import {
   line,
   REGISTRAR_TODAY,
   SOURCES,
+  STAGES,
 } from '../../components/camperships/today/todayFixtures'
-import type { ApiAidDevelopment, ApiAidToday } from '../../types/api-types'
+import type { ApiAidDevelopment, ApiAidToday, ApiAidTodayWeek } from '../../types/api-types'
 import AidTodayPage from './AidTodayPage'
 
 let granted: string[] = []
@@ -20,6 +21,34 @@ let todayState: 'ok' | 'loading' | 'error' = 'ok'
 let todayData: ApiAidToday = REGISTRAR_TODAY
 let budgetFails = false
 let developmentFails = false
+let weekFails = false
+const FUNDER_FEED: ApiAidTodayWeek['feed'] = [
+  {
+    kind: 'funder',
+    at: '2027-04-06T17:14:00Z',
+    words: 'Regional Fund updated',
+    name: 'Regional Fund',
+    household_cm_id: null,
+    href_kind: 'funders',
+  },
+]
+const weekData: ApiAidTodayWeek = {
+  year: 2027,
+  week_of: '2027-04-05',
+  registrar: [{ key: 'posted', label: 'Offers posted', value: 14, previous: 9, unit: 'count' }],
+  finance: [{ key: 'avg', label: 'Avg award', value: 2080, previous: 2140, unit: 'dollars' }],
+  development: [{ key: 'grants', label: 'Grants in', value: 2, previous: 1, unit: 'count' }],
+  feed: [
+    {
+      kind: 'funder',
+      at: '2027-04-06T17:14:00Z',
+      words: 'Regional Fund updated',
+      name: 'Regional Fund',
+      household_cm_id: null,
+      href_kind: 'funders',
+    },
+  ],
+}
 
 vi.mock('../../hooks/usePermissions', () => ({
   usePermissions: () => ({ hasPermission: (p: string) => granted.includes(p) }),
@@ -32,6 +61,12 @@ vi.mock('../../hooks/camperships/useAidToday', () => ({
       : todayState === 'error'
         ? { data: undefined, isLoading: false, error: new Error('boom') }
         : { data: todayData, isLoading: false, error: null },
+}))
+vi.mock('../../hooks/camperships/useAidTodayWeek', () => ({
+  useAidTodayWeek: () =>
+    weekFails
+      ? { data: undefined, isLoading: false, error: new Error('week down') }
+      : { data: weekData, isLoading: false, error: null },
 }))
 vi.mock('../../hooks/camperships/useAidBudget', () => ({
   useAidBudget: () =>
@@ -75,16 +110,35 @@ vi.mock('../PermissionDeniedPage', () => ({ default: () => <div>Permission denie
 const FINANCE_TODAY: ApiAidToday = {
   ...REGISTRAR_TODAY,
   finance: [line('pending_approval', 6), line('rules_sections', 1), line('sources', 3)],
+  posted_by_week: [
+    { week_of: '2027-01-04', posted: 0 },
+    { week_of: '2027-03-29', posted: 843380 },
+  ],
   development: [
     line('no_contact', 2, { item_kind: 'funders', names: ['Riverbend', 'Lakeside'] }),
     line('needs_group', 1, { item_kind: 'funders', names: ['Pinewood'] }),
   ],
 }
 
-function renderPage() {
+function Where() {
+  const { pathname, search } = useLocation()
+  return <div data-testid="where">{pathname + search}</div>
+}
+
+function renderPage(path = '/aid/today') {
   return render(
-    <MemoryRouter initialEntries={['/aid/today']}>
-      <AidTodayPage />
+    <MemoryRouter initialEntries={[path]}>
+      <Routes>
+        <Route
+          path="/aid/today"
+          element={
+            <>
+              <AidTodayPage />
+              <Where />
+            </>
+          }
+        />
+      </Routes>
     </MemoryRouter>
   )
 }
@@ -97,7 +151,9 @@ beforeEach(() => {
   todayState = 'ok'
   budgetFails = false
   developmentFails = false
+  weekFails = false
   todayData = FINANCE_TODAY
+  weekData.feed = FUNDER_FEED
 })
 
 describe('AidTodayPage', () => {
@@ -127,15 +183,19 @@ describe('AidTodayPage', () => {
     expect(await screen.findByText('notes:today_registrar')).toBeInTheDocument()
   })
 
-  it('finance shows the registrar queue only when its own list is short', async () => {
+  it("finance always gets the registrar's queue, folded, with a link to it (ruling V4)", async () => {
     granted = FINANCE
     todayData = {
       ...REGISTRAR_TODAY,
       finance: [line('pending_approval', 6), line('rules_sections', 1), line('sources', 3)],
     }
     renderPage()
-    await screen.findByText('Waiting on you')
-    expect(screen.queryByText("The registrar's queue")).toBeNull()
+    expect(await screen.findByText("The registrar's queue")).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Open Requests ›' })).toHaveAttribute(
+      'href',
+      '/aid/requests?year=2027'
+    )
+    expect(screen.queryByText('Needs an offer')).toBeNull() // folded until opened
   })
 
   it('finance with a short list of its own gets the registrar queue folded below', async () => {
@@ -218,6 +278,43 @@ describe('AidTodayPage', () => {
     expect(screen.getByRole('heading', { name: 'Funder upkeep' })).toBeInTheDocument()
   })
 
+  it('development counts its upkeep once: the heading, the band and Upkeep left agree (audit D18)', async () => {
+    granted = DEVELOPMENT
+    renderPage()
+    // FINANCE_TODAY's development lines: 2 funders missing a contact, 1 needing a group.
+    expect(
+      await screen.findByText('3 waiting · keep these complete so reports come out right')
+    ).toBeInTheDocument()
+    expect(screen.getByText(/3 upkeep items need a look/)).toBeInTheDocument()
+    expect(screen.getByText('Upkeep left').parentElement).toHaveTextContent('3')
+  })
+
+  it('development draws Everything else only when a line in it is waiting (ruling V10)', async () => {
+    granted = DEVELOPMENT
+    todayData = {
+      ...FINANCE_TODAY,
+      development: [
+        line('no_contact', 2, { item_kind: 'funders', names: ['Riverbend', 'Lakeside'] }),
+        line('no_eligibility', 0, { item_kind: 'funders' }),
+      ],
+    }
+    renderPage()
+    await screen.findByText('Funder upkeep')
+    expect(screen.queryByText('Everything else')).toBeNull()
+  })
+
+  it('By reporting group sits under Funder upkeep with its description and a Campers helped column (audit D10-D12)', async () => {
+    granted = DEVELOPMENT
+    renderPage()
+    await screen.findByRole('heading', { name: 'By reporting group' })
+    expect(screen.getByText('live · the figures grant reports ask for')).toBeInTheDocument()
+    expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toContain(
+      'Campers helped'
+    )
+    const left = screen.getByTestId('today-left')
+    expect(within(left).getByRole('table', { name: 'By reporting group' })).toBeInTheDocument()
+  })
+
   it('the By reporting group table has no Awards column (it would double-count; the hero has the figure)', async () => {
     granted = DEVELOPMENT
     renderPage()
@@ -238,5 +335,177 @@ describe('AidTodayPage', () => {
     expect(
       await screen.findByText('9 waiting · 2 overdue · on the registrar, open to review')
     ).toBeInTheDocument()
+  })
+
+  it('the registrar page gets This week beside its to-dos', async () => {
+    granted = ['financial_aid.view', 'financial_aid.casework']
+    todayData = REGISTRAR_TODAY
+    renderPage()
+    expect(await screen.findByText('This week')).toBeInTheDocument()
+    expect(screen.getByText('Offers posted')).toBeInTheDocument()
+    // Audit R23: only the name the item marks is the link.
+    expect(screen.getByRole('link', { name: 'Regional Fund' })).toHaveAttribute(
+      'href',
+      '/aid/money/funders?year=2027'
+    )
+  })
+
+  it('finance gets Committed by week above This week', async () => {
+    granted = FINANCE
+    const { container } = renderPage()
+    expect(await screen.findByText('Committed by week')).toBeInTheDocument()
+    // The series rides Today's read (the budget's own rows), not the week read.
+    expect(screen.getByText(/\$843k posted/)).toBeInTheDocument()
+    expect(container.querySelector('path[data-line="posted"]')).not.toBeNull()
+    expect(screen.getByText('Avg award')).toBeInTheDocument()
+  })
+
+  it('development gets This week with Upkeep left, the sum of its lines, and no change shown', async () => {
+    granted = DEVELOPMENT
+    renderPage()
+    expect(await screen.findByText('Grants in')).toBeInTheDocument()
+    const label = screen.getByText('Upkeep left')
+    expect(label.parentElement).toHaveTextContent('3')
+    expect(label.parentElement?.textContent).not.toMatch(/[▲▼]/)
+  })
+
+  it('a view-only user gets no right column', async () => {
+    granted = ['financial_aid.view']
+    renderPage()
+    await screen.findByText('Nothing is assigned to you.')
+    expect(screen.queryByText('This week')).toBeNull()
+  })
+
+  it('a failed week read blanks only the right column, not the to-dos', async () => {
+    granted = ['financial_aid.view', 'financial_aid.casework']
+    todayData = REGISTRAR_TODAY
+    weekFails = true
+    renderPage()
+    expect(await screen.findByText(/Failed to load this week/)).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Your to-dos' })).toBeInTheDocument()
+  })
+
+  // --- final review ---------------------------------------------------------------------------------------------
+
+  it('reads live whatever the URL says: an as-of on /aid/today is dropped, the season kept (D20)', async () => {
+    granted = FINANCE
+    renderPage('/aid/today?year=2027&as_of=2026-04-01&as_of_axis=recorded')
+    await screen.findByRole('heading', { name: 'Budget, all pools' })
+    const where = screen.getByTestId('where')
+    expect(where).toHaveTextContent('/aid/today?year=2027')
+    expect(where.textContent).not.toMatch(/as_of/)
+  })
+
+  it("finance's Posted in CM comes from the Today read's budget rows, second in the card", async () => {
+    granted = FINANCE
+    todayData = {
+      ...FINANCE_TODAY,
+      posted_this_week: {
+        key: 'posted_cm',
+        label: 'Posted in CM',
+        value: 41250,
+        previous: 30100,
+        unit: 'dollars',
+      },
+    }
+    renderPage()
+    const label = await screen.findByText('Posted in CM')
+    expect(label.parentElement).toHaveTextContent('$41k')
+    expect(label.parentElement).toHaveTextContent('▲ $11k')
+  })
+
+  it('a failed week read still shows Committed by week, which rides the Today read', async () => {
+    granted = FINANCE
+    weekFails = true
+    const { container } = renderPage()
+    expect(await screen.findByText(/Failed to load this week/)).toBeInTheDocument()
+    expect(screen.getByText('Committed by week')).toBeInTheDocument()
+    expect(container.querySelector('path[data-line="posted"]')).not.toBeNull()
+  })
+
+  it('a view-only user gets the registrar hero from the stages the server sends view (spec §2, §9.3)', async () => {
+    granted = ['financial_aid.view']
+    todayData = { year: 2027, casework: null, finance: null, development: null, stages: STAGES }
+    renderPage()
+    expect(await screen.findByRole('heading', { name: 'The season so far' })).toBeInTheDocument()
+    expect(screen.getAllByTestId('hero-key')[0]).toHaveTextContent('Needs an offer 31')
+    expect(screen.getByText('Nothing is assigned to you.')).toBeInTheDocument()
+  })
+
+  // --- Final check (2026-10-11) -------------------------------------------------------------------------------
+
+  it("S4: every feed link keeps the page's season, as the page's other links do", async () => {
+    granted = ['financial_aid.view', 'financial_aid.casework', 'financial_aid.rules']
+    weekData.feed = [
+      ...FUNDER_FEED,
+      {
+        kind: 'accepted',
+        at: '2027-04-07T17:14:00Z',
+        words: 'Rivera accepted',
+        name: 'Rivera',
+        household_cm_id: 1000001,
+        href_kind: 'household',
+      },
+      {
+        kind: 'section',
+        at: '2027-04-07T18:14:00Z',
+        words: 'Tiers section approved',
+        name: 'Tiers',
+        household_cm_id: null,
+        href_kind: 'rules',
+      },
+    ]
+    renderPage() // the season the page resolved (useYear: 2027), as aidHref carries it
+    expect(await screen.findByRole('link', { name: 'Rivera' })).toHaveAttribute(
+      'href',
+      '/aid/households/1000001?year=2027'
+    )
+    expect(screen.getByRole('link', { name: 'Regional Fund' })).toHaveAttribute(
+      'href',
+      '/aid/money/funders?year=2027'
+    )
+    expect(screen.getByRole('link', { name: 'Tiers' })).toHaveAttribute(
+      'href',
+      '/aid/season/rules?year=2027'
+    )
+  })
+
+  it('R20: a season whose posts have no post dates draws no Committed by week and no Posted in CM figure', async () => {
+    granted = FINANCE
+    todayData = {
+      ...FINANCE_TODAY,
+      posted_by_week: [],
+      posts_undated: true,
+      posted_this_week: {
+        key: 'posted_cm',
+        label: 'Posted in CM',
+        value: 0,
+        previous: 0,
+        unit: 'dollars',
+        title: "This season's posts have no post dates",
+        blank: true,
+      },
+    }
+    const { container } = renderPage()
+    expect(
+      await screen.findByText("Committed by week needs post dates; this season's posts have none.")
+    ).toBeInTheDocument()
+    expect(container.querySelector('path[data-line="posted"]')).toBeNull()
+    const label = screen.getByText('Posted in CM')
+    expect(label.parentElement).toHaveTextContent('—')
+    expect(label.parentElement).not.toHaveTextContent('$0')
+    expect(label.closest('[title]')).toHaveAttribute(
+      'title',
+      "This season's posts have no post dates"
+    )
+  })
+
+  it('R20: with some posts dated, Committed by week draws as before', async () => {
+    granted = FINANCE
+    todayData = { ...FINANCE_TODAY, posts_undated: false }
+    const { container } = renderPage()
+    expect(await screen.findByText('Committed by week')).toBeInTheDocument()
+    expect(container.querySelector('path[data-line="posted"]')).not.toBeNull()
+    expect(screen.queryByText(/needs post dates/)).toBeNull()
   })
 })

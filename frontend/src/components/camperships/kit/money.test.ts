@@ -10,6 +10,8 @@ import {
   formatMoney,
   formatWholeMoney,
   formatMoneyCompact,
+  formatMoneyFigure,
+  formatMoneyScale,
   isNegativeMoney,
   moneyCsv,
   toCents,
@@ -84,6 +86,39 @@ describe('formatMoneyCompact (the Remaining line, Decision 2)', () => {
     [-400, `${MINUS}$400`],
   ])('%s reads %s', (value, expected) => {
     expect(formatMoneyCompact(value)).toBe(expected)
+  })
+})
+
+describe('formatMoneyFigure (a figure in a narrow card: exact under $10,000, compact above)', () => {
+  it.each([
+    [null, '—'],
+    [0, '$0'],
+    [60, '$60'],
+    [2080, '$2,080'],
+    [9999.4, '$9,999'],
+    [10000, '$10k'],
+    [41250, '$41k'],
+    [116600, '$116k'],
+    [-2000, `${MINUS}$2,000`],
+    [-52000, `${MINUS}$52k`],
+  ])('%s reads %s', (value, expected) => {
+    expect(formatMoneyFigure(value)).toBe(expected)
+  })
+})
+
+describe('formatMoneyScale (a chart axis: compact, then millions to two places toward zero)', () => {
+  it.each([
+    [null, '—'],
+    [0, '$0'],
+    [843380, '$843k'],
+    [999999, '$999k'],
+    [1000000, '$1.00M'],
+    [1111125, '$1.11M'],
+    [1119999, '$1.11M'],
+    [12345678, '$12.34M'],
+    [-1500000, `${MINUS}$1.50M`],
+  ])('%s reads %s', (value, expected) => {
+    expect(formatMoneyScale(value)).toBe(expected)
   })
 })
 

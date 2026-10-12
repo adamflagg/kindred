@@ -66,6 +66,28 @@ export function formatMoneyCompact(value: number | null | undefined): string {
   return cents < 0 ? MINUS + body : body
 }
 
+/**
+ * A figure in a narrow card (Today's week card): "$2,080", "$60", "−$2,000" exact under $10,000, so a small change
+ * reads as it is, and formatMoneyCompact from $10,000 up ("$41k"). Rounded to the whole dollar.
+ */
+export function formatMoneyFigure(value: number | null | undefined): string {
+  if (value === null || value === undefined) return '—'
+  return Math.abs(toCents(value)) < 1_000_000 ? formatWholeMoney(value) : formatMoneyCompact(value)
+}
+
+/**
+ * A chart's scale (AidBurnUp's budget label and axis ticks): formatMoneyCompact below a million, then millions to two
+ * places, toward zero like the thousands ("$1.11M" for $1,119,999), so the axis never shows more than there is.
+ */
+export function formatMoneyScale(value: number | null | undefined): string {
+  if (value === null || value === undefined) return '—'
+  const cents = toCents(value)
+  const abs = Math.abs(cents)
+  if (abs < 100_000_000) return formatMoneyCompact(value)
+  const body = `$${(Math.trunc(abs / 1_000_000) / 100).toFixed(2)}M`
+  return cents < 0 ? MINUS + body : body
+}
+
 export function isNegativeMoney(value: number | null | undefined): boolean {
   return value !== null && value !== undefined && toCents(value) < 0
 }

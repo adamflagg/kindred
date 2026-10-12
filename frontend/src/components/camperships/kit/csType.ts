@@ -107,7 +107,8 @@ export const CS_CARD_TITLE = 'font-bold'
  */
 export const CS_CARD_HEADING = `${CS_CARD_TITLE} !font-sans !text-[13.5px] !leading-normal !tracking-[inherit]`
 /** Today's hero (design-language section 13 "The hero bar"): a 16/22 bold title and a 24/28 headline figure. */
-export const CS_HERO_TITLE = '!text-[16px] !leading-[22px] !font-bold font-sans text-foreground'
+export const CS_HERO_TITLE =
+  '!text-[16px] !leading-[22px] !font-bold !font-sans !tracking-[inherit] text-foreground'
 export const CS_HERO_FIG =
   'text-[24px] leading-[28px] font-bold tabular-nums tracking-[-0.01em] text-foreground'
 export const CS_HERO_CARD = 'rounded-xl border border-border bg-card px-[18px] pt-3.5 pb-3'

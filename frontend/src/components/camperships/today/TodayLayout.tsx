@@ -21,7 +21,9 @@ export function TodayLayout({
     <div className="grid grid-cols-[minmax(0,1fr)_340px] items-start gap-x-3">
       <div className="mb-1.5">{head}</div>
       <div />
-      <div className="flex min-w-0 flex-col gap-2.5">{left}</div>
+      <div data-testid="today-left" className="flex min-w-0 flex-col gap-2.5">
+        {left}
+      </div>
       <div className="flex min-w-0 flex-col gap-2.5">{right}</div>
     </div>
   )

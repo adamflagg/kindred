@@ -13,6 +13,7 @@ import pytest
 
 from api.schemas.financial_aid import UnclassifiedSource
 from api.schemas.financial_aid_decisions import (
+    CancellationOut,
     ConfirmationOut,
     GridRowOut,
     RoundOut,
@@ -30,16 +31,21 @@ from api.schemas.financial_aid_grants import (
     WaitingCommitmentOut,
 )
 from api.schemas.financial_aid_intake import IssueOut
-from api.schemas.financial_aid_surfaces import TodayKey
+from api.schemas.financial_aid_surfaces import TodayFlagsOut, TodayKey
 from api.services.camp_calendar import CAMP_TZ
+from api.services.financial_aid_decisions_service import FinancialAidDecisionsService
 from api.services.financial_aid_grants_register import RegisterRow
 from api.services.financial_aid_intake_service import never_true_fields, never_true_labels
-from api.services.financial_aid_queues import row_queues
+from api.services.financial_aid_ledger_service import NamedSource
+from api.services.financial_aid_queues import row_queues, row_stage
 from api.services.financial_aid_rules_service import RulesNotFoundError, RulesVersion
 from api.services.financial_aid_today import (
+    BAR_SEGMENTS,
+    BAR_STAGES,
     CASEWORK_LINES,
     DEVELOPMENT_LINES,
     FINANCE_LINES,
+    FLAG_STAGES,
     NEXT_UP_CAP,
     TODAY_OVERDUE_DAYS,
     TodayInputs,
@@ -48,10 +54,13 @@ from api.services.financial_aid_today import (
     pending_since,
     week_start,
 )
+from bunking.financial_aid.decisions.budget import counted_part
+from bunking.financial_aid.decisions.pricing import RoundView
 from bunking.financial_aid.decisions.rounds import DecisionEvent
 from bunking.financial_aid.rules.lifecycle import SectionStatus
 from tests.unit.api.services.decisions_fakes import T0, FakeDecisionsStore, FakeRules, approved, grant_row, seed_request
 from tests.unit.api.services.financial_aid_fakes import YEAR, fa_row, intake_rules
+from tests.unit.api.services.test_camperships_frontend_mirrors import MIRRORS
 from tests.unit.bunking.financial_aid.fixtures import with_levers
 
 TODAY = date(2031, 4, 20)
@@ -493,9 +502,10 @@ class _Ledger:
         self.calls += 1
         return []
 
-    async def needs_group_sources(self, year: int) -> list[str]:
+    async def needs_group_descriptions(self, year: int) -> dict[str, NamedSource]:
+        """Each description needing a group, by key, as CampMinder writes it, with its record id."""
         self.group_calls += 1
-        return list(self.needs_group)
+        return {key: NamedSource(f"{key.title()} (as written)", f"src-{key}") for key in self.needs_group}
 
 
 def _service(store: FakeDecisionsStore, grants: _Grants, drafts: _Drafts, ledger: _Ledger) -> TodayService:
@@ -782,9 +792,10 @@ def test_next_up_names_households_oldest_first_once_each() -> None:
         ),
     ]
     line = _line(build_today(_inputs(rows), casework=True, finance=False).casework, "needs_offer")
+    # Owner ruling 18: a camper request is named by the camper's full name, as the Requests grid names it.
     assert [(n.household_cm_id, n.label, n.days, n.camper_name, n.round, n.ask) for n in line.next_up] == [
-        (1000001, "Johnson", 12, "Samuel Johnson", 1, 1300.0),
-        (1000002, "Garcia", 9, "Liam Garcia", 1, None),
+        (1000001, "Samuel Johnson", 12, "Samuel Johnson", 1, 1300.0),
+        (1000002, "Liam Garcia", 9, "Liam Garcia", 1, None),
     ]
 
 
@@ -892,43 +903,178 @@ def test_week_starts_on_monday() -> None:
     assert week_start(date(2031, 4, 14)) == date(2031, 4, 14)
 
 
-def test_stages_bucket_every_row_by_its_stage_code() -> None:
-    rows = [
-        _staged("r1", 1000001, "accepted"),
-        _staged("r2", 1000001, "posted"),
-        _staged("r3", 1000002, "pending_approval"),
-        _staged("r4", 1000003, "needs_offer"),
-        _staged("r5", 1000003, "not_decided"),
-        _staged("r6", 1000004, "refused"),
-        _staged("r7", 1000005, "held"),
-        _staged("r8", 1000006, "cancelled"),
-    ]
-    stages = build_today(_inputs(rows), casework=True, finance=False).stages
-    assert stages is not None
-    assert (
-        stages.accepted,
-        stages.waiting_on_family,
-        stages.pending_approval,
-        stages.needs_offer,
-        stages.held,
-        stages.cancelled,
-        stages.families,
-    ) == (1, 1, 1, 3, 1, 1, 6)
+def _real(request_id: str, household: int, *rounds: RoundOut, **over: Any) -> GridRowOut:
+    """A grid row as the service builds it: its queues (row_queues, via _row) and its Stage column (row_stage)."""
+    row = _row(request_id, household, *rounds, **over)
+    return row.model_copy(update={"stage": row_stage(row)})
 
 
-def test_posted_this_week_counts_rows_posted_since_monday() -> None:
-    rows = [
-        _staged(
-            "r1", 1000001, "accepted", _round(1, "posted", posted=900.0, accepted=True, posted_on=date(2031, 4, 14))
-        ),
-        _staged("r2", 1000002, "posted", _round(1, "posted", posted=900.0, posted_on=date(2031, 4, 13))),
-        _staged(
-            "r3", 1000003, "posted", _round(1, "posted", posted=900.0, posted_on=date(2031, 4, 20), clawed_back=True)
-        ),
+_CANCELLED = CancellationOut(by="kindred", on=date(2031, 4, 2), reason=None, note="")
+
+
+def _linear() -> list[GridRowOut]:
+    """The linear workflow (ruling 16), one request a stage, each on its own queue and nothing else: Needs an offer,
+    Pending approval, Waiting on the family, Accepted."""
+    posted_on = date(2031, 4, 10)
+    return [
+        _real("roffer", 1000001, _round(1, "needs_offer", decided=500.0, asked_on=posted_on)),
+        _real("rpend", 1000002, _round(1, "pending_approval", pending_approval=300.0)),
+        _real("rwait", 1000003, _round(1, "posted", posted=800.0, posted_on=posted_on)),
+        _real("rdone", 1000004, _round(1, "posted", posted=900.0, posted_on=posted_on, accepted=True)),
     ]
+
+
+def _flagged() -> list[GridRowOut]:
+    """The linear rows plus a row per flag, and a cancelled one with nothing to reverse (on no segment, no chip)."""
+    posted_on = date(2031, 4, 10)
+    return [
+        *_linear(),
+        # Waiting on the family, and Not reconciled on top
+        _real(
+            "rwunr",
+            1000005,
+            _round(1, "posted", posted=800.0, posted_on=posted_on),
+            confirmation=_confirmation("short", -100.0),
+        ),
+        # Latest round held: the bar's On hold (and the Holds view lists it)
+        _real("rhold", 1000006, _round(1, "held"), holds=[_hold("household_income_conflict")]),
+        # Accepted, with a hold issue on top: the Holds view lists it, the bar counts it Accepted
+        _real(
+            "racch",
+            1000007,
+            _round(1, "posted", posted=700.0, posted_on=posted_on, accepted=True),
+            holds=[_hold("payer_shares_incomplete")],
+        ),
+        _real("rdupe", 1000008, _round(1, "not_decided"), request_status="duplicate_pending"),
+        _real("rsess", 1000009, _round(1, "not_decided"), request_status="unmatched_session"),
+        _real(
+            "rrev",
+            1000010,
+            _round(1, "posted", posted=600.0, posted_on=posted_on, accepted=True),
+            cancellation=_CANCELLED,
+            to_reverse=True,
+        ),
+        _real("rgone", 1000011, _round(1, "not_decided"), cancellation=_CANCELLED),
+    ]
+
+
+def _bar(stages: Any) -> dict[str, int]:
+    return {key: getattr(stages, key) for key in BAR_SEGMENTS}
+
+
+def _members(rows: list[GridRowOut], queue: str) -> int:
+    """What the strip counts for a stage: the rows whose `queues` name it (requests/views.ts filterRows, no filter)."""
+    return sum(1 for r in rows if r.queues and queue in r.queues)
+
+
+def test_the_bar_counts_each_live_request_once_by_its_stage_and_sums_to_the_live_season() -> None:
+    """Ruling 17: Needs an offer · Pending approval · Waiting on the family · On hold · Accepted, by the row's own
+    Stage (row_stage, the latest round). A cancelled request is not live and is on no segment."""
+    rows = _flagged()
     stages = build_today(_inputs(rows), casework=True, finance=False).stages
     assert stages is not None
-    assert stages.posted_this_week == 1
+    assert _bar(stages) == {
+        "needs_offer": 3,  # and the duplicate and unclear-session requests' undecided rounds (not_decided)
+        "pending_approval": 1,
+        "waiting_on_family": 2,
+        "on_hold": 1,
+        "accepted": 2,
+    }
+    assert sum(_bar(stages).values()) == stages.live == 9
+    assert stages.offered == stages.pending_approval + stages.waiting_on_family + stages.accepted
+    assert stages.families == 9
+
+
+def test_each_segment_counts_its_own_stage_codes_with_distinct_counts() -> None:
+    """Ruling 17, pinned segment by segment (a swap between segments fails): not_decided reads Needs an offer, held
+    reads On hold, and a refused Round 3 appeal reads Accepted, because the family keeps the grant it accepted."""
+    posted_on = date(2031, 4, 10)
+    rows: list[GridRowOut] = [
+        _real("p1", 1000001, _round(1, "pending_approval", pending_approval=300.0)),  # Pending approval: 1
+        _real("w1", 1000002, _round(1, "posted", posted=800.0, posted_on=posted_on)),  # Waiting: 2
+        _real("w2", 1000003, _round(1, "posted", posted=800.0, posted_on=posted_on)),
+        _real("n1", 1000004, _round(1, "needs_offer", decided=500.0, asked_on=posted_on)),  # Needs an offer: 3
+        _real("n2", 1000005, _round(1, "not_decided")),
+        _real("n3", 1000006, _round(1, "not_decided")),
+    ]
+    rows += [_real(f"h{i}", 1000010 + i, _round(1, "held")) for i in range(4)]  # On hold: 4
+    accepted = [
+        _real(f"a{i}", 1000020 + i, _round(1, "posted", posted=700.0, posted_on=posted_on, accepted=True))
+        for i in range(3)
+    ]
+    refused = [  # Round 1 accepted, Round 3 appeal refused by finance: the latest round reads refused
+        _real(
+            f"r{i}",
+            1000030 + i,
+            _round(1, "posted", posted=700.0, posted_on=posted_on, accepted=True),
+            _round(3, "refused"),
+        )
+        for i in range(2)
+    ]
+    assert {r.stage.code for r in refused if r.stage} == {"refused"}
+    rows += accepted + refused  # Accepted: 5
+    stages = build_today(_inputs(rows), casework=True, finance=False).stages
+    assert stages is not None
+    assert _bar(stages) == {
+        "needs_offer": 3,
+        "pending_approval": 1,
+        "waiting_on_family": 2,
+        "on_hold": 4,
+        "accepted": 5,
+    }
+    assert stages.live == 15
+    assert stages.offered == 1 + 2 + 5
+
+
+def test_d21_each_linear_segment_counts_what_its_strip_stage_lists() -> None:
+    """Spec §12, D21, on the linear fixture: each segment that opens a strip stage counts that stage's list."""
+    rows = _linear()
+    stages = build_today(_inputs(rows), casework=True, finance=False).stages
+    assert stages is not None
+    for stage in BAR_STAGES:
+        assert getattr(stages, stage) == _members(rows, stage), stage
+
+
+def test_waiting_and_not_reconciled_counts_once_on_the_bar_and_once_in_the_chip() -> None:
+    row = _real(
+        "rwunr",
+        1000005,
+        _round(1, "posted", posted=800.0, posted_on=date(2031, 4, 10)),
+        confirmation=_confirmation("short", -100.0),
+    )
+    assert row.queues is not None
+    assert {"waiting_on_family", "not_reconciled"} <= set(row.queues)
+    stages = build_today(_inputs([row]), casework=True, finance=False).stages
+    assert stages is not None
+    assert sum(_bar(stages).values()) == 1
+    assert stages.waiting_on_family == 1
+    assert stages.flags.not_reconciled == 1
+
+
+def test_the_flags_are_only_the_four_chips_and_holds_is_not_one() -> None:
+    assert FLAG_STAGES == ("not_reconciled", "duplicates", "session_not_settled", "to_reverse")
+    assert set(TodayFlagsOut.model_fields) == set(FLAG_STAGES)
+
+
+def test_each_chip_counts_its_queue_membership_exactly() -> None:
+    """The flags are the strip's own counts: every row whose queues name it, whatever its stage, cancelled included."""
+    rows = _flagged()
+    stages = build_today(_inputs(rows), casework=True, finance=False).stages
+    assert stages is not None
+    assert stages.flags.model_dump() == {flag: _members(rows, flag) for flag in FLAG_STAGES}
+    assert stages.flags.model_dump() == {
+        "not_reconciled": 1,
+        "duplicates": 1,
+        "session_not_settled": 1,
+        "to_reverse": 1,
+    }
+
+
+def test_the_bar_and_the_chips_together_are_the_strips_stages() -> None:
+    # Holds is a strip stage that is neither a flag chip nor a queue-backed bar stage: On hold reads the Stage column.
+    assert set(BAR_STAGES) | set(FLAG_STAGES) | {"holds"} == set(MIRRORS["strip_stages"])
+    assert list(FLAG_STAGES) == [s for s in MIRRORS["strip_stages"] if s in FLAG_STAGES]
+    assert BAR_STAGES == ("needs_offer", "pending_approval", "waiting_on_family")
 
 
 def test_stages_are_sent_to_finance_and_registrar_alike() -> None:
@@ -999,3 +1145,589 @@ def test_the_development_section_carries_no_family_data() -> None:
     for leak in ("1000001", "Johnson", "Emma", "reqemma", "household_cm_id"):
         assert leak not in body, leak
     assert (today.stages, today.casework, today.finance) == (None, None, None)
+
+
+# --- Committed by week: the series counts what the budget's Posted counts -----------------------------------
+
+
+def _posted(n: int, amount: float, day: date, **over: Any) -> RoundOut:
+    return _round(n, "posted", posted=amount, posted_on=day, accepted=True, **over)
+
+
+def _series(rows: list[GridRowOut]) -> dict[date, float]:
+    today = build_today(_inputs(rows), casework=False, finance=True)
+    assert today.posted_by_week is not None
+    return {p.week_of: p.posted for p in today.posted_by_week}
+
+
+def test_a_clawed_back_posted_round_is_not_in_committed_by_week() -> None:
+    rows = [
+        _row("a", 1, _posted(1, 1000.0, date(2031, 4, 1))),
+        _row("b", 2, _posted(1, 700.0, date(2031, 4, 2), clawed_back=True)),
+    ]
+    assert list(_series(rows).values())[-1] == 1000.0
+
+
+def test_money_below_the_line_is_not_in_committed_by_week() -> None:
+    rows = [_row("a", 1, _posted(1, 1000.0, date(2031, 4, 1), outside_budget=400.0, outside_label="Fund"))]
+    assert list(_series(rows).values())[-1] == 600.0
+
+
+def test_committed_by_week_is_cumulative_and_fills_the_empty_weeks() -> None:
+    rows = [
+        _row("a", 1, _posted(1, 1000.0, date(2031, 3, 25))),  # week of Mar 24
+        _row("b", 2, _posted(1, 500.0, date(2031, 4, 9))),  # week of Apr 7; Mar 31 has no post
+    ]
+    assert _series(rows) == {
+        date(2031, 3, 24): 1000.0,
+        date(2031, 3, 31): 1000.0,
+        date(2031, 4, 7): 1500.0,
+        date(2031, 4, 14): 1500.0,  # TODAY's week
+    }
+
+
+def test_committed_by_week_runs_to_the_current_week() -> None:
+    rows = [_row("a", 1, _posted(1, 1000.0, date(2031, 3, 25)))]
+    assert max(_series(rows)) == week_start(TODAY)
+
+
+def test_committed_by_week_is_empty_without_a_post_and_none_without_finance() -> None:
+    rows = [_row("a", 1, _round(1, "needs_offer", decided=500.0))]
+    assert build_today(_inputs(rows), casework=True, finance=True).posted_by_week == []
+    assert build_today(_inputs(rows), casework=True, finance=False).posted_by_week is None
+
+
+def test_the_last_point_equals_what_the_budget_counts_as_posted() -> None:
+    posted_rounds = [
+        (_posted(1, 1000.0, date(2031, 3, 25)), False),
+        (_posted(1, 800.0, date(2031, 4, 2), outside_budget=300.0, outside_label="Fund"), True),
+        (_posted(1, 700.0, date(2031, 4, 3), clawed_back=True), False),
+        (_posted(2, 250.0, date(2031, 4, 10)), False),
+    ]
+    rows = [_row(f"r{i}", i + 1, rnd) for i, (rnd, _) in enumerate(posted_rounds)]
+    # The budget's own split, on the same rounds: a clawed-back round counts nowhere; the rest keep only the camp's
+    # part (counted_part), with the below-the-line money taken out.
+    counted = Decimal(0)
+    for rnd, split in posted_rounds:
+        if rnd.clawed_back:
+            continue
+        view = RoundView(
+            round=rnd.round,
+            status="posted",
+            ask=None,
+            decided=None,
+            locked=Decimal(str(rnd.posted)),
+            accepted=True,
+            pending=None,
+            counts_toward_budget=not split,
+            pool="camp",
+            extra=Decimal(str(rnd.outside_budget or 0)),
+            extra_outside=split,
+        )
+        counted += counted_part(view, Decimal(str(rnd.posted)))[0]
+    assert list(_series(rows).values())[-1] == float(counted) == 1750.0
+
+
+# --- Final review: Next up's clock, the round it names, and the undated ------------------------------------
+
+
+def test_an_undated_waiting_household_has_no_days_and_comes_after_the_dated_ones() -> None:
+    """A C1 round (cm_pending) waits on the family with no posted_on: its wait is unknown, never its first ask's age."""
+    rows = [
+        _row(
+            "reqemma00000001",
+            1000001,
+            _round(1, "needs_offer", decided=900.0, asked_on=date(2031, 3, 1), cm_pending=True),
+            family_name="Johnson",
+        ),
+        _row(
+            "reqliam00000001",
+            1000002,
+            _round(1, "posted", posted=800.0, posted_on=date(2031, 4, 10)),
+            family_name="Garcia",
+        ),
+    ]
+    line = _line(build_today(_inputs(rows), casework=True, finance=False).casework, "waiting_on_family")
+    assert [(n.label, n.days) for n in line.next_up] == [("Garcia", 10), ("Johnson", None)]
+
+
+def test_an_unkeyed_pending_round_has_no_days_and_comes_after_the_keyed_ones() -> None:
+    rows = [
+        _row(
+            "reqemma00000001",
+            1000001,
+            _round(1, "pending_approval", pending_approval=300.0, asked_on=date(2031, 3, 1)),
+            family_name="Johnson",
+        ),
+        _row("reqliam00000001", 1000002, _round(1, "pending_approval", pending_approval=400.0), family_name="Garcia"),
+    ]
+    inputs = _inputs(rows, pending_since={("reqliam00000001", 1): date(2031, 4, 18)})
+    line = _line(build_today(inputs, casework=False, finance=True).finance, "pending_approval")
+    assert [(n.label, n.days) for n in line.next_up] == [("Garcia", 2), ("Johnson", None)]
+
+
+def test_each_next_up_names_the_round_that_set_its_clock() -> None:
+    """Waiting names the waiting posted round, Pending the pending round, Needs an offer the offer round; a line with
+    no clock names the newest round."""
+    johnson = _row(
+        "reqemma00000001",
+        1000001,
+        _round(1, "posted", ask=1000.0, posted=900.0, posted_on=date(2031, 4, 10)),
+        _round(2, "needs_offer", ask=500.0, decided=400.0, asked_on=date(2031, 4, 12)),
+        family_name="Johnson",
+    )
+    garcia = _row(
+        "reqliam00000001",
+        1000002,
+        _round(1, "pending_approval", ask=300.0, pending_approval=250.0),
+        _round(2, "needs_offer", ask=200.0, decided=150.0, asked_on=date(2031, 4, 13)),
+        family_name="Garcia",
+    )
+    chen = _row(
+        "reqoliv00000001",
+        1000003,
+        _round(1, "needs_offer", ask=700.0, decided=650.0, asked_on=date(2031, 4, 1)),
+        _round(2, "held", ask=350.0),
+        holds=[_hold("household_income_conflict")],
+        family_name="Chen",
+    )
+    inputs = _inputs([johnson, garcia, chen], pending_since={("reqliam00000001", 1): date(2031, 4, 18)})
+    today = build_today(inputs, casework=True, finance=True)
+
+    def named(lines: list[Any] | None, key: str, household: int) -> tuple[int | None, float | None]:
+        chip = next(n for n in _line(lines, key).next_up if n.household_cm_id == household)
+        return chip.round, chip.ask
+
+    assert named(today.casework, "waiting_on_family", 1000001) == (1, 1000.0)
+    assert named(today.casework, "needs_offer", 1000001) == (2, 500.0)
+    assert named(today.finance, "pending_approval", 1000002) == (1, 300.0)
+    assert named(today.casework, "holds", 1000003) == (2, 350.0)
+
+
+# --- Final review: This week's Posted in CM counts what the budget counts -----------------------------------
+
+
+def test_posted_this_week_counts_the_budgets_posted_by_posted_on() -> None:
+    """TODAY is Sunday 2031-04-20: this week is Apr 14-20, last week Apr 7-13. A clawed-back round counts nowhere and
+    money below the line is left out, as the budget's Posted does."""
+    rows = [
+        _row("a", 1, _posted(1, 1000.0, date(2031, 4, 15))),
+        _row("b", 2, _posted(1, 800.0, date(2031, 4, 16), outside_budget=300.0, outside_label="Fund")),
+        _row("c", 3, _posted(1, 700.0, date(2031, 4, 17), clawed_back=True)),
+        _row("d", 4, _posted(1, 600.0, date(2031, 4, 8))),
+        _row("e", 5, _posted(1, 400.0, date(2031, 4, 1))),
+    ]
+    figure = build_today(_inputs(rows), casework=False, finance=True).posted_this_week
+    assert figure is not None
+    assert (figure.key, figure.label, figure.unit) == ("posted_cm", "Posted in CM", "dollars")
+    assert (figure.value, figure.previous) == (1500.0, 600.0)
+
+
+def test_posted_this_week_is_finance_only() -> None:
+    rows = [_row("a", 1, _posted(1, 1000.0, date(2031, 4, 15)))]
+    assert build_today(_inputs(rows), casework=True, finance=False).posted_this_week is None
+
+
+# --- Final review: the view-only hero, and a development read that prices nothing ------------------------------
+
+
+def test_a_view_only_caller_gets_the_registrar_hero() -> None:
+    """Spec §2, §9.3: view only sees the registrar hero, read only."""
+    out = build_today(_inputs([]), casework=False, finance=False, view=True)
+    assert out.stages is not None
+    assert (out.casework, out.finance, out.development) == (None, None, None)
+
+
+def test_a_development_only_caller_gets_no_hero_stages() -> None:
+    assert build_today(_inputs([]), casework=False, finance=False, development=True).stages is None
+
+
+class _NoSeasonStore:
+    """A store whose every read fails: a development-only Today must never price the season."""
+
+    def __getattr__(self, name: str) -> Any:
+        raise AssertionError(f"a development-only read called the store's {name}")
+
+
+@pytest.mark.asyncio
+async def test_a_development_only_read_never_prices_the_season() -> None:
+    service = TodayService(
+        store=_NoSeasonStore(),
+        pricing=FakeRules(approved()),
+        rules=_Drafts(None),
+        grants=_Grants(_grants(year=YEAR)),
+        ledger=_Ledger(needs_group=["Scholarship other"]),
+        clock=lambda: T0,
+    )
+    out = await service.read(YEAR, casework=False, finance=False, development=True)
+    # Audit D8: named as CampMinder writes the description (the fake's "(as written)"), not by its key.
+    assert _line(out.development, "needs_group").names == ["Scholarship Other (as written)"]
+    assert (out.stages, out.casework, out.finance) == (None, None, None)
+
+
+@pytest.mark.asyncio
+async def test_a_view_only_read_prices_the_season_for_its_hero() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, "reqemma00000001")
+    out = await _service(store, _Grants(_grants(year=YEAR)), _Drafts(None), _Ledger()).read(
+        YEAR, casework=False, finance=False, view=True
+    )
+    assert out.stages is not None
+    assert out.stages.families == 1
+    assert (out.casework, out.finance, out.development) == (None, None, None)
+
+
+# --- Final review: an undated post still counts, so the last point is the budget's Posted ---------------------
+
+
+def test_an_undated_post_counts_in_the_current_week() -> None:
+    rows = [
+        _row("a", 1, _posted(1, 1000.0, date(2031, 3, 25))),
+        _row("b", 2, _round(1, "posted", posted=500.0, posted_on=None, accepted=True)),
+    ]
+    series = _series(rows)
+    assert series[week_start(TODAY)] == 1500.0
+    assert series[date(2031, 3, 24)] == 1000.0
+
+
+@pytest.mark.asyncio
+async def test_the_last_point_is_the_budget_reads_own_posted() -> None:
+    """The budget read (FinancialAidDecisionsService.budget, budget.py's season_budget) and Today's series, on one
+    season: a dated post and an undated one."""
+    store = FakeDecisionsStore()
+    seed_request(store, "reqemma00000001")
+    seed_request(store, "reqliam00000001", household=1000002, person=1000021)
+    for request_id, effective_on in (("reqemma00000001", date(2027, 3, 2)), ("reqliam00000001", None)):
+        store.events.append(
+            DecisionEvent(
+                id=f"ev{len(store.events):013d}",
+                request_id=request_id,
+                round=1,
+                kind="post",
+                amount=Decimal(1500),
+                created=T0,
+                effective_on=effective_on,
+                lock_source="tick",
+                rules_version=1,
+                snapshot={"pool": "camp_pool", "counts_toward_budget": True},
+            )
+        )
+    grants = _Grants(_grants(year=YEAR))
+    today = await _service(store, grants, _Drafts(None), _Ledger()).read(YEAR, casework=False, finance=True)
+
+    async def no_register(year: int) -> list[RegisterRow]:
+        return []
+
+    budget = await FinancialAidDecisionsService(store, FakeRules(approved()), no_register, clock=lambda: T0).budget(
+        YEAR
+    )
+    assert today.posted_by_week
+    assert today.posted_by_week[-1].posted == budget.total.total.posted == 3000.0
+
+
+# --- Final review: each line's overdue threshold comes from the server -----------------------------------------
+
+
+def test_the_three_clocked_lines_carry_their_overdue_threshold() -> None:
+    today = build_today(_inputs([]), casework=True, finance=True)
+    lines = [*(today.casework or []), *(today.finance or [])]
+    assert {line.key: line.overdue_after_days for line in lines if line.overdue_after_days is not None} == dict(
+        TODAY_OVERDUE_DAYS
+    )
+
+
+def test_posted_this_week_counts_an_undated_post_in_the_current_week() -> None:
+    """Controller ruling: as Committed by week does, so the two never disagree about this week."""
+    rows = [
+        _row("a", 1, _posted(1, 1000.0, date(2031, 4, 15))),
+        _row("b", 2, _round(1, "posted", posted=500.0, posted_on=None, accepted=True)),
+        _row("c", 3, _posted(1, 200.0, date(2031, 4, 1))),
+    ]
+    today = build_today(_inputs(rows), casework=False, finance=True)
+    assert today.posted_this_week is not None
+    assert today.posted_by_week is not None
+    assert today.posted_this_week.value == 1500.0
+    current, previous = today.posted_by_week[-1].posted, today.posted_by_week[-2].posted
+    assert today.posted_this_week.value == current - previous
+
+
+# --- Visual fix wave (2026-10-11): names, clocks and the development chips ------------------------------------------
+
+
+class _Labels:
+    """The household page's label helper as the routes pass it: (year, households) -> each household's label."""
+
+    def __init__(self, labels: dict[int, tuple[str, str]]) -> None:
+        self.labels = labels
+        self.asked: list[frozenset[int]] = []
+
+    async def __call__(self, year: int, households: Any) -> dict[int, Any]:
+        from api.services.financial_aid_household_page import HouseholdLabel
+
+        self.asked.append(frozenset(households))
+        return {h: HouseholdLabel(*self.labels[h]) for h in households if h in self.labels}
+
+
+class _NoLabels:
+    async def __call__(self, year: int, households: Any) -> dict[int, Any]:
+        raise AssertionError("a development-only read asked for household labels")
+
+
+def _labelled_service(store: FakeDecisionsStore, labels: Any) -> TodayService:
+    return TodayService(
+        store=store,
+        pricing=FakeRules(approved()),
+        rules=_Drafts(None),
+        grants=_Grants(_grants(year=YEAR)),
+        ledger=_Ledger(),
+        labels=labels,
+        clock=lambda: T0,
+    )
+
+
+@pytest.mark.asyncio
+async def test_next_up_names_a_camper_request_by_its_camper_and_a_household_request_by_its_label() -> None:
+    """Owner ruling 18 (audit N1): Today names a household exactly as the Requests grid does: the camper's full name
+    for a camper request, the adults' label (household_labels, with its tie-break) only for a household-level (Family
+    Camp) request. The label is read once, scoped to the household-level chips the response names."""
+    store = FakeDecisionsStore()
+    seed_request(store, "reqemma00000001")
+    seed_request(store, "reqfc0000000001", household=1000002, person=0)
+    labels = _Labels({1000001: ("Pat Johnson & Alex Garcia", ""), 1000002: ("Liam & Olivia Becker", "Oakland")})
+    out = await _labelled_service(store, labels).read(YEAR, casework=True, finance=True)
+    chips = {n.household_cm_id: (n.label, n.tiebreak) for n in _line(out.casework, "needs_offer").next_up}
+    assert chips == {1000001: ("Camper 1000011", ""), 1000002: ("Liam & Olivia Becker", "Oakland")}
+    assert labels.asked == [frozenset({1000002})]
+
+
+@pytest.mark.asyncio
+async def test_next_up_names_the_camper_so_the_drawer_can_say_who_is_asked_for() -> None:
+    """Audit R3: the drawer needs the camper's name, so the season is read with names; with no labeler a camper
+    chip still reads its camper (ruling 18), never "Household 1000001"."""
+    store = FakeDecisionsStore()
+    seed_request(store, "reqemma00000001")
+    out = await _labelled_service(store, None).read(YEAR, casework=True, finance=False)
+    chip = _line(out.casework, "needs_offer").next_up[0]
+    assert chip.camper_name == "Camper 1000011"
+    assert chip.label == "Camper 1000011"
+
+
+@pytest.mark.asyncio
+async def test_a_development_only_read_never_names_a_household() -> None:
+    """Spec §9.4: development never receives family data, so it never asks for a household label either. The
+    grants carry households that need a camper and waiting commitments (audit N11), so a leak through Grants
+    needing attention's next-up would fail here."""
+    needs = NeedsCamperOut(
+        grant=_grant(person_cm_id=0, camper_name="", household_cm_id=1000003, family_name="Thornbury"),
+        household_applied=True,
+        suggestion=None,
+        candidates=[],
+    )
+    waiting = WaitingCommitmentOut(
+        grant=_grant(
+            kind="commitment",
+            transaction_cm_id=0,
+            commitment_id="com000000000001",
+            household_cm_id=1000002,
+            family_name="Quillfeather",
+            camper_name="Ivy Quillfeather",
+        ),
+        days_waiting=30,
+        reason="not_posted",
+        transaction_cm_id=0,
+    )
+    service = TodayService(
+        store=_NoSeasonStore(),
+        pricing=FakeRules(approved()),
+        rules=_Drafts(None),
+        grants=_Grants(_grants(year=YEAR, needs_camper=[needs], waiting=[waiting])),
+        ledger=_Ledger(),
+        labels=_NoLabels(),
+        clock=lambda: T0,
+    )
+    body = (await service.read(YEAR, casework=False, finance=False, development=True)).model_dump_json()
+    for leak in ("household", "Thornbury", "Quillfeather", "1000003", "1000002"):
+        assert leak not in body
+
+
+def test_grants_needing_attention_name_their_households_oldest_first() -> None:
+    """Audit R12 (spec §9.2 lists Grants for next_up): needs-a-camper grants by days since recorded, waiting
+    commitments by their own days waiting."""
+    needs = NeedsCamperOut(
+        grant=_grant(
+            person_cm_id=0, camper_name="", household_cm_id=1000003, family_name="Chen", recorded_on="2031-04-17"
+        ),
+        household_applied=True,
+        suggestion=None,
+        candidates=[],
+    )
+    waiting = WaitingCommitmentOut(
+        grant=_grant(
+            kind="commitment",
+            transaction_cm_id=0,
+            commitment_id="com000000000001",
+            household_cm_id=1000002,
+            family_name="Garcia",
+        ),
+        days_waiting=30,
+        reason="not_posted",
+        transaction_cm_id=0,
+    )
+    grants = _grants(needs_camper=[needs], waiting=[waiting])
+    line = _line(build_today(_inputs([], grants=grants), casework=True, finance=False).casework, "grants")
+    # Ruling 18: the waiting commitment sits on a camper, so it reads the camper; the grant that needs one, the family.
+    assert [(n.household_cm_id, n.label, n.days) for n in line.next_up] == [
+        (1000002, "Emma Johnson", 30),
+        (1000003, "Chen", 3),
+    ]
+
+
+def test_not_reconciled_households_carry_days_since_posting() -> None:
+    """Audit R11 / ruling V12: Not reconciled's chips read "{name} {d}d", days since the round was posted; a row
+    with no posted round (CampMinder money with no Posted tick) has no clock and comes after."""
+    posted = _round(1, "posted", posted=1500.0, accepted=True, posted_on=date(2031, 4, 14))
+    older = _round(1, "posted", posted=900.0, accepted=True, posted_on=date(2031, 4, 2))
+    rows = [
+        _row("reqemma00000001", 1000001, posted, confirmation=_confirmation("short", -210.0), family_name="Johnson"),
+        _row("reqliam00000001", 1000002, older, confirmation=_confirmation("over", 300.0), family_name="Garcia"),
+    ]
+    line = _line(build_today(_inputs(rows), casework=True, finance=False).casework, "not_reconciled")
+    assert [(n.label, n.days) for n in line.next_up] == [("Garcia", 18), ("Johnson", 6)]
+
+
+def test_a_manual_hold_carries_days_since_it_was_placed_and_a_check_hold_has_none() -> None:
+    """Ruling V12: a hold staff placed by hand has a date (when it was placed); a check the calculator raises has no
+    date of its own, so its chip shows no day count."""
+    rows = [
+        _row(
+            "reqemma00000001",
+            1000001,
+            _round(1, "held", asked_on=date(2031, 4, 1)),
+            holds=[_hold("manual_hold")],
+            family_name="Johnson",
+        ),
+        _row(
+            "reqliam00000001",
+            1000002,
+            _round(1, "held", asked_on=date(2031, 3, 1)),
+            holds=[_hold("household_income_conflict")],
+            family_name="Garcia",
+        ),
+    ]
+    inputs = _inputs(rows, hold_since={"reqemma00000001": date(2031, 4, 14)})
+    line = _line(build_today(inputs, casework=True, finance=False).casework, "holds")
+    assert [(n.label, n.days) for n in line.next_up] == [("Johnson", 6), ("Garcia", None)]
+
+
+def test_development_descriptions_are_named_as_campminder_writes_them() -> None:
+    """Audit D8: a description chip reads the description as CampMinder writes it, never its lowercase key."""
+    grants = _grants(
+        unmapped=[
+            UnmappedDescriptionOut(
+                source_id="src1",
+                description_key="outside award spring",
+                description="Outside Award – Spring",
+                lines=2,
+                amount=900.0,
+            )
+        ]
+    )
+    inputs = _inputs(
+        [], grants=grants, needs_group=["scholarship other"], descriptions={"scholarship other": "Scholarship (other)"}
+    )
+    dev = build_today(inputs, casework=False, finance=False, development=True).development
+    assert _line(dev, "needs_group").names == ["Scholarship (other)"]
+    assert _line(dev, "no_grantor").names == ["Outside Award – Spring"]
+
+
+@pytest.mark.asyncio
+async def test_today_reads_the_descriptions_campminder_names_for_development() -> None:
+    ledger = _Ledger(needs_group=["scholarship other"])
+    service = TodayService(
+        store=_NoSeasonStore(),
+        pricing=FakeRules(approved()),
+        rules=_Drafts(None),
+        grants=_Grants(_grants(year=YEAR)),
+        ledger=ledger,
+        clock=lambda: T0,
+    )
+    out = await service.read(YEAR, casework=False, finance=False, development=True)
+    assert _line(out.development, "needs_group").names == ["Scholarship Other (as written)"]
+
+
+def test_development_chips_open_their_own_funders_row() -> None:
+    """Audit X5 (spec §5.5: "Money › Funders filtered to that funder"): each name carries where it opens, a funder by
+    its key and a description by its record, in the names' order."""
+    grantors = [
+        _named_grantor("riverbend", "Riverbend Community Foundation"),
+        _named_grantor("alder", "Alder Trust"),
+    ]
+    grants = _grants(
+        unmapped=[
+            UnmappedDescriptionOut(
+                source_id="src1", description_key="outside award", description="Outside Award", lines=1, amount=10.0
+            )
+        ]
+    )
+    inputs = _inputs(
+        [],
+        grantors=grantors,
+        grants=grants,
+        needs_group=["scholarship other"],
+        descriptions={"scholarship other": "Scholarship (other)"},
+        source_ids={"scholarship other": "src2"},
+    )
+    dev = build_today(inputs, casework=False, finance=False, development=True).development
+    contact = _line(dev, "no_contact")
+    assert list(zip(contact.names, contact.links, strict=True)) == [
+        ("Alder Trust", "funder:alder"),
+        ("Riverbend Community Foundation", "funder:riverbend"),
+    ]
+    assert _line(dev, "no_grantor").links == ["row:src1"]
+    assert _line(dev, "needs_group").links == ["row:src2"]
+
+
+# --- Owner ruling 20 (2026-10-11): a season whose posts carry no post date at all ---------------------------------
+
+
+def _undated(n: int, amount: float) -> RoundOut:
+    return _round(n, "posted", posted=amount, posted_on=None, accepted=True)
+
+
+def test_r20_a_season_with_no_dated_post_says_so_and_counts_nothing_by_week() -> None:
+    """The 2026 reproduced load writes no effective_on: Committed by week is not drawn (no points) and Posted in CM
+    has no figure, its title saying why, rather than the season's whole Posted shown as this week's."""
+    rows = [_row("a", 1, _undated(1, 1000.0)), _row("b", 2, _undated(1, 500.0), _undated(2, 250.0))]
+    today = build_today(_inputs(rows), casework=False, finance=True)
+    assert today.posts_undated is True
+    assert today.posted_by_week == []
+    figure = today.posted_this_week
+    assert figure is not None
+    assert figure.blank is True
+    assert (figure.value, figure.previous) == (0, 0)
+    assert "no post dates" in figure.title
+
+
+def test_r20_a_season_with_some_dated_posts_keeps_the_undated_in_the_current_week() -> None:
+    """2027's tonight-tick posts carry a date: the existing rule stands, an undated post counts this week."""
+    rows = [_row("a", 1, _posted(1, 1000.0, date(2031, 4, 15))), _row("b", 2, _undated(1, 500.0))]
+    today = build_today(_inputs(rows), casework=False, finance=True)
+    assert today.posts_undated is False
+    assert today.posted_this_week is not None
+    assert today.posted_this_week.blank is False
+    assert today.posted_this_week.value == 1500.0
+    assert today.posted_by_week
+    assert today.posted_by_week[-1].posted == 1500.0
+
+
+def test_r20_a_season_with_no_post_at_all_is_not_undated() -> None:
+    today = build_today(_inputs([]), casework=False, finance=True)
+    assert today.posts_undated is False
+    assert today.posted_this_week is not None
+    assert today.posted_this_week.blank is False
+
+
+def test_r20_only_finance_is_told() -> None:
+    rows = [_row("a", 1, _undated(1, 1000.0))]
+    for kw in ({"casework": True, "finance": False}, {"casework": False, "finance": False, "development": True}):
+        assert build_today(_inputs(rows), **kw).posts_undated is None
