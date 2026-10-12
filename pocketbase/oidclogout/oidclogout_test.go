@@ -1,6 +1,7 @@
 package oidclogout_test
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/json"
 	"net/http"
@@ -473,6 +474,26 @@ func TestUnknownKidRefetchesAtMostOncePerInterval(t *testing.T) {
 	}
 	if got := f.idp.JWKSFetches(); got != 3 {
 		t.Errorf("JWKS fetches after rotation = %d, want 3", got)
+	}
+}
+
+// A caller that hangs up must not abort the key fetch its request triggered. A
+// failed fetch closes the fetch window for a minute, so an unauthenticated
+// caller hanging up once a window would otherwise keep the endpoint keyless,
+// and the provider's genuine logouts in that minute would be refused for good.
+func TestCancelledRequestDoesNotAbortTheKeyFetch(t *testing.T) {
+	f := newFixture(t)
+	stranger := oidclogouttest.NewRSAKey(t, "stranger")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	body := form(oidclogouttest.Sign(t, stranger, f.idp.Claims("sub-bob", f.clk.Now())))
+	req := httptest.NewRequest(http.MethodPost, oidclogout.Path, strings.NewReader(body)).WithContext(ctx)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	f.mux.ServeHTTP(httptest.NewRecorder(), req)
+
+	rec := logout(f.mux, f.idp.Mint(t, f.idp.Claims("sub-alice", f.clk.Now())))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("genuine token after a cancelled request: status = %d, want 200 (body %s)", rec.Code, rec.Body)
 	}
 }
 

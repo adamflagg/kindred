@@ -65,7 +65,11 @@ func (s *keySet) key(ctx context.Context, kid, alg string, now time.Time) (any, 
 	stale := now.Sub(s.fetchedAt) > keysMaxAge
 	if (!ok || stale) && (s.triedAt.IsZero() || now.Sub(s.triedAt) >= s.every) {
 		s.triedAt = now
-		if err := s.refresh(ctx, now); err != nil {
+		// Detached from the caller's cancellation: this attempt closes the
+		// fetch window for everyone, so a caller who hangs up mid-fetch must
+		// not be able to abort it and leave the keys unfetched for a minute.
+		// The HTTP client's timeout still bounds it.
+		if err := s.refresh(context.WithoutCancel(ctx), now); err != nil {
 			// Keep serving the keys already held: an unreachable provider is
 			// no reason to stop trusting keys it published.
 			slog.Warn("Back-channel logout could not fetch the provider's keys", "error", err)
