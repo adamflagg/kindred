@@ -67,6 +67,23 @@ class TestRedactSensitiveQueryValues:
         assert "Johnson" not in out
         assert "?filter=[REDACTED]&perPage=50 failed" in out
 
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "last_name = 'O''Johnson' && year = 2025",
+            "last_name='O''Johnson'",
+            "first_name = 'Emma' && last_name = 'O''Johnson'",
+            "(first_name = 'D''Emma' || preferred_name = 'D''Emma') && year = 2025",
+        ],
+    )
+    def test_doubled_quote_escape_does_not_end_the_value(self, value: str) -> None:
+        """``PersonRepository`` escapes an apostrophe by doubling it, as in ``'O''Johnson'``."""
+        out = _redact(f"GET /api/collections/persons/records?filter={value}&perPage=50 failed")
+
+        assert "Johnson" not in out
+        assert "Emma" not in out
+        assert "?filter=[REDACTED]&perPage=50 failed" in out
+
     def test_value_at_end_of_line_is_redacted(self) -> None:
         out = _redact("URL: http://pb.example.com/api/x?perPage=50&filter=first_name~%22Emma%22\nStatus: 400")
 

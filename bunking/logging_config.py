@@ -202,7 +202,11 @@ def _query_value_end(text: str, start: int) -> int:
             break
         if quote:
             if c == quote:
-                quote = ""
+                # A doubled quote is an escaped one (``'O''Brien'``), not the close.
+                if text.startswith(quote * 2, i):
+                    i += 1
+                else:
+                    quote = ""
         elif c in "\"'":
             prev = text[i - 1] if i > 0 else "="
             if prev in _QUOTE_OPENERS or prev.isspace():
