@@ -3,6 +3,7 @@ import { Permission } from '../../../constants/permissions'
 import type {
   ApiAidBudget,
   ApiAidBudgetPool,
+  ApiAidDevelopment,
   ApiAidDevelopmentSource,
   ApiAidToday,
   ApiAidTodayLine,
@@ -10,7 +11,8 @@ import type {
 } from '../../../types/api-types'
 import { aidHref, type AidView } from '../kit/asOf'
 import type { HeroSegment, HeroTone } from '../kit/HeroBar'
-import { formatMoneyCompact } from '../kit/money'
+import { formatMoneyCompact, formatWholeMoney } from '../kit/money'
+import { liveColumnIndex } from '../reports/developmentModel'
 import { codeWords } from '../requests/attention'
 import { EXCEPTION_BADGES, PIPELINE_STAGES } from '../requests/strip'
 import { REQUEST_VIEWS } from '../requests/views'
@@ -69,12 +71,12 @@ export function rankLines(
   return { top, rest: ordered.filter((l) => !top.includes(l)) }
 }
 
-/** Ruling 3: the registrar's queue shows on the finance page only when finance has little of its own. */
+/**
+ * The registrar's queue on the finance page. Ruling 3 drew it only when finance had little of its own; controller
+ * ruling V4 (2026-10-11, the owner found no way to reach it) draws it always, folded, as the mock does.
+ */
 export function showRegistrarQueue(finance: readonly ApiAidTodayLine[] | null): boolean {
-  if (finance === null) return false
-  return (
-    FINANCE_ORDER.filter((key) => (finance.find((l) => l.key === key)?.items ?? 0) > 0).length < 3
-  )
+  return finance !== null
 }
 
 /** Finance's synthetic concern line (a pool over its allocation) is built client-side, so it has a key the server never sends. */
@@ -99,7 +101,7 @@ export const LINE_WORDS: Readonly<Record<TodayWordKey, string>> = {
   equity_field_never_true: 'Equity question never answered yes',
   no_contact: 'Funders missing a contact',
   no_eligibility: 'Funders missing eligibility',
-  needs_group: 'Funding sources that need a reporting group',
+  needs_group: 'Descriptions with no reporting group',
   no_grantor: 'CampMinder descriptions no funder claims',
 }
 
@@ -120,6 +122,16 @@ export function countWords(line: ApiAidTodayLine): string {
   return line.families !== null && line.item_kind === 'requests'
     ? `${main} · ${String(line.families)} fam`
     : main
+}
+
+/** The count cell's parts (audit R4, spec §5): each figure bold, its unit muted, "31 req 23 fam". */
+export function countParts(line: ApiAidTodayLine): Array<{ figure: string; unit: string }> {
+  const [one, many] =
+    (line.key as string) === 'over_budget' ? ['pool', 'pools'] : UNIT[line.item_kind]
+  const parts = [{ figure: String(line.items), unit: line.items === 1 ? one : many }]
+  if (line.families !== null && line.item_kind === 'requests')
+    parts.push({ figure: String(line.families), unit: 'fam' })
+  return parts
 }
 
 export const money = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`
@@ -299,9 +311,16 @@ export function developmentSegments(sources: readonly ApiAidDevelopmentSource[])
   outside: number
 } {
   const own = sources.filter((s) => s.who_paid === 'the camp').reduce((a, s) => a + s.amount, 0)
-  const outsideList = sources
-    .filter((s) => s.who_paid === 'another funder')
-    .sort((a, b) => b.amount - a.amount)
+  // One segment per funder (audit D3): a funder paying through two descriptions is one name with both amounts.
+  const byName = new Map<string, ApiAidDevelopmentSource>()
+  for (const s of sources.filter((x) => x.who_paid === 'another funder')) {
+    const held = byName.get(s.name)
+    byName.set(
+      s.name,
+      held ? { ...held, amount: held.amount + s.amount, awards: held.awards + s.awards } : s
+    )
+  }
+  const outsideList = [...byName.values()].sort((a, b) => b.amount - a.amount)
   const outside = outsideList.reduce((a, s) => a + s.amount, 0)
   const main: HeroSegment[] = [
     {
@@ -390,9 +409,7 @@ export function bandSentence(
     return parts.length > 0 ? parts.join(' · ') : none
   }
   if (page === 'development') {
-    const upkeep = (today.development ?? [])
-      .filter((l) => l.item_kind === 'funders')
-      .reduce((a, l) => a + l.items, 0)
+    const upkeep = upkeepItems(today.development)
     const parts = [
       outside ? `${money(outside)} from outside funders so far` : '',
       upkeep > 0
@@ -404,6 +421,11 @@ export function bandSentence(
     return parts.length > 0 ? parts.join(' · ') : none
   }
   return ''
+}
+
+/** Development's upkeep, one count for the band and Upkeep left (audit D18): every item on every line. */
+export function upkeepItems(lines: readonly ApiAidTodayLine[] | null | undefined): number {
+  return (lines ?? []).reduce((sum, l) => sum + l.items, 0)
 }
 
 /** Words for the reason codes Today's lines carry that the server sends without a label. */
@@ -440,4 +462,95 @@ export function reasonWords(
   if (lineKey === 'rules_sections' && isRulesSection(reason.code))
     return SECTION_TITLES[reason.code]
   return codeWords(reason.code)
+}
+
+const NAMED_REASONS: readonly string[] = ['rules_sections', 'equity_field_never_true']
+
+/** Lower-case a later reason's first letter, unless its first word is an acronym ("CM …", "R1"). */
+const midSentence = (words: string): string => {
+  const first = words.split(' ')[0] ?? ''
+  return first.length > 1 && first === first.toUpperCase()
+    ? words
+    : words.charAt(0).toLowerCase() + words.slice(1)
+}
+
+/**
+ * A line's reasons as one sentence (audit R13): "Short 4 · missing in CM 3 · over 1", capitalised once. A named
+ * thing (a rules section, an equity field) carries no count. A line with money and no reasons says its money (To
+ * place, audit R17).
+ */
+export function reasonsLine(line: ApiAidTodayLine): string {
+  const parts = (line.reasons ?? []).map((r, i) => {
+    const words = i === 0 ? reasonWords(line.key, r) : midSentence(reasonWords(line.key, r))
+    return r.items > 0 && !NAMED_REASONS.includes(line.key) ? `${words} ${String(r.items)}` : words
+  })
+  if (parts.length === 0 && line.key === 'to_place' && line.amount != null)
+    return formatWholeMoney(line.amount)
+  return parts.join(' · ')
+}
+
+export interface GroupRow {
+  readonly key: string
+  readonly label: string
+  readonly total: number
+  readonly outside: number
+  /** Campers helped (Reports › Development's Recipients, live); null where the report has no figure (no group). */
+  readonly campers: number | null
+}
+
+const NO_GROUP = 'In no group'
+
+/** Reports › Development's live figure for a row key and group, or null. */
+function liveFigure(dev: ApiAidDevelopment, key: string, group: string | null): number | null {
+  const at = liveColumnIndex(dev)
+  if (at < 0) return null
+  return dev.rows.find((r) => r.key === key && r.group === group)?.values[at] ?? null
+}
+
+/**
+ * By reporting group's rows (audit D11, D13, D14): the sources' money by group, in the rules' pool order (the read's
+ * `groups`), then the money in no group last, worded as Reports › Development words it. Campers helped is the
+ * report's live Recipients row; money and counts only, never a family.
+ */
+export function reportingGroupRows(dev: ApiAidDevelopment): GroupRow[] {
+  const sums = new Map<string, { total: number; outside: number }>()
+  for (const s of dev.sources) {
+    const key = s.group === '' ? '' : s.group
+    const g = sums.get(key) ?? { total: 0, outside: 0 }
+    g.total += s.amount
+    if (s.who_paid === 'another funder') g.outside += s.amount
+    sums.set(key, g)
+  }
+  const known = dev.groups.map((g) => g.key)
+  const extra = [...sums.keys()].filter((k) => k !== '' && !known.includes(k)).sort()
+  const label = (key: string) =>
+    dev.groups.find((g) => g.key === key)?.label ??
+    dev.sources.find((s) => s.group === key)?.group_label ??
+    key
+  return [...known, ...extra, '']
+    .filter((key) => sums.has(key))
+    .map((key) => {
+      const g = sums.get(key) ?? { total: 0, outside: 0 }
+      return {
+        key: key === '' ? 'no-group' : key,
+        label: key === '' ? NO_GROUP : label(key),
+        total: g.total,
+        outside: g.outside,
+        campers: key === '' ? null : liveFigure(dev, 'recipients', key),
+      }
+    })
+}
+
+/** The Every group total row: the money summed, Campers helped the report's own every-group Recipients figure. */
+export function reportingGroupTotal(dev: ApiAidDevelopment): {
+  total: number
+  outside: number
+  campers: number | null
+} {
+  const rows = reportingGroupRows(dev)
+  return {
+    total: rows.reduce((a, r) => a + r.total, 0),
+    outside: rows.reduce((a, r) => a + r.outside, 0),
+    campers: liveFigure(dev, 'recipients', null),
+  }
 }

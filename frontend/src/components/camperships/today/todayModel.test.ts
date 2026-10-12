@@ -1,12 +1,20 @@
 import { describe, expect, it } from 'vitest'
 
+import type { ApiAidDevelopment } from '../../../types/api-types'
+
 import { resolveStrip } from '../requests/strip'
 import { REQUEST_VIEWS } from '../requests/views'
 import { BUDGET, REGISTRAR_TODAY, STAGES, line } from './todayFixtures'
 import {
   bandSentence,
   budgetSegments,
+  countParts,
   countWords,
+  LINE_WORDS,
+  reasonsLine,
+  reportingGroupRows,
+  reportingGroupTotal,
+  upkeepItems,
   developmentSegments,
   offerShare,
   overPools,
@@ -67,8 +75,8 @@ describe('rankLines (spec §5)', () => {
   })
 })
 
-describe('showRegistrarQueue (ruling 3)', () => {
-  it("shows only when fewer than three of finance's own lines have anything", () => {
+describe('showRegistrarQueue (controller ruling V4, 2026-10-11: the mock draws it always)', () => {
+  it("always draws the registrar's queue for finance, however much finance has of its own", () => {
     expect(
       showRegistrarQueue([
         line('pending_approval', 1),
@@ -82,7 +90,7 @@ describe('showRegistrarQueue (ruling 3)', () => {
         line('rules_sections', 1),
         line('sources', 2),
       ])
-    ).toBe(false)
+    ).toBe(true)
     expect(showRegistrarQueue(null)).toBe(false)
   })
 })
@@ -236,6 +244,22 @@ describe('development hero (ruling 9: outside money gets its own bar)', () => {
     expect(at(bar, 6).title).toContain('Funder 9')
     expect(at(bar, 0).figure).toBe('$900 · 2 awards')
   })
+  it('names each funder once, adding up the sources it pays through (audit D3)', () => {
+    const { funders } = developmentSegments([
+      { ...src('Community Foundation A', 950, 'another funder', 2), source_key: 'cfa grant' },
+      {
+        ...src('Community Foundation A', 800, 'another funder', 1),
+        source_key: 'cfa award',
+        group: '',
+      },
+      src('Lakeside', 1000, 'another funder'),
+    ])
+    expect(funders.map((s) => [s.label, s.value])).toEqual([
+      ['Community Foundation A', 1750],
+      ['Lakeside', 1000],
+    ])
+    expect(at(funders, 0).figure).toBe('$1k · 3 awards') // formatMoneyCompact: thousands toward zero
+  })
   it('has no "others" with seven or fewer funders', () => {
     const seven = Array.from({ length: 7 }, (_, i) => src(`F${String(i)}`, 100, 'another funder'))
     expect(developmentSegments(seven).funders).toHaveLength(7)
@@ -277,6 +301,17 @@ describe('bandSentence (spec §3)', () => {
     expect(bandSentence('development', t, undefined, 172400)).toBe(
       '$172,400 from outside funders so far · 4 funder records need a look'
     )
+  })
+  it('development: counts every upkeep item, funders and descriptions alike (audit D18)', () => {
+    const t = {
+      ...REGISTRAR_TODAY,
+      development: [
+        line('no_contact', 2, { item_kind: 'funders' }),
+        line('needs_group', 1, { item_kind: 'descriptions' }),
+      ],
+    }
+    expect(bandSentence('development', t, undefined, null)).toBe('3 funder records need a look')
+    expect(upkeepItems(t.development)).toBe(3)
   })
   it('development: singular wording for one funder record', () => {
     const t = { ...REGISTRAR_TODAY, development: [line('no_contact', 1, { item_kind: 'funders' })] }
@@ -322,6 +357,133 @@ describe('reasonWords: staff text never shows a snake_case code', () => {
   })
   it('falls back to sentence case with spaces for anything unknown', () => {
     expect(reasonWords('intake', reason('some_new_code'))).toBe('Some new code')
+  })
+})
+
+describe('countParts (audit R4: bold figures, muted units)', () => {
+  it('splits a request line into its figures and units', () => {
+    expect(countParts(line('needs_offer', 31, { families: 23 }))).toEqual([
+      { figure: '31', unit: 'req' },
+      { figure: '23', unit: 'fam' },
+    ])
+  })
+  it('a line of other things has one part, in the singular for one', () => {
+    expect(
+      countParts(line('rules_sections', 1, { item_kind: 'sections', families: null }))
+    ).toEqual([{ figure: '1', unit: 'section' }])
+  })
+})
+
+describe('reasonsLine (audit R13: one sentence, capitalised once)', () => {
+  it('capitalises the first reason only, keeping an acronym as it is', () => {
+    const l = line('not_reconciled', 8, {
+      reasons: [
+        { code: 'short', families: null, items: 4 },
+        { code: 'not_in_campminder', families: null, items: 3 },
+        { code: 'over', families: null, items: 1 },
+      ],
+    })
+    expect(reasonsLine(l)).toBe('Short 4 · missing in CM 3 · over 1')
+  })
+  it('names a rules section without a count', () => {
+    const l = line('rules_sections', 1, {
+      item_kind: 'sections',
+      reasons: [{ code: 'round3', families: null, items: 1 }],
+    })
+    expect(reasonsLine(l)).toBe('Who can ask, and how much')
+  })
+  it("words To place's money when it has no reasons (audit R17)", () => {
+    expect(reasonsLine(line('to_place', 3, { item_kind: 'lines', amount: 2150 }))).toBe('$2,150')
+  })
+})
+
+describe('LINE_WORDS (controller ruling V8)', () => {
+  it('names the reporting-group upkeep line by what it counts, descriptions', () => {
+    expect(LINE_WORDS.needs_group).toBe('Descriptions with no reporting group')
+  })
+})
+
+describe('reportingGroupRows (audit D11, D13, D14)', () => {
+  const dev = {
+    year: 2027,
+    figures_on: '2027-04-10',
+    groups: [
+      { key: 'camp_quest', label: 'Camp & Quest', kind: 'summer', families: [] },
+      { key: 'tbm', label: 'TBM', kind: 'campers', families: [] },
+      { key: 'weekend', label: 'Weekend Programs', kind: 'families', families: [] },
+    ],
+    columns: [
+      { season: 2026, basis: 'r', as_of: null, label: '2026' },
+      { season: 2027, basis: 'P', as_of: '2027-04-10', label: '2027' },
+    ],
+    rows: [
+      { key: 'recipients', group: 'camp_quest', values: [480, 33] },
+      { key: 'recipients', group: 'tbm', values: [29, 2] },
+      { key: 'recipients', group: 'weekend', values: [58, 3] },
+      { key: 'recipients', group: null, values: [null, 38] },
+    ],
+    sources: [
+      {
+        source_key: '',
+        name: 'The camp',
+        who_paid: 'the camp',
+        incentive: false,
+        group: 'weekend',
+        group_label: 'Weekend Programs',
+        amount: 5000,
+        awards: 3,
+      },
+      {
+        source_key: 'a',
+        name: 'A',
+        who_paid: 'another funder',
+        incentive: false,
+        group: '',
+        group_label: '',
+        amount: 800,
+        awards: 1,
+      },
+      {
+        source_key: '',
+        name: 'The camp',
+        who_paid: 'the camp',
+        incentive: false,
+        group: 'tbm',
+        group_label: 'TBM',
+        amount: 2300,
+        awards: 2,
+      },
+      {
+        source_key: '',
+        name: 'The camp',
+        who_paid: 'the camp',
+        incentive: false,
+        group: 'camp_quest',
+        group_label: 'Camp & Quest',
+        amount: 96000,
+        awards: 30,
+      },
+      {
+        source_key: 'b',
+        name: 'B',
+        who_paid: 'another funder',
+        incentive: false,
+        group: 'camp_quest',
+        group_label: 'Camp & Quest',
+        amount: 1000,
+        awards: 1,
+      },
+    ],
+  } as unknown as ApiAidDevelopment
+  it("lists the groups in the rules' pool order, no group last, with campers helped from the live column", () => {
+    const rows = reportingGroupRows(dev)
+    expect(rows.map((r) => [r.label, r.total, r.outside, r.campers])).toEqual([
+      ['Camp & Quest', 97000, 1000, 33],
+      ['TBM', 2300, 0, 2],
+      ['Weekend Programs', 5000, 0, 3],
+      ['In no group', 800, 800, null],
+    ])
+    expect(reportingGroupTotal(dev)).toEqual({ total: 105100, outside: 1800, campers: 38 })
   })
 })
 

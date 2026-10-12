@@ -1,19 +1,28 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 
 import type { ApiAidTodayLine, ApiAidTodayNextUp } from '../../../types/api-types'
 import { POOL_NEGATIVE_INK } from '../kit/aidStyles'
 import { aidHref, type AidView } from '../kit/asOf'
 import { AidFoldCard } from '../kit/Cards'
-import { CS_BTN, CS_EMPTY, CS_LINK_SM, CS_META } from '../kit/csType'
+import { CS_BTN, CS_EMPTY, CS_LINK_CELL, CS_LINK_SM, CS_SMALL } from '../kit/csType'
 import { Cut } from '../kit/Cut'
-import { ROW_HIGHLIGHT, TABLE, TD, TH } from '../kit/kitStyles'
+import {
+  CELL_BG,
+  DETAIL_ROW,
+  HIGHLIGHT_EDGE,
+  ROW_HIGHLIGHT,
+  TABLE,
+  TABLE_CARD,
+  TD,
+  TH,
+} from '../kit/kitStyles'
 import { Money } from '../kit/MoneyText'
 import { AidNameChips, type NameChip } from '../kit/NameChips'
 import { StatusPill } from '../kit/Pills'
-import { aidCellShortName } from '../kit/sessionShort'
+import { aidSessionName, aidTinyName } from '../kit/sessionShort'
 import { REQUEST_VIEWS } from '../requests/views'
-import { countWords, LINE_WORDS, reasonWords, type TodayKey } from './todayModel'
+import { countParts, countWords, LINE_WORDS, reasonsLine, type TodayKey } from './todayModel'
 
 /** The lines whose next households a queue walk can step through (spec: the three casework queues with a Requests view). */
 // eslint-disable-next-line react-refresh/only-export-components -- constant shared with the Today pages
@@ -25,6 +34,15 @@ export const WALKABLE: readonly TodayKey[] = [
 
 const FUNDERS = '/aid/money/funders'
 const DRAWER_N = 5
+// Column widths: rank, to-do, count, next up (the rest), status, open. The mock draws 34 / 230 / 130 / rest / 150 /
+// 64; ruling V9 (next-up chips never cut, "only as many as fit") gives Next up the room for one whole household
+// label at 1280-1440px, so the To-do label (which wraps), the count and the status give some back. The status still
+// holds "Overdue · 48 days" on one line.
+const RANK_W = 34
+const LABEL_W = 196
+const COUNT_W = 112
+const STATUS_W = 132
+const OPEN_W = 64
 
 const isWalkableKey = (key: string): boolean => (WALKABLE as readonly string[]).includes(key)
 
@@ -71,16 +89,28 @@ const wordsFor = (key: string): string =>
 const nextUpOf = (line: ApiAidTodayLine): readonly ApiAidTodayNextUp[] => line.next_up ?? []
 const namesOf = (line: ApiAidTodayLine): readonly string[] => line.names ?? []
 
-/** Lines whose reasons are named things (a rules section, an equity field): the name alone, no count. */
-const NAMED: readonly string[] = ['rules_sections', 'equity_field_never_true']
+/** Where a development name opens in Money › Funders (audit X5): its own funder (`funder:`) or row (`row:`). */
+function funderHref(link: string | undefined, view: AidView): string {
+  const target = link ?? ''
+  const at = target.indexOf(':')
+  if (at < 1) return aidHref(FUNDERS, view)
+  return aidHref(FUNDERS, view, { [target.slice(0, at)]: target.slice(at + 1) })
+}
 
-const reasonsText = (line: ApiAidTodayLine): string =>
-  (line.reasons ?? [])
-    .map((r) => {
-      const words = reasonWords(line.key, r)
-      return r.items > 0 && !NAMED.includes(line.key) ? `${words} ${String(r.items)}` : words
-    })
-    .join(' · ')
+/** The count cell (audit R4, spec §5): "**31** req **23** fam", or a muted "none" at zero. */
+function CountCell({ line }: { line: ApiAidTodayLine }) {
+  if (line.items === 0) return <span className="text-muted-foreground">none</span>
+  return (
+    <>
+      {countParts(line).map((p, i) => (
+        <span key={p.unit}>
+          {i > 0 ? ' ' : ''}
+          <b>{p.figure}</b> <span className="text-muted-foreground">{p.unit}</span>
+        </span>
+      ))}
+    </>
+  )
+}
 
 /** " household" is added only to a label that does not already say it ("Household 9100124"). */
 const householdWords = (label: string): string =>
@@ -93,20 +123,22 @@ function NextUpCell({ line, view }: { line: ApiAidTodayLine; view: AidView }) {
   const names = namesOf(line)
   const nextUp = nextUpOf(line)
   if (names.length > 0) {
-    const chips: NameChip[] = names.map((name) => ({
+    // A description is quoted, as CampMinder writes it (audit D8); a funder is its name.
+    const quoted = line.item_kind === 'descriptions'
+    const chips: NameChip[] = names.map((name, i) => ({
       key: name,
-      label: name,
-      href: aidHref(FUNDERS, view),
-      title: `Open Funders · ${name}`,
+      label: quoted ? `"${name}"` : name,
+      href: funderHref(line.links?.[i], view),
+      title: `Open ${quoted ? `"${name}"` : name} in Money › Funders`,
     }))
     return <AidNameChips chips={chips} total={line.families ?? line.items} />
   }
   if (nextUp.length > 0) {
     const limit = line.overdue_after_days ?? undefined
-    const walkable = isWalkableKey(line.key)
     const chips: NameChip[] = nextUp.map((n) => {
       const label = n.tiebreak ? `${n.label} ${n.tiebreak}` : n.label
-      const days = walkable ? (n.days ?? null) : null
+      // Every line's clock the server sends (audit R11): holds, Not reconciled and grants carry days too.
+      const days = n.days ?? null
       return {
         key: `${String(n.household_cm_id)}-${n.tiebreak ?? ''}`,
         label,
@@ -121,8 +153,18 @@ function NextUpCell({ line, view }: { line: ApiAidTodayLine; view: AidView }) {
     })
     return <AidNameChips chips={chips} total={line.families ?? line.items} />
   }
-  return <Cut text={reasonsText(line)} />
+  return <Cut text={reasonsLine(line)} />
 }
+
+/** The drawer's session (audit X10): the short form, or the tiny one where the short form is still a long name
+ *  (a TBM cohort), so the line stays one short phrase; the full name is the cell's title. */
+function drawerSession(name: string, type: string): string {
+  const short = aidSessionName(name, type)
+  return short.length > 20 ? aidTinyName(name, type) || short : short
+}
+
+/** Drawer cells: 14px rows with dashed rules (the mock's .v2-dw), indented to the To-do column. */
+const DW_TD = 'border-border border-b border-dashed py-[3px] pr-2 whitespace-nowrap'
 
 function Drawer({ line, view, slug }: { line: ApiAidTodayLine; view: AidView; slug: string }) {
   const limit = line.overdue_after_days ?? undefined
@@ -131,38 +173,56 @@ function Drawer({ line, view, slug }: { line: ApiAidTodayLine; view: AidView; sl
   const open = openHref(line.key, view)
   const entries = nextUp.slice(0, DRAWER_N)
   return (
-    <div data-testid="todo-drawer" className="px-3 py-2">
-      <table className="w-full text-sm">
+    <div data-testid="todo-drawer" className="flex flex-col gap-1.5 pt-0.5 pr-3 pb-1 pl-[42px]">
+      <table className="w-full table-fixed border-collapse text-sm">
+        <colgroup>
+          <col style={{ width: '42%' }} />
+          <col />
+          <col style={{ width: 104 }} />
+          <col style={{ width: 76 }} />
+        </colgroup>
         <tbody>
           {entries.map((n) => {
             const what = [
               (n.camper_name ?? '').split(' ')[0] ?? '',
-              aidCellShortName(n.session_name ?? '', n.session_type ?? ''),
+              drawerSession(n.session_name ?? '', n.session_type ?? ''),
               n.round === null || n.round === undefined ? '' : `R${String(n.round)}`,
             ]
               .filter((part) => part !== '')
               .join(' · ')
             const days = n.days ?? null
             const late = limit !== undefined && days !== null && days > limit
+            const label = n.tiebreak ? `${n.label} ${n.tiebreak}` : n.label
             return (
               <tr
                 key={`${String(n.household_cm_id)}-${n.tiebreak ?? ''}`}
                 data-testid="drawer-household"
               >
-                <td className="py-0.5 pr-3">
-                  <Link className={CS_LINK_SM} to={householdHref(n.household_cm_id, view)}>
-                    {householdWords(n.label)}
+                <td className={`${DW_TD} overflow-hidden text-ellipsis`}>
+                  <Link
+                    className={CS_LINK_CELL}
+                    to={householdHref(n.household_cm_id, view)}
+                    title={`Open the ${householdWords(label)}`}
+                  >
+                    {householdWords(label)}
                   </Link>
                 </td>
-                <td className="py-0.5 pr-3" title={what}>
+                <td
+                  className={`${DW_TD} overflow-hidden text-ellipsis`}
+                  title={[what, n.session_name].filter(Boolean).join(' · ')}
+                >
                   {what}
                 </td>
-                <td className="py-0.5 pr-3 tabular-nums">
-                  <Money value={n.ask ?? null} />
-                  {' ask'}
+                <td className={`${DW_TD} text-right tabular-nums`}>
+                  {n.ask === null || n.ask === undefined ? null : (
+                    <>
+                      <Money value={n.ask} />
+                      {' ask'}
+                    </>
+                  )}
                 </td>
                 <td
-                  className={`py-0.5 tabular-nums ${late ? `${POOL_NEGATIVE_INK} font-bold` : 'text-muted-foreground'}`}
+                  className={`${DW_TD} pr-0 text-right tabular-nums ${late ? `${POOL_NEGATIVE_INK} font-bold` : 'text-muted-foreground'}`}
                 >
                   {days === null ? '' : `${String(days)} days`}
                 </td>
@@ -171,17 +231,17 @@ function Drawer({ line, view, slug }: { line: ApiAidTodayLine; view: AidView; sl
           })}
         </tbody>
       </table>
-      <div className="mt-2 flex items-center gap-3">
+      <div className="flex items-center gap-2">
         {first !== undefined && (
           <Link
             className={CS_BTN}
             to={householdHref(first.household_cm_id, view, { from: slug })}
-            title="Walk this queue one household at a time"
+            title="Walk this queue one household at a time, oldest first"
           >
             Start Queue Walk
           </Link>
         )}
-        <span className={CS_META}>{String(line.items)} in the queue</span>
+        <span className={CS_SMALL}>oldest first · {String(line.items)} in the queue</span>
         {open !== undefined && (
           <Link className={`${CS_LINK_SM} ml-auto`} to={open}>
             Open ›
@@ -200,6 +260,7 @@ export function TodayTodos({
   nextHead = 'Next up',
   restTitle = 'Everything else',
   restMeta,
+  restActions = [],
   empty,
 }: {
   readonly lines: readonly ApiAidTodayLine[]
@@ -209,6 +270,8 @@ export function TodayTodos({
   readonly nextHead?: string
   readonly restTitle?: string
   readonly restMeta?: string
+  /** The fold's header actions (finance's registrar queue: Open Requests ›, ruling V4). */
+  readonly restActions?: readonly ReactNode[]
   readonly empty: string
 }) {
   const canOpen = (l: ApiAidTodayLine) =>
@@ -235,10 +298,10 @@ export function TodayTodos({
     ]
       .filter((s) => s !== '')
       .join(' · ')
-  const span = ranked ? 6 : 5
+  const cell = (isOpen: boolean) => `${TD} ${isOpen ? ROW_HIGHLIGHT : CELL_BG}`
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-1.5">
       {lines.length === 0 ? (
         // An empty `empty` draws nothing: finance's registrar fold is a rest table with no lines of its own.
         empty === '' ? null : (
@@ -247,19 +310,20 @@ export function TodayTodos({
           </div>
         )
       ) : (
-        <div className="bg-card border-border shadow-lodge-sm overflow-x-auto rounded-xl border">
+        <div className={TABLE_CARD}>
           <table className={TABLE}>
             <colgroup>
-              {ranked && <col style={{ width: 34 }} />}
-              <col style={{ width: 230 }} />
-              <col style={{ width: 130 }} />
+              {/* Unranked (Concerns) keeps the rank column empty, so its columns line up with the table above. */}
+              <col style={{ width: RANK_W }} />
+              <col style={{ width: LABEL_W }} />
+              <col style={{ width: COUNT_W }} />
               <col />
-              <col style={{ width: 150 }} />
-              <col style={{ width: 64 }} />
+              <col style={{ width: STATUS_W }} />
+              <col style={{ width: OPEN_W }} />
             </colgroup>
             <thead>
               <tr>
-                {ranked && <th className={TH} />}
+                <th className={TH} />
                 <th className={TH}>{ranked ? 'To-do' : 'Concern'}</th>
                 <th className={TH}>Count</th>
                 <th className={TH}>{nextHead}</th>
@@ -274,38 +338,41 @@ export function TodayTodos({
                 const href = openHref(line.key, view)
                 const limit = line.overdue_after_days ?? undefined
                 const label = wordsFor(line.key)
-                const tone = isOpen ? ROW_HIGHLIGHT : ''
                 const slug = viewSlug(line.key)
                 return [
                   <tr
                     key={line.key}
                     data-testid="todo-row"
-                    className={`${tone} ${expandable ? 'cursor-pointer' : ''}`}
+                    className={expandable ? 'cursor-pointer' : ''}
                     onClick={(e) => {
                       if (!expandable || (e.target as HTMLElement).closest('a, button')) return
                       toggle(line.key)
                     }}
                   >
-                    {ranked && (
-                      <td className={`${TD} text-muted-foreground tabular-nums`}>
-                        {String(i + 1)}
-                      </td>
-                    )}
-                    <td className={`${TD} font-bold whitespace-nowrap`} title={label}>
+                    <td
+                      className={`${cell(isOpen)} text-muted-foreground text-right tabular-nums ${isOpen ? HIGHLIGHT_EDGE : ''}`}
+                    >
+                      {ranked ? String(i + 1) : ''}
+                    </td>
+                    {/* The label is the row's identity: it wraps rather than cuts (audit F11, D5). */}
+                    <td className={`${cell(isOpen)} font-bold`}>
                       {expandable && (
-                        <span className="mr-1 inline-block w-3 text-[10px]">
+                        <span className="text-muted-foreground mr-1 inline-block w-3 align-middle text-[10px] leading-none">
                           {isOpen ? '▾' : '▸'}
                         </span>
                       )}
                       <span data-testid="todo-label">{label}</span>
                     </td>
-                    <td className={`${TD} whitespace-nowrap tabular-nums`} title={countWords(line)}>
-                      {countWords(line)}
+                    <td
+                      className={`${cell(isOpen)} whitespace-nowrap tabular-nums`}
+                      title={countWords(line)}
+                    >
+                      <CountCell line={line} />
                     </td>
-                    <td className={`${TD} whitespace-nowrap`}>
+                    <td className={`${cell(isOpen)} whitespace-nowrap`}>
                       <NextUpCell line={line} view={view} />
                     </td>
-                    <td className={`${TD} whitespace-nowrap`}>
+                    <td className={`${cell(isOpen)} whitespace-nowrap`}>
                       {line.overdue && (
                         <StatusPill
                           tone="amber"
@@ -319,7 +386,7 @@ export function TodayTodos({
                         </StatusPill>
                       )}
                     </td>
-                    <td className={`${TD} whitespace-nowrap`}>
+                    <td className={`${cell(isOpen)} whitespace-nowrap`}>
                       {href !== undefined && (
                         <Link className={CS_LINK_SM} to={href}>
                           Open ›
@@ -328,8 +395,9 @@ export function TodayTodos({
                     </td>
                   </tr>,
                   isOpen && slug !== undefined ? (
-                    <tr key={`${line.key}-drawer`} className={tone}>
-                      <td className={TD} colSpan={span}>
+                    // Ruling V1: the opened row's detail is the kit's detail line, as Requests opens a row.
+                    <tr key={`${line.key}-drawer`}>
+                      <td className={DETAIL_ROW} colSpan={6}>
                         <Drawer line={line} view={view} slug={slug} />
                       </td>
                     </tr>
@@ -341,56 +409,63 @@ export function TodayTodos({
         </div>
       )}
       {rest.length > 0 && (
-        <AidFoldCard
-          title={restTitle}
-          meta={meta}
-          open={foldOpen}
-          onToggle={() => {
-            setFoldOpen((o) => !o)
-          }}
-        >
-          <table className={TABLE}>
-            <colgroup>
-              <col style={{ width: 230 }} />
-              <col style={{ width: 130 }} />
-              <col />
-              <col style={{ width: 64 }} />
-            </colgroup>
-            <thead>
-              <tr>
-                <th className={TH}>Queue</th>
-                <th className={TH}>Count</th>
-                <th className={TH}>Why</th>
-                <th className={TH} />
-              </tr>
-            </thead>
-            <tbody>
-              {rest.map((line) => {
-                const href = openHref(line.key, view)
-                const muted = line.items === 0 ? 'text-muted-foreground' : ''
-                const label = wordsFor(line.key)
-                return (
-                  <tr key={line.key} className={muted}>
-                    <td className={`${TD} whitespace-nowrap`} title={label}>
-                      {label}
-                    </td>
-                    <td className={`${TD} whitespace-nowrap tabular-nums`}>{countWords(line)}</td>
-                    <td className={`${TD} whitespace-nowrap`}>
-                      <Cut text={reasonsText(line)} />
-                    </td>
-                    <td className={`${TD} whitespace-nowrap`}>
-                      {href !== undefined && (
-                        <Link className={CS_LINK_SM} to={href}>
-                          Open ›
-                        </Link>
-                      )}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </AidFoldCard>
+        <div className={lines.length === 0 ? '' : 'mt-1'}>
+          <AidFoldCard
+            title={restTitle}
+            meta={meta}
+            open={foldOpen}
+            actions={restActions}
+            onToggle={() => {
+              setFoldOpen((o) => !o)
+            }}
+          >
+            <table className={TABLE}>
+              <colgroup>
+                {/* Lined up with the to-do table: rank and label, then count (audit R18). */}
+                <col style={{ width: RANK_W + LABEL_W }} />
+                <col style={{ width: COUNT_W }} />
+                <col />
+                <col style={{ width: OPEN_W }} />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th className={TH}>Queue</th>
+                  <th className={TH}>Count</th>
+                  <th className={TH}>Why</th>
+                  <th className={TH} />
+                </tr>
+              </thead>
+              <tbody>
+                {rest.map((line) => {
+                  const zero = line.items === 0
+                  const href = zero ? undefined : openHref(line.key, view)
+                  const muted = zero ? 'text-muted-foreground' : ''
+                  const label = wordsFor(line.key)
+                  return (
+                    <tr key={line.key}>
+                      <td className={`${TD} ${CELL_BG} ${muted} whitespace-nowrap`} title={label}>
+                        {label}
+                      </td>
+                      <td className={`${TD} ${CELL_BG} whitespace-nowrap tabular-nums`}>
+                        <CountCell line={line} />
+                      </td>
+                      <td className={`${TD} ${CELL_BG} ${muted} whitespace-nowrap`}>
+                        <Cut text={zero ? '' : reasonsLine(line)} />
+                      </td>
+                      <td className={`${TD} ${CELL_BG} whitespace-nowrap`}>
+                        {href !== undefined && (
+                          <Link className={CS_LINK_SM} to={href}>
+                            Open ›
+                          </Link>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </AidFoldCard>
+        </div>
       )}
     </div>
   )

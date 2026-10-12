@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -90,24 +90,82 @@ describe('AidWeekCard', () => {
     )
   })
 
-  it('links the words of an item that has a place to go', () => {
+  it('links only the name an item marks, in bold, and leaves the rest of its words plain (audit R23)', () => {
     renderCard(
       [
         {
-          kind: 'grant',
+          kind: 'posted',
           at: '2031-04-17T17:14:00Z',
-          words: 'A grant came in',
-          href_kind: 'funders',
+          words: 'Liam & Olivia Becker · R1 posted · $1,850',
+          name: 'Liam & Olivia Becker',
+          household_cm_id: 1000002,
+          href_kind: 'household',
         },
-        { kind: 'funder', at: '2031-04-17T16:14:00Z', words: 'A funder changed' },
+        { kind: 'grant', at: '2031-04-17T16:14:00Z', words: 'Regional Fund grant · $800 posted' },
       ],
-      (f) => (f.href_kind === 'funders' ? '/aid/money/funders' : null)
+      (f) => (f.href_kind === 'household' ? '/aid/households/1000002' : null)
     )
-    expect(screen.getByRole('link', { name: 'A grant came in' })).toHaveAttribute(
-      'href',
-      '/aid/money/funders'
+    const link = screen.getByRole('link', { name: 'Liam & Olivia Becker' })
+    expect(link).toHaveAttribute('href', '/aid/households/1000002')
+    expect(link.className).toMatch(/font-semibold/)
+    expect(link.className).toMatch(/text-foreground/)
+    const [first, second] = screen.getAllByRole('listitem')
+    expect(first).toHaveTextContent('Liam & Olivia Becker · R1 posted · $1,850')
+    expect(within(second!).queryByRole('link')).toBeNull()
+  })
+
+  it('puts the change beside the figure, not under it (audit R20)', () => {
+    renderCard([], () => null)
+    const change = screen.getByText('▲ 5')
+    expect(change.parentElement).toHaveTextContent(/^14▲ 5$/)
+  })
+
+  it('shows no change against a week with nothing in it (audit F20)', () => {
+    render(
+      <MemoryRouter>
+        <AidWeekCard
+          weekOf="2031-04-14"
+          figures={[
+            { key: 'posted', label: 'Offers posted', value: 54, previous: 0, unit: 'count' },
+          ]}
+          feed={[]}
+          hrefOf={() => null}
+        />
+      </MemoryRouter>
     )
-    expect(screen.queryByRole('link', { name: 'A funder changed' })).toBeNull()
+    expect(screen.getByText('Offers posted').parentElement?.textContent).not.toMatch(/[▲▼]/)
+  })
+
+  it("shows a figure's note beside it in place of a change (audit F19: You approved's requests)", () => {
+    render(
+      <MemoryRouter>
+        <AidWeekCard
+          weekOf="2031-04-14"
+          figures={[
+            {
+              key: 'approved',
+              label: 'You approved',
+              value: 9200,
+              previous: 4000,
+              unit: 'dollars',
+              note: '4 req',
+            },
+          ]}
+          feed={[]}
+          hrefOf={() => null}
+        />
+      </MemoryRouter>
+    )
+    expect(screen.getByText('4 req')).toBeInTheDocument()
+    expect(screen.getByText('You approved').parentElement?.textContent).not.toMatch(/[▲▼]/)
+  })
+
+  it('draws a rules-section edit with the pencil (spec §8.1)', () => {
+    renderCard(
+      [{ kind: 'section', at: '2031-04-17T17:14:00Z', words: 'Dates section approved' }],
+      () => null
+    )
+    expect(screen.getByRole('listitem')).toHaveTextContent('✎')
   })
 
   it('shows at most the latest six feed items', () => {

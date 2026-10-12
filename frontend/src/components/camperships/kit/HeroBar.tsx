@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 
-import { CS_HERO_CARD, CS_HERO_FIG, CS_HERO_TITLE, CS_META } from './csType'
+import { CS_HERO_CARD, CS_HERO_FIG, CS_HERO_TITLE, CS_SMALL } from './csType'
 
 /** Design-language section 13 "The hero bar": the one bold element on Today. The fills use the kit's forest, amber,
  *  stone and sky scales; `est` is the hatch for the one estimate (on hold, at what was asked) and `over` the amber
@@ -121,6 +121,9 @@ export function AidHeroBar({
   )
 }
 
+/** Past about this many characters a key's label is cut (about 260px at 12.5px). */
+const KEY_LABEL_CHARS = 40
+
 export function AidHeroKeys({ segments }: { readonly segments: readonly HeroSegment[] }) {
   return (
     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[12.5px] leading-[18px]">
@@ -134,7 +137,14 @@ export function AidHeroKeys({ segments }: { readonly segments: readonly HeroSegm
             className={`whitespace-nowrap ${s.mine ? 'font-semibold text-amber-800 dark:text-amber-300' : 'text-foreground'}`}
           >
             <i className={`mr-1.5 inline-block size-[9px] rounded-[2px] ${SWATCH[s.tone]}`} />
-            {s.label} <b className="tabular-nums">{s.figure}</b>
+            {s.label.length > KEY_LABEL_CHARS ? (
+              // A long funder name is cut at about 260px, its title the whole name (audit D4), so one name never
+              // pushes the key row onto a third line. Short labels (every registrar and finance key) stay as they are.
+              <span className="inline-block max-w-[260px] truncate align-top">{s.label}</span>
+            ) : (
+              s.label
+            )}{' '}
+            <b className="tabular-nums">{s.figure}</b>
           </span>
         ))}
     </div>
@@ -159,13 +169,13 @@ export function AidHeroCard({
       <div className="flex items-center gap-4">
         <div className="min-w-0">
           <h2 className={CS_HERO_TITLE}>{title}</h2>
-          <div className={CS_META}>{description}</div>
+          <div className={CS_SMALL}>{description}</div>
         </div>
         <div
           data-testid="hero-figure"
           className="ml-auto flex items-baseline gap-2 whitespace-nowrap"
         >
-          <span className={CS_META}>{figureLabel}</span>
+          <span className={CS_SMALL}>{figureLabel}</span>
           <b className={CS_HERO_FIG}>{figure}</b>
         </div>
       </div>

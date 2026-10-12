@@ -350,6 +350,8 @@ async def test_finances_feed_says_when_a_rules_section_was_saved_as_a_draft(
 async def test_you_approved_says_how_many_requests_it_counts(store_with_posts: tuple[_Store, _Grants]) -> None:
     """Audit F19 (spec §7.2: You approved $ "with {n} req")."""
     store, grants = store_with_posts
+    quiet = await _labelled(store, grants).read(2031, casework=False, finance=True, development=False)
+    assert next(f for f in quiet.finance or [] if f.key == "approved").note == ""  # "0 req" says nothing
     _event(store, "reqjohnson00001", "approve", _at(4, 15), amount="1200")
     _event(store, "reqgarcia000001", "approve", _at(4, 16), amount="800")
     week = await _labelled(store, grants).read(2031, casework=False, finance=True, development=False)

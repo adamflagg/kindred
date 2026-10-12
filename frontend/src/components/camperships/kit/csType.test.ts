@@ -248,3 +248,10 @@ describe('csType carries the final design language (design-language.md)', () => 
     )
   })
 })
+
+describe('CS_HERO_TITLE (audit K2)', () => {
+  it('is DM Sans like every other title: the important modifier beats the unlayered heading rule (#2954)', () => {
+    expect(cs.CS_HERO_TITLE).toContain('!font-sans')
+    expect(cs.CS_HERO_TITLE.split(' ')).not.toContain('font-sans')
+  })
+})

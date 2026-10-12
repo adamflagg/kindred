@@ -5,15 +5,38 @@ import { formatMoneyCompact, formatMoneyScale } from './money'
 
 const W = 300
 const H = 150
-const PAD = { left: 38, right: 8, top: 12, bottom: 18 }
+const PAD = { left: 38, right: 8, top: 12, bottom: 20 }
 const DAY_MS = 86_400_000
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-const FONT = 9
+const FONT = 10.5 // the mock's chart type (audit F16)
 const MONTH_GAP = 30 // the least room, in chart units, two month labels need side by side
 
+// The mock's inks (audit F16): a forest line over a light forest fill, labels that matter in bold foreground.
 const INK = 'var(--color-muted-foreground)'
-const POSTED = 'var(--color-primary)'
+const STRONG = 'var(--color-foreground)'
+const POSTED = 'var(--color-forest-700)'
+const FILL = 'var(--color-forest-300)'
 const AMBER = 'var(--color-amber-600)'
+const RULE = 'var(--color-border)'
+
+/** The steps an axis may count in (×10ⁿ): round enough to read at a glance. */
+const NICE = [1, 2, 2.5, 4, 5, 10]
+
+/**
+ * Ruling V5: three round steps that reach the highest figure, so every tick is a round number and the top one is
+ * labelled ($400k, $800k, $1.2M for a $1.11M budget). The budget stays on the scale.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- pure scale function, exported for its unit tests
+export function niceTop(highest: number): number {
+  if (!(highest > 0)) return 1
+  const raw = highest / 3
+  const power = 10 ** Math.floor(Math.log10(raw))
+  const step = (NICE.find((n) => n * power >= raw) ?? 10) * power
+  return step * 3
+}
+
+/** A round tick in the chart's own money words: "$400k", "$1.2M" (formatMoneyScale, trailing zeros dropped). */
+const tickWords = (value: number) => formatMoneyScale(value).replace(/\.?0+M$/, 'M')
 
 function dayNumber(iso: string): number {
   const d = parseIsoDay(iso.slice(0, 10))
@@ -46,7 +69,7 @@ export function AidBurnUp({
   const lastPosted = points[points.length - 1]?.posted ?? 0
   const nowDay = Math.max(dayNumber(campToday()), lastDay)
   const end = nowDay + 28
-  const top = Math.max(budget ?? 0, committed ?? 0, lastPosted) * 1.08 || 1
+  const top = niceTop(Math.max(budget ?? 0, committed ?? 0, lastPosted))
 
   const plotW = W - PAD.left - PAD.right
   const plotH = H - PAD.top - PAD.bottom
@@ -60,7 +83,7 @@ export function AidBurnUp({
     .join(' ')
   const area = `${line} L${x(lastDay).toFixed(1)},${y(0).toFixed(1)} L${x(first).toFixed(1)},${y(0).toFixed(1)} Z`
 
-  const ticks = [0, top / 3, (2 * top) / 3]
+  const ticks = [0, top / 3, (2 * top) / 3, top]
   // The first point's month is labelled too, unless the next month starts too close for both to fit.
   const months: Array<{ at: number; label: string }> = []
   const monthOf = (day: number) => MONTHS[new Date(day * DAY_MS).getUTCMonth()] ?? ''
@@ -80,6 +103,12 @@ export function AidBurnUp({
   const todayX = x(nowDay)
   const leftSide = dotX < W / 2
   const showStep = committed !== null && committed > lastPosted
+  // The posted label sits just above the line, beside its dot (the line rises to the dot, so the room above it is
+  // clear); the step's two-line label sits above the step's top, clear of the posted label.
+  const labelX = leftSide ? dotX + 8 : dotX - 8
+  const anchor = leftSide ? 'start' : 'end'
+  const postedY = dotY - 7
+  const stepY = showStep ? Math.max(Math.min(y(committed) - 5, postedY - 13), PAD.top + 22) : 0
 
   return (
     <svg viewBox={`0 0 ${String(W)} ${String(H)}`} className="block w-full">
@@ -90,22 +119,29 @@ export function AidBurnUp({
             x2={W - PAD.right}
             y1={y(v)}
             y2={y(v)}
-            stroke={INK}
-            strokeOpacity={0.25}
-            strokeWidth={0.5}
+            stroke={RULE}
+            strokeOpacity={0.5}
+            strokeWidth={1}
           />
-          <text x={PAD.left - 4} y={y(v) + 3} textAnchor="end" fontSize={FONT} fill={INK}>
-            {formatMoneyScale(v)}
+          <text
+            data-tick
+            x={PAD.left - 5}
+            y={y(v) + 3.5}
+            textAnchor="end"
+            fontSize={FONT}
+            fill={INK}
+          >
+            {tickWords(v)}
           </text>
         </g>
       ))}
       {months.map((m) => (
-        <text key={m.at} x={x(m.at)} y={H - 5} fontSize={FONT} fill={INK}>
+        <text key={m.at} x={x(m.at)} y={H - 4} fontSize={FONT} fill={INK}>
           {m.label}
         </text>
       ))}
-      <path d={area} fill={POSTED} fillOpacity={0.12} />
-      <path d={line} data-line="posted" fill="none" stroke={POSTED} strokeWidth={1.75} />
+      <path d={area} fill={FILL} fillOpacity={0.3} />
+      <path d={line} data-line="posted" fill="none" stroke={POSTED} strokeWidth={2.5} />
       {budget !== null && budget > 0 && (
         <>
           <line
@@ -114,11 +150,19 @@ export function AidBurnUp({
             x2={W - PAD.right}
             y1={y(budget)}
             y2={y(budget)}
-            stroke={INK}
-            strokeWidth={1}
-            strokeDasharray="4 3"
+            stroke={STRONG}
+            strokeOpacity={0.55}
+            strokeWidth={1.5}
+            strokeDasharray="5 4"
           />
-          <text x={PAD.left + 4} y={y(budget) - 3} fontSize={FONT} fill={INK}>
+          <text
+            x={W - PAD.right}
+            y={y(budget) - 4}
+            textAnchor="end"
+            fontSize={FONT}
+            fontWeight={700}
+            fill={STRONG}
+          >
             {`Budget ${formatMoneyScale(budget)}`}
           </text>
         </>
@@ -132,29 +176,33 @@ export function AidBurnUp({
             y1={dotY}
             y2={y(committed)}
             stroke={AMBER}
-            strokeWidth={1.5}
-            strokeDasharray="1.5 2.5"
-            strokeLinecap="round"
+            strokeWidth={2}
+            strokeDasharray="3 4"
           />
+          {/* Ruling V6: a season total (posted + needs an offer + pending approval), so it says "committed". */}
           <text
-            x={W - PAD.right}
-            y={Math.max(y(committed) - 3, FONT)}
-            textAnchor="end"
+            data-label="committed"
+            x={labelX}
+            y={stepY - 12}
+            textAnchor={anchor}
             fontSize={FONT}
-            fill={AMBER}
+            fill={INK}
           >
-            {`${formatMoneyCompact(committed)} once waiting is offered`}
+            <tspan>{`${formatMoneyCompact(committed)} committed `}</tspan>
+            <tspan x={labelX} dy={12}>
+              once waiting is offered
+            </tspan>
           </text>
         </>
       )}
-      <circle cx={dotX} cy={dotY} r={3} fill={POSTED} />
+      <circle cx={dotX} cy={dotY} r={3.5} fill={POSTED} />
       <text
-        x={leftSide ? dotX + 6 : dotX - 6}
-        y={leftSide ? dotY + 12 : dotY - 5}
-        textAnchor={leftSide ? 'start' : 'end'}
+        x={labelX}
+        y={postedY}
+        textAnchor={anchor}
         fontSize={FONT}
-        fontWeight={600}
-        fill={POSTED}
+        fontWeight={700}
+        fill={STRONG}
       >
         {`${formatMoneyCompact(lastPosted)} posted`}
       </text>

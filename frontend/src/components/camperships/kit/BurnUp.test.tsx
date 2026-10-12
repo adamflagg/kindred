@@ -20,7 +20,10 @@ describe('AidBurnUp', () => {
     expect(container.querySelector('line[data-line="committed"]')).not.toBeNull()
     expect(screen.getByText('$843k posted')).toBeInTheDocument()
     // One compact formatter (kit/money formatMoneyCompact): thousands round toward zero, as the hero's figures do.
-    expect(screen.getByText('$983k once waiting is offered')).toBeInTheDocument()
+    // Ruling V6: a season total, so it says what it is.
+    expect(container.querySelector('text[data-label="committed"]')?.textContent).toBe(
+      '$983k committed once waiting is offered'
+    )
     // Millions on the budget label and the axis only (formatMoneyScale, controller ruling).
     expect(screen.getByText('Budget $1.11M')).toBeInTheDocument()
   })
@@ -44,8 +47,43 @@ describe('AidBurnUp', () => {
         points={[{ week_of: '2031-01-06', posted: 1000 }]}
       />
     )
-    // top = 2,400,000 × 1.08 = 2,592,000; the upper tick is two thirds of it, 1,728,000.
-    expect(screen.getByText('$1.72M')).toBeInTheDocument()
+    // Ruling V5: round ticks. 2,400,000 / 3 rounds up to a $1M step, so the axis tops out at $3M.
+    expect(screen.getByText('$1M')).toBeInTheDocument()
+    expect(screen.getByText('$3M')).toBeInTheDocument()
+  })
+
+  it('keeps the budget on the scale with round ticks, the top one labelled (ruling V5)', () => {
+    const { container } = render(
+      <AidBurnUp
+        budget={1111000}
+        committed={215243}
+        points={[
+          { week_of: '2031-08-17', posted: 20000 },
+          { week_of: '2031-10-05', posted: 116266 },
+        ]}
+      />
+    )
+    const ticks = [...container.querySelectorAll('text[data-tick]')].map((t) => t.textContent)
+    expect(ticks).toEqual(['$0', '$400k', '$800k', '$1.2M'])
+    expect(container.querySelector('line[data-line="budget"]')).not.toBeNull()
+  })
+
+  it('draws the posted line heavier, in forest, with its labels in bold ink (audit F16)', () => {
+    const { container } = render(
+      <AidBurnUp
+        budget={1111000}
+        committed={215243}
+        points={[
+          { week_of: '2031-08-17', posted: 20000 },
+          { week_of: '2031-10-05', posted: 116266 },
+        ]}
+      />
+    )
+    const line = container.querySelector('path[data-line="posted"]')!
+    expect(line.getAttribute('stroke-width')).toBe('2.5')
+    expect(line.getAttribute('stroke')).toContain('forest-700')
+    expect(screen.getByText('$116k posted').getAttribute('font-weight')).toBe('700')
+    expect(screen.getByText('Budget $1.11M').getAttribute('font-weight')).toBe('700')
   })
 
   it('carries no ARIA role: the chart is not a test handle (frontend/CLAUDE.md)', () => {

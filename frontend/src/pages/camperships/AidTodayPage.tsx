@@ -1,6 +1,6 @@
 import { Inbox } from 'lucide-react'
 import { useMemo, type ReactNode } from 'react'
-import { Navigate, useLocation, useSearchParams } from 'react-router'
+import { Link, Navigate, useLocation, useSearchParams } from 'react-router'
 
 import { QueryGuard } from '../../components/QueryGuard'
 import {
@@ -9,9 +9,14 @@ import {
 } from '../../components/camperships/reports/developmentModel'
 import { aidHref, type AidView } from '../../components/camperships/kit/asOf'
 import { AidBurnUp } from '../../components/camperships/kit/BurnUp'
-import { CS_CARD_HEADING, CS_EMPTY, CS_META } from '../../components/camperships/kit/csType'
-import { AidCopyButton, AidCsvButton } from '../../components/camperships/kit/CsvButton'
 import {
+  CS_CARD_HEADING,
+  CS_EMPTY,
+  CS_LINK_SM,
+  CS_SMALL,
+} from '../../components/camperships/kit/csType'
+import {
+  countValue,
   moneyValue,
   textValue,
   type ReportColumn,
@@ -20,7 +25,6 @@ import {
 } from '../../components/camperships/kit/report'
 import { formatShortDate } from '../../components/camperships/kit/dates'
 import { ReportTable } from '../../components/camperships/kit/ReportTable'
-import { useReportExport } from '../../components/camperships/kit/useReportExport'
 import { AidWeekCard } from '../../components/camperships/kit/WeekCard'
 import { AidDefinitionNotes } from '../../components/camperships/shell/AidDefinitionNotes'
 import { AidPageBand } from '../../components/camperships/shell/AidPageBand'
@@ -40,7 +44,10 @@ import {
   pickTodayPage,
   rankLines,
   REGISTRAR_ORDER,
+  reportingGroupRows,
+  reportingGroupTotal,
   showRegistrarQueue,
+  upkeepItems,
 } from '../../components/camperships/today/todayModel'
 import { TodayTodos } from '../../components/camperships/today/TodayTodos'
 import { useAidBudget } from '../../hooks/camperships/useAidBudget'
@@ -51,7 +58,6 @@ import { useYear } from '../../hooks/useCurrentYear'
 import { usePermissions } from '../../hooks/usePermissions'
 import type {
   ApiAidDevelopment,
-  ApiAidDevelopmentSource,
   ApiAidToday,
   ApiAidTodayLine,
   ApiAidTodayWeek,
@@ -72,7 +78,9 @@ function Heading({ title, meta }: { readonly title: string; readonly meta: strin
   return (
     <div className="flex items-baseline gap-2.5">
       <h2 className={CS_CARD_HEADING}>{title}</h2>
-      <span className={CS_META}>{meta}</span>
+      <span className={`${CS_SMALL} min-w-0 truncate`} title={meta}>
+        {meta}
+      </span>
     </div>
   )
 }
@@ -82,6 +90,7 @@ function weekHref(f: ApiAidWeekFeed): string | null {
   if (f.href_kind === 'household' && f.household_cm_id != null)
     return `/aid/households/${String(f.household_cm_id)}`
   if (f.href_kind === 'funders') return '/aid/money/funders'
+  if (f.href_kind === 'rules') return '/aid/season/rules'
   return null
 }
 
@@ -144,17 +153,22 @@ function CommittedByWeek({
 }) {
   const total = budget.data?.total.total
   const first = points[0]
+  // The mock's .v2-side card: the week card's header, then the chart padded 6px 10px 6px 14px.
   return (
-    <section className="border-border bg-card rounded-xl border px-3.5 py-3">
-      <Heading
-        title="Committed by week"
-        meta={first ? `all pools · ${formatShortDate(first.week_of)} – today` : 'all pools'}
-      />
-      <AidBurnUp
-        points={points}
-        budget={total?.allocated ?? null}
-        committed={total?.committed ?? null}
-      />
+    <section className="border-border bg-card overflow-hidden rounded-xl border">
+      <div className="flex items-baseline gap-2 px-3.5 pt-[9px]">
+        <h2 className={CS_CARD_HEADING}>Committed by week</h2>
+        <span className={CS_SMALL}>
+          {first ? `all pools · ${formatShortDate(first.week_of)} – today` : 'all pools'}
+        </span>
+      </div>
+      <div className="pt-1.5 pr-2.5 pb-1.5 pl-3.5">
+        <AidBurnUp
+          points={points}
+          budget={total?.allocated ?? null}
+          committed={total?.committed ?? null}
+        />
+      </div>
     </section>
   )
 }
@@ -288,7 +302,8 @@ function FinanceBody({
               empty="No approval, rules section or new description is waiting."
             />
             {concerns.length > 0 && (
-              <>
+              // The mock: 6px from a section heading to its table (audit X11).
+              <div className="flex flex-col gap-1.5">
                 <Heading
                   title="Concerns"
                   meta={`${String(concerns.length)} to know about · nothing here blocks a family`}
@@ -301,15 +316,21 @@ function FinanceBody({
                   nextHead="Why"
                   empty=""
                 />
-              </>
+              </div>
             )}
             {queue !== null && queue.length > 0 && (
+              // Ruling V4: always drawn, folded, with a link to the queue itself.
               <TodayTodos
                 lines={[]}
                 rest={queue}
                 view={view}
                 restTitle="The registrar's queue"
                 restMeta={`${String(queueLive.length)} waiting${overdueWords(overdueCount(queueLive))} · on the registrar, open to review`}
+                restActions={[
+                  <Link key="requests" className={CS_LINK_SM} to={aidHref('/aid/requests', view)}>
+                    Open Requests ›
+                  </Link>,
+                ]}
                 empty=""
               />
             )}
@@ -327,48 +348,44 @@ function FinanceBody({
   )
 }
 
-/** Sources grouped by reporting group: the table under Development's hero. Money and counts only, never a family. */
-function groupRows(sources: readonly ApiAidDevelopmentSource[]): ReportRow[] {
-  const groups = new Map<string, { total: number; outside: number }>()
-  for (const s of sources) {
-    const label = s.group_label === '' ? 'Needs a group' : s.group_label
-    const g = groups.get(label) ?? { total: 0, outside: 0 }
-    g.total += s.amount
-    if (s.who_paid === 'another funder') g.outside += s.amount
-    groups.set(label, g)
-  }
-  const rows = [...groups.entries()]
-    .sort((a, b) => b[1].total - a[1].total || a[0].localeCompare(b[0]))
-    .map(([label, g]): ReportRow => ({
-      key: label,
-      kind: 'body',
-      cells: [textValue(label), moneyValue(g.total), moneyValue(g.outside)],
-    }))
-  const sum = (pick: (g: { total: number; outside: number }) => number) =>
-    [...groups.values()].reduce((a, g) => a + pick(g), 0)
+/** By reporting group's report rows: the model's groups (pool order, no group last), then the Every group total. */
+function groupRows(dev: ApiAidDevelopment): ReportRow[] {
+  const total = reportingGroupTotal(dev)
   return [
-    ...rows,
+    ...reportingGroupRows(dev).map((g): ReportRow => ({
+      key: g.key,
+      kind: 'body',
+      cells: [
+        textValue(g.label),
+        moneyValue(g.total),
+        moneyValue(g.outside),
+        countValue(g.campers),
+      ],
+    })),
     {
       key: 'every-group',
       kind: 'total',
       cells: [
         textValue('Every group'),
-        moneyValue(sum((g) => g.total)),
-        moneyValue(sum((g) => g.outside)),
+        moneyValue(total.total),
+        moneyValue(total.outside),
+        countValue(total.campers),
       ],
     },
   ]
 }
 
+// The mock's widths (audit D15): Group 220, Total aid 130, From outside funders 170, Campers helped the rest.
 const GROUP_COLUMNS: readonly ReportColumn[] = [
-  { key: 'group', header: 'Group', align: 'left' },
+  { key: 'group', header: 'Group', align: 'left', width: 220 },
   { key: 'total', header: 'Total aid', width: 130 },
   { key: 'outside', header: 'From outside funders', width: 170 },
+  { key: 'campers', header: 'Campers helped' },
 ]
 
+/** By reporting group (spec §7.3): the kit report table, its heading row carrying the description and Copy · CSV. */
 function ByGroup({ dev, view }: { dev: ApiAidDevelopment; view: AidView }) {
-  const rows = useMemo(() => groupRows(dev.sources), [dev.sources])
-  const link = aidHref('/aid/today', view)
+  const rows = useMemo(() => groupRows(dev), [dev])
   const heading: ReportHeading = {
     title: 'By reporting group',
     season: dev.year,
@@ -376,33 +393,16 @@ function ByGroup({ dev, view }: { dev: ApiAidDevelopment; view: AidView }) {
     live: true,
     basis: null,
   }
-  const exporter = useReportExport({
-    heading,
-    columns: GROUP_COLUMNS,
-    rows,
-    csvFilename: developmentCsvName(view, 'by-group'),
-    link,
-  })
   return (
-    <div className="space-y-1.5">
-      <div className="flex items-center gap-2.5">
-        <h2 className={CS_CARD_HEADING}>By reporting group</h2>
-        <span className={CS_META}>{exporter.failed ?? ''}</span>
-        <span className="ml-auto flex items-center gap-2">
-          <AidCopyButton copied={exporter.copied} onCopy={() => void exporter.copy()} />
-          <AidCsvButton onDownload={exporter.download} />
-        </span>
-      </div>
-      <ReportTable
-        showHeading={false}
-        fixed
-        heading={heading}
-        columns={GROUP_COLUMNS}
-        rows={rows}
-        csvFilename={developmentCsvName(view, 'by-group')}
-        link={link}
-      />
-    </div>
+    <ReportTable
+      fixed
+      heading={heading}
+      description="live · the figures grant reports ask for"
+      columns={GROUP_COLUMNS}
+      rows={rows}
+      csvFilename={developmentCsvName(view, 'by-group')}
+      link={aidHref('/aid/today', view)}
+    />
   )
 }
 
@@ -415,10 +415,13 @@ function DevelopmentBody({
   dev: ReturnType<typeof useAidDevelopment>
   view: AidView
 }) {
-  const { top, rest } = rankLines(today.development ?? [], DEVELOPMENT_ORDER)
-  const waiting = top.length + live(rest).length
-  // No last-week figure exists for upkeep, so previous equals value and no change shows.
-  const upkeepLeft = (today.development ?? []).reduce((sum, l) => sum + l.items, 0)
+  const ranked = rankLines(today.development ?? [], DEVELOPMENT_ORDER)
+  const { top } = ranked
+  // Ruling V10: development's Everything else is drawn only when a line in it is waiting.
+  const rest = live(ranked.rest).length > 0 ? ranked.rest : []
+  // One count for the heading, the band and Upkeep left (audit D18): every item on every line. No last-week figure
+  // exists for upkeep, so previous equals value and no change shows.
+  const upkeepLeft = upkeepItems(today.development)
   return (
     <>
       <QueryGuard
@@ -433,17 +436,21 @@ function DevelopmentBody({
         head={
           <Heading
             title="Funder upkeep"
-            meta={`${String(waiting)} waiting · keep these complete so reports come out right`}
+            meta={`${String(upkeepLeft)} waiting · keep these complete so reports come out right`}
           />
         }
         left={
-          <TodayTodos
-            lines={top}
-            rest={rest}
-            view={view}
-            nextHead="Which"
-            empty="Every funder has a contact, eligibility and a reporting group."
-          />
+          <>
+            <TodayTodos
+              lines={top}
+              rest={rest}
+              view={view}
+              nextHead="Which"
+              empty="Every funder has a contact, eligibility and a reporting group."
+            />
+            {/* Under Funder upkeep, in the left column (audit D10), as the mock lays it out. */}
+            {dev.data ? <ByGroup dev={dev.data} view={view} /> : null}
+          </>
         }
         right={
           <WeekColumn
@@ -460,7 +467,6 @@ function DevelopmentBody({
           />
         }
       />
-      {dev.data ? <ByGroup dev={dev.data} view={view} /> : null}
       <AidDefinitionNotes surface="today_development" />
     </>
   )

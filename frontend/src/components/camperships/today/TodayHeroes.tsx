@@ -9,9 +9,10 @@ import type {
 } from '../../../types/api-types'
 import { POOL_NEGATIVE_INK } from '../kit/aidStyles'
 import { aidHref, type AidView } from '../kit/asOf'
-import { CS_META } from '../kit/csType'
+import { CS_SMALL } from '../kit/csType'
 import { AidHeroBar, AidHeroCard, AidHeroKeys, type HeroSegment } from '../kit/HeroBar'
 import { formatMoneyCompact } from '../kit/money'
+import { Money } from '../kit/MoneyText'
 import { StatusPill } from '../kit/Pills'
 import {
   budgetSegments,
@@ -78,7 +79,11 @@ export function RegistrarHero({
 }
 
 const POOLS_HREF = '/aid/season/rounds-budget'
-const POOL_ROW = 'grid grid-cols-[150px_minmax(0,1fr)_120px_130px] items-center gap-x-3 py-1.5'
+/** The mock's pool rows: 150px name, the bar, 120px Allocated, 130px Remaining; 13px, 6px apart, no rules between. */
+const POOL_GRID = 'grid grid-cols-[150px_minmax(0,1fr)_120px_130px] items-center gap-x-3.5'
+const POOL_ROW = `${POOL_GRID} py-[3px] text-[13px]`
+/** Rounds & budget's no-pool bucket: money on programs the rules give no pool (budget.py NO_POOL). */
+const NO_POOL = ''
 
 function PoolRow({ pool, view }: { readonly pool: ApiAidBudgetPool; readonly view: AidView }) {
   const { segments, total, allocated } = budgetSegments(pool.total, pool.below)
@@ -89,7 +94,7 @@ function PoolRow({ pool, view }: { readonly pool: ApiAidBudgetPool; readonly vie
     <div data-testid="pool-row" className={POOL_ROW}>
       <Link
         to={aidHref(POOLS_HREF, view)}
-        className="text-foreground truncate text-[13.5px] font-semibold hover:underline"
+        className="text-foreground truncate font-semibold hover:underline"
         title={pool.label}
       >
         {pool.label}
@@ -99,20 +104,22 @@ function PoolRow({ pool, view }: { readonly pool: ApiAidBudgetPool; readonly vie
       ) : (
         <AidHeroBar segments={segments} total={total} compact {...(marker ? { marker } : {})} />
       )}
-      <span className={`${CS_META} tabular-nums`}>
-        {allocated === null ? '' : `${money(allocated)} allocated`}
+      <span className="text-right tabular-nums">
+        {allocated === null ? '' : <Money value={allocated} />}
       </span>
-      {allocated === null || remaining === null ? (
-        <StatusPill tone="muted">No allocation</StatusPill>
-      ) : remaining >= 0 ? (
-        <StatusPill tone="ok" title={`${money(remaining)} remaining`}>
-          {formatMoneyCompact(remaining)} remaining
-        </StatusPill>
-      ) : (
-        <StatusPill tone="amber" title={`${money(-remaining)} over`}>
-          {formatMoneyCompact(-remaining)} over
-        </StatusPill>
-      )}
+      <span className="justify-self-end">
+        {allocated === null || remaining === null ? (
+          <StatusPill tone="muted">No allocation</StatusPill>
+        ) : remaining >= 0 ? (
+          <StatusPill tone="ok" title={`${money(remaining)} remaining`}>
+            {formatMoneyCompact(remaining)} remaining
+          </StatusPill>
+        ) : (
+          <StatusPill tone="amber" title={`${money(-remaining)} over`}>
+            {formatMoneyCompact(-remaining)} over
+          </StatusPill>
+        )}
+      </span>
     </div>
   )
 }
@@ -157,10 +164,20 @@ export function FinanceHero({
         {...(marker ? { marker } : {})}
       />
       <AidHeroKeys segments={segments} />
-      <div className="border-border mt-2.5 divide-y border-t">
-        {budget.pools.map((pool) => (
-          <PoolRow key={pool.pool} pool={pool} view={view} />
-        ))}
+      {/* One rule above the pool rows, none between them, under their own header (audit F2, F3). Money on no pool
+          is not a pool: it is already in the bar's hatch, so it gets no row (ruling V3). */}
+      <div className="border-border mt-3 border-t pt-2.5">
+        <div data-testid="pool-head" className={`${POOL_GRID} ${CS_SMALL} pb-1`}>
+          <span>Pool</span>
+          <span />
+          <span className="text-right">Allocated</span>
+          <span className="text-right">Remaining</span>
+        </div>
+        {budget.pools
+          .filter((pool) => pool.pool !== NO_POOL)
+          .map((pool) => (
+            <PoolRow key={pool.pool} pool={pool} view={view} />
+          ))}
       </div>
     </AidHeroCard>
   )

@@ -2,7 +2,7 @@
  * Today (spec 2026-10-10 §2-§7): one page per permission set, drawn from one read. The hooks are mocked;
  * the heroes, the to-do table and the model have their own tests.
  */
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -30,9 +30,10 @@ const weekData: ApiAidTodayWeek = {
   development: [{ key: 'grants', label: 'Grants in', value: 2, previous: 1, unit: 'count' }],
   feed: [
     {
-      kind: 'grant',
+      kind: 'funder',
       at: '2027-04-06T17:14:00Z',
-      words: 'A grant came in',
+      words: 'Regional Fund updated',
+      name: 'Regional Fund',
       household_cm_id: null,
       href_kind: 'funders',
     },
@@ -171,15 +172,19 @@ describe('AidTodayPage', () => {
     expect(await screen.findByText('notes:today_registrar')).toBeInTheDocument()
   })
 
-  it('finance shows the registrar queue only when its own list is short', async () => {
+  it("finance always gets the registrar's queue, folded, with a link to it (ruling V4)", async () => {
     granted = FINANCE
     todayData = {
       ...REGISTRAR_TODAY,
       finance: [line('pending_approval', 6), line('rules_sections', 1), line('sources', 3)],
     }
     renderPage()
-    await screen.findByText('Waiting on you')
-    expect(screen.queryByText("The registrar's queue")).toBeNull()
+    expect(await screen.findByText("The registrar's queue")).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Open Requests ›' })).toHaveAttribute(
+      'href',
+      '/aid/requests?year=2027'
+    )
+    expect(screen.queryByText('Needs an offer')).toBeNull() // folded until opened
   })
 
   it('finance with a short list of its own gets the registrar queue folded below', async () => {
@@ -262,6 +267,43 @@ describe('AidTodayPage', () => {
     expect(screen.getByRole('heading', { name: 'Funder upkeep' })).toBeInTheDocument()
   })
 
+  it('development counts its upkeep once: the heading, the band and Upkeep left agree (audit D18)', async () => {
+    granted = DEVELOPMENT
+    renderPage()
+    // FINANCE_TODAY's development lines: 2 funders missing a contact, 1 needing a group.
+    expect(
+      await screen.findByText('3 waiting · keep these complete so reports come out right')
+    ).toBeInTheDocument()
+    expect(screen.getByText(/3 funder records need a look/)).toBeInTheDocument()
+    expect(screen.getByText('Upkeep left').parentElement).toHaveTextContent('3')
+  })
+
+  it('development draws Everything else only when a line in it is waiting (ruling V10)', async () => {
+    granted = DEVELOPMENT
+    todayData = {
+      ...FINANCE_TODAY,
+      development: [
+        line('no_contact', 2, { item_kind: 'funders', names: ['Riverbend', 'Lakeside'] }),
+        line('no_eligibility', 0, { item_kind: 'funders' }),
+      ],
+    }
+    renderPage()
+    await screen.findByText('Funder upkeep')
+    expect(screen.queryByText('Everything else')).toBeNull()
+  })
+
+  it('By reporting group sits under Funder upkeep with its description and a Campers helped column (audit D10-D12)', async () => {
+    granted = DEVELOPMENT
+    renderPage()
+    await screen.findByRole('heading', { name: 'By reporting group' })
+    expect(screen.getByText('live · the figures grant reports ask for')).toBeInTheDocument()
+    expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toContain(
+      'Campers helped'
+    )
+    const left = screen.getByTestId('today-left')
+    expect(within(left).getByRole('table', { name: 'By reporting group' })).toBeInTheDocument()
+  })
+
   it('the By reporting group table has no Awards column (it would double-count; the hero has the figure)', async () => {
     granted = DEVELOPMENT
     renderPage()
@@ -290,7 +332,8 @@ describe('AidTodayPage', () => {
     renderPage()
     expect(await screen.findByText('This week')).toBeInTheDocument()
     expect(screen.getByText('Offers posted')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'A grant came in' })).toHaveAttribute(
+    // Audit R23: only the name the item marks is the link.
+    expect(screen.getByRole('link', { name: 'Regional Fund' })).toHaveAttribute(
       'href',
       '/aid/money/funders'
     )

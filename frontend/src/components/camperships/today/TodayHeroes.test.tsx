@@ -74,6 +74,29 @@ describe('the Today heroes', () => {
     )
   })
 
+  it('finance hero: pool rows sit under a Pool · Allocated · Remaining header, with no rule between them (audit F2-F4)', () => {
+    wrap(<FinanceHero budget={BUDGET} view={VIEW} />)
+    const head = screen.getByTestId('pool-head')
+    expect(head).toHaveTextContent('PoolAllocatedRemaining')
+    const rows = screen.getAllByTestId('pool-row')
+    expect(rows[0]).toHaveTextContent('$972,125')
+    expect(rows[0]!.textContent).not.toMatch(/allocated/)
+    expect(head.parentElement!.className).not.toMatch(/divide-y/)
+  })
+
+  it('finance hero: money on no pool is not a pool row; it is already in the hatch (ruling V3)', () => {
+    const [first] = BUDGET.pools
+    const noPool = {
+      ...first!,
+      pool: '',
+      label: 'No pool',
+      total: { ...first!.total, allocated: null, remaining: null },
+    }
+    wrap(<FinanceHero budget={{ ...BUDGET, pools: [...BUDGET.pools, noPool] }} view={VIEW} />)
+    expect(screen.getAllByTestId('pool-row')).toHaveLength(3)
+    expect(screen.queryByText('No pool')).toBeNull()
+  })
+
   it('finance hero: a negative total flips to amber "over"', () => {
     const total = { ...BUDGET.total, total: { ...BUDGET.total.total, remaining: -5400 } }
     wrap(<FinanceHero budget={{ ...BUDGET, total }} view={VIEW} />)

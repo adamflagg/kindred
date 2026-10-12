@@ -30,8 +30,9 @@ export function fitChips(
   return widths.length
 }
 
+/** A name chip: 22px, 12px, bordered, in the kit link ink (primary, 500) as the mock's grid links are (ruling V11). */
 const CHIP =
-  'inline-flex h-[22px] flex-none items-baseline gap-1 whitespace-nowrap rounded-full border border-border bg-card px-2 text-[12px] leading-5 text-foreground hover:border-[color-mix(in_oklab,var(--color-primary)_45%,var(--color-border))]'
+  'inline-flex h-[22px] flex-none items-baseline gap-1 whitespace-nowrap rounded-full border border-border bg-card px-2 text-[12px] leading-5 font-medium text-primary hover:border-[color-mix(in_oklab,var(--color-primary)_45%,var(--color-border))]'
 
 /** The box must sit in a definite-width cell (as Today's table column does). Measuring un-hides every chip, which
  *  would grow a shrink-to-fit parent and make the count oscillate. */
@@ -71,6 +72,12 @@ export function AidNameChips({
     return () => ro?.disconnect()
   }, [chips, total])
   const rest = total - Math.min(shown, chips.length)
+  // "+N" names whom it stands for (audit X1): the chips it hid, then how many more the server did not list.
+  const hidden = chips.slice(Math.min(shown, chips.length)).map((c) => c.label)
+  const beyond = total - chips.length
+  const restTitle = [...hidden, beyond > 0 ? `${String(beyond)} more` : '']
+    .filter(Boolean)
+    .join(' · ')
   return (
     <span ref={box} className="flex min-w-0 items-center gap-1 overflow-hidden whitespace-nowrap">
       {chips.map((c) => {
@@ -101,7 +108,11 @@ export function AidNameChips({
         )
       })}
       {rest > 0 ? (
-        <span data-testid="chips-more" className="text-muted-foreground flex-none text-[12px]">
+        <span
+          data-testid="chips-more"
+          className="text-muted-foreground flex-none text-[12px]"
+          title={restTitle}
+        >
           +{rest}
         </span>
       ) : null}

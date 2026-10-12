@@ -148,7 +148,8 @@ def _finance(
             float(sum((_amount(e) for e in approved), Decimal(0))),
             float(sum((_amount(e) for e in approved_before), Decimal(0))),
             "dollars",
-            note=f"{len({e.request_id for e in approved})} req",  # spec §7.2: "with {n} req"
+            # spec §7.2: "with {n} req"; nothing approved yet this week says nothing
+            note=f"{n} req" if (n := len({e.request_id for e in approved})) else "",
         ),
         _figure("avg", "Avg award", average(posts), average(posts_before), "dollars"),
         _figure("helped", "Families helped so far", helped(windows.this_end), helped(windows.last_end)),

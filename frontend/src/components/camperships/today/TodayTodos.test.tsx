@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { describe, expect, it } from 'vitest'
 
+import { DETAIL_ROW, HIGHLIGHT_EDGE, ROW_HIGHLIGHT } from '../kit/kitStyles'
 import { line, REGISTRAR_TODAY } from './todayFixtures'
 import { rankLines, REGISTRAR_ORDER } from './todayModel'
 import { TodayTodos } from './TodayTodos'
@@ -27,7 +28,10 @@ describe('TodayTodos', () => {
       'Holds',
       'Not reconciled',
     ])
-    expect(within(first).getByText('31 req · 23 fam')).toBeInTheDocument()
+    // Audit R4 (spec §5): bold figures, muted units, no "·".
+    const count = within(first).getAllByRole('cell')[2]!
+    expect(count).toHaveTextContent(/^31 req 23 fam$/)
+    expect([...count.querySelectorAll('b')].map((b) => b.textContent)).toEqual(['31', '23'])
     expect(within(first).getByText('Overdue · 12 days')).toHaveAttribute(
       'title',
       "Past this line's 10-day threshold, so it moved to the top."
@@ -46,7 +50,12 @@ describe('TodayTodos', () => {
       'href',
       expect.stringContaining('/aid/households/1000002?from=needs-offer')
     )
-    expect(within(drawer).getByText('31 in the queue')).toBeInTheDocument()
+    // Audit R9 (spec §5.6): the queue walks oldest first, and says so.
+    expect(within(drawer).getByText('oldest first · 31 in the queue')).toBeInTheDocument()
+    expect(within(drawer).getByRole('link', { name: 'Start Queue Walk' })).toHaveAttribute(
+      'title',
+      'Walk this queue one household at a time, oldest first'
+    )
   })
   it('toggles another walkable line open on a row click, but not on a link click', () => {
     wrap(<TodayTodos lines={top} rest={rest} view={VIEW} empty="" />)
@@ -148,7 +157,8 @@ describe('TodayTodos', () => {
       />
     )
     expect(
-      screen.getByText('Commitment not yet in CampMinder 10 · Needs a camper 2')
+      // Audit R13: one sentence, capitalised once.
+      screen.getByText('Commitment not yet in CampMinder 10 · needs a camper 2')
     ).toBeInTheDocument()
     expect(screen.getByText('Round 1 award table')).toBeInTheDocument()
     expect(screen.getByText('Awaiting rules 1')).toBeInTheDocument()
@@ -164,7 +174,7 @@ describe('TodayTodos', () => {
         empty=""
       />
     )
-    expect(screen.getByText('1 section')).toBeInTheDocument()
+    expect(within(row(0)).getAllByRole('cell')[2]).toHaveTextContent(/^1 section$/)
   })
   it('drawer: household-level rows join only the parts they have, and name the household once', () => {
     const l = line('needs_offer', 2, {
@@ -235,5 +245,92 @@ describe('TodayTodos', () => {
       "Past this line's 7-day threshold, so it moved to the top."
     )
     expect(within(first).getAllByText('8d')[0]?.className).toMatch(/amber/)
+  })
+
+  it('the opened row carries the amber edge and its drawer is the kit detail line (ruling V1)', () => {
+    wrap(<TodayTodos lines={top} rest={rest} view={VIEW} empty="" />)
+    expect(within(row(0)).getAllByRole('cell')[0]!.className).toContain(HIGHLIGHT_EDGE)
+    const drawerCell = screen.getByTestId('todo-drawer').closest('td')!
+    expect(drawerCell.className).toContain(DETAIL_ROW)
+    expect(drawerCell.closest('tr')!.className).not.toContain(ROW_HIGHLIGHT)
+  })
+  it('Everything else says "none" at zero and offers no Open › (audit R16)', () => {
+    wrap(<TodayTodos lines={[]} rest={[line('duplicates', 0)]} view={VIEW} empty="" />)
+    fireEvent.click(screen.getByRole('button', { name: /Everything else/ }))
+    const zero = screen.getByText('Duplicates').closest('tr')!
+    expect(within(zero).getAllByRole('cell')[1]).toHaveTextContent(/^none$/)
+    expect(within(zero).queryByRole('link')).toBeNull()
+  })
+  it("Everything else shows To place's money in Why (audit R17)", () => {
+    const toPlace = line('to_place', 3, { item_kind: 'lines', families: 2, amount: 2150 })
+    wrap(<TodayTodos lines={[]} rest={[toPlace]} view={VIEW} empty="" />)
+    fireEvent.click(screen.getByRole('button', { name: /Everything else/ }))
+    const r = screen.getByText('To place').closest('tr')!
+    expect(r).toHaveTextContent('$2,150')
+  })
+  it('chips on a line without a drawer still show the days the server sends (audit R11)', () => {
+    const holds = line('holds', 1, {
+      next_up: [
+        {
+          household_cm_id: 1000005,
+          label: 'Moreau',
+          tiebreak: '',
+          days: 6,
+          camper_name: '',
+          session_name: '',
+          session_type: '',
+          round: null,
+          ask: null,
+        },
+      ],
+    })
+    wrap(<TodayTodos lines={[holds]} rest={[]} view={VIEW} empty="" />)
+    expect(screen.getByRole('link', { name: /Moreau/ })).toHaveTextContent('Moreau6d')
+  })
+  it('the Concerns table keeps an empty rank column, so its columns line up with the table above (audit F10)', () => {
+    wrap(
+      <TodayTodos
+        lines={[line('intake', 3)]}
+        rest={[]}
+        view={VIEW}
+        ranked={false}
+        nextHead="Why"
+        empty=""
+      />
+    )
+    expect(screen.getAllByRole('columnheader')).toHaveLength(6)
+    expect(within(row(0)).getAllByRole('cell')[0]).toHaveTextContent(/^$/)
+  })
+  it('development chips open their own Funders row, and quote a description (audit D8, X5)', () => {
+    wrap(
+      <TodayTodos
+        lines={[
+          line('no_contact', 1, {
+            item_kind: 'funders',
+            families: null,
+            names: ['Riverbend Community Foundation'],
+            links: ['funder:riverbend'],
+          }),
+          line('no_grantor', 1, {
+            item_kind: 'descriptions',
+            families: null,
+            names: ['Outside Award – Spring'],
+            links: ['row:src1'],
+          }),
+        ]}
+        rest={[]}
+        view={VIEW}
+        nextHead="Which"
+        empty=""
+      />
+    )
+    expect(screen.getByRole('link', { name: 'Riverbend Community Foundation' })).toHaveAttribute(
+      'href',
+      '/aid/money/funders?funder=riverbend&year=2027'
+    )
+    expect(screen.getByRole('link', { name: '"Outside Award – Spring"' })).toHaveAttribute(
+      'href',
+      '/aid/money/funders?row=src1&year=2027'
+    )
   })
 })
