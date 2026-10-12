@@ -9,7 +9,7 @@ import (
 
 // getRecordName labels the "Deleting orphaned record" INFO line, which
 // production emits to the container log -- outside the app's RBAC. A person's
-// row must be labelled by CampMinder ID, never by first and last name.
+// row must be labeled by CampMinder ID, never by first and last name.
 func TestGetRecordNameLabelsPeopleByCampMinderID(t *testing.T) {
 	t.Parallel()
 
@@ -27,7 +27,7 @@ func TestGetRecordNameLabelsPeopleByCampMinderID(t *testing.T) {
 	got := (&BaseSyncService{}).getRecordName(rec, "person")
 
 	if strings.Contains(got, "Emma") || strings.Contains(got, "Johnson") {
-		t.Fatalf("getRecordName = %q; a person must not be labelled by name", got)
+		t.Fatalf("getRecordName = %q; a person must not be labeled by name", got)
 	}
 	if !strings.Contains(got, "1000001") {
 		t.Fatalf("getRecordName = %q; want the CampMinder ID 1000001", got)

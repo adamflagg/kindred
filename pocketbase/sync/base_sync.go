@@ -1035,7 +1035,7 @@ func (b *BaseSyncService) ProcessCompositeRecord(
 
 // getRecordName returns the label an orphan-deletion log line uses for a record.
 //
-// The label lands in an INFO log line, so a person's row is labelled by its
+// The label lands in an INFO log line, so a person's row is labeled by its
 // CampMinder ID and never by first and last name: production logs sit outside
 // the app's RBAC. Reference rows (sessions, bunks, divisions) keep their own
 // `name`, which identifies no one.
