@@ -1,19 +1,18 @@
 # Production Caddyfile for multi-container deployment.
-# Sits behind Traefik on the VPS (and historically behind Traefik on Unraid).
-# Traefik terminates TLS, runs WAF/rate-limit, and forwards over the local
-# Docker network. Cloudflare Tunnel fronts Traefik at the edge. There is NO
-# Cloudflare Access (or any other auth) gate in front of this Caddy: requests
-# arrive unauthenticated, and PocketBase's collection rules and Go hooks are
-# the only auth on /api/collections/*.
+# Sits behind an upstream reverse proxy that terminates TLS and forwards over
+# the local Docker network. Treat every request as unauthenticated:
+# PocketBase's collection rules and Go hooks are the only auth on
+# /api/collections/*.
 #
 # Routes to upstream services via env vars (with defaults for compose service names):
 #   POCKETBASE_HOST (default: pocketbase) → port 8090
 #   API_HOST (default: api) → port 8000
 #
-# Transport-layer concerns kept here (rest delegated to Traefik / CF):
+# Transport-layer concerns kept here (the rest belongs to the upstream proxy):
 #   - trusted_proxies private_ranges  → real client IP from X-Forwarded-For
-#   - security_headers snippet        → defense-in-depth; harmless if Traefik also sets them
+#   - security_headers snippet        → defense-in-depth; harmless if the proxy also sets them
 #   - cors snippet                    → app-layer; lives near the API/PB split
+#   - no_store snippet + static route → Cache-Control on every response
 #
 # Note on logging:
 # - Console format: TIMESTAMP LEVEL LOGGER MESSAGE (Caddy's fixed format)
@@ -23,19 +22,17 @@
 {
 	admin off
 
-	# Traefik (or cloudflared in legacy deploys) is the immediate upstream on
-	# the local Docker network. Trust private ranges so {client_ip} and logs
-	# reflect the real origin IP, not the proxy peer. Safe because the VPS is
-	# port-closed with ufw; there is no untrusted internal network. Required
-	# for the IP gates below (/_/ and the superuser API) that key on
-	# {client_ip}.
+	# The upstream proxy is the immediate peer on the local Docker network.
+	# Trust private ranges so {client_ip} and logs reflect the real origin IP,
+	# not the proxy peer. This assumes only trusted proxies can reach this
+	# container. Required for the IP gates below (/_/ and the superuser API)
+	# that key on {client_ip}.
 	#
-	# CF-Connecting-IP is read FIRST. Production ingress is Cloudflare Tunnel
-	# only, and Cloudflare sets that header itself and rejects a client-supplied
-	# one, so it cannot be forged. X-Forwarded-For can: Caddy takes its
-	# left-most entry, so a client that prepends an allowlisted address would
-	# pass the gates. XFF remains the fallback for paths without Cloudflare
-	# (dev). Do NOT switch on trusted_proxies_strict instead: it reads XFF
+	# The first header is read FIRST because the edge in front of production
+	# sets it itself and discards any client-supplied value, so it cannot be
+	# forged. X-Forwarded-For can: Caddy takes its left-most entry, so a client
+	# that prepends an allowlisted address would pass the gates. XFF remains the
+	# fallback for paths where the first header is absent (dev). Do NOT switch on trusted_proxies_strict instead: it reads XFF
 	# right-to-left and resolves an admin on a private-range address to the
 	# proxy's own IP, locking them out of /_/.
 	# scripts/ci/probe-caddy-superuser-gate.sh pins all of this.
@@ -52,7 +49,7 @@
 	}
 }
 
-# Traefik's secure-headers middleware equivalent. X-XSS-Protection is omitted
+# Secure-headers middleware equivalent. X-XSS-Protection is omitted
 # on purpose — modern browsers ignore the legacy header. Server response
 # header is stripped so we don't leak the upstream identity.
 (security_headers) {
@@ -80,18 +77,30 @@
 	}
 }
 
+# Cache-Control for everything that is not a static file: every API,
+# PocketBase and health response, including the 403s Caddy answers itself.
+# Defence in depth against any shared cache between Caddy and the browser.
+# `>` defers the header to response time, so it REPLACES whatever the upstream
+# sent rather than sitting beside it -- PocketBase marks /api/files/* and its
+# admin UI's assets cacheable for weeks -- and still covers `respond` and
+# handle_response replies. Every handle below except the static one imports
+# this; scripts/ci/probe-caddy-cache-headers.sh checks each route.
+(no_store) {
+	header >Cache-Control no-store
+}
+
 :8080 {
 	import security_headers
 	import cors
 
-	# Compression and rate-limiting are handled by Traefik upstream of this
-	# Caddy. Adding them here would double-count rate-limit buckets and
-	# duplicate Traefik's compression for no gain.
+	# Compression and rate-limiting belong to the upstream proxy. Adding them
+	# here would double-count rate-limit buckets and duplicate its compression
+	# for no gain.
 	#
 	# #1966 read the absence of `encode` here as an oversight. It is not — but
-	# note the dev path has no Traefik in front of it, which is why the API
+	# note the dev path has no proxy in front of it, which is why the API
 	# compresses its own large JSON (`GZipMiddleware`, api/main.py) and why
-	# frontend/Caddyfile DOES carry `encode`. Traefik passes an
+	# frontend/Caddyfile DOES carry `encode`. The proxy passes an
 	# already-encoded response through rather than recompressing it.
 
 	# PocketBase-specific patterns (explicit)
@@ -101,11 +110,12 @@
 
 	# PocketBase routes (database, auth, sync, file uploads)
 	handle @pocketbase {
+		import no_store
 		# The superuser collection's API -- password login, OTP, record CRUD --
 		# is IP-gated like /_/ below. Both spellings, because PocketBase
 		# resolves {collection} by name OR id and folds its case (Unicode, not
-		# just ASCII -- see the matcher below). The Traefik rule this backs up
-		# was a literal PathPrefix that `_SUPERUSERS` and the id walked past.
+		# just ASCII -- see the matcher below). A literal path-prefix rule is not
+		# enough: `_SUPERUSERS` and the id walk past one.
 		# scripts/ci/probe-caddy-superuser-gate.sh checks every spelling.
 		# Internal superuser logins (kindred-api, sync, scripts on the host) go
 		# straight to pocketbase:8090 and never pass through here.
@@ -140,6 +150,7 @@
 	# so the parent window receives the auth result regardless of where the
 	# popup follows the Location header.
 	handle /api/oauth2-redirect {
+		import no_store
 		reverse_proxy {$POCKETBASE_HOST:pocketbase}:8090 {
 			header_up Host {host}
 			# See the @pocketbase block above: the same real-client-address header.
@@ -166,12 +177,13 @@
 	# "0.0.0.0/0 ::/0" to explicitly opt into "open to all" if that's the intent.
 	# With OAuth's redirect rewritten above, gating /_/* does NOT break user login —
 	# the popup never lands at /_/ anymore; only superuser admin access does.
-	# Use client_ip (not remote_ip) so we match the real origin behind CF Tunnel
-	# / Traefik / any other trusted proxy. client_ip resolves via the
+	# Use client_ip (not remote_ip) so we match the real origin behind any
+	# trusted proxy. client_ip resolves via the
 	# trusted_proxies + client_ip_headers config in the global server block.
 	# (remote_ip would be the Docker bridge IP of whichever proxy handed off,
 	# which is the same for every real user — gate would fail open or closed.)
 	handle /_/* {
+		import no_store
 		@admin_blocked not client_ip {$ADMIN_ALLOWLIST}
 		respond @admin_blocked 403
 		reverse_proxy {$POCKETBASE_HOST:pocketbase}:8090 {
@@ -183,25 +195,53 @@
 
 	# Health check (standard path for load balancers)
 	handle /health {
+		import no_store
 		reverse_proxy {$API_HOST:api}:8000
 	}
 
 	# Block external access to internal service-to-service endpoints
 	handle /api/internal/* {
+		import no_store
 		respond 403
 	}
 
 	# FastAPI catch-all for /api/* (solver, scenarios, validation, social-graph, config, etc.)
 	handle /api/* {
-		reverse_proxy {$API_HOST:api}:8000 {
-			header_down Cache-Control no-store
-		}
+		import no_store
+		reverse_proxy {$API_HOST:api}:8000
 	}
 
 	# Frontend static files (served directly by Caddy)
 	handle {
 		root * /pb_public
-		try_files {path} /index.html
-		file_server
+
+		# Vite's build output: every file under /assets/ carries a content hash
+		# in its name, so a URL's bytes never change. `file` means it exists on
+		# disk -- a missing bundle falls back to index.html below and must not
+		# take this policy.
+		@hashed_asset {
+			path /assets/*
+			file
+		}
+		# Any other real file that is not an HTML document: frontend/public's
+		# icons and the /local/ branding. Their names do not change when their
+		# bytes do, so a cache may keep them but must revalidate on every use
+		# (a cheap 304 against the ETag file_server sends).
+		@unhashed_static {
+			file
+			not path /assets/* *.html
+		}
+
+		# `route` keeps this order: the default first, then the narrower
+		# matches overwrite it. Whatever falls through -- index.html, the SPA
+		# fallback for every unknown path, oauth2-complete.html -- is an HTML
+		# document and is never stored.
+		route {
+			header Cache-Control no-store
+			header @hashed_asset Cache-Control "public, max-age=31536000, immutable"
+			header @unhashed_static Cache-Control no-cache
+			try_files {path} /index.html
+			file_server
+		}
 	}
 }
