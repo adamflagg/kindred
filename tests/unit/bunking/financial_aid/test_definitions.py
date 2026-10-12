@@ -291,12 +291,21 @@ def test_each_today_surface_has_a_few_notes_and_no_internal_id(surface: str) -> 
         assert not re.search(r"\bD\d+\b|RPT-\d+", f"{BY_KEY[key].term} {BY_KEY[key].text}"), key
 
 
+def test_finances_today_explains_committed_by_week_too() -> None:
+    """Spec 2026-10-10 §7.2 (audit F18): finance's page has two notes, Remaining and Committed by week."""
+    assert SURFACES["today_finance"] == ("today_remaining", "today_committed_by_week")
+    note = BY_KEY["today_committed_by_week"]
+    assert note.term == "Committed by week"
+    assert note.text.startswith("Committed by week: money posted to date against the budget")
+
+
 def test_today_notes_cite_the_main_specs_today_section_and_its_rulings() -> None:
     expected = {
         "today_season_so_far": ("D24",),
         "today_todos": ("D24",),
         "today_remaining": ("D44", "D79"),
         "today_aid_came_from": ("D87",),
+        "today_committed_by_week": ("D44",),
     }
     for key, rulings in expected.items():
         assert BY_KEY[key].spec == "§7.4", key

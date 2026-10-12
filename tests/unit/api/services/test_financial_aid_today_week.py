@@ -249,3 +249,109 @@ async def test_a_reversed_or_uncounted_grant_is_no_award(store_with_posts: tuple
 async def test_finances_families_helped_says_it_is_season_to_date(store_with_posts: tuple[_Store, _Grants]) -> None:
     week = await _service(*store_with_posts).read(2031, casework=False, finance=True, development=False)
     assert next(f for f in week.finance or [] if f.key == "helped").label == "Families helped so far"
+
+
+# --- Visual fix wave (2026-10-11): the feed names households as the grid does, and links only the name -----------
+
+
+class _Labels:
+    def __init__(self, labels: dict[int, str]) -> None:
+        self.labels = labels
+        self.asked: list[frozenset[int]] = []
+
+    async def __call__(self, year: int, households: Any) -> dict[int, Any]:
+        from api.services.financial_aid_household_page import HouseholdLabel
+
+        self.asked.append(frozenset(households))
+        return {h: HouseholdLabel(self.labels[h], "") for h in households if h in self.labels}
+
+
+class _Drafts:
+    def __init__(self, version: Any) -> None:
+        self.version = version
+
+    async def load(self, year: int, version: int | None = None) -> Any:
+        return self.version
+
+
+def _labelled(store: FakeDecisionsStore, grants: _Grants, **kw: Any) -> TodayWeekService:
+    labels = _Labels({1000001: "Pat Johnson & Alex Garcia", 1000002: "Liam & Olivia Becker"})
+    return TodayWeekService(store=store, grants=grants, labels=labels, clock=lambda: NOW, **kw)
+
+
+@pytest.mark.asyncio
+async def test_the_feed_names_each_household_by_its_label_and_marks_the_name_to_link(
+    store_with_posts: tuple[_Store, _Grants],
+) -> None:
+    """Audit R23/R24: the household is named as the grid names it (never "The X Family household"), and the feed
+    item says which words are the name, so only the name is the link."""
+    week = await _labelled(*store_with_posts).read(2031, casework=True, finance=False, development=False)
+    accepted = next(f for f in week.feed if f.kind == "accepted")
+    assert accepted.words == "Liam & Olivia Becker accepted the offer"
+    assert accepted.name == "Liam & Olivia Becker"
+    posted = next(f for f in week.feed if f.kind == "posted" and f.household_cm_id == 1000001)
+    assert posted.words == "Pat Johnson & Alex Garcia · R1 posted · $1,500"
+    assert posted.name == "Pat Johnson & Alex Garcia"
+    assert all("household" not in f.words for f in week.feed)
+
+
+@pytest.mark.asyncio
+async def test_a_grant_from_no_known_funder_says_unmatched_not_a_funder(
+    store_with_posts: tuple[_Store, _Grants],
+) -> None:
+    """Audit R25: "A funder" reads like a real funder's name."""
+    store, grants = store_with_posts
+    grants.register = [replace(grants.register[0], grantor_key="")]
+    week = await _labelled(store, grants).read(2031, casework=True, finance=False, development=True)
+    grant = next(f for f in week.feed if f.kind == "grant")
+    assert grant.words == "Unmatched grant entered for Pat Johnson & Alex Garcia"
+    dev = await _labelled(store, grants).read(2031, casework=False, finance=False, development=True)
+    assert next(f for f in dev.feed if f.kind == "grant").words == "Unmatched grant · $800 posted"
+
+
+@pytest.mark.asyncio
+async def test_development_grant_lines_link_nothing_and_funder_edits_link_the_funder(
+    store_with_posts: tuple[_Store, _Grants],
+) -> None:
+    """The mock: development's grant lines are plain; a funder edit bolds and links the funder's name."""
+    week = await _labelled(*store_with_posts).read(2031, casework=False, finance=False, development=True)
+    grant = next(f for f in week.feed if f.kind == "grant")
+    assert (grant.words, grant.name) == ("Regional Fund grant · $800 posted", "")
+    edit = next(f for f in week.feed if f.kind == "funder")
+    assert (edit.words, edit.name, edit.href_kind) == ("Regional Fund updated", "Regional Fund", "funders")
+
+
+@pytest.mark.asyncio
+async def test_finances_feed_says_when_a_rules_section_was_saved_as_a_draft(
+    store_with_posts: tuple[_Store, _Grants],
+) -> None:
+    """Audit F21 (spec §8.1, ✎): a rules section edited this week is a finance feed item naming the section."""
+    from bunking.financial_aid.rules.lifecycle import SectionStatus
+    from tests.unit.api.services.decisions_fakes import approved
+
+    version = approved()
+    status = {
+        **version.section_status,
+        "round3": SectionStatus(state="draft", edited_by="finance", edited_at=_at(4, 15, 18)),
+        "tiers": SectionStatus(state="draft", edited_by="finance", edited_at=_at(4, 1)),  # last month: not this week
+    }
+    store, grants = store_with_posts
+    service = _labelled(store, grants, rules=_Drafts(version.model_copy(update={"section_status": status})))
+    week = await service.read(2031, casework=True, finance=True, development=False)
+    sections = [f for f in week.feed if f.kind == "section"]
+    assert [(f.words, f.name, f.href_kind) for f in sections] == [
+        ("Who can ask, and how much section saved as a draft", "Who can ask, and how much", "rules")
+    ]
+    registrar = await service.read(2031, casework=True, finance=False, development=False)
+    assert [f for f in registrar.feed if f.kind == "section"] == []
+
+
+@pytest.mark.asyncio
+async def test_you_approved_says_how_many_requests_it_counts(store_with_posts: tuple[_Store, _Grants]) -> None:
+    """Audit F19 (spec §7.2: You approved $ "with {n} req")."""
+    store, grants = store_with_posts
+    _event(store, "reqjohnson00001", "approve", _at(4, 15), amount="1200")
+    _event(store, "reqgarcia000001", "approve", _at(4, 16), amount="800")
+    week = await _labelled(store, grants).read(2031, casework=False, finance=True, development=False)
+    approved_figure = next(f for f in week.finance or [] if f.key == "approved")
+    assert (approved_figure.value, approved_figure.note) == (2000, "2 req")

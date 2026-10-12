@@ -501,9 +501,10 @@ class _Ledger:
         self.calls += 1
         return []
 
-    async def needs_group_sources(self, year: int) -> list[str]:
+    async def needs_group_descriptions(self, year: int) -> dict[str, str]:
+        """Each description needing a group, by key, as CampMinder writes it."""
         self.group_calls += 1
-        return list(self.needs_group)
+        return {key: f"{key.title()} (as written)" for key in self.needs_group}
 
 
 def _service(store: FakeDecisionsStore, grants: _Grants, drafts: _Drafts, ledger: _Ledger) -> TodayService:
@@ -1357,7 +1358,8 @@ async def test_a_development_only_read_never_prices_the_season() -> None:
         clock=lambda: T0,
     )
     out = await service.read(YEAR, casework=False, finance=False, development=True)
-    assert _line(out.development, "needs_group").names == ["Scholarship other"]
+    # Audit D8: named as CampMinder writes the description (the fake's "(as written)"), not by its key.
+    assert _line(out.development, "needs_group").names == ["Scholarship Other (as written)"]
     assert (out.stages, out.casework, out.finance) == (None, None, None)
 
 
@@ -1445,3 +1447,180 @@ def test_posted_this_week_counts_an_undated_post_in_the_current_week() -> None:
     assert today.posted_this_week.value == 1500.0
     current, previous = today.posted_by_week[-1].posted, today.posted_by_week[-2].posted
     assert today.posted_this_week.value == current - previous
+
+
+# --- Visual fix wave (2026-10-11): names, clocks and the development chips ------------------------------------------
+
+
+class _Labels:
+    """The household page's label helper as the routes pass it: (year, households) -> each household's label."""
+
+    def __init__(self, labels: dict[int, tuple[str, str]]) -> None:
+        self.labels = labels
+        self.asked: list[frozenset[int]] = []
+
+    async def __call__(self, year: int, households: Any) -> dict[int, Any]:
+        from api.services.financial_aid_household_page import HouseholdLabel
+
+        self.asked.append(frozenset(households))
+        return {h: HouseholdLabel(*self.labels[h]) for h in households if h in self.labels}
+
+
+class _NoLabels:
+    async def __call__(self, year: int, households: Any) -> dict[int, Any]:
+        raise AssertionError("a development-only read asked for household labels")
+
+
+def _labelled_service(store: FakeDecisionsStore, labels: Any) -> TodayService:
+    return TodayService(
+        store=store,
+        pricing=FakeRules(approved()),
+        rules=_Drafts(None),
+        grants=_Grants(_grants(year=YEAR)),
+        ledger=_Ledger(),
+        labels=labels,
+        clock=lambda: T0,
+    )
+
+
+@pytest.mark.asyncio
+async def test_next_up_households_are_named_by_their_household_label_never_their_number() -> None:
+    """Audit R2 (owner: "has the household numbers instead of the household names"): every next-up chip reads the
+    household label the grid names a household-level row by (household_labels), with its tie-break."""
+    store = FakeDecisionsStore()
+    seed_request(store, "reqemma00000001")
+    seed_request(store, "reqliam00000001", household=1000002, person=1000021)
+    labels = _Labels({1000001: ("Pat Johnson & Alex Garcia", ""), 1000002: ("Liam & Olivia Becker", "Oakland")})
+    out = await _labelled_service(store, labels).read(YEAR, casework=True, finance=True)
+    chips = {n.household_cm_id: (n.label, n.tiebreak) for n in _line(out.casework, "needs_offer").next_up}
+    assert chips == {1000001: ("Pat Johnson & Alex Garcia", ""), 1000002: ("Liam & Olivia Becker", "Oakland")}
+    assert labels.asked == [frozenset({1000001, 1000002})]  # one read, scoped to the households the response names
+
+
+@pytest.mark.asyncio
+async def test_next_up_names_the_camper_so_the_drawer_can_say_who_is_asked_for() -> None:
+    """Audit R3: the drawer's "Liam · Session 2 · R1" needs the camper's name, so the season is read with names."""
+    store = FakeDecisionsStore()
+    seed_request(store, "reqemma00000001")
+    out = await _labelled_service(store, None).read(YEAR, casework=True, finance=False)
+    chip = _line(out.casework, "needs_offer").next_up[0]
+    assert chip.camper_name == "Camper 1000011"
+    assert chip.label == "Family 1000001"  # no labeler: the family name, never "Household 1000001"
+
+
+@pytest.mark.asyncio
+async def test_a_development_only_read_never_names_a_household() -> None:
+    """Spec §9.4: development never receives family data, so it never asks for a household label either."""
+    service = TodayService(
+        store=_NoSeasonStore(),
+        pricing=FakeRules(approved()),
+        rules=_Drafts(None),
+        grants=_Grants(_grants(year=YEAR)),
+        ledger=_Ledger(),
+        labels=_NoLabels(),
+        clock=lambda: T0,
+    )
+    out = await service.read(YEAR, casework=False, finance=False, development=True)
+    assert "household" not in out.model_dump_json()
+
+
+def test_grants_needing_attention_name_their_households_oldest_first() -> None:
+    """Audit R12 (spec §9.2 lists Grants for next_up): needs-a-camper grants by days since recorded, waiting
+    commitments by their own days waiting."""
+    needs = NeedsCamperOut(
+        grant=_grant(person_cm_id=0, household_cm_id=1000003, family_name="Chen", recorded_on="2031-04-17"),
+        household_applied=True,
+        suggestion=None,
+        candidates=[],
+    )
+    waiting = WaitingCommitmentOut(
+        grant=_grant(
+            kind="commitment",
+            transaction_cm_id=0,
+            commitment_id="com000000000001",
+            household_cm_id=1000002,
+            family_name="Garcia",
+        ),
+        days_waiting=30,
+        reason="not_posted",
+        transaction_cm_id=0,
+    )
+    grants = _grants(needs_camper=[needs], waiting=[waiting])
+    line = _line(build_today(_inputs([], grants=grants), casework=True, finance=False).casework, "grants")
+    assert [(n.household_cm_id, n.label, n.days) for n in line.next_up] == [
+        (1000002, "Garcia", 30),
+        (1000003, "Chen", 3),
+    ]
+
+
+def test_not_reconciled_households_carry_days_since_posting() -> None:
+    """Audit R11 / ruling V12: Not reconciled's chips read "{name} {d}d", days since the round was posted; a row
+    with no posted round (CampMinder money with no Posted tick) has no clock and comes after."""
+    posted = _round(1, "posted", posted=1500.0, accepted=True, posted_on=date(2031, 4, 14))
+    older = _round(1, "posted", posted=900.0, accepted=True, posted_on=date(2031, 4, 2))
+    rows = [
+        _row("reqemma00000001", 1000001, posted, confirmation=_confirmation("short", -210.0), family_name="Johnson"),
+        _row("reqliam00000001", 1000002, older, confirmation=_confirmation("over", 300.0), family_name="Garcia"),
+    ]
+    line = _line(build_today(_inputs(rows), casework=True, finance=False).casework, "not_reconciled")
+    assert [(n.label, n.days) for n in line.next_up] == [("Garcia", 18), ("Johnson", 6)]
+
+
+def test_a_manual_hold_carries_days_since_it_was_placed_and_a_check_hold_has_none() -> None:
+    """Ruling V12: a hold staff placed by hand has a date (when it was placed); a check the calculator raises has no
+    date of its own, so its chip shows no day count."""
+    rows = [
+        _row(
+            "reqemma00000001",
+            1000001,
+            _round(1, "held", asked_on=date(2031, 4, 1)),
+            holds=[_hold("manual_hold")],
+            family_name="Johnson",
+        ),
+        _row(
+            "reqliam00000001",
+            1000002,
+            _round(1, "held", asked_on=date(2031, 3, 1)),
+            holds=[_hold("household_income_conflict")],
+            family_name="Garcia",
+        ),
+    ]
+    inputs = _inputs(rows, hold_since={"reqemma00000001": date(2031, 4, 14)})
+    line = _line(build_today(inputs, casework=True, finance=False).casework, "holds")
+    assert [(n.label, n.days) for n in line.next_up] == [("Johnson", 6), ("Garcia", None)]
+
+
+def test_development_descriptions_are_named_as_campminder_writes_them() -> None:
+    """Audit D8: a description chip reads the description as CampMinder writes it, never its lowercase key."""
+    grants = _grants(
+        unmapped=[
+            UnmappedDescriptionOut(
+                source_id="src1",
+                description_key="outside award spring",
+                description="Outside Award – Spring",
+                lines=2,
+                amount=900.0,
+            )
+        ]
+    )
+    inputs = _inputs(
+        [], grants=grants, needs_group=["scholarship other"], descriptions={"scholarship other": "Scholarship (other)"}
+    )
+    dev = build_today(inputs, casework=False, finance=False, development=True).development
+    assert _line(dev, "needs_group").names == ["Scholarship (other)"]
+    assert _line(dev, "no_grantor").names == ["Outside Award – Spring"]
+
+
+@pytest.mark.asyncio
+async def test_today_reads_the_descriptions_campminder_names_for_development() -> None:
+    ledger = _Ledger(needs_group=["scholarship other"])
+    service = TodayService(
+        store=_NoSeasonStore(),
+        pricing=FakeRules(approved()),
+        rules=_Drafts(None),
+        grants=_Grants(_grants(year=YEAR)),
+        ledger=ledger,
+        clock=lambda: T0,
+    )
+    out = await service.read(YEAR, casework=False, finance=False, development=True)
+    assert _line(out.development, "needs_group").names == ["Scholarship Other (as written)"]

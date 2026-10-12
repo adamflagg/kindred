@@ -189,6 +189,7 @@ class WeekFigureOut(BaseModel):
     previous: float
     unit: Literal["count", "dollars"]
     title: str = ""  # a native title saying what the figure counts, where its label alone does not
+    note: str = ""  # a short muted word after the figure, in place of a change ("4 req": You approved's requests)
 
 
 class TodayResponse(BaseModel):
@@ -228,7 +229,7 @@ class HouseholdSearchResponse(BaseModel):
 
 # --- Today: This week (spec 2026-10-10 §8) ---------------------------------------------------------------
 
-WeekFeedKind = Literal["posted", "accepted", "approved", "grant", "overdue", "funder"]
+WeekFeedKind = Literal["posted", "accepted", "approved", "grant", "overdue", "funder", "section"]
 
 
 class WeekFeedOut(BaseModel):
@@ -237,8 +238,11 @@ class WeekFeedOut(BaseModel):
     kind: WeekFeedKind
     at: datetime
     words: str
+    # The words within `words` that are the link, bold (the household, the funder or the rules section, audit R23);
+    # "" when nothing on the line is a link.
+    name: str = ""
     household_cm_id: int | None = None
-    href_kind: Literal["household", "funders", "none"] = "none"
+    href_kind: Literal["household", "funders", "rules", "none"] = "none"
 
 
 class TodayWeekResponse(BaseModel):

@@ -19241,7 +19241,7 @@ export type WeekFeedOut = {
   /**
    * Kind
    */
-  kind: 'posted' | 'accepted' | 'approved' | 'grant' | 'overdue' | 'funder'
+  kind: 'posted' | 'accepted' | 'approved' | 'grant' | 'overdue' | 'funder' | 'section'
   /**
    * At
    */
@@ -19251,13 +19251,17 @@ export type WeekFeedOut = {
    */
   words: string
   /**
+   * Name
+   */
+  name?: string
+  /**
    * Household Cm Id
    */
   household_cm_id?: number | null
   /**
    * Href Kind
    */
-  href_kind?: 'household' | 'funders' | 'none'
+  href_kind?: 'household' | 'funders' | 'rules' | 'none'
 }
 
 /**
@@ -19290,6 +19294,10 @@ export type WeekFigureOut = {
    * Title
    */
   title?: string
+  /**
+   * Note
+   */
+  note?: string
 }
 
 /**

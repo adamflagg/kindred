@@ -579,9 +579,18 @@ class FinancialAidLedgerService:
     async def needs_group_sources(self, year: int) -> list[str]:
         """The descriptions that need a reporting group and classify a live line this season (Today's finance line,
         D100), by key. A line counts under the description that classifies it now (effective_source_key)."""
+        return list(await self.needs_group_descriptions(year))
+
+    async def needs_group_descriptions(self, year: int) -> dict[str, str]:
+        """`needs_group_sources`, each key with its description as CampMinder writes it (Today's development chips,
+        audit D8), in key order."""
         postings, sources = await asyncio.gather(self.repo.fetch_postings(year), self._sources_by_key())
         used = {str(p.effective_source_key or p.source_key) for p in postings}
-        return sorted(key for key in used if key in sources and needs_group(sources[key]))
+        return {
+            key: str(getattr(sources[key], "description", "") or key)
+            for key in sorted(used)
+            if key in sources and needs_group(sources[key])
+        }
 
     async def unclassified_sources(self, year: int) -> list[UnclassifiedSource]:
         """Data quality's unclassified descriptions alone (slice 1's Today), from two reads."""

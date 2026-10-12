@@ -8,13 +8,15 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
-from typing import Final
+from typing import Final, Literal
 
 from api.constants.collections import AID_GRANTORS
 from api.schemas.financial_aid_surfaces import (
     TodayWeekResponse,
+    WeekFeedKind,
     WeekFeedOut,
     WeekFigureOut,
 )
@@ -22,10 +24,13 @@ from api.services.camp_calendar import CAMP_TZ
 from api.services.financial_aid_decisions_service import DecisionsStore
 from api.services.financial_aid_grants_register import RegisterRow
 from api.services.financial_aid_grants_service import OneGrantsLoad
+from api.services.financial_aid_household_page import HouseholdLabeler
 from api.services.financial_aid_intake_types import RequestRecord
-from api.services.financial_aid_today import WAITING_TOO_LONG_DAYS, GrantsReads, week_start
+from api.services.financial_aid_rules_service import RulesNotFoundError, RulesVersion
+from api.services.financial_aid_today import WAITING_TOO_LONG_DAYS, GrantsReads, RulesDrafts, week_start
 from bunking.financial_aid.change_replay import LogRow
 from bunking.financial_aid.decisions.rounds import DecisionEvent
+from bunking.financial_aid.scenarios.describe import CARD_TITLES
 
 FEED_SIZE: Final = 6
 AWARDS_TITLE: Final = (
@@ -54,8 +59,10 @@ def _window(today: date) -> tuple[date, date, date, date]:
     return this_start, today, last_start, last_start + (today - this_start)
 
 
-def _figure(key: str, label: str, value: float, previous: float, unit: str = "count", title: str = "") -> WeekFigureOut:
-    return WeekFigureOut(key=key, label=label, value=value, previous=previous, unit=unit, title=title)
+def _figure(
+    key: str, label: str, value: float, previous: float, unit: str = "count", title: str = "", note: str = ""
+) -> WeekFigureOut:
+    return WeekFigureOut(key=key, label=label, value=value, previous=previous, unit=unit, title=title, note=note)
 
 
 class _Counted:
@@ -141,6 +148,7 @@ def _finance(
             float(sum((_amount(e) for e in approved), Decimal(0))),
             float(sum((_amount(e) for e in approved_before), Decimal(0))),
             "dollars",
+            note=f"{len({e.request_id for e in approved})} req",  # spec §7.2: "with {n} req"
         ),
         _figure("avg", "Avg award", average(posts), average(posts_before), "dollars"),
         _figure("helped", "Families helped so far", helped(windows.this_end), helped(windows.last_end)),
@@ -203,12 +211,57 @@ def _funder_name(row: LogRow, names: Mapping[str, str]) -> str:
     return names.get(row.entity_id, "A funder")
 
 
+UNMATCHED: Final = "Unmatched"  # a grant whose description names no funder yet (audit R25: never "A funder")
+HrefKind = Literal["household", "funders", "rules", "none"]
+
+
+@dataclass(frozen=True)
+class _Item:
+    """A feed item before its household is named: `words` makes the line from the household's name (or from nothing,
+    for an item with no household), and the name is the item's link (`linked`)."""
+
+    kind: WeekFeedKind
+    at: datetime
+    words: Callable[[str], str]
+    household: int | None = None
+    href_kind: HrefKind = "none"
+    name: str = ""  # the link's words when they do not come from a household (a funder, a rules section)
+
+
+def _fmt(template: str, **fixed: str | int) -> Callable[[str], str]:
+    """An item's words with its name (`{n}`) still to come: the household is named only once the item is kept."""
+    return lambda name: template.format(n=name, **fixed)
+
+
+def _section_items(version: RulesVersion | None, windows: _Counted) -> list[_Item]:
+    """Spec §8.1 ✎: each rules section saved as a draft, or approved, this week, named as the Rules tab names it."""
+    if version is None:
+        return []
+    items: list[_Item] = []
+    for section, status in version.section_status.items():
+        title = CARD_TITLES.get(section, section)
+        for at, verb in ((status.edited_at, "saved as a draft"), (status.approved_at, "approved")):
+            if at is not None and _in(_day(at), windows.this_start, windows.this_end):
+                items.append(_Item("section", at, _fmt("{n} section {v}", v=verb), href_kind="rules", name=title))
+    return items
+
+
 class TodayWeekService:
     def __init__(
-        self, *, store: DecisionsStore, grants: GrantsReads, clock: Callable[[], datetime] | None = None
+        self,
+        *,
+        store: DecisionsStore,
+        grants: GrantsReads,
+        labels: HouseholdLabeler | None = None,
+        rules: RulesDrafts | None = None,
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
+        """`labels`: the household page's label helper, naming a feed item's household as the grid does (audit R24);
+        None: its family name. `rules`: the rules draft, for finance's section edits (spec §8.1 ✎)."""
         self._store = store
         self._grants = grants
+        self._labels = labels
+        self._rules = rules
         self._clock = clock or (lambda: datetime.now(UTC))
 
     async def read(self, year: int, *, casework: bool, finance: bool, development: bool) -> TodayWeekResponse:
@@ -217,34 +270,33 @@ class TodayWeekService:
         windows = _Counted(today)
         families = casework or finance  # family-level data, and the names that come with it
         shared = OneGrantsLoad(self._grants, year)
-        (_, register), events, requests, funder_log, grantors = await asyncio.gather(
+        (_, register), events, requests, funder_log, grantors, rules = await asyncio.gather(
             shared.read(),
             self._store.fetch_decision_events(year),
             self._store.fetch_requests(year) if families else _none(),
             self._store.fetch_change_log(year, AID_GRANTORS),
             self._grants.list_grantors(include_retired=True),
+            self._latest_rules(year) if finance else _no_rules(),
         )
         request_household = {r.id: r.household_cm_id for r in requests}
-        names: Mapping[int, str] = {}
-        if families:
-            names, _ = await self._store.fetch_names(
-                year, set(request_household.values()) | {r.household_cm_id for r in register}, set()
-            )
         grantor_names = {g.key: g.name for g in grantors.grantors}
 
-        feed = self._feed(
+        kept = self._feed(
             windows,
             now,
             events,
             register,
             funder_log,
             request_household,
-            names,
             grantor_names,
             families=families,
             development=development,
             finance=finance,
+            sections=_section_items(rules, windows),
         )
+        households = {i.household for i in kept if i.household is not None}
+        names = await self._names(year, households) if families and households else {}
+        feed = [_out(item, names) for item in kept]
         return TodayWeekResponse(
             year=year,
             week_of=windows.this_start,
@@ -254,6 +306,25 @@ class TodayWeekService:
             feed=feed,
         )
 
+    async def _latest_rules(self, year: int) -> RulesVersion | None:
+        if self._rules is None:
+            return None
+        try:
+            return await self._rules.load(year)
+        except RulesNotFoundError:
+            return None
+
+    async def _names(self, year: int, households: set[int]) -> dict[int, str]:
+        """The households the kept items name, as the grid names them (household_labels, the tie-break scoped to
+        them); without a labeler, or for a household the helper does not name, the family name."""
+        found, _ = await self._store.fetch_names(year, households, set())
+        named = dict(found)
+        if self._labels is not None:
+            for household, label in (await self._labels(year, households)).items():
+                text = f"{label.label} ({label.tiebreak})" if label.tiebreak else label.label
+                named[household] = text or named.get(household, "")
+        return named
+
     @staticmethod
     def _feed(
         windows: _Counted,
@@ -262,100 +333,88 @@ class TodayWeekService:
         register: Sequence[RegisterRow],
         funder_log: Sequence[LogRow],
         request_household: Mapping[str, int],
-        names: Mapping[int, str],
         grantor_names: Mapping[str, str],
         *,
         families: bool,
         finance: bool,
         development: bool,
-    ) -> list[WeekFeedOut]:
-        items: list[WeekFeedOut] = []
+        sections: Sequence[_Item] = (),
+    ) -> list[_Item]:
+        """The latest six items, newest first, before their households are named (only the kept ones are)."""
+        items: list[_Item] = list(sections) if finance else []
 
-        def family(request_id: str) -> tuple[int | None, str]:
+        def at_home(request_id: str) -> tuple[int | None, HrefKind]:
             household = request_household.get(request_id)
-            return household, names.get(household, "Unknown") if household is not None else "Unknown"
+            return household, "household" if household is not None else "none"
 
         if families:
             for event in events:
-                household, name = family(event.request_id)
+                household, href = at_home(event.request_id)
+                round_, money = event.round, _money(_amount(event))
                 if event.kind == "post":
-                    words = f"{name} household · R{event.round} posted · {_money(_amount(event))}"
                     items.append(
-                        WeekFeedOut(
-                            kind="posted",
-                            at=event.created,
-                            words=words,
-                            household_cm_id=household,
-                            href_kind="household" if household is not None else "none",
+                        _Item(
+                            "posted", event.created, _fmt("{n} · R{r} posted · {m}", r=round_, m=money), household, href
                         )
                     )
                 elif event.kind == "accept":
-                    items.append(
-                        WeekFeedOut(
-                            kind="accepted",
-                            at=event.created,
-                            words=f"{name} household accepted the offer",
-                            household_cm_id=household,
-                            href_kind="household" if household is not None else "none",
-                        )
-                    )
+                    items.append(_Item("accepted", event.created, _fmt("{n} accepted the offer"), household, href))
                 elif event.kind == "approve" and finance:
-                    words = f"Approved {name} household · R{event.round} · {_money(_amount(event))}"
                     items.append(
-                        WeekFeedOut(
-                            kind="approved",
-                            at=event.created,
-                            words=words,
-                            household_cm_id=household,
-                            href_kind="household" if household is not None else "none",
+                        _Item(
+                            "approved",
+                            event.created,
+                            _fmt("Approved {n} · R{r} · {m}", r=round_, m=money),
+                            household,
+                            href,
                         )
                     )
             for event, at in _overdue(events, windows, now):
-                household, name = family(event.request_id)
+                household, href = at_home(event.request_id)
                 items.append(
-                    WeekFeedOut(
-                        kind="overdue",
-                        at=at,
-                        words=f"{name} household passed {WAITING_TOO_LONG_DAYS} days waiting",
-                        household_cm_id=household,
-                        href_kind="household" if household is not None else "none",
-                    )
+                    _Item("overdue", at, _fmt(f"{{n}} passed {WAITING_TOO_LONG_DAYS} days waiting"), household, href)
                 )
         if families or development:  # a caller with no section sees no funder or grant item
             for row in _live_grants(register):
-                grantor = grantor_names.get(row.grantor_key, "A funder")
+                grantor = grantor_names.get(row.grantor_key, UNMATCHED)
+                at = row.recorded_at or now
                 if families:
-                    name = names.get(row.household_cm_id, "Unknown")
                     items.append(
-                        WeekFeedOut(
-                            kind="grant",
-                            at=row.recorded_at,
-                            words=f"{grantor} grant entered for {name} household",
-                            household_cm_id=row.household_cm_id,
-                            href_kind="household",
+                        _Item(
+                            "grant", at, _fmt("{g} grant entered for {n}", g=grantor), row.household_cm_id, "household"
                         )
                     )
-                else:
-                    items.append(
-                        WeekFeedOut(
-                            kind="grant",
-                            at=row.recorded_at,
-                            words=f"{grantor} grant · {_money(row.amount)} posted",
-                            href_kind="funders",
-                        )
-                    )
-            items.extend(
-                WeekFeedOut(
-                    kind="funder",
-                    at=log.created,
-                    words=f"{_funder_name(log, grantor_names)} updated",
-                    href_kind="funders",
-                )
-                for log in funder_log
-            )
+                else:  # the mock: development's grant lines are plain, and name no family (§9.4)
+                    items.append(_Item("grant", at, _fmt("{g} grant · {m} posted", g=grantor, m=_money(row.amount))))
+            for log in funder_log:
+                funder = _funder_name(log, grantor_names)
+                items.append(_Item("funder", log.created, _fmt("{n} updated"), None, "funders", funder))
         items.sort(key=lambda i: i.at, reverse=True)
         return items[:FEED_SIZE]
 
 
+def _out(item: _Item, names: Mapping[int, str]) -> WeekFeedOut:
+    """The item's words, its household named (`names`), and the words that are its link."""
+    name = item.name
+    if item.household is not None:
+        name = names.get(item.household, "") or "Unknown"
+    elif item.kind in {"posted", "accepted", "approved", "overdue"}:
+        name = "Unknown"
+    words = item.words(name)
+    linked = name if item.href_kind != "none" else ""
+    return WeekFeedOut(
+        kind=item.kind,
+        at=item.at,
+        words=words,
+        name=linked,
+        household_cm_id=item.household,
+        href_kind=item.href_kind,
+    )
+
+
 async def _none() -> list[RequestRecord]:
     return []
+
+
+async def _no_rules() -> RulesVersion | None:
+    return None

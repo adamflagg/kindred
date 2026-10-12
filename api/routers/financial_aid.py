@@ -1894,6 +1894,7 @@ async def get_today(year: _Year, user: AuthUser = _CAMPERSHIPS_OPEN) -> TodayRes
         ledger=_ledger(),
         intake=FinancialAidIntakeRepository(pb),
         to_place=store,  # To place's own reads (SP11): Today counts its open lines as Money › To place does
+        labels=_household_labels(),  # next-up households read as the grid names them (audit R2)
     )
     return await service.read(
         year,
@@ -1908,7 +1909,12 @@ async def get_today(year: _Year, user: AuthUser = _CAMPERSHIPS_OPEN) -> TodayRes
 async def get_today_week(year: _Year, user: AuthUser = _CAMPERSHIPS_OPEN) -> TodayWeekResponse:
     """This week (spec 2026-10-10 §8): its own read, so the to-dos never wait on it or fail with it."""
     store = FinancialAidDecisionsRepository(pb)
-    service = TodayWeekService(store=store, grants=GrantsService(GrantsRepository(pb)))
+    service = TodayWeekService(
+        store=store,
+        grants=GrantsService(GrantsRepository(pb)),
+        labels=_household_labels(),  # households named as the grid names them (audit R24)
+        rules=_rules(),  # finance's rules-section edits (spec §8.1)
+    )
     return await service.read(
         year,
         casework=_holds(user, Permission.FINANCIAL_AID_CASEWORK),

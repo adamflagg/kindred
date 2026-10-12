@@ -1575,6 +1575,11 @@ class FinancialAidDecisionsService:
         """Every request of the season priced now, with its rounds and its holds (D21: the server decides)."""
         return (await self._season(year, names=False))[0]
 
+    async def named_season(self, year: int) -> tuple[Season, Names]:
+        """The season as `season` prices it, with the family and camper names the grid reads (Today's next-up lines
+        name households and the drawer names campers, audit R2/R3)."""
+        return await self._season(year, names=True)
+
     async def _season(self, year: int, *, names: bool) -> tuple[Season, Names]:
         """The season's loads run as five concurrent branches: the requests with what hangs off them
         (the names too, when asked), the sessions, shares, events and grants register, the CampMinder
