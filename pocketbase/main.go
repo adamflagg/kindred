@@ -27,6 +27,7 @@ import (
 	"github.com/camp/kindred/pocketbase/feedback"
 	"github.com/camp/kindred/pocketbase/lodging"
 	"github.com/camp/kindred/pocketbase/logging"
+	"github.com/camp/kindred/pocketbase/oidclogout"
 	"github.com/camp/kindred/pocketbase/rbac"
 	"github.com/camp/kindred/pocketbase/sync"
 )
@@ -292,6 +293,12 @@ func main() {
 
 	// Register RBAC hooks for permission cache recomputation
 	rbac.RegisterHooks(app)
+
+	// OIDC Back-Channel Logout (pocketbase/oidclogout): the identity provider
+	// POSTs a signed logout token when it disables a user, and every session
+	// that user holds here ends. Answers 404 until OIDC_ISSUER is set and the
+	// users collection has its oidc provider.
+	oidclogout.Register(app, oidclogout.ConfigFromEnv())
 
 	// Financial-aid writes only if unchanged (campership G6): every save of a
 	// guarded aid_ record moves its revision on, and a batch write sent with
