@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 from typing import Any, Literal
 
-from bunking.logging_config import TRACE, get_logger
+from bunking.logging_config import TRACE, get_logger, install_sensitive_query_redaction
 
 # Add parent directories to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
@@ -348,6 +348,8 @@ def main() -> None:
         level=log_level,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
+    # Same catch-all as the API: a failed PocketBase name search logs its URL, filter and all.
+    install_sensitive_query_redaction()
     # Suppress noisy HTTP client logging (unless trace mode)
     if not args.trace:
         logging.getLogger("httpx").setLevel(logging.WARNING)
