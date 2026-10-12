@@ -16,8 +16,11 @@
  * old one without asking the provider. So an account removed at the provider
  * stops working once 12 hours pass without the app being loaded, and an open
  * tab older than 12 hours is sent back to sign in. Someone who keeps loading
- * the app is not stopped by this alone; removing their user row in PocketBase
- * is the immediate lever.
+ * the app is not stopped by this alone. The immediate lever is rotating that
+ * user's tokenKey (in the PocketBase admin UI set a random password on the
+ * user, which leaves password sign-in disabled, or call RefreshTokenKey() and
+ * save), which invalidates every token they hold. Deleting the row is not
+ * recommended: it breaks history and audit links.
  *
  * The value is an owner decision, recorded in the PR that adds this file.
  * rbac/auth_token_duration_booted_test.go asserts it on a migrated database.
