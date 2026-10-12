@@ -244,7 +244,7 @@ func newRuleProbe(t *testing.T) *ruleProbe {
 		var r struct {
 			ID string `db:"id"`
 		}
-		if err := app.DB().Select("id").From(c.Name).Limit(1).One(&r); err != nil || r.ID == "" {
+		if err = app.DB().Select("id").From(c.Name).Limit(1).One(&r); err != nil || r.ID == "" {
 			t.Errorf("view collection %s has no row to probe, so its rules went unchecked -- "+
 				"extend this test's seeding", c.Name)
 			continue
@@ -289,7 +289,9 @@ func (p *ruleProbe) send(c *core.Collection, a probeAction, token, callerID stri
 // rule check at all, so a refusal for some unrelated reason (missing row, bad
 // route) cannot pass as a locked rule. ok is false when the control failed,
 // and then the caller's result means nothing.
-func (p *ruleProbe) controlled(t *testing.T, c *core.Collection, a probeAction, token, callerID string) (admitted, ok bool) {
+func (p *ruleProbe) controlled(
+	t *testing.T, c *core.Collection, a probeAction, token, callerID string,
+) (admitted, ok bool) {
 	t.Helper()
 	if in, code := p.send(c, a, p.superuserToken, ""); !in {
 		t.Errorf("control: a superuser %s on %s never reached the rule check (status %d) -- "+
@@ -325,7 +327,7 @@ func (p *ruleProbe) controlled(t *testing.T, c *core.Collection, a probeAction, 
 //   - Kindred's Go-registered routes and hooks, e.g. everything under
 //     /api/custom/*. None is registered here; a custom route does not go
 //     through a collection rule at all, so its own auth check is the only
-//     guard and is tested next to it.
+//     guard, and only a test of that route can prove it.
 //   - The FastAPI service, which is a separate process.
 //
 // What it does cover is the collection rule layer, which PocketBase enforces
@@ -360,7 +362,7 @@ func TestNoCollectionIsReachableAnonymously(t *testing.T) {
 			if in {
 				t.Errorf("%s: an anonymous %s got past the %sRule %s -- no sign-in needed; "+
 					"use nil (superusers only) or a filter on @request.auth",
-					key, a.method, a.name, ruleString(a.rule(c)))
+					key, a.method, a.name, p.liveRule(c, a))
 			}
 		}
 	}
@@ -409,7 +411,7 @@ func TestNoPersonalDataIsReadableByAnySignedInUser(t *testing.T) {
 		for _, a := range []probeAction{probeList, probeView} {
 			in, ok := p.controlled(t, c, a, token, userID)
 			if ok && in {
-				how = append(how, a.name+"Rule "+ruleString(a.rule(c)))
+				how = append(how, a.name+"Rule "+p.liveRule(c, a))
 			}
 		}
 		if len(how) > 0 {
@@ -434,7 +436,7 @@ func (p *ruleProbe) plainUser(t *testing.T) (token, id string) {
 	u := core.NewRecord(users)
 	u.SetEmail("rule-probe-member@example.com")
 	u.SetRandomPassword()
-	if err := p.app.SaveNoValidate(u); err != nil {
+	if err = p.app.SaveNoValidate(u); err != nil {
 		t.Fatalf("seed the plain user: %v", err)
 	}
 	if token, err = u.NewAuthToken(); err != nil {
@@ -443,7 +445,7 @@ func (p *ruleProbe) plainUser(t *testing.T) (token, id string) {
 	return token, u.Id
 }
 
-// requireSignedInControl proves the plain user's token is recognised as a
+// requireSignedInControl proves the plain user's token is recognized as a
 // sign-in at all. Without it, a token PocketBase ignored would make every
 // probe look like an anonymous one, every collection would look locked, and
 // the ratchet below would fail only on its stale entries -- or pass outright
@@ -562,8 +564,8 @@ func TestAnyAuthReadRatchet(t *testing.T) {
 		{
 			name:     "a non-personal entry naming no collection is a typo",
 			readable: map[string]string{"persons": "listRule"},
-			probed:   probed, gaps: gaps, nonPersonal: map[string]string{"divisons": "typo"},
-			want: []string{"nonPersonalCollections names divisons, which this test never probed"},
+			probed:   probed, gaps: gaps, nonPersonal: map[string]string{"camp_sesions": "typo"},
+			want: []string{"nonPersonalCollections names camp_sesions, which this test never probed"},
 		},
 		{
 			name:     "a collection cannot be both a gap and non-personal",
@@ -596,6 +598,16 @@ func requireProbed(t *testing.T, probed []string, want ...string) {
 			t.Errorf("collection %s was not probed (probed %d collections)", w, len(probed))
 		}
 	}
+}
+
+// liveRule is the rule as PocketBase holds it now, for a failure message: the
+// collection list newRuleProbe captured is a snapshot, so it would print a
+// stale rule for a collection changed afterwards.
+func (p *ruleProbe) liveRule(c *core.Collection, a probeAction) string {
+	if cur, err := p.app.FindCollectionByNameOrId(c.Name); err == nil {
+		c = cur
+	}
+	return ruleString(a.rule(c))
 }
 
 func ruleString(r *string) string {
