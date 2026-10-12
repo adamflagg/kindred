@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -564,4 +565,35 @@ func TestIssuerWithATrailingSlashStillMatches(t *testing.T) {
 	if rec := logout(mux, idp.Mint(t, idp.Claims("sub-alice", time.Now()))); rec.Code != http.StatusOK {
 		t.Errorf("status = %d, want 200 (body %s)", rec.Code, rec.Body)
 	}
+}
+
+func TestStorageFailureLetsTheSameTokenBeRetried(t *testing.T) {
+	f := newFixture(t)
+	failSave := true
+	f.app.OnRecordUpdate("users").BindFunc(func(e *core.RecordEvent) error {
+		if failSave {
+			return errors.New("disk full")
+		}
+		return e.Next()
+	})
+	key := tokenKey(t, f.app, f.alice.Id)
+	tok := f.idp.Mint(t, f.idp.Claims("sub-alice", f.clk.Now()))
+
+	if rec := logout(f.mux, tok); rec.Code != http.StatusInternalServerError {
+		t.Fatalf("delivery during a storage failure: status = %d, want 500 (body %s)", rec.Code, rec.Body)
+	}
+	if tokenKey(t, f.app, f.alice.Id) != key {
+		t.Fatal("tokenKey changed although the save failed")
+	}
+
+	// The spec lets a provider resend the same logout_token after a 5xx; the
+	// failed attempt must not have spent its jti.
+	failSave = false
+	if rec := logout(f.mux, tok); rec.Code != http.StatusOK {
+		t.Fatalf("retry of the same token after the failure: status = %d, want 200 (body %s)", rec.Code, rec.Body)
+	}
+	if tokenKey(t, f.app, f.alice.Id) == key {
+		t.Error("the retry did not rotate alice's tokenKey")
+	}
+	assertInvalidRequest(t, logout(f.mux, tok))
 }

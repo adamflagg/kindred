@@ -133,14 +133,18 @@ func (h *handler) serve(e *core.RequestEvent) error {
 	if err != nil {
 		return refuse(e, err)
 	}
-	if !h.replay.remember(h.issuer+"\x00"+claims.jti, claims.iat.Add(maxAge+clockSkew), now) {
+	replayKey := h.issuer + "\x00" + claims.jti
+	if !h.replay.remember(replayKey, claims.iat.Add(maxAge+clockSkew), now) {
 		return refuse(e, errReplayed)
 	}
 
 	userID, err := endSessions(e.App, users, claims.sub)
 	if err != nil {
 		// A storage failure is ours, not the token's: a 5xx tells the
-		// provider to retry, where a 400 would make it give up.
+		// provider to retry, where a 400 would make it give up. The spec
+		// lets that retry resend the same token, so the failed attempt must
+		// not spend its jti.
+		h.replay.forget(replayKey)
 		slog.Error("Back-channel logout could not rotate the user's token key", "error", err)
 		body := map[string]string{"error": "server_error"}
 		return e.JSON(http.StatusInternalServerError, body) //nolint:wrapcheck // response write

@@ -47,3 +47,11 @@ func (c *replayCache) remember(key string, until, now time.Time) bool {
 	c.seen[key] = until
 	return true
 }
+
+// forget drops key, so a delivery that failed on our side can be retried with
+// the same token.
+func (c *replayCache) forget(key string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.seen, key)
+}
