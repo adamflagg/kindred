@@ -39,6 +39,8 @@ logger = get_logger(__name__)
 
 Format: `2026-01-06T14:05:52Z [bunking] LEVEL message key=value...`. `LOG_LEVEL=INFO` (default) suppresses noise; `DEBUG` for verbose.
 
+**At INFO and above, name a person by CampMinder ID — never a name or the text a family wrote.** Production runs INFO, and container logs (plus the solver's persisted run logs under `logs/solver/`) sit outside the app's RBAC. Names belong at DEBUG or in the database. `tests/unit/test_log_pii_guard.py` enforces it, including every `ConstraintLogger` record; the uvicorn access log redacts free-text query values (`?q=`, `?search=`, …) via `AccessLogQueryRedactionFilter`.
+
 ## Tests
 
 ```bash

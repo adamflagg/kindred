@@ -129,6 +129,8 @@ logging.Init("pocketbase")
 
 Format: `2026-01-06T14:05:52Z [pocketbase] LEVEL message key=value...`. `LOG_LEVEL=INFO` (default) suppresses health-check noise; `DEBUG` for verbose.
 
+Log people by CampMinder ID or PocketBase id, never by name: production logs sit outside the app's RBAC. The sync's orphan-deletion label (`getRecordName`) follows this.
+
 ## Sync invariants
 
 1. **Sync order matters.** `syncJobMeta`'s declaration order in `sync/orchestrator.go` is the
