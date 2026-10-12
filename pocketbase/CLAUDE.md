@@ -9,6 +9,7 @@ Go service: SQLite DB, auth, CampMinder sync. Entry: `main.go`. Module: `github.
 | `sync/` + `campminder/` | CampMinder API → PocketBase sync jobs |
 | `rbac/` | Role / permission rules (distinct from FastAPI's `bunking/rbac/`) |
 | `bunk_requests/`, `feedback/`, `google/`, `ratelimit/`, `logging/` | Feature packages |
+| `oidclogout/` | OIDC Back-Channel Logout endpoint: the identity provider signs a disabled user out of every session (rotates `tokenKey`) |
 | `pb_hooks/` | JS hooks executed by PocketBase v0.23 runtime |
 | `pb_migrations/` | Schema source of truth — JS migrations |
 
