@@ -63,7 +63,7 @@ const ManageRegistrationPage = lazy(() =>
   }))
 )
 const AidHome = lazy(() => import('./pages/camperships/AidHome'))
-const AidToday = lazy(() => import('./pages/camperships/AidToday'))
+const AidToday = lazy(() => import('./pages/camperships/AidTodayPage'))
 const AidReportsPage = lazy(() => import('./pages/camperships/AidReportsPage'))
 const AidRequestsPage = lazy(() => import('./pages/camperships/AidRequestsPage'))
 const RequestsNotForDevelopment = lazy(
@@ -654,7 +654,7 @@ function App() {
                             <Route
                               path="today"
                               element={
-                                <RequirePermission permission={Permission.FINANCIAL_AID_VIEW}>
+                                <RequirePermission anyOf={[...CAMPERSHIPS_OPEN_PERMISSIONS]}>
                                   <ErrorBoundary>
                                     <Suspense fallback={<PageSkeleton />}>
                                       <AidToday />

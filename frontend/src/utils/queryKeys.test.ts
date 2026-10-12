@@ -322,3 +322,10 @@ describe('subjectNotes keys (board notes)', () => {
     expect(key.slice(0, 1)).toEqual([...queryKeys.subjectNotesPrefix()])
   })
 })
+
+describe('aidToday key', () => {
+  it('Today keys sit under the Today prefix, so every aid write that clears the prefix clears them', () => {
+    expect(queryKeys.aidToday(2027)).toEqual(['financial-aid', 'today', 2027])
+    expect(queryKeys.aidToday(2027).slice(0, 2)).toEqual(queryKeys.aidTodayPrefix())
+  })
+})

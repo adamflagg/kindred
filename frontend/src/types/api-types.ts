@@ -143,6 +143,10 @@ import type {
   ToPlaceGroupOut,
   ToPlaceLineOut,
   ToPlaceResponse,
+  TodayLineOut,
+  TodayNextUpOut,
+  TodayResponse,
+  TodayStagesOut,
   ToPlaceWriteOut,
   RequestOut,
   RequestsGridResponse,
@@ -360,6 +364,12 @@ export type ApiAidBudgetPool = PoolBudgetOut
 export type ApiAidBudgetCell = CellOut
 /** A round's figures: what it committed, never an Allocated or Remaining. Mirrors Python `RoundCellOut`. */
 export type ApiAidBudgetRoundCell = RoundCellOut
+
+/** Today (spec 2026-10-10 §9): one read, the sections follow the caller's permissions. */
+export type ApiAidToday = TodayResponse
+export type ApiAidTodayLine = TodayLineOut
+export type ApiAidTodayNextUp = TodayNextUpOut
+export type ApiAidTodayStages = TodayStagesOut
 export type ApiAidRoundCounts = RoundCountsOut
 /** "3 families · 4 requests" (principle 7). Mirrors Python `CountOut`. */
 export type ApiAidCount = CountOut

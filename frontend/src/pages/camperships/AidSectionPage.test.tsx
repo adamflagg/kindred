@@ -97,29 +97,28 @@ describe('AidSectionPage before its slice lands (Decision 4)', () => {
 })
 
 describe('AidHome', () => {
-  // Owner ruling (final audit): Today is parked, so /aid lands on Requests until it is built.
-  it('lands a view holder on Requests, keeping the season', () => {
+  it('lands a view holder on Today, keeping the season', () => {
     renderAt('/aid?year=2027')
-    expect(screen.getByTestId('where')).toHaveTextContent('/aid/requests?year=2027')
+    expect(screen.getByTestId('where')).toHaveTextContent('/aid/today?year=2027')
   })
 
-  it('still answers Today by its own URL, with no as-of', () => {
+  it('draws the section placeholder at Today with no as-of (the real Today is AidTodayPage)', () => {
     renderAt('/aid/today')
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Today')
     expect(screen.queryByText(/as of/)).toBeNull()
   })
 
-  it('lands a summary-only user on Reports › Development (D65)', () => {
+  it('lands a summary-only user on Today', () => {
     granted = ['financial_aid.summary']
     renderAt('/aid')
-    expect(screen.getByTestId('where')).toHaveTextContent('/aid/reports/development')
+    expect(screen.getByTestId('where')).toHaveTextContent('/aid/today')
   })
 
-  it('keeps the season and the as-of when it redirects (Decision 9)', () => {
+  it('keeps the season but drops the as-of when it lands on Today, which is live only (D20)', () => {
     granted = ['financial_aid.summary']
-    renderAt('/aid?year=2027&as_of=2026-04-01')
-    expect(screen.getByTestId('where')).toHaveTextContent(
-      '/aid/reports/development?year=2027&as_of=2026-04-01'
-    )
+    renderAt('/aid?year=2027&as_of=2026-04-01&as_of_axis=recorded')
+    const where = screen.getByTestId('where')
+    expect(where).toHaveTextContent('/aid/today?year=2027')
+    expect(where.textContent).not.toMatch(/as_of/)
   })
 })

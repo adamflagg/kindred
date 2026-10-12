@@ -5,7 +5,11 @@
  * lands, the section's page says so (Decision 4).
  */
 import { Permission, type PermissionValue } from '../constants/permissions'
-import { CAMPERSHIPS_OPEN_PERMISSIONS, type PermissionCheck } from './programAccess'
+import {
+  CAMPERSHIPS_OPEN_PERMISSIONS,
+  canOpenCamperships,
+  type PermissionCheck,
+} from './programAccess'
 
 export type AidSectionKey = 'today' | 'requests' | 'money' | 'season' | 'reports'
 
@@ -26,8 +30,6 @@ export interface AidSection {
   readonly access: AidAccess
   readonly tabs: readonly AidTab[]
   readonly builtIn: string
-  /** Parked: the route still answers by URL, but the nav does not draw it (Today, until it is built). */
-  readonly parked?: boolean
 }
 
 const VIEW: AidAccess = { anyOf: [Permission.FINANCIAL_AID_VIEW] }
@@ -50,10 +52,9 @@ export const AID_SECTIONS: readonly AidSection[] = [
     key: 'today',
     label: 'Today',
     path: '/aid/today',
-    access: VIEW,
+    access: OPEN,
     tabs: [],
-    builtIn: 'slice 1 (December)',
-    parked: true,
+    builtIn: 'the Today home page',
   },
   {
     key: 'requests',
@@ -112,7 +113,7 @@ export function canAccess(access: AidAccess, can: PermissionCheck): boolean {
 }
 
 export function visibleSections(can: PermissionCheck): AidSection[] {
-  return AID_SECTIONS.filter((section) => section.parked !== true && canAccess(section.access, can))
+  return AID_SECTIONS.filter((section) => canAccess(section.access, can))
 }
 
 export function visibleTabs(section: AidSection, can: PermissionCheck): AidTab[] {
@@ -151,9 +152,9 @@ export function resolveAidTab(
 }
 
 /**
- * Where `/aid` lands: Requests for view holders (Today is parked until it is built; its route,
- * /aid/today, still answers); Reports › Development for summary-only (D65).
+ * Where `/aid` lands: Today, for anyone who can open Camperships (view or summary). Today draws each
+ * role its own page, so a summary-only user (development) lands there too, no longer on Reports.
  */
 export function aidHomePath(can: PermissionCheck): string {
-  return canAccess(VIEW, can) ? '/aid/requests' : '/aid/reports/development'
+  return canOpenCamperships(can) ? '/aid/today' : '/aid/reports/development'
 }
