@@ -18206,6 +18206,8 @@ export type TodayReasonOut = {
  * posted_by_week: finance only (Committed by week); built from the priced rows the budget counts, so its last
  * point is the budget's Posted.
  * posted_this_week: finance only (This week's "Posted in CM"), from the same rows, by posted_on.
+ * posts_undated: finance only (owner ruling 20): the season has posted rounds and not one carries a post date (the
+ * 2026 reproduced load), so Committed by week is not drawn (posted_by_week is empty) and Posted in CM is blank.
  */
 export type TodayResponse = {
   /**
@@ -18230,6 +18232,10 @@ export type TodayResponse = {
    */
   posted_by_week?: Array<WeekPointOut> | null
   posted_this_week?: WeekFigureOut | null
+  /**
+   * Posts Undated
+   */
+  posts_undated?: boolean | null
 }
 
 /**
@@ -19302,6 +19308,10 @@ export type WeekFigureOut = {
    * Note
    */
   note?: string
+  /**
+   * Blank
+   */
+  blank?: boolean
 }
 
 /**

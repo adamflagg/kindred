@@ -1685,3 +1685,49 @@ def test_development_chips_open_their_own_funders_row() -> None:
     ]
     assert _line(dev, "no_grantor").links == ["row:src1"]
     assert _line(dev, "needs_group").links == ["row:src2"]
+
+
+# --- Owner ruling 20 (2026-10-11): a season whose posts carry no post date at all ---------------------------------
+
+
+def _undated(n: int, amount: float) -> RoundOut:
+    return _round(n, "posted", posted=amount, posted_on=None, accepted=True)
+
+
+def test_r20_a_season_with_no_dated_post_says_so_and_counts_nothing_by_week() -> None:
+    """The 2026 reproduced load writes no effective_on: Committed by week is not drawn (no points) and Posted in CM
+    has no figure, its title saying why, rather than the season's whole Posted shown as this week's."""
+    rows = [_row("a", 1, _undated(1, 1000.0)), _row("b", 2, _undated(1, 500.0), _undated(2, 250.0))]
+    today = build_today(_inputs(rows), casework=False, finance=True)
+    assert today.posts_undated is True
+    assert today.posted_by_week == []
+    figure = today.posted_this_week
+    assert figure is not None
+    assert figure.blank is True
+    assert (figure.value, figure.previous) == (0, 0)
+    assert "no post dates" in figure.title
+
+
+def test_r20_a_season_with_some_dated_posts_keeps_the_undated_in_the_current_week() -> None:
+    """2027's tonight-tick posts carry a date: the existing rule stands, an undated post counts this week."""
+    rows = [_row("a", 1, _posted(1, 1000.0, date(2031, 4, 15))), _row("b", 2, _undated(1, 500.0))]
+    today = build_today(_inputs(rows), casework=False, finance=True)
+    assert today.posts_undated is False
+    assert today.posted_this_week is not None
+    assert today.posted_this_week.blank is False
+    assert today.posted_this_week.value == 1500.0
+    assert today.posted_by_week
+    assert today.posted_by_week[-1].posted == 1500.0
+
+
+def test_r20_a_season_with_no_post_at_all_is_not_undated() -> None:
+    today = build_today(_inputs([]), casework=False, finance=True)
+    assert today.posts_undated is False
+    assert today.posted_this_week is not None
+    assert today.posted_this_week.blank is False
+
+
+def test_r20_only_finance_is_told() -> None:
+    rows = [_row("a", 1, _undated(1, 1000.0))]
+    for kw in ({"casework": True, "finance": False}, {"casework": False, "finance": False, "development": True}):
+        assert build_today(_inputs(rows), **kw).posts_undated is None

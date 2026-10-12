@@ -10,10 +10,20 @@ import pytest
 
 from api.constants.collections import AID_GRANTORS
 from api.schemas.financial_aid_grants import GrantorOut, GrantorsResponse, GrantsResponse
+from api.services.financial_aid_cancellations import CancelEvent
 from api.services.financial_aid_today_week import TodayWeekService
 from bunking.financial_aid.change_replay import LogRow
 from bunking.financial_aid.decisions.rounds import DecisionEvent, EventKind
-from tests.unit.api.services.decisions_fakes import FakeDecisionsStore, grant_row, seed_request
+from tests.unit.api.services.decisions_fakes import (
+    T0,
+    FakeDecisionsStore,
+    FakeRules,
+    approved,
+    grant_row,
+    seed_line,
+    seed_request,
+)
+from tests.unit.api.services.financial_aid_fakes import YEAR
 
 NOW = datetime(2031, 4, 16, 18, tzinfo=UTC)  # Wednesday 2031-04-16, camp time 11:00
 
@@ -85,7 +95,7 @@ def _event(
 
 
 def _service(store: FakeDecisionsStore, grants: _Grants) -> TodayWeekService:
-    return TodayWeekService(store=store, grants=grants, clock=lambda: NOW)
+    return TodayWeekService(store=store, grants=grants, pricing=FakeRules(approved()), clock=lambda: NOW)
 
 
 def _register() -> list[Any]:
@@ -121,7 +131,8 @@ def store_with_posts() -> tuple[_Store, _Grants]:
 def store_with_old_post() -> tuple[_Store, _Grants]:
     store = _Store()
     seed_request(store, "reqjohnson00001", household=1000001)
-    _event(store, "reqjohnson00001", "post", _at(3, 31))  # Monday; 14 days later is 2031-04-14
+    # Monday; CampMinder posted it that day, so the Waiting line counts it overdue from Tue 2031-04-15 (S2)
+    _posted_on(store, "reqjohnson00001", _at(3, 31), date(2031, 3, 31))
     return store, _Grants([])
 
 
@@ -211,46 +222,51 @@ async def test_finance_week_figures_leave_posted_in_cm_to_the_today_read(
 
 @pytest.mark.asyncio
 async def test_an_overdue_item_is_stamped_the_day_the_line_goes_overdue() -> None:
-    """The line is overdue past 14 days (`> 14`), so the item is stamped post + 15 days, not + 14."""
+    """The line is overdue past 14 days (`> 14`), so the item is stamped on the CampMinder post day + 15 days, not
+    + 14, at camp midnight, the moment the line's day count passes 14 (final check S2: the line's clock)."""
     store = _Store()
     seed_request(store, "reqjohnson00001", household=1000001)
-    _event(store, "reqjohnson00001", "post", _at(3, 31))
+    _posted_on(store, "reqjohnson00001", _at(3, 31), date(2031, 3, 31))
     week = await _service(store, _Grants([])).read(2031, casework=True, finance=False, development=False)
     overdue = next(f for f in week.feed if f.kind == "overdue")
-    assert overdue.at == datetime(2031, 4, 15, 17, tzinfo=UTC)
+    assert overdue.at == datetime(2031, 4, 15, 7, tzinfo=UTC)  # 00:00 camp time (PDT)
 
 
 @pytest.mark.asyncio
 async def test_an_overdue_item_later_than_now_is_not_shown() -> None:
-    """Posted Apr 1 at 19:00 UTC: its 15th day is Apr 16 at 19:00, an hour after NOW."""
+    """CampMinder posted it Apr 2: the line counts it overdue from Apr 17, tomorrow."""
     store = _Store()
     seed_request(store, "reqjohnson00001", household=1000001)
-    _event(store, "reqjohnson00001", "post", _at(4, 1, 19))
+    _posted_on(store, "reqjohnson00001", _at(4, 2), date(2031, 4, 2))
     week = await _service(store, _Grants([])).read(2031, casework=True, finance=False, development=False)
     assert [f for f in week.feed if f.kind == "overdue"] == []
 
 
 @pytest.mark.asyncio
-async def test_developments_awards_count_camp_posts_and_outside_grants_recorded(
-    store_with_posts: tuple[_Store, _Grants],
-) -> None:
-    """Ruling 15: development cares about all awards. This week: three camp posts and one outside grant recorded
-    (Apr 15); last week: two camp posts and no grant."""
-    week = await _service(*store_with_posts).read(2031, casework=False, finance=False, development=True)
+async def test_developments_awards_count_outside_grants_with_camp_posts() -> None:
+    """Ruling 15: development cares about all awards, the camp's and outside grants. Final check S1: as the headline
+    counts them, so an outside grant on a session the camp has not posted is an award of its own."""
+    store = _Store()
+    seed_request(store, "reqjohnson00001", household=1000001)
+    seed_request(store, "reqgarcia000001", household=1000002, person=1000012)
+    _event(store, "reqgarcia000001", "post", _at(4, 14))
+    grants = _Grants([replace(grant_row("reqjohnson00001", "800"), recorded_at=_at(4, 15))])
+    week = await _service(store, grants).read(2031, casework=False, finance=False, development=True)
     awards = next(f for f in week.development or [] if f.key == "awards")
-    assert (awards.value, awards.previous) == (4, 2)
+    assert (awards.value, awards.previous) == (2, 0)
     assert "outside grants" in awards.title
 
 
 @pytest.mark.asyncio
-async def test_a_reversed_or_uncounted_grant_is_no_award(store_with_posts: tuple[_Store, _Grants]) -> None:
-    store, grants = store_with_posts
-    grants.register = [
-        replace(grants.register[0], is_reversed=True),
-        replace(grants.register[0], counts=False),
-    ]
-    week = await _service(store, grants).read(2031, casework=False, finance=False, development=True)
-    assert next(f for f in week.development or [] if f.key == "awards").value == 3
+async def test_a_reversed_or_uncounted_grant_is_no_award() -> None:
+    live = replace(grant_row("reqjohnson00001", "800"), recorded_at=_at(4, 15))
+    store = _Store()
+    seed_request(store, "reqjohnson00001", household=1000001)
+    week = await _service(store, _Grants([live])).read(2031, casework=False, finance=False, development=True)
+    assert next(f for f in week.development or [] if f.key == "awards").value == 1
+    gone = _Grants([replace(live, is_reversed=True), replace(live, counts=False)])
+    week = await _service(store, gone).read(2031, casework=False, finance=False, development=True)
+    assert next(f for f in week.development or [] if f.key == "awards").value == 0
 
 
 @pytest.mark.asyncio
@@ -298,7 +314,9 @@ def _labelled(store: FakeDecisionsStore, grants: _Grants, **kw: Any) -> TodayWee
     labels = _Labels(
         {1000001: "Pat Johnson & Alex Garcia", 1000002: "Liam & Olivia Becker", 1000003: "Olivia & Wei Chen"}
     )
-    return TodayWeekService(store=store, grants=grants, labels=labels, clock=lambda: NOW, **kw)
+    return TodayWeekService(
+        store=store, grants=grants, pricing=FakeRules(approved()), labels=labels, clock=lambda: NOW, **kw
+    )
 
 
 @pytest.mark.asyncio
@@ -342,7 +360,7 @@ async def test_every_family_line_is_short_and_leads_with_the_name(store_with_pos
     store, grants = store_with_posts
     _event(store, "reqgarcia000001", "approve", _at(4, 16, 17), amount="1200")
     seed_request(store, "reqoldpost00001", household=1000002, person=1000012)
-    _event(store, "reqoldpost00001", "post", _at(3, 31, 18))  # 15 days unanswered on Tue 4/15
+    _posted_on(store, "reqoldpost00001", _at(4, 1, 18), date(2031, 4, 1))  # overdue from Wed 4/16, camp midnight
     week = await _labelled(store, grants).read(2031, casework=True, finance=True, development=False)
     words = {f.kind: f.words for f in week.feed}
     assert words["approved"] == "Garcia · R1 approved $1,200"
@@ -442,3 +460,184 @@ async def test_you_approved_says_how_many_requests_it_counts(store_with_posts: t
     week = await _labelled(store, grants).read(2031, casework=False, finance=True, development=False)
     approved_figure = next(f for f in week.finance or [] if f.key == "approved")
     assert (approved_figure.value, approved_figure.note) == (2000, "2 req")
+
+
+# --- Final check (2026-10-11) ------------------------------------------------------------------------------------
+# S1: development's Awards counts as the headline counts (each camper and session once, camp aid and outside grants
+# together, ruling 15): the week's figure is how many awards the season gained in it.
+# S2: the waiting-14+-days item runs on the Waiting on the family line's own clock and population: the CampMinder post
+# day, live requests, rounds not clawed back. An undated post (the reproduced load) is no item.
+
+
+def _posted_on(
+    store: FakeDecisionsStore,
+    request_id: str,
+    created: datetime,
+    effective_on: date | None,
+    *,
+    round_: int = 1,
+    lock_source: str = "tick",
+) -> None:
+    store.events.append(
+        DecisionEvent(
+            id=f"evt{len(store.events):012d}",
+            request_id=request_id,
+            round=round_,
+            kind="post",
+            created=created,
+            amount=Decimal(1500),
+            effective_on=effective_on,
+            lock_source=lock_source,
+            rules_version=1,
+            snapshot={"pool": "camp_pool", "counts_toward_budget": True},
+        )
+    )
+
+
+def _priced(store: FakeDecisionsStore, now: datetime, grants: _Grants | None = None) -> TodayWeekService:
+    return TodayWeekService(store=store, grants=grants or _Grants([]), pricing=FakeRules(approved()), clock=lambda: now)
+
+
+def _awards(week: Any) -> tuple[float, float]:
+    figure = next(f for f in week.development or [] if f.key == "awards")
+    return figure.value, figure.previous
+
+
+@pytest.mark.asyncio
+async def test_s1_a_camp_post_and_an_outside_grant_on_one_session_are_one_award() -> None:
+    """The headline: "The camp's aid plus a grant on the same session is one award". A camper posted and granted on
+    the same session in the same week is one award, never two."""
+    store = _Store()
+    seed_request(store, "reqjohnson00001", household=1000001)
+    _event(store, "reqjohnson00001", "post", _at(4, 15))
+    grants = _Grants([replace(grant_row("reqjohnson00001", "800"), recorded_at=_at(4, 16, 15))])
+    week = await _service(store, grants).read(2031, casework=False, finance=False, development=True)
+    assert _awards(week) == (1, 0)
+
+
+@pytest.mark.asyncio
+async def test_s1_a_later_round_on_a_session_already_awarded_is_no_new_award() -> None:
+    """Round 2 posted this week on a session whose Round 1 posted last week: the season's awards did not grow."""
+    store = _Store()
+    seed_request(store, "reqjohnson00001", household=1000001)
+    _event(store, "reqjohnson00001", "post", _at(4, 8))
+    store.events.append(replace(store.events[-1], id="evtround200001", round=2, created=_at(4, 15)))
+    week = await _service(store, _Grants([])).read(2031, casework=False, finance=False, development=True)
+    assert _awards(week) == (0, 1)
+
+
+@pytest.mark.asyncio
+async def test_s1_a_post_undone_and_ticked_again_is_one_award() -> None:
+    store = _Store()
+    seed_request(store, "reqjohnson00001", household=1000001)
+    _event(store, "reqjohnson00001", "post", _at(4, 14))
+    _event(store, "reqjohnson00001", "unpost", _at(4, 14, 20), amount=None)
+    _event(store, "reqjohnson00001", "post", _at(4, 15))
+    week = await _service(store, _Grants([])).read(2031, casework=False, finance=False, development=True)
+    assert _awards(week) == (1, 0)
+
+
+@pytest.mark.asyncio
+async def test_s1_two_sessions_are_two_awards_and_a_camp_only_grant_is_not_an_outside_one() -> None:
+    store = _Store()
+    seed_request(store, "reqjohnson00001", household=1000001)
+    seed_request(store, "reqjohnson00002", household=1000001, session=1000102)
+    _event(store, "reqjohnson00001", "post", _at(4, 14))
+    _event(store, "reqjohnson00002", "post", _at(4, 15))
+    camp = replace(
+        grant_row("reqjohnson00001", "800", funder_type="camp"), person_cm_id=1000099, recorded_at=_at(4, 15)
+    )
+    week = await _service(store, _Grants([camp])).read(2031, casework=False, finance=False, development=True)
+    assert _awards(week) == (2, 0)
+
+
+@pytest.mark.asyncio
+async def test_s1_this_week_and_last_week_count_alike(store_with_posts: tuple[_Store, _Grants]) -> None:
+    """store_with_posts: Johnson's session first posted Mon 4/7 (last week) and Garcia's Thu 4/10, past last week's
+    Monday-to-Wednesday; this week's posts and the grant on Johnson's session add no award."""
+    week = await _service(*store_with_posts).read(2031, casework=False, finance=False, development=True)
+    assert _awards(week) == (0, 1)
+    assert "each camper and session once" in next(f for f in week.development or [] if f.key == "awards").title
+
+
+MAR24 = datetime(2027, 3, 24, 19, tzinfo=UTC)  # Wednesday, camp time 12:00 (PDT); the week began Mon 2027-03-22
+
+
+@pytest.mark.asyncio
+async def test_s2_a_back_dated_tick_goes_overdue_on_the_campminder_post_day_plus_fifteen() -> None:
+    """Ticked Mon 3/22 for a post CampMinder made Mon 3/8: the Waiting line counts it overdue from Tue 3/23 (15 days
+    after the post day), so the item is stamped then, at camp midnight, not 15 days after the tick."""
+    store = FakeDecisionsStore()
+    seed_request(store, "reqjohnson00001", household=1000001)
+    _posted_on(store, "reqjohnson00001", datetime(2027, 3, 22, 18, tzinfo=UTC), date(2027, 3, 8))
+    week = await _priced(store, MAR24).read(YEAR, casework=True, finance=False, development=False)
+    overdue = [f for f in week.feed if f.kind == "overdue"]
+    assert [f.at for f in overdue] == [datetime(2027, 3, 23, 7, tzinfo=UTC)]
+    assert overdue[0].household_cm_id == 1000001
+
+
+@pytest.mark.asyncio
+async def test_s2_a_load_with_no_post_dates_never_floods_the_feed() -> None:
+    """The 2026 reproduced load writes no effective_on: the Waiting line shows those families undated and not
+    overdue, so the feed says nothing about them either."""
+    store = FakeDecisionsStore()
+    for n in range(4):
+        rid = f"reqloaded0000{n}"
+        seed_request(store, rid, household=1000001 + n, person=1000011 + n)
+        _posted_on(store, rid, datetime(2027, 3, 8, 18, tzinfo=UTC), None, lock_source="reproduced")
+    week = await _priced(store, MAR24).read(YEAR, casework=True, finance=False, development=False)
+    assert [f for f in week.feed if f.kind == "overdue"] == []
+
+
+@pytest.mark.asyncio
+async def test_s2_a_cancelled_request_waits_on_no_one() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, "reqjohnson00001", household=1000001)
+    _posted_on(store, "reqjohnson00001", datetime(2027, 3, 8, 18, tzinfo=UTC), date(2027, 3, 8))
+    store.cancel_events.append(
+        CancelEvent("can000000000001", "reqjohnson00001", "cancel", T0, reason="not_known", in_kindred=True)
+    )
+    week = await _priced(store, MAR24).read(YEAR, casework=True, finance=False, development=False)
+    assert [f for f in week.feed if f.kind == "overdue"] == []
+
+
+@pytest.mark.asyncio
+async def test_s2_a_round_campminder_reversed_waits_on_no_one() -> None:
+    """A withdrawn request whose CampMinder money was reversed (D54's claw-back) is not waiting on the family."""
+    store = FakeDecisionsStore()
+    seed_request(store, "reqjohnson00001", household=1000001, status="withdrawn")
+    _posted_on(store, "reqjohnson00001", datetime(2027, 3, 8, 18, tzinfo=UTC), date(2027, 3, 8))
+    seed_line(
+        store,
+        9001,
+        "1500",
+        posted=datetime(2027, 3, 8, 18, tzinfo=UTC),
+        reversed_at=datetime(2027, 3, 12, 18, tzinfo=UTC),
+    )
+    store.synced_at = datetime(2027, 3, 13, 18, tzinfo=UTC)
+    week = await _priced(store, MAR24).read(YEAR, casework=True, finance=False, development=False)
+    assert [f for f in week.feed if f.kind == "overdue"] == []
+
+
+@pytest.mark.asyncio
+async def test_s2_the_item_appears_once_per_request_as_the_line_counts_it() -> None:
+    """Two rounds waiting on one request are one family waiting: the line counts requests (over_14_days)."""
+    store = FakeDecisionsStore()
+    seed_request(store, "reqjohnson00001", household=1000001)
+    _posted_on(store, "reqjohnson00001", datetime(2027, 3, 8, 18, tzinfo=UTC), date(2027, 3, 8))
+    _posted_on(store, "reqjohnson00001", datetime(2027, 3, 8, 19, tzinfo=UTC), date(2027, 3, 8), round_=2)
+    week = await _priced(store, MAR24).read(YEAR, casework=True, finance=False, development=False)
+    assert [f.kind for f in week.feed].count("overdue") == 1
+
+
+@pytest.mark.asyncio
+async def test_s2_development_never_prices_the_season() -> None:
+    class _NoSeason(FakeDecisionsStore):
+        async def fetch_sessions(self, year: int) -> Any:
+            raise AssertionError("development read the season")
+
+    store = _NoSeason()
+    seed_request(store, "reqjohnson00001", household=1000001)
+    _posted_on(store, "reqjohnson00001", datetime(2027, 3, 8, 18, tzinfo=UTC), date(2027, 3, 8))
+    week = await _priced(store, MAR24).read(YEAR, casework=False, finance=False, development=True)
+    assert all(f.household_cm_id is None for f in week.feed)

@@ -9,11 +9,12 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from typing import Final, Literal
 
 from api.constants.collections import AID_GRANTORS
+from api.schemas.financial_aid_decisions import GridRowOut
 from api.schemas.financial_aid_surfaces import (
     TodayWeekResponse,
     WeekFeedKind,
@@ -21,20 +22,28 @@ from api.schemas.financial_aid_surfaces import (
     WeekFigureOut,
 )
 from api.services.camp_calendar import CAMP_TZ
-from api.services.financial_aid_decisions_service import DecisionsStore
+from api.services.financial_aid_decisions_service import DecisionsStore, FinancialAidDecisionsService, PricingRules
 from api.services.financial_aid_grants_register import RegisterRow
 from api.services.financial_aid_grants_service import OneGrantsLoad
 from api.services.financial_aid_household_page import HouseholdLabeler
 from api.services.financial_aid_intake_types import RequestRecord
 from api.services.financial_aid_rules_service import RulesNotFoundError, RulesVersion
-from api.services.financial_aid_today import WAITING_TOO_LONG_DAYS, GrantsReads, RulesDrafts, week_start
+from api.services.financial_aid_today import (
+    WAITING_TOO_LONG_DAYS,
+    GrantsReads,
+    RulesDrafts,
+    waiting_overdue_on,
+    week_start,
+)
 from bunking.financial_aid.change_replay import LogRow
 from bunking.financial_aid.decisions.rounds import DecisionEvent
+from bunking.financial_aid.reports.development import Awards
 from bunking.financial_aid.scenarios.describe import CARD_TITLES
 
 FEED_SIZE: Final = 6
 AWARDS_TITLE: Final = (
-    "Camp offers posted plus outside grants recorded, counted together the way the headline counts awards."
+    "Awards the season gained, counted the way the headline counts them: each camper and session once, the camp's "
+    "aid and outside grants together (a grant on a session the camp already posted adds none)."
 )
 
 
@@ -156,13 +165,43 @@ def _finance(
     ]
 
 
+def _awards_by(
+    until: date, events: Sequence[DecisionEvent], outside: Sequence[RegisterRow], requests: Mapping[str, RequestRecord]
+) -> int:
+    """The headline's Grants/Awards (reports.development.Awards: each attendee and session once, any aid) over what
+    was known by the end of `until`: the posts standing then (a round's latest post or undo recorded by then), on
+    their request's camper and session, and the outside grants recorded by then."""
+    standing: dict[tuple[str, int], bool] = {}
+    for event in sorted(events, key=lambda e: (e.created, e.id)):
+        if event.kind in ("post", "unpost") and _day(event.created) <= until:
+            standing[(event.request_id, event.round)] = event.kind == "post"
+    awards = Awards()
+    for (request_id, _), posted in standing.items():
+        request = requests.get(request_id)
+        if posted and request is not None:
+            awards.add(None, request.person_cm_id, request.household_cm_id, request.session_cm_id)
+    for row in outside:
+        if _recorded_day(row) <= until:
+            awards.add(None, row.person_cm_id, row.household_cm_id, row.session_cm_id)
+    return awards.count()
+
+
 def _development(
-    windows: _Counted, events: Sequence[DecisionEvent], register: Sequence[RegisterRow], funder_log: Sequence[LogRow]
+    windows: _Counted,
+    events: Sequence[DecisionEvent],
+    register: Sequence[RegisterRow],
+    funder_log: Sequence[LogRow],
+    requests: Mapping[str, RequestRecord],
 ) -> list[WeekFigureOut]:
     outside = [r for r in _live_grants(register) if r.funder_type == "outside"]
     now, before = windows.split(outside, _recorded_day)
-    posts, posts_before = windows.split((e for e in events if e.kind == "post"), lambda e: _day(e.created))
     edits, edits_before = windows.split(funder_log, lambda r: _day(r.created))
+    one_day = timedelta(days=1)
+
+    def gained(start: date, end: date) -> int:
+        """How many awards the season gained from `start` through `end` (final check S1): never negative, as an
+        award only joins the count."""
+        return _awards_by(end, events, outside, requests) - _awards_by(start - one_day, events, outside, requests)
 
     def dollars(rows: Sequence[RegisterRow]) -> float:
         return float(sum((r.amount for r in rows), Decimal(0)))
@@ -173,8 +212,8 @@ def _development(
         _figure(
             "awards",
             "Awards",
-            len(posts) + len(now),
-            len(posts_before) + len(before),
+            gained(windows.this_start, windows.this_end),
+            gained(windows.last_start, windows.last_end),
             title=AWARDS_TITLE,
         ),
         _figure(
@@ -186,23 +225,19 @@ def _development(
     ]
 
 
-# The Waiting line is overdue past WAITING_TOO_LONG_DAYS (`> 14`), so the item is stamped on the day after the 14th.
-OVERDUE_STAMP: Final = timedelta(days=WAITING_TOO_LONG_DAYS + 1)
-
-
-def _overdue(events: Sequence[DecisionEvent], windows: _Counted, now: datetime) -> list[tuple[DecisionEvent, datetime]]:
-    """Posts with no later accept or unpost for the same request and round, stamped when the Waiting line counts them
-    overdue (post + 15 days), whose stamp falls in this week and is not later than now."""
-    ordered = sorted(events, key=lambda e: e.created)
-    last_post: dict[tuple[str, int], DecisionEvent] = {}
-    for event in ordered:
-        key = (event.request_id, event.round)
-        if event.kind == "post":
-            last_post[key] = event
-        elif event.kind in ("accept", "unpost"):
-            last_post.pop(key, None)
-    due = [(e, e.created + OVERDUE_STAMP) for e in last_post.values()]
-    return [(e, at) for e, at in due if at <= now and _in(_day(at), windows.this_start, windows.this_end)]
+def _overdue(rows: Sequence[GridRowOut], windows: _Counted, now: datetime) -> list[tuple[GridRowOut, datetime]]:
+    """Final check S2: each request the Waiting on the family line counts over 14 days, stamped at camp midnight of the
+    day the line first counts it (waiting_overdue_on: the CampMinder post day + 15, on the line's own population),
+    when that falls in this week and is not later than now. An undated post (the 2026 reproduced load) is no item."""
+    out: list[tuple[GridRowOut, datetime]] = []
+    for row in rows:
+        day = waiting_overdue_on(row)
+        if day is None or not _in(day, windows.this_start, windows.this_end):
+            continue
+        at = datetime.combine(day, time.min, tzinfo=CAMP_TZ).astimezone(UTC)
+        if at <= now:
+            out.append((row, at))
+    return out
 
 
 def _funder_name(row: LogRow, names: Mapping[str, str]) -> str:
@@ -254,14 +289,17 @@ class TodayWeekService:
         *,
         store: DecisionsStore,
         grants: GrantsReads,
+        pricing: PricingRules,
         labels: HouseholdLabeler | None = None,
         rules: RulesDrafts | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
-        """`labels`: the household page's label helper, naming a feed item's household as the grid does (audit R24);
-        None: its family name. `rules`: the rules draft, for finance's section edits (spec §8.1 ✎)."""
+        """`pricing`: the season's rules, so the waiting-14+-days items are the Waiting on the family line's own rows
+        (final check S2). `labels`: the household page's label helper, naming a feed item's household as the grid does
+        (audit R24); None: its family name. `rules`: the rules draft, for finance's section edits (spec §8.1 ✎)."""
         self._store = store
         self._grants = grants
+        self._pricing = pricing
         self._labels = labels
         self._rules = rules
         self._clock = clock or (lambda: datetime.now(UTC))
@@ -272,14 +310,18 @@ class TodayWeekService:
         windows = _Counted(today)
         families = casework or finance  # family-level data, and the names that come with it
         shared = OneGrantsLoad(self._grants, year)
+        # Development reads the requests only to count awards by camper and session (S1); its feed names none (§9.4).
+        # Only family callers price the season (S2's waiting rows).
+        waiting_read = asyncio.ensure_future(self._waiting_rows(year, shared) if families else _no_rows())
         (_, register), events, requests, funder_log, grantors, rules = await asyncio.gather(
             shared.read(),
             self._store.fetch_decision_events(year),
-            self._store.fetch_requests(year) if families else _none(),
+            self._store.fetch_requests(year) if families or development else _none(),
             self._store.fetch_change_log(year, AID_GRANTORS),
             self._grants.list_grantors(include_retired=True),
             self._latest_rules(year) if finance else _no_rules(),
         )
+        waiting = await waiting_read
         request_household = {r.id: r.household_cm_id for r in requests}
         request_person = {r.id: r.person_cm_id for r in requests}
         grantor_names = {g.key: g.name for g in grantors.grantors}
@@ -293,6 +335,7 @@ class TodayWeekService:
             request_household,
             grantor_names,
             request_person=request_person,
+            waiting=waiting,
             families=families,
             development=development,
             finance=finance,
@@ -306,9 +349,20 @@ class TodayWeekService:
             week_of=windows.this_start,
             registrar=_registrar(windows, events, register, request_household) if casework else None,
             finance=_finance(windows, events, request_household) if finance else None,
-            development=_development(windows, events, register, funder_log) if development else None,
+            development=(
+                _development(windows, events, register, funder_log, {r.id: r for r in requests})
+                if development
+                else None
+            ),
             feed=feed,
         )
+
+    async def _waiting_rows(self, year: int, shared: OneGrantsLoad) -> list[GridRowOut]:
+        """The season priced as the Today read prices it, its rows as the grid builds them (no names: the kept items are
+        named later), so Waiting on the family's population and clock are the line's own (S2)."""
+        decisions = FinancialAidDecisionsService(self._store, self._pricing, shared.register, clock=self._clock)
+        season = await decisions.season(year)
+        return [decisions.row_of(season, ({}, {}), request_id) for request_id in season.priced]
 
     async def _latest_rules(self, year: int) -> RulesVersion | None:
         if self._rules is None:
@@ -348,6 +402,7 @@ class TodayWeekService:
         grantor_names: Mapping[str, str],
         *,
         request_person: Mapping[str, int] | None = None,
+        waiting: Sequence[GridRowOut] = (),
         families: bool,
         finance: bool,
         development: bool,
@@ -402,16 +457,15 @@ class TodayWeekService:
                             person=who(event.request_id),
                         )
                     )
-            for event, at in _overdue(events, windows, now):
-                household, href = at_home(event.request_id)
+            for late, at in _overdue(waiting, windows, now):
                 items.append(
                     _Item(
                         "overdue",
                         at,
                         _fmt(f"{{n}} waiting {WAITING_TOO_LONG_DAYS}+ days"),
-                        household,
-                        href,
-                        person=who(event.request_id),
+                        late.household_cm_id,
+                        "household",
+                        person=late.person_cm_id,
                     )
                 )
         if families or development:  # a caller with no section sees no funder or grant item
@@ -467,6 +521,10 @@ def _out(item: _Item, names: _Names) -> WeekFeedOut:
 
 
 async def _none() -> list[RequestRecord]:
+    return []
+
+
+async def _no_rows() -> list[GridRowOut]:
     return []
 
 

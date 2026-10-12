@@ -1912,6 +1912,7 @@ async def get_today_week(year: _Year, user: AuthUser = _CAMPERSHIPS_OPEN) -> Tod
     service = TodayWeekService(
         store=store,
         grants=GrantsService(GrantsRepository(pb)),
+        pricing=_rules(),  # the waiting-14+-days items are the Waiting on the family line's own rows (final check S2)
         labels=_household_labels(),  # households named as the grid names them (audit R24)
         rules=_rules(),  # finance's rules-section edits (spec §8.1)
     )

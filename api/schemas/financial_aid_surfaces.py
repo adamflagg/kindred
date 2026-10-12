@@ -195,6 +195,9 @@ class WeekFigureOut(BaseModel):
     unit: Literal["count", "dollars"]
     title: str = ""  # a native title saying what the figure counts, where its label alone does not
     note: str = ""  # a short muted word after the figure, in place of a change ("4 req": You approved's requests)
+    # Owner ruling 20: nothing can be counted (Posted in CM on a season whose posts carry no post date). The card shows
+    # "—" with `title` saying why, and no change; value and previous are 0 and mean nothing.
+    blank: bool = False
 
 
 class TodayResponse(BaseModel):
@@ -203,7 +206,9 @@ class TodayResponse(BaseModel):
     stages: casework, finance or view callers (the hero bar); None for a development-only caller.
     posted_by_week: finance only (Committed by week); built from the priced rows the budget counts, so its last
     point is the budget's Posted.
-    posted_this_week: finance only (This week's "Posted in CM"), from the same rows, by posted_on."""
+    posted_this_week: finance only (This week's "Posted in CM"), from the same rows, by posted_on.
+    posts_undated: finance only (owner ruling 20): the season has posted rounds and not one carries a post date (the
+    2026 reproduced load), so Committed by week is not drawn (posted_by_week is empty) and Posted in CM is blank."""
 
     year: int
     casework: list[TodayLineOut] | None
@@ -212,6 +217,7 @@ class TodayResponse(BaseModel):
     development: list[TodayLineOut] | None = None
     posted_by_week: list[WeekPointOut] | None = None
     posted_this_week: WeekFigureOut | None = None
+    posts_undated: bool | None = None
 
 
 class HouseholdMatchOut(BaseModel):

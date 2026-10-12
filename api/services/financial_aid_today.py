@@ -196,6 +196,17 @@ def _waiting_since(row: GridRowOut) -> date | None:
     return _waiting_clock(row)[0]
 
 
+def waiting_overdue_on(row: GridRowOut) -> date | None:
+    """The day Waiting on the family first counts `row` over WAITING_TOO_LONG_DAYS (`> 14`, so the 15th day after its
+    clock's CampMinder post day). None when the row waits on no one (not in the queue: cancelled, on To reverse, every
+    round accepted or clawed back) or its clock is undated. This week's overdue item reads the same day (final check
+    S2), so the feed and the line never disagree."""
+    if not row.queues or "waiting_on_family" not in row.queues:
+        return None
+    since = _waiting_since(row)
+    return since + timedelta(days=WAITING_TOO_LONG_DAYS + 1) if since is not None else None
+
+
 def _asked_clock(row: GridRowOut) -> tuple[date | None, RoundOut | None]:
     """Needs an offer's clock: the oldest ask among the rounds the queue holds."""
     return _clocked(offer_rounds(row), lambda r: r.asked_on)
@@ -393,7 +404,9 @@ def _casework(inputs: TodayInputs) -> list[TodayLineOut]:
             "waiting_on_family",
             waiting,
             oldest_days=waiting_oldest,
-            over_14_days=sum(1 for d in since if (inputs.today - d).days > WAITING_TOO_LONG_DAYS),
+            over_14_days=sum(
+                1 for row in waiting if (day := waiting_overdue_on(row)) is not None and day <= inputs.today
+            ),
             overdue=_overdue("waiting_on_family", waiting_oldest),
             next_up=_next_up(waiting, inputs.today, _waiting_clock),
         ),
@@ -667,10 +680,25 @@ def _posted_parts(rows: Iterable[GridRowOut]) -> Iterable[tuple[date | None, Dec
                 yield r.posted_on, Decimal(str(r.posted or 0)) - Decimal(str(r.outside_budget or 0))
 
 
+POSTS_UNDATED_TITLE: Final = (
+    "This season's posts have no post dates, so what was posted in CampMinder can't be counted by week."
+)
+
+
+def posts_undated(inputs: TodayInputs) -> bool:
+    """Owner ruling 20: the season has posted rounds (as the budget counts them) and not one carries a post date, as
+    the 2026 reproduced load writes them. With some dated, an undated post still counts in the current week."""
+    days = [posted_on for posted_on, _ in _posted_parts(inputs.rows)]
+    return bool(days) and all(day is None for day in days)
+
+
 def _posted_by_week(inputs: TodayInputs) -> list[WeekPointOut]:
     """Committed by week: the budget's Posted (`_posted_parts`), week by week, dated by `posted_on`, accumulated, with
     empty weeks filled, from the first week with a post through the current one. A post with no `posted_on` counts in
-    the current week, so the last point is always the budget's Posted."""
+    the current week, so the last point is always the budget's Posted. A season with no dated post has no series
+    (ruling 20)."""
+    if posts_undated(inputs):
+        return []
     current = week_start(inputs.today)
     per_week: dict[date, Decimal] = defaultdict(Decimal)
     for posted_on, part in _posted_parts(inputs.rows):
@@ -690,7 +718,18 @@ def _posted_by_week(inputs: TodayInputs) -> list[WeekPointOut]:
 def _posted_this_week(inputs: TodayInputs) -> WeekFigureOut:
     """This week's "Posted in CM" (spec §7.2): the budget's Posted (`_posted_parts`) by `posted_on`, Monday through
     today against the same weekdays of last week, as the week read's windows run. An undated post counts this week, as
-    `_posted_by_week` counts it in the current week, so the two never disagree."""
+    `_posted_by_week` counts it in the current week, so the two never disagree. A season with no dated post has no
+    figure (ruling 20): blank, its title saying why."""
+    if posts_undated(inputs):
+        return WeekFigureOut(
+            key="posted_cm",
+            label="Posted in CM",
+            value=0,
+            previous=0,
+            unit="dollars",
+            title=POSTS_UNDATED_TITLE,
+            blank=True,
+        )
     this_start = week_start(inputs.today)
     last_start = this_start - timedelta(days=7)
     last_end = last_start + (inputs.today - this_start)
@@ -718,6 +757,7 @@ def build_today(
         development=_development(inputs) if development else None,
         posted_by_week=_posted_by_week(inputs) if finance else None,
         posted_this_week=_posted_this_week(inputs) if finance else None,
+        posts_undated=posts_undated(inputs) if finance else None,
     )
 
 
