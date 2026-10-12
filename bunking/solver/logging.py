@@ -27,8 +27,9 @@ SOLVER_LOG_RETENTION_DAYS = 30
 # Relative to the API's working directory, which is the persisted logs volume's parent.
 SOLVER_LOGS_DIR = Path("logs/solver")
 
-# Exactly what save_to_file writes: session_<id>_solver_log_<YYYYmmdd_HHMMSS>[_<run id>].json
-_SOLVER_LOG_NAME = re.compile(r"session_-?\d+_solver_log_\d{8}_\d{6}(?:_[A-Za-z0-9-]+)?\.json")
+# What save_to_file writes: session_<id>_solver_log_<YYYYmmdd_HHMMSS>[_<run id>].json,
+# where a run id may hold letters, digits, hyphens and underscores.
+_SOLVER_LOG_NAME = re.compile(r"session_-?\d+_solver_log_\d{8}_\d{6}(?:_[A-Za-z0-9_-]+)?\.json")
 
 
 def prune_solver_logs(logs_dir: Path, now: float | None = None, max_age_days: int = SOLVER_LOG_RETENTION_DAYS) -> int:
@@ -39,6 +40,12 @@ def prune_solver_logs(logs_dir: Path, now: float | None = None, max_age_days: in
     touched. Never raises -- a failure is logged by exception type and the solve
     that triggered the prune carries on. Returns the number of files deleted.
     """
+    # scandir follows a symlinked directory, which would let pruning delete
+    # matching files somewhere else. The volume's logs dir is a real directory;
+    # refuse to prune through a link at either level of logs/solver.
+    if logs_dir.is_symlink() or logs_dir.parent.is_symlink():
+        logger.warning("Solver log pruning skipped: the logs directory is a symlink")
+        return 0
     cutoff = (time.time() if now is None else now) - max_age_days * 86_400
     deleted = failed = 0
     last_error = ""

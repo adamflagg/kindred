@@ -63,6 +63,10 @@ cp -R "$ROOT/frontend/public/." "$DOCROOT_LOCAL/"
 printf '<!doctype html><title>stub</title>\n' > "$DOCROOT_LOCAL/index.html"
 printf 'console.log(1)\n' > "$DOCROOT_LOCAL/assets/index-AbCd12_-.js"
 printf 'body{}\n' > "$DOCROOT_LOCAL/assets/index-Zy98xW76.css"
+# A file under /assets/ WITHOUT a content hash (frontend/public/assets/ would
+# copy one there): its bytes can change under the same URL, so it must not be
+# immutable.
+printf '{}\n' > "$DOCROOT_LOCAL/assets/app-config.json"
 printf 'PNG' > "$DOCROOT_LOCAL/local/assets/brand-logo.png"
 
 USE_DOCKER=1
@@ -228,6 +232,7 @@ expect_cc "$IMMUTABLE" 200 GET /assets/index-Zy98xW76.css
 
 echo "--- Other static files"
 expect_cc "$NO_CACHE" 200 GET /local/assets/brand-logo.png
+expect_cc "$NO_CACHE" 200 GET /assets/app-config.json
 # Every file frontend/public ships: HTML is a document (no-store), anything
 # else is a non-hashed static file (no-cache).
 while IFS= read -r f; do

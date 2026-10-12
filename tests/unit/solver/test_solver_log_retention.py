@@ -135,3 +135,28 @@ def test_directory_scan_failure_does_not_fail_the_save(
 
     assert Path(written).exists()
     assert any("OSError" in r.getMessage() for r in caplog.records if r.levelno == logging.WARNING)
+
+
+def test_run_ids_with_underscores_are_pruned(logs_dir: Path) -> None:
+    """save_to_file accepts any run id string; one with an underscore must still expire."""
+    now = time.time()
+    old = _touch(logs_dir / "session_1000001_solver_log_20260801_101500_run_7_retry.json", 31, now)
+
+    assert prune_solver_logs(logs_dir, now=now) == 1
+    assert not old.exists()
+
+
+def test_a_symlinked_logs_directory_is_not_pruned(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """If the logs dir itself is a symlink, scandir would follow it into another directory."""
+    now = time.time()
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    victim = _touch(elsewhere / "session_1000001_solver_log_20260101_000000.json", 90, now)
+    linked_dir = tmp_path / "logs-solver-link"
+    linked_dir.symlink_to(elsewhere, target_is_directory=True)
+
+    with caplog.at_level(logging.WARNING):
+        assert prune_solver_logs(linked_dir, now=now) == 0
+
+    assert victim.exists(), "files behind a symlinked logs dir are never deleted"
+    assert any("symlink" in r.getMessage() for r in caplog.records)

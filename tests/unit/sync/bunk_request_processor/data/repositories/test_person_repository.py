@@ -142,6 +142,9 @@ class TestNameSearchErrorLogsCarryNoNames:
             ("find_by_first_name", ("Emma",)),
             ("find_by_last_name", ("Johnson",)),
             ("find_by_first_and_parent_surname", ("Emma", "Johnson")),
+            # Its query filters only by year today, but every name-search error
+            # path follows the same contract.
+            ("find_by_normalized_name", ("emma johnson",)),
         ],
     )
     def test_error_line_omits_the_name_but_keeps_the_status(self, repo, caplog, method, args):
