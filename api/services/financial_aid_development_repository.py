@@ -13,7 +13,10 @@ relation, which SQLite cannot index. Measured in production, one open of Develop
 18.7 s of database time, and the ZIP export repeated all of it. Now every enrolled registration of the window (2017
 to the season before the report's, 18,922 rows on a production snapshot) is read once per report year, on the
 (year, status_id) index, held as parsed AttendanceRecords in `development_history_cache`, and filtered in Python, so
-the report and its ZIP export share one read. Its tables (attendees, persons, camp_sessions) are written by the
+the report and its ZIP export share one fill. The fill is one read PER SEASON, run concurrently under pb_read's cap
+(kindred#3196): the SDK's get_full_list fetches its pages one request at a time and re-counts the filter on every
+page, so a single read of the whole window chained 19 pages in series -- 7.3 s in production, twice the old chunks'
+wall time for a third of their database work. Its tables (attendees, persons, camp_sessions) are written by the
 CampMinder sync only, so `invalidate_server_caches` clears it when a finished sync writes one of them. Do not "fix"
 this back to by-id chunks.
 
@@ -174,19 +177,27 @@ class _PastSeasons:
     @cached_by_year(development_history_cache, tables=DEVELOPMENT_HISTORY_TABLES)
     async def past_enrolled(self, year: int) -> tuple[AttendanceRecord, ...]:
         """Every enrolled registration from 2017 to the season before `year`, parsed: the shared records are frozen,
-        and no SDK row is held."""
+        and no SDK row is held. Each season is its own read and the seasons overlap (see the module docstring)."""
+        seasons = await asyncio.gather(
+            *(self._enrolled_in(season) for season in range(FIRST_HISTORY_SEASON, int(year)))
+        )
+        # In id order across the window, as the single read's `sort: id` returned them.
+        rows = sorted((row for season in seasons for row in season), key=lambda row: str(row.id))
+        by_id = {str(row.id): row for row in rows}  # one record per attendee row, as the chunked read deduped
+        return tuple(attendance_record(row) for row in by_id.values())
+
+    async def _enrolled_in(self, season: int) -> list[Any]:
         rows: list[Any] = await pb_read(
             self.pb.collection(ATTENDEES).get_full_list,
             batch=PAGE_SIZE,
             query_params={
-                "filter": f"year >= {FIRST_HISTORY_SEASON} && year < {int(year)} && status_id = {ENROLLED}",
+                "filter": f"year = {int(season)} && status_id = {ENROLLED}",
                 "expand": "person,session",
                 "fields": _FIELDS,
                 "sort": "id",
             },
         )
-        by_id = {str(row.id): row for row in rows}  # one record per attendee row, as the chunked read deduped
-        return tuple(attendance_record(row) for row in by_id.values())
+        return rows
 
 
 class DevelopmentRepository:
