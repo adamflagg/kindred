@@ -10,7 +10,7 @@ offer" (D43). share_offset reads it live; offset_as_of replays the same rule at 
 for Season › History's Round column.
 
 GET /grants/{year} prices the season once, on the register it shows (OneGrantsLoad), as Today and the household page
-do. Nothing here writes.
+do, unless the season comes from the shared cache, which every register change clears. Nothing here writes.
 """
 
 from __future__ import annotations
@@ -163,7 +163,8 @@ def with_offsets(response: GrantsResponse, rows: Sequence[RegisterRow], season: 
 
 class GrantsRegisterService:
     """GET /grants/{year}: Grants' one read (D21) with each share's round (ask 10). The season is priced once, on the
-    register the read shows: one grants load (OneGrantsLoad) serves both."""
+    register the read shows: one grants load (OneGrantsLoad) serves both, unless the season comes from the shared
+    cache, which every register change clears."""
 
     def __init__(
         self,
@@ -185,5 +186,6 @@ class GrantsRegisterService:
         decisions = FinancialAidDecisionsService(
             self._store, self._pricing, shared.register, clock=self._clock, season_cache=self._season_cache
         )
+        # season() must start BEFORE shared.read(): the season cache's stamp depends on that order.
         season, (response, rows) = await asyncio.gather(decisions.season(year), shared.read())
         return with_offsets(response, rows, season)

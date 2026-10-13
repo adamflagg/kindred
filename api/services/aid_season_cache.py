@@ -21,8 +21,11 @@ time, and so does pricing with candidate rules (log_placements=False), which the
 with this cache.
 
 SHARED VALUE. Every request reads the same Season object (and the same name dicts), so nothing may write
-into one: Season is frozen, its values are frozen dataclasses and tuples, and a reader that needs a changed
-season builds a new one (dataclasses.replace, as with_unticked does).
+into one. Season itself is frozen and its values are frozen dataclasses and tuples, but its Mapping fields and
+the Names are plain dicts: read-only by convention, not by type. What holds that convention is
+test_the_reads_that_share_a_cached_season_never_change_it, which deep-copies the cached season and names, runs
+the shared reads, and compares. A reader that needs a changed season builds a new one (dataclasses.replace, as
+with_unticked does).
 
 Single uvicorn process assumed (docker/Dockerfile.api). With workers, a write in one process would not
 clear another's cache -- revisit before adding --workers."""

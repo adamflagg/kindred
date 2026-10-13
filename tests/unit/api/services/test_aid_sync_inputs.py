@@ -10,8 +10,10 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import threading
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -105,10 +107,41 @@ async def test_concurrent_callers_share_one_fill() -> None:
     assert results[0] is results[1] is results[2]
 
 
+@pytest.mark.asyncio
+async def test_a_cancelled_first_caller_does_not_cancel_the_shared_fill() -> None:
+    """A browser disconnect cancels its request; the fill other callers (and the season build) wait on must go on."""
+    release = threading.Event()
+
+    class _Gated(RecordingPb):
+        def collection(self, name: str) -> Any:
+            inner = super().collection(name)
+            read = inner.get_full_list
+
+            def gated(batch: int = 500, query_params: dict[str, Any] | None = None) -> list[Any]:
+                release.wait(timeout=10)
+                return read(batch=batch, query_params=query_params)
+
+            inner.get_full_list = gated  # type: ignore[method-assign]
+            return inner
+
+    gated_pb = _Gated(tables=_recording_pb().tables)
+    first = asyncio.create_task(aid_sync_inputs(gated_pb, YEAR))
+    await asyncio.sleep(0.05)
+    second = asyncio.create_task(aid_sync_inputs(gated_pb, YEAR))
+    await asyncio.sleep(0.05)
+    first.cancel()
+    await asyncio.sleep(0.05)
+    release.set()
+    inputs = await asyncio.wait_for(second, timeout=10)
+    assert isinstance(inputs, AidSyncInputs)
+    assert {c: gated_pb.count(c) for c in FILLED} == dict.fromkeys(FILLED, 1)
+
+
 def test_the_cache_is_the_configured_singleton() -> None:
-    """A thirty-minute TTL, and room for four seasons (a report reads `year - 1` beside the current one)."""
+    """A thirty-minute TTL, and room for two seasons: the current one and the `year - 1` a report reads. One year
+    measured 26-30 MB on the 2026-10-07 prod snapshot, on a 1.9 GiB box whose API container is capped at 1 GiB."""
     assert aid_inputs_cache.ttl_seconds == 1800
-    assert aid_inputs_cache._max_size == 4
+    assert aid_inputs_cache._max_size == 2
 
 
 # --- the joins --------------------------------------------------------------------------------------------------

@@ -800,7 +800,8 @@ async def _no_fields() -> dict[str, str]:
 
 class TodayService:
     """Today's one aggregate read (D21): the live season priced once, with the grants register it was
-    priced with (OneGrantsLoad), and only for finance the rules draft and the season's descriptions."""
+    priced with (OneGrantsLoad; unless the season comes from the shared cache, which every register change clears),
+    and only for finance the rules draft and the season's descriptions."""
 
     def __init__(
         self,
@@ -845,6 +846,8 @@ class TodayService:
         )
         # asyncio.gather types six awaitables at most, so the events ride a task of their own.
         events_read = asyncio.ensure_future(self._store.fetch_decision_events(year) if finance else _no_events())
+        # season() must start BEFORE shared.read(): the season cache's stamp depends on that order.
+        # (named_season is first in the gather.)
         (
             season,
             (grants, register),

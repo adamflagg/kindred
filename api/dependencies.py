@@ -176,11 +176,16 @@ lodging_cache = LodgingYearCache(ttl_seconds=900, max_size=128)
 # and the equity custom values -- read whole once per year and joined in Python
 # (api/services/aid_sync_inputs.py). Only a sync writes them, so the
 # cache-invalidate endpoint clears this when a finished sync writes one of its
-# tables; the 30-minute TTL is the fallback for a missed call. Four entries: the
-# season and the prior years a report reads, never more. A module-level
-# singleton for the same reason as lodging_cache: every request builds fresh
-# repositories.
-aid_inputs_cache = LodgingYearCache(ttl_seconds=1800, max_size=4)
+# tables; the 30-minute TTL is the fallback for a missed call. Two entries: the
+# season and the `year - 1` a report reads. The committee report reads every
+# season from 2026, so from the 2028 season it reads three and refills the
+# oldest once layer 2 expires -- slower, never different (accepted 2026-10-13
+# for memory; raise to 3, ~90 MB, if that latency is ever felt). One year
+# measured 26-30 MB on the 2026-10-07 prod snapshot, and the prod box has
+# 1.9 GiB with the API container capped at 1 GiB, so four years (~120 MB) was
+# too much. A module-level singleton for the same reason as lodging_cache:
+# every request builds fresh repositories.
+aid_inputs_cache = LodgingYearCache(ttl_seconds=1800, max_size=2)
 
 
 # ========================================
