@@ -25,8 +25,13 @@ permissions:
   contents: read
   pull-requests: read
 
+# One group per merge SHA: a shared group keeps only ONE pending run, so a
+# merge landing while another run waits on a guide check would be silently
+# dropped. Parallel runs are safe because what they write is state-based
+# (kindred main's tip facts) and each merges guide main in first. The
+# expression holds only a SHA; it is not step env.
 concurrency:
-  group: guide-lockstep
+  group: guide-lockstep-${{ inputs.merge_sha || github.sha }}
   cancel-in-progress: false
 
 jobs:

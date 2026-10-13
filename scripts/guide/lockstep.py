@@ -14,6 +14,14 @@ the kindred PR that produced the merge commit, then:
 Nothing reaches guide main without a green `image` check on the exact head:
 the merge passes --match-head-commit, so a push after the check cannot ride in.
 
+Runs for different merge SHAs may overlap (ruling D1-e), so what is written is
+state-based: the merge SHA decides the plan, but the facts copied and the
+source.json stamp come from kindred main's TIP, fetched at write time, so the
+last writer is always the newest. Guide main is merged into the branch first;
+a conflict outside the two lockstep-owned files stops the run. A failed merge
+redoes that, re-pushes, re-waits and re-merges, up to MERGE_ATTEMPTS in all.
+A sync PR is not opened when guide main already holds the tip's facts.
+
 The Actions log is PUBLIC. Output is one `plan: <action> (<reason>)` line plus
 `lockstep: ...` lines; reasons never carry branch names, PR numbers or titles,
 and gh/git output is captured and never echoed. Tokens: the kindred read uses
@@ -54,6 +62,8 @@ _GIT_IDENTITY = [
 ]
 # Copied from the runner's env into every subprocess; nothing else is inherited,
 # so an ambient GH_TOKEN (or the other side's token) never reaches a call.
+_OWNED = frozenset({"src/data/facts.json", "src/data/source.json"})  # lockstep writes these
+MERGE_ATTEMPTS = 3
 _PASSTHROUGH = ("PATH", "HOME", "TMPDIR", "RUNNER_TEMP", "LANG", "LC_ALL")
 
 
@@ -163,28 +173,60 @@ def _facts_changed(sha: str) -> bool:
     return bool(out.strip())
 
 
-def _execute(p: Plan, *, sha: str, branch: str, title: str, guide_repo: str, guide_token: str) -> None:
-    guide_env = _env(guide_token)
+def _kindred_tip(token: str) -> tuple[str, str]:
+    """kindred main's tip SHA and its facts.json (D1-e b: the newest state wins)."""
+    _ok(
+        ["git", *_GIT_AUTH, "fetch", "-q", "--no-tags", "--depth=1", "origin", "refs/heads/main"],
+        _env(token),
+        "kindred fetch failed",
+    )
+    tip = _ok(["git", "rev-parse", "FETCH_HEAD"], _env(), "kindred fetch failed").strip()
+    if not _SHA.fullmatch(tip):
+        raise LockstepError("kindred fetch failed")
+    return tip, _ok(["git", "show", f"{tip}:{FACTS_PATH}"], _env(), "kindred facts read failed")
+
+
+def _merge_guide_main(repo_dir: Path) -> None:
+    """Merge guide origin/main in (D1-e c). Only lockstep-owned conflicts are allowed;
+    the caller's overwrite of those two files then resolves them."""
     local = _env()
-    sha7 = sha[:7]
-    message = f"chore(facts): sync from kindred@{sha7}"
-    if p.action == "merge-paired":
-        clone_ref = push_branch = branch
-    else:
-        clone_ref, push_branch = "main", f"facts-sync/{sha7}"
+    merged = _run(["git", *_GIT_IDENTITY, "merge", "-q", "--no-ff", "--no-commit", "origin/main"], local, repo_dir)
+    if merged.returncode == 0:
+        return
+    conflicted = set(
+        _ok(["git", "diff", "--name-only", "--diff-filter=U"], local, "guide merge failed", repo_dir).splitlines()
+    )
+    if conflicted and conflicted <= _OWNED:
+        return
+    _run(["git", "merge", "--abort"], local, repo_dir)
+    raise LockstepError("guide PR conflicts with main" if conflicted else "guide merge failed")
 
-    facts = _ok(["git", "show", f"{sha}:{FACTS_PATH}"], local, "kindred facts read failed")
 
+def _prepare_head(
+    *,
+    guide_repo: str,
+    guide_env: Mapping[str, str],
+    clone_ref: str,
+    push_branch: str,
+    new_branch: bool,
+    tip: str,
+    facts: str,
+) -> str | None:
+    """Bring the guide branch up to date with main and the tip's facts; return its head.
+
+    Returns None when this is a new sync branch and guide main already holds
+    exactly these facts (D1-e e): there is nothing to sync.
+    """
+    local = _env()
     with tempfile.TemporaryDirectory(dir=os.environ.get("RUNNER_TEMP")) as tmp:
         repo_dir = Path(tmp) / "guide"
+        # Full history (no --depth): merging guide main needs the merge base.
         _ok(
             [
                 "git",
                 *_GIT_AUTH,
                 "clone",
                 "-q",
-                "--depth",
-                "1",
                 "--branch",
                 clone_ref,
                 f"https://github.com/{guide_repo}.git",
@@ -193,83 +235,128 @@ def _execute(p: Plan, *, sha: str, branch: str, title: str, guide_repo: str, gui
             guide_env,
             "guide clone failed",
         )
-        if p.action == "open-facts-sync":
-            _ok(["git", "checkout", "-q", "-b", push_branch], local, "guide branch failed", repo_dir)
-
         data = repo_dir / "src" / "data"
+        if new_branch:
+            current = data / "facts.json"
+            if current.is_file() and current.read_text(encoding="utf-8") == facts:
+                return None
+            _ok(["git", "checkout", "-q", "-b", push_branch], local, "guide branch failed", repo_dir)
+        start = _ok(["git", "rev-parse", "HEAD"], local, "guide rev-parse failed", repo_dir).strip()
+
+        _merge_guide_main(repo_dir)
+
         data.mkdir(parents=True, exist_ok=True)
         (data / "facts.json").write_text(facts, encoding="utf-8", newline="")
-        (data / "source.json").write_text(json.dumps({"kindred_sha": sha}) + "\n", encoding="utf-8")
-        _ok(["git", "add", "src/data/facts.json", "src/data/source.json"], local, "guide stage failed", repo_dir)
+        (data / "source.json").write_text(json.dumps({"kindred_sha": tip}) + "\n", encoding="utf-8")
+        _ok(["git", "add", *sorted(_OWNED)], local, "guide stage failed", repo_dir)
 
-        staged = _run(["git", "diff", "--cached", "--quiet"], local, repo_dir)
-        if staged.returncode not in (0, 1):
+        merging = _run(["git", "rev-parse", "-q", "--verify", "MERGE_HEAD"], local, repo_dir).returncode == 0
+        staged = _run(["git", "diff", "--cached", "--quiet"], local, repo_dir).returncode
+        if staged not in (0, 1):
             raise LockstepError("guide stage failed")
-        if staged.returncode == 1:
+        if merging or staged == 1:
+            message = f"chore(facts): sync from kindred@{tip[:7]}"
             _ok(["git", *_GIT_IDENTITY, "commit", "-q", "-m", message], local, "guide commit failed", repo_dir)
+
+        head = _ok(["git", "rev-parse", "HEAD"], local, "guide rev-parse failed", repo_dir).strip()
+        if not _SHA.fullmatch(head):
+            raise LockstepError("guide rev-parse failed")
+        if head != start or new_branch:
             _ok(
                 ["git", *_GIT_AUTH, "push", "-q", "origin", f"HEAD:refs/heads/{push_branch}"],
                 guide_env,
                 "guide push failed",
                 repo_dir,
             )
-        head = _ok(["git", "rev-parse", "HEAD"], local, "guide rev-parse failed", repo_dir).strip()
-        if not _SHA.match(head):
-            raise LockstepError("guide rev-parse failed")
+        return head
 
+
+def _execute(
+    p: Plan, *, sha: str, branch: str, title: str, guide_repo: str, guide_token: str, kindred_token: str
+) -> str:
+    """Land the plan; return the public-safe outcome. Raises LockstepError on failure."""
+    guide_env = _env(guide_token)
+    sync = p.action == "open-facts-sync"
+    push_branch = f"facts-sync/{sha[:7]}" if sync else branch
     number = p.guide_pr
-    if p.action == "open-facts-sync":
-        out = _ok(
+
+    for _attempt in range(MERGE_ATTEMPTS):
+        tip, facts = _kindred_tip(kindred_token)
+        new_branch = sync and number is None
+        head = _prepare_head(
+            guide_repo=guide_repo,
+            guide_env=guide_env,
+            clone_ref="main" if new_branch else push_branch,
+            push_branch=push_branch,
+            new_branch=new_branch,
+            tip=tip,
+            facts=facts,
+        )
+        if head is None:
+            return "facts already in sync"
+
+        if number is None:
+            out = _ok(
+                [
+                    "gh",
+                    "pr",
+                    "create",
+                    "-R",
+                    guide_repo,
+                    "--base",
+                    "main",
+                    "--head",
+                    push_branch,
+                    "--title",
+                    f"chore(facts): sync from kindred@{sha[:7]}",
+                    "--body",
+                    f"Paired-with: kindred@{sha}",
+                ],
+                guide_env,
+                "guide PR create failed",
+            )
+            found = _PR_URL_NUMBER.search(out)
+            if not found:
+                raise LockstepError("guide PR create failed")
+            number = int(found.group(1))
+
+        try:
+            conclusion = wait_for_check(guide_repo, head, env=guide_env)
+        except TimeoutError as exc:
+            raise LockstepError("guide check timed out; nothing merged") from exc
+        if conclusion != "success":
+            shown = conclusion if _CONCLUSION.match(conclusion) else "unknown"
+            raise LockstepError(f"guide check {shown}; nothing merged")
+
+        merged = _run(
             [
                 "gh",
                 "pr",
-                "create",
+                "merge",
                 "-R",
                 guide_repo,
-                "--base",
-                "main",
-                "--head",
-                push_branch,
-                "--title",
-                message,
+                str(number),
+                "--squash",
+                "--delete-branch",
+                "--match-head-commit",
+                head,
+                "--subject",
+                title,
                 "--body",
                 f"Paired-with: kindred@{sha}",
             ],
             guide_env,
-            "guide PR create failed",
         )
-        found = _PR_URL_NUMBER.search(out)
-        if not found:
-            raise LockstepError("guide PR create failed")
-        number = int(found.group(1))
-
-    try:
-        conclusion = wait_for_check(guide_repo, head, env=guide_env)
-    except TimeoutError as exc:
-        raise LockstepError("guide check timed out; nothing merged") from exc
-    if conclusion != "success":
-        shown = conclusion if _CONCLUSION.match(conclusion) else "unknown"
-        raise LockstepError(f"guide check {shown}; nothing merged")
-
-    _ok(
-        [
-            "gh",
-            "pr",
-            "merge",
-            "-R",
-            guide_repo,
-            str(number),
-            "--squash",
-            "--match-head-commit",
-            head,
-            "--subject",
-            title,
-            "--body",
-            f"Paired-with: kindred@{sha}",
-        ],
-        guide_env,
-        "merge failed",
-    )
+        if merged.returncode == 0:
+            return "merged"
+        # A non-zero exit can still mean the squash landed (e.g. only the branch
+        # delete failed); retrying would then re-clone a deleted branch.
+        state = _run(
+            ["gh", "pr", "view", "-R", guide_repo, str(number), "--json", "state", "--jq", ".state"], guide_env
+        )
+        if state.returncode == 0 and state.stdout.strip() == "MERGED":
+            return "merged"
+    raise LockstepError("merge failed")
 
 
 def _lockstep(sha: str, dry_run: bool) -> int:
@@ -303,15 +390,16 @@ def _lockstep(sha: str, dry_run: bool) -> int:
         print("lockstep: error; nothing merged")
         return 1
 
-    _execute(
+    outcome = _execute(
         p,
         sha=sha,
         branch=str(pr.get("headRefName") or ""),
         title=str(pr.get("title") or f"chore(facts): sync from kindred@{sha[:7]}"),
         guide_repo=guide_repo,
         guide_token=guide_token,
+        kindred_token=os.environ.get("KINDRED_TOKEN", ""),
     )
-    print("lockstep: merged")
+    print(f"lockstep: {outcome}")
     return 0
 
 

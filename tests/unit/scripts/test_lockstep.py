@@ -138,17 +138,29 @@ def test_wait_for_check_treats_a_gh_failure_as_not_ready(monkeypatch):
 # ------------------------------- executor -------------------------------
 
 MERGE_SHA = "c" * 40
+TIP_SHA = "e" * 40
+START_HEAD = "a" * 40
 NEW_HEAD = "d" * 40
+TIP_FACTS = '{"facts": "kindred main tip"}\n'
+OLD_FACTS = '{"facts": "guide main, stale"}\n'
+OWNED = ["src/data/facts.json", "src/data/source.json"]
 GUIDE_REPO = "owner/private-guide-repo"
 GUIDE_TOKEN = "guide-token-SECRET"
 KINDRED_TOKEN = "kindred-token-READ"
 BRANCH = "feature/private-branch"
+SYNC_BRANCH = f"facts-sync/{MERGE_SHA[:7]}"
 TITLE = "feat(frontend): a title that must stay out of the log"
 LEAKY_STDERR = "fatal: could not read from https://github.com/owner/private-guide-repo.git page text"
 
 
 class FakeRun:
-    """Stands in for subprocess.run; answers by matching the argv."""
+    """Stands in for subprocess.run; answers by matching the argv.
+
+    It keeps just enough git state to tell a clone's starting HEAD from the
+    one after a commit, and whether a merge of guide main is in progress.
+    `merge_results` gives one outcome per guide-main merge, in order:
+    "up-to-date", "clean", or a list of conflicted paths.
+    """
 
     def __init__(
         self,
@@ -159,6 +171,10 @@ class FakeRun:
         conclusion: str = "success",
         fail: str | None = None,
         staged_changes: bool = True,
+        merge_results: list[Any] | None = None,
+        pr_merge_failures: int = 0,
+        guide_main_facts: str = OLD_FACTS,
+        pr_state_after_failed_merge: str = "OPEN",
     ) -> None:
         self.kindred_prs = (
             [{"number": 3001, "title": TITLE, "headRefName": BRANCH}] if kindred_prs is None else kindred_prs
@@ -168,6 +184,13 @@ class FakeRun:
         self.conclusion = conclusion
         self.fail = fail
         self.staged_changes = staged_changes
+        self.merge_results = list(merge_results or [])
+        self.pr_merge_failures = pr_merge_failures
+        self.guide_main_facts = guide_main_facts
+        self.pr_state_after_failed_merge = pr_state_after_failed_merge
+        self.committed = False
+        self.merging = False
+        self.conflicts: list[str] = []
         self.calls: list[tuple[list[str], dict[str, str], str | None]] = []
 
     def _key(self, cmd: list[str]) -> str:
@@ -196,22 +219,56 @@ class FakeRun:
         elif key == "git diff":
             if "--cached" in cmd:
                 rc = 1 if self.staged_changes else 0
+            elif "--diff-filter=U" in cmd:
+                out = "".join(f"{p}\n" for p in self.conflicts)
             else:
                 out = "scripts/guide/facts.json\n" if self.facts_changed else ""
         elif key == "git show":
-            out = '{"facts": true}\n'
+            out = TIP_FACTS
         elif key == "git clone":
-            Path(cmd[-1]).mkdir(parents=True, exist_ok=True)
+            data = Path(cmd[-1]) / "src" / "data"
+            data.mkdir(parents=True, exist_ok=True)
+            (data / "facts.json").write_text(self.guide_main_facts)
+            self.committed = self.merging = False
+            self.conflicts = []
+        elif key == "git merge":
+            if "--abort" in cmd:
+                self.merging = False
+            else:
+                result = self.merge_results.pop(0) if self.merge_results else "up-to-date"
+                if result == "clean":
+                    self.merging = True
+                elif isinstance(result, list):
+                    self.merging = True
+                    self.conflicts = result
+                    rc = 1
+        elif key == "git commit":
+            self.committed = True
+            self.merging = False
         elif key == "git rev-parse":
-            out = NEW_HEAD + "\n"
+            if "FETCH_HEAD" in cmd:
+                out = TIP_SHA + "\n"
+            elif "MERGE_HEAD" in cmd:
+                rc = 0 if self.merging else 1
+                out = (NEW_HEAD + "\n") if self.merging else ""
+            else:
+                out = (NEW_HEAD if self.committed else START_HEAD) + "\n"
         elif key == "check-runs":
             out = json.dumps([{"name": "image", "status": "completed", "conclusion": self.conclusion}])
         elif key == "gh pr create":
             out = "https://github.com/owner/private-guide-repo/pull/77\n"
+        elif key == "gh pr view":
+            out = self.pr_state_after_failed_merge + "\n"
+        elif key == "gh pr merge" and self.pr_merge_failures > 0:
+            self.pr_merge_failures -= 1
+            return subprocess.CompletedProcess(cmd, 1, stdout=LEAKY_STDERR, stderr=LEAKY_STDERR)
         return subprocess.CompletedProcess(cmd, rc, stdout=out, stderr="")
 
     def called(self) -> list[str]:
         return [self._key(c) for c, _, _ in self.calls]
+
+    def all(self, key: str) -> list[list[str]]:
+        return [c for c, _, _ in self.calls if self._key(c) == key]
 
     def call(self, key: str) -> tuple[list[str], dict[str, str], str | None]:
         matches = [c for c in self.calls if self._key(c[0]) == key]
@@ -233,6 +290,20 @@ def env(monkeypatch, tmp_path):
 def _install(monkeypatch: pytest.MonkeyPatch, fake: FakeRun) -> FakeRun:
     monkeypatch.setattr("scripts.guide.lockstep.subprocess.run", fake)
     return fake
+
+
+def _spy_writes(monkeypatch: pytest.MonkeyPatch, fake: FakeRun) -> list[dict[str, str]]:
+    """Install `fake`, recording the lockstep-owned files each time they are staged."""
+    written: list[dict[str, str]] = []
+
+    def spy(cmd, *a, **k):
+        if fake._key(list(cmd)) == "git add":
+            root = Path(k["cwd"])
+            written.append({rel: (root / rel).read_text() for rel in OWNED})
+        return fake(cmd, *a, **k)
+
+    monkeypatch.setattr("scripts.guide.lockstep.subprocess.run", spy)
+    return written
 
 
 def _assert_quiet(out: str) -> None:
@@ -278,16 +349,16 @@ def test_dry_run_prints_the_plan_and_touches_nothing(monkeypatch, env, capsys):
     assert out.startswith("plan: merge-paired (")
     assert out.count("\n") == 1
     _assert_quiet(out)
-    assert not {"git clone", "git push", "gh pr merge", "gh pr create"} & set(fake.called())
+    assert not {"git clone", "git fetch", "git push", "gh pr merge", "gh pr create"} & set(fake.called())
 
 
 def test_kindred_reads_use_the_workflow_token_and_guide_calls_the_guide_token(monkeypatch, env, capsys):
     fake = _install(monkeypatch, FakeRun())
     assert main(["--merge-sha", MERGE_SHA]) == 0
-    for cmd, run_env, _ in fake.calls:
+    for cmd, run_env, cwd in fake.calls:
         key = fake._key(cmd)
-        if key == "kindred-pulls":
-            assert run_env.get("GH_TOKEN") == KINDRED_TOKEN
+        if key == "kindred-pulls" or (key == "git fetch" and cwd is None):
+            assert run_env.get("GH_TOKEN") == KINDRED_TOKEN, key
         elif cmd[0] == "gh" or key in ("git clone", "git push"):
             assert run_env.get("GH_TOKEN") == GUIDE_TOKEN, key
         else:
@@ -307,13 +378,13 @@ def test_no_token_ever_appears_on_an_argv(monkeypatch, env, capsys):
         assert "x-access-token" not in joined
 
 
-def test_git_reaches_the_guide_through_gh_credential_helper(monkeypatch, env, capsys):
+def test_git_authenticates_through_gh_credential_helper(monkeypatch, env, capsys):
     fake = _install(monkeypatch, FakeRun())
     assert main(["--merge-sha", MERGE_SHA]) == 0
-    for key in ("git clone", "git push"):
+    for key in ("git fetch", "git clone", "git push"):
         cmd = " ".join(fake.call(key)[0])
-        assert "credential.helper=!gh auth git-credential" in cmd
-        assert " -q" in cmd or "--quiet" in cmd
+        assert "credential.helper=!gh auth git-credential" in cmd, key
+        assert " -q" in cmd or "--quiet" in cmd, key
 
 
 def test_merge_paired_happy_path(monkeypatch, env, capsys):
@@ -326,11 +397,13 @@ def test_merge_paired_happy_path(monkeypatch, env, capsys):
 
     clone = fake.call("git clone")[0]
     assert clone[clone.index("--branch") + 1] == BRANCH
+    assert "--depth" not in clone, "merging guide main needs history"
     assert "gh pr create" not in fake.called()
 
     merge = fake.call("gh pr merge")[0]
     assert "4242" in merge
     assert "--squash" in merge
+    assert "--delete-branch" in merge
     assert merge[merge.index("--match-head-commit") + 1] == NEW_HEAD
     assert merge[merge.index("--subject") + 1] == TITLE
     assert merge[merge.index("--body") + 1] == f"Paired-with: kindred@{MERGE_SHA}"
@@ -340,30 +413,39 @@ def test_merge_paired_happy_path(monkeypatch, env, capsys):
     assert f"repos/{GUIDE_REPO}/commits/{NEW_HEAD}/check-runs" in check[2]
 
 
-def test_the_guide_gets_this_commits_facts_and_a_source_stamp(monkeypatch, env, capsys, tmp_path):
-    written: dict[str, str] = {}
+# D1-e (b): content is state-based -- kindred main's TIP, not the merge commit.
+
+
+def test_the_guide_gets_kindred_main_tips_facts_and_stamp(monkeypatch, env, capsys):
     fake = FakeRun()
-
-    def spy(cmd, *a, **k):
-        result = fake(cmd, *a, **k)
-        if fake._key(list(cmd)) == "git add":
-            root = Path(k["cwd"])
-            for rel in ("src/data/facts.json", "src/data/source.json"):
-                written[rel] = (root / rel).read_text()
-        return result
-
-    monkeypatch.setattr("scripts.guide.lockstep.subprocess.run", spy)
+    written = _spy_writes(monkeypatch, fake)
     assert main(["--merge-sha", MERGE_SHA]) == 0
-    assert written["src/data/facts.json"] == '{"facts": true}\n'
-    assert written["src/data/source.json"] == json.dumps({"kindred_sha": MERGE_SHA}) + "\n"
-    show = fake.call("git show")[0]
-    assert show[-1] == f"{MERGE_SHA}:scripts/guide/facts.json"
+    assert written[-1]["src/data/facts.json"] == TIP_FACTS
+    assert written[-1]["src/data/source.json"] == json.dumps({"kindred_sha": TIP_SHA}) + "\n"
+
+    fetch, fetch_env, fetch_cwd = fake.call("git fetch")
+    assert fetch_cwd is None
+    assert fetch_env["GH_TOKEN"] == KINDRED_TOKEN
+    assert fetch[-2:] == ["origin", "refs/heads/main"]
+    assert "--depth=1" in fetch
+    assert fake.call("git show")[0][-1] == f"{TIP_SHA}:scripts/guide/facts.json"
+
     commit = " ".join(fake.call("git commit")[0])
-    assert f"chore(facts): sync from kindred@{MERGE_SHA[:7]}" in commit
+    assert f"chore(facts): sync from kindred@{TIP_SHA[:7]}" in commit
     assert "user.name=guide-lockstep" in commit
     assert "user.email=noreply@example.test" in commit
-    push = fake.call("git push")[0]
-    assert push[-1] == f"HEAD:refs/heads/{BRANCH}"
+    assert fake.call("git push")[0][-1] == f"HEAD:refs/heads/{BRANCH}"
+
+
+def test_the_merge_sha_still_decides_the_plan(monkeypatch, env, capsys):
+    fake = _install(monkeypatch, FakeRun(guide_prs=[], facts_changed=False))
+    assert main(["--merge-sha", MERGE_SHA, "--dry-run"]) == 0
+    assert capsys.readouterr().out.startswith("plan: nothing (")
+    diff = fake.call("git diff")[0]
+    assert f"{MERGE_SHA}^" in diff
+    assert MERGE_SHA in diff
+    assert diff[-1] == "scripts/guide/facts.json"
+    assert fake.call("kindred-pulls")[0][2].endswith(f"/commits/{MERGE_SHA}/pulls")
 
 
 def test_a_paired_pr_already_carrying_the_facts_merges_without_a_new_commit(monkeypatch, env, capsys):
@@ -372,7 +454,110 @@ def test_a_paired_pr_already_carrying_the_facts_merges_without_a_new_commit(monk
     assert "git commit" not in fake.called()
     assert "git push" not in fake.called()
     merge = fake.call("gh pr merge")[0]
+    assert merge[merge.index("--match-head-commit") + 1] == START_HEAD
+
+
+# D1-e (c): merge guide main into the branch before writing.
+
+
+def test_guide_main_is_merged_in_before_the_facts_are_written(monkeypatch, env, capsys):
+    fake = _install(monkeypatch, FakeRun(merge_results=["clean"]))
+    assert main(["--merge-sha", MERGE_SHA]) == 0
+    keys = fake.called()
+    assert keys.index("git merge") < keys.index("git add")
+    merge = fake.call("git merge")[0]
+    assert merge[-1] == "origin/main"
+    assert "user.name=guide-lockstep" in " ".join(merge)
+    assert fake.call("git merge")[2] is not None, "runs inside the guide clone"
+
+
+def test_a_clean_main_merge_is_committed_and_pushed_even_with_no_data_change(monkeypatch, env, capsys):
+    fake = _install(monkeypatch, FakeRun(merge_results=["clean"], staged_changes=False))
+    assert main(["--merge-sha", MERGE_SHA]) == 0
+    assert "git commit" in fake.called()
+    assert "git push" in fake.called()
+    merge = fake.call("gh pr merge")[0]
     assert merge[merge.index("--match-head-commit") + 1] == NEW_HEAD
+
+
+@pytest.mark.parametrize("conflicts", [["src/data/facts.json"], ["src/data/source.json"], OWNED])
+def test_conflicts_only_in_lockstep_owned_files_are_resolved_by_the_overwrite(monkeypatch, env, capsys, conflicts):
+    fake = FakeRun(merge_results=[conflicts])
+    written = _spy_writes(monkeypatch, fake)
+    assert main(["--merge-sha", MERGE_SHA]) == 0
+    assert capsys.readouterr().out.endswith("lockstep: merged\n")
+    assert written[-1]["src/data/facts.json"] == TIP_FACTS
+    assert not [c for c in fake.all("git merge") if "--abort" in c]
+    assert "git commit" in fake.called()
+    assert "git push" in fake.called()
+
+
+@pytest.mark.parametrize("conflicts", [["src/pages/howto.md"], ["src/pages/howto.md", "src/data/facts.json"]])
+def test_any_other_conflict_pushes_and_merges_nothing(monkeypatch, env, capsys, conflicts):
+    fake = _install(monkeypatch, FakeRun(merge_results=[conflicts]))
+    assert main(["--merge-sha", MERGE_SHA]) == 1
+    out = capsys.readouterr().out
+    assert out.splitlines()[-1] == "lockstep: guide PR conflicts with main"
+    _assert_quiet(out)
+    assert "howto" not in out
+    for key in ("git commit", "git push", "gh pr merge"):
+        assert key not in fake.called(), key
+
+
+# D1-e (d): a failed merge redoes (c) -> push -> check -> merge, 3 attempts in all.
+
+
+def test_a_failed_merge_is_retried_from_a_fresh_main_merge(monkeypatch, env, capsys):
+    fake = _install(monkeypatch, FakeRun(pr_merge_failures=1, merge_results=["up-to-date", "clean"]))
+    assert main(["--merge-sha", MERGE_SHA]) == 0
+    assert capsys.readouterr().out.endswith("lockstep: merged\n")
+    assert len(fake.all("gh pr merge")) == 2
+    assert len(fake.all("git clone")) == 2
+    assert len([c for c in fake.all("git merge") if "--abort" not in c]) == 2
+    assert len(fake.all("git fetch")) == 2, "the kindred tip is re-read each attempt"
+    assert len(fake.all("check-runs")) >= 2
+    assert all(c[c.index("--branch") + 1] == BRANCH for c in fake.all("git clone"))
+
+
+def test_a_merge_that_landed_but_reported_failure_is_not_retried(monkeypatch, env, capsys):
+    """e.g. the squash landed and only --delete-branch failed: a retry would re-clone a gone branch."""
+    fake = _install(monkeypatch, FakeRun(pr_merge_failures=1, pr_state_after_failed_merge="MERGED"))
+    assert main(["--merge-sha", MERGE_SHA]) == 0
+    assert capsys.readouterr().out.endswith("lockstep: merged\n")
+    assert len(fake.all("gh pr merge")) == 1
+    assert len(fake.all("git clone")) == 1
+    view = fake.call("gh pr view")
+    assert view[1]["GH_TOKEN"] == GUIDE_TOKEN
+    assert "4242" in view[0]
+
+
+def test_three_failed_merges_give_up(monkeypatch, env, capsys):
+    fake = _install(monkeypatch, FakeRun(pr_merge_failures=10))
+    assert main(["--merge-sha", MERGE_SHA]) == 1
+    out = capsys.readouterr().out
+    assert out.splitlines()[-1] == "lockstep: merge failed"
+    _assert_quiet(out)
+    assert len(fake.all("gh pr merge")) == 3
+
+
+def test_a_retry_that_now_conflicts_stops(monkeypatch, env, capsys):
+    fake = _install(monkeypatch, FakeRun(pr_merge_failures=1, merge_results=["clean", ["src/pages/howto.md"]]))
+    assert main(["--merge-sha", MERGE_SHA]) == 1
+    assert capsys.readouterr().out.splitlines()[-1] == "lockstep: guide PR conflicts with main"
+    assert len(fake.all("gh pr merge")) == 1
+    assert len(fake.all("git push")) == 1
+
+
+def test_a_facts_sync_retry_reuses_its_pr_and_branch(monkeypatch, env, capsys):
+    fake = _install(monkeypatch, FakeRun(guide_prs=[], facts_changed=True, pr_merge_failures=1))
+    assert main(["--merge-sha", MERGE_SHA]) == 0
+    assert len(fake.all("gh pr create")) == 1
+    clones = fake.all("git clone")
+    assert [c[c.index("--branch") + 1] for c in clones] == ["main", SYNC_BRANCH]
+    assert all("77" in m for m in fake.all("gh pr merge"))
+
+
+# D1-e (e): never open a sync PR for facts guide main already has.
 
 
 def test_facts_sync_opens_a_pr_and_merges_it_once_green(monkeypatch, env, capsys):
@@ -385,25 +570,32 @@ def test_facts_sync_opens_a_pr_and_merges_it_once_green(monkeypatch, env, capsys
 
     clone = fake.call("git clone")[0]
     assert clone[clone.index("--branch") + 1] == "main"
-    sync = f"facts-sync/{MERGE_SHA[:7]}"
-    assert fake.call("git push")[0][-1] == f"HEAD:refs/heads/{sync}"
+    assert fake.call("git push")[0][-1] == f"HEAD:refs/heads/{SYNC_BRANCH}"
     create = fake.call("gh pr create")[0]
-    assert create[create.index("--head") + 1] == sync
+    assert create[create.index("--head") + 1] == SYNC_BRANCH
     assert create[create.index("--title") + 1] == f"chore(facts): sync from kindred@{MERGE_SHA[:7]}"
     assert create[create.index("--body") + 1] == f"Paired-with: kindred@{MERGE_SHA}"
     merge = fake.call("gh pr merge")[0]
     assert "77" in merge
+    assert "--delete-branch" in merge
     assert merge[merge.index("--match-head-commit") + 1] == NEW_HEAD
 
 
-def test_facts_change_is_read_from_this_commits_diff(monkeypatch, env, capsys):
-    fake = _install(monkeypatch, FakeRun(guide_prs=[], facts_changed=False))
-    assert main(["--merge-sha", MERGE_SHA, "--dry-run"]) == 0
-    assert capsys.readouterr().out.startswith("plan: nothing (")
-    diff = fake.call("git diff")[0]
-    assert f"{MERGE_SHA}^" in diff
-    assert MERGE_SHA in diff
-    assert diff[-1] == "scripts/guide/facts.json"
+def test_facts_sync_skips_when_guide_main_already_has_the_tips_facts(monkeypatch, env, capsys):
+    fake = _install(monkeypatch, FakeRun(guide_prs=[], facts_changed=True, guide_main_facts=TIP_FACTS))
+    assert main(["--merge-sha", MERGE_SHA]) == 0
+    out = capsys.readouterr().out
+    assert out.splitlines()[-1] == "lockstep: facts already in sync"
+    _assert_quiet(out)
+    for key in ("git commit", "git push", "gh pr create", "gh pr merge"):
+        assert key not in fake.called(), key
+
+
+def test_a_paired_pr_merges_even_when_guide_main_already_has_the_facts(monkeypatch, env, capsys):
+    """The pair carries doc changes too; facts equality only short-cuts a sync."""
+    fake = _install(monkeypatch, FakeRun(guide_main_facts=TIP_FACTS))
+    assert main(["--merge-sha", MERGE_SHA]) == 0
+    assert "gh pr merge" in fake.called()
 
 
 def test_two_open_guide_prs_on_the_branch_is_a_hard_failure(monkeypatch, env, capsys):
@@ -412,7 +604,7 @@ def test_two_open_guide_prs_on_the_branch_is_a_hard_failure(monkeypatch, env, ca
     assert main(["--merge-sha", MERGE_SHA]) == 1
     out = capsys.readouterr().out
     assert "plan: error (2 open guide PRs" in out
-    _assert_quiet(out.replace("4243", ""))
+    _assert_quiet(out)
     assert "4243" not in out
     assert "gh pr merge" not in fake.called()
     assert "git clone" not in fake.called()
@@ -444,6 +636,7 @@ def test_a_check_that_never_finishes_merges_nothing(monkeypatch, env, capsys):
     [
         ("kindred-pulls", "lockstep: kindred PR lookup failed"),
         ("gh pr list", "lockstep: guide PR list failed"),
+        ("git fetch", "lockstep: kindred fetch failed"),
         ("git clone", "lockstep: guide clone failed"),
         ("git push", "lockstep: guide push failed"),
         ("gh pr merge", "lockstep: merge failed"),
@@ -496,8 +689,11 @@ def test_workflow_permissions_are_read_only():
     assert _workflow()["permissions"] == {"contents": "read", "pull-requests": "read"}
 
 
-def test_workflow_never_cancels_a_run_mid_merge():
-    assert _workflow()["concurrency"]["cancel-in-progress"] is False
+def test_workflow_queues_per_merge_sha_and_never_cancels():
+    """D1-e (a): one group per SHA, so a pending run is never dropped by a newer one."""
+    concurrency = _workflow()["concurrency"]
+    assert concurrency["group"] == "guide-lockstep-${{ inputs.merge_sha || github.sha }}"
+    assert concurrency["cancel-in-progress"] is False
 
 
 def test_workflow_step_env_carries_only_secrets_repo_token_sha_and_flag():
