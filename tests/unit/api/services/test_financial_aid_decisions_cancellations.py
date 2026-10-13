@@ -134,13 +134,10 @@ async def test_the_reads_filter_by_season_and_only_the_three_statuses_that_matte
     pb.collection.return_value.get_full_list.reset_mock()
     await repo.fetch_enrollment_states(YEAR, {1000011, 1000012}, {1000001})
     filters = [c.kwargs["query_params"]["filter"] for c in pb.collection.return_value.get_full_list.call_args_list]
-    statuses = f"year = {YEAR} && (status_id = 2 || status_id = 32 || status_id = 256)"
-    assert sorted(filters) == sorted(  # the chunks are read concurrently, so in no fixed order
-        [
-            f"{statuses} && (person_id = 1000011 || person_id = 1000012)",
-            f"{statuses} && (person.household_id = 1000001)",
-        ]
-    )
+    # Answered from layer 1 (aid_sync_inputs): the season's registrations in one read, every status, and the three
+    # statuses selected in Python -- never a filter through person.household_id.
+    assert f"year = {YEAR}" in filters
+    assert [f for f in filters if "status_id" in f or "person." in f] == []
     pb.collection.return_value.get_full_list.reset_mock()
     await repo.fetch_enrollment_states(YEAR, set(), set())
     assert pb.collection.return_value.get_full_list.call_args_list == []  # nobody named: nothing read

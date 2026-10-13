@@ -77,9 +77,47 @@ async def test_aid_household_reads_name_their_columns_and_add_aid_adults_only_wh
     repo = FinancialAidRepository(pb)
     await repo.fetch_households(2026, [1000001])
     await repo.fetch_households(2026, [1000001], adults=True)
-    plain, with_adults = calls
+    # The plain read is answered from layer 1 (aid_sync_inputs), whose one fill also reads persons, attendees and
+    # the equity values; the household reads are the two that name household columns.
+    plain, with_adults = [c for c in calls if "greeting" in _fields(c)]
     assert _fields(plain) == HOUSEHOLD_COLUMNS.split(",")
     assert _fields(with_adults) == [*HOUSEHOLD_COLUMNS.split(","), "aid_adults"]
+
+
+_HOUSEHOLD_RELATIONS = ("household", "primary_childhood_household", "alternate_childhood_household")
+
+
+@pytest.mark.asyncio
+async def test_no_plain_read_expands_a_household_without_naming_its_columns() -> None:
+    """A whole expanded household is a whole household record, aid_adults and all. Every call the plain path makes
+    -- layer 1's fill included -- that expands a household relation names that relation's columns."""
+    pb, calls = _pb()
+    repo = FinancialAidRepository(pb)
+    await repo.fetch_households(2026, [1000001])
+    await repo.fetch_persons(2026, [1000011])
+    await repo.fetch_household_persons_by_household(2026, [1000001])
+    expanding = [c for c in calls if set(str(c.get("expand", "")).split(",")) & set(_HOUSEHOLD_RELATIONS)]
+    assert expanding, "the fill expands persons' households, so this must see that call"
+    for params in expanding:
+        for relation in set(str(params["expand"]).split(",")) & set(_HOUSEHOLD_RELATIONS):
+            named = [f for f in _fields(params) if f.startswith(f"expand.{relation}.")]
+            assert named, (relation, params)
+            assert f"expand.{relation}.aid_adults" not in named
+
+
+@pytest.mark.asyncio
+async def test_no_cached_layer_one_record_carries_aid_adults() -> None:
+    from api.services.aid_sync_inputs import aid_sync_inputs
+    from tests.unit.api.services.aid_parity_fixture import PARITY_YEAR, parity_pb
+
+    inputs = await aid_sync_inputs(parity_pb(), PARITY_YEAR)  # its households all hold aid_adults
+    assert inputs.household_by_cm_id
+    assert not [h for h in inputs.household_by_cm_id.values() if hasattr(h, "aid_adults")]
+    expanded = [
+        related for p in inputs.person_by_cm_id.values() for related in (getattr(p, "expand", None) or {}).values()
+    ]
+    assert expanded, "the fixture's persons expand their households"
+    assert not [r for r in expanded if hasattr(r, "aid_adults")]
 
 
 # Where the field name may appear outside tests. A new reader is a decision, not a drive-by: add it here on purpose.

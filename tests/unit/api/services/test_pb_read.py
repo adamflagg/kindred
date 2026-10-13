@@ -10,13 +10,15 @@ from api.services.pb_read import PB_READ_CONCURRENCY, pb_read
 
 # WRITES stay outside the limit so a staff save never queues behind a season rebuild. Each name is the first
 # positional argument of an `asyncio.to_thread` call that writes: commit_aid_writes (batch commit + change log),
-# send_batch (raw batch), record_change (one aid_change_log row).
-_WRITE_CALLEES = {"commit_aid_writes", "send_batch", "record_change"}
+# record_change (one aid_change_log row).
+_WRITE_CALLEES = {"commit_aid_writes", "record_change"}
 
 
 def _bare_to_thread_reads(root: Path, pattern: str) -> list[str]:
+    paths = sorted(root.glob(pattern))
+    assert paths, f"no {pattern} under {root}: the scan would pass vacuously"
     offenders: list[str] = []
-    for path in sorted(root.glob(pattern)):
+    for path in paths:
         for node in ast.walk(ast.parse(path.read_text())):
             if not isinstance(node, ast.Call):
                 continue
@@ -65,5 +67,5 @@ async def test_a_failed_read_releases_its_slot() -> None:
 def test_camperships_reads_go_through_pb_read() -> None:
     """Every asyncio.to_thread in a Camperships service is a WRITE (commit_aid_writes, send_batch,
     record_change), which stays outside the limit so a save never queues behind a rebuild."""
-    offenders = _bare_to_thread_reads(Path("api/services"), "financial_aid_*.py")
+    offenders = _bare_to_thread_reads(Path(__file__).resolve().parents[4] / "api" / "services", "financial_aid_*.py")
     assert offenders == []

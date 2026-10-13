@@ -42,7 +42,9 @@ def test_client(fresh_cache):
     os.environ["SKIP_PB_AUTH"] = "true"
     os.environ["METRICS_SQL_ENABLED"] = "false"
 
-    with patch("api.routers.metrics.metrics_cache", fresh_cache):
+    # The Camperships sync-input warm a clear schedules reads whatever PocketBase is reachable; stubbed for every
+    # test here, as the lodging warm is where a test clears.
+    with patch("api.routers.metrics.metrics_cache", fresh_cache), patch("api.routers.metrics.schedule_aid_warm"):
         from api.main import create_app
 
         app = create_app()

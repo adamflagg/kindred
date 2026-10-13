@@ -36,13 +36,13 @@ from api.constants.collections import (
     PERSONS,
     SYNC_RUNS,
 )
+from api.services.aid_sync_inputs import aid_sync_inputs
 from api.services.financial_aid_cancellations import CancelEvent, EnrollmentState, parse_reason
 from api.services.financial_aid_change_log_reads import fetch_change_log
 from api.services.financial_aid_grant_placements import PlacementRecord, placement_record
 from api.services.financial_aid_grants_register import Placement
 from api.services.financial_aid_intake_repository import (
     EQUITY_FIELD_CM_IDS,
-    PERSON_FILTER_CHUNK,
     FinancialAidIntakeRepository,
     allowlist_filter,
 )
@@ -213,7 +213,9 @@ def line_placement(record: Any) -> Placement | None:
 _CANCEL_KINDS: Final = frozenset({"cancel", "reopen"})
 # Enrolled, cancelled, withdrawn: the only attendee statuses a cancellation turns on.
 _ENROLLMENT_FILTER: Final = "status_id = 2 || status_id = 32 || status_id = 256"
-_ENROLLMENT_FIELDS: Final = "id,person_id,status_id,enrollment_date,expand.person.household_id,expand.session.cm_id"
+# The statuses _ENROLLMENT_FILTER names, which stays the one place they are listed: fetch_enrollment_states now
+# selects them in Python from layer 1's whole-season registrations.
+_ENROLLMENT_STATUS_IDS: Final = frozenset(int(s) for s in re.findall(r"status_id = (\d+)", _ENROLLMENT_FILTER))
 
 
 def cancel_event(record: Any) -> CancelEvent:
@@ -349,32 +351,30 @@ class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
     ) -> list[EnrollmentState]:
         """The enrolled, cancelled and withdrawn registrations of these campers (camper-level requests)
         and of everyone in these households (household-level, Family Camp, requests), with each person's
-        household and session. Never the whole season: only the people the requests name. The chunks
-        are read concurrently."""
-        chunks: list[str] = []
-        for field, ids in (("person_id", person_cm_ids), ("person.household_id", household_cm_ids)):
-            wanted = sorted({int(i) for i in ids if int(i) > 0})
-            chunks.extend(
-                " || ".join(f"{field} = {i}" for i in wanted[start : start + PERSON_FILTER_CHUNK])
-                for start in range(0, len(wanted), PERSON_FILTER_CHUNK)
+        household and session, each registration once, in PocketBase-id order.
+
+        Answered from layer 1 (aid_sync_inputs), which holds the WHOLE season's registrations: the old rule here
+        ("never the whole season: only the people the requests name") read them in chunks through
+        `person.household_id`, a filter through a relation that SQLite cannot index. The selection is the same
+        filter, evaluated in Python over the same rows: the registration's own person_id, or its person's own
+        household_id (not the childhood households)."""
+        people = {int(i) for i in person_cm_ids if int(i) > 0}
+        households = {int(i) for i in household_cm_ids if int(i) > 0}
+        if not people and not households:
+            return []
+        inputs = await aid_sync_inputs(self.pb, year)
+        rows = [
+            row
+            for registrations in inputs.attendees_by_person_cm_id.values()
+            for row in registrations
+            if int(row.status_id or 0) in _ENROLLMENT_STATUS_IDS
+            and (
+                int(row.person_id or 0) in people
+                or int(getattr((getattr(row, "expand", None) or {}).get("person"), "household_id", 0) or 0)
+                in households
             )
-        found = await asyncio.gather(
-            *(
-                self._page(
-                    ATTENDEES,
-                    {
-                        "filter": f"year = {int(year)} && ({_ENROLLMENT_FILTER}) && ({chunk})",
-                        "expand": "person,session",
-                        "fields": _ENROLLMENT_FIELDS,
-                        "sort": "id",
-                    },
-                )
-                for chunk in chunks
-            )
-        )
-        # A household member may also be named: one row each.
-        rows: dict[str, Any] = {str(row.id): row for batch in found for row in batch}
-        return [enrollment_state(row) for row in rows.values()]
+        ]
+        return [enrollment_state(row) for row in sorted(rows, key=lambda r: str(r.id))]
 
     async def fetch_names(
         self, year: int, household_cm_ids: Collection[int], person_cm_ids: Collection[int]

@@ -220,9 +220,9 @@ def _summary(pb: RecordingPb) -> str:
     return "\n".join(lines)
 
 
-# `raises=` keeps a broken fixture or a changed signature from hiding as "xfailed": the cold test must fail
-# on its budget assert, the cached ones on the not-yet-built cached path. Task 7 drops these with the markers.
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="layer 1 + layer 2 land in Tasks 5 and 7")
+# Layer 1 (aid_sync_inputs) brought the cold build under budget: 167 calls (145 heavy) became 27 (4 heavy, one
+# per table). `raises=` keeps a broken fixture or a changed signature from hiding as "xfailed": the cached tests
+# must fail on the not-yet-built cached path. Task 7 drops their markers.
 @pytest.mark.asyncio
 async def test_a_cold_season_build_stays_under_budget(season_pb: RecordingPb) -> None:
     await _service(season_pb).season(YEAR)

@@ -32,6 +32,9 @@ def _semaphore() -> asyncio.Semaphore:
 
 
 async def pb_read[**P, T](fn: Callable[P, T], /, *args: P.args, **kwargs: P.kwargs) -> T:
-    """`asyncio.to_thread(fn, ...)`, at most PB_READ_CONCURRENCY at a time across the process."""
+    """`asyncio.to_thread(fn, ...)`, at most PB_READ_CONCURRENCY at a time across the process.
+
+    A cancelled awaiter frees its slot while its thread runs to completion, so the number of
+    threads actually running can briefly exceed PB_READ_CONCURRENCY."""
     async with _semaphore():
         return await asyncio.to_thread(fn, *args, **kwargs)

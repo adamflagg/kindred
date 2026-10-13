@@ -32,7 +32,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Awaitable, Callable, Iterator, Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from decimal import Decimal
 from typing import Any, Final
 
@@ -45,9 +45,8 @@ from api.constants.collections import (
     CAMP_SESSIONS,
     FINANCIAL_AID_APPLICATIONS,
     FINANCIAL_TRANSACTIONS,
-    PERSON_CUSTOM_VALUES,
-    PERSONS,
 )
+from api.services.aid_sync_inputs import aid_sync_inputs
 from api.services.financial_aid_household import HOUSEHOLD_ANSWER_FIELDS
 from api.services.financial_aid_intake_types import (
     INTAKE_RULES_SECTIONS,
@@ -75,7 +74,6 @@ from bunking.financial_aid.rules.schema import AidRules, SectionName
 
 PAGE_SIZE: Final = 500
 STABLE_SORT: Final = "id"
-PERSON_FILTER_CHUNK: Final = 50
 
 # The registration-time ask (CA-FinancialAssistanceAmount for a camper, WW-FA
 # Amount for an adult). SP1 renamed it from amount_awarded (migration 1500000184).
@@ -143,11 +141,6 @@ def parse_poc_answer(value: str) -> bool | None:
     if folded == "no":
         return False
     return None
-
-
-def _chunks(values: Sequence[int], size: int) -> Iterator[Sequence[int]]:
-    for start in range(0, len(values), size):
-        yield values[start : start + size]
 
 
 def _expanded(record: Any, name: str) -> Any:
@@ -375,19 +368,13 @@ class FinancialAidIntakeRepository:
         ]
 
     async def fetch_birthdates(self, year: int, person_cm_ids: Sequence[int]) -> dict[int, str]:
+        """Each named person's birthdate this season (blank when CampMinder holds none); a person with no record this
+        season is left out. Answered from layer 1 (aid_sync_inputs)."""
         ids = sorted({p for p in person_cm_ids if p > 0})
-        found: dict[int, str] = {}
-        for chunk in _chunks(ids, PERSON_FILTER_CHUNK):
-            rows = await self._page(
-                PERSONS,
-                {
-                    "filter": f"year = {year} && ({' || '.join(f'cm_id = {p}' for p in chunk)})",
-                    "fields": "id,cm_id,birthdate",
-                    "sort": STABLE_SORT,
-                },
-            )
-            found.update({_int(r.cm_id): _str(getattr(r, "birthdate", "")) for r in rows})
-        return found
+        if not ids:
+            return {}
+        people = (await aid_sync_inputs(self.pb, year)).person_by_cm_id
+        return {p: _str(getattr(people[p], "birthdate", "")) for p in ids if p in people}
 
     async def load_intake_rules(self, year: int) -> AidRules | None:
         """The newest version of the season whose `programs` and `cost` sections are both
@@ -500,39 +487,24 @@ class FinancialAidIntakeRepository:
     # -- equity (ALLOWLIST) -----------------------------------------------
 
     async def fetch_equity_answers(self, year: int, person_cm_ids: Sequence[int]) -> dict[int, EquityAnswers]:
+        """Each named person's equity answers. Answered from layer 1 (aid_sync_inputs), whose custom values are read
+        through EQUITY_FIELD_CM_IDS and nothing wider; each person's values are in PocketBase-id order, so a field
+        answered twice keeps its last answer, as the by-person read this replaces did."""
         ids = sorted({p for p in person_cm_ids if p > 0})
         if not ids:
             return {}
-        field_filter = allowlist_filter(EQUITY_FIELD_CM_IDS)
+        inputs = await aid_sync_inputs(self.pb, year)
         poc: dict[int, dict[int, bool | None]] = {}
         gender: dict[int, tuple[str, str]] = {}
-        for chunk in _chunks(ids, PERSON_FILTER_CHUNK):
-            people = " || ".join(f"person.cm_id = {p}" for p in chunk)
-            values = await self._page(
-                PERSON_CUSTOM_VALUES,
-                {
-                    "filter": f"year = {year} && ({field_filter}) && ({people})",
-                    "expand": "person,field_definition",
-                    "fields": "id,value,expand.person.cm_id,expand.field_definition.cm_id",
-                    "sort": STABLE_SORT,
-                },
-            )
-            for row in values:
-                person = _int(getattr(_expanded(row, "person"), "cm_id", 0))
+        for person in ids:
+            for row in inputs.equity_values_by_person_cm_id.get(person, ()):
                 field_cm_id = _int(getattr(_expanded(row, "field_definition"), "cm_id", 0))
                 poc.setdefault(person, {})[field_cm_id] = parse_poc_answer(_str(getattr(row, "value", "")))
-            persons = await self._page(
-                PERSONS,
-                {
-                    "filter": f"year = {year} && ({' || '.join(f'cm_id = {p}' for p in chunk)})",
-                    "fields": "id,cm_id,gender_identity_name,gender_pronoun_name",
-                    "sort": STABLE_SORT,
-                },
-            )
-            for row in persons:
-                gender[_int(row.cm_id)] = (
-                    _str(getattr(row, "gender_identity_name", "")),
-                    _str(getattr(row, "gender_pronoun_name", "")),
+            record = inputs.person_by_cm_id.get(person)
+            if record is not None:
+                gender[person] = (
+                    _str(getattr(record, "gender_identity_name", "")),
+                    _str(getattr(record, "gender_pronoun_name", "")),
                 )
         result: dict[int, EquityAnswers] = {}
         for person in ids:

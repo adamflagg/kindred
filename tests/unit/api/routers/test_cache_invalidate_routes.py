@@ -26,7 +26,7 @@ def _user(*, admin: bool = False, permissions: set[str] | None = None) -> AuthUs
 
 @pytest.fixture
 def client() -> Iterator[TestClient]:
-    with patch("api.routers.metrics.schedule_lodging_warm"):
+    with patch("api.routers.metrics.schedule_lodging_warm"), patch("api.routers.metrics.schedule_aid_warm"):
         yield TestClient(app)
     app.dependency_overrides.pop(get_current_user, None)
 
