@@ -466,10 +466,15 @@ def _jobs_reading_the_node_pin() -> list[str]:
     the pin is covered the moment it is added.
 
     Only steps carrying no `if:` are returned, so the job-level gate is the
-    right thing to assert against.
+    right thing to assert against. Jobs whose `if:` reads no detect-changes
+    output (e.g. the report-only `guide-build`, which runs on every same-repo
+    PR) are skipped: they have no path gate to be orphaned by, and a pin bump
+    triggers them trivially.
     """
     jobs = []
     for jid, job in _ci()["jobs"].items():
+        if not re.search(r"needs\.detect-changes\.outputs\.", str(job.get("if") or "")):
+            continue
         for step in job.get("steps") or []:
             if (step.get("with") or {}).get("node-version-file") == ".nvmrc" and step.get("if") is None:
                 jobs.append(jid)

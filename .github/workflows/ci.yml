@@ -1676,6 +1676,99 @@ jobs:
       working-directory: ./frontend
       run: npm run test -- --run --shard=${{ matrix.shard }}/2
 
+  # Report-only (not in summary.needs, continue-on-error): builds the private
+  # staff guide against this PR's facts. CI logs are PUBLIC, so every byte of
+  # clone/build output is discarded or sent to a never-uploaded file, and the
+  # step prints only "guide: pass" / "guide: N errors" -- never the repo name,
+  # the branch name, or any build text. Always runs on same-repo PRs (no paths
+  # filter): it is cheap and non-blocking, and a filter would have to mirror
+  # every input the guide reads. Skips cleanly while the secrets are absent.
+  guide-build:
+    name: Guide build (report-only)
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - name: Setup Node.js
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
+      with:
+        node-version-file: '.nvmrc'
+    - name: Build the guide against this PR's facts
+      env:
+        GUIDE_REPO: ${{ secrets.GUIDE_REPO }}
+        GH_TOKEN: ${{ secrets.GUIDE_READ_TOKEN }}
+      # The branch comes from the runner's env, not step env: step env is
+      # printed in the public log header.
+      run: |
+        BRANCH="$GITHUB_HEAD_REF"
+        if [ -z "$GUIDE_REPO" ] || [ -z "$GH_TOKEN" ]; then
+          echo "guide: skipped (no guide access configured)"
+          exit 0
+        fi
+        dir="$RUNNER_TEMP/guide"
+        url="https://x-access-token:${GH_TOKEN}@github.com/${GUIDE_REPO}.git"
+        label="paired branch"
+        # Exact ref match: a bare name would suffix-match (docs vs feature/docs).
+        # --exit-code: 2 means the ref is absent (build main); anything else is an
+        # auth or network failure, which must not quietly report on main instead.
+        rc=0; git ls-remote --exit-code --heads "$url" "refs/heads/$BRANCH" >/dev/null 2>&1 || rc=$?
+        case "$rc" in
+          0) ref="$BRANCH" ;;
+          2) ref=main; label=main ;;
+          *) echo "guide: branch lookup failed"; exit 1 ;;
+        esac
+        git clone -q --depth 1 --branch "$ref" "$url" "$dir" >/dev/null 2>&1 \
+          || { echo "guide: clone failed"; exit 1; }
+        # The token lives in the clone's origin URL; the guide's own code must not find it.
+        git -C "$dir" remote remove origin >/dev/null 2>&1
+        echo "building against: $label"
+        env -u GH_TOKEN -u GUIDE_REPO bash scripts/guide/build_guide.sh "$dir" scripts/guide/facts.json
+
+  guide-impact:
+    name: Docs impact (report-only)
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - name: Check the PR pairs a guide change or says why not
+      env:
+        GUIDE_REPO: ${{ secrets.GUIDE_REPO }}
+        GUIDE_READ_TOKEN: ${{ secrets.GUIDE_READ_TOKEN }}
+        GH_TOKEN: ${{ github.token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+      # The body and branch are read at run time, never through step env: step
+      # env is printed in the public log header, and a re-run then sees a body
+      # edited after the push.
+      run: |
+        BRANCH="$GITHUB_HEAD_REF"
+        if ! gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json body --jq .body > "$RUNNER_TEMP/body.md" 2>/dev/null; then
+          echo "docs impact: skipped (could not read the PR body)"
+          exit 0
+        fi
+        if ! gh pr diff "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --name-only > "$RUNNER_TEMP/changed.txt" 2>/dev/null; then
+          echo "docs impact: skipped (could not list changed files)"
+          exit 0
+        fi
+        paired=false
+        note=""
+        if [ -n "$GUIDE_REPO" ] && [ -n "$GUIDE_READ_TOKEN" ]; then
+          enc=$(jq -rn --arg b "$BRANCH" '$b|@uri')
+          ahead=$(GH_TOKEN="$GUIDE_READ_TOKEN" gh api "repos/${GUIDE_REPO}/compare/main...${enc}" --jq .ahead_by 2>/dev/null) || ahead=0
+          case "$ahead" in ''|*[!0-9]*) ahead=0 ;; esac
+          if [ "$ahead" -gt 0 ]; then paired=true; fi
+        else
+          note=" (no guide access: paired branch not checked)"
+        fi
+        out=$(env -u GUIDE_READ_TOKEN -u GUIDE_REPO python3 -m scripts.guide.impact_check --changed-file "$RUNNER_TEMP/changed.txt" --body-file "$RUNNER_TEMP/body.md" --paired-has-commits "$paired") && rc=0 || rc=$?
+        echo "${out}${note}"
+        exit "$rc"
+
   # Summary job - gate for PR merges
   summary:
     name: CI Gate
