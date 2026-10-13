@@ -1211,8 +1211,7 @@ describe('the editors in the final design (§24)', () => {
       within(editor).getByRole('button', { name: 'Reporting groups: — no group —' })
     ).toBeInTheDocument()
     expect(within(editor).getByText('No group: the source will need one.')).toBeInTheDocument()
-    await pickGroups(editor, 'Pool A')
-    await userEvent.click(await screen.findByRole('option', { name: 'Pool B' }))
+    await pickGroups(editor, 'Pool A', 'Pool B')
     expect(
       within(editor).getByRole('button', { name: 'Reporting groups: Pool A, Pool B' })
     ).toBeInTheDocument()
