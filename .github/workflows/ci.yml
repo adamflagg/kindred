@@ -175,6 +175,12 @@ jobs:
             # The pip-audit step's ignore list: adding an ignored CVE has to be
             # able to re-run the audit that consumes it.
             - '.pip-audit-ignore'
+            # The staff-guide facts-freshness step compares scripts/guide/facts.json
+            # with bunking/rbac/permissions.py (covered above), the help-key
+            # registry and the exporter. The registry is JSON and facts.json is
+            # a generated file, so neither is a .py the globs above would catch.
+            - 'scripts/guide/**'
+            - 'frontend/src/help/helpKeys.json'
             # And the job's own definition.
             - '.github/workflows/ci.yml'
           go:
@@ -698,6 +704,9 @@ jobs:
             python -m json.tool "$f" > /dev/null && echo "✓ $f" || { echo "✗ $f is invalid JSON"; exit 1; }
           fi
         done
+
+    - name: Staff-guide facts are fresh
+      run: uv run python -m scripts.guide.export_facts --check
 
   # Go linting (parallel with other lint jobs)
   go-lint:
