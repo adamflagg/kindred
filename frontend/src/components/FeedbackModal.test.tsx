@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 import { FeedbackModal } from './FeedbackModal'
+import { queryKeys } from '../utils/queryKeys'
 
 // Mock pocketbase
 vi.mock('../lib/pocketbase', () => ({
@@ -28,6 +29,17 @@ vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => mockAuthState,
 }))
 
+// The servers' own versions (hooks/useDeployedVersions.test.tsx covers how
+// they are fetched). Unset = not known yet, or that server failed.
+const mockVersions: { frontend: string; api?: string; pocketbase?: string; newest: string } = {
+  frontend: 'v6.4.0-240-gaaaaaaa',
+  newest: 'v6.4.0-240-gaaaaaaa',
+}
+
+vi.mock('../hooks/useDeployedVersions', () => ({
+  useDeployedVersions: () => mockVersions,
+}))
+
 let queryClient: QueryClient
 
 function renderModal(props: { isOpen: boolean; onClose: () => void }) {
@@ -49,6 +61,8 @@ describe('FeedbackModal', () => {
     mockAuthState.isLoading = false
     mockAuthState.isAuthenticated = true
     mockAuthState.user = { id: 'user-1', name: 'Emma Johnson', email: 'emma@example.com' }
+    delete mockVersions.api
+    delete mockVersions.pocketbase
   })
 
   it('renders nothing when closed', () => {
@@ -244,5 +258,55 @@ describe('FeedbackModal', () => {
       // Text should be preserved
       expect(textarea).toHaveValue('Something broke')
     })
+  })
+
+  async function submitAndReadForm(): Promise<FormData> {
+    const { pb } = await import('../lib/pocketbase')
+    vi.mocked(pb.send).mockResolvedValueOnce({ success: true })
+    renderModal({ isOpen: true, onClose: mockOnClose })
+    fireEvent.click(screen.getByText('Bug'))
+    fireEvent.change(screen.getByPlaceholderText(/what happened/i), {
+      target: { value: 'The save button is broken' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+    await waitFor(() => expect(pb.send).toHaveBeenCalledTimes(1))
+    const [path, options] = vi.mocked(pb.send).mock.calls[0]!
+    expect(path).toBe('/api/custom/feedback')
+    return (options as { body: FormData }).body
+  }
+
+  it('sends the frontend and api versions, but not PocketBase’s: the server states its own', async () => {
+    vi.stubEnv('VITE_APP_VERSION', 'v6.4.0-240-gaaaaaaa')
+    mockVersions.api = 'v6.4.0-248-gc35904c'
+    mockVersions.pocketbase = 'v6.4.0-245-gbbbbbbb'
+    const form = await submitAndReadForm()
+    expect(form.get('app_version')).toBe('v6.4.0-240-gaaaaaaa')
+    expect(form.get('api_version')).toBe('v6.4.0-248-gc35904c')
+    expect(form.has('pocketbase_version')).toBe(false)
+    vi.unstubAllEnvs()
+  })
+
+  it('omits an api version it does not know, and still sends the frontend’s', async () => {
+    vi.stubEnv('VITE_APP_VERSION', 'v6.4.0-240-gaaaaaaa')
+    const form = await submitAndReadForm()
+    expect(form.get('app_version')).toBe('v6.4.0-240-gaaaaaaa')
+    expect(form.has('api_version')).toBe(false)
+    vi.unstubAllEnvs()
+  })
+
+  it('refreshes the api version when it opens, so a tab left open across a deploy sends the current one', () => {
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+    const { rerender } = render(
+      <QueryClientProvider client={queryClient}>
+        <FeedbackModal isOpen={false} onClose={mockOnClose} />
+      </QueryClientProvider>
+    )
+    expect(invalidate).not.toHaveBeenCalled()
+    rerender(
+      <QueryClientProvider client={queryClient}>
+        <FeedbackModal isOpen onClose={mockOnClose} />
+      </QueryClientProvider>
+    )
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.deployedVersion('api') })
   })
 })

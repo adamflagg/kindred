@@ -503,6 +503,16 @@ export type AnswerOut = {
 }
 
 /**
+ * ApiVersionResponse
+ */
+export type ApiVersionResponse = {
+  /**
+   * Api
+   */
+  api: string
+}
+
+/**
  * AppealsRowOut
  */
 export type AppealsRowOut = {
@@ -28704,6 +28714,23 @@ export type GetCurrentUserInfoApiUserMeGetResponses = {
 
 export type GetCurrentUserInfoApiUserMeGetResponse =
   GetCurrentUserInfoApiUserMeGetResponses[keyof GetCurrentUserInfoApiUserMeGetResponses]
+
+export type GetApiVersionApiVersionGetData = {
+  body?: never
+  path?: never
+  query?: never
+  url: '/api/version'
+}
+
+export type GetApiVersionApiVersionGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: ApiVersionResponse
+}
+
+export type GetApiVersionApiVersionGetResponse =
+  GetApiVersionApiVersionGetResponses[keyof GetApiVersionApiVersionGetResponses]
 
 export type GetPermissionRegistryApiPermissionsGetData = {
   body?: never

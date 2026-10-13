@@ -140,6 +140,11 @@ export const queryKeys = {
   permissionRegistry: () => ['permission-registry'] as const,
   permissionDescriptions: () => ['permission-descriptions'] as const,
 
+  // The version each server's image was built at (useDeployedVersions).
+  // Valid until the next deploy: 5 min stale, refetched on focus, and the
+  // feedback modal invalidates the api's on open.
+  deployedVersion: (component: 'api' | 'pocketbase') => ['deployed-version', component] as const,
+
   // Admin/Config (Tier 2 - user data)
   adminSettings: () => ['admin-settings'] as const,
   adminSessions: (year: number) => ['admin-sessions', year] as const,

@@ -108,6 +108,7 @@ import type {
   ManualHoldIn,
   NotTickedOut,
   OptionOut,
+  ApiVersionResponse,
   PermissionEntry,
   PermissionRegistryResponse,
   PermissionScreen,
@@ -293,6 +294,9 @@ export type ApiAidDefinitions = DefinitionsResponse
 export type ApiPermissionRegistry = PermissionRegistryResponse
 export type ApiPermissionEntry = PermissionEntry
 export type ApiPermissionScreen = PermissionScreen
+
+/** The version the api image was built at. Mirrors Python `ApiVersionResponse`. */
+export type ApiVersion = ApiVersionResponse
 
 /** The Requests grid's read (§6.1). Mirrors Python `RequestsGridResponse`. */
 export type ApiAidGrid = RequestsGridResponse

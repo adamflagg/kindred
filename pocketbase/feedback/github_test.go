@@ -100,7 +100,7 @@ func TestBuildIssueBody(t *testing.T) {
 	if !containsAll(body,
 		"- Browser: Mozilla/5.0",
 		"- Viewport: 1920x1080",
-		"- App Version: v0.8.0",
+		"- App Version: frontend v0.8.0",
 	) {
 		t.Errorf("issue body missing bulleted environment details:\n%s", body)
 	}
@@ -340,4 +340,47 @@ func containsAll(s string, subs ...string) bool {
 		}
 	}
 	return true
+}
+
+// The App Version line names each component's own deployed version, because
+// CD rebuilds only the images whose files changed: after an api-only release
+// the frontend's baked version is older than the api's.
+func TestFormatAppVersions(t *testing.T) {
+	tests := []struct {
+		name               string
+		frontend, api, pbv string
+		want               string
+	}{
+		{"all three", "v6.4.0-240-gaaaaaaa", "v6.4.0-248-gc35904c", "v6.4.0-245-gbbbbbbb",
+			"frontend v6.4.0-240-gaaaaaaa · api v6.4.0-248-gc35904c · pocketbase v6.4.0-245-gbbbbbbb"},
+		{"old client: frontend only", "v0.8.0", "", "", "frontend v0.8.0"},
+		{"api unknown is omitted", "v0.8.0", "", "v0.8.1", "frontend v0.8.0 · pocketbase v0.8.1"},
+		{"frontend unknown is omitted", "", "v0.8.1", "", "api v0.8.1"},
+		{"whitespace counts as unknown", "v0.8.0", "  ", "", "frontend v0.8.0"},
+		{"nothing known", "", "", "", "unknown"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := formatAppVersions(&IssueParams{AppVersion: tt.frontend, APIVersion: tt.api, PocketBaseVersion: tt.pbv})
+			if got != tt.want {
+				t.Errorf("formatAppVersions() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestBuildIssueBodyNamesEveryComponentVersion(t *testing.T) {
+	body := buildIssueBody(&IssueParams{
+		Description:       "The save button does not work",
+		Category:          "bug",
+		UserName:          "Jane Smith",
+		UserEmail:         "jane@example.com",
+		AppVersion:        "v6.4.0-240-gaaaaaaa",
+		APIVersion:        "v6.4.0-248-gc35904c",
+		PocketBaseVersion: "v6.4.0-245-gbbbbbbb",
+	})
+	want := "- App Version: frontend v6.4.0-240-gaaaaaaa · api v6.4.0-248-gc35904c · pocketbase v6.4.0-245-gbbbbbbb"
+	if !strings.Contains(body, want) {
+		t.Errorf("issue body missing %q:\n%s", want, body)
+	}
 }

@@ -1,60 +1,7 @@
 import type { FC } from 'react'
 import { Tag } from 'lucide-react'
 import { parseVersion } from '../utils/versionParser'
-
-interface VersionInfoProps {
-  className?: string
-}
-
-const GitHubIcon: FC<{ size?: number }> = ({ size = 14 }) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={2}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4" />
-    <path d="M9 18c-4.51 2-5-2-7-2" />
-  </svg>
-)
-
-export const VersionInfo: FC<VersionInfoProps> = ({ className = '' }) => {
-  const parsed = parseVersion(import.meta.env.VITE_APP_VERSION)
-
-  return (
-    <div className={`flex items-center gap-2 text-xs text-gray-400 ${className}`}>
-      {parsed && (
-        <>
-          <a
-            href={parsed.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1.5 text-gray-400 transition-colors hover:text-gray-500"
-          >
-            <span>{`Kindred ${parsed.display}`}</span>
-            {!parsed.ahead && <GitHubIcon />}
-          </a>
-          {parsed.ahead && (
-            <a
-              href={parsed.ahead.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 text-gray-400 transition-colors hover:text-gray-500"
-            >
-              <span>{parsed.ahead.display}</span>
-              <GitHubIcon />
-            </a>
-          )}
-        </>
-      )}
-    </div>
-  )
-}
+import { useDeployedVersions } from '../hooks/useDeployedVersions'
 
 interface VersionMenuRowProps {
   /** Called when either link is clicked, so the host menu can close. */
@@ -66,9 +13,13 @@ interface VersionMenuRowProps {
  * Styled like the other help items. The tag opens the release page and "+N · sha"
  * opens the compare view; a bare-sha build is one link to the commit. Renders
  * nothing (no divider either) for a dev build.
+ *
+ * Shows the NEWEST of the frontend's, the api's and PocketBase's versions: CD
+ * rebuilds only the images whose files changed, so the frontend's own can lag.
+ * Until the servers answer, or if they fail, it is the frontend's.
  */
 export const VersionMenuRow: FC<VersionMenuRowProps> = ({ onNavigate }) => {
-  const parsed = parseVersion(import.meta.env.VITE_APP_VERSION)
+  const parsed = parseVersion(useDeployedVersions().newest)
   if (!parsed) return null
 
   const isBareSha = parsed.url.includes('/commit/')
@@ -82,7 +33,7 @@ export const VersionMenuRow: FC<VersionMenuRowProps> = ({ onNavigate }) => {
           target="_blank"
           rel="noopener noreferrer"
           onClick={onNavigate}
-          className="flex items-center gap-3"
+          className="flex flex-1 items-center gap-3"
         >
           <Tag className="text-muted-foreground h-4 w-4" />
           <span className={isBareSha ? 'font-mono' : undefined}>{parsed.display}</span>

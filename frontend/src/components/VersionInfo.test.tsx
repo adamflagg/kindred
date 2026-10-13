@@ -1,10 +1,20 @@
-import { afterEach, describe, it, expect, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, beforeEach, describe, it, expect, vi, type MockInstance } from 'vitest'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import type { ReactElement } from 'react'
+import { pb } from '../lib/pocketbase'
 import { parseVersion } from '../utils/versionParser'
-import { VersionInfo, VersionMenuRow } from './VersionInfo'
+import { VersionMenuRow } from './VersionInfo'
+
+vi.mock('../lib/pocketbase', () => ({
+  pb: { authStore: { token: 'test-jwt', clear: vi.fn() }, send: vi.fn() },
+}))
+vi.mock('../contexts/AuthContext', () => ({
+  useAuth: () => ({ isLoading: false, user: { id: 'u1' } }),
+}))
 
 /**
- * Tests for version parsing and VersionInfo display.
+ * Tests for version parsing and the Help-menu version row.
  *
  * Version formats from CD pipeline:
  * - Clean tag: "v0.8.0" (release build)
@@ -111,54 +121,42 @@ afterEach(() => {
   vi.unstubAllEnvs()
 })
 
-describe('VersionInfo', () => {
-  it('should render release version with link to release page', () => {
-    mockVersion('v0.8.0')
-    render(<VersionInfo />)
-    const link = screen.getByRole('link')
-    expect(link).toHaveTextContent('Kindred v0.8.0')
-    expect(link).toHaveAttribute('href', 'https://github.com/adamflagg/kindred/releases/tag/v0.8.0')
-  })
-
-  it('should render describe version with tag linking to release and +N linking to diff', () => {
-    mockVersion('v0.7.0-5-gabc1234')
-    render(<VersionInfo />)
-    const links = screen.getAllByRole('link')
-    expect(links).toHaveLength(2)
-    expect(links[0]).toHaveTextContent('Kindred v0.7.0')
-    expect(links[0]).toHaveAttribute(
-      'href',
-      'https://github.com/adamflagg/kindred/releases/tag/v0.7.0'
-    )
-    expect(links[1]).toHaveTextContent('+5')
-    expect(links[1]).toHaveAttribute(
-      'href',
-      'https://github.com/adamflagg/kindred/compare/v0.7.0...abc1234'
-    )
-  })
-
-  it('should render nothing for "dev"', () => {
-    mockVersion('dev')
-    const { container } = render(<VersionInfo />)
-    expect(screen.queryByRole('link')).not.toBeInTheDocument()
-    // Container div still renders but is empty
-    expect(container.firstChild).toBeEmptyDOMElement()
-  })
-
-  it('should render nothing for empty version', () => {
-    mockVersion('')
-    const { container } = render(<VersionInfo />)
-    expect(screen.queryByRole('link')).not.toBeInTheDocument()
-    expect(container.firstChild).toBeEmptyDOMElement()
-  })
-})
-
 describe('VersionMenuRow', () => {
   const REPO = 'https://github.com/adamflagg/kindred'
+  let fetchSpy: MockInstance<typeof fetch>
+
+  // The servers' versions. Unset = that server is unreachable, which is also
+  // the default, so the frontend's own version is what the row shows.
+  const serverVersions = (api?: string, pocketbase?: string) => {
+    fetchSpy.mockImplementation(() =>
+      Promise.resolve(
+        api
+          ? new Response(JSON.stringify({ api }), { status: 200 })
+          : new Response('{}', { status: 502 })
+      )
+    )
+    vi.mocked(pb.send).mockImplementation(() =>
+      pocketbase ? Promise.resolve({ pocketbase }) : Promise.reject(new Error('unreachable'))
+    )
+  }
+
+  const renderRow = (ui: ReactElement) => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>)
+  }
+
+  beforeEach(() => {
+    fetchSpy = vi.spyOn(globalThis, 'fetch')
+    serverVersions()
+  })
+
+  afterEach(() => {
+    fetchSpy.mockRestore()
+  })
 
   it('renders a divider and a row for a build ahead of a tag: tag, +N and sha as separate links', () => {
     mockVersion('v6.4.0-248-gc35904c')
-    const { container } = render(<VersionMenuRow />)
+    const { container } = renderRow(<VersionMenuRow />)
     const tag = screen.getByRole('link', { name: 'v6.4.0' })
     expect(tag).toHaveAttribute('href', `${REPO}/releases/tag/v6.4.0`)
     const compare = screen.getByRole('link', { name: /\+248/ })
@@ -173,9 +171,21 @@ describe('VersionMenuRow', () => {
     expect(screen.queryByText(/Kindred/)).toBeNull()
   })
 
+  it('makes the whole row clickable: the tag link fills the row up to the compare link', () => {
+    mockVersion('v6.4.0-248-gc35904c')
+    renderRow(<VersionMenuRow />)
+    const tag = screen.getByRole('link', { name: 'v6.4.0' })
+    const compare = screen.getByRole('link', { name: /\+248/ })
+    expect(tag).toHaveClass('flex-1')
+    expect(compare).not.toHaveClass('flex-1')
+    // The hover background is on the row, so the tag link must span it.
+    expect(tag.parentElement).toHaveClass('hover:bg-muted/50')
+    expect(tag.parentElement).toContainElement(compare)
+  })
+
   it('shows "release" on a clean tag, with only the release link', () => {
     mockVersion('v6.5.0')
-    render(<VersionMenuRow />)
+    renderRow(<VersionMenuRow />)
     expect(screen.getAllByRole('link')).toHaveLength(1)
     const tag = screen.getByRole('link', { name: /v6\.5\.0/ })
     expect(tag).toHaveAttribute('href', `${REPO}/releases/tag/v6.5.0`)
@@ -184,7 +194,7 @@ describe('VersionMenuRow', () => {
 
   it('shows the short sha, linked to the commit, on a bare-sha build', () => {
     mockVersion('abc1234')
-    render(<VersionMenuRow />)
+    renderRow(<VersionMenuRow />)
     expect(screen.getAllByRole('link')).toHaveLength(1)
     expect(screen.getByRole('link', { name: /abc1234/ })).toHaveAttribute(
       'href',
@@ -195,16 +205,46 @@ describe('VersionMenuRow', () => {
 
   it('renders no divider and no row for a dev build', () => {
     mockVersion('dev')
-    const { container } = render(<VersionMenuRow />)
+    const { container } = renderRow(<VersionMenuRow />)
     expect(container).toBeEmptyDOMElement()
   })
 
   it('calls onNavigate when either link is clicked', () => {
     mockVersion('v6.4.0-248-gc35904c')
     const onNavigate = vi.fn()
-    render(<VersionMenuRow onNavigate={onNavigate} />)
+    renderRow(<VersionMenuRow onNavigate={onNavigate} />)
     fireEvent.click(screen.getByRole('link', { name: 'v6.4.0' }))
     fireEvent.click(screen.getByRole('link', { name: /\+248/ }))
     expect(onNavigate).toHaveBeenCalledTimes(2)
+  })
+
+  it('shows the api version when it is newer than the frontend', async () => {
+    mockVersion('v6.4.0-240-gaaaaaaa')
+    serverVersions('v6.4.0-248-gc35904c', 'v6.4.0-245-gbbbbbbb')
+    renderRow(<VersionMenuRow />)
+    const compare = await screen.findByRole('link', { name: /\+248/ })
+    expect(compare).toHaveAttribute('href', `${REPO}/compare/v6.4.0...c35904c`)
+    expect(compare).toHaveTextContent('+248 · c35904c')
+    expect(screen.queryByText(/\+240/)).toBeNull()
+  })
+
+  it('shows a newer release tag from PocketBase over a build ahead of an older tag', async () => {
+    mockVersion('v6.4.0-248-gc35904c')
+    serverVersions('v6.4.0-250-gddddddd', 'v6.5.0')
+    renderRow(<VersionMenuRow />)
+    expect(await screen.findByText('release')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /v6\.5\.0/ })).toHaveAttribute(
+      'href',
+      `${REPO}/releases/tag/v6.5.0`
+    )
+    expect(screen.queryByText(/\+250/)).toBeNull()
+  })
+
+  it('keeps showing the frontend version when both servers fail', async () => {
+    mockVersion('v6.4.0-240-gaaaaaaa')
+    renderRow(<VersionMenuRow />)
+    await waitFor(() => expect(pb.send).toHaveBeenCalled())
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalled())
+    expect(screen.getByRole('link', { name: /\+240/ })).toHaveTextContent('+240 · aaaaaaa')
   })
 })
