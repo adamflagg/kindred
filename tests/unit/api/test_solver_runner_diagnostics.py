@@ -56,7 +56,7 @@ def test_failure_branch_stores_localization_and_impossibility_report() -> None:
         m_settings.return_value = MagicMock(
             pocketbase_admin_email="x", pocketbase_admin_password="x", solver_subprocess=False
         )
-        m_pb.return_value.collection.return_value.auth_with_password.return_value = {}
+        m_pb.return_value.authenticate.return_value = None
 
         asyncio.run(sr_module.run_solver_task_v2(run_id, 1000001, 2026, 5))
 

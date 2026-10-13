@@ -46,9 +46,12 @@ def _superuser_credentials() -> tuple[str, str]:
     return settings.pocketbase_admin_email, settings.pocketbase_admin_password
 
 
-# Every superuser client the api owns is a SuperuserPocketBase, so a token that
+# This client and the per-task ones are SuperuserPocketBase, so a token that
 # dies early (its tokenKey changed) is re-authenticated and the request retried
 # once, at one choke point -- see api/services/pb_superuser_client.py.
+# Not covered by that retry: ConfigLoader and the sync ConnectionManager keep
+# their own clients (they re-auth on an interval instead), and
+# bunking.pocketbase_batch.send_batch posts with this client's token directly.
 pb: SuperuserPocketBase = SuperuserPocketBase(pb_url, credentials=_superuser_credentials)
 
 # How often the global client's token is checked. PocketBase answers a dead
