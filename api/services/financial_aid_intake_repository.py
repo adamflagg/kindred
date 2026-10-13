@@ -46,6 +46,7 @@ from api.constants.collections import (
     FINANCIAL_AID_APPLICATIONS,
     FINANCIAL_TRANSACTIONS,
 )
+from api.services.aid_build_reads import shared_read
 from api.services.aid_sync_inputs import aid_sync_inputs
 from api.services.financial_aid_household import HOUSEHOLD_ANSWER_FIELDS
 from api.services.financial_aid_intake_types import (
@@ -441,7 +442,15 @@ class FinancialAidIntakeRepository:
         so it reads nothing rather than widening to the whole season."""
         if application_id == "":
             return []
-        scope = f" && application = '{pb_escape(application_id)}'" if application_id is not None else ""
+        if application_id is None:
+            # The whole season: inside a season build, one read shared with the grants register (aid_build_reads).
+            # The same query GrantsRepository.fetch_request_refs shares, whole records, so neither loses a column.
+            rows = await shared_read(
+                (AID_REQUESTS, int(year), id(self.pb)),
+                lambda: self._page(AID_REQUESTS, {"filter": f"year = {int(year)}", "sort": STABLE_SORT}),
+            )
+            return [_request(r) for r in rows]
+        scope = f" && application = '{pb_escape(application_id)}'"
         rows = await self._page(AID_REQUESTS, {"filter": f"year = {year}{scope}", "sort": STABLE_SORT})
         return [_request(r) for r in rows]
 

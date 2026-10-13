@@ -92,6 +92,7 @@ from api.schemas.financial_aid_decisions import (
     _CellBase,
 )
 from api.schemas.financial_aid_intake import IssueOut
+from api.services.aid_build_reads import build_scoped_reads
 from api.services.aid_season_cache import AidSeasonCache
 from api.services.camp_calendar import CAMP_TZ
 from api.services.financial_aid_calc_inputs import (
@@ -1601,6 +1602,12 @@ class FinancialAidDecisionsService:
         )
 
     async def _build_season(self, year: int, *, names: bool) -> tuple[Season, Names]:
+        """One season build, its duplicated light reads (the requests, the attribution overrides) shared within it and
+        never beyond it (aid_build_reads)."""
+        with build_scoped_reads():
+            return await self._priced_season(year, names=names)
+
+    async def _priced_season(self, year: int, *, names: bool) -> tuple[Season, Names]:
         """The season's loads run as five concurrent branches: the requests with what hangs off them
         (the names too, when asked), the sessions, shares, events and grants register, the CampMinder
         ledger (10b), the cancellation events (10b-2), and the grant placement log (3c-2). The registrations
