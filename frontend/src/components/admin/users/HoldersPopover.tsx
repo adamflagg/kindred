@@ -15,9 +15,9 @@ const displayName = (u: RecordModel) => String(u['name'] ?? '') || String(u['ema
 /**
  * "Who holds it" (owner 2026-10-13, option B): the non-admin holders of one
  * permission, in a card under its "N people" count. Admins are left to the
- * tab's purple strip. Escape, a click outside, or picking a name closes it;
- * it follows the count when the list scrolls and hides while the count is
- * scrolled out of the list.
+ * tab's purple strip. Escape, a click outside, picking a name, or a refetch
+ * that leaves nobody holding it closes it; it follows the count when the list
+ * scrolls and hides while the count is scrolled out of the list.
  */
 export function HoldersPopover({
   code,
@@ -81,6 +81,14 @@ export function HoldersPopover({
     window.addEventListener('scroll', check, true)
     return () => window.removeEventListener('scroll', check, true)
   }, [anchor, clip])
+
+  // A refetch that leaves nobody holding it swaps the count for plain text,
+  // so the card would sit empty on a detached anchor: close it instead.
+  const empty = holders.length === 0
+  useEffect(() => {
+    if (empty) onClose()
+  }, [empty, onClose])
+  if (empty) return null
 
   return createPortal(
     <div

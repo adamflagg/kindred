@@ -422,6 +422,30 @@ describe('PermissionsTab', () => {
       expect(popover()).not.toBeInTheDocument()
     })
 
+    it('closes, rather than showing an empty card, when a refetch leaves nobody holding it', async () => {
+      const props = makeProps()
+      const { rerender } = render(
+        <MemoryRouter>
+          <PermissionsTab {...props} />
+        </MemoryRouter>
+      )
+      await userEvent.click(countButton('metrics.geo', /1 person/))
+      expect(popover()).toBeInTheDocument()
+      const held = new Map(
+        [...props.data.held].map(([id, roles]) => [
+          id,
+          roles.filter((r) => !r.permissions.includes('metrics.geo')),
+        ])
+      )
+      rerender(
+        <MemoryRouter>
+          <PermissionsTab {...props} data={{ ...props.data, held }} />
+        </MemoryRouter>
+      )
+      expect(screen.getByTestId('perm-metrics.geo')).toHaveTextContent('0 people')
+      expect(popover()).not.toBeInTheDocument()
+    })
+
     it("opening another row's card closes the first", async () => {
       renderPerms()
       await userEvent.click(countButton('bunking.manage', /2 people/))
