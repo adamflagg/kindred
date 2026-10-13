@@ -34,6 +34,7 @@ describe('parseVersion', () => {
       url: `${GITHUB_REPO_URL}/releases/tag/v3.3.0`,
       ahead: {
         display: '+6',
+        sha: 'abc1234',
         url: `${GITHUB_REPO_URL}/compare/v3.3.0...abc1234`,
       },
     })
@@ -45,6 +46,7 @@ describe('parseVersion', () => {
       url: `${GITHUB_REPO_URL}/releases/tag/v0.7.0`,
       ahead: {
         display: '+25',
+        sha: '1234567',
         url: `${GITHUB_REPO_URL}/compare/v0.7.0...1234567`,
       },
     })

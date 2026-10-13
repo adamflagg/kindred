@@ -60,7 +60,10 @@ vi.mock('../components/YearSelector', () => ({
 vi.mock('../components/CacheStatus', () => ({ default: () => null }))
 vi.mock('../components/BunkRequestsUpload', () => ({ default: () => null }))
 vi.mock('../components/BrandedLogo', () => ({ BrandedLogo: () => <div>Logo</div> }))
-vi.mock('../components/VersionInfo', () => ({ VersionInfo: () => null }))
+vi.mock('../components/VersionInfo', () => ({
+  VersionInfo: () => null,
+  VersionMenuRow: () => null,
+}))
 vi.mock('../components/FeedbackModal', () => ({ FeedbackModal: () => null }))
 vi.mock('../components/ViewAsSwitcher', () => ({ ViewAsSwitcher: () => null }))
 vi.mock('../hooks/useCanViewAs', () => ({ useCanViewAs: () => false }))

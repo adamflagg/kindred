@@ -110,6 +110,9 @@ vi.mock('../components/VersionInfo', () => ({
   VersionInfo: ({ className = '' }: { className?: string }) => (
     <div data-testid="version-info" className={className} />
   ),
+  VersionMenuRow: ({ onNavigate }: { onNavigate?: () => void }) => (
+    <button data-testid="version-menu-row" onClick={onNavigate} />
+  ),
 }))
 
 vi.mock('../components/FeedbackModal', () => ({
@@ -216,14 +219,13 @@ describe('View as switcher', () => {
     expect(screen.queryByText('My Account')).toBeNull()
   })
 
-  // Owner ruling (final audit): the version moves into the user menu, never fixed on the page.
-  it('keeps the version in the user menu, not fixed at the bottom of the page', () => {
+  // Owner ruling 2026-10-12: the version moved out of the user menu into the Help menu.
+  it('no longer shows the version in the user menu', () => {
     renderAppLayout()
-    expect(screen.queryByTestId('version-info')).toBeNull()
     fireEvent.click(screen.getByText('Jane Smith'))
-    const version = screen.getByTestId('version-info')
-    expect(version.closest('.fixed')).toBeNull()
-    expect(version.closest('.card-lodge')).not.toBeNull()
+    expect(screen.getByText('My Account')).toBeInTheDocument()
+    expect(screen.queryByTestId('version-info')).toBeNull()
+    expect(screen.queryByTestId('version-menu-row')).toBeNull()
   })
 
   it('has no "View as…" item for anyone who cannot switch', () => {
@@ -255,6 +257,18 @@ describe('Help Menu', () => {
 
     expect(screen.getByText('Report a Problem')).toBeInTheDocument()
     expect(screen.getByText('Tour This Page')).toBeInTheDocument()
+  })
+
+  it('puts the version row in the Help menu after the other items, and closes the menu on click', () => {
+    renderAppLayout()
+    expect(screen.queryByTestId('version-menu-row')).toBeNull()
+    fireEvent.click(screen.getByLabelText('Help menu'))
+    const row = screen.getByTestId('version-menu-row')
+    const tour = screen.getByText('Tour This Page')
+    expect(tour.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(row.closest('.card-lodge')).toHaveClass('w-64')
+    fireEvent.click(row)
+    expect(screen.queryByText('Report a Problem')).toBeNull()
   })
 
   it('opens feedback modal when Report a Problem is clicked', () => {
