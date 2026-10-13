@@ -10,6 +10,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/pocketbase/pocketbase/core"
 )
 
 // kindred#2803 item B. FastAPI's server caches (metrics 2 h, lodging 15 min,
@@ -278,6 +280,83 @@ func TestAWedgedAPIDelaysPublishingOnlyUntilTheTimeout(t *testing.T) {
 	}
 	if out := logs.String(); !strings.Contains(out, "level=WARN") || !strings.Contains(out, "syncType="+syncType) {
 		t.Fatalf("no warning names the job whose invalidate timed out; logs:\n%s", out)
+	}
+}
+
+// A second FinalizeSyncStatus for a run that is already finishing is a no-op: it must neither
+// wait on the API nor write a second sync_runs row, which would double the counts that table
+// exists to collect. FinalizeSyncStatus's lookup sees the finishing entry still in runningJobs,
+// so only the claim tells it the run is already being finished.
+func TestASecondFinalizeWhileTheFirstIsFinishingIsANoOp(t *testing.T) {
+	t.Parallel()
+	const syncType = "process_requests"
+	o := NewOrchestrator(nil)
+	api := newBlockingNotifier()
+	t.Cleanup(func() { close(api.release) })
+	o.runCompletedNotifier = api.notify
+	o.RegisterService(syncType, &MockService{name: syncType})
+	if err := o.MarkSyncRunning(syncType); err != nil {
+		t.Fatalf("MarkSyncRunning: %v", err)
+	}
+
+	go o.FinalizeSyncStatus(syncType, Stats{}, nil)
+	api.awaitCall(t)
+
+	second := make(chan struct{})
+	go func() {
+		o.FinalizeSyncStatus(syncType, Stats{}, errors.New("late duplicate"))
+		close(second)
+	}()
+	select {
+	case <-second:
+	case <-time.After(2 * time.Second):
+		t.Fatal("a second FinalizeSyncStatus finished the same run again instead of returning")
+	}
+	select {
+	case got := <-api.called:
+		t.Fatalf("the API was told about %s twice for one run", got)
+	default:
+	}
+}
+
+// panicsOnRecordApp is an app whose sync_runs write panics: recordSyncRun's first call on it.
+// Only that method is ever reached, so the embedded nil App is never touched.
+type panicsOnRecordApp struct{ core.App }
+
+//nolint:revive // var-naming: the name is core.App's, and must match to override it
+func (panicsOnRecordApp) FindCollectionByNameOrId(string) (*core.Collection, error) {
+	panic("sync_runs write exploded")
+}
+
+// A completion is claimed before its slow steps run and published after them, and only the
+// publish frees the slot. A panic in between must still publish: otherwise the job reads
+// `running` until the process restarts, and the process_requests handlers' deferred recover
+// -- which calls FinalizeSyncStatus again -- finds the claim and returns without freeing it.
+func TestAPanicWhileRecordingTheRunStillFreesTheSlot(t *testing.T) {
+	t.Parallel()
+	const syncType = "process_requests"
+	o := NewOrchestrator(panicsOnRecordApp{})
+	o.RegisterService(syncType, &MockService{name: syncType})
+	if err := o.MarkSyncRunning(syncType); err != nil {
+		t.Fatalf("MarkSyncRunning: %v", err)
+	}
+
+	// The shape of api.go's process_requests handlers: finalize, and finalize again from a
+	// deferred recover if anything panicked.
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				o.FinalizeSyncStatus(syncType, Stats{}, errors.New("panic"))
+			}
+		}()
+		o.FinalizeSyncStatus(syncType, Stats{}, nil)
+	}()
+
+	if o.IsRunning(syncType) {
+		t.Fatal("the job still reads as running after a panic while recording it; its slot is stuck")
+	}
+	if err := o.MarkSyncRunning(syncType); err != nil {
+		t.Fatalf("the next run of the job was refused: %v", err)
 	}
 }
 

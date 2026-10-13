@@ -959,16 +959,23 @@ func (o *Orchestrator) isFinishingLocked(syncType string) bool {
 // o.mu is held across neither the DB write nor the HTTP call -- both are far too long to
 // hold a mutex every status read contends on. The claim is what keeps the slot safe meanwhile.
 //
+// The publish is deferred so a panic in step 1 or 2 still runs it. Only the publish frees the
+// slot, and a second FinalizeSyncStatus -- the process_requests handlers make one from their
+// deferred recover -- sees the claim and returns, so a skipped publish would leave the job
+// reading `running` until the process restarts.
+//
 // The notification covers a FAILED run too, as the browser's sync-completion toast always
 // has: a run that failed part-way may still have written.
 func (o *Orchestrator) finishCompletedRun(completed *Status) {
+	defer func() {
+		o.mu.Lock()
+		o.publishCompletedLocked(completed)
+		o.mu.Unlock()
+	}()
+
 	snapshot := snapshotStatus(completed)
 	o.recordSyncRun(&snapshot)
 	o.notifyRunCompleted(snapshot.Type)
-
-	o.mu.Lock()
-	o.publishCompletedLocked(completed)
-	o.mu.Unlock()
 }
 
 // publishCompletedLocked moves a finished run from runningJobs to lastCompletedStatus. The
@@ -985,10 +992,10 @@ func (o *Orchestrator) finishCompletedRun(completed *Status) {
 // should have replaced it; this is the backstop that keeps a replacement from being erased if
 // that ever stops being true.
 func (o *Orchestrator) publishCompletedLocked(completed *Status) {
-	// Two independent deep copies, and neither is the caller's own Status. The published one
-	// is what every GetStatus caller reads (as `statusCopy := *status`, which re-shares a map
-	// and a pointer), and the returned one travels to the sync_runs write. Storing the
-	// caller's pointer left both of those aliasing whatever produced Summary — a Service that
+	// A deep copy, not the caller's own Status, and independent of the copy finishCompletedRun
+	// sent to the sync_runs write. It is what every GetStatus caller reads (as
+	// `statusCopy := *status`, which re-shares a map and a pointer). Storing the caller's
+	// pointer left it aliasing whatever produced Summary — a Service that
 	// kept a reference to the map it returned from GetStats could rewrite a finished run's
 	// counters. That was safe only because every GetStats happens to allocate a fresh map,
 	// which nothing states and nothing tests.
