@@ -22,6 +22,7 @@ from api.schemas.financial_aid import SourceChangeOut
 from api.services.financial_aid_grants_service import grantor_retired_at
 from api.services.financial_aid_ledger_service import last_changes, parse_pb_datetime, source_lines
 from api.services.financial_aid_repository import FinancialAidRepository
+from api.services.pb_read import pb_read
 from api.utils.pb_filters import pb_escape
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite, commit_aid_writes, race_conflict
 from bunking.financial_aid.reports.zips import HouseholdAddress
@@ -151,7 +152,7 @@ class DevelopmentRepository:
         self._aid = FinancialAidRepository(pb)
 
     async def _page(self, query: dict[str, Any]) -> list[Any]:
-        rows: list[Any] = await asyncio.to_thread(
+        rows: list[Any] = await pb_read(
             self.pb.collection(ATTENDEES).get_full_list, batch=PAGE_SIZE, query_params=query
         )
         return rows
@@ -228,7 +229,7 @@ class DevelopmentRepository:
         return [grantor_record(row) for row in await self._aid.fetch_grantors()]
 
     async def report_columns(self, report: str) -> StoredColumns:
-        rows: list[Any] = await asyncio.to_thread(
+        rows: list[Any] = await pb_read(
             self.pb.collection(AID_REPORT_DEFINITIONS).get_full_list,
             batch=PAGE_SIZE,
             query_params={"filter": f"report = '{pb_escape(report)}'", "sort": "id"},

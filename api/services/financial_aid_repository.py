@@ -13,7 +13,6 @@ write whose log row could be lost.
 
 from __future__ import annotations
 
-import asyncio
 from collections import defaultdict
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass
@@ -37,6 +36,7 @@ from api.constants.collections import (
 )
 from api.services.lodging_repository import STABLE_SORT
 from api.services.pb_precise_datetime import aid_collection
+from api.services.pb_read import pb_read
 from api.utils.pb_filters import pb_escape
 from bunking.financial_aid.change_log import COLLECTION as CHANGE_LOG
 
@@ -111,7 +111,7 @@ class FinancialAidRepository:
         self.pb = pb
 
     async def _page(self, collection: str, query_params: dict[str, Any]) -> list[Any]:
-        rows: list[Any] = await asyncio.to_thread(
+        rows: list[Any] = await pb_read(
             aid_collection(self.pb, collection).get_full_list, batch=PAGE_SIZE, query_params=query_params
         )
         return rows

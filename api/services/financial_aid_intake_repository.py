@@ -68,6 +68,7 @@ from api.services.financial_aid_intake_types import (
 from api.services.financial_aid_requesters import FaContact
 from api.services.financial_aid_rules_service import AidRulesRepository, FinancialAidRulesService
 from api.services.pb_precise_datetime import aid_collection
+from api.services.pb_read import pb_read
 from api.utils.pb_filters import pb_escape
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite, commit_aid_writes
 from bunking.financial_aid.rules.schema import AidRules, SectionName
@@ -305,7 +306,7 @@ class FinancialAidIntakeRepository:
         self.pb = pb
 
     async def _page(self, collection: str, query_params: dict[str, Any]) -> list[Any]:
-        rows: list[Any] = await asyncio.to_thread(
+        rows: list[Any] = await pb_read(
             aid_collection(self.pb, collection).get_full_list, batch=PAGE_SIZE, query_params=query_params
         )
         return rows
