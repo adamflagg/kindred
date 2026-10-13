@@ -125,7 +125,10 @@ var serialGroups = []struct {
 	{
 		pkg:    "sync",
 		reason: "t.Setenv: API_URL points at a per-test httptest server",
-		tests:  []string{"TestBuildNormalizationLookupCompositeKeyDedup"},
+		tests: []string{
+			"TestBuildNormalizationLookupCompositeKeyDedup",
+			"TestNotifyAPIRunCompletedWaitsForTheAPIToAnswer",
+		},
 	},
 	{
 		// campminder.NewClient reads CAMPMINDER_PRIMARY_KEY from the environment
@@ -220,6 +223,7 @@ var serialGroups = []struct {
 			"TestAidPostingsSyncSkipsTheLedgerTickOnStaleInput",
 			"TestAFailedNightlyThenASuccessfulManualRunForAnotherYearStillSkips2026",
 			"TestAFailedManualRunForAnotherYearDoesNotSkipACoveredSeason",
+			"TestAWedgedAPIDelaysPublishingOnlyUntilTheTimeout",
 		},
 	},
 	{

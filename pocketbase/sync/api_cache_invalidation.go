@@ -3,30 +3,67 @@ package sync
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	"github.com/camp/kindred/pocketbase/fastapi"
 )
+
+// defaultRunCompletedNotifyTimeout is how long a finished run waits on runCompletedNotifier
+// before it publishes anyway. It sits one second past fastapi.InvalidateTimeout on purpose:
+// the HTTP client's own timeout normally ends a wedged call first, with its precise error,
+// and this bound is only the backstop for a notifier that ignores it. Either way a down API
+// costs a sync at most this long per job, never a hang.
+const defaultRunCompletedNotifyTimeout = fastapi.InvalidateTimeout + time.Second
 
 // notifyAPIRunCompleted tells FastAPI that syncType finished, so it clears the server caches
 // that job's writes could have made stale (kindred#2803): the metrics response cache always,
 // the weekend lodging year cache and the social graph cache when the job writes a table they
 // read (api/constants/sync_job_writes.py decides which).
 //
-// Before this, only a browser tab that watched a sync finish made that call, so the hourly and
-// nightly scheduled syncs -- which nobody watches -- left all three stale until their TTLs.
-// The browser still makes it too; a second clear is harmless.
+// Before kindred#2803, only a browser tab that watched a sync finish made that call, so the
+// hourly and nightly scheduled syncs -- which nobody watches -- left all three stale until
+// their TTLs. The browser still makes it too; a second clear is harmless.
 //
-// Fire-and-forget on its own goroutine: a down or wedged API costs one log line and never
-// delays the next job in the queue, let alone fails this one. Every cache still expires on its
-// own TTL, which is the bound this call improves on rather than replaces.
+// SYNCHRONOUS ON PURPOSE. It used to fire and forget, and the orchestrator published the run
+// first -- so a browser that refetches the moment end_time appears could beat the invalidate,
+// be served the pre-sync cache, and keep it for its whole staleTime. The orchestrator now
+// waits for this call (bounded by notifyRunCompleted) and only then publishes. It is bounded
+// twice over: the HTTP client gives up after fastapi.InvalidateTimeout, and a failure costs
+// one warning, never the run -- every cache still expires on its own TTL.
 func notifyAPIRunCompleted(syncType string) {
+	baseURL := fastapi.BaseURL()
+	if err := fastapi.InvalidateCaches(context.Background(), baseURL, syncType); err != nil {
+		slog.Warn("Could not ask FastAPI to clear its caches after a sync",
+			"syncType", syncType, "url", baseURL, "error", err)
+		return
+	}
+	slog.Debug("FastAPI caches invalidated after sync", "syncType", syncType)
+}
+
+// notifyRunCompleted calls runCompletedNotifier and waits for it to return, or for the
+// notify timeout, whichever is first. A notifier still running at the timeout is left to
+// finish on its own goroutine; the run publishes regardless and the warning says why.
+func (o *Orchestrator) notifyRunCompleted(syncType string) {
+	if o.runCompletedNotifier == nil {
+		return
+	}
+	timeout := o.runCompletedNotifyTimeout
+	if timeout <= 0 {
+		timeout = defaultRunCompletedNotifyTimeout
+	}
+
+	done := make(chan struct{})
 	go func() {
-		baseURL := fastapi.BaseURL()
-		if err := fastapi.InvalidateCaches(context.Background(), baseURL, syncType); err != nil {
-			slog.Warn("Could not ask FastAPI to clear its caches after a sync",
-				"syncType", syncType, "url", baseURL, "error", err)
-			return
-		}
-		slog.Debug("FastAPI caches invalidated after sync", "syncType", syncType)
+		defer close(done)
+		o.runCompletedNotifier(syncType)
 	}()
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case <-done:
+	case <-timer.C:
+		slog.Warn("FastAPI did not confirm its cache clear in time; publishing the run anyway",
+			"syncType", syncType, "timeout", timeout)
+	}
 }

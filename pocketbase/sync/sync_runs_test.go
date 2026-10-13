@@ -1330,6 +1330,9 @@ func TestLastRecordedRunsTakesTheMostRecentRow(t *testing.T) {
 		t.Fatalf("first run: %v", err)
 	}
 	waitForSyncRuns(t, app, 1)
+	// The row is written BEFORE the run is published (finishCompletedRun), so its existence
+	// does not mean the slot is free yet; wait for the publish before starting the next run.
+	awaitPublished(t, o, "bunk_assignments")
 
 	o.RegisterService("bunk_assignments", &MockService{name: "bunk_assignments", stats: Stats{Created: 99}})
 	if err := o.RunSingleSync(context.Background(), "bunk_assignments"); err != nil {

@@ -772,6 +772,11 @@ type Orchestrator struct {
 	mu                  sync.RWMutex
 	runningJobs         map[string]*Status
 	lastCompletedStatus map[string]*Status // Store last completed status for each job
+	// finishingJobs holds, per job, the runningJobs entry of a run that has finished but is
+	// not yet published: its sync_runs row and FastAPI notification are in flight. The entry
+	// stays in runningJobs meanwhile, so the run still reads as running and its slot stays
+	// taken. See claimCompletionLocked.
+	finishingJobs map[string]*Status
 	// batchChanged accumulates each in-flight batch's own changed-collections set, keyed by
 	// BatchID -- the batch-scoped counterpart to lastCompletedStatus's process-lifetime view.
 	// See recordBatchChange and batchChangedCollections.
@@ -797,6 +802,9 @@ type Orchestrator struct {
 	// notifyAPIRunCompleted only on the process-wide scheduler (GetScheduler), so a test run
 	// never POSTs to whatever happens to listen on the dev API port.
 	runCompletedNotifier func(syncType string)
+	// runCompletedNotifyTimeout bounds how long a finished run waits on runCompletedNotifier
+	// before publishing anyway. Zero means defaultRunCompletedNotifyTimeout; tests set it short.
+	runCompletedNotifyTimeout time.Duration
 }
 
 // NewOrchestrator creates a new orchestrator
@@ -806,6 +814,7 @@ func NewOrchestrator(app core.App) *Orchestrator {
 		services:            make(map[string]Service),
 		runningJobs:         make(map[string]*Status),
 		lastCompletedStatus: make(map[string]*Status),
+		finishingJobs:       make(map[string]*Status),
 		batchChanged:        make(map[string]map[string]bool),
 		jobSpacing:          2 * time.Second, // Default 2 seconds between jobs
 	}
@@ -889,16 +898,16 @@ func (r runOrigin) forSession(session string) runOrigin {
 	return r
 }
 
-// storeCompletedRun publishes a finished run from a caller holding no lock: it takes o.mu,
-// swaps the status maps, releases, and persists the run to sync_runs.
+// storeCompletedRun finishes a run from a caller holding no lock: it takes o.mu, claims the
+// completion, releases, and hands the run to finishCompletedRun.
 //
 // Four of the five places that produce a completed status use it — two normal completions and
-// the two panic recoveries. The fifth, FinalizeSyncStatus, does the same two steps inline,
-// because it is already inside the critical section that found the run and cannot call this
-// without releasing and re-taking o.mu; that gap is exactly the bug publishCompletedLocked
-// exists to prevent. So the invariant to hold is one step down, not here: every completion
-// path publishes through publishCompletedLocked and then calls afterRunPublished (which
-// records the run and notifies FastAPI). Adding a sixth path means wiring both, in that order.
+// the two panic recoveries. The fifth, FinalizeSyncStatus, claims inline, because it is
+// already inside the critical section that found the run and cannot call this without
+// releasing and re-taking o.mu. So the invariant to hold is one step down, not here: every
+// completion path claims through claimCompletionLocked and then calls finishCompletedRun
+// (which records the run, notifies FastAPI, and only then publishes). Adding a sixth path
+// means wiring both, in that order.
 //
 // Note the membership differs from applyCompletionStatus's on purpose: that function WEIGHS a
 // run and the panic blocks skip it, having nothing to weigh. A panicked run is still a run
@@ -909,38 +918,73 @@ func (r runOrigin) forSession(session string) runOrigin {
 // functions would fail the same way, silently omitting whichever path nobody remembered.
 func (o *Orchestrator) storeCompletedRun(completed *Status) {
 	o.mu.Lock()
-	snapshot := o.publishCompletedLocked(completed)
+	o.claimCompletionLocked(completed.Type)
 	o.mu.Unlock()
 
-	o.afterRunPublished(&snapshot)
+	o.finishCompletedRun(completed)
 }
 
-// afterRunPublished is everything a finished run does once it is published and o.mu is
-// released: persist it to sync_runs, then tell FastAPI which job finished so its server
-// caches clear (kindred#2803). Both completion paths -- storeCompletedRun and
-// FinalizeSyncStatus -- end here, so neither step can be wired into one and forgotten in the
-// other. Neither can fail the run: each logs and swallows its own error.
-//
-// The notification covers a FAILED run too, as the browser's sync-completion toast always
-// has: a run that failed part-way may still have written.
-func (o *Orchestrator) afterRunPublished(snapshot *Status) {
-	o.recordSyncRun(snapshot)
-	if o.runCompletedNotifier != nil {
-		o.runCompletedNotifier(snapshot.Type)
+// claimCompletionLocked marks syncType's current runningJobs entry as finishing. The caller
+// must hold o.mu for writing. The entry is deliberately LEFT in runningJobs: until
+// finishCompletedRun publishes, the run keeps reading as running with no end_time, and its
+// slot stays taken -- MarkSyncRunning, RunSingleSyncWithService and runSingleSyncInternal
+// all refuse it -- so nothing can start in the slot and be erased by the publish.
+func (o *Orchestrator) claimCompletionLocked(syncType string) {
+	if entry := o.runningJobs[syncType]; entry != nil {
+		o.finishingJobs[syncType] = entry
 	}
 }
 
-// publishCompletedLocked moves a finished run from runningJobs to lastCompletedStatus and
-// returns the snapshot the sync_runs write needs. The caller must hold o.mu for writing, and
-// must do the DB write after releasing it — a write is far too long to hold a mutex every
-// status read contends on.
+// isFinishingLocked reports whether syncType's runningJobs entry is a claimed completion
+// that has not been published yet. The caller must hold o.mu (read or write).
+func (o *Orchestrator) isFinishingLocked(syncType string) bool {
+	entry := o.runningJobs[syncType]
+	return entry != nil && o.finishingJobs[syncType] == entry
+}
+
+// finishCompletedRun is the one tail both completion paths -- storeCompletedRun and
+// FinalizeSyncStatus -- end in, called with o.mu released after the run is claimed. The
+// order is the point (kindred#2803 and its follow-up):
+//
+//  1. Persist the run to sync_runs. FastAPI's Camperships season reads ledger freshness from
+//     that table, so the row must exist before FastAPI is told to rebuild.
+//  2. Tell FastAPI which job finished, and wait for it to answer -- bounded by
+//     notifyRunCompleted's timeout, so a down or wedged API delays a run, never hangs it.
+//  3. Only then publish: end_time becomes visible in the status the browser polls.
+//
+// Publishing first, as this used to, let a browser that refetches the moment end_time
+// appears beat the invalidate, be served the pre-sync cache, and keep it for its whole
+// staleTime. Neither step 1 nor step 2 can fail the run: each logs and swallows its own error.
+//
+// o.mu is held across neither the DB write nor the HTTP call -- both are far too long to
+// hold a mutex every status read contends on. The claim is what keeps the slot safe meanwhile.
+//
+// The notification covers a FAILED run too, as the browser's sync-completion toast always
+// has: a run that failed part-way may still have written.
+func (o *Orchestrator) finishCompletedRun(completed *Status) {
+	snapshot := snapshotStatus(completed)
+	o.recordSyncRun(&snapshot)
+	o.notifyRunCompleted(snapshot.Type)
+
+	o.mu.Lock()
+	o.publishCompletedLocked(completed)
+	o.mu.Unlock()
+}
+
+// publishCompletedLocked moves a finished run from runningJobs to lastCompletedStatus. The
+// caller must hold o.mu for writing.
 //
 // The swap and the delete are ONE critical section on purpose. Split apart, there is a window
 // in which the service is neither running nor completed; MarkSyncRunning succeeds in it,
 // because IsRunning is already false, and installs a new Status that the delete then erases.
 // That run goes on to find no entry in FinalizeSyncStatus, return early, and produce no
 // sync_runs row at all.
-func (o *Orchestrator) publishCompletedLocked(completed *Status) Status {
+//
+// The delete is conditional on the entry still being the one claimCompletionLocked marked
+// (no claim means there was no entry to remove). The claim keeps the slot taken, so nothing
+// should have replaced it; this is the backstop that keeps a replacement from being erased if
+// that ever stops being true.
+func (o *Orchestrator) publishCompletedLocked(completed *Status) {
 	// Two independent deep copies, and neither is the caller's own Status. The published one
 	// is what every GetStatus caller reads (as `statusCopy := *status`, which re-shares a map
 	// and a pointer), and the returned one travels to the sync_runs write. Storing the
@@ -950,16 +994,18 @@ func (o *Orchestrator) publishCompletedLocked(completed *Status) Status {
 	// which nothing states and nothing tests.
 	published := snapshotStatus(completed)
 	o.lastCompletedStatus[completed.Type] = &published
-	delete(o.runningJobs, completed.Type)
-	return snapshotStatus(completed)
+	if claimed := o.finishingJobs[completed.Type]; claimed != nil && o.runningJobs[completed.Type] == claimed {
+		delete(o.runningJobs, completed.Type)
+	}
+	delete(o.finishingJobs, completed.Type)
 }
 
 // snapshotStatus copies s deeply enough that the result shares no mutable memory with it.
 //
 // A plain struct copy is not enough: Summary.SubStats is a map and EndTime is a pointer, so a
-// copy still reaches back into whatever produced them. Both of the copies publishCompletedLocked
-// makes go somewhere a later mutation must not be able to follow — one into
-// lastCompletedStatus, one into the sync_runs write.
+// copy still reaches back into whatever produced them. Both copies a finished run makes go
+// somewhere a later mutation must not be able to follow — one into lastCompletedStatus
+// (publishCompletedLocked), one into the sync_runs write (finishCompletedRun).
 func snapshotStatus(s *Status) Status {
 	out := *s
 	if s.EndTime != nil {
@@ -1463,10 +1509,17 @@ func (o *Orchestrator) runSingleSyncInternal(
 	o.mu.RLock()
 	service, exists := o.services[syncType]
 	existingStatus := o.runningJobs[syncType]
+	finishing := o.isFinishingLocked(syncType)
 	o.mu.RUnlock()
 
 	if !exists {
 		return "", fmt.Errorf("sync service not found: %s", syncType)
+	}
+	// A finished run waiting to publish (claimCompletionLocked) still sits in runningJobs, and
+	// is not a MarkSyncRunning pre-mark to reuse: adopting it would hand the new run a slot the
+	// publish is about to clear.
+	if finishing {
+		return "", fmt.Errorf("sync already in progress: %s", syncType)
 	}
 	if override != nil {
 		service = override
@@ -1757,7 +1810,7 @@ func (o *Orchestrator) FinalizeSyncStatus(syncType string, stats Stats, err erro
 
 	o.mu.Lock()
 	status, exists := o.runningJobs[syncType]
-	if !exists {
+	if !exists || o.isFinishingLocked(syncType) {
 		o.mu.Unlock()
 		return
 	}
@@ -1770,16 +1823,17 @@ func (o *Orchestrator) FinalizeSyncStatus(syncType string, stats Stats, err erro
 	completed.Summary = stats
 	applyCompletionStatus(&completed, &stats, err)
 
-	// The lookup above, the map swap and the delete are one critical section. That is what
-	// makes a second call for the same syncType a no-op — api.go's process_requests handlers
-	// call this both normally and from a deferred panic recovery, and two rows for one run
-	// would corrupt the very counts sync_runs exists to collect. It is also what stops a run
-	// started in between from being erased; see publishCompletedLocked.
+	// The lookup above and the claim are one critical section. That is what makes a second
+	// call for the same syncType a no-op — api.go's process_requests handlers call this both
+	// normally and from a deferred panic recovery, and two rows for one run would corrupt the
+	// very counts sync_runs exists to collect. The claim also keeps the slot taken until the
+	// run is published, so no run can start in between and be erased; see
+	// claimCompletionLocked and publishCompletedLocked.
 	//
 	// Everything above is arithmetic on a local copy, so the section stays short. The
-	// sync_runs write is the one slow part and it happens below, outside the lock, from the
-	// snapshot.
-	snapshot := o.publishCompletedLocked(&completed)
+	// sync_runs write and the FastAPI call are the slow parts and they happen below, in
+	// finishCompletedRun, outside the lock.
+	o.claimCompletionLocked(syncType)
 	o.mu.Unlock()
 
 	// recordBatchChange takes o.mu itself, so it must run after the unlock above -- calling it
@@ -1787,13 +1841,11 @@ func (o *Orchestrator) FinalizeSyncStatus(syncType string, stats Stats, err erro
 	// stats are both local copies by this point, so reading them here is safe.
 	o.recordBatchChange(completed.BatchID, syncType, stats)
 
-	o.afterRunPublished(&snapshot)
+	o.finishCompletedRun(&completed)
 
-	// Read the outcome off snapshot, not completed: reading completed directly would still
-	// be safe (it is a local copy, per the comment above recordBatchChange), but snapshot is
-	// the exact Status this run's sync_runs row is about to be written from, so reading it
-	// from anywhere else risks drifting from what actually got recorded.
-	finalStatus, finalError := snapshot.Status, snapshot.Error
+	// completed is a local copy (per the comment above recordBatchChange) and the exact
+	// Status this run's sync_runs row was written from.
+	finalStatus, finalError := completed.Status, completed.Error
 
 	if finalStatus == statusFailed {
 		slog.Error("Sync failed", "syncType", syncType, "error", finalError)
