@@ -14,7 +14,7 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 )
 
-// kindred#2803 item B. FastAPI's server caches (metrics 2 h, lodging 15 min,
+// kindred#2803 item B. FastAPI's server caches (metrics 2 h, lodging cache,
 // social graph 15 min) were cleared on a sync only when a browser tab watched
 // that sync finish and called the invalidate endpoint -- so the hourly and
 // nightly scheduled syncs, which nobody watches, left them stale. The
