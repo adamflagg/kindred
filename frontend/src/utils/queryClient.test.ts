@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { queryClient, invalidateSyncData } from './queryClient'
+import { aidRetry } from '../services/camperships/aidRetry'
 import { pb } from '../lib/pocketbase'
 
 vi.stubGlobal('fetch', vi.fn().mockResolvedValue({}))
@@ -117,5 +118,20 @@ describe('invalidateSyncData', () => {
     )
     expect(invalidatedPrefixes).toContain('weekend-roster')
     expect(invalidatedPrefixes).toContain('weekend-summary')
+  })
+})
+
+describe('Camperships retry default', () => {
+  it('gives every read under the financial-aid prefix aidRetry', () => {
+    expect(aidRetry).toBeTypeOf('function')
+    expect(
+      queryClient.getQueryDefaults(['financial-aid', 'grid', 2026, 'live', 'campminder']).retry
+    ).toBe(aidRetry)
+    expect(queryClient.getQueryDefaults(['financial-aid', 'jump-index', 2026]).retry).toBe(aidRetry)
+  })
+
+  it("leaves every other surface on the app's own retry rule", () => {
+    expect(queryClient.getQueryDefaults(['sessions', 2026]).retry).not.toBe(aidRetry)
+    expect(queryClient.getQueryDefaults(['camp-sessions', 'names', 2026]).retry).not.toBe(aidRetry)
   })
 })

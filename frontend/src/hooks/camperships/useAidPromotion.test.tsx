@@ -91,7 +91,7 @@ describe('useAidPromotionPreview (D39)', () => {
     expect(fetchSpy).not.toHaveBeenCalled()
   })
 
-  it("answers a refusal in the server's words at once, and retries anything else", async () => {
+  it("answers a refusal in the server's words at once, and a server fault too", async () => {
     fetchSpy.mockImplementationOnce(() =>
       Promise.resolve(new Response(JSON.stringify({ detail: 'No such option' }), { status: 404 }))
     )
@@ -101,9 +101,9 @@ describe('useAidPromotionPreview (D39)', () => {
 
     fetchSpy.mockClear()
     fetchSpy.mockImplementationOnce(() => Promise.resolve(new Response('{}', { status: 500 })))
-    const retried = renderHook(() => useAidPromotionPreview('B2'), { wrapper })
-    await waitFor(() => expect(retried.result.current.isSuccess).toBe(true))
-    expect(fetchSpy).toHaveBeenCalledTimes(2)
+    const faulted = renderHook(() => useAidPromotionPreview('B2'), { wrapper })
+    await waitFor(() => expect(faulted.result.current.isError).toBe(true))
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
   })
 
   it('is keyed under the scenario prefix, so a rules write refreshes it', () => {

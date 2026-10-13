@@ -68,6 +68,7 @@ vi.mock('../../lib/pocketbase', () => ({
 }))
 vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => ({ isLoading: false }) }))
 
+import { queryKeys } from '../../utils/queryKeys'
 import { useAidSessionNames } from './useAidSessionNames'
 
 function wrapper({ children }: { children: ReactNode }) {
@@ -112,5 +113,42 @@ describe('useAidSessionNames (Decision 28; M6)', () => {
     const { result } = renderHook(() => useAidSessionNames(0), { wrapper })
     expect(result.current).toBeUndefined()
     expect(getFullList).not.toHaveBeenCalled()
+  })
+})
+
+describe('useAidSessionNames: a direct PocketBase read under a shared prefix, so it names aidRetry itself', () => {
+  // A client that would retry three times at once: only the hook's own rule stops it.
+  const retrying = () =>
+    new QueryClient({ defaultOptions: { queries: { retry: 3, retryDelay: 0 } } })
+  const answered = (status: number) => Object.assign(new Error('x'), { status })
+
+  it('reads a server fault once', async () => {
+    const client = retrying()
+    getFullList.mockClear()
+    getFullList.mockImplementation(() => Promise.reject(answered(500)))
+    renderHook(() => useAidSessionNames(2031), {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      ),
+    })
+    await waitFor(() =>
+      expect(client.getQueryState(queryKeys.campSessionNames(2031))?.status).toBe('error')
+    )
+    expect(getFullList).toHaveBeenCalledTimes(1)
+  })
+
+  it("retries a dropped connection (PocketBase's status 0) once", async () => {
+    const client = retrying()
+    getFullList.mockClear()
+    getFullList.mockImplementation(() => Promise.reject(answered(0)))
+    renderHook(() => useAidSessionNames(2031), {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      ),
+    })
+    await waitFor(() =>
+      expect(client.getQueryState(queryKeys.campSessionNames(2031))?.status).toBe('error')
+    )
+    expect(getFullList).toHaveBeenCalledTimes(2)
   })
 })

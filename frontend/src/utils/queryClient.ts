@@ -1,6 +1,8 @@
 import { QueryClient } from '@tanstack/react-query'
 import { pb } from '../lib/pocketbase'
 import { viewAsHeaders } from '../auth/viewAs'
+import { aidRetry } from '../services/camperships/aidRetry'
+import { queryKeys } from './queryKeys'
 
 // Clean up legacy localStorage persistence (removed in this version)
 localStorage.removeItem('bunking-query-cache')
@@ -49,6 +51,11 @@ export const queryClient = new QueryClient({
     },
   },
 })
+
+// Camperships never retries a server answer, 5xx included: its reads rebuild the priced season, so a
+// retry against an overloaded server is another full build (aidRetry says why). Scoped to the
+// financial-aid prefix; the app-wide default above is #3175's question.
+queryClient.setQueryDefaults(queryKeys.aidPrefix(), { retry: aidRetry })
 
 /**
  * Ask the API to clear its server-side caches. The route requires `registration.manage`

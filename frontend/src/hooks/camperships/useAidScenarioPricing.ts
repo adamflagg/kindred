@@ -5,18 +5,15 @@ import { useAuth } from '../../contexts/AuthContext'
 import {
   evaluateAidScenario,
   requestSetBody,
-  retryUnlessRefused,
   setKey,
   type AidRequestSet,
 } from '../../services/camperships/aidApi'
 import type { ApiAidRulesDocumentIn } from '../../types/api-types'
+import { aidRetry } from '../../services/camperships/aidRetry'
 import { queryKeys } from '../../utils/queryKeys'
 import { useApiWithAuth } from '../useApiWithAuth'
 import { useYear } from '../useCurrentYear'
 import { usePermissions } from '../usePermissions'
-
-/** A refusal in the server's words (an evaluate on a missing deadline, 422) answers at once. */
-const retry = retryUnlessRefused([404, 422])
 
 /** A short, stable key for a document (FNV-1a over its JSON, with its length): equal documents key alike. */
 export function documentKey(document: unknown): string {
@@ -77,7 +74,7 @@ export function useAidScenarioPricing(
       document !== null &&
       document !== undefined &&
       snapshotId !== null,
-    retry,
+    retry: aidRetry,
     placeholderData: keepPreviousData,
   })
 }

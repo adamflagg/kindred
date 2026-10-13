@@ -10,8 +10,8 @@ import { queryKeys } from '../../utils/queryKeys'
 import { useApiWithAuth } from '../useApiWithAuth'
 import { useYear } from '../useCurrentYear'
 import { usePermissions } from '../usePermissions'
-import { reportRetry } from './reportRetry'
 import { useAidAsOf } from './useAidAsOf'
+import { aidRetry } from '../../services/camperships/aidRetry'
 
 /**
  * The requests behind one Reports count (slice 4 J; D20): the grid's `?report=` filter. Read on the
@@ -34,6 +34,6 @@ export function useAidReportRequests(address: ReportAddress | null) {
     queryFn: () => fetchAidReportRequests(fetchWithAuth, year, report, params),
     enabled:
       address !== null && year > 0 && !authLoading && hasPermission(Permission.FINANCIAL_AID_VIEW),
-    retry: reportRetry,
+    retry: aidRetry,
   })
 }

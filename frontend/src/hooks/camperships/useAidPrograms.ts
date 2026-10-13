@@ -9,8 +9,8 @@ import { queryKeys } from '../../utils/queryKeys'
 import { useApiWithAuth } from '../useApiWithAuth'
 import { useYear } from '../useCurrentYear'
 import { usePermissions } from '../usePermissions'
-import { reportRetry } from './reportRetry'
 import { useAidAsOf } from './useAidAsOf'
+import { aidRetry } from '../../services/camperships/aidRetry'
 
 /**
  * Statistics' By session read (spec §9.3; RPT-11; D21): one row per session, grouped by pool, with
@@ -29,6 +29,6 @@ export function useAidPrograms(requestSet: AidRequestSet, enabled = true) {
     queryKey: queryKeys.aidReport(year, 'programs', params),
     queryFn: () => fetchAidPrograms(fetchWithAuth, year, params),
     enabled: enabled && year > 0 && !authLoading && hasPermission(Permission.FINANCIAL_AID_VIEW),
-    retry: reportRetry,
+    retry: aidRetry,
   })
 }
