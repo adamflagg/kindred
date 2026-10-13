@@ -157,15 +157,25 @@ metrics_cache = MetricsCache(ttl_seconds=7200, max_size=200)
 # lodging.py's `_service`/`_writes` build a fresh LodgingRepository on every
 # request, so a cache living on `self` would never be reused across requests.
 #
-# TTL 15 minutes, matching geo_service's _PERSON_ID_CACHE -- the closer
-# sibling here, since it is the other cache built for a fresh-per-request
-# service rather than metrics_cache's router-owned 2-hour fallback. Wired to
-# POST /api/metrics/cache/invalidate (kindred#2142) -- see lodging_cache.py's
-# module docstring for why the TTL is the fallback rather than the plan. Since
-# kindred#2803 that clear is scoped to the syncs that write a cached table, and
-# every clear and every TTL is followed by a background warm
-# (api/services/lodging_cache_warm.py, started from api/main.py's lifespan).
-lodging_cache = LodgingYearCache(ttl_seconds=900, max_size=128)
+# Wired to POST /api/metrics/cache/invalidate (kindred#2142) -- see
+# lodging_cache.py's module docstring for why the TTL is the fallback rather
+# than the plan. Since kindred#2803 that clear is scoped to the syncs that
+# write a cached table, and every clear and every TTL is followed by a
+# background warm (api/services/lodging_cache_warm.py, started from
+# api/main.py's lifespan).
+
+# The TTL AND the refresher's interval (lodging_cache_warm.start_lodging_cache_refresher),
+# so the two cannot drift apart. It is a BACKSTOP for a MISSED sync-completion
+# invalidate, not the freshness plan: the sync orchestrator clears this cache
+# when a job that writes a table it reads finishes, and a missed call is logged
+# as a PocketBase WARN. What keeps it current: sync completion (scoped by job);
+# the Jotform admin writes, which invalidate the reads they change themselves
+# (JotformAdminService._roster_changed); and the lodging hook that replays a
+# staff-resolved queue row, which sends sync_type=lodging_assignments after it
+# places something. Writes the cache cannot see (a PocketBase dashboard edit)
+# wait out this expiry.
+LODGING_CACHE_BACKSTOP_SECONDS = 6 * 60 * 60
+lodging_cache = LodgingYearCache(ttl_seconds=LODGING_CACHE_BACKSTOP_SECONDS, max_size=128)
 
 
 # ========================================
@@ -176,7 +186,7 @@ lodging_cache = LodgingYearCache(ttl_seconds=900, max_size=128)
 # and the equity custom values -- read whole once per year and joined in Python
 # (api/services/aid_sync_inputs.py). Only a sync writes them, so the
 # cache-invalidate endpoint clears this when a finished sync writes one of its
-# tables; the 30-minute TTL is the fallback for a missed call. Two entries: the
+# tables; the six-hour TTL is the fallback for a missed call. Two entries: the
 # season and the `year - 1` a report reads. The committee report reads every
 # season from 2026, so from the 2028 season it reads three and refills the
 # oldest once layer 2 expires -- slower, never different (accepted 2026-10-13
@@ -185,7 +195,15 @@ lodging_cache = LodgingYearCache(ttl_seconds=900, max_size=128)
 # 1.9 GiB with the API container capped at 1 GiB, so four years (~120 MB) was
 # too much. A module-level singleton for the same reason as lodging_cache:
 # every request builds fresh repositories.
-aid_inputs_cache = LodgingYearCache(ttl_seconds=1800, max_size=2)
+#
+# The TTL AND the refresher's interval (aid_sync_inputs.start_aid_inputs_refresher),
+# so the two cannot drift apart. It is a BACKSTOP for a MISSED sync-completion
+# invalidate, not the freshness plan: the sync orchestrator clears this cache
+# when a job that writes one of its tables finishes, and a missed call is logged
+# as a PocketBase WARN. Sync completion is the only writer that keeps it
+# current -- no Camperships write and no browser path touches these tables.
+AID_INPUTS_BACKSTOP_SECONDS = 6 * 60 * 60
+aid_inputs_cache = LodgingYearCache(ttl_seconds=AID_INPUTS_BACKSTOP_SECONDS, max_size=2)
 
 
 # ========================================

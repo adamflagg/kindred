@@ -27,7 +27,7 @@ because the service reads as a superuser and a whole expanded household would ca
 Households are held with HOUSEHOLD_COLUMNS only, never that list (fetch_households(adults=True) still reads
 it itself), so a shared row cannot carry it to a reader that was never meant to see it.
 
-KEPT WARM. After every clear -- a sync's, through invalidate_server_caches -- and every TTL (the refresher,
+KEPT WARM. After every clear -- a sync's, through invalidate_server_caches -- and every backstop expiry (the refresher,
 started in api/main.py's lifespan), the configured season refills in the background, and so does its priced season
 (layer 2) through the season warmer the lifespan registers. A Camperships write clears only layer 2, and its warm
 finds this layer still filled.
@@ -54,7 +54,7 @@ from api.constants.collections import (
     PERSON_CUSTOM_VALUES,
     PERSONS,
 )
-from api.dependencies import aid_inputs_cache, aid_season_cache
+from api.dependencies import AID_INPUTS_BACKSTOP_SECONDS, aid_inputs_cache, aid_season_cache
 from api.dependencies import pb as default_pb
 from api.services.lodging_cache import cached_by_year
 from api.services.pb_precise_datetime import aid_collection
@@ -326,12 +326,14 @@ async def refresh_aid_inputs_forever(
     interval: float,
     warm: Callable[[int], Awaitable[None]] = warm_aid_year,
     year: Callable[[], Awaitable[int]] | None = None,
+    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
 ) -> None:
     """Warm now, then every `interval` seconds clear and warm again (refresh_lodging_cache_forever's pattern).
 
-    A TTL expiry is a clear like any other, so it is followed by a warm too: clearing BEFORE the re-warm, rather
-    than letting the entry expire on its own, keeps the staleness bound at the TTL while the configured season
-    stays filled. A request that arrives mid-warm waits on the warm's fill (single-flight per year). The priced
+    The interval is the six-hour backstop for a missed sync-completion clear (AID_INPUTS_BACKSTOP_SECONDS), not the
+    freshness plan. A backstop expiry is a clear like any other, so it is followed by a warm too: clearing BEFORE
+    the re-warm, rather than letting the entry expire on its own, keeps the staleness bound at the backstop while
+    the configured season stays filled. A request that arrives mid-warm waits on the warm's fill (single-flight per year). The priced
     season (layer 2) is cleared with it, since it was built from what this clear drops, and `warm` rebuilds it."""
     year_of = _configured_year if year is None else year
     while True:
@@ -339,11 +341,11 @@ async def refresh_aid_inputs_forever(
             await warm(await year_of())
         except Exception as exc:  # the loop must outlive one bad pass
             logger.warning(f"Camperships sync-input refresh failed: {exc}")
-        await asyncio.sleep(interval)
+        await sleep(interval)
         aid_inputs_cache.invalidate_all()
         aid_season_cache.invalidate_all()
 
 
 def start_aid_inputs_refresher() -> asyncio.Task[None]:
-    """The startup hook: warm at once in the background, then clear and re-warm every TTL."""
-    return asyncio.get_running_loop().create_task(refresh_aid_inputs_forever(interval=aid_inputs_cache.ttl_seconds))
+    """The startup hook: warm at once in the background, then clear and re-warm on the six-hour backstop."""
+    return asyncio.get_running_loop().create_task(refresh_aid_inputs_forever(interval=AID_INPUTS_BACKSTOP_SECONDS))

@@ -7,7 +7,7 @@ production snapshot):
 * every completed sync cleared the whole cache -- including the HOURLY
   `bunk_assignments` sync, which writes nothing the cache holds;
 * nothing re-filled it until a staff member's click paid for the re-read;
-* the cache expires after 15 minutes, while the browser keeps its copy for 30.
+* the cache expired after 15 minutes, while the browser keeps its copy for 30.
 
 Three changes, each here:
 
@@ -19,11 +19,12 @@ Three changes, each here:
    all, still clears -- the fail-safe is the old behaviour.
 2. `warm_lodging_year` -- after every clear, re-read everything a weekend page
    would, in the background, so the next click finds it cached.
-3. `refresh_lodging_cache_forever` -- on startup, and then every TTL: clear and
-   warm. TTL expiry is a clear like any other, so it is followed by a warm too.
+3. `refresh_lodging_cache_forever` -- on startup, and then every backstop
+   interval (six hours, LODGING_CACHE_BACKSTOP_SECONDS): clear and warm. An
+   expiry is a clear like any other, so it is followed by a warm too.
    A sync no longer depends on a watching browser to be picked up -- the Go
-   orchestrator calls the invalidate endpoint after every job -- so the TTL is
-   now only the fallback for a call that failed; what the refresher changes
+   orchestrator calls the invalidate endpoint after every job -- so the timer is
+   now only the backstop for a call that failed (logged as a PocketBase WARN); what the refresher changes
    is that the re-read no longer happens on somebody's click.
 
 A warm racing a sync cannot re-cache pre-sync data: `LodgingYearCache.set`
@@ -39,7 +40,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from api.constants.sync_job_writes import sync_writes_any
-from api.dependencies import lodging_cache
+from api.dependencies import LODGING_CACHE_BACKSTOP_SECONDS, lodging_cache
 from api.dependencies import pb as default_pb
 from api.services.lodging_cache import CACHED_TABLES_ATTR
 from api.services.lodging_repository import LodgingRepository
@@ -203,6 +204,7 @@ async def refresh_lodging_cache_forever(
     interval: float,
     warm: Callable[[int], Awaitable[None]] = warm_lodging_year,
     year: Callable[[], Awaitable[int]] | None = None,
+    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
 ) -> None:
     """Warm now, then every `interval` seconds clear and warm again.
 
@@ -222,10 +224,12 @@ async def refresh_lodging_cache_forever(
             await warm(await year_of())
         except Exception as exc:  # the loop must outlive one bad pass
             logger.warning(f"Lodging cache refresh failed: {exc}")
-        await asyncio.sleep(interval)
+        await sleep(interval)
         lodging_cache.invalidate_all()
 
 
 def start_lodging_cache_refresher() -> asyncio.Task[None]:
-    """The startup hook: warm at once in the background, then every TTL."""
-    return asyncio.get_running_loop().create_task(refresh_lodging_cache_forever(interval=lodging_cache.ttl_seconds))
+    """The startup hook: warm at once in the background, then on the six-hour backstop."""
+    return asyncio.get_running_loop().create_task(
+        refresh_lodging_cache_forever(interval=LODGING_CACHE_BACKSTOP_SECONDS)
+    )
