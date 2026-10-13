@@ -291,6 +291,19 @@ class TestRefreshOrReauthenticate:
         refresh_calls = [path for path, _ in fake.calls if path == REFRESH_PATH]
         assert len(refresh_calls) == 1  # the probe itself is not retried
 
+    @pytest.mark.parametrize("status", [500, 502, 503])
+    def test_a_pocketbase_failure_is_raised_without_a_password_sign_in(self, status: int) -> None:
+        """Only 401/403 means the token died; an outage is not fixed by signing in again."""
+        fake = FakePocketBase(lambda request: _denied(status))
+        client = _client(fake)
+
+        with pytest.raises(ClientResponseError) as caught:
+            client.refresh_or_reauthenticate()
+
+        assert caught.value.status == status
+        assert fake.auth_calls == 0
+        assert client.auth_store.token == OLD
+
     def test_reauth_failure_propagates_to_the_caller(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:
             if request.url.path == AUTH_PATH:

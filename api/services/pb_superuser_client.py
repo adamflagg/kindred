@@ -117,7 +117,8 @@ class SuperuserPocketBase(PocketBase):
     def refresh_or_reauthenticate(self) -> None:
         """Renew the superuser token, or sign in again if it has died.
 
-        Raises if the fallback sign-in fails, so the caller can log it.
+        Raises if auth-refresh fails for any reason but a denial, or if the
+        fallback sign-in fails, so the caller can log it.
         """
         stale_token = self.auth_store.token
         try:
@@ -126,5 +127,9 @@ class SuperuserPocketBase(PocketBase):
             data = super().send(_REFRESH_PATH, {"method": "POST"})
             self.collection(SUPERUSERS).auth_response(data)
         except ClientResponseError as e:
+            # Only a denial means the token died. An outage (5xx, or status 0 for
+            # a transport error) is not fixed by signing in, so the caller logs it.
+            if e.status not in _AUTH_DENIED:
+                raise
             logger.warning(f"PocketBase superuser token failed auth-refresh ({e.status}); re-authenticating")
             self.reauthenticate_if_stale(stale_token)
