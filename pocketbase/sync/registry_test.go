@@ -1066,7 +1066,7 @@ func TestRunSingleSyncWithServiceRecordsBatchChange(t *testing.T) {
 
 // TestFinalizeSyncStatusRecordsBatchChange pins applyCompletionStatus call site 3.
 // FinalizeSyncStatus is the odd one out: unlike the other two call sites it runs entirely
-// under o.mu (see publishCompletedLocked), so recordBatchChange -- which takes the lock
+// under o.mu (see claimCompletionLocked), so recordBatchChange -- which takes the lock
 // itself -- has to fire after the unlock. Getting that placement wrong deadlocks this test
 // rather than merely failing an assertion.
 func TestFinalizeSyncStatusRecordsBatchChange(t *testing.T) {

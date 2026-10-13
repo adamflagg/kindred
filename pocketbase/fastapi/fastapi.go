@@ -25,10 +25,12 @@ const devBaseURL = "http://127.0.0.1:8000"
 // user. The public /api/metrics/cache/invalidate requires bunking.manage.
 const cacheInvalidatePath = "/api/internal/metrics/cache/invalidate"
 
-// invalidateTimeout bounds one invalidate call. The endpoint only clears
+// InvalidateTimeout bounds one invalidate call. The endpoint only clears
 // in-memory caches and schedules a background warm, so it answers in
-// milliseconds; anything slower is an API that is down or wedged.
-const invalidateTimeout = 5 * time.Second
+// milliseconds; anything slower is an API that is down or wedged. Exported
+// because a finished sync now waits on this call before it publishes, and the
+// sync layer's own bound is derived from it.
+const InvalidateTimeout = 5 * time.Second
 
 // BaseURL returns FastAPI's base URL: API_URL when set, the dev default otherwise.
 func BaseURL() string {
@@ -47,7 +49,7 @@ func BaseURL() string {
 // Returns an error for the caller to log. Callers treat it as best-effort:
 // every cache still expires on its own TTL.
 func InvalidateCaches(ctx context.Context, baseURL, syncType string) error {
-	return invalidateCaches(ctx, &http.Client{Timeout: invalidateTimeout}, baseURL, syncType)
+	return invalidateCaches(ctx, &http.Client{Timeout: InvalidateTimeout}, baseURL, syncType)
 }
 
 func invalidateCaches(ctx context.Context, client *http.Client, baseURL, syncType string) error {

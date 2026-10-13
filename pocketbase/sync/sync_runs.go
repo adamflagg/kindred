@@ -438,7 +438,7 @@ func (o *Orchestrator) LastRecordedRuns() map[string]*Status {
 
 // rehydratedStatus maps a stored status onto one safe to publish for a run that is over.
 //
-// A row can only be written by publishCompletedLocked, so in practice this is already
+// A row can only be written by finishCompletedRun, from a finished run, so this is already
 // terminal — but a process killed mid-write, or a future path that records differently, must
 // not be able to resurrect a job as in-flight. The client polls every 3 s for as long as ANY
 // service reads `running` or `pending` and stops otherwise, so a rehydrated "running" would
