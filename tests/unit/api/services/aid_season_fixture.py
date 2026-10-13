@@ -20,7 +20,8 @@ row in every year-scoped table, sharing CampMinder ids, that year scoping must k
     Chen     Olivia: summer request, Round 1 posted, then CampMinder cancelled her registration and reversed the
              line (a clawback); the cancellation reason recorded in Kindred.
     Sam      a Family Camp household-level request (two people), with a cost override.
-    Rivera   Noah: summer request cancelled in Kindred; a Round 1 posted then un-posted; an open grant commitment.
+    Rivera   Noah: summer request cancelled in Kindred; a Round 1 posted then un-posted; an open grant commitment;
+             a live camp-aid line still on the cancelled request (To reverse).
     Okafor   never applied: one outside grant line, which could be Ava's or Samuel Johnson's. Samuel is in Okafor
              (his alternate childhood household) as well as in his own (Johnson), so the line ties to neither.
 
