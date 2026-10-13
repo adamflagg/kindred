@@ -92,7 +92,7 @@ def env(monkeypatch):
     monkeypatch.setattr("scripts.guide.release_tag.time.sleep", lambda s: None)
 
 
-def _install(monkeypatch, fake: FakeGh) -> FakeGh:
+def _install(monkeypatch: pytest.MonkeyPatch, fake: FakeGh) -> FakeGh:
     monkeypatch.setattr("scripts.guide.lockstep.subprocess.run", fake)
     return fake
 
@@ -286,7 +286,8 @@ def test_an_unexpected_error_prints_only_its_type(monkeypatch, env, capsys):
 
 def _release_steps() -> list[dict[str, Any]]:
     wf = yaml.safe_load(RELEASE_WORKFLOW.read_text())
-    return wf["jobs"]["release"]["steps"]
+    steps: list[dict[str, Any]] = wf["jobs"]["release"]["steps"]
+    return steps
 
 
 def _step_index(name: str) -> int:
