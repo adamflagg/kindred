@@ -88,6 +88,7 @@
   },
   { "key": "manage.sync", "area": "manage", "label": "Manage › Sync", "path": "/manage/sync" },
   { "key": "people", "area": "people", "label": "People", "path": "/campers" },
+  { "key": "people.camper", "area": "people", "label": "Camper", "path": "/camper/:camperId" },
   { "key": "people.users", "area": "people", "label": "Users", "path": "/users" },
   { "key": "people.account", "area": "people", "label": "My Account", "path": "/user" }
 ]

@@ -25,6 +25,9 @@ describe('resolveHelpKey', () => {
   it('keeps the literal weekend sessions route above the param route', () => {
     expect(resolveHelpKey('/weekend/sessions', '')).toBe('weekend.sessions')
   })
+  it('maps the camper detail screen to its key', () => {
+    expect(resolveHelpKey('/camper/1000001', '')).toBe('people.camper')
+  })
   it('falls back to home for anything else', () => {
     expect(resolveHelpKey('/nowhere', '')).toBe('home')
   })
