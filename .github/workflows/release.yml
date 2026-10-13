@@ -23,6 +23,9 @@ jobs:
   release:
     name: Create Release
     runs-on: ubuntu-latest
+    # For GUIDE_WRITE_TOKEN, an environment secret scoped to main. The guide
+    # step below is the only one that reads it.
+    environment: guide-lockstep
     steps:
     - name: Harden runner
       uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
@@ -331,6 +334,19 @@ jobs:
         echo "All 3 images verified at ${CHOSEN_TAG}"
         echo "sha_tag=${CHOSEN_TAG}" >> "$GITHUB_OUTPUT"
         echo "lookback=${LOOKBACK}" >> "$GITHUB_OUTPUT"
+
+    # One version pins both the app and its staff guide on prod. This runs
+    # before caddy's rebuild and the crane promotion -- the first steps that
+    # write a version tag -- so a failure here leaves nothing half-released.
+    # Logic, checks and the public-log rules: scripts/guide/release_tag.py.
+    - name: Tag the staff-guide image with the release version
+      env:
+        GUIDE_TOKEN: ${{ secrets.GUIDE_WRITE_TOKEN }}
+        GUIDE_REPO: ${{ secrets.GUIDE_REPO }}
+        KINDRED_TOKEN: ${{ github.token }}
+        KINDRED_REPO: ${{ github.repository }}
+        VERSION: ${{ steps.version.outputs.version }}
+      run: python3 -m scripts.guide.release_tag --release-sha "$(git rev-parse HEAD)" --version "${VERSION#v}"
 
     - name: Log in to GitHub Container Registry (for docker push)
       uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4

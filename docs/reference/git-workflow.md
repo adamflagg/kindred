@@ -140,6 +140,8 @@ Release via GitHub Actions: **Actions → Release → Run workflow**, or `gh wor
 
 Requires `RELEASE_TOKEN` repo secret (fine-grained PAT with `contents: write`).
 
+**The staff guide gets the same version.** Before any Kindred image is tagged, the workflow waits for guide lockstep to finish on the release commit, then has the guide repo tag its current `main` image `X.Y.Z` and `X.Y`. That's what a `latest` deploy would have pulled, so prod pins the app and its guide with one number. Any failure stops the release before anything is tagged: a guide lockstep that failed, Kindred `main` moving past the release commit mid-run (re-run it), or the guide's image or tag run failing. A failure in a *later* step leaves the guide's `X.Y.Z` tag in place with no Kindred tag; a re-run is a no-op on the guide side unless guide `main` has moved since, in which case the guide refuses to move `X.Y.Z` and you re-run with the next version filled in by hand. It needs the `GUIDE_WRITE_TOKEN` environment secret (`guide-lockstep`) with **Actions: Read and write** on the guide repo, and `GUIDE_REPO`. Logic: `scripts/guide/release_tag.py`.
+
 ### Creating a Release
 1. Create feature branch: `git checkout -b fix/something`
 2. Push and create PR: `gh pr create`
