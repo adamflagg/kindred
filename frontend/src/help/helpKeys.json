@@ -1,0 +1,93 @@
+[
+  { "key": "home", "area": "home", "label": "Dashboard", "path": "/" },
+  { "key": "summer", "area": "summer", "label": "Summer", "path": "/summer/*" },
+  {
+    "key": "summer.sessions",
+    "area": "summer",
+    "label": "Summer › Sessions",
+    "path": "/summer/sessions"
+  },
+  {
+    "key": "summer.session",
+    "area": "summer",
+    "label": "Summer › Session board",
+    "path": "/summer/session/:sessionId/*"
+  },
+  {
+    "key": "summer.compare",
+    "area": "summer",
+    "label": "Summer › Compare scenarios",
+    "path": "/summer/session/:sessionId/compare"
+  },
+  { "key": "weekend", "area": "weekend", "label": "Weekend", "path": "/weekend/*" },
+  {
+    "key": "weekend.sessions",
+    "area": "weekend",
+    "label": "Weekend › Sessions",
+    "path": "/weekend/sessions"
+  },
+  {
+    "key": "weekend.session",
+    "area": "weekend",
+    "label": "Weekend › Session",
+    "path": "/weekend/:sessionRef/*"
+  },
+  { "key": "aid", "area": "aid", "label": "Camperships", "path": "/aid/*" },
+  { "key": "aid.today", "area": "aid", "label": "Camperships › Today", "path": "/aid/today" },
+  {
+    "key": "aid.requests",
+    "area": "aid",
+    "label": "Camperships › Requests",
+    "path": "/aid/requests"
+  },
+  { "key": "aid.money", "area": "aid", "label": "Camperships › Money", "path": "/aid/money/*" },
+  { "key": "aid.season", "area": "aid", "label": "Camperships › Season", "path": "/aid/season/*" },
+  {
+    "key": "aid.reports",
+    "area": "aid",
+    "label": "Camperships › Reports",
+    "path": "/aid/reports/*"
+  },
+  {
+    "key": "aid.household",
+    "area": "aid",
+    "label": "Camperships › Household",
+    "path": "/aid/households/:householdCmId"
+  },
+  { "key": "analytics", "area": "analytics", "label": "Analytics", "path": "/analytics/*" },
+  {
+    "key": "analytics.registration",
+    "area": "analytics",
+    "label": "Analytics › Registration",
+    "path": "/analytics/registration/*"
+  },
+  {
+    "key": "analytics.retention",
+    "area": "analytics",
+    "label": "Analytics › Retention",
+    "path": "/analytics/retention/*"
+  },
+  {
+    "key": "analytics.trends",
+    "area": "analytics",
+    "label": "Analytics › Trends",
+    "path": "/analytics/trends/*"
+  },
+  { "key": "manage", "area": "manage", "label": "Manage", "path": "/manage/*" },
+  {
+    "key": "manage.lodging",
+    "area": "manage",
+    "label": "Manage › Lodging",
+    "path": "/manage/lodging/*"
+  },
+  {
+    "key": "manage.config",
+    "area": "manage",
+    "label": "Manage › Config",
+    "path": "/manage/config/*"
+  },
+  { "key": "manage.sync", "area": "manage", "label": "Manage › Sync", "path": "/manage/sync" },
+  { "key": "people", "area": "people", "label": "People", "path": "/campers" },
+  { "key": "people.users", "area": "people", "label": "Users", "path": "/users" },
+  { "key": "people.account", "area": "people", "label": "My Account", "path": "/user" }
+]
