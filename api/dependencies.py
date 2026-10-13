@@ -201,6 +201,23 @@ aid_season_cache = AidSeasonCache(ttl_seconds=300, max_size=4)
 
 
 # ========================================
+# Camperships Development History Cache
+# ========================================
+
+# Reports › Development's past seasons: every enrolled registration from 2017
+# to the season before the report's, read whole once per report year and
+# filtered in Python (api/services/financial_aid_development_repository.py), so
+# Development and its ZIP export share one read. Its tables -- attendees,
+# persons, camp_sessions -- are sync-written only, so the cache-invalidate
+# endpoint clears it when a finished sync writes one of them. Its own singleton
+# rather than a read inside aid_inputs_cache: that cache's two slots belong to
+# layer 1's two years, and a third entry would evict one. Two entries: the two
+# report years Development prices (the season and the one before). Layer 1's
+# TTL by reference, so the two fallbacks never drift apart.
+development_history_cache = LodgingYearCache(ttl_seconds=aid_inputs_cache.ttl_seconds, max_size=2)
+
+
+# ========================================
 # Solver Runs Storage
 # ========================================
 
@@ -252,6 +269,7 @@ __all__ = [
     "authenticate_pb",
     "authenticate_task_pb",
     "create_task_pb_client",
+    "development_history_cache",
     "get_pb_client",
     "graph_cache",
     "lodging_cache",

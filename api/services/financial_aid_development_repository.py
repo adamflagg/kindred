@@ -6,6 +6,18 @@ edit, through 4a.
 
 Development never reads the raw person_custom_values table (§10) and never aid_postings.attributed_* (the grants
 register places outside lines; the camp's money comes from the decisions season).
+
+THE PAST SEASONS ARE ONE CACHED WHOLE READ. `earlier_attendance` used to filter attendees by the campers and
+households it was asked about, 50 ids to a filter, households through `person.household_id` -- a join through a
+relation, which SQLite cannot index. Measured in production, one open of Development made 82 of those reads and
+18.7 s of database time, and the ZIP export repeated all of it. Now every enrolled registration of the window (2017
+to the season before the report's, 18,922 rows on a production snapshot) is read once per report year, on the
+(year, status_id) index, held as parsed AttendanceRecords in `development_history_cache`, and filtered in Python, so
+the report and its ZIP export share one read. Its tables (attendees, persons, camp_sessions) are written by the
+CampMinder sync only, so `invalidate_server_caches` clears it when a finished sync writes one of them. Do not "fix"
+this back to by-id chunks.
+
+Single uvicorn process assumed (docker/Dockerfile.api): with workers this cache is per process.
 """
 
 from __future__ import annotations
@@ -17,11 +29,13 @@ from datetime import date
 from decimal import Decimal
 from typing import Any, Final
 
-from api.constants.collections import AID_REPORT_DEFINITIONS, ATTENDEES
+from api.constants.collections import AID_REPORT_DEFINITIONS, ATTENDEES, CAMP_SESSIONS, PERSONS
+from api.dependencies import development_history_cache
 from api.schemas.financial_aid import SourceChangeOut
 from api.services.financial_aid_grants_service import grantor_retired_at
 from api.services.financial_aid_ledger_service import last_changes, parse_pb_datetime, source_lines
 from api.services.financial_aid_repository import FinancialAidRepository
+from api.services.lodging_cache import cached_by_year
 from api.services.pb_read import pb_read
 from api.utils.pb_filters import pb_escape
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite, commit_aid_writes, race_conflict
@@ -29,7 +43,9 @@ from bunking.financial_aid.reports.zips import HouseholdAddress
 from bunking.pocketbase_batch import BatchRequestFailedError
 
 PAGE_SIZE: Final = 1000
-ID_CHUNK: Final = 50  # ids per filter, under PocketBase's 3,500-character filter limit
+# The by-id read's ids per filter, under PocketBase's 3,500-character filter limit. The past-seasons read no longer
+# chunks; the parity test still sizes its fixture past it, to prove the cached read answers what the chunks did.
+ID_CHUNK: Final = 50
 FIRST_HISTORY_SEASON: Final = 2017  # D99's default: no summer at camp in 2017 on
 ENROLLED: Final = 2
 CANCELLED_STATUS_IDS: Final = frozenset({32, 256})  # Go's aidCancelledStatusIDs
@@ -37,6 +53,9 @@ _FIELDS: Final = (
     "id,person_id,status_id,enrollment_date,effective_date,year,"
     "expand.person.household_id,expand.session.cm_id,expand.session.session_type,expand.session.start_date"
 )
+# What the past-seasons read depends on: the attendees it pages, the person each one expands to (its own household)
+# and the session (expand.session). A sync that writes one of these clears development_history_cache.
+DEVELOPMENT_HISTORY_TABLES: Final[tuple[str, ...]] = (ATTENDEES, PERSONS, CAMP_SESSIONS)
 
 
 @dataclass(frozen=True)
@@ -146,6 +165,30 @@ def grantor_record(record: Any) -> GrantorRecord:
     )
 
 
+class _PastSeasons:
+    """`cached_by_year` wraps a `(self, year)` method, hence the class."""
+
+    def __init__(self, pb: Any) -> None:
+        self.pb = pb
+
+    @cached_by_year(development_history_cache, tables=DEVELOPMENT_HISTORY_TABLES)
+    async def past_enrolled(self, year: int) -> tuple[AttendanceRecord, ...]:
+        """Every enrolled registration from 2017 to the season before `year`, parsed: the shared records are frozen,
+        and no SDK row is held."""
+        rows: list[Any] = await pb_read(
+            self.pb.collection(ATTENDEES).get_full_list,
+            batch=PAGE_SIZE,
+            query_params={
+                "filter": f"year >= {FIRST_HISTORY_SEASON} && year < {int(year)} && status_id = {ENROLLED}",
+                "expand": "person,session",
+                "fields": _FIELDS,
+                "sort": "id",
+            },
+        )
+        by_id = {str(row.id): row for row in rows}  # one record per attendee row, as the chunked read deduped
+        return tuple(attendance_record(row) for row in by_id.values())
+
+
 class DevelopmentRepository:
     def __init__(self, pb: Any) -> None:
         self.pb = pb
@@ -174,32 +217,19 @@ class DevelopmentRepository:
         self, year: int, person_cm_ids: Collection[int], household_cm_ids: Collection[int]
     ) -> list[AttendanceRecord]:
         """Enrolled registrations in the seasons from 2017 to the one before `year`, of these campers and of
-        everyone in these households (first-time, D99): never the whole history."""
-        chunks: list[str] = []
-        for field, ids in (("person_id", person_cm_ids), ("person.household_id", household_cm_ids)):
-            wanted = sorted({int(i) for i in ids if int(i) > 0})
-            chunks.extend(
-                " || ".join(f"{field} = {i}" for i in wanted[start : start + ID_CHUNK])
-                for start in range(0, len(wanted), ID_CHUNK)
-            )
-        found = await asyncio.gather(
-            *(
-                self._page(
-                    {
-                        "filter": (
-                            f"year >= {FIRST_HISTORY_SEASON} && year < {int(year)} && status_id = {ENROLLED} "
-                            f"&& ({chunk})"
-                        ),
-                        "expand": "person,session",
-                        "fields": _FIELDS,
-                        "sort": "id",
-                    }
-                )
-                for chunk in chunks
-            )
-        )
-        rows: dict[str, Any] = {str(row.id): row for batch in found for row in batch}
-        return [attendance_record(row) for row in rows.values()]
+        everyone in these households (first-time, D99). A registration's household is its person's OWN household
+        that season (`expand.person.household_id`); ids at or below zero match nothing.
+
+        Filtered in Python from the report year's cached whole read (see the module docstring), so a second ask in
+        the same report year -- the ZIP export after Development -- reads nothing."""
+        people = {int(i) for i in person_cm_ids if int(i) > 0}
+        households = {int(i) for i in household_cm_ids if int(i) > 0}
+        if not people and not households:
+            return []
+        # Shielded because the first caller's task runs the fill: a browser disconnect cancels that request, and must
+        # not cancel the fill another request waits on (aid_sync_inputs does the same).
+        history = await asyncio.shield(_PastSeasons(self.pb).past_enrolled(int(year)))
+        return [r for r in history if r.person_cm_id in people or r.household_cm_id in households]
 
     async def persons(self, year: int, person_cm_ids: Collection[int]) -> list[PersonRecord]:
         return [person_record(row) for row in await self._aid.fetch_persons(year, person_cm_ids)]

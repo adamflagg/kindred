@@ -16,6 +16,7 @@ from api.services.cancellation_service import CancellationService
 from api.services.comparison_service import ComparisonService
 from api.services.day1_service import Day1Service
 from api.services.drilldown_service import DrilldownService
+from api.services.financial_aid_development_repository import DEVELOPMENT_HISTORY_TABLES
 from api.services.forecast_service import ForecastService
 from api.services.geo_service import clear_person_id_cache
 from api.services.historical_service import HistoricalService
@@ -33,7 +34,15 @@ from bunking.graph.social_graph_builder import SocialGraphBuilder
 from bunking.rbac.dependencies import require_any_permission
 from bunking.rbac.permissions import Permission
 
-from ..dependencies import aid_inputs_cache, aid_season_cache, graph_cache, lodging_cache, metrics_cache, pb
+from ..dependencies import (
+    aid_inputs_cache,
+    aid_season_cache,
+    development_history_cache,
+    graph_cache,
+    lodging_cache,
+    metrics_cache,
+    pb,
+)
 from ..schemas.day1 import Day1Response
 from ..schemas.forecast import ForecastResponse, WeekOption
 from ..schemas.metrics import (
@@ -639,7 +648,8 @@ async def get_day1(
 
 
 def invalidate_server_caches(sync_type: str | None) -> dict[str, int]:
-    """Invalidate cached metrics responses + geo person-id cache + lodging year cache + social graph cache.
+    """Invalidate cached metrics responses + geo person-id cache + lodging year cache + social graph cache + the
+    Camperships caches.
 
     Shared by two routes, which differ only in who may call them:
     - `POST /api/internal/metrics/cache/invalidate` (api/routers/internal.py),
@@ -679,6 +689,12 @@ def invalidate_server_caches(sync_type: str | None) -> dict[str, int]:
     aid_sources and aid_household_links (the `aid_postings` job) and sync_runs
     (the ledger's freshness) -- and every sync job writes sync_runs anyway, so
     scoping would save nothing and risks a season showing a stale ledger.
+
+    development_history_cache, Reports › Development's past-seasons attendance
+    (`api/services/financial_aid_development_repository.py`), is scoped like
+    layer 1, against DEVELOPMENT_HISTORY_TABLES (attendees, persons,
+    camp_sessions): only a sync writes them. No warm follows its clear: the
+    report is opened rarely, and its next open pays one read of the window.
     """
     cleared = metrics_cache.invalidate_all()
     clear_person_id_cache()
@@ -687,6 +703,8 @@ def invalidate_server_caches(sync_type: str | None) -> dict[str, int]:
         schedule_lodging_warm()
     if sync_writes_any(sync_type, AID_SYNC_INPUT_TABLES):
         aid_inputs_cache.invalidate_all()
+    if sync_writes_any(sync_type, DEVELOPMENT_HISTORY_TABLES):
+        development_history_cache.invalidate_all()  # no warm: see the docstring
     aid_season_cache.invalidate_all()  # unscoped: see the docstring
     schedule_aid_warm()  # layer 2 always, and layer 1 when this sync cleared it
     # graph_cache (kindred#2803): until now only scenario, solver and position
