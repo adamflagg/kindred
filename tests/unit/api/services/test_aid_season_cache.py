@@ -11,6 +11,7 @@ from __future__ import annotations
 import ast
 import asyncio
 import copy
+import re
 from collections import Counter
 from collections.abc import Sequence
 from datetime import date, timedelta
@@ -26,11 +27,17 @@ from api.dependencies import aid_inputs_cache, aid_season_cache
 from api.schemas.financial_aid_decisions import ManualHoldIn
 from api.services import aid_season_cache as layer2
 from api.services import aid_sync_inputs as layer1
-from api.services.aid_season_cache import AidSeasonCache, bind_warm_loop, on_aid_commit
+from api.services.aid_season_cache import (
+    SEASON_SPANNING_COLLECTIONS,
+    AidSeasonCache,
+    bind_warm_loop,
+    on_aid_commit,
+)
 from api.services.aid_sync_inputs import set_season_warmer
 from api.services.financial_aid_decisions_service import FinancialAidDecisionsService, Season
 from api.services.financial_aid_grant_placements import PLACEMENT_ACTOR
 from api.services.financial_aid_grants_register import RegisterRow
+from api.services.financial_aid_grants_service import OneGrantsLoad
 from api.services.financial_aid_rules_service import PRICING_SECTIONS, AidRulesRepository, FinancialAidRulesService
 from bunking.financial_aid import change_log
 from bunking.financial_aid.change_log import AidWrite, add_commit_listener
@@ -173,7 +180,7 @@ async def test_a_new_camp_time_day_rebuilds() -> None:
 
 @pytest.mark.asyncio
 async def test_years_are_separate_entries_and_never_clear_each_other() -> None:
-    """Review Focus 5: reports and scenarios read last season (year - 1) beside this one."""
+    """Reports and scenarios read last season (year - 1) beside this one: each year is its own entry."""
     store = _store()
     seed_request(store, LIAM)
     cache = AidSeasonCache()
@@ -257,7 +264,7 @@ async def test_a_failed_build_reaches_every_waiter_and_is_never_cached() -> None
 
 @pytest.mark.asyncio
 async def test_a_write_mid_build_hands_the_early_waiter_its_season_but_never_stores_it() -> None:
-    """Review Focus 2. The writer's own refetch, after the write, starts a fresh build even while the old one runs."""
+    """The writer's own refetch, after the write, starts a fresh build even while the old one runs."""
     store = _store()
     store.gate = asyncio.Event()
     cache = AidSeasonCache()
@@ -278,7 +285,7 @@ async def test_a_write_mid_build_hands_the_early_waiter_its_season_but_never_sto
 
 @pytest.mark.asyncio
 async def test_a_write_from_the_committing_thread_mid_build_is_guarded_the_same_way() -> None:
-    """Review Focus 2, as production runs it: commit_aid_writes' listener fires on a worker thread."""
+    """The same, as production runs it: commit_aid_writes' listener fires on a worker thread."""
     store = _store()
     store.gate = asyncio.Event()
     cache = AidSeasonCache()
@@ -315,7 +322,7 @@ async def test_invalidate_all_drops_every_entry_and_an_in_flight_build_is_not_st
 
 @pytest.mark.asyncio
 async def test_a_reader_that_leaves_never_cancels_the_build_the_others_wait_on() -> None:
-    """Review Focus 3: a browser that disconnects mid-build cancels its own request, not everyone's."""
+    """A browser that disconnects mid-build cancels its own request, not everyone's."""
     store = _store()
     store.gate = asyncio.Event()
     service = _service(store, AidSeasonCache())
@@ -331,12 +338,53 @@ async def test_a_reader_that_leaves_never_cancels_the_build_the_others_wait_on()
     assert store.builds[YEAR] == 1
 
 
+class _GatedGrants:
+    """A grants loader whose register load waits on `gate`: the read a OneGrantsLoad surface shares with its build."""
+
+    def __init__(self) -> None:
+        self.gate = asyncio.Event()
+        self.loads = 0
+
+    async def read_with_rows(self, year: int) -> tuple[Any, list[RegisterRow]]:
+        self.loads += 1
+        await self.gate.wait()
+        return SimpleNamespace(year=year), []
+
+
+@pytest.mark.asyncio
+async def test_a_disconnect_on_a_screen_that_shares_its_grants_load_never_cancels_the_build() -> None:
+    """Grants, Today, Today-week and the household page price the season on their own request's grants load
+    (OneGrantsLoad), so the shared build awaits that load. Their request leaving must not cancel it for the others."""
+    store = _store()
+    cache = AidSeasonCache()
+    grants = _GatedGrants()
+    shared = OneGrantsLoad(grants, YEAR)
+    screen = FinancialAidDecisionsService(
+        store, FakeRules(approved()), shared.register, clock=lambda: T0, season_cache=cache
+    )
+
+    async def grants_read() -> Any:  # as GrantsRegisterService.read does
+        return await asyncio.gather(screen.season(YEAR), shared.read())
+
+    leaving = asyncio.create_task(grants_read())
+    await store.started.wait()
+    staying = asyncio.create_task(_service(store, cache).season(YEAR))
+    await asyncio.sleep(0)
+    leaving.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await leaving
+    grants.gate.set()
+    assert (await staying).year == YEAR
+    assert store.builds[YEAR] == 1
+    assert grants.loads == 1
+
+
 # --- the listener -------------------------------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
 async def test_a_build_that_logs_its_grant_placements_stays_cached() -> None:
-    """Review Focus 1: _log_placements commits INSIDE the build, through the real commit_aid_writes, whose listener
+    """_log_placements commits INSIDE the build, through the real commit_aid_writes, whose listener
     must not throw away the build that wrote it."""
     store = _store()
     heard: list[str] = []
@@ -368,6 +416,38 @@ async def test_the_placement_actor_never_clears_and_a_staff_write_clears_only_it
     assert await service.season(YEAR) is not this
     assert await service.season(YEAR - 1) is last
     assert store.builds == Counter({YEAR: 2, YEAR - 1: 1})
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("collection", ["aid_sources", "aid_grantors"])
+async def test_a_write_to_a_season_spanning_table_clears_every_year(collection: str) -> None:
+    """Funding sources and grantors span seasons, so their writes are logged under the current season only, yet every
+    cached year was priced on them (Reports reads last season beside this one)."""
+    store = _store()
+    service = _service(store, aid_season_cache)
+    this, last = await service.season(YEAR), await service.season(YEAR - 1)
+    write = AidWrite(
+        collection=collection,
+        action="update",
+        year=YEAR,
+        record_id="src000000000001",
+        before={"source_family": "other_outside"},
+        data={"source_family": "camp"},
+    )
+    on_aid_commit([write], STAFF)
+    assert await service.season(YEAR - 1) is not last
+    assert await service.season(YEAR) is not this
+
+
+def test_the_season_spanning_tables_are_every_aid_table_with_no_year() -> None:
+    """Derived from the generated PocketBase types: an aid_* collection with no `year` field spans seasons."""
+    types = (ROOT / "frontend" / "src" / "types" / "pocketbase-types.ts").read_text()
+    yearless: set[str] = set()
+    for match in re.finditer(r"export type (Aid\w*)Record(?:<[^>]*>)? = \{(.*?)\n\}", types, re.DOTALL):
+        if not re.search(r"\n\s*year\??:", match.group(2)):
+            yearless.add(re.sub(r"(?<!^)(?=[A-Z])", "_", match.group(1)).lower())
+    assert len(re.findall(r"export type Aid\w*Record", types)) > 15, "the scan found too few aid tables"
+    assert yearless == SEASON_SPANNING_COLLECTIONS
 
 
 @pytest.mark.asyncio
@@ -657,6 +737,22 @@ async def test_startup_registers_the_listener_and_the_season_warmer_and_shutdown
         assert on_aid_commit not in change_log._LISTENERS
         assert layer2._warm_loop is None
         assert layer1._season_warmer is None
+
+
+@pytest.mark.asyncio
+async def test_a_failed_startup_leaves_no_listener_registered() -> None:
+    from api import main
+
+    settings = SimpleNamespace(skip_pb_auth=False, pocketbase_url="http://pb.invalid")
+    with (
+        patch.object(main, "get_settings", return_value=settings),
+        patch.object(main, "authenticate_pb", AsyncMock(side_effect=RuntimeError("PocketBase is down"))),
+        patch.object(main, "close_connection", MagicMock()),
+    ):
+        with pytest.raises(RuntimeError, match="PocketBase is down"):
+            async with main.lifespan(MagicMock()):
+                pass
+    assert on_aid_commit not in change_log._LISTENERS
 
 
 # --- which constructions use it -----------------------------------------------------------------------------------

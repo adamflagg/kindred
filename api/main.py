@@ -91,43 +91,46 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Every Camperships write clears its season from the shared season cache (layer 2) before its response returns.
     # Registered whatever the auth mode: a cached season no write clears would be stale.
     remove_aid_listener = add_commit_listener(on_aid_commit)
-    if not settings.skip_pb_auth:
-        await authenticate_pb()
-        refresh_task = await start_pb_token_refresh()
-        ConfigLoader.initialize(
-            pocketbase_url=settings.pocketbase_url,
-            validate_on_init=True,
-        )
-        logger.info("ConfigLoader initialized with validate_on_init=True")
-        # kindred#2803: warm the weekend year cache in the background -- now,
-        # and again every TTL -- so a staff member's first click after a
-        # restart or an idle quarter-hour is not the one that pays for it.
-        lodging_refresh_task = start_lodging_cache_refresher()
-        # Camperships' sync inputs (layer 1), likewise in the background, now and after every TTL: the first
-        # season build after a restart or an expiry should not be the one that reads every person, household
-        # and registration. Each warm then rebuilds the priced season (layer 2) through the router's own staff read,
-        # so it fills the very cache entry staff read; so does the warm that follows each write's clear.
-        set_season_warmer(lambda year: financial_aid._decisions().named_season(year))
-        bind_warm_loop(asyncio.get_running_loop())
-        aid_refresh_task = start_aid_inputs_refresher()
-    else:
-        logger.warning("Skipping PocketBase authentication (SKIP_PB_AUTH=true)")
-        auth_state.pb_client = pb
+    try:
+        if not settings.skip_pb_auth:
+            await authenticate_pb()
+            refresh_task = await start_pb_token_refresh()
+            ConfigLoader.initialize(
+                pocketbase_url=settings.pocketbase_url,
+                validate_on_init=True,
+            )
+            logger.info("ConfigLoader initialized with validate_on_init=True")
+            # kindred#2803: warm the weekend year cache in the background -- now,
+            # and again every TTL -- so a staff member's first click after a
+            # restart or an idle quarter-hour is not the one that pays for it.
+            lodging_refresh_task = start_lodging_cache_refresher()
+            # Camperships' sync inputs (layer 1), likewise in the background, now and after every TTL: the first
+            # season build after a restart or an expiry should not be the one that reads every person, household
+            # and registration. Each warm then rebuilds the priced season (layer 2) through the router's own staff read,
+            # so it fills the very cache entry staff read; so does the warm that follows each write's clear.
+            set_season_warmer(lambda year: financial_aid._decisions().named_season(year))
+            bind_warm_loop(asyncio.get_running_loop())
+            aid_refresh_task = start_aid_inputs_refresher()
+        else:
+            logger.warning("Skipping PocketBase authentication (SKIP_PB_AUTH=true)")
+            auth_state.pb_client = pb
 
-    yield
+        yield
 
-    # Shutdown
-    if refresh_task:
-        refresh_task.cancel()
-    if lodging_refresh_task:
-        lodging_refresh_task.cancel()
-    if aid_refresh_task:
-        aid_refresh_task.cancel()
-    cancel_aid_warm()  # a warm a sync's clear scheduled, if one is still reading
-    remove_aid_listener()
-    bind_warm_loop(None)
-    set_season_warmer(None)
-    close_connection()
+        # Shutdown
+        if refresh_task:
+            refresh_task.cancel()
+        if lodging_refresh_task:
+            lodging_refresh_task.cancel()
+        if aid_refresh_task:
+            aid_refresh_task.cancel()
+        cancel_aid_warm()  # a warm a sync's clear scheduled, if one is still reading
+        close_connection()
+    finally:
+        # Also on a failed startup: a listener left registered would outlive this app.
+        remove_aid_listener()
+        bind_warm_loop(None)
+        set_season_warmer(None)
 
 
 def create_app() -> FastAPI:

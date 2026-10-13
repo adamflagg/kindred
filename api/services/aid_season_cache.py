@@ -4,7 +4,11 @@ Keyed (year, camp-time day): the live season is priced "now", so a new day repri
 the key -- they are one of the build's own reads, and every rules approval commits through
 commit_aid_writes, which clears this cache like any other Camperships write.
 
-Cleared by: every Camperships write (on_aid_commit, registered on commit_aid_writes at startup), every
+Holds at most max_size entries; when full it drops the OLDEST-inserted one (not least-recently-used: at four
+entries the difference does not matter). An expired entry is dropped when next read.
+
+Cleared by: every Camperships write (on_aid_commit, registered on commit_aid_writes at startup: the write's own year,
+or every year for a write to a season-spanning table, SEASON_SPANNING_COLLECTIONS), every
 sync job's completion (invalidate_server_caches, unscoped: see its docstring), and the layer-1 refresher's
 TTL clear. Each clear is followed by a background warm of the configured season. This cache's own TTL is
 the fallback, not the plan.
@@ -39,6 +43,13 @@ if TYPE_CHECKING:
     from bunking.financial_aid.change_log import AidWrite
 
 logger = get_logger(__name__)
+
+# The aid_* collections with no `year` field: one row serves every season. A write to one is logged under the current
+# season only (financial_aid_write_service: "aid_sources span seasons; log the current one"), yet every cached year was
+# priced on it -- funding sources and grantors feed the grants register, and Reports reads last season beside this
+# one -- so it clears every year. aid_report_definitions feeds no season; it is here because the rule is the schema's,
+# not a guess about readers. Pinned to the generated PocketBase types by test_aid_season_cache.py.
+SEASON_SPANNING_COLLECTIONS: frozenset[str] = frozenset({"aid_grantors", "aid_report_definitions", "aid_sources"})
 
 V = TypeVar("V")
 _Key = tuple[int, date]
@@ -143,8 +154,11 @@ def on_aid_commit(writes: Sequence[AidWrite], actor: str) -> None:
 
     if actor == PLACEMENT_ACTOR or not writes:
         return
-    for year in {int(w.year) for w in writes}:
-        aid_season_cache.invalidate_year(year)
+    if any(w.collection in SEASON_SPANNING_COLLECTIONS for w in writes):
+        aid_season_cache.invalidate_all()  # logged under one season, read by every season
+    else:
+        for year in {int(w.year) for w in writes}:
+            aid_season_cache.invalidate_year(year)
     loop = _warm_loop
     if loop is not None and not loop.is_closed():
         loop.call_soon_threadsafe(schedule_aid_warm)
