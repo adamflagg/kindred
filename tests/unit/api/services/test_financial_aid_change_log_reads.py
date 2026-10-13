@@ -211,7 +211,7 @@ async def test_names_are_read_once_for_the_season_and_named_as_the_grid_names_th
         SimpleNamespace(cm_id=1000001, mailing_title="The Johnson Family", greeting="")
     ]
     persons.get_full_list.return_value = [
-        SimpleNamespace(cm_id=1000011, preferred_name="", first_name="Emma", last_name="Johnson")
+        SimpleNamespace(id="pp0000000000011", cm_id=1000011, preferred_name="", first_name="Emma", last_name="Johnson")
     ]
     empty.get_full_list.return_value = []
     pb = MagicMock()

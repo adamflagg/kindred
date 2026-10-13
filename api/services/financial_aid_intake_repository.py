@@ -495,9 +495,8 @@ class FinancialAidIntakeRepository:
         poc: dict[int, dict[int, bool | None]] = {}
         gender: dict[int, tuple[str, str]] = {}
         for person in ids:
-            for row in inputs.equity_values_by_person_cm_id.get(person, ()):
-                field_cm_id = _int(getattr(_expanded(row, "field_definition"), "cm_id", 0))
-                poc.setdefault(person, {})[field_cm_id] = parse_poc_answer(_str(getattr(row, "value", "")))
+            for value in inputs.equity_values_by_person_cm_id.get(person, ()):
+                poc.setdefault(person, {})[value.field_cm_id] = parse_poc_answer(_str(value.value))
             record = inputs.person_by_cm_id.get(person)
             if record is not None:
                 gender[person] = (

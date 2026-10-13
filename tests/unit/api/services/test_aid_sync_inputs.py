@@ -212,6 +212,18 @@ async def test_equity_values_are_only_the_allowlisted_fields() -> None:
 
 
 @pytest.mark.asyncio
+async def test_the_custom_values_read_expands_nothing() -> None:
+    """Its two expands were half of each fill (4.6 s on prod). Whose value it is and which field come from the
+    persons and custom_field_defs the same fill reads, joined in Python."""
+    pb = parity_pb()
+    await aid_sync_inputs(pb, PARITY_YEAR)
+    ((params),) = [p for c, p in pb.calls if c == "person_custom_values"]
+    assert "expand" not in params
+    assert not [f for f in str(params["fields"]).split(",") if f.startswith("expand.")]
+    assert not _RELATION_PATH.search(str(params["filter"]))
+
+
+@pytest.mark.asyncio
 async def test_the_fa_mirror_is_held_whole_for_the_season_in_id_order() -> None:
     """Every row of the season, applicant or not, asking or not: the four readers filter in Python."""
     inputs = await aid_sync_inputs(parity_pb(), PARITY_YEAR)

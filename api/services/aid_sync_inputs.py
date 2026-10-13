@@ -16,7 +16,9 @@ contact names, the ledger's asks and the grants register's answers) each paged i
 reads per Requests page load -- and now filter this one copy in Python.
 
 Expands are fine; FILTERS through relations are not. `expand=person` is a primary-key lookup per page;
-`filter=person.cm_id = N` is a join on every candidate row.
+`filter=person.cm_id = N` is a join on every candidate row. Fine is not free, though: person_custom_values'
+`expand=person,field_definition` was 4.6 s on prod, half of each fill, so that read expands nothing and its
+two relations are joined here, to the persons and custom_field_defs the same fill reads.
 
 SHARED RECORDS. Every request reads the same row objects, so nothing may write to one: a caller that needs
 a changed row copies it first, and the lookups themselves are read-only (MappingProxyType over tuples).
@@ -81,8 +83,9 @@ _SESSION_COLUMNS: Final = ("cm_id", "name", "session_type", "start_date", "end_d
 _ATTENDEE_FIELDS: Final = ",".join(
     ("*", "expand.person.household_id", *(f"expand.session.{c}" for c in _SESSION_COLUMNS))
 )
-# person_custom_values: the answer, whose it is and which field (fetch_equity_answers) -- the read it replaces.
-_EQUITY_VALUE_FIELDS: Final = "id,value,expand.person.cm_id,expand.field_definition.cm_id"
+# person_custom_values: the answer, whose it is and which field (fetch_equity_answers), as the rows' own relation
+# ids: build_inputs resolves them, so the read needs no expand.
+_EQUITY_VALUE_FIELDS: Final = "id,value,person,field_definition"
 
 
 def fa_application_fields() -> str:
@@ -102,6 +105,15 @@ def fa_application_fields() -> str:
 
 
 @dataclass(frozen=True)
+class EquityValue:
+    """One allowlisted person_custom_values answer, its field resolved to the field's CampMinder id."""
+
+    id: str
+    field_cm_id: int
+    value: Any
+
+
+@dataclass(frozen=True)
 class AidSyncInputs:
     """One season's inputs. Every tuple is in PocketBase-id order, the order a `sort=id` read returns."""
 
@@ -114,9 +126,9 @@ class AidSyncInputs:
     members_by_household: Mapping[int, tuple[Any, ...]]
     # Every status, each row with expand.person and expand.session.
     attendees_by_person_cm_id: Mapping[int, tuple[Any, ...]]
-    # Only the allowlisted equity fields (EQUITY_FIELD_CM_IDS), each row with expand.person and
-    # expand.field_definition.
-    equity_values_by_person_cm_id: Mapping[int, tuple[Any, ...]]
+    # Only the allowlisted equity fields (EQUITY_FIELD_CM_IDS), keyed by the person the value's `person` relation
+    # names among this season's persons.
+    equity_values_by_person_cm_id: Mapping[int, tuple[EquityValue, ...]]
     # The FA mirror: every row of the season, applicant or not, projected to fa_application_fields().
     fa_applications: tuple[Any, ...]
 
@@ -133,9 +145,13 @@ def build_inputs(
     attendees: list[Any],
     values: list[Any],
     fa_rows: list[Any],
+    field_defs: list[Any],
 ) -> AidSyncInputs:
     """The Python joins. Membership is Go's attribution rule (fetch_household_persons_by_household):
-    own household_id, or the household / primary / alternate childhood relation -- every one that applies."""
+    own household_id, or the household / primary / alternate childhood relation -- every one that applies.
+    A custom value's `person` and `field_definition` are PocketBase ids, resolved through this season's persons and
+    the allowlisted field definitions; a value whose person is not among them is left out (every equity value links
+    a same-season person on the 2026-10-07 snapshot)."""
     by_own: dict[int, list[Any]] = defaultdict(list)
     members: dict[int, list[Any]] = defaultdict(list)
     for p in persons:
@@ -148,9 +164,14 @@ def build_inputs(
     by_person: dict[int, list[Any]] = defaultdict(list)
     for a in attendees:
         by_person[int(getattr(a, "person_id", 0) or 0)].append(a)
-    equity: dict[int, list[Any]] = defaultdict(list)
+    person_by_pb_id = {str(p.id): int(p.cm_id) for p in persons}
+    field_cm_by_pb_id = {str(d.id): int(d.cm_id) for d in field_defs}
+    equity: dict[int, list[EquityValue]] = defaultdict(list)
     for v in values:
-        equity[_cm(v, "person")].append(v)
+        person = person_by_pb_id.get(str(getattr(v, "person", "") or ""))
+        if person is not None:
+            field = field_cm_by_pb_id.get(str(getattr(v, "field_definition", "") or ""), 0)
+            equity[person].append(EquityValue(str(v.id), field, getattr(v, "value", "")))
     return AidSyncInputs(
         year=year,
         person_by_cm_id=MappingProxyType({int(p.cm_id): p for p in persons}),
@@ -202,20 +223,13 @@ class _Loader:
             ),
             self._all(HOUSEHOLDS, {"filter": f"year = {y}", "fields": HOUSEHOLD_COLUMNS}),
             self._all(ATTENDEES, {"filter": f"year = {y}", "expand": "person,session", "fields": _ATTENDEE_FIELDS}),
-            self._all(
-                PERSON_CUSTOM_VALUES,
-                {
-                    "filter": f"year = {y} && ({field_ids})",
-                    "expand": "person,field_definition",
-                    "fields": _EQUITY_VALUE_FIELDS,
-                },
-            ),
+            self._all(PERSON_CUSTOM_VALUES, {"filter": f"year = {y} && ({field_ids})", "fields": _EQUITY_VALUE_FIELDS}),
             self._all(
                 FINANCIAL_AID_APPLICATIONS,
                 {"filter": f"year = {y}", "expand": "household", "fields": fa_application_fields()},
             ),
         )
-        return build_inputs(y, persons, households, attendees, values, fa_rows)
+        return build_inputs(y, persons, households, attendees, values, fa_rows, defs)
 
 
 async def aid_sync_inputs(pb: Any, year: int) -> AidSyncInputs:

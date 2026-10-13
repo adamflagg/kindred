@@ -231,15 +231,17 @@ async def test_a_payer_share_reads_its_percentage_as_an_exact_decimal() -> None:
 async def test_fetch_equity_answers_reads_only_allowlisted_fields_for_named_people() -> None:
     values = MagicMock()
     values.get_full_list.return_value = [
+        # As the fill reads it: its own relation ids, no expand (layer 1 joins them to persons and the definitions).
         SimpleNamespace(
-            value="Yes",
-            expand={"person": SimpleNamespace(cm_id=1000011), "field_definition": SimpleNamespace(cm_id=165525)},
+            id="pv0000000000001", value="Yes", person="pp0000000000011", field_definition="fd0000000000001"
         ),
     ]
     persons = MagicMock()
     persons.get_full_list.return_value = [
-        SimpleNamespace(cm_id=1000011, gender_identity_name="Non-binary", gender_pronoun_name="They/Them"),
-        SimpleNamespace(cm_id=1000012, gender_identity_name="", gender_pronoun_name=""),
+        SimpleNamespace(
+            id="pp0000000000011", cm_id=1000011, gender_identity_name="Non-binary", gender_pronoun_name="They/Them"
+        ),
+        SimpleNamespace(id="pp0000000000012", cm_id=1000012, gender_identity_name="", gender_pronoun_name=""),
     ]
     defs = MagicMock()
     defs.get_full_list.return_value = [
