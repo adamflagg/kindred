@@ -1,13 +1,17 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Check, Pencil, RotateCcw, ShieldAlert } from 'lucide-react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { Check, ChevronDown, ChevronUp, Pencil, RotateCcw, ShieldAlert } from 'lucide-react'
+import type { RecordModel } from 'pocketbase'
+import { useAuth } from '../../../contexts/AuthContext'
 import { QueryGuard } from '../../QueryGuard'
 import { usePermissions } from '../../../hooks/usePermissions'
+import { Permission } from '../../../constants/permissions'
 import {
   usePermissionDescriptions,
   useSaveDescription,
 } from '../../../hooks/usePermissionDescriptions'
 import type { ApiPermissionRegistry } from '../../../types/api-types'
 import {
+  canOpenUserDrawer,
   grantedVia,
   mergeDescriptions,
   overrideWriteFor,
@@ -16,6 +20,8 @@ import {
 } from './usersPageModel'
 import { pbErrorText } from './pbErrorText'
 import { ScreenLink } from './CanDo'
+import { HoldersPopover } from './HoldersPopover'
+import { UserDrawer } from './UserDrawer'
 import { BTN_GHOST_SM, BTN_PRIMARY_SM, NOT_CHECKED_PILL, ROLE_CHIP } from './styles'
 import type { UsersPageProps } from './types'
 
@@ -25,6 +31,10 @@ const TAG = 'rounded-full px-1.5 py-px text-[10.5px] font-medium'
 type Entry = ApiPermissionRegistry['permissions'][number]
 
 const peopleLabel = (n: number) => `${n} ${n === 1 ? 'person' : 'people'}`
+
+/** The "N people" count when someone holds it (mock `.hcbtn`): opens who holds it. */
+const HOLDERS_COUNT =
+  'group text-primary hover:bg-primary/9 aria-expanded:bg-primary/14 ml-0.5 inline-flex items-center gap-0.5 rounded-md py-px pr-1 pl-[5px] text-[12.5px] leading-[18px] font-semibold whitespace-nowrap tabular-nums'
 
 /** What each permission means in plain words, where to find it, who holds it (spec M1-M8). */
 export function PermissionsTab(props: UsersPageProps) {
@@ -41,8 +51,14 @@ export function PermissionsTab(props: UsersPageProps) {
   )
 }
 
-function PermissionsBody({ data, url, reg }: UsersPageProps & { reg: ApiPermissionRegistry }) {
-  const { isAdmin } = usePermissions()
+function PermissionsBody({
+  data,
+  registry,
+  url,
+  reg,
+}: UsersPageProps & { reg: ApiPermissionRegistry }) {
+  const { isAdmin, hasPermission } = usePermissions()
+  const { user: currentUser } = useAuth()
   const overrides = usePermissionDescriptions()
   const save = useSaveDescription()
   // A failed overrides query shows the defaults and offers no editing at all.
@@ -52,6 +68,15 @@ function PermissionsBody({ data, url, reg }: UsersPageProps & { reg: ApiPermissi
   const [editing, setEditing] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   const [rowError, setRowError] = useState<{ code: string; msg: string } | null>(null)
+
+  // One "who holds it" card at a time, anchored to the count that opened it.
+  const [holdersOf, setHoldersOf] = useState<{ code: string; anchor: HTMLElement } | null>(null)
+  const closeHolders = useCallback(() => setHoldersOf(null), [])
+  // The Users table's drawer, opened from a name in that card.
+  const [openUserId, setOpenUserId] = useState<string | null>(null)
+  const openUser = openUserId ? data.users.find((u) => u.id === openUserId) : undefined
+  const managesUsers = isAdmin || hasPermission(Permission.USERS_MANAGE)
+  const canOpen = (u: RecordModel) => canOpenUserDrawer(u, currentUser?.id, managesUsers)
 
   const boxRef = useRef<HTMLDivElement>(null)
   const focusRef = useRef<HTMLDivElement>(null)
@@ -271,9 +296,31 @@ function PermissionsBody({ data, url, reg }: UsersPageProps & { reg: ApiPermissi
                           {r.name}
                         </button>
                       ))}
-                      <span className="text-muted-foreground text-[12px] tabular-nums">
-                        {peopleLabel(holders.length)}
-                      </span>
+                      {holders.length === 0 ? (
+                        <span className="text-muted-foreground text-[12px] tabular-nums">
+                          {peopleLabel(0)}
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          aria-expanded={holdersOf?.code === code}
+                          title={`${holdersOf?.code === code ? 'Hide' : 'Show'} who holds it`}
+                          className={HOLDERS_COUNT}
+                          onClick={(e) => {
+                            const anchor = e.currentTarget
+                            setHoldersOf((was) => (was?.code === code ? null : { code, anchor }))
+                          }}
+                        >
+                          <span className="underline-offset-3 group-hover:underline">
+                            {peopleLabel(holders.length)}
+                          </span>
+                          {holdersOf?.code === code ? (
+                            <ChevronUp className="h-[13px] w-[13px]" />
+                          ) : (
+                            <ChevronDown className="h-[13px] w-[13px]" />
+                          )}
+                        </button>
+                      )}
                     </div>
                   </div>
                 )
@@ -282,6 +329,28 @@ function PermissionsBody({ data, url, reg }: UsersPageProps & { reg: ApiPermissi
           </div>
         ))}
       </div>
+      {holdersOf && (
+        <HoldersPopover
+          code={holdersOf.code}
+          anchor={holdersOf.anchor}
+          clip={boxRef}
+          data={data}
+          canOpen={canOpen}
+          onOpen={(id) => {
+            setHoldersOf(null)
+            setOpenUserId(id)
+          }}
+          onClose={closeHolders}
+        />
+      )}
+      {openUser && (
+        <UserDrawer
+          user={openUser}
+          data={data}
+          registry={registry}
+          onClose={() => setOpenUserId(null)}
+        />
+      )}
     </div>
   )
 }

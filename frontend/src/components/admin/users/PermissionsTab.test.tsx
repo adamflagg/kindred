@@ -14,11 +14,13 @@ let mockOverrides: Array<{
 }> = []
 let mockOverridesError = false
 let mockPending = false
+let mockCurrentUserId = 'u-admin'
+let mockCanManageUsers = false
 const mutate = vi.fn()
 
 vi.mock('../../../hooks/usePermissions', () => ({
   usePermissions: () => ({
-    hasPermission: vi.fn(),
+    hasPermission: (p: string) => mockCanManageUsers && p === 'users.manage',
     hasAnyPermission: vi.fn(),
     isAdmin: mockIsAdmin,
     permissions: [],
@@ -30,6 +32,16 @@ vi.mock('../../../hooks/usePermissionDescriptions', () => ({
     isError: mockOverridesError,
   }),
   useSaveDescription: () => ({ mutate, isPending: mockPending }),
+}))
+
+vi.mock('../../../contexts/AuthContext', () => ({
+  useAuth: () => ({ user: { id: mockCurrentUserId } }),
+}))
+vi.mock('../../../lib/pocketbase', () => ({ pb: { files: { getURL: vi.fn() } } }))
+vi.mock('./UserDrawer', () => ({
+  UserDrawer: ({ user }: { user: { id: string } }) => (
+    <div data-testid="user-drawer">{user.id}</div>
+  ),
 }))
 
 const { PermissionsTab } = await import('./PermissionsTab')
@@ -55,6 +67,8 @@ beforeEach(() => {
   mockOverrides = []
   mockOverridesError = false
   mockPending = false
+  mockCurrentUserId = 'u-admin'
+  mockCanManageUsers = false
   mutate.mockReset()
 })
 
@@ -308,5 +322,114 @@ describe('PermissionsTab', () => {
     expect(screen.getByTestId('perm-metrics.geo').className).toMatch(/ring|shadow-\[inset/)
     expect(scrollIntoView).toHaveBeenCalled()
     expect(props.url.setTab).not.toHaveBeenCalled()
+  })
+
+  describe('who holds it (popover, owner 2026-10-13 option B)', () => {
+    const countButton = (code: string, label: RegExp) =>
+      within(screen.getByTestId(`perm-${code}`)).getByRole('button', { name: label })
+    const popover = () => screen.queryByTestId('perm-holders')
+    const names = () =>
+      within(screen.getByTestId('perm-holders'))
+        .getAllByRole('listitem')
+        .map((li) => li.querySelector('[data-testid="holder-name"]')?.textContent)
+
+    it('the count is a button only when someone holds it; "0 people" stays text', () => {
+      renderPerms()
+      expect(countButton('bunking.manage', /^2 people$/)).toBeInTheDocument()
+      const none = screen.getByTestId('perm-financial_aid.view')
+      expect(none).toHaveTextContent('0 people')
+      expect(within(none).queryByRole('button', { name: /people/ })).not.toBeInTheDocument()
+      expect(popover()).not.toBeInTheDocument()
+    })
+
+    it('opens a card headed with the count, holders sorted by name', async () => {
+      renderPerms({}, [], (p) => {
+        p.data.users = [...p.data.users].reverse()
+      })
+      await userEvent.click(countButton('bunking.manage', /2 people/))
+      const pop = screen.getByTestId('perm-holders')
+      expect(within(pop).getByTestId('holders-head')).toHaveTextContent(/^Who holds it\s*2$/)
+      expect(names()).toEqual(['Emma Johnson', 'Liam Garcia'])
+      expect(countButton('bunking.manage', /2 people/)).toHaveAttribute('aria-expanded', 'true')
+    })
+
+    it('admins are left to the purple strip, not listed', async () => {
+      renderPerms()
+      await userEvent.click(countButton('bunking.manage', /2 people/))
+      expect(screen.getByTestId('perm-holders')).not.toHaveTextContent('Riley Sam')
+    })
+
+    it('shows "via A + B" only for someone holding it through two or more roles', async () => {
+      renderPerms()
+      await userEvent.click(countButton('bunking.manage', /2 people/))
+      const [emma, liam] = within(screen.getByTestId('perm-holders')).getAllByRole('listitem')
+      expect(emma).toHaveTextContent('via Executive + Bunking Staff')
+      expect(liam).not.toHaveTextContent('via')
+    })
+
+    it("clicking a name opens that person's drawer and closes the card", async () => {
+      renderPerms()
+      await userEvent.click(countButton('bunking.manage', /2 people/))
+      await userEvent.click(
+        within(screen.getByTestId('perm-holders')).getByRole('button', { name: /Liam Garcia/ })
+      )
+      expect(screen.getByTestId('user-drawer')).toHaveTextContent('u-liam')
+      expect(popover()).not.toBeInTheDocument()
+    })
+
+    it('a name opens the drawer only where the Users table would (not yourself; managers only)', async () => {
+      mockIsAdmin = false
+      mockCanManageUsers = true
+      mockCurrentUserId = 'u-liam'
+      renderPerms()
+      await userEvent.click(countButton('bunking.manage', /2 people/))
+      const pop = screen.getByTestId('perm-holders')
+      expect(within(pop).getByRole('button', { name: /Emma Johnson/ })).toBeInTheDocument()
+      expect(within(pop).queryByRole('button', { name: /Liam Garcia/ })).not.toBeInTheDocument()
+      expect(pop).toHaveTextContent('Liam Garcia')
+    })
+
+    it('without user management, names are plain text', async () => {
+      mockIsAdmin = false
+      mockCanManageUsers = false
+      renderPerms()
+      await userEvent.click(countButton('bunking.manage', /2 people/))
+      expect(
+        within(screen.getByTestId('perm-holders')).queryByRole('button')
+      ).not.toBeInTheDocument()
+    })
+
+    it('Escape closes it', async () => {
+      renderPerms()
+      await userEvent.click(countButton('bunking.manage', /2 people/))
+      await userEvent.keyboard('{Escape}')
+      expect(popover()).not.toBeInTheDocument()
+    })
+
+    it('a click outside closes it; a click inside does not', async () => {
+      renderPerms()
+      await userEvent.click(countButton('bunking.manage', /2 people/))
+      await userEvent.click(within(screen.getByTestId('perm-holders')).getByTestId('holders-head'))
+      expect(popover()).toBeInTheDocument()
+      await userEvent.click(screen.getByTestId('admin-strip'))
+      expect(popover()).not.toBeInTheDocument()
+    })
+
+    it('the count toggles it closed again', async () => {
+      renderPerms()
+      await userEvent.click(countButton('bunking.manage', /2 people/))
+      await userEvent.click(countButton('bunking.manage', /2 people/))
+      expect(popover()).not.toBeInTheDocument()
+    })
+
+    it("opening another row's card closes the first", async () => {
+      renderPerms()
+      await userEvent.click(countButton('bunking.manage', /2 people/))
+      await userEvent.click(countButton('metrics.geo', /1 person/))
+      expect(screen.getAllByTestId('perm-holders')).toHaveLength(1)
+      expect(screen.getByTestId('holders-head')).toHaveTextContent(/^Who holds it\s*1$/)
+      expect(names()).toEqual(['Emma Johnson'])
+      expect(countButton('bunking.manage', /2 people/)).toHaveAttribute('aria-expanded', 'false')
+    })
   })
 })

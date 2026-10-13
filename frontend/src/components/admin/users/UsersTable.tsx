@@ -11,7 +11,14 @@ import {
   PAGER_BUTTON_CURRENT,
   pageWindow,
 } from '../../ui/paginationParts'
-import { bucketCounts, filterUsers, freshness, pageOf, type Bucket } from './usersPageModel'
+import {
+  bucketCounts,
+  canOpenUserDrawer,
+  filterUsers,
+  freshness,
+  pageOf,
+  type Bucket,
+} from './usersPageModel'
 import { UserDrawer } from './UserDrawer'
 import { UserAvatar } from './UserAvatar'
 import { ROLE_CHIP } from './styles'
@@ -45,8 +52,7 @@ export function UsersTable({ data, registry, url }: UsersPageProps) {
   const [openUserId, setOpenUserId] = useState<string | null>(null)
 
   const canSeeLastLogin = isAdmin || hasPermission(Permission.USERS_MANAGE)
-  const canManage = (u: RecordModel) =>
-    u.id !== currentUser?.id && !u['is_admin'] && canSeeLastLogin
+  const canManage = (u: RecordModel) => canOpenUserDrawer(u, currentUser?.id, canSeeLastLogin)
 
   const counts = useMemo(() => bucketCounts(data.users, data.held), [data.users, data.held])
   // A ?role= naming a role that no longer exists is ignored: filtering by it would

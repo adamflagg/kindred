@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   bucketCounts,
   bucketOf,
+  canOpenUserDrawer,
   draftDiff,
   effectivePermissions,
   filterUsers,
@@ -122,6 +123,17 @@ describe('holders', () => {
   it('roleHolders includes admins who hold it; permissionHolders excludes admins', () => {
     expect(roleHolders('r-exec', users, held)).toEqual([admin, emma])
     expect(permissionHolders('bunking.manage', users, held)).toEqual([emma, liam])
+  })
+})
+
+describe('canOpenUserDrawer', () => {
+  it('opens for a manager, never for yourself or an admin', () => {
+    const staff = { id: 'u-b' }
+    expect(canOpenUserDrawer(staff, 'u-a', true)).toBe(true)
+    expect(canOpenUserDrawer(staff, 'u-a', false)).toBe(false)
+    expect(canOpenUserDrawer(staff, 'u-b', true)).toBe(false)
+    expect(canOpenUserDrawer({ id: 'u-c', is_admin: true }, 'u-a', true)).toBe(false)
+    expect(canOpenUserDrawer(staff, undefined, true)).toBe(true)
   })
 })
 

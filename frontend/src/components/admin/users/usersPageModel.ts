@@ -48,6 +48,19 @@ export function bucketOf(user: UserLike, held: RoleLike[]): Bucket {
   return held.some((r) => r.slug === EXEC_SLUG) ? 'exec' : 'other'
 }
 
+/**
+ * Whether a person's row opens their role drawer: the viewer manages users,
+ * and the person is neither the viewer nor an admin. The Users table and the
+ * Permissions tab's "who holds it" list share this one rule.
+ */
+export function canOpenUserDrawer(
+  user: UserLike,
+  selfId: string | undefined,
+  managesUsers: boolean
+): boolean {
+  return managesUsers && user.id !== selfId && !user.is_admin
+}
+
 export function bucketCounts(
   users: UserLike[],
   held: Map<string, RoleLike[]>
