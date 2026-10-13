@@ -21,11 +21,12 @@ export const HELP_AREAS = [
 
 const ENTRIES = entries as HelpKeyEntry[]
 
-/** Specificity: tab entries first, then more literal segments, then fewer wildcards. */
+/** Specificity: tab entries first, then more literal segments, then fewer wildcards, then more params. */
 function score(e: HelpKeyEntry): number {
   const segs = e.path.split('/').filter(Boolean)
   const literal = segs.filter((s) => !s.startsWith(':') && s !== '*').length
-  return (e.tab ? 1000 : 0) + literal * 10 - (e.path.endsWith('*') ? 5 : 0)
+  const params = segs.filter((s) => s.startsWith(':')).length
+  return (e.tab ? 1000 : 0) + literal * 10 + params - (e.path.endsWith('*') ? 5 : 0)
 }
 
 const ORDERED = [...ENTRIES].sort((a, b) => score(b) - score(a))

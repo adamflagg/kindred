@@ -19,6 +19,12 @@ describe('resolveHelpKey', () => {
   it('falls back to the area key for an unknown route inside an area', () => {
     expect(resolveHelpKey('/summer/not-a-page', '')).toBe('summer')
   })
+  it('resolves a weekend session ref to the session entry, not the area', () => {
+    expect(resolveHelpKey('/weekend/1000001', '')).toBe('weekend.session')
+  })
+  it('keeps the literal weekend sessions route above the param route', () => {
+    expect(resolveHelpKey('/weekend/sessions', '')).toBe('weekend.sessions')
+  })
   it('falls back to home for anything else', () => {
     expect(resolveHelpKey('/nowhere', '')).toBe('home')
   })
