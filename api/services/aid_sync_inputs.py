@@ -333,8 +333,9 @@ async def refresh_aid_inputs_forever(
     The interval is the six-hour backstop for a missed sync-completion clear (AID_INPUTS_BACKSTOP_SECONDS), not the
     freshness plan. A backstop expiry is a clear like any other, so it is followed by a warm too: clearing BEFORE
     the re-warm, rather than letting the entry expire on its own, keeps the staleness bound at the backstop while
-    the configured season stays filled. A request that arrives mid-warm waits on the warm's fill (single-flight per year). The priced
-    season (layer 2) is cleared with it, since it was built from what this clear drops, and `warm` rebuilds it."""
+    the configured season stays filled. A request that arrives mid-warm waits on the warm's fill (single-flight per
+    year). The priced season (layer 2) is cleared with it, since it was built from what this clear drops, and `warm`
+    rebuilds it."""
     year_of = _configured_year if year is None else year
     while True:
         try:

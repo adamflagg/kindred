@@ -79,7 +79,7 @@ The completion names its sync, and this cache is cleared only when that sync
 writes a table some cached read declares in `cached_by_year(tables=...)` --
 the job-to-table half lives in api/constants/sync_job_writes.py. Before that,
 the HOURLY `bunk_assignments` sync, which writes nothing here, cleared the
-whole cache for every open tab. Every clear, and every TTL, is now followed by
+whole cache for every open tab. Every clear, and every backstop expiry, is now followed by
 a background warm, so the re-read no longer lands on somebody's click; the
 generation counter below stops a warm that straddles a clear from writing its
 pre-clear answer back.

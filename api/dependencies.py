@@ -160,7 +160,7 @@ metrics_cache = MetricsCache(ttl_seconds=7200, max_size=200)
 # Wired to POST /api/metrics/cache/invalidate (kindred#2142) -- see
 # lodging_cache.py's module docstring for why the TTL is the fallback rather
 # than the plan. Since kindred#2803 that clear is scoped to the syncs that
-# write a cached table, and every clear and every TTL is followed by a
+# write a cached table, and every clear and every backstop expiry is followed by a
 # background warm (api/services/lodging_cache_warm.py, started from
 # api/main.py's lifespan).
 #
