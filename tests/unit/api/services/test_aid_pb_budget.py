@@ -4,7 +4,9 @@ Every test here is a strict xfail until the caches land: the sync-input cache (l
 season's heavy reads) and the season cache (layer 2, keyed by year). Each cache turns its tests green,
 and strict xfail then fails the run until the marker is removed, so a budget cannot quietly stay red.
 
-The fixture season is 200 households, 300 requests and 300 campers. PocketBase is a RecordingPb: it
+The fixture season is 200 request households (300 requests, 300 campers) plus 800 grant-only households:
+1000 households and 1100 persons. This file budgets call COUNTS; it is not a correctness proof (the
+person_custom_values table is empty, and FakeRules means aid_rules reads are not counted). PocketBase is a RecordingPb: it
 counts calls and ignores filters, so the counts are exact and the row sets are supersets."""
 
 from __future__ import annotations
@@ -52,7 +54,7 @@ def _person_id(n: int) -> int:
 
 
 def _rid(prefix: str, n: int) -> str:
-    return f"{prefix}{n:012d}"  # a 15-character PocketBase id
+    return f"{prefix}{n:0{15 - len(prefix)}d}"  # a 15-character PocketBase id
 
 
 def _build_tables() -> dict[str, list[Any]]:
@@ -201,6 +203,8 @@ def _service(pb: RecordingPb, *, cached: bool = False) -> FinancialAidDecisionsS
     # The one stub: a season read logs the grants register's new placements through a PocketBase BATCH write,
     # which RecordingPb cannot serve (no auth store). It is a write, not one of the counted reads, and the
     # budget concerns reads; every read, the four heavy collections included, goes through real repository code.
+    # Side effect: this removes the placement-log self-invalidation path (a read that logs placements writes,
+    # which should drop the season cache), so the Task 7 cache test must cover that path itself.
     store.commit = _discard_commit  # type: ignore[method-assign, assignment]
     return FinancialAidDecisionsService(
         store,
@@ -216,7 +220,9 @@ def _summary(pb: RecordingPb) -> str:
     return "\n".join(lines)
 
 
-@pytest.mark.xfail(strict=True, reason="layer 1 + layer 2 land in Tasks 5 and 7")
+# `raises=` keeps a broken fixture or a changed signature from hiding as "xfailed": the cold test must fail
+# on its budget assert, the cached ones on the not-yet-built cached path. Task 7 drops these with the markers.
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="layer 1 + layer 2 land in Tasks 5 and 7")
 @pytest.mark.asyncio
 async def test_a_cold_season_build_stays_under_budget(season_pb: RecordingPb) -> None:
     await _service(season_pb).season(YEAR)
@@ -224,23 +230,24 @@ async def test_a_cold_season_build_stays_under_budget(season_pb: RecordingPb) ->
     assert not [f for _, f in season_pb.calls if _RELATION_PATH.search(f)], "a filter traverses a relation"
 
 
-@pytest.mark.xfail(strict=True, reason="layer 1 lands in Task 5, layer 2 in Task 7")
+@pytest.mark.xfail(strict=True, raises=NotImplementedError, reason="layer 1 lands in Task 5, layer 2 in Task 7")
 @pytest.mark.asyncio
 async def test_a_rebuild_after_a_write_reads_no_heavy_table(season_pb: RecordingPb) -> None:
-    service = _service(season_pb, cached=True)
-    await service.season(YEAR)
+    # A fresh service per call, as production builds one per request: the cache under test must be
+    # process-level, shared across service instances, not a per-instance memo.
+    await _service(season_pb, cached=True).season(YEAR)
     season_pb.reset()
     invalidate_after_write(YEAR)  # Task 6/7: what a commit's listener calls
-    await service.season(YEAR)
+    await _service(season_pb, cached=True).season(YEAR)
     assert len(season_pb.calls) < AFTER_WRITE_BUDGET, _summary(season_pb)
     assert sum(season_pb.count(c) for c in HEAVY) == 0, _summary(season_pb)
 
 
-@pytest.mark.xfail(strict=True, reason="layer 2 lands in Task 7")
+@pytest.mark.xfail(strict=True, raises=NotImplementedError, reason="layer 2 lands in Task 7")
 @pytest.mark.asyncio
 async def test_a_cached_season_reads_nothing(season_pb: RecordingPb) -> None:
-    service = _service(season_pb, cached=True)
-    await service.season(YEAR)
+    # Fresh service per call: the cache must be process-level, shared across instances (see above).
+    await _service(season_pb, cached=True).season(YEAR)
     season_pb.reset()
-    await service.season(YEAR)
+    await _service(season_pb, cached=True).season(YEAR)
     assert season_pb.calls == []
