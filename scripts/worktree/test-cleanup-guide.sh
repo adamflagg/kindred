@@ -43,6 +43,9 @@ make_case() {
     g -C "$MAIN" commit -q -m seed
     git -C "$GUIDE" init -q -b main
     g -C "$GUIDE" commit -q --allow-empty -m seed
+    # new.sh --guide hides the facts symlink through the shared exclude file.
+    mkdir -p "$GUIDE/.git/info"
+    echo 'facts.json' >> "$GUIDE/.git/info/exclude"
     for name in "$@"; do
         git -C "$MAIN" worktree add -q "$MAIN/.worktrees/$name" -b "feature/$name"
         git -C "$GUIDE" worktree add -q "$GUIDE/.worktrees/$name" -b "feature/$name"
@@ -99,5 +102,34 @@ for n in five six; do
     if [ ! -e "$GUIDE/.worktrees/$n" ]; then pass "e: guide $n removed"; else fail "e: guide $n remains"; fi
     if git -C "$GUIDE" show-ref --verify -q "refs/heads/feature/$n"; then pass "e: guide branch $n kept"; else fail "e: guide branch $n deleted"; fi
 done
+
+# (f) a guide worktree with uncommitted edits is kept, with one warning; the
+# hidden facts symlink alone does not count as a change (case a removed one).
+make_case "$SCRATCH/f" seven
+echo draft > "$GUIDE/.worktrees/seven/page.md"
+run_cleanup env KINDRED_GUIDE_DIR="$GUIDE" bash "$MAIN/scripts/worktree/cleanup.sh" seven
+if [ "$code" -eq 0 ]; then pass "f: exit 0"; else fail "f: exit $code: $out"; fi
+if [ -f "$GUIDE/.worktrees/seven/page.md" ]; then pass "f: uncommitted edit kept"; else fail "f: uncommitted edit lost"; fi
+if [ "$(printf '%s\n' "$out" | grep -c 'uncommitted changes; left in place')" -eq 1 ]; then pass "f: one warning line"; else fail "f: warning missing or repeated: $out"; fi
+if [ ! -e "$MAIN/.worktrees/seven" ]; then pass "f: kindred worktree removed"; else fail "f: kindred worktree remains"; fi
+
+# (g) with --force the dirty guide worktree is removed, branch still kept.
+make_case "$SCRATCH/g" eight
+echo draft > "$GUIDE/.worktrees/eight/page.md"
+run_cleanup env KINDRED_GUIDE_DIR="$GUIDE" bash "$MAIN/scripts/worktree/cleanup.sh" eight --force
+if [ "$code" -eq 0 ]; then pass "g: exit 0"; else fail "g: exit $code: $out"; fi
+if [ ! -e "$GUIDE/.worktrees/eight" ]; then pass "g: dirty guide worktree removed"; else fail "g: guide worktree remains"; fi
+if git -C "$GUIDE" show-ref --verify -q refs/heads/feature/eight; then pass "g: guide branch kept"; else fail "g: guide branch deleted"; fi
+
+# (h) a directory at the guide path that is NOT a registered worktree is untouched.
+make_case "$SCRATCH/h" nine
+mkdir -p "$GUIDE/.worktrees/nine"
+echo keep > "$GUIDE/.worktrees/nine/notes.txt"
+git -C "$GUIDE" worktree remove --force "$GUIDE/.worktrees/nine" 2>/dev/null
+mkdir -p "$GUIDE/.worktrees/nine"
+echo keep > "$GUIDE/.worktrees/nine/notes.txt"
+run_cleanup env KINDRED_GUIDE_DIR="$GUIDE" bash "$MAIN/scripts/worktree/cleanup.sh" nine
+if [ "$code" -eq 0 ]; then pass "h: exit 0"; else fail "h: exit $code: $out"; fi
+if [ -f "$GUIDE/.worktrees/nine/notes.txt" ]; then pass "h: unregistered dir untouched"; else fail "h: unregistered dir touched"; fi
 
 exit "$FAILED"

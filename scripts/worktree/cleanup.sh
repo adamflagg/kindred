@@ -10,8 +10,10 @@
 # If KINDRED_GUIDE_DIR names a staff-guide checkout holding a paired worktree
 # (made by `new.sh <name> --guide`) at $KINDRED_GUIDE_DIR/.worktrees/<name>, it
 # is removed too, for the single-name form and for each worktree --all-merged
-# removes. The guide BRANCH is kept: it is the paired PR's branch. A guide-side
-# failure only prints a warning; it never fails the kindred cleanup.
+# removes. The guide BRANCH is kept: it is the paired PR's branch. A guide
+# worktree with uncommitted changes is left in place with a warning (those are
+# docs edits), unless --force is given. A guide-side failure only prints a
+# warning; it never fails the kindred cleanup.
 
 set -e
 
@@ -55,8 +57,9 @@ is_pr_merged() {
 # Remove the paired guide worktree new.sh --guide made, if there is one.
 # Silent when KINDRED_GUIDE_DIR is unset or holds no such registered worktree.
 # Never deletes the guide branch, never rm -rf, never fails the caller.
+# Uncommitted guide edits are kept unless $2 is "--force".
 remove_guide_worktree() {
-    local name="$1" gdir="${KINDRED_GUIDE_DIR:-}" gwt real
+    local name="$1" force="${2:-}" gdir="${KINDRED_GUIDE_DIR:-}" gwt real
     [ -n "$gdir" ] || return 0
     (
         # A different repo: an inherited GIT_DIR & co. would override every -C below.
@@ -66,7 +69,14 @@ remove_guide_worktree() {
         [ -d "$gwt" ] || exit 0
         real="$(cd "$gwt" 2>/dev/null && pwd -P)" || exit 0
         git -C "$gdir" worktree list --porcelain 2>/dev/null | grep -qxF "worktree $real" || exit 0
-        if git -C "$gdir" worktree remove --force "$real" >/dev/null 2>&1; then
+        local -a rm_args=()
+        if [ "$force" = "--force" ]; then
+            rm_args=(--force)
+        elif [ -n "$(git -C "$real" status --porcelain 2>/dev/null)" ]; then
+            echo -e "${YELLOW}Warning: guide worktree for $name has uncommitted changes; left in place${NC}"
+            exit 0
+        fi
+        if git -C "$gdir" worktree remove "${rm_args[@]}" "$real" >/dev/null 2>&1; then
             echo -e "${BLUE}Removed paired guide worktree: $name (branch kept)${NC}"
         else
             echo -e "${YELLOW}Warning: could not remove the paired guide worktree for $name${NC}"
@@ -184,7 +194,7 @@ fi
 echo -e "${BLUE}Removing worktree...${NC}"
 cd "$MAIN_REPO"
 git worktree remove "$WORKTREE_DIR" --force 2>/dev/null || rm -rf "$WORKTREE_DIR"
-remove_guide_worktree "$FEATURE_NAME"
+remove_guide_worktree "$FEATURE_NAME" "${2:-}"
 
 # Remove branch (the merged-PR gate above passed, or --force overrode it)
 if [ "$KEEP_BRANCH" = false ]; then
