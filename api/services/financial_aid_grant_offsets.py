@@ -23,6 +23,7 @@ from decimal import Decimal
 from typing import Final
 
 from api.schemas.financial_aid_grants import GrantRowOut, GrantsResponse, ShareOffsetOut
+from api.services.aid_season_cache import AidSeasonCache
 from api.services.financial_aid_decisions_service import (
     DecisionsStore,
     FinancialAidDecisionsService,
@@ -171,14 +172,18 @@ class GrantsRegisterService:
         pricing: PricingRules,
         *,
         clock: Callable[[], datetime] | None = None,
+        season_cache: AidSeasonCache | None = None,
     ) -> None:
         self._grants = grants
         self._store = store
         self._pricing = pricing
         self._clock: Callable[[], datetime] = clock or (lambda: datetime.now(UTC))
+        self._season_cache = season_cache  # the live-season cache staff reads share (layer 2)
 
     async def read(self, year: int) -> GrantsResponse:
         shared = OneGrantsLoad(self._grants, year)
-        decisions = FinancialAidDecisionsService(self._store, self._pricing, shared.register, clock=self._clock)
+        decisions = FinancialAidDecisionsService(
+            self._store, self._pricing, shared.register, clock=self._clock, season_cache=self._season_cache
+        )
         season, (response, rows) = await asyncio.gather(decisions.season(year), shared.read())
         return with_offsets(response, rows, season)

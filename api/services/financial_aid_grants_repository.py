@@ -13,6 +13,7 @@ from api.constants.collections import (
     AID_REQUESTS,
     FINANCIAL_AID_APPLICATIONS,
 )
+from api.services.aid_build_reads import in_build, shared_read
 from api.services.financial_aid_repository import FinancialAidRepository
 from api.services.lodging_repository import STABLE_SORT
 from api.utils.pb_filters import pb_escape
@@ -38,6 +39,14 @@ class GrantsRepository(FinancialAidRepository):
         return await self._one(AID_GRANTS, commitment_id)
 
     async def fetch_request_refs(self, year: int) -> list[Any]:
+        """The season's requests, as refs. Inside a season build, the decisions store's whole-record read of them
+        (FinancialAidIntakeRepository.fetch_requests), shared (aid_build_reads): a superset of the columns below.
+        Anywhere else, its own projected read."""
+        if in_build():
+            return await shared_read(
+                (AID_REQUESTS, int(year), id(self.pb)),
+                lambda: self._page(AID_REQUESTS, {"filter": f"year = {int(year)}", "sort": STABLE_SORT}),
+            )
         return await self._page(
             AID_REQUESTS,
             {

@@ -33,7 +33,7 @@ from bunking.graph.social_graph_builder import SocialGraphBuilder
 from bunking.rbac.dependencies import require_any_permission
 from bunking.rbac.permissions import Permission
 
-from ..dependencies import aid_inputs_cache, graph_cache, lodging_cache, metrics_cache, pb
+from ..dependencies import aid_inputs_cache, aid_season_cache, graph_cache, lodging_cache, metrics_cache, pb
 from ..schemas.day1 import Day1Response
 from ..schemas.forecast import ForecastResponse, WeekOption
 from ..schemas.metrics import (
@@ -671,6 +671,14 @@ def invalidate_server_caches(sync_type: str | None) -> dict[str, int]:
     AID_SYNC_INPUT_TABLES: only a sync writes those tables, so this call is
     what keeps it current, and its TTL is only the fallback. Every clear is
     followed by a background warm of the configured season.
+
+    aid_season_cache, the priced Camperships season (layer 2,
+    `api/services/aid_season_cache.py`), is cleared on EVERY call, unscoped,
+    and a warm follows to rebuild it. Do not scope it like layer 1: the season
+    also reads sync-written tables layer 1 does not hold -- aid_postings,
+    aid_sources and aid_household_links (the `aid_postings` job) and sync_runs
+    (the ledger's freshness) -- and every sync job writes sync_runs anyway, so
+    scoping would save nothing and risks a season showing a stale ledger.
     """
     cleared = metrics_cache.invalidate_all()
     clear_person_id_cache()
@@ -679,7 +687,8 @@ def invalidate_server_caches(sync_type: str | None) -> dict[str, int]:
         schedule_lodging_warm()
     if sync_writes_any(sync_type, AID_SYNC_INPUT_TABLES):
         aid_inputs_cache.invalidate_all()
-        schedule_aid_warm()
+    aid_season_cache.invalidate_all()  # unscoped: see the docstring
+    schedule_aid_warm()  # layer 2 always, and layer 1 when this sync cleared it
     # graph_cache (kindred#2803): until now only scenario, solver and position
     # writes cleared it, so a sync rewriting attendees or bunk assignments left
     # the production graph stale for its whole 15-minute TTL. Scoped the same

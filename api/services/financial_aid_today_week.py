@@ -21,6 +21,7 @@ from api.schemas.financial_aid_surfaces import (
     WeekFeedOut,
     WeekFigureOut,
 )
+from api.services.aid_season_cache import AidSeasonCache
 from api.services.camp_calendar import CAMP_TZ
 from api.services.financial_aid_decisions_service import DecisionsStore, FinancialAidDecisionsService, PricingRules
 from api.services.financial_aid_grants_register import RegisterRow
@@ -293,6 +294,7 @@ class TodayWeekService:
         labels: HouseholdLabeler | None = None,
         rules: RulesDrafts | None = None,
         clock: Callable[[], datetime] | None = None,
+        season_cache: AidSeasonCache | None = None,
     ) -> None:
         """`pricing`: the season's rules, so the waiting-14+-days items are the Waiting on the family line's own rows
         (final check S2). `labels`: the household page's label helper, naming a feed item's household as the grid does
@@ -303,6 +305,7 @@ class TodayWeekService:
         self._labels = labels
         self._rules = rules
         self._clock = clock or (lambda: datetime.now(UTC))
+        self._season_cache = season_cache  # the live-season cache staff reads share (layer 2)
 
     async def read(self, year: int, *, casework: bool, finance: bool, development: bool) -> TodayWeekResponse:
         now = self._clock()
@@ -360,7 +363,9 @@ class TodayWeekService:
     async def _waiting_rows(self, year: int, shared: OneGrantsLoad) -> list[GridRowOut]:
         """The season priced as the Today read prices it, its rows as the grid builds them (no names: the kept items are
         named later), so Waiting on the family's population and clock are the line's own (S2)."""
-        decisions = FinancialAidDecisionsService(self._store, self._pricing, shared.register, clock=self._clock)
+        decisions = FinancialAidDecisionsService(
+            self._store, self._pricing, shared.register, clock=self._clock, season_cache=self._season_cache
+        )
         season = await decisions.season(year)
         return [decisions.row_of(season, ({}, {}), request_id) for request_id in season.priced]
 

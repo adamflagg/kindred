@@ -46,6 +46,7 @@ from api.schemas.financial_aid_household_page import (
     ShareLineOut,
 )
 from api.schemas.financial_aid_intake import ApplicationDetailResponse
+from api.services.aid_season_cache import AidSeasonCache
 from api.services.financial_aid_casework_service import CaseworkNotFoundError, disagreeing_fields
 from api.services.financial_aid_change_log_reads import log_detail
 from api.services.financial_aid_decisions_service import (
@@ -685,6 +686,7 @@ class HouseholdPageService:
         ledger: HouseholdLedgerReads,
         history: HistoryReads,
         clock: Callable[[], datetime] | None = None,
+        season_cache: AidSeasonCache | None = None,
     ) -> None:
         self._store = store
         self._pricing = pricing
@@ -693,10 +695,13 @@ class HouseholdPageService:
         self._ledger = ledger
         self._history = history
         self._clock = clock
+        self._season_cache = season_cache  # the live-season cache staff reads share (layer 2)
 
     async def read(self, year: int, household_cm_id: int) -> HouseholdPageResponse:
         shared = OneGrantsLoad(self._grants, year)
-        decisions = FinancialAidDecisionsService(self._store, self._pricing, shared.register, clock=self._clock)
+        decisions = FinancialAidDecisionsService(
+            self._store, self._pricing, shared.register, clock=self._clock, season_cache=self._season_cache
+        )
         season, (grants, _) = await asyncio.gather(decisions.season(year), shared.read())
         season = await decisions.with_unticked(season)  # D162: the grid's own rows, Not reconciled's reasons and all
         scope = page_scope(household_cm_id, season.requests, season.shares)

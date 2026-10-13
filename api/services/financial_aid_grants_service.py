@@ -1066,7 +1066,9 @@ class OneGrantsLoad:
     async def read(self) -> tuple[GrantsResponse, list[RegisterRow]]:
         if self._loading is None:
             self._loading = asyncio.ensure_future(self._grants.read_with_rows(self._year))
-        return await self._loading
+        # Shielded: the load is shared, and when this request starts the season build its register IS this load
+        # (aid_season_cache), so one waiter leaving -- a disconnect -- must not cancel it for the others.
+        return await asyncio.shield(self._loading)
 
     async def register(self, year: int) -> list[RegisterRow]:
         if year != self._year:

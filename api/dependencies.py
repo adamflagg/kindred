@@ -16,6 +16,7 @@ from bunking.graph.graph_cache_manager import GraphCacheManager
 from bunking.logging_config import get_logger
 from pocketbase import PocketBase
 
+from .services.aid_season_cache import AidSeasonCache
 from .services.id_cache import IDLookupCache
 from .services.lodging_cache import LodgingYearCache
 from .services.metrics_cache import MetricsCache
@@ -183,6 +184,18 @@ aid_inputs_cache = LodgingYearCache(ttl_seconds=1800, max_size=4)
 
 
 # ========================================
+# Camperships Season Cache (layer 2)
+# ========================================
+
+# The priced live season, one build shared by every staff read until something
+# changes it (api/services/aid_season_cache.py): every Camperships write clears
+# its year through commit_aid_writes' listener, and every sync job's completion
+# clears it all. Five minutes is the fallback for a missed clear. Four entries:
+# the season and the prior year reports read, each on today's camp-time day.
+aid_season_cache = AidSeasonCache(ttl_seconds=300, max_size=4)
+
+
+# ========================================
 # Solver Runs Storage
 # ========================================
 
@@ -229,6 +242,7 @@ __all__ = [
     "PB_AUTH_PROBE_INTERVAL_SECONDS",
     "IDLookupCache",
     "aid_inputs_cache",
+    "aid_season_cache",
     "auth_state",
     "authenticate_pb",
     "authenticate_task_pb",

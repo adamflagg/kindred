@@ -61,6 +61,7 @@ from api.schemas.financial_aid_reports import (
     StatisticsRowOut,
     TierAppealsRowOut,
 )
+from api.services.aid_season_cache import AidSeasonCache
 from api.services.camp_calendar import CAMP_TZ
 from api.services.financial_aid_calc_inputs import ag_parent_of
 from api.services.financial_aid_cancellations import CANCEL_REASON_LABELS
@@ -296,12 +297,15 @@ class FinancialAidReportsService:
         history: ReportsStore,
         *,
         clock: Callable[[], datetime] | None = None,
+        season_cache: AidSeasonCache | None = None,
     ) -> None:
         self._store = store
         self._rules = rules
         self._history = history
         self._clock: Callable[[], datetime] = clock or (lambda: datetime.now(UTC))
-        self._decisions = FinancialAidDecisionsService(store, rules, register, clock=self._clock)
+        self._decisions = FinancialAidDecisionsService(
+            store, rules, register, clock=self._clock, season_cache=season_cache
+        )
 
     def _today(self) -> date:
         return self._clock().astimezone(CAMP_TZ).date()

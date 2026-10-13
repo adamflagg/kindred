@@ -31,6 +31,7 @@ from api.constants.collections import (
     HOUSEHOLDS,
     USERS,
 )
+from api.services.aid_build_reads import shared_read
 from api.services.aid_sync_inputs import aid_sync_inputs
 from api.services.lodging_repository import STABLE_SORT
 from api.services.pb_precise_datetime import aid_collection
@@ -182,7 +183,12 @@ class FinancialAidRepository:
         return await self._one(AID_HOUSEHOLD_LINKS, link_id)
 
     async def fetch_overrides(self, year: int) -> list[Any]:
-        return await self._page(AID_ATTRIBUTION_OVERRIDES, {"filter": f"year = {int(year)}", "sort": STABLE_SORT})
+        """The season's attribution overrides. Inside a season build, one read shared by the ledger's placements, its
+        splits and the grants register (aid_build_reads); anywhere else, a read of its own."""
+        return await shared_read(
+            (AID_ATTRIBUTION_OVERRIDES, int(year), id(self.pb)),
+            lambda: self._page(AID_ATTRIBUTION_OVERRIDES, {"filter": f"year = {int(year)}", "sort": STABLE_SORT}),
+        )
 
     async def fetch_dispositions(self, year: int) -> list[Any]:
         return await self._page(AID_FLAG_DISPOSITIONS, {"filter": f"year = {int(year)}", "sort": STABLE_SORT})

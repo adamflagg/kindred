@@ -32,6 +32,7 @@ from api.schemas.financial_aid_surfaces import (
     WeekFigureOut,
     WeekPointOut,
 )
+from api.services.aid_season_cache import AidSeasonCache
 from api.services.camp_calendar import CAMP_TZ
 from api.services.financial_aid_decisions_service import (
     DecisionsStore,
@@ -813,9 +814,12 @@ class TodayService:
         to_place: ToPlaceCounts | None = None,
         labels: HouseholdLabeler | None = None,
         clock: Callable[[], datetime] | None = None,
+        season_cache: AidSeasonCache | None = None,
     ) -> None:
         """`labels`: the household page's label helper (household_labels), naming every next-up household as the grid
-        names a household-level row. None: the family name."""
+        names a household-level row. None: the family name. `season_cache`: the live-season cache staff reads share
+        (layer 2)."""
+        self._season_cache = season_cache
         self._store = store
         self._pricing = pricing
         self._rules = rules
@@ -836,7 +840,9 @@ class TodayService:
         priced = casework or finance or view
         named = casework or finance  # the lines that name households (and their campers, for the drawer)
         shared = OneGrantsLoad(self._grants, year)
-        decisions = FinancialAidDecisionsService(self._store, self._pricing, shared.register, clock=self._clock)
+        decisions = FinancialAidDecisionsService(
+            self._store, self._pricing, shared.register, clock=self._clock, season_cache=self._season_cache
+        )
         # asyncio.gather types six awaitables at most, so the events ride a task of their own.
         events_read = asyncio.ensure_future(self._store.fetch_decision_events(year) if finance else _no_events())
         (

@@ -92,6 +92,8 @@ from api.schemas.financial_aid_decisions import (
     _CellBase,
 )
 from api.schemas.financial_aid_intake import IssueOut
+from api.services.aid_build_reads import build_scoped_reads
+from api.services.aid_season_cache import AidSeasonCache
 from api.services.camp_calendar import CAMP_TZ
 from api.services.financial_aid_calc_inputs import (
     calculator_inputs,
@@ -1509,10 +1511,18 @@ class FinancialAidDecisionsService:
         clock: Callable[[], datetime] | None = None,
         log_placements: bool = True,
         labels: HouseholdLabeler | None = None,
+        season_cache: AidSeasonCache | None = None,
     ) -> None:
         """`log_placements` False: this service's live pricing neither reads nor writes the grant placement
         log (3c-2). Only a scenario's frozen season and a rules approval's effect measurement (H3) pass it; neither
-        is a read staff see, and neither writes."""
+        is a read staff see, and neither writes.
+
+        `season_cache`: the process's live-season cache (api.dependencies.aid_season_cache), which every staff read
+        passes. None: every read builds. Never with log_placements False: that pricing runs on candidate rules or a
+        frozen snapshot, and caching it would show staff a season priced on rules nobody approved."""
+        if season_cache is not None and not log_placements:
+            raise ValueError("a season priced with candidate rules must never be cached")
+        self._season_cache = season_cache
         self._store = store
         self._rules = rules
         self._register = register
@@ -1582,6 +1592,22 @@ class FinancialAidDecisionsService:
         return await self._season(year, names=True)
 
     async def _season(self, year: int, *, names: bool) -> tuple[Season, Names]:
+        """The live season from the process cache (layer 2) when this service serves staff, else a fresh build. A
+        cached entry is always the NAMED build -- a superset -- so season() and named_season() share one. Keyed on
+        today in camp time: the live season is priced now, so a new day reprices it."""
+        if self._season_cache is None:
+            return await self._build_season(year, names=names)
+        return await self._season_cache.get_or_build(
+            int(year), self._today(), lambda: self._build_season(int(year), names=True)
+        )
+
+    async def _build_season(self, year: int, *, names: bool) -> tuple[Season, Names]:
+        """One season build, its duplicated light reads (the requests, the attribution overrides) shared within it and
+        never beyond it (aid_build_reads)."""
+        with build_scoped_reads():
+            return await self._priced_season(year, names=names)
+
+    async def _priced_season(self, year: int, *, names: bool) -> tuple[Season, Names]:
         """The season's loads run as five concurrent branches: the requests with what hangs off them
         (the names too, when asked), the sessions, shares, events and grants register, the CampMinder
         ledger (10b), the cancellation events (10b-2), and the grant placement log (3c-2). The registrations

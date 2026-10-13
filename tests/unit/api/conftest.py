@@ -13,7 +13,7 @@ os.environ["SKIP_PB_AUTH"] = "true"
 # Imported after the environment above, like every import that may load settings.
 import pytest
 
-from api.dependencies import aid_inputs_cache
+from api.dependencies import aid_inputs_cache, aid_season_cache
 
 
 @pytest.fixture(autouse=True)
@@ -21,10 +21,15 @@ def _reset_aid_inputs_cache() -> Iterator[None]:
     """Layer 1 of the Camperships cache (aid_sync_inputs) is a process-wide singleton keyed by year alone, so a fill
     from one test's PocketBase double would answer the next test's reads, in any API test. Clearing also drops its
     per-key asyncio locks, which bind to the event loop of the test that first awaited them (see
-    LodgingYearCache.invalidate_all)."""
+    LodgingYearCache.invalidate_all).
+
+    Layer 2 (aid_season_cache, the priced season) is cleared beside it for the same reason: a season one test's
+    fakes built would otherwise answer the next test's staff read."""
     aid_inputs_cache.invalidate_all()
+    aid_season_cache.invalidate_all()
     yield
     aid_inputs_cache.invalidate_all()
+    aid_season_cache.invalidate_all()
 
 
 def create_mock_session(
