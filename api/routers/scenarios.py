@@ -394,7 +394,7 @@ async def evaluate_score(
             assignments_raw = await asyncio.to_thread(
                 pb.collection(BUNK_ASSIGNMENTS_DRAFT).get_full_list,
                 query_params={
-                    "filter": f'scenario = "{scenario_id}" && ({session_filter}) && year = {year}',
+                    "filter": f'scenario = "{pb_escape(scenario_id)}" && ({session_filter}) && year = {year}',
                     "expand": "person,bunk",
                 },
             )
@@ -597,7 +597,7 @@ async def delete_scenario(
         # Delete all related draft assignments first
         draft_assignments = await asyncio.to_thread(
             pb.collection(BUNK_ASSIGNMENTS_DRAFT).get_full_list,
-            query_params={"filter": f'scenario = "{scenario_id}"'},
+            query_params={"filter": f'scenario = "{pb_escape(scenario_id)}"'},
         )
 
         for assignment in draft_assignments:
@@ -663,7 +663,9 @@ async def update_scenario_assignment(
         # Check if assignment exists
         existing = await asyncio.to_thread(
             pb.collection(BUNK_ASSIGNMENTS_DRAFT).get_full_list,
-            query_params={"filter": f'scenario = "{scenario_id}" && person = "{person_pb_id}" && year = {ctx.year}'},
+            query_params={
+                "filter": f'scenario = "{pb_escape(scenario_id)}" && person = "{person_pb_id}" && year = {ctx.year}'
+            },
         )
 
         # Helper: drop the cache slot whenever this call mutates the draft.

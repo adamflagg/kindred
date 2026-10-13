@@ -18,6 +18,7 @@ from api.constants.collections import (
     CAMP_SESSIONS,
     PERSONS,
 )
+from api.utils.pb_filters import pb_escape
 from api.utils.session_metrics import get_person_from_expand, get_session_from_expand
 from bunking.graph._types import cast_person
 from bunking.logging_config import get_logger
@@ -200,7 +201,7 @@ class SocialGraphBuilder:
           are included so callers can append it directly.
         """
         if scenario_id:
-            return BUNK_ASSIGNMENTS_DRAFT, f' && scenario = "{scenario_id}"'
+            return BUNK_ASSIGNMENTS_DRAFT, f' && scenario = "{pb_escape(scenario_id)}"'
         return BUNK_ASSIGNMENTS, ""
 
     def _enrolled_member_cm_ids(self, member_cm_ids: list[int], year: int) -> set[int] | None:
@@ -308,7 +309,9 @@ class SocialGraphBuilder:
                     # Stay on the same source (draft vs prod) as the primary
                     # lookup above so scenario and production data never mix.
                     if scenario_id:
-                        ag_filter = f'bunk.cm_id = {bunk_cm_id} && year = {year} && scenario = "{scenario_id}"'
+                        ag_filter = (
+                            f'bunk.cm_id = {bunk_cm_id} && year = {year} && scenario = "{pb_escape(scenario_id)}"'
+                        )
                     else:
                         ag_filter = f"bunk.cm_id = {bunk_cm_id} && year = {year}"
                     all_assignments = self.pb.collection(assignment_collection).get_full_list(

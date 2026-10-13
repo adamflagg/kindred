@@ -23,6 +23,7 @@ from api.constants.collections import (
     PERSONS,
 )
 from api.constants.paging import PB_PAGE_SIZE
+from api.utils.pb_filters import pb_escape
 from api.utils.session_metrics import get_bunk_from_expand, get_person_from_expand
 from bunking.logging_config import get_logger
 from bunking.satisfaction.api_shape import (
@@ -297,7 +298,7 @@ def session_satisfaction(
 
     if scenario_id:
         assignments_collection = BUNK_ASSIGNMENTS_DRAFT
-        assignments_filter = f"scenario = '{scenario_id}' && year = {year} && ({session_relation_filter})"
+        assignments_filter = f"scenario = '{pb_escape(scenario_id)}' && year = {year} && ({session_relation_filter})"
     else:
         assignments_collection = BUNK_ASSIGNMENTS
         assignments_filter = f"year = {year} && ({session_relation_filter})"

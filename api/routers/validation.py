@@ -14,6 +14,7 @@ from typing import Any
 from fastapi import APIRouter, Depends
 from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
 
+from api.utils.pb_filters import pb_escape
 from bunking.auth_middleware import AuthUser
 from bunking.bunking_validator import BunkingValidator, HistoricalBunkingRecord
 from bunking.config import ConfigLoader
@@ -243,7 +244,9 @@ async def validate_bunking(
         # Fetch assignments
         if request.scenario:
             # Query draft assignments for the specific scenario
-            filter_str = f'scenario = "{request.scenario}" && ({session_relation_filter}) && year = {ctx.year}'
+            filter_str = (
+                f'scenario = "{pb_escape(request.scenario)}" && ({session_relation_filter}) && year = {ctx.year}'
+            )
             assignments_data = await asyncio.to_thread(
                 pb.collection(BUNK_ASSIGNMENTS_DRAFT).get_full_list,
                 query_params={"filter": filter_str, "expand": "person,session,bunk"},
