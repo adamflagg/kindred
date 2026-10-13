@@ -31,22 +31,34 @@ if [ -z "${POCKETBASE_ADMIN_EMAIL}" ] || [ -z "${POCKETBASE_ADMIN_PASSWORD}" ]; 
     exit 1
 fi
 
-log_info "Upserting admin user: ${POCKETBASE_ADMIN_EMAIL}"
-/usr/local/bin/pocketbase superuser upsert \
-    "${POCKETBASE_ADMIN_EMAIL}" "${POCKETBASE_ADMIN_PASSWORD}" \
-    --dir=/pb_data
+# Sign in as the superuser; prints the token, or nothing if PocketBase refuses.
+admin_token() {
+    curl -sf -X POST \
+        -H "Content-Type: application/json" \
+        -d "{\"identity\":\"${POCKETBASE_ADMIN_EMAIL}\",\"password\":\"${POCKETBASE_ADMIN_PASSWORD}\"}" \
+        "${PB_URL}/api/collections/_superusers/auth-with-password" 2>/dev/null \
+        | sed -n 's/.*"token":"\([^"]*\)".*/\1/p' || true
+}
+
+# Upsert only when the env credentials don't already sign in. PocketBase
+# regenerates a superuser's tokenKey on ANY password write -- re-setting the
+# same password still stores a freshly salted hash -- so an unconditional
+# upsert on every start signs out every service holding a superuser token.
+TOKEN=$(admin_token)
+if [ -n "$TOKEN" ]; then
+    log_info "Admin user ${POCKETBASE_ADMIN_EMAIL} already signs in; leaving it unchanged"
+else
+    log_info "Upserting admin user: ${POCKETBASE_ADMIN_EMAIL}"
+    # PB_BIN lets tests/unit/scripts/test_init_entrypoint.py substitute a stub.
+    "${PB_BIN:-/usr/local/bin/pocketbase}" superuser upsert \
+        "${POCKETBASE_ADMIN_EMAIL}" "${POCKETBASE_ADMIN_PASSWORD}" \
+        --dir=/pb_data
+    TOKEN=$(admin_token)
+fi
 
 # Configure OAuth2 if OIDC environment variables are set
 if [ -n "${OIDC_ISSUER}" ] && [ -n "${OIDC_CLIENT_ID}" ] && [ -n "${OIDC_CLIENT_SECRET}" ]; then
     log_info "Configuring OAuth2 provider..."
-
-    # Auth as admin
-    AUTH_RESPONSE=$(curl -sf -X POST \
-        -H "Content-Type: application/json" \
-        -d "{\"identity\":\"${POCKETBASE_ADMIN_EMAIL}\",\"password\":\"${POCKETBASE_ADMIN_PASSWORD}\"}" \
-        "${PB_URL}/api/collections/_superusers/auth-with-password" 2>/dev/null || echo "")
-
-    TOKEN=$(echo "$AUTH_RESPONSE" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
 
     if [ -z "$TOKEN" ]; then
         log_error "Could not authenticate as admin for OAuth config"
