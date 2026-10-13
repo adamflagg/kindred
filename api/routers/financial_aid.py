@@ -522,7 +522,8 @@ def _grants() -> GrantsService:
 
 
 def _grants_register() -> GrantsRegisterService:
-    """Grants' read with each share's round (slice 3 ask 10): the season priced once, on the register it shows."""
+    """Grants' read with each share's round (slice 3 ask 10): the season priced once, on the register it shows
+    (unless the season comes from the shared cache, which every register change clears)."""
     return GrantsRegisterService(
         _grants(), FinancialAidDecisionsRepository(pb), _rules(), season_cache=aid_season_cache
     )

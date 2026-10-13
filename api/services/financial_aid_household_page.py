@@ -672,7 +672,7 @@ async def _income(casework: CaseworkReads, year: int, household_cm_id: int) -> A
 
 class HouseholdPageService:
     """The household page's one aggregate read (D21): the live season priced once with its grants register
-    (OneGrantsLoad), scoped to the family (D26), plus the family's own reads: its names, incomes, postings,
+    (OneGrantsLoad; unless the season comes from the shared cache, which every register change clears), scoped to the family (D26), plus the family's own reads: its names, incomes, postings,
     the households' details, links and log, and the details of any household outside the scope that a link row or a
     duplicate waiting names."""
 
@@ -702,6 +702,7 @@ class HouseholdPageService:
         decisions = FinancialAidDecisionsService(
             self._store, self._pricing, shared.register, clock=self._clock, season_cache=self._season_cache
         )
+        # season() must start BEFORE shared.read(): the season cache's stamp depends on that order.
         season, (grants, _) = await asyncio.gather(decisions.season(year), shared.read())
         season = await decisions.with_unticked(season)  # D162: the grid's own rows, Not reconciled's reasons and all
         scope = page_scope(household_cm_id, season.requests, season.shares)

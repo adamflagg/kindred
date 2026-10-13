@@ -271,6 +271,9 @@ async def test_the_reference_season_holds_every_route_a_number_takes() -> None:
     # Names, and year scoping: no prior-season row anywhere.
     assert (families[CHEN], campers[LIAM]) == ("Chen Household", "Lee Garcia")
     assert families[JOHNSON] == "Mr. and Mrs. Johnson"  # not the 2026 household's title
+    # CampMinder's cancellation reaches forward demand. (Season.to_reverse, gaps and splits stay empty here: each
+    # needs a case this fixture lacks, and unticked and pending are filled only by with_unticked, not the build.)
+    assert season.cancelled_in_campminder == {REQ_OLIVIA}
     assert REQ_PRIOR not in season.requests
     assert T_PRIOR not in {line.transaction_cm_id for line in season.camp_lines}
     assert all(r.year == YEAR for r in season.requests.values())

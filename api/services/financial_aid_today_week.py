@@ -315,6 +315,8 @@ class TodayWeekService:
         shared = OneGrantsLoad(self._grants, year)
         # Development reads the requests only to count awards by camper and session (S1); its feed names none (§9.4).
         # Only family callers price the season (S2's waiting rows).
+        # season() must start BEFORE shared.read(): the season cache's stamp depends on that order.
+        # (The waiting rows' season() starts here, ahead of the gather's shared.read().)
         waiting_read = asyncio.ensure_future(self._waiting_rows(year, shared) if families else _no_rows())
         (_, register), events, requests, funder_log, grantors, rules = await asyncio.gather(
             shared.read(),
