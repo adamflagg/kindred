@@ -2301,7 +2301,10 @@ func resolveWithReplayDeps(
 		alias := newAlias(t, app, "Ridge A 7")
 		issue.Set("resolved_alias", alias.Id)
 	}
-	return app.Save(issue)
+	if err := app.Save(issue); err != nil {
+		return fmt.Errorf("saving the resolved issue: %w", err)
+	}
+	return nil
 }
 
 // A staff resolve whose replay wrote a live lodging_assignments row must tell

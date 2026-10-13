@@ -862,6 +862,13 @@ func replayOnResolveEvent(deps replayDeps, e *core.RecordEvent) error {
 		return e.Next()
 	}
 
+	runReplay(deps, e, partyScoped)
+	return e.Next()
+}
+
+// runReplay replays the resolved row through the route its shape picks, logs
+// the outcome, and clears FastAPI's lodging cache when the replay wrote.
+func runReplay(deps replayDeps, e *core.RecordEvent, partyScoped bool) {
 	var err error
 	wrote := false
 	if partyScoped {
@@ -900,5 +907,4 @@ func replayOnResolveEvent(deps replayDeps, e *core.RecordEvent) error {
 				"issue", e.Record.Id, "error", nerr)
 		}
 	}
-	return e.Next()
 }
