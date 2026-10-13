@@ -41,7 +41,7 @@ def _base_patches(mock_runs: dict[str, dict[str, Any]], *, subprocess_on: bool) 
         "hist": patch.object(sr_module, "fetch_historical_bunking", new_callable=AsyncMock, return_value=[]),
         "prep": patch.object(sr_module, "prepare_direct_solver_input", return_value=solver_input),
         "config": patch.object(sr_module, "ConfigLoader"),
-        "pb": patch.object(sr_module, "PocketBase"),
+        "pb": patch.object(sr_module, "create_task_pb_client"),
         "settings": patch.object(sr_module, "get_settings", return_value=settings),
         "runs": patch.object(sr_module, "solver_runs", mock_runs),
         "tag": patch.object(sr_module, "build_run_details", new_callable=AsyncMock, return_value={}),

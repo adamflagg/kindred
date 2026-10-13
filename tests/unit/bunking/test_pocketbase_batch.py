@@ -403,3 +403,109 @@ def test_the_outer_batch_request_never_carries_if_match() -> None:
     pb = FakePocketBase(_ok)
     send_batch(pb, [BatchRequest.update("aid_rules", "rul000000000001", {"a": 1}, revision=4)])  # type: ignore[arg-type]
     assert "if-match" not in {name.lower() for name in pb.sent[0].headers}
+
+
+# --- Re-authentication after a dead token -----------------------------------
+#
+# PocketBase serves a dead superuser token as a guest's, so a batch writing a
+# superuser-only collection is refused 403 inside the batch (or 401/403 whole).
+# A refused batch commits nothing, so signing in again and resending once is safe.
+
+NEW_TOKEN = "fresh-superuser-token"
+
+
+class ReauthingPocketBase(FakePocketBase):
+    """A fake with the superuser client's re-auth hook; only NEW_TOKEN is accepted."""
+
+    def __init__(self, handler: Any, *, reauth_error: Exception | None = None) -> None:
+        super().__init__(handler)
+        self.reauths: list[str] = []
+        self._reauth_error = reauth_error
+
+    def reauthenticate_if_stale(self, stale_token: str) -> None:
+        self.reauths.append(stale_token)
+        if self._reauth_error is not None:
+            raise self._reauth_error
+        self.auth_store.token = NEW_TOKEN
+
+
+def _denied_unless_fresh(denial: httpx.Response) -> Any:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return _ok(request) if request.headers.get("Authorization") == NEW_TOKEN else denial
+
+    return handler
+
+
+_SUB_403 = httpx.Response(
+    400, json=_sub_failure(0, {"data": {}, "message": "Only superusers can perform this action.", "status": 403})
+)
+
+
+@pytest.mark.parametrize(
+    "denial",
+    [_SUB_403, httpx.Response(401, json={"message": "Unauthorized."}), httpx.Response(403, json={"message": "No."})],
+    ids=["sub-request-403", "batch-401", "batch-403"],
+)
+def test_a_batch_refused_for_a_dead_token_is_resent_once_after_signing_in_again(denial: httpx.Response) -> None:
+    pb = ReauthingPocketBase(_denied_unless_fresh(denial))
+    requests = [BatchRequest.create("aid_change_log", {"entity": "decision"})]
+
+    results = send_batch(pb, requests)  # type: ignore[arg-type]
+
+    assert [r.status for r in results] == [200]
+    assert pb.reauths == [TOKEN]
+    assert [r.headers["Authorization"] for r in pb.sent] == [TOKEN, NEW_TOKEN]
+
+
+def test_a_batch_denied_again_after_signing_in_raises_the_first_refusal() -> None:
+    pb = ReauthingPocketBase(lambda _: _SUB_403)
+
+    with pytest.raises(BatchRequestFailedError) as caught:
+        send_batch(pb, [BatchRequest.create("aid_change_log", {"entity": "decision"})])  # type: ignore[arg-type]
+
+    assert caught.value.status == 403
+    assert pb.reauths == [TOKEN]
+    assert len(pb.sent) == 2
+
+
+def test_a_failed_sign_in_raises_the_original_refusal() -> None:
+    pb = ReauthingPocketBase(lambda _: _SUB_403, reauth_error=ConnectionError("PocketBase unreachable"))
+
+    with pytest.raises(BatchRequestFailedError) as caught:
+        send_batch(pb, [BatchRequest.create("aid_change_log", {"entity": "decision"})])  # type: ignore[arg-type]
+
+    assert caught.value.status == 403
+    assert len(pb.sent) == 1
+
+
+def test_a_refusal_that_is_not_about_auth_is_never_resent() -> None:
+    body = _sub_failure(0, {"data": {}, "message": "The requested resource wasn't found.", "status": 404})
+    pb = ReauthingPocketBase(lambda _: httpx.Response(400, json=body))
+
+    with pytest.raises(BatchRequestFailedError):
+        send_batch(pb, [BatchRequest.update("aid_decisions", "nosuchrecord001", {"stage": "held"})])  # type: ignore[arg-type]
+
+    assert pb.reauths == []
+    assert len(pb.sent) == 1
+
+
+def test_a_client_without_the_reauth_hook_is_not_resent() -> None:
+    pb = FakePocketBase(lambda _: _SUB_403)
+
+    with pytest.raises(BatchRequestFailedError):
+        send_batch(pb, [BatchRequest.create("aid_change_log", {"entity": "decision"})])  # type: ignore[arg-type]
+
+    assert len(pb.sent) == 1
+
+
+def test_an_unknown_outcome_is_never_resent() -> None:
+    def broken(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("timed out", request=request)
+
+    pb = ReauthingPocketBase(broken)
+
+    with pytest.raises(BatchTransportError):
+        send_batch(pb, [BatchRequest.create("aid_change_log", {"entity": "decision"})])  # type: ignore[arg-type]
+
+    assert pb.reauths == []
+    assert len(pb.sent) == 1

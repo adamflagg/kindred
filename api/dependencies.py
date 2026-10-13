@@ -16,10 +16,10 @@ from bunking.graph.graph_cache_manager import GraphCacheManager
 from bunking.logging_config import get_logger
 from pocketbase import PocketBase
 
-from .constants.collections import SUPERUSERS
 from .services.id_cache import IDLookupCache
 from .services.lodging_cache import LodgingYearCache
 from .services.metrics_cache import MetricsCache
+from .services.pb_superuser_client import SuperuserPocketBase
 from .settings import get_settings
 
 logger = get_logger(__name__)
@@ -39,7 +39,27 @@ logger = get_logger(__name__)
 # - We use task-specific clients for extra isolation and future-proofing
 _settings = get_settings()
 pb_url = _settings.pocketbase_url
-pb = PocketBase(pb_url)
+
+
+def _superuser_credentials() -> tuple[str, str]:
+    settings = get_settings()
+    return settings.pocketbase_admin_email, settings.pocketbase_admin_password
+
+
+# This client and the per-task ones are SuperuserPocketBase, so a token that
+# dies early (its tokenKey changed) is re-authenticated and the request retried
+# once, at one choke point -- see api/services/pb_superuser_client.py.
+# bunking.pocketbase_batch.send_batch posts through the http client instead of
+# send(), and does its own resend-once via reauthenticate_if_stale. Not covered:
+# ConfigLoader and the sync ConnectionManager keep their own clients (they
+# re-auth on an interval instead).
+pb: SuperuserPocketBase = SuperuserPocketBase(pb_url, credentials=_superuser_credentials)
+
+# How often the global client's token is checked. PocketBase answers a dead
+# token as a guest's request -- 200 with no items on an auth-ruled list -- which
+# the retry above cannot see, so this probe is what bounds that silent window.
+# auth-refresh is cheap (no password hash) and renews a live token as it goes.
+PB_AUTH_PROBE_INTERVAL_SECONDS: float = 60
 
 
 class AuthState:
@@ -53,30 +73,34 @@ auth_state = AuthState()
 
 async def authenticate_pb() -> None:
     """Authenticate with PocketBase as admin."""
-    settings = get_settings()
     try:
-        await asyncio.to_thread(
-            pb.collection(SUPERUSERS).auth_with_password,
-            settings.pocketbase_admin_email,
-            settings.pocketbase_admin_password,
-        )
+        await asyncio.to_thread(pb.authenticate)
         logger.info("Successfully authenticated with PocketBase")
     except Exception as e:
         logger.error(f"Failed to authenticate with PocketBase: {e}")
         raise
 
 
-async def start_pb_token_refresh(interval_seconds: int | float = 3600) -> asyncio.Task[None]:
-    """Start background task to periodically refresh PocketBase auth token."""
+async def probe_pb_auth() -> None:
+    """Renew the global client's token, or sign in again if it has died. Raises on failure."""
+    await asyncio.to_thread(pb.refresh_or_reauthenticate)
+
+
+async def start_pb_token_refresh(interval_seconds: float | None = None) -> asyncio.Task[None]:
+    """Start the background task that probes the PocketBase superuser token.
+
+    ``interval_seconds`` defaults to PB_AUTH_PROBE_INTERVAL_SECONDS, read when
+    the loop starts so tests can shrink it.
+    """
+    interval = PB_AUTH_PROBE_INTERVAL_SECONDS if interval_seconds is None else interval_seconds
 
     async def _refresh_loop() -> None:
         while True:
-            await asyncio.sleep(interval_seconds)
+            await asyncio.sleep(interval)
             try:
-                await authenticate_pb()
-                logger.info("Refreshed PocketBase auth token")
+                await probe_pb_auth()
             except Exception:
-                logger.exception("Failed to refresh PocketBase auth token, will retry")
+                logger.exception("PocketBase auth probe failed, will retry")
 
     return asyncio.create_task(_refresh_loop())
 
@@ -86,19 +110,14 @@ async def get_pb_client() -> PocketBase:
     return pb
 
 
-def create_task_pb_client() -> PocketBase:
+def create_task_pb_client() -> SuperuserPocketBase:
     """Create a fresh PocketBase client for background tasks."""
-    return PocketBase(pb_url)
+    return SuperuserPocketBase(pb_url, credentials=_superuser_credentials)
 
 
-async def authenticate_task_pb(task_pb: PocketBase) -> None:
+async def authenticate_task_pb(task_pb: SuperuserPocketBase) -> None:
     """Authenticate a task-specific PocketBase client."""
-    settings = get_settings()
-    await asyncio.to_thread(
-        task_pb.collection(SUPERUSERS).auth_with_password,
-        settings.pocketbase_admin_email,
-        settings.pocketbase_admin_password,
-    )
+    await asyncio.to_thread(task_pb.authenticate)
 
 
 # ========================================
@@ -192,6 +211,7 @@ def prune_solver_runs() -> int:
 
 __all__ = [
     "MAX_TERMINAL_SOLVER_RUNS",
+    "PB_AUTH_PROBE_INTERVAL_SECONDS",
     "IDLookupCache",
     "auth_state",
     "authenticate_pb",
@@ -203,6 +223,7 @@ __all__ = [
     "metrics_cache",
     "pb",
     "pb_url",
+    "probe_pb_auth",
     "prune_solver_runs",
     "solver_runs",
     "start_pb_token_refresh",

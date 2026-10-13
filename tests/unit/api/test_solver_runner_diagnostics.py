@@ -43,7 +43,7 @@ def test_failure_branch_stores_localization_and_impossibility_report() -> None:
         patch.object(sr_module, "prepare_direct_solver_input", return_value=mock_solver_input),
         patch.object(sr_module, "ConfigLoader") as m_config,
         patch.object(sx_module, "DirectBunkingSolver", return_value=mock_solver),
-        patch.object(sr_module, "PocketBase") as m_pb,
+        patch.object(sr_module, "create_task_pb_client") as m_pb,
         patch.object(sr_module, "get_settings") as m_settings,
         patch.object(sx_module, "localize_hard_mso_infeasibility", return_value=fake_iis),
         patch.object(sr_module, "solver_runs", mock_runs),
@@ -56,7 +56,7 @@ def test_failure_branch_stores_localization_and_impossibility_report() -> None:
         m_settings.return_value = MagicMock(
             pocketbase_admin_email="x", pocketbase_admin_password="x", solver_subprocess=False
         )
-        m_pb.return_value.collection.return_value.auth_with_password.return_value = {}
+        m_pb.return_value.authenticate.return_value = None
 
         asyncio.run(sr_module.run_solver_task_v2(run_id, 1000001, 2026, 5))
 
