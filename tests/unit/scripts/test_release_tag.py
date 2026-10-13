@@ -244,6 +244,16 @@ def test_missing_guide_access_stops_the_release(monkeypatch, env, capsys, missin
     assert "no guide access" in capsys.readouterr().out
 
 
+@pytest.mark.parametrize("missing", ["KINDRED_REPO", "KINDRED_TOKEN"])
+def test_missing_kindred_access_stops_before_any_wait(monkeypatch, env, capsys, missing):
+    """Unset, the lockstep wait would poll `repos//...` for its full 80 minutes."""
+    monkeypatch.delenv(missing)
+    fake = _install(monkeypatch, FakeGh())
+    assert _main() == 1
+    assert fake.calls == []
+    assert "no kindred access" in capsys.readouterr().out
+
+
 # --------------------------- output discipline ----------------------------
 
 

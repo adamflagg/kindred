@@ -113,6 +113,8 @@ def _release_tag(release_sha: str, version: str) -> int:
     kindred_token = os.environ.get("KINDRED_TOKEN", "")
     guide_repo = os.environ.get("GUIDE_REPO", "")
     guide_token = os.environ.get("GUIDE_TOKEN", "")
+    if not (kindred_repo and kindred_token):
+        raise ReleaseTagError("no kindred access (KINDRED_REPO / KINDRED_TOKEN unset)")
     if not (guide_repo and guide_token):
         raise ReleaseTagError("no guide access (GUIDE_REPO / GUIDE_WRITE_TOKEN unset)")
 
