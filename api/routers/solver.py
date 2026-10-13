@@ -23,6 +23,7 @@ from uuid import uuid4
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
 
+from api.utils.pb_filters import pb_escape
 from bunking.auth_middleware import AuthUser
 from bunking.config import ConfigLoader
 from bunking.logging_config import get_logger
@@ -684,7 +685,9 @@ async def apply_solver_results(
 
             existing = await asyncio.to_thread(
                 pb.collection(collection_name).get_full_list,
-                query_params={"filter": (f'person = "{person_pb_id}" && scenario = "{scenario}" && year = {run_year}')},
+                query_params={
+                    "filter": (f'person = "{person_pb_id}" && scenario = "{pb_escape(scenario)}" && year = {run_year}')
+                },
             )
 
             # Use session_filter to get correct attendee for multi-enrolled campers
@@ -921,7 +924,7 @@ async def clear_session_assignments(
         total_deleted = 0
 
         collection_name = BUNK_ASSIGNMENTS_DRAFT
-        base_filter = f'scenario = "{scenario}"'
+        base_filter = f'scenario = "{pb_escape(scenario)}"'
 
         for sid in ctx.related_session_ids:
             filter_str = f"{base_filter} && session.cm_id = {sid} && year = {ctx.year}"

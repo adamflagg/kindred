@@ -15,6 +15,7 @@ from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
 
 from api.constants.filters import ACTIVE_ENROLLED_FILTER
 from api.utils.pb_error import pb_error_to_http
+from api.utils.pb_filters import pb_escape
 from api.utils.session_metrics import get_person_from_expand, get_session_from_expand
 from bunking.direct_solver import (
     DirectBunk,
@@ -149,7 +150,7 @@ async def fetch_session_data_v2(
                 # Add scenario filter for draft assignments
                 base_filter = f"({filter_str}) && ({session_relation_filter}) && year = {ctx.year}"
                 if scenario:
-                    base_filter += f' && scenario = "{scenario}"'
+                    base_filter += f' && scenario = "{pb_escape(scenario)}"'
                 batch_assignments = await asyncio.to_thread(
                     client.collection(assignments_collection).get_full_list,
                     query_params={
@@ -264,7 +265,7 @@ async def fetch_lock_groups(
         groups = await asyncio.to_thread(
             client.collection("locked_groups").get_full_list,
             query_params={
-                "filter": f'scenario = "{scenario}" && ({ctx.session_pb_id_filter}) && year = {year}',
+                "filter": f'scenario = "{pb_escape(scenario)}" && ({ctx.session_pb_id_filter}) && year = {year}',
             },
         )
 
