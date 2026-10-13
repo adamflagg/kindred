@@ -343,7 +343,7 @@ from bunking.financial_aid.scenarios import (
 from bunking.rbac.dependencies import require_any_permission, require_permission
 from bunking.rbac.permissions import Permission
 
-from ..dependencies import pb
+from ..dependencies import aid_season_cache, pb
 
 router = APIRouter(prefix="/api/financial-aid", tags=["financial-aid"])
 
@@ -523,7 +523,9 @@ def _grants() -> GrantsService:
 
 def _grants_register() -> GrantsRegisterService:
     """Grants' read with each share's round (slice 3 ask 10): the season priced once, on the register it shows."""
-    return GrantsRegisterService(_grants(), FinancialAidDecisionsRepository(pb), _rules())
+    return GrantsRegisterService(
+        _grants(), FinancialAidDecisionsRepository(pb), _rules(), season_cache=aid_season_cache
+    )
 
 
 def _grants_http(exc: FinancialAidError) -> HTTPException:
@@ -1090,11 +1092,13 @@ async def withdraw_grant_commitment(
 
 
 def _decisions() -> FinancialAidDecisionsService:
+    """The live, staff-facing decisions service: its season is the process's shared one (layer 2)."""
     return FinancialAidDecisionsService(
         FinancialAidDecisionsRepository(pb),
         _rules(),
         GrantsService(GrantsRepository(pb)).register_rows,
         labels=_household_labels(),
+        season_cache=aid_season_cache,
     )
 
 
@@ -1104,6 +1108,7 @@ def _rules_approving() -> FinancialAidRulesService:
     register = GrantsService(GrantsRepository(pb)).register_rows
 
     async def season_on(pricing: PricingRules, year: int) -> Season:
+        # Never the season cache: this prices on candidate rules (the version before and after the approval).
         service = FinancialAidDecisionsService(
             FinancialAidDecisionsRepository(pb), pricing, register, log_placements=False
         )
@@ -1895,6 +1900,7 @@ async def get_today(year: _Year, user: AuthUser = _CAMPERSHIPS_OPEN) -> TodayRes
         intake=FinancialAidIntakeRepository(pb),
         to_place=store,  # To place's own reads (SP11): Today counts its open lines as Money › To place does
         labels=_household_labels(),  # next-up households read as the grid names them (audit R2)
+        season_cache=aid_season_cache,
     )
     return await service.read(
         year,
@@ -1915,6 +1921,7 @@ async def get_today_week(year: _Year, user: AuthUser = _CAMPERSHIPS_OPEN) -> Tod
         pricing=_rules(),  # the waiting-14+-days items are the Waiting on the family line's own rows (final check S2)
         labels=_household_labels(),  # households named as the grid names them (audit R24)
         rules=_rules(),  # finance's rules-section edits (spec §8.1)
+        season_cache=aid_season_cache,
     )
     return await service.read(
         year,
@@ -1936,6 +1943,7 @@ async def get_household_page(
         casework=_casework(),
         ledger=FinancialAidRepository(pb),
         history=EntityLogReads(pb),
+        season_cache=aid_season_cache,
     )
     try:
         return await service.read(year, household_cm_id)
@@ -2097,6 +2105,7 @@ def _reports() -> FinancialAidReportsService:
         _rules(),
         GrantsService(GrantsRepository(pb)).register_rows,
         ReportsRepository(pb),
+        season_cache=aid_season_cache,
     )
 
 
@@ -2315,6 +2324,7 @@ def _development() -> FinancialAidDevelopmentService:
         GrantsService(GrantsRepository(pb)).register_rows,
         DevelopmentRepository(pb),
         ReportsRepository(pb),
+        season_cache=aid_season_cache,
     )
 
 

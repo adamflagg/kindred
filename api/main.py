@@ -10,6 +10,7 @@ for the React bunking interface. It orchestrates:
 - Sync scheduling
 """
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -26,6 +27,7 @@ from bunking.auth_middleware import (
     get_current_user,
 )
 from bunking.config import ConfigLoader
+from bunking.financial_aid.change_log import add_commit_listener
 from bunking.logging_config import configure_logging, get_logger
 from bunking.rbac.permissions import (
     ADMIN_ONLY_AREAS,
@@ -62,7 +64,8 @@ from .routers import (
     validation,
 )
 from .schemas.permissions import PermissionEntry, PermissionRegistryResponse, PermissionScreen
-from .services.aid_sync_inputs import cancel_aid_warm, start_aid_inputs_refresher
+from .services.aid_season_cache import bind_warm_loop, on_aid_commit
+from .services.aid_sync_inputs import cancel_aid_warm, set_season_warmer, start_aid_inputs_refresher
 from .services.lodging_cache_warm import start_lodging_cache_refresher
 from .services.metrics_sql_connection import close_connection
 from .settings import get_settings
@@ -85,6 +88,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     refresh_task = None
     lodging_refresh_task = None
     aid_refresh_task = None
+    # Every Camperships write clears its season from the shared season cache (layer 2) before its response returns.
+    # Registered whatever the auth mode: a cached season no write clears would be stale.
+    remove_aid_listener = add_commit_listener(on_aid_commit)
     if not settings.skip_pb_auth:
         await authenticate_pb()
         refresh_task = await start_pb_token_refresh()
@@ -99,7 +105,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         lodging_refresh_task = start_lodging_cache_refresher()
         # Camperships' sync inputs (layer 1), likewise in the background, now and after every TTL: the first
         # season build after a restart or an expiry should not be the one that reads every person, household
-        # and registration.
+        # and registration. Each warm then rebuilds the priced season (layer 2) through the router's own staff read,
+        # so it fills the very cache entry staff read; so does the warm that follows each write's clear.
+        set_season_warmer(lambda year: financial_aid._decisions().named_season(year))
+        bind_warm_loop(asyncio.get_running_loop())
         aid_refresh_task = start_aid_inputs_refresher()
     else:
         logger.warning("Skipping PocketBase authentication (SKIP_PB_AUTH=true)")
@@ -115,6 +124,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if aid_refresh_task:
         aid_refresh_task.cancel()
     cancel_aid_warm()  # a warm a sync's clear scheduled, if one is still reading
+    remove_aid_listener()
+    bind_warm_loop(None)
+    set_season_warmer(None)
     close_connection()
 
 

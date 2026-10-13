@@ -279,6 +279,10 @@ async def run_financial_aid_ledger_ticks(body: FinancialAidLedgerTicksRun) -> Le
     the fresh ledger. Idempotent: a re-run the same night ticks nothing new. Every tick is one logged
     operation as system:ledger (sub-project 4a). A refusal maps to 422: the Go caller counts any
     failed call as an aid-ledger warning, never a red run."""
+    # Never the season cache (layer 2). The Go aid-ledger sync calls this right after writing aid_postings and
+    # BEFORE its job-completion cache clear, so a cached season could predate the ledger this tick must see, and
+    # the Posted ticks that ledger owes would be missed. It builds fresh; its own ticks commit through
+    # commit_aid_writes, whose listener clears the cached season for staff.
     service = FinancialAidDecisionsService(
         FinancialAidDecisionsRepository(pb),
         FinancialAidRulesService(AidRulesRepository(pb)),

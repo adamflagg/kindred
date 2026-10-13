@@ -23,7 +23,9 @@ Households are held with HOUSEHOLD_COLUMNS only, never that list (fetch_househol
 it itself), so a shared row cannot carry it to a reader that was never meant to see it.
 
 KEPT WARM. After every clear -- a sync's, through invalidate_server_caches -- and every TTL (the refresher,
-started in api/main.py's lifespan), the configured season refills in the background.
+started in api/main.py's lifespan), the configured season refills in the background, and so does its priced season
+(layer 2) through the season warmer the lifespan registers. A Camperships write clears only layer 2, and its warm
+finds this layer still filled.
 
 Single uvicorn process assumed (docker/Dockerfile.api): with workers this cache is per process.
 """
@@ -46,7 +48,7 @@ from api.constants.collections import (
     PERSON_CUSTOM_VALUES,
     PERSONS,
 )
-from api.dependencies import aid_inputs_cache
+from api.dependencies import aid_inputs_cache, aid_season_cache
 from api.dependencies import pb as default_pb
 from api.services.lodging_cache import cached_by_year
 from api.services.pb_precise_datetime import aid_collection
@@ -197,13 +199,31 @@ async def _configured_year() -> int:
     return await configured_season_year(default_pb)
 
 
+# Builds the live, cached season (layer 2) for a year. Registered by the lifespan, because services cannot import
+# the routers whose factory builds the staff-facing decisions service. None: layer 1 only (tests, before startup).
+_season_warmer: Callable[[int], Awaitable[object]] | None = None
+
+
+def set_season_warmer(warm: Callable[[int], Awaitable[object]] | None) -> None:
+    """The lifespan registers the router's own staff read, so the warm fills the very cache entry staff read."""
+    global _season_warmer
+    _season_warmer = warm
+
+
 async def warm_aid_year(year: int) -> None:
-    """Fill layer 1 for `year`. Never raises: nobody is waiting on it, and a failed fill leaves the next request
-    to read for itself."""
+    """Fill layer 1 for `year`, then its priced season (layer 2) if a season warmer is registered. Never raises:
+    nobody is waiting on it, and a failed fill leaves the next request to read for itself."""
     try:
         await aid_sync_inputs(default_pb, year)
     except Exception as exc:
         logger.warning(f"Camperships sync-input warm for {year} failed: {exc}")
+    warm_season = _season_warmer
+    if warm_season is None:
+        return
+    try:
+        await warm_season(year)
+    except Exception as exc:
+        logger.warning(f"Camperships season warm for {year} failed: {exc}")
 
 
 async def _warm_current_season() -> None:
@@ -238,8 +258,13 @@ def schedule_aid_warm() -> None:
 
 
 def cancel_aid_warm() -> None:
-    """Cancel the background warm, if one is pending (the lifespan's shutdown)."""
-    if _warm_task is not None and not _warm_task.done():
+    """Cancel the background warm, if one is pending on this loop (the lifespan's shutdown)."""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    # A task from another event loop (a finished pytest loop) is not ours to cancel: its loop may be closed.
+    if _warm_task is not None and not _warm_task.done() and _warm_task.get_loop() is loop:
         _warm_task.cancel()
 
 
@@ -253,7 +278,8 @@ async def refresh_aid_inputs_forever(
 
     A TTL expiry is a clear like any other, so it is followed by a warm too: clearing BEFORE the re-warm, rather
     than letting the entry expire on its own, keeps the staleness bound at the TTL while the configured season
-    stays filled. A request that arrives mid-warm waits on the warm's fill (single-flight per year)."""
+    stays filled. A request that arrives mid-warm waits on the warm's fill (single-flight per year). The priced
+    season (layer 2) is cleared with it, since it was built from what this clear drops, and `warm` rebuilds it."""
     year_of = _configured_year if year is None else year
     while True:
         try:
@@ -262,6 +288,7 @@ async def refresh_aid_inputs_forever(
             logger.warning(f"Camperships sync-input refresh failed: {exc}")
         await asyncio.sleep(interval)
         aid_inputs_cache.invalidate_all()
+        aid_season_cache.invalidate_all()
 
 
 def start_aid_inputs_refresher() -> asyncio.Task[None]:
