@@ -13,6 +13,7 @@ from typing import Any
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
+from api.utils.pb_filters import pb_escape
 from bunking.sync.base_sync import BaseSyncService
 from campminder.client import CampMinderClient
 
@@ -96,7 +97,7 @@ class SiblingRelationshipsSyncService(BaseSyncService):
                             1,
                             1,
                             query_params={
-                                "filter": f'(person="{person1.id}" && relative="{person2.id}") || (person="{person2.id}" && relative="{person1.id}")'
+                                "filter": f'(person="{pb_escape(person1.id)}" && relative="{pb_escape(person2.id)}") || (person="{pb_escape(person2.id)}" && relative="{pb_escape(person1.id)}")'
                             },
                         )
 

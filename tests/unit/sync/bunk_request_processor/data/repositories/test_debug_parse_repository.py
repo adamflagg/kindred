@@ -1020,3 +1020,49 @@ class TestDebugParseRepositoryAiP1ReasoningBugs:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+class TestProductionTextMatchEscaping:
+    """The family-written text matched against bunk_requests is escaped with pb_escape.
+
+    Escaping only the double quote left a trailing backslash free to escape the
+    closing quote, so a request ending in ``\\`` broke out of its literal.
+    """
+
+    TEXT = 'with Emma "the tall one" \\'
+    EXPECTED = 'requester_id = 1000001 && original_text = "with Emma \\"the tall one\\" \\\\"'
+
+    @staticmethod
+    def _client() -> tuple[Mock, Mock]:
+        requester = Mock(cm_id=1000001)
+        original = Mock(
+            content=TestProductionTextMatchEscaping.TEXT, field="bunk_with", expand={"requester": requester}
+        )
+        originals = Mock()
+        originals.get_one.return_value = original
+        debug = Mock()
+        debug.get_list.return_value = Mock(items=[])
+        bunk_requests = Mock()
+        bunk_requests.get_list.return_value = Mock(items=[])
+        by_name = {"original_bunk_requests": originals, "debug_parse_results": debug, "bunk_requests": bunk_requests}
+        client = Mock()
+        client.collection.side_effect = lambda name: by_name.get(name, Mock())
+        return client, bunk_requests
+
+    def test_production_fallback_escapes_quotes_and_a_trailing_backslash(self) -> None:
+        from bunking.sync.bunk_request_processor.data.repositories.debug_parse_repository import (
+            DebugParseRepository,
+        )
+
+        client, bunk_requests = self._client()
+        DebugParseRepository(client).get_production_fallback("orig00000000001")
+        assert bunk_requests.get_list.call_args[1]["query_params"]["filter"] == self.EXPECTED
+
+    def test_parse_status_escapes_quotes_and_a_trailing_backslash(self) -> None:
+        from bunking.sync.bunk_request_processor.data.repositories.debug_parse_repository import (
+            DebugParseRepository,
+        )
+
+        client, bunk_requests = self._client()
+        DebugParseRepository(client).check_parse_status("orig00000000001")
+        assert bunk_requests.get_list.call_args[1]["query_params"]["filter"] == self.EXPECTED

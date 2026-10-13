@@ -546,7 +546,7 @@ async def list_original_requests_by_camper(
     person_pb_id = person.id
 
     # Query original_bunk_requests directly by requester relation + year
-    pb_filter = f'requester = "{person_pb_id}" && year = {year}'
+    pb_filter = f'requester = "{pb_escape(person_pb_id)}" && year = {year}'
     records = pb.collection(ORIGINAL_BUNK_REQUESTS).get_full_list(
         query_params={"filter": pb_filter, "expand": "requester"}
     )
@@ -586,12 +586,10 @@ async def search_persons(
     via PocketBase relation-path filters. Returns up to 20 unique persons
     with their enrolled session CM IDs.
     """
-    safe_q = pb_escape(q)
-
     # Query attendees directly — enrollment is the source of truth
     attendee_filter = (
         f"year = {year} && {ACTIVE_ENROLLED_FILTER}"
-        f' && (person.first_name ~ "{safe_q}" || person.last_name ~ "{safe_q}")'
+        f' && (person.first_name ~ "{pb_escape(q)}" || person.last_name ~ "{pb_escape(q)}")'
     )
     # Cap at 200 rows — enough for 20 unique persons × multiple sessions,
     # while bounding network/memory for broad queries like q=a.
@@ -1292,7 +1290,9 @@ def toggle_pipeline_run_pin(
     """Toggle the pinned status of a pipeline run."""
     _validate_run_id(run_id)
     # Find the run record by run_id
-    records = pb.collection(DEBUG_PIPELINE_RUNS).get_full_list(query_params={"filter": f'run_id = "{run_id}"'})
+    records = pb.collection(DEBUG_PIPELINE_RUNS).get_full_list(
+        query_params={"filter": f'run_id = "{pb_escape(run_id)}"'}
+    )
     if not records:
         raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
 
@@ -1332,33 +1332,31 @@ def get_pipeline_run_summary(
     (``-final_confidence``) since the client re-sorts in memory anyway.
     """
     _validate_run_id(run_id)
-    filter_parts = [f'run_id = "{run_id}"']
+    filter_parts = [f'run_id = "{pb_escape(run_id)}"']
 
     if final_status:
         _validate_allowlist(final_status, VALID_FINAL_STATUSES, "final_status")
-        filter_parts.append(f'final_status = "{final_status}"')
+        filter_parts.append(f'final_status = "{pb_escape(final_status)}"')
     if resolution_method:
         _validate_allowlist(resolution_method, VALID_RESOLUTION_METHODS, "resolution_method")
-        filter_parts.append(f'resolution_method = "{resolution_method}"')
+        filter_parts.append(f'resolution_method = "{pb_escape(resolution_method)}"')
     if source_field:
         _validate_allowlist(source_field, VALID_SOURCE_FIELDS, "source_field")
-        filter_parts.append(f'source_field = "{source_field}"')
+        filter_parts.append(f'source_field = "{pb_escape(source_field)}"')
     if phase3_triggered is not None:
         filter_parts.append(f"phase3_triggered = {str(phase3_triggered).lower()}")
     if pre_p1_action:
         _validate_allowlist(pre_p1_action, VALID_PRE_P1_ACTIONS, "pre_p1_action")
-        filter_parts.append(f'pre_p1_action = "{pre_p1_action}"')
+        filter_parts.append(f'pre_p1_action = "{pb_escape(pre_p1_action)}"')
     if session_cm_id is not None:
         filter_parts.append(f"session_cm_id = {session_cm_id}")
     if min_confidence is not None:
         filter_parts.append(f"final_confidence >= {min_confidence}")
     if max_confidence is not None:
         filter_parts.append(f"final_confidence <= {max_confidence}")
-    if search:
-        # Sanitize: strip quotes to prevent PB filter injection
-        safe_search = search.replace('"', "").replace("'", "").strip()
-        if safe_search:
-            filter_parts.append(f'(requester_name ~ "{safe_search}" || target_name ~ "{safe_search}")')
+    if search and search.strip():
+        needle = search.strip()
+        filter_parts.append(f'(requester_name ~ "{pb_escape(needle)}" || target_name ~ "{pb_escape(needle)}")')
 
     filter_str = " && ".join(filter_parts)
 
@@ -1673,7 +1671,7 @@ async def run_from_phase(
                     },
                 )
                 traces = pb.collection(DEBUG_PIPELINE_TRACES).get_list(
-                    1, 1, query_params={"filter": f'run_id = "{trace_collector.run_id}"'}
+                    1, 1, query_params={"filter": f'run_id = "{pb_escape(trace_collector.run_id)}"'}
                 )
                 if traces.items:
                     trace_id = traces.items[0].id
@@ -1786,7 +1784,7 @@ async def run_full_trace(
                 )
                 # Get the first trace record ID for navigation
                 traces = pb.collection(DEBUG_PIPELINE_TRACES).get_list(
-                    1, 1, query_params={"filter": f'run_id = "{trace_collector.run_id}"'}
+                    1, 1, query_params={"filter": f'run_id = "{pb_escape(trace_collector.run_id)}"'}
                 )
                 if traces.items:
                     trace_id = traces.items[0].id

@@ -13,6 +13,7 @@ from api.constants.collections import (
     CAMP_SESSIONS,
     PERSONS,
 )
+from api.utils.pb_filters import pb_escape
 from api.utils.session_metrics import get_person_from_expand
 from bunking.logging_config import get_logger
 from pocketbase import PocketBase
@@ -197,7 +198,9 @@ class IDLookupCache:
         try:
             plans = await asyncio.to_thread(
                 self.pb.collection(BUNK_PLANS).get_full_list,
-                query_params={"filter": f'bunk = "{bunk_pb_id}" && session = "{session_pb_id}" && year = {year}'},
+                query_params={
+                    "filter": f'bunk = "{pb_escape(bunk_pb_id)}" && session = "{pb_escape(session_pb_id)}" && year = {year}'
+                },
             )
             if plans:
                 pb_id = plans[0].id

@@ -10,6 +10,7 @@ from typing import Any
 
 import networkx as nx
 
+from api.utils.pb_filters import pb_escape
 from api.utils.session_metrics import get_person_from_expand, get_session_from_expand
 from bunking.logging_config import get_logger
 from pocketbase import PocketBase
@@ -286,7 +287,9 @@ class SocialGraph:
             # `session` is a single-select relation (maxSelect=1), so
             # dot-notation reaches the related row's `session_type` directly --
             # the same pattern social_graph_builder uses.
-            type_clause = " || ".join(f'session.session_type = "{t}"' for t in LAST_YEAR_HISTORY_SESSION_TYPES)
+            type_clause = " || ".join(
+                f'session.session_type = "{pb_escape(t)}"' for t in LAST_YEAR_HISTORY_SESSION_TYPES
+            )
 
             for chunk in batched(person_cm_ids, chunk_size, strict=False):
                 person_filter = " || ".join([f"person.cm_id = {pid}" for pid in chunk])

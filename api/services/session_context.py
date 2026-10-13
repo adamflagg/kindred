@@ -19,6 +19,7 @@ from dataclasses import dataclass
 
 from fastapi import HTTPException
 
+from api.utils.pb_filters import pb_escape
 from bunking.logging_config import get_logger
 from pocketbase import PocketBase
 
@@ -119,7 +120,7 @@ async def build_session_context(
     session_id_filter = " || ".join([f"session_id = {sid}" for sid in related_ids])
 
     # For PocketBase relation fields using record IDs
-    session_pb_id_filter = " || ".join([f'session = "{sid}"' for sid in related_session_pb_ids])
+    session_pb_id_filter = " || ".join([f'session = "{pb_escape(sid)}"' for sid in related_session_pb_ids])
 
     return SessionContext(
         session_cm_id=session_cm_id,

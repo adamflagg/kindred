@@ -76,7 +76,7 @@ async def fetch_change_log(pb: Any, year: int, entity: str) -> list[LogRow]:
     rows: list[Any] = await pb_read(
         aid_collection(pb, COLLECTION).get_full_list,
         batch=PAGE_SIZE,
-        query_params={"filter": f'year = {int(year)} && entity = "{entity}"', "sort": "created,id"},
+        query_params={"filter": f'year = {int(year)} && entity = "{pb_escape(entity)}"', "sort": "created,id"},
     )
     return [log_row(row) for row in rows]
 
@@ -143,7 +143,10 @@ async def fetch_operation(pb: Any, year: int, operation_id: str) -> list[Any]:
     rows: list[Any] = await pb_read(
         aid_collection(pb, COLLECTION).get_full_list,
         batch=PAGE_SIZE,
-        query_params={"filter": f'year = {int(year)} && operation_id = "{operation_id}"', "sort": "created,id"},
+        query_params={
+            "filter": f'year = {int(year)} && operation_id = "{pb_escape(operation_id)}"',
+            "sort": "created,id",
+        },
     )
     return rows
 
@@ -177,9 +180,9 @@ async def fetch_recorded(pb: Any, year: int, operation_ids: Collection[str], ent
             raise ValueError(f"{operation_id!r} is not an operation id")
     if not operation_ids or not entities:
         return []
-    kinds = " || ".join(f'entity = "{e}"' for e in sorted(set(entities)))
+    kinds = " || ".join(f'entity = "{pb_escape(e)}"' for e in sorted(set(entities)))
     base = f"year = {int(year)} && ({kinds})"
-    terms = [f'operation_id = "{o}"' for o in sorted(set(operation_ids))]
+    terms = [f'operation_id = "{pb_escape(o)}"' for o in sorted(set(operation_ids))]
     rows: list[Any] = []
     for chunk in chunk_filter_terms(len(base), terms):
         found: list[Any] = await pb_read(

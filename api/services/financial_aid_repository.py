@@ -164,7 +164,7 @@ class FinancialAidRepository:
         return await self._page(
             CHANGE_LOG,
             {
-                "filter": f'entity = "{AID_SOURCES}"',
+                "filter": f'entity = "{pb_escape(AID_SOURCES)}"',
                 "sort": "created,id",
                 "fields": "id,entity_id,actor,reason,created",
             },

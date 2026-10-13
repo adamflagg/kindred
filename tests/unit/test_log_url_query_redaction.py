@@ -77,7 +77,26 @@ class TestRedactSensitiveQueryValues:
         ],
     )
     def test_doubled_quote_escape_does_not_end_the_value(self, value: str) -> None:
-        """``PersonRepository`` escapes an apostrophe by doubling it, as in ``'O''Johnson'``."""
+        """An SQL-style doubled apostrophe, as in ``'O''Johnson'``, does not end the value either."""
+        out = _redact(f"GET /api/collections/persons/records?filter={value}&perPage=50 failed")
+
+        assert "Johnson" not in out
+        assert "Emma" not in out
+        assert "?filter=[REDACTED]&perPage=50 failed" in out
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "last_name = 'O\\'Johnson' && year = 2025",
+            "last_name='O\\'Johnson'",
+            "first_name = 'Emma' && last_name = 'O\\'Johnson'",
+            "(first_name = 'D\\'Emma' || preferred_name = 'D\\'Emma') && year = 2025",
+            'original_text = "Emma said \\"Johnson\\"" && year = 2025',
+            'requester_name ~ "Emma\\\\" || target_name ~ "Johnson\\\\"',
+        ],
+    )
+    def test_backslash_escape_does_not_end_the_value(self, value: str) -> None:
+        """``pb_escape`` escapes a quote or a backslash with a backslash, as in ``'O\\'Johnson'``."""
         out = _redact(f"GET /api/collections/persons/records?filter={value}&perPage=50 failed")
 
         assert "Johnson" not in out

@@ -10,6 +10,7 @@ import re
 from itertools import batched
 from typing import TYPE_CHECKING, Any
 
+from api.utils.pb_filters import pb_escape
 from bunking.logging_config import get_logger
 from bunking.sync.bunk_request_processor.services.staff_note_parser import (
     extract_staff_pattern,
@@ -120,7 +121,7 @@ class DebugParseRepository:
         try:
             result = self.pb.collection(self.COLLECTION_NAME).get_list(
                 query_params={
-                    "filter": f'original_request = "{original_request_id}"',
+                    "filter": f'original_request = "{pb_escape(original_request_id)}"',
                     "sort": "-created",
                     "perPage": 1,
                 }
@@ -178,9 +179,9 @@ class DebugParseRepository:
             # Build filter
             filters = []
             if session_id:
-                filters.append(f'session = "{session_id}"')
+                filters.append(f'session = "{pb_escape(session_id)}"')
             if source_field:
-                filters.append(f'original_request.field = "{source_field}"')
+                filters.append(f'original_request.field = "{pb_escape(source_field)}"')
 
             filter_str = " && ".join(filters) if filters else ""
 
@@ -215,7 +216,7 @@ class DebugParseRepository:
         try:
             result = self.pb.collection(self.COLLECTION_NAME).get_list(
                 query_params={
-                    "filter": f'original_request = "{original_request_id}"',
+                    "filter": f'original_request = "{pb_escape(original_request_id)}"',
                     "perPage": 100,
                 }
             )
@@ -348,9 +349,7 @@ class DebugParseRepository:
             text_to_match = _normalize_content_for_matching(original_text, field_type)
 
             # Query bunk_requests directly by requester_id and original_text
-            # Need to escape quotes in original_text for PocketBase filter
-            escaped_text = text_to_match.replace('"', '\\"')
-            filter_str = f'requester_id = {requester_cm_id} && original_text = "{escaped_text}"'
+            filter_str = f'requester_id = {requester_cm_id} && original_text = "{pb_escape(text_to_match)}"'
 
             bunk_results = self.pb.collection("bunk_requests").get_list(
                 query_params={
@@ -410,7 +409,7 @@ class DebugParseRepository:
             # Check debug_parse_results
             debug_result = self.pb.collection(self.COLLECTION_NAME).get_list(
                 query_params={
-                    "filter": f'original_request = "{original_request_id}"',
+                    "filter": f'original_request = "{pb_escape(original_request_id)}"',
                     "perPage": 1,
                 }
             )
@@ -437,8 +436,7 @@ class DebugParseRepository:
                         # Normalize content to match bunk_requests.original_text
                         text_to_match = _normalize_content_for_matching(original_text, field_type)
 
-                        escaped_text = text_to_match.replace('"', '\\"')
-                        filter_str = f'requester_id = {requester_cm_id} && original_text = "{escaped_text}"'
+                        filter_str = f'requester_id = {requester_cm_id} && original_text = "{pb_escape(text_to_match)}"'
 
                         prod_result = self.pb.collection("bunk_requests").get_list(
                             query_params={"filter": filter_str, "perPage": 1}
@@ -469,7 +467,7 @@ class DebugParseRepository:
             # Collect debug IDs from batched queries
             debug_ids: set[str] = set()
             for batch_ids in batched(original_request_ids, BATCH_SIZE, strict=False):
-                id_conditions = [f'original_request = "{rid}"' for rid in batch_ids]
+                id_conditions = [f'original_request = "{pb_escape(rid)}"' for rid in batch_ids]
                 filter_str = "(" + " || ".join(id_conditions) + ")"
 
                 debug_results = self.pb.collection(self.COLLECTION_NAME).get_full_list(
@@ -480,7 +478,7 @@ class DebugParseRepository:
             # For production: load original requests in batches to get (cm_id, content) pairs
             orig_lookup: dict[str, tuple[int, str]] = {}
             for batch_ids in batched(original_request_ids, BATCH_SIZE, strict=False):
-                orig_filter = "(" + " || ".join(f'id = "{rid}"' for rid in batch_ids) + ")"
+                orig_filter = "(" + " || ".join(f'id = "{pb_escape(rid)}"' for rid in batch_ids) + ")"
                 orig_results = self.pb.collection("original_bunk_requests").get_full_list(
                     query_params={"filter": orig_filter, "expand": "requester"}
                 )
@@ -565,7 +563,7 @@ class DebugParseRepository:
             orig_lookup: dict[str, tuple[int, str]] = {}  # id -> (cm_id, content)
 
             for batch_ids in batched(original_request_ids, BATCH_SIZE, strict=False):
-                orig_filter = "(" + " || ".join(f'id = "{rid}"' for rid in batch_ids) + ")"
+                orig_filter = "(" + " || ".join(f'id = "{pb_escape(rid)}"' for rid in batch_ids) + ")"
                 orig_results = self.pb.collection("original_bunk_requests").get_full_list(
                     query_params={"filter": orig_filter, "expand": "requester"}
                 )
@@ -603,7 +601,7 @@ class DebugParseRepository:
             # Query 2: Load all debug results (batched)
             debug_by_orig: dict[str, Any] = {}
             for batch_ids in batched(original_request_ids, BATCH_SIZE, strict=False):
-                debug_filter = "(" + " || ".join(f'original_request = "{rid}"' for rid in batch_ids) + ")"
+                debug_filter = "(" + " || ".join(f'original_request = "{pb_escape(rid)}"' for rid in batch_ids) + ")"
                 debug_results = self.pb.collection(self.COLLECTION_NAME).get_full_list(
                     query_params={"filter": debug_filter}
                 )
@@ -750,7 +748,7 @@ class DebugParseRepository:
             orig_lookup: dict[str, tuple[int, str]] = {}  # id -> (cm_id, content)
 
             for batch_ids in batched(original_request_ids, BATCH_SIZE, strict=False):
-                orig_filter = "(" + " || ".join(f'id = "{rid}"' for rid in batch_ids) + ")"
+                orig_filter = "(" + " || ".join(f'id = "{pb_escape(rid)}"' for rid in batch_ids) + ")"
                 orig_results = self.pb.collection("original_bunk_requests").get_full_list(
                     query_params={"filter": orig_filter, "expand": "requester"}
                 )
@@ -788,7 +786,7 @@ class DebugParseRepository:
             # Query 2: Load all debug results (batched)
             debug_by_orig: dict[str, Any] = {}
             for batch_ids in batched(original_request_ids, BATCH_SIZE, strict=False):
-                debug_filter = "(" + " || ".join(f'original_request = "{rid}"' for rid in batch_ids) + ")"
+                debug_filter = "(" + " || ".join(f'original_request = "{pb_escape(rid)}"' for rid in batch_ids) + ")"
                 debug_results = self.pb.collection(self.COLLECTION_NAME).get_full_list(
                     query_params={"filter": debug_filter}
                 )
@@ -920,9 +918,9 @@ class DebugParseRepository:
             # Build filter
             filters = []
             if session_id:
-                filters.append(f'session = "{session_id}"')
+                filters.append(f'session = "{pb_escape(session_id)}"')
             if source_field:
-                filters.append(f'original_request.field = "{source_field}"')
+                filters.append(f'original_request.field = "{pb_escape(source_field)}"')
 
             filter_str = " && ".join(filters) if filters else ""
 

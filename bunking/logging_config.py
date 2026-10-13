@@ -201,7 +201,11 @@ def _query_value_end(text: str, start: int) -> int:
         if c == "\n":
             break
         if quote:
-            if c == quote:
+            if c == "\\":
+                # A backslash escapes the next character (``'O\'Brien'``, ``"a\\"``), as
+                # PocketBase's parser and ``pb_escape`` both read it.
+                i += 1
+            elif c == quote:
                 # A doubled quote is an escaped one (``'O''Brien'``), not the close.
                 if text.startswith(quote * 2, i):
                     i += 1

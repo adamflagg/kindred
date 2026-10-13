@@ -10,6 +10,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, field_validator
 
+from api.utils.pb_filters import pb_escape
 from bunking.auth_middleware import AuthUser
 from bunking.logging_config import get_logger
 from bunking.rbac.dependencies import require_permission
@@ -100,7 +101,7 @@ def ensure_source_link_exists(
         # so we match by requester + field only
         orig_result = pb.collection(ORIGINAL_BUNK_REQUESTS).get_list(
             query_params={
-                "filter": f'requester = "{person_id}" && field = "{db_field}"',
+                "filter": f'requester = "{pb_escape(person_id)}" && field = "{pb_escape(db_field)}"',
                 "perPage": 1,
             }
         )

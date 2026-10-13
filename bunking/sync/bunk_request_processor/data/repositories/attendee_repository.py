@@ -8,6 +8,7 @@ from datetime import datetime
 from itertools import batched
 from typing import Any
 
+from api.utils.pb_filters import pb_escape
 from api.utils.session_metrics import get_person_from_expand, get_session_from_expand
 from bunking.logging_config import get_logger
 from pocketbase import PocketBase
@@ -508,7 +509,9 @@ class AttendeeRepository:
             # resolution picks. Same predicate and same STABLE_SORT convention
             # as `bunking/graph/social_graph_builder.py`, which already carries
             # this fix for its own query.
-            type_clause = " || ".join(f'session.session_type = "{t}"' for t in LAST_YEAR_HISTORY_SESSION_TYPES)
+            type_clause = " || ".join(
+                f'session.session_type = "{pb_escape(t)}"' for t in LAST_YEAR_HISTORY_SESSION_TYPES
+            )
             try:
                 assignments = self.pb.collection("bunk_assignments").get_full_list(
                     query_params={
@@ -570,7 +573,7 @@ class AttendeeRepository:
                 # by nothing but the order this query happened to return.
                 bunkmates = self.pb.collection("bunk_assignments").get_full_list(
                     query_params={
-                        "filter": f'bunk = "{bunk_id}" && year = {previous_year} && session = "{session_id}"',
+                        "filter": f'bunk = "{pb_escape(bunk_id)}" && year = {previous_year} && session = "{pb_escape(session_id)}"',
                         "expand": "person",
                         "sort": "id",
                     }

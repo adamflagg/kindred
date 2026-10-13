@@ -466,7 +466,7 @@ class FinancialAidIntakeRepository:
         rows = await self._page(
             AID_REQUESTS,
             {
-                "filter": f"year = {year} && {subject} && session_cm_id = {session_cm_id} && status = '{STATUS_ACTIVE}'",
+                "filter": f"year = {year} && {subject} && session_cm_id = {session_cm_id} && status = '{pb_escape(STATUS_ACTIVE)}'",
                 "sort": STABLE_SORT,
             },
         )

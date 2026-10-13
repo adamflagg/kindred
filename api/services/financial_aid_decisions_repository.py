@@ -81,6 +81,7 @@ from api.services.financial_aid_to_place import (
 )
 from api.services.pb_precise_datetime import aid_collection
 from api.services.pb_read import pb_read
+from api.utils.pb_filters import pb_escape
 from bunking.financial_aid.change_log import COLLECTION as AID_CHANGE_LOG
 from bunking.financial_aid.change_replay import LogRow
 from bunking.financial_aid.decisions import EVENT_KINDS, HOLD_EVENT_KINDS, DecisionEvent, HoldEvent
@@ -314,7 +315,7 @@ class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
     async def fetch_request_events(self, request_id: str) -> list[DecisionEvent]:
         if not _PB_ID.fullmatch(request_id):
             raise ValueError(f"{request_id!r} is not a record id")
-        rows = await self._page(AID_DECISIONS, {"filter": f'request = "{request_id}"', "sort": "created,id"})
+        rows = await self._page(AID_DECISIONS, {"filter": f'request = "{pb_escape(request_id)}"', "sort": "created,id"})
         return [decision_event(row) for row in rows]
 
     async def fetch_hold_events(self, year: int) -> list[HoldEvent]:
@@ -333,7 +334,9 @@ class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
     async def fetch_request_hold_events(self, request_id: str) -> list[HoldEvent]:
         if not _PB_ID.fullmatch(request_id):
             raise ValueError(f"{request_id!r} is not a record id")
-        rows = await self._page(AID_HOLD_EVENTS, {"filter": f'request = "{request_id}"', "sort": "created,id"})
+        rows = await self._page(
+            AID_HOLD_EVENTS, {"filter": f'request = "{pb_escape(request_id)}"', "sort": "created,id"}
+        )
         return [hold_event(row) for row in rows]
 
     async def fetch_cancellations(self, year: int) -> list[CancelEvent]:
@@ -343,7 +346,9 @@ class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
     async def fetch_request_cancellations(self, request_id: str) -> list[CancelEvent]:
         if not _PB_ID.fullmatch(request_id):
             raise ValueError(f"{request_id!r} is not a record id")
-        rows = await self._page(AID_CANCELLATIONS, {"filter": f'request = "{request_id}"', "sort": "created,id"})
+        rows = await self._page(
+            AID_CANCELLATIONS, {"filter": f'request = "{pb_escape(request_id)}"', "sort": "created,id"}
+        )
         return [cancel_event(row) for row in rows]
 
     async def fetch_enrollment_states(
@@ -526,17 +531,17 @@ class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
         the people CampMinder changed too, only when the rules weigh a camper answer kept there (its
         `updated` churns daily). Every household link of the season is read: the family is today's."""
         at = floor.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S.") + f"{floor.astimezone(UTC).microsecond // 1000:03d}Z"
-        after = f"created > '{at}'"
-        touched = f"(created > '{at}' || updated > '{at}')"
+        after = f"created > '{pb_escape(at)}'"
+        touched = f"(created > '{pb_escape(at)}' || updated > '{pb_escape(at)}')"
         season = f"year = {int(year)}"
 
         def entities(names: Collection[str]) -> str:
-            return " || ".join(f"entity = '{name}'" for name in names)
+            return " || ".join(f"entity = '{pb_escape(name)}'" for name in names)
 
         def page(collection: str, filter_: str, fields: str, **extra: str) -> Any:
             return self._page(collection, {"filter": filter_, "fields": fields, "sort": "id", **extra})
 
-        services = " || ".join(f"service = '{name}'" for name in sorted(REMOVAL_SERVICES))
+        services = " || ".join(f"service = '{pb_escape(name)}'" for name in sorted(REMOVAL_SERVICES))
         reads = [
             page(
                 AID_CHANGE_LOG, f"{season} && {after} && ({entities(_SINCE_PLAIN)})", "entity,entity_id,action,created"
@@ -575,7 +580,7 @@ class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
             page(AID_HOUSEHOLD_LINKS, season, "household_cm_id,family_key,excluded,created,updated"),
             page(
                 SYNC_RUNS,
-                f"year >= {int(year) - 1} && year <= {int(year) + 1} && deleted_count > 0 && ended > '{at}' && "
+                f"year >= {int(year) - 1} && year <= {int(year) + 1} && deleted_count > 0 && ended > '{pb_escape(at)}' && "
                 f"({services})",
                 "service,ended",
             ),
@@ -710,7 +715,7 @@ class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
             _RUN_PAGE,
             query_params={
                 "filter": (
-                    f'service = "{service}" && status = "success" && year >= {int(year) - 1} && year <= {int(year) + 1}'
+                    f'service = "{pb_escape(service)}" && status = "success" && year >= {int(year) - 1} && year <= {int(year) + 1}'
                 ),
                 "sort": "-started,-id",
                 "fields": "started,trigger,year",

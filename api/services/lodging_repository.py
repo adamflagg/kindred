@@ -229,7 +229,7 @@ _COHORT_VALUE_TABLES = (PERSON_CUSTOM_VALUES, PERSONS, CUSTOM_FIELD_DEFS)
 
 
 def _weekend_type_filter() -> str:
-    return " || ".join(f'session_type = "{t}"' for t in WEEKEND_SESSION_TYPES)
+    return " || ".join(f'session_type = "{pb_escape(t)}"' for t in WEEKEND_SESSION_TYPES)
 
 
 def _attendee_weekend_session_filter() -> str:
@@ -239,13 +239,13 @@ def _attendee_weekend_session_filter() -> str:
     the `session.` prefix; `_weekend_type_filter` filters `camp_sessions`
     directly and would produce the wrong field name if reused here.
     """
-    return " || ".join(f'session.session_type = "{t}"' for t in WEEKEND_SESSION_TYPES)
+    return " || ".join(f'session.session_type = "{pb_escape(t)}"' for t in WEEKEND_SESSION_TYPES)
 
 
 def _journey_type_filter() -> str:
     """The camper journey's session types, through an attendee's or bunk
     assignment's `session` relation."""
-    return " || ".join(f'session.session_type = "{t}"' for t in CAMPER_JOURNEY_SESSION_TYPES)
+    return " || ".join(f'session.session_type = "{pb_escape(t)}"' for t in CAMPER_JOURNEY_SESSION_TYPES)
 
 
 def _household_cm_ids(attendee_rows: list[Any]) -> set[int]:
@@ -904,7 +904,7 @@ class LodgingRepository:
         """
         if person_cm_id <= 0:
             return []
-        type_filter = " || ".join(f'session.session_type = "{t}"' for t in SUMMER_TEEN_TYPES)
+        type_filter = " || ".join(f'session.session_type = "{pb_escape(t)}"' for t in SUMMER_TEEN_TYPES)
         return await self._page(
             BUNK_ASSIGNMENTS,
             query_params={
@@ -1240,7 +1240,7 @@ class LodgingRepository:
             ATTENDEES,
             query_params={
                 "filter": (
-                    f'year < {year} && session.session_type = "{FAMILY_SESSION_TYPE}" && {ACTIVE_ENROLLED_FILTER}'
+                    f'year < {year} && session.session_type = "{pb_escape(FAMILY_SESSION_TYPE)}" && {ACTIVE_ENROLLED_FILTER}'
                 ),
                 "expand": "person",
                 "fields": _HOUSEHOLD_ID_VIA_PERSON_FIELDS,
@@ -1266,7 +1266,7 @@ class LodgingRepository:
             ATTENDEES,
             query_params={
                 "filter": (
-                    f'year = {year} && session.session_type = "{FAMILY_SESSION_TYPE}" && {ACTIVE_ENROLLED_FILTER}'
+                    f'year = {year} && session.session_type = "{pb_escape(FAMILY_SESSION_TYPE)}" && {ACTIVE_ENROLLED_FILTER}'
                 ),
                 "expand": "person",
                 "fields": _HOUSEHOLD_ID_VIA_PERSON_FIELDS,
@@ -1290,7 +1290,7 @@ class LodgingRepository:
             ATTENDEES,
             query_params={
                 "filter": (
-                    f'year = {year} && session.session_type = "{FAMILY_SESSION_TYPE}" && {ACTIVE_ENROLLED_FILTER}'
+                    f'year = {year} && session.session_type = "{pb_escape(FAMILY_SESSION_TYPE)}" && {ACTIVE_ENROLLED_FILTER}'
                 ),
                 "expand": "person,session",
                 "sort": STABLE_SORT,
@@ -1364,7 +1364,7 @@ class LodgingRepository:
             ATTENDEES,
             query_params={
                 "filter": (
-                    f'year < {year} && session.session_type = "{ADULT_SESSION_TYPE}" && {ACTIVE_ENROLLED_FILTER}'
+                    f'year < {year} && session.session_type = "{pb_escape(ADULT_SESSION_TYPE)}" && {ACTIVE_ENROLLED_FILTER}'
                 ),
                 "fields": _PERSON_ID_FIELDS,
                 "sort": STABLE_SORT,
@@ -1392,7 +1392,7 @@ class LodgingRepository:
         return await self._page(
             ATTENDEES,
             query_params={
-                "filter": f'year = {year} && session.session_type = "{ADULT_SESSION_TYPE}" && {ACTIVE_ENROLLED_FILTER}',
+                "filter": f'year = {year} && session.session_type = "{pb_escape(ADULT_SESSION_TYPE)}" && {ACTIVE_ENROLLED_FILTER}',
                 "expand": "session",
                 "sort": STABLE_SORT,
             },
@@ -1640,7 +1640,7 @@ class LodgingRepository:
         exactly like the value rows in the other lane, so no cm_id bridge is
         needed.
         """
-        field_filter = " || ".join(f'field = "{slug}"' for slug in sorted(BUNKING_CSV_REQUEST_TEXT_FIELDS))
+        field_filter = " || ".join(f'field = "{pb_escape(slug)}"' for slug in sorted(BUNKING_CSV_REQUEST_TEXT_FIELDS))
         rows = await self._page(
             ORIGINAL_BUNK_REQUESTS,
             query_params={
@@ -1906,7 +1906,7 @@ class LodgingRepository:
         """
         return await self._count(
             LODGING_INGEST_ISSUES,
-            f'year = {year} && kind = "{UNRESOLVED_ALIAS_KIND}" && is_resolved = false',
+            f'year = {year} && kind = "{pb_escape(UNRESOLVED_ALIAS_KIND)}" && is_resolved = false',
         )
 
     async def fetch_open_ambiguous_session_issues(self, year: int) -> list[Any]:
@@ -1938,7 +1938,7 @@ class LodgingRepository:
         return await self._page(
             LODGING_INGEST_ISSUES,
             query_params={
-                "filter": f'year = {year} && kind = "{AMBIGUOUS_SESSION_KIND}" && is_resolved = false',
+                "filter": f'year = {year} && kind = "{pb_escape(AMBIGUOUS_SESSION_KIND)}" && is_resolved = false',
                 "sort": "-last_seen,raw_value",
             },
         )

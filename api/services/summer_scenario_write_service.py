@@ -218,7 +218,7 @@ class SummerScenarioWriteService:
             )
             group_id_map[group.id] = new_group.id
 
-        member_filter = " || ".join(f'group = "{gid}"' for gid in group_id_map)
+        member_filter = " || ".join(f'group = "{pb_escape(gid)}"' for gid in group_id_map)
         members = await asyncio.to_thread(
             self.pb.collection(LOCKED_GROUP_MEMBERS).get_full_list,
             query_params={"filter": member_filter, "sort": STABLE_SORT},

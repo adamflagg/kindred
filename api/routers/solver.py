@@ -664,7 +664,7 @@ async def apply_solver_results(
 
             bunks = await asyncio.to_thread(
                 pb.collection(BUNKS).get_full_list,
-                query_params={"filter": f'name = "{bunk_name}" && year = {run_year}'},
+                query_params={"filter": f'name = "{pb_escape(bunk_name)}" && year = {run_year}'},
             )
 
             if not bunks:
@@ -686,7 +686,9 @@ async def apply_solver_results(
             existing = await asyncio.to_thread(
                 pb.collection(collection_name).get_full_list,
                 query_params={
-                    "filter": (f'person = "{person_pb_id}" && scenario = "{pb_escape(scenario)}" && year = {run_year}')
+                    "filter": (
+                        f'person = "{pb_escape(person_pb_id)}" && scenario = "{pb_escape(scenario)}" && year = {run_year}'
+                    )
                 },
             )
 

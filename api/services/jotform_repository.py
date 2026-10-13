@@ -57,7 +57,7 @@ class JotformRepository:
         return await self._page(
             CAMP_SESSIONS,
             query_params={
-                "filter": f"year = {year} && session_type = '{ADULT_SESSION_TYPE}'",
+                "filter": f"year = {year} && session_type = '{pb_escape(ADULT_SESSION_TYPE)}'",
                 "sort": f"start_date,{STABLE_SORT}",
             },
         )
@@ -89,7 +89,7 @@ class JotformRepository:
         return await self._page(
             ATTENDEES,
             query_params={
-                "filter": f"year = {year} && {ACTIVE_ENROLLED_FILTER} && session.session_type = '{ADULT_SESSION_TYPE}'"
+                "filter": f"year = {year} && {ACTIVE_ENROLLED_FILTER} && session.session_type = '{pb_escape(ADULT_SESSION_TYPE)}'"
                 + _weekend("session.cm_id", session_cm_id),
                 "expand": "person,session",
                 "sort": STABLE_SORT,

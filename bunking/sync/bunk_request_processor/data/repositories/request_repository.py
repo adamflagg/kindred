@@ -5,6 +5,7 @@ Handles all database operations related to BunkRequest records."""
 import json
 from typing import Any
 
+from api.utils.pb_filters import pb_escape
 from bunking.logging_config import get_logger
 from pocketbase import PocketBase
 
@@ -87,7 +88,7 @@ class RequestRepository:
 
         try:
             # Build source field filter
-            field_conditions = [f"source_field = '{field}'" for field in source_fields]
+            field_conditions = [f"source_field = '{pb_escape(field)}'" for field in source_fields]
             field_filter = "(" + " || ".join(field_conditions) + ")"
 
             filter_str = f"requester_id = {requester_cm_id} && year = {year} && {field_filter}"
@@ -402,7 +403,7 @@ class RequestRepository:
         """
         try:
             result = self.pb.collection("bunk_requests").get_list(
-                query_params={"filter": f'merged_into = "{kept_request_id}"', "perPage": 100}
+                query_params={"filter": f'merged_into = "{pb_escape(kept_request_id)}"', "perPage": 100}
             )
             return [self._map_from_db(item) for item in result.items]
         except Exception as e:

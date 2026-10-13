@@ -11,6 +11,7 @@ for cores and contaminate walltime measurements.
 import asyncio
 from typing import Any
 
+from api.utils.pb_filters import pb_escape
 from bunking.logging_config import get_logger
 
 from ..constants.collections import SOLVER_RUNS
@@ -43,7 +44,9 @@ async def _mark_remaining(run_ids: list[str], start_idx: int, status: str, pb: A
         if pb is None:
             continue
         try:
-            rec = await asyncio.to_thread(pb.collection(SOLVER_RUNS).get_first_list_item, f'run_id = "{orphan}"')
+            rec = await asyncio.to_thread(
+                pb.collection(SOLVER_RUNS).get_first_list_item, f'run_id = "{pb_escape(orphan)}"'
+            )
             await asyncio.to_thread(pb.collection(SOLVER_RUNS).update, rec.id, {"status": status})
         except Exception as e:
             logger.warning("Failed to sync orphan %s to PocketBase: %s", orphan, e)

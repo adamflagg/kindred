@@ -664,7 +664,7 @@ async def update_scenario_assignment(
         existing = await asyncio.to_thread(
             pb.collection(BUNK_ASSIGNMENTS_DRAFT).get_full_list,
             query_params={
-                "filter": f'scenario = "{pb_escape(scenario_id)}" && person = "{person_pb_id}" && year = {ctx.year}'
+                "filter": f'scenario = "{pb_escape(scenario_id)}" && person = "{pb_escape(person_pb_id)}" && year = {ctx.year}'
             },
         )
 
