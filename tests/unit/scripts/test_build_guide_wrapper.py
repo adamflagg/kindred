@@ -91,7 +91,8 @@ def test_no_echo_expands_a_secret_or_name():
     for ln in _run_text().splitlines():
         if ln.lstrip().startswith(("echo", "printf")):
             for var in ("GUIDE_REPO", "url", "BRANCH", "ref", "GH_TOKEN"):
-                assert f"${var}" not in ln and f"${{{var}}}" not in ln, ln
+                assert f"${var}" not in ln, ln
+                assert f"${{{var}}}" not in ln, ln
 
 
 def test_token_is_withheld_from_the_guides_code():
