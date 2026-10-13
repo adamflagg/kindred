@@ -36,6 +36,7 @@ from dataclasses import dataclass, field
 from types import SimpleNamespace
 from typing import Any, Final
 
+from api.services.financial_aid_household import HOUSEHOLD_ANSWER_FIELDS
 from bunking.financial_aid.change_log import AidWrite
 from tests.unit.api.services.aid_parity_fixture import _COLLECTION_FIELDS as SYNC_FIELDS
 from tests.unit.api.services.aid_parity_fixture import _RELATIONS as SYNC_RELATIONS
@@ -894,11 +895,27 @@ def _grants_and_registry() -> tuple[list[Any], list[Any], list[Any]]:
 
 def _fa_mirror() -> list[Any]:
     def answer(key: str, person: int, household: int, ohc: str, year: int = SEASON_YEAR) -> SimpleNamespace:
+        """A mirror row with every column the FA mirror's readers name, as a stored PocketBase row has (a read
+        projected to more of them must not be refused for columns the double alone lacks). Only the grant answers
+        reach a season build; the rest hold PocketBase's empty values."""
         return _rec(
+            **dict.fromkeys(HOUSEHOLD_ANSWER_FIELDS),
             id=f"fa{key:0>13}",
             year=year,
             person_id=person,
             household=_hh_id(household, year),
+            is_applicant=True,
+            contact_first_name="",
+            contact_last_name="",
+            summer_program="",
+            summer_amount_requested=0,
+            fc_program="",
+            fc_amount_requested=0,
+            tbm_program="",
+            tbm_amount_requested=0,
+            interest_expressed=False,
+            registration_request_amount=0,
+            reported_income_fields=None,
             one_happy_camper=ohc,
             synagogue_grant="",
         )
