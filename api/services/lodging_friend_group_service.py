@@ -44,6 +44,7 @@ from api.schemas.lodging_friend_groups import (
 )
 from api.services.lodging_roster_service import SessionNotFoundError
 from api.utils.pb_error import pb_error_to_http
+from api.utils.pb_filters import pb_escape
 from bunking.logging_config import get_logger
 
 if TYPE_CHECKING:
@@ -108,14 +109,14 @@ class LodgingFriendGroupRepository:
         """
         return await self._page(
             LODGING_FRIEND_GROUPS,
-            query_params={"filter": f'year = {year} && session = "{session_pb_id}"', "sort": "created,id"},
+            query_params={"filter": f'year = {year} && session = "{pb_escape(session_pb_id)}"', "sort": "created,id"},
         )
 
     async def fetch_members(self, group_ids: list[str]) -> list[Any]:
         """Members of the named groups, in one read rather than one per group."""
         if not group_ids:
             return []
-        clause = " || ".join(f'group = "{group_id}"' for group_id in group_ids)
+        clause = " || ".join(f'group = "{pb_escape(group_id)}"' for group_id in group_ids)
         return await self._page(
             LODGING_FRIEND_GROUP_MEMBERS,
             query_params={"filter": clause, "sort": STABLE_SORT},

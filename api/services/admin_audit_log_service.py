@@ -35,19 +35,19 @@ PAGE_SIZE = 500
 def build_filter(*, types: Sequence[str], actor: str | None, q: str | None, sign_ins: bool) -> str:
     """The PocketBase filter for one screen state. Spaces around operators are
     required (pocketbase/CLAUDE.md); every user value goes through pb_escape."""
-    clauses = [f"action != '{VIEW_AS_STOP}'"]
+    clauses = [f"action != '{pb_escape(VIEW_AS_STOP)}'"]
     wanted = [t for t in ALL_FILTER_TYPES if t in set(types)]
     if wanted:
         if sign_ins:
             wanted.append(SIGN_IN)
-        clauses.append("(" + " || ".join(f"type = '{t}'" for t in wanted) + ")")
+        clauses.append("(" + " || ".join(f"type = '{pb_escape(t)}'" for t in wanted) + ")")
     elif not sign_ins:
-        clauses.append(f"type != '{SIGN_IN}'")
+        clauses.append(f"type != '{pb_escape(SIGN_IN)}'")
     if actor and actor.strip():
         clauses.append(f'actor_email = "{pb_escape(actor.strip())}"')
     if q and q.strip():
-        needle = pb_escape(q.strip())
-        clauses.append("(" + " || ".join(f'{field} ~ "{needle}"' for field in SEARCHED_FIELDS) + ")")
+        needle = q.strip()
+        clauses.append("(" + " || ".join(f'{field} ~ "{pb_escape(needle)}"' for field in SEARCHED_FIELDS) + ")")
     return " && ".join(clauses)
 
 
@@ -105,7 +105,7 @@ class AdminAuditLogService:
         stops = await asyncio.to_thread(
             self.pb.collection(ADMIN_AUDIT_LOG).get_full_list,
             batch=PAGE_SIZE,
-            query_params={"filter": f"action = '{VIEW_AS_STOP}' && ({either})", "sort": "created"},
+            query_params={"filter": f"action = '{pb_escape(VIEW_AS_STOP)}' && ({either})", "sort": "created"},
         )
         # Keyed by (session_id, actor_id): a stop from a different actor than the
         # start must not end it -- one admin cannot end another admin's preview

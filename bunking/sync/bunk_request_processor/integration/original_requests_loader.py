@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from api.utils.pb_filters import pb_escape
 from api.utils.session_metrics import get_person_from_expand, get_session_from_expand
 from bunking.logging_config import get_logger
 from pocketbase import PocketBase
@@ -218,7 +219,7 @@ class OriginalRequestsLoader:
             fields = AI_PROCESSING_FIELDS
 
         # Build filter for fields that need AI processing
-        field_conditions = [f"field = '{f}'" for f in fields]
+        field_conditions = [f"field = '{pb_escape(f)}'" for f in fields]
         field_filter = "(" + " || ".join(field_conditions) + ")"
 
         # Filter: year matches AND needs processing
@@ -312,7 +313,7 @@ class OriginalRequestsLoader:
             fields = AI_PROCESSING_FIELDS
 
         # Build filter for specified fields
-        field_conditions = [f"field = '{f}'" for f in fields]
+        field_conditions = [f"field = '{pb_escape(f)}'" for f in fields]
         field_filter = "(" + " || ".join(field_conditions) + ")"
 
         # Filter: year matches AND already processed (non-empty processed field)
@@ -552,7 +553,7 @@ class OriginalRequestsLoader:
             fields = ALL_PROCESSING_FIELDS
 
         # Build base filter: year + processed + source fields
-        field_conditions = [f"field = '{f}'" for f in fields]
+        field_conditions = [f"field = '{pb_escape(f)}'" for f in fields]
         field_filter = "(" + " || ".join(field_conditions) + ")"
         filter_str = f"year = {self.year} && processed != '' && {field_filter}"
 
@@ -630,7 +631,7 @@ class OriginalRequestsLoader:
             return []
 
         # Build filter for specific IDs
-        id_conditions = [f'id = "{rid}"' for rid in record_ids]
+        id_conditions = [f'id = "{pb_escape(rid)}"' for rid in record_ids]
         filter_str = "(" + " || ".join(id_conditions) + ")"
 
         try:
@@ -671,7 +672,7 @@ class OriginalRequestsLoader:
         filters = [f"year = {self.year}"]
 
         if source_field:
-            filters.append(f'field = "{source_field}"')
+            filters.append(f'field = "{pb_escape(source_field)}"')
 
         # Session filtering requires joining through person enrollment
         # For simplicity, we filter in Python after loading

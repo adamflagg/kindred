@@ -16,6 +16,7 @@ Schema reference (per migration `1500000011_config.js`):
 import asyncio
 from typing import Any
 
+from api.utils.pb_filters import pb_escape
 from bunking.logging_config import get_logger
 
 logger = get_logger("api.services.config_snapshot")
@@ -30,7 +31,7 @@ _SOLVER_CATEGORIES: tuple[str, ...] = ("constraint", "objective", "soft", "solve
 def _build_filter() -> str:
     """PocketBase filter restricting the snapshot to solver-relevant rows."""
     # Spaces around operators per project convention (CLAUDE.md).
-    return " || ".join(f'category = "{c}"' for c in _SOLVER_CATEGORIES)
+    return " || ".join(f'category = "{pb_escape(c)}"' for c in _SOLVER_CATEGORIES)
 
 
 def _dot_key(record: Any) -> str:

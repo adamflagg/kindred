@@ -437,3 +437,21 @@ class TestMetricsRepositoryFetchAvailabilityConfig:
         result = await repo.fetch_availability_config(2025)
 
         assert result == []
+
+
+class TestMetricsRepositorySessionTypeEscaping:
+    """``session_types`` comes from the metrics query string, so it is escaped."""
+
+    @pytest.mark.asyncio
+    async def test_a_quoted_session_type_cannot_widen_the_filter(self) -> None:
+        from api.services.metrics_repository import MetricsRepository
+
+        mock_pb = MagicMock()
+        mock_collection = MagicMock()
+        mock_pb.collection.return_value = mock_collection
+        mock_collection.get_full_list.return_value = []
+
+        await MetricsRepository(mock_pb).fetch_sessions(2025, ["main", 'x" || year != "0'])
+
+        filter_str = mock_collection.get_full_list.call_args[1]["query_params"]["filter"]
+        assert filter_str == '(year = 2025) && (session_type = "main" || session_type = "x\\" || year != \\"0")'

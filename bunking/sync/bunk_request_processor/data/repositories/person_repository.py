@@ -9,6 +9,7 @@ import warnings
 from typing import TYPE_CHECKING, Any
 
 from api.utils.location_label import person_city_only
+from api.utils.pb_filters import pb_escape
 from api.utils.session_metrics import get_session_from_expand
 from bunking.logging_config import get_logger
 from pocketbase import PocketBase
@@ -23,15 +24,6 @@ if TYPE_CHECKING:
     from ..cache.temporal_name_cache import TemporalNameCache
 
 logger = get_logger(__name__)
-
-
-def _escape_filter_value(value: str) -> str:
-    """Escape a string value for use in PocketBase filter queries.
-
-    Single quotes in values must be escaped by doubling them to prevent
-    filter injection (e.g., O'Brien -> O''Brien).
-    """
-    return value.replace("'", "''")
 
 
 def _describe_search_error(e: Exception) -> str:
@@ -151,11 +143,12 @@ class PersonRepository(Repository):
 
         # Fall back to DB query
         try:
-            # Escape names for filter syntax (handles apostrophes in O'Brien, D'Amato, etc.)
-            escaped_first = _escape_filter_value(first_name)
-            escaped_last = _escape_filter_value(last_name)
+            # pb_escape handles apostrophes (O'Brien, D'Amato) the way PocketBase reads them.
             # Check both first_name and preferred_name for the given name
-            filter_str = f"(first_name = '{escaped_first}' || preferred_name = '{escaped_first}') && last_name = '{escaped_last}'"
+            filter_str = (
+                f"(first_name = '{pb_escape(first_name)}' || preferred_name = '{pb_escape(first_name)}')"
+                f" && last_name = '{pb_escape(last_name)}'"
+            )
             if year is not None:
                 filter_str += f" && year = {year}"
 
@@ -192,10 +185,8 @@ class PersonRepository(Repository):
 
         # Fall back to DB query
         try:
-            # Escape name for filter syntax (handles apostrophes)
-            escaped_first = _escape_filter_value(first_name)
             # Check both first_name and preferred_name for the given name
-            filter_str = f"(first_name = '{escaped_first}' || preferred_name = '{escaped_first}')"
+            filter_str = f"(first_name = '{pb_escape(first_name)}' || preferred_name = '{pb_escape(first_name)}')"
             if year is not None:
                 filter_str += f" && year = {year}"
 
@@ -229,9 +220,7 @@ class PersonRepository(Repository):
             return result
 
         try:
-            escaped_last = _escape_filter_value(last_name)
-
-            filter_str = f"last_name = '{escaped_last}'"
+            filter_str = f"last_name = '{pb_escape(last_name)}'"
             if year is not None:
                 filter_str += f" && year = {year}"
 
@@ -269,9 +258,7 @@ class PersonRepository(Repository):
 
         # Fall back to in-memory scan (parent_names is JSON, can't filter in SQL easily)
         try:
-            # Escape name for filter syntax (handles apostrophes)
-            escaped_first = _escape_filter_value(first_name)
-            filter_str = f"first_name = '{escaped_first}'"
+            filter_str = f"first_name = '{pb_escape(first_name)}'"
             if year is not None:
                 filter_str += f" && year = {year}"
 

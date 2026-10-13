@@ -223,7 +223,7 @@ class GeoService:
     @staticmethod
     def _overrides_query(category: str, year: int, extra_filter: str = "") -> dict[str, str]:
         """Build query_params for loading geo_overrides up to the given year."""
-        filt = f'category = "{category}" && year <= {year}'
+        filt = f'category = "{pb_escape(category)}" && year <= {year}'
         if extra_filter:
             filt += f" && {extra_filter}"
         return {"filter": filt, "sort": "year"}
@@ -266,7 +266,7 @@ class GeoService:
             sessions_dict = {int(s.cm_id): s for s in sessions_raw if getattr(s, "cm_id", None)}
             duration_ids = resolve_duration_sessions(sessions_dict, duration)
             if duration_ids:
-                id_clauses = [f"session.cm_id = {sid}" for sid in duration_ids]
+                id_clauses = [f"session.cm_id = {int(sid)}" for sid in duration_ids]
                 att_filter += f" && ({' || '.join(id_clauses)})"
             else:
                 # No sessions match the duration — return empty set
@@ -331,7 +331,7 @@ class GeoService:
             _PERSON_ID_CACHE[cache_key] = (set(), now)
             return set()
 
-        id_clauses = [f"session.cm_id = {sid}" for sid in duration_ids]
+        id_clauses = [f"session.cm_id = {int(sid)}" for sid in duration_ids]
         att_filter = f"year = {year} && ({' || '.join(id_clauses)})"
 
         attendees: list[Any] = await asyncio.to_thread(
@@ -413,7 +413,7 @@ class GeoService:
         # Fetch all PB data in parallel
         mappings_task = asyncio.to_thread(
             self.pb.collection(NORMALIZED_MAPPINGS).get_full_list,
-            query_params={"filter": f'category = "{category}" && year = {year}'},
+            query_params={"filter": f'category = "{pb_escape(category)}" && year = {year}'},
         )
         overrides_task = asyncio.to_thread(
             self.pb.collection(GEO_OVERRIDES).get_full_list,
@@ -544,7 +544,7 @@ class GeoService:
         # Fetch PB data in parallel
         mappings_task = asyncio.to_thread(
             self.pb.collection(NORMALIZED_MAPPINGS).get_full_list,
-            query_params={"filter": f'category = "{category}" && year = {year}'},
+            query_params={"filter": f'category = "{pb_escape(category)}" && year = {year}'},
         )
         overrides_task = asyncio.to_thread(
             self.pb.collection(GEO_OVERRIDES).get_full_list,
@@ -681,7 +681,7 @@ class GeoService:
             self.pb.collection(NORMALIZED_MAPPINGS).get_full_list,
             query_params={
                 "filter": (
-                    f'category = "{category}" && year = {year} && normalized_value = "{pb_escape(canonical_name)}"'
+                    f'category = "{pb_escape(category)}" && year = {year} && normalized_value = "{pb_escape(canonical_name)}"'
                 )
             },
         )
@@ -738,7 +738,7 @@ class GeoService:
         """List all overrides for a category and year."""
         records: list[Any] = await asyncio.to_thread(
             self.pb.collection(GEO_OVERRIDES).get_full_list,
-            query_params={"filter": f'category = "{category}" && year = {year}'},
+            query_params={"filter": f'category = "{pb_escape(category)}" && year = {year}'},
         )
         return [_override_to_response(r) for r in records]
 
@@ -816,7 +816,7 @@ class GeoService:
         mappings: list[Any] = await asyncio.to_thread(
             self.pb.collection(NORMALIZED_MAPPINGS).get_full_list,
             query_params={
-                "filter": f'category = "{category}" && year = {year} && normalized_value = "{pb_escape(source_name)}"'
+                "filter": f'category = "{pb_escape(category)}" && year = {year} && normalized_value = "{pb_escape(source_name)}"'
             },
         )
 
@@ -879,10 +879,11 @@ class GeoService:
         )
 
         # Also delete existing mappings so suggestion disappears immediately
-        escaped_name = pb_escape(canonical_name)
         mappings: list[Any] = await asyncio.to_thread(
             self.pb.collection(NORMALIZED_MAPPINGS).get_full_list,
-            query_params={"filter": f'category = "{category}" && year = {year} && normalized_value = "{escaped_name}"'},
+            query_params={
+                "filter": f'category = "{pb_escape(category)}" && year = {year} && normalized_value = "{pb_escape(canonical_name)}"'
+            },
         )
 
         count = 0
@@ -925,7 +926,7 @@ class GeoService:
         mappings_raw, overrides_raw = await asyncio.gather(
             asyncio.to_thread(
                 self.pb.collection(NORMALIZED_MAPPINGS).get_full_list,
-                query_params={"filter": f'category = "{category}" && year = {year}'},
+                query_params={"filter": f'category = "{pb_escape(category)}" && year = {year}'},
             ),
             asyncio.to_thread(
                 self.pb.collection(GEO_OVERRIDES).get_full_list,

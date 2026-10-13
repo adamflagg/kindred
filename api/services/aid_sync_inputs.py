@@ -59,6 +59,7 @@ from api.dependencies import pb as default_pb
 from api.services.lodging_cache import cached_by_year
 from api.services.pb_precise_datetime import aid_collection
 from api.services.pb_read import pb_read
+from api.utils.pb_filters import pb_escape
 from bunking.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -214,9 +215,9 @@ class _Loader:
         # custom_field_defs has no year: one definition per CampMinder field.
         defs = await self._all(
             CUSTOM_FIELD_DEFS,
-            {"filter": " || ".join(f"cm_id = {c}" for c in intake.EQUITY_FIELD_CM_IDS), "fields": "id,cm_id"},
+            {"filter": " || ".join(f"cm_id = {int(c)}" for c in intake.EQUITY_FIELD_CM_IDS), "fields": "id,cm_id"},
         )
-        field_ids = " || ".join(f'field_definition = "{d.id}"' for d in defs) or 'field_definition = ""'
+        field_ids = " || ".join(f'field_definition = "{pb_escape(d.id)}"' for d in defs) or 'field_definition = ""'
         persons, households, attendees, values, fa_rows = await asyncio.gather(
             self._all(
                 PERSONS, {"filter": f"year = {y}", "expand": ",".join(_HOUSEHOLD_RELATIONS), "fields": _PERSON_FIELDS}

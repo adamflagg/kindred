@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from pocketbase.errors import ClientResponseError
 
+from api.utils.pb_filters import pb_escape
 from bunking.logging_config import get_logger
 from pocketbase import PocketBase
 
@@ -444,9 +445,9 @@ class ConfigLoader:
             subcategory = "_".join(parts[1:-1])
             config_key = parts[-1]
 
-        filter_str = f'category = "{category}" && config_key = "{config_key}"'
+        filter_str = f'category = "{pb_escape(category)}" && config_key = "{pb_escape(config_key)}"'
         if subcategory:
-            filter_str += f' && subcategory = "{subcategory}"'
+            filter_str += f' && subcategory = "{pb_escape(subcategory)}"'
         else:
             filter_str += ' && (subcategory = null || subcategory = "")'
 
@@ -573,9 +574,9 @@ class ConfigLoader:
             subcategory = "_".join(parts[1:-1])
             config_key = parts[-1]
 
-        filter_str = f'category = "{category}" && config_key = "{config_key}"'
+        filter_str = f'category = "{pb_escape(category)}" && config_key = "{pb_escape(config_key)}"'
         if subcategory:
-            filter_str += f' && subcategory = "{subcategory}"'
+            filter_str += f' && subcategory = "{pb_escape(subcategory)}"'
         else:
             filter_str += ' && (subcategory = null || subcategory = "")'
 

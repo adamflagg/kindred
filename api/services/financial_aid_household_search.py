@@ -37,13 +37,16 @@ def _all_of(year: int, clauses: Sequence[str]) -> str:
 
 
 def household_name_filter(year: int, words: Sequence[str]) -> str:
-    return _all_of(year, [f"(mailing_title ~ '{e}' || greeting ~ '{e}')" for e in (pb_escape(w) for w in words)])
+    return _all_of(year, [f"(mailing_title ~ '{pb_escape(w)}' || greeting ~ '{pb_escape(w)}')" for w in words])
 
 
 def person_name_filter(year: int, words: Sequence[str]) -> str:
     return _all_of(
         year,
-        [f"(first_name ~ '{e}' || preferred_name ~ '{e}' || last_name ~ '{e}')" for e in (pb_escape(w) for w in words)],
+        [
+            f"(first_name ~ '{pb_escape(w)}' || preferred_name ~ '{pb_escape(w)}' || last_name ~ '{pb_escape(w)}')"
+            for w in words
+        ],
     )
 
 

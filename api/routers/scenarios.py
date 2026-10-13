@@ -652,7 +652,7 @@ async def update_scenario_assignment(
         # Look up person PocketBase ID from CampMinder ID (with year filter)
         persons = await asyncio.to_thread(
             pb.collection(PERSONS).get_full_list,
-            query_params={"filter": f"cm_id = {update.person_id} && year = {ctx.year}"},
+            query_params={"filter": f"cm_id = {int(update.person_id)} && year = {ctx.year}"},
         )
         if not persons:
             raise HTTPException(
@@ -664,7 +664,7 @@ async def update_scenario_assignment(
         existing = await asyncio.to_thread(
             pb.collection(BUNK_ASSIGNMENTS_DRAFT).get_full_list,
             query_params={
-                "filter": f'scenario = "{pb_escape(scenario_id)}" && person = "{person_pb_id}" && year = {ctx.year}'
+                "filter": f'scenario = "{pb_escape(scenario_id)}" && person = "{pb_escape(person_pb_id)}" && year = {ctx.year}'
             },
         )
 
@@ -688,7 +688,7 @@ async def update_scenario_assignment(
             # Look up bunk PocketBase ID from CampMinder ID (with year filter)
             bunks = await asyncio.to_thread(
                 pb.collection(BUNKS).get_full_list,
-                query_params={"filter": f"cm_id = {update.bunk_id} && year = {ctx.year}"},
+                query_params={"filter": f"cm_id = {int(update.bunk_id)} && year = {ctx.year}"},
             )
             if not bunks:
                 raise HTTPException(
@@ -719,7 +719,7 @@ async def update_scenario_assignment(
             else:
                 # Create new assignment - use session context
                 bunk_plan_filter = (
-                    f"bunk.cm_id = {update.bunk_id} && session.cm_id = {session_cm_id} && year = {ctx.year}"
+                    f"bunk.cm_id = {int(update.bunk_id)} && session.cm_id = {session_cm_id} && year = {ctx.year}"
                 )
                 logger.debug(f"Looking up bunk_plan with filter: {bunk_plan_filter}")
                 bunk_plans = await asyncio.to_thread(

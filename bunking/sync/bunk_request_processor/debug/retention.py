@@ -14,6 +14,7 @@ Dual policy (whichever triggers first):
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from api.utils.pb_filters import pb_escape
 from bunking.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -43,7 +44,7 @@ def cleanup_old_runs(pb: Any) -> int:
 
     # Time-based: fetch unpinned runs older than cutoff directly via PB filter
     expired_runs = pb.collection("debug_pipeline_runs").get_full_list(
-        query_params={"filter": f'pinned = false && created < "{cutoff_iso}"', "sort": "-created"}
+        query_params={"filter": f'pinned = false && created < "{pb_escape(cutoff_iso)}"', "sort": "-created"}
     )
     # Exempt the newest upload run from time-based deletion
     if newest_upload_id is not None:
@@ -85,7 +86,7 @@ def cleanup_old_runs(pb: Any) -> int:
         try:
             # Delete traces for this run (summaries cascade-delete via trace relation)
             traces = pb.collection("debug_pipeline_traces").get_full_list(
-                query_params={"filter": f'run_id = "{run_id}"'}
+                query_params={"filter": f'run_id = "{pb_escape(run_id)}"'}
             )
             for trace in traces:
                 pb.collection("debug_pipeline_traces").delete(trace.id)

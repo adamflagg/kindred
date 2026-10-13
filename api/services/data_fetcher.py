@@ -277,7 +277,7 @@ async def fetch_lock_groups(
         logger.info(f"Found {len(group_ids)} lock groups for scenario {scenario}")
 
         # Fetch all members for these groups, expanding attendee to get person_id
-        group_filter = " || ".join([f'group = "{gid}"' for gid in group_ids])
+        group_filter = " || ".join([f'group = "{pb_escape(gid)}"' for gid in group_ids])
         members = await asyncio.to_thread(
             client.collection("locked_group_members").get_full_list,
             query_params={

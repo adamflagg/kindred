@@ -221,7 +221,9 @@ class SocialGraphBuilder:
             return set()
         try:
             clauses = " || ".join(f"person_id = {cm_id}" for cm_id in unique)
-            type_clause = " || ".join(f'session.session_type = "{t}"' for t in sorted(VALID_BUNKING_SESSION_TYPES))
+            type_clause = " || ".join(
+                f'session.session_type = "{pb_escape(t)}"' for t in sorted(VALID_BUNKING_SESSION_TYPES)
+            )
             attendees = self.pb.collection(ATTENDEES).get_full_list(
                 query_params={"filter": f"({clauses}) && year = {year} && status_id = 2 && ({type_clause})"}
             )
@@ -402,7 +404,9 @@ class SocialGraphBuilder:
                     # record id is stable and indexed, so repeated queries
                     # return the same row instead of depending on SQLite's
                     # unordered LIMIT/OFFSET result order.
-                    type_clause = " || ".join(f'session.session_type = "{t}"' for t in LAST_YEAR_HISTORY_SESSION_TYPES)
+                    type_clause = " || ".join(
+                        f'session.session_type = "{pb_escape(t)}"' for t in LAST_YEAR_HISTORY_SESSION_TYPES
+                    )
                     historical = self.pb.collection(BUNK_ASSIGNMENTS).get_first_list_item(
                         f"person.cm_id = {person_cm_id} && year = {last_year} && ({type_clause})",
                         query_params={"expand": "session,bunk", "sort": "id"},

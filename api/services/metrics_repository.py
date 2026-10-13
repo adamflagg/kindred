@@ -22,6 +22,7 @@ from api.constants.collections import (
 )
 from api.constants.filters import ACTIVE_ENROLLED_FILTER
 from api.services.reconstruction import parse_date_only
+from api.utils.pb_filters import pb_escape
 from api.utils.session_metrics import parse_teen_config_key
 from bunking.logging_config import get_logger
 from bunking.solver.constants import DEFAULT_BUNK_CAPACITY
@@ -73,14 +74,14 @@ class MetricsRepository:
             filter_str = f"year = {year} && {ACTIVE_ENROLLED_FILTER}"
         elif isinstance(status_filter, list):
             # Multiple statuses - build OR filter
-            status_conditions = " || ".join(f'status = "{s}"' for s in status_filter)
+            status_conditions = " || ".join(f'status = "{pb_escape(s)}"' for s in status_filter)
             filter_str = f"year = {year} && ({status_conditions})"
         elif status_filter == "enrolled":
             # Enrolled uses the strict status_id filter
             filter_str = f"year = {year} && {ACTIVE_ENROLLED_FILTER}"
         else:
             # Single non-enrolled status
-            filter_str = f'year = {year} && status = "{status_filter}"'
+            filter_str = f'year = {year} && status = "{pb_escape(status_filter)}"'
 
         expand = "person,session" if expand_person else "session"
         return await asyncio.to_thread(
@@ -123,7 +124,7 @@ class MetricsRepository:
         """
         filter_str = f"year = {year}"
         if session_types:
-            type_filter = " || ".join(f'session_type = "{t}"' for t in session_types)
+            type_filter = " || ".join(f'session_type = "{pb_escape(t)}"' for t in session_types)
             filter_str = f"({filter_str}) && ({type_filter})"
 
         sessions = await asyncio.to_thread(
@@ -174,7 +175,7 @@ class MetricsRepository:
         all_results: list[Any] = []
 
         for batch_ids in batched(sorted_ids, self.BATCH_SIZE, strict=False):
-            person_filter = " || ".join(f"person_id = {pid}" for pid in batch_ids)
+            person_filter = " || ".join(f"person_id = {int(pid)}" for pid in batch_ids)
             filter_str = f"({person_filter}) && status_id = 2 && year <= {max_year}"
 
             batch_results = await asyncio.to_thread(
@@ -201,7 +202,7 @@ class MetricsRepository:
         """
         filter_str = f"year = {year}"
         if session_pb_ids:
-            session_filter = " || ".join(f'session = "{sid}"' for sid in session_pb_ids)
+            session_filter = " || ".join(f'session = "{pb_escape(sid)}"' for sid in session_pb_ids)
             filter_str = f"({filter_str}) && ({session_filter})"
 
         return await asyncio.to_thread(
@@ -243,10 +244,10 @@ class MetricsRepository:
         if status_filter is None or status_filter == "enrolled":
             filter_str = f"year = {year} && {ACTIVE_ENROLLED_FILTER}"
         elif isinstance(status_filter, list):
-            status_conditions = " || ".join(f'status = "{s}"' for s in status_filter)
+            status_conditions = " || ".join(f'status = "{pb_escape(s)}"' for s in status_filter)
             filter_str = f"year = {year} && ({status_conditions})"
         else:
-            filter_str = f'year = {year} && status = "{status_filter}"'
+            filter_str = f'year = {year} && status = "{pb_escape(status_filter)}"'
 
         # Note: session_types filtering is handled at the service layer
         # by joining with sessions data, since attendees don't have session_type directly
@@ -275,9 +276,9 @@ class MetricsRepository:
         try:
             filters = [f"year = {year}"]
             if old_status is not None:
-                filters.append(f'old_status = "{old_status}"')
+                filters.append(f'old_status = "{pb_escape(old_status)}"')
             if new_statuses:
-                new_status_filter = " || ".join(f'new_status = "{s}"' for s in new_statuses)
+                new_status_filter = " || ".join(f'new_status = "{pb_escape(s)}"' for s in new_statuses)
                 filters.append(f"({new_status_filter})")
             filter_str = " && ".join(filters)
 
@@ -324,7 +325,7 @@ class MetricsRepository:
 
         When expand_person=True, also expands the person relation to get gender.
         """
-        status_filter = " || ".join(f'new_status = "{s}"' for s in to_statuses)
+        status_filter = " || ".join(f'new_status = "{pb_escape(s)}"' for s in to_statuses)
         filter_str = f"year = {year} && ({status_filter})"
         expand = "session,person" if expand_person else "session"
         return await asyncio.to_thread(
@@ -360,7 +361,7 @@ class MetricsRepository:
             records = await asyncio.to_thread(
                 self.pb.collection(CONFIG).get_full_list,
                 query_params={
-                    "filter": f'category = "budget" && subcategory = "{year}"',
+                    "filter": f'category = "budget" && subcategory = "{pb_escape(str(year))}"',
                 },
             )
             result: dict[int | str, dict[str, Any]] = {}
@@ -389,7 +390,7 @@ class MetricsRepository:
             records = await asyncio.to_thread(
                 self.pb.collection(CONFIG).get_full_list,
                 query_params={
-                    "filter": f'category = "registration" && subcategory = "{year}"',
+                    "filter": f'category = "registration" && subcategory = "{pb_escape(str(year))}"',
                 },
             )
             return {getattr(r, "config_key", ""): getattr(r, "value", "") for r in records}
@@ -401,7 +402,7 @@ class MetricsRepository:
         try:
             return await asyncio.to_thread(
                 self.pb.collection(CONFIG).get_full_list,
-                query_params={"filter": f'category = "session_availability" && subcategory = "{year}"'},
+                query_params={"filter": f'category = "session_availability" && subcategory = "{pb_escape(str(year))}"'},
             )
         except Exception:
             logger.warning("Could not fetch session availability config")
@@ -417,7 +418,7 @@ class MetricsRepository:
         """
         base = f"year = {year}"
         # 1. effective_date present and before anchor
-        eff_filter = f'{base} && effective_date != "" && effective_date < "{anchor_date}"'
+        eff_filter = f'{base} && effective_date != "" && effective_date < "{pb_escape(anchor_date)}"'
         try:
             records = await asyncio.to_thread(
                 self.pb.collection(ATTENDEES).get_list,
@@ -430,7 +431,9 @@ class MetricsRepository:
         except Exception:
             logger.warning("has_pre_anchor_enrollments: effective_date check failed", exc_info=True)
         # 2. effective_date empty, fall back to enrollment_date
-        enr_filter = f'{base} && effective_date = "" && enrollment_date != "" && enrollment_date < "{anchor_date}"'
+        enr_filter = (
+            f'{base} && effective_date = "" && enrollment_date != "" && enrollment_date < "{pb_escape(anchor_date)}"'
+        )
         try:
             records = await asyncio.to_thread(
                 self.pb.collection(ATTENDEES).get_list,

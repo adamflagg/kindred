@@ -13,6 +13,7 @@ from typing import Any
 
 from pocketbase.errors import ClientResponseError
 
+from api.utils.pb_filters import pb_escape
 from bunking.config import ConfigLoader, snapshot_config
 from bunking.logging_config import get_logger
 from pocketbase import PocketBase
@@ -48,7 +49,7 @@ async def _persist_run_record(
         try:
             existing = await asyncio.to_thread(
                 task_pb.collection(SOLVER_RUNS).get_first_list_item,
-                f'run_id = "{run_id}"',
+                f'run_id = "{pb_escape(run_id)}"',
             )
         except ClientResponseError as e:
             # Only treat 404 as "pre-created row missing → fall back to CREATE".

@@ -23,6 +23,7 @@ from api.services.financial_aid_repository import chunk_filter_terms
 from api.services.financial_aid_rules_service import PRICING_SECTIONS, AidRulesRepository, FinancialAidRulesService
 from api.services.pb_precise_datetime import aid_collection
 from api.services.pb_read import pb_read
+from api.utils.pb_filters import pb_escape
 from bunking.financial_aid.decisions import DecisionEvent
 from bunking.financial_aid.rules import AidRules
 
@@ -43,7 +44,7 @@ async def fetch_decision_events(pb: Any, year: int, request_ids: Collection[str]
         return []
     base = f'year = {int(year)} && (event = "post" || event = "unpost")'
     rows: dict[str, Any] = {}
-    for chunk in chunk_filter_terms(len(base), [f'request = "{r}"' for r in wanted]):
+    for chunk in chunk_filter_terms(len(base), [f'request = "{pb_escape(r)}"' for r in wanted]):
         found: list[Any] = await pb_read(
             aid_collection(pb, AID_DECISIONS).get_full_list,
             batch=PAGE_SIZE,

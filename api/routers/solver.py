@@ -541,7 +541,7 @@ async def pre_validate_solver(
                 pb.collection(CAMP_SESSIONS).get_full_list,
                 query_params={
                     "filter": (
-                        f"({' || '.join([f'cm_id = {sid}' for sid in ctx.related_session_ids])}) && year = {ctx.year}"
+                        f"({' || '.join([f'cm_id = {int(sid)}' for sid in ctx.related_session_ids])}) && year = {ctx.year}"
                     )
                 },
             )
@@ -664,7 +664,7 @@ async def apply_solver_results(
 
             bunks = await asyncio.to_thread(
                 pb.collection(BUNKS).get_full_list,
-                query_params={"filter": f'name = "{bunk_name}" && year = {run_year}'},
+                query_params={"filter": f'name = "{pb_escape(bunk_name)}" && year = {run_year}'},
             )
 
             if not bunks:
@@ -686,7 +686,9 @@ async def apply_solver_results(
             existing = await asyncio.to_thread(
                 pb.collection(collection_name).get_full_list,
                 query_params={
-                    "filter": (f'person = "{person_pb_id}" && scenario = "{pb_escape(scenario)}" && year = {run_year}')
+                    "filter": (
+                        f'person = "{pb_escape(person_pb_id)}" && scenario = "{pb_escape(scenario)}" && year = {run_year}'
+                    )
                 },
             )
 
@@ -927,7 +929,7 @@ async def clear_session_assignments(
         base_filter = f'scenario = "{pb_escape(scenario)}"'
 
         for sid in ctx.related_session_ids:
-            filter_str = f"{base_filter} && session.cm_id = {sid} && year = {ctx.year}"
+            filter_str = f"{base_filter} && session.cm_id = {int(sid)} && year = {ctx.year}"
 
             assignments = await asyncio.to_thread(
                 pb.collection(collection_name).get_full_list, query_params={"filter": filter_str}
@@ -942,7 +944,7 @@ async def clear_session_assignments(
         all_sessions = await asyncio.to_thread(
             pb.collection(CAMP_SESSIONS).get_full_list,
             query_params={
-                "filter": f"({' || '.join([f'cm_id = {sid}' for sid in ctx.related_session_ids])}) && year = {ctx.year}"
+                "filter": f"({' || '.join([f'cm_id = {int(sid)}' for sid in ctx.related_session_ids])}) && year = {ctx.year}"
             },
         )
         for s in all_sessions:

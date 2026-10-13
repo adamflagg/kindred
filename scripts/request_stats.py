@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
 """Show bunk request statistics: raw CampMinder data vs processed requests."""
 
+import sys
+from pathlib import Path
 from typing import Any
 
 import requests
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from api.utils.pb_filters import pb_escape
 
 
 def get_auth_headers() -> dict[str, str]:
@@ -53,7 +59,7 @@ def main() -> None:
     ]
     total_raw = 0
     for field in fields:
-        _, count = get_all_records(headers, "original_bunk_requests", f"field = '{field}'")
+        _, count = get_all_records(headers, "original_bunk_requests", f"field = '{pb_escape(field)}'")
         total_raw += count
         print(f"  {field:20} {count:>5}")
     print(f"  {'TOTAL':20} {total_raw:>5}")
@@ -63,7 +69,7 @@ def main() -> None:
     print("=" * 60)
     request_types = ["bunk_with", "not_bunk_with", "age_preference"]
     for rtype in request_types:
-        items, count = get_all_records(headers, "bunk_requests", f"request_type = '{rtype}'")
+        items, count = get_all_records(headers, "bunk_requests", f"request_type = '{pb_escape(rtype)}'")
         print(f"\n{rtype}: {count}")
 
         source_counts: dict[str, int] = {}

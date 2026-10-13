@@ -19,6 +19,7 @@ from dataclasses import dataclass
 
 from fastapi import HTTPException
 
+from api.utils.pb_filters import pb_escape
 from bunking.logging_config import get_logger
 from pocketbase import PocketBase
 
@@ -103,7 +104,7 @@ async def build_session_context(
     # Get PocketBase record IDs for related sessions (needed for relation filtering)
     related_sessions = await asyncio.to_thread(
         pb_client.collection("camp_sessions").get_full_list,
-        query_params={"filter": f"({' || '.join([f'cm_id = {sid}' for sid in related_ids])}) && year = {year}"},
+        query_params={"filter": f"({' || '.join([f'cm_id = {int(sid)}' for sid in related_ids])}) && year = {year}"},
     )
     related_session_pb_ids = [s.id for s in related_sessions]
 
@@ -115,11 +116,11 @@ async def build_session_context(
 
     # Build filter strings
     # For CM ID fields like "session.cm_id = X" or "session_cm_id = X"
-    session_relation_filter = " || ".join([f"session.cm_id = {sid}" for sid in related_ids])
-    session_id_filter = " || ".join([f"session_id = {sid}" for sid in related_ids])
+    session_relation_filter = " || ".join([f"session.cm_id = {int(sid)}" for sid in related_ids])
+    session_id_filter = " || ".join([f"session_id = {int(sid)}" for sid in related_ids])
 
     # For PocketBase relation fields using record IDs
-    session_pb_id_filter = " || ".join([f'session = "{sid}"' for sid in related_session_pb_ids])
+    session_pb_id_filter = " || ".join([f'session = "{pb_escape(sid)}"' for sid in related_session_pb_ids])
 
     return SessionContext(
         session_cm_id=session_cm_id,

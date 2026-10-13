@@ -225,7 +225,7 @@ class ScenarioRepository:
         if cached is not None:
             _DECODED.move_to_end(key)  # a hit is a use: least recently USED goes first
             return cached
-        rows = await self._page(AID_SCENARIO_SNAPSHOTS, {"filter": f'id = "{key}"', "fields": "id,inputs"})
+        rows = await self._page(AID_SCENARIO_SNAPSHOTS, {"filter": f'id = "{pb_escape(key)}"', "fields": "id,inputs"})
         if not rows:
             raise SnapshotMissingError(f"No frozen season {key}")
         snapshot = decode_snapshot(_json(rows[0].inputs))
@@ -240,7 +240,8 @@ class ScenarioRepository:
 
     async def option_round1(self, record_id: str) -> dict[str, Decimal]:
         rows = await self._page(
-            AID_SCENARIO_OPTIONS, {"filter": f'id = "{_record_id(record_id)}"', "fields": "id,round1_by_request"}
+            AID_SCENARIO_OPTIONS,
+            {"filter": f'id = "{pb_escape(_record_id(record_id))}"', "fields": "id,round1_by_request"},
         )
         raw = _json(getattr(rows[0], "round1_by_request", None)) if rows else None
         return {request_id: Decimal(str(amount)) for request_id, amount in (raw or {}).items()}
@@ -253,7 +254,7 @@ class ScenarioRepository:
         return trail_record(record) if record is not None else None
 
     async def trail_row(self, record_id: str) -> TrailRecord | None:
-        rows = await self._page(AID_SCENARIO_TRAIL, {"filter": f'id = "{_record_id(record_id)}"'})
+        rows = await self._page(AID_SCENARIO_TRAIL, {"filter": f'id = "{pb_escape(_record_id(record_id))}"'})
         return trail_record(rows[0]) if rows else None
 
     async def trail_page(self, year: int, page: int, per_page: int) -> tuple[list[TrailRecord], int]:

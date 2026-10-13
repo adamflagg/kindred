@@ -241,7 +241,7 @@ class OptimizedSocialGraphBuilder(SocialGraphBuilder):
         # PocketBase has a limit on filter size, so batch the requests
         batch_size = 100
         for batch_ids in batched(person_cm_ids, batch_size, strict=False):
-            filter_str = " || ".join([f"cm_id = {pid}" for pid in batch_ids])
+            filter_str = " || ".join([f"cm_id = {int(pid)}" for pid in batch_ids])
 
             try:
                 persons = self.pb.collection(PERSONS).get_full_list(query_params={"filter": filter_str})
@@ -264,7 +264,7 @@ class OptimizedSocialGraphBuilder(SocialGraphBuilder):
         # Batch the person IDs
         batch_size = 100
         for batch_ids in batched(person_cm_ids, batch_size, strict=False):
-            person_filter = " || ".join([f"requester_id = {pid}" for pid in batch_ids])
+            person_filter = " || ".join([f"requester_id = {int(pid)}" for pid in batch_ids])
             filter_str = f"({person_filter}) && session_id = {session_cm_id} && year = {year} && status = \"resolved\" && (merged_into = '' || merged_into = null)"
 
             try:

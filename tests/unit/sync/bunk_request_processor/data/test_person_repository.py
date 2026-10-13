@@ -761,3 +761,48 @@ class TestBulkFindByCmIdsCaching:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+class TestPersonRepositoryApostropheFilters:
+    """An apostrophe in a name is escaped the way PocketBase's filter parser reads it.
+
+    PocketBase (fexpr) knows only backslash escapes inside a quoted literal. The
+    SQL-style doubling this repository used (``'O''Brien'``) does not parse: the
+    second quote ends the literal and the query errors, which the repository
+    logged as not-found. ``pb_escape`` gives ``'O\\'Brien'``.
+    """
+
+    @pytest.fixture
+    def collection(self):
+        client = Mock()
+        coll = Mock()
+        coll.get_list.return_value = Mock(items=[])
+        coll.get_full_list.return_value = []
+        client.collection.return_value = coll
+        return PersonRepository(client), coll
+
+    def test_find_by_name_escapes_an_apostrophe_with_a_backslash(self, collection):
+        repo, coll = collection
+        repo.find_by_name("D'Emma", "O'Brien", year=2025)
+        filter_str = coll.get_list.call_args[1]["query_params"]["filter"]
+        assert filter_str == (
+            "(first_name = 'D\\'Emma' || preferred_name = 'D\\'Emma') && last_name = 'O\\'Brien' && year = 2025"
+        )
+
+    def test_find_by_first_name_escapes_an_apostrophe_with_a_backslash(self, collection):
+        repo, coll = collection
+        repo.find_by_first_name("D'Emma")
+        filter_str = coll.get_list.call_args[1]["query_params"]["filter"]
+        assert filter_str == "(first_name = 'D\\'Emma' || preferred_name = 'D\\'Emma')"
+
+    def test_find_by_last_name_escapes_an_apostrophe_with_a_backslash(self, collection):
+        repo, coll = collection
+        repo.find_by_last_name("O'Brien")
+        filter_str = coll.get_list.call_args[1]["query_params"]["filter"]
+        assert filter_str == "last_name = 'O\\'Brien'"
+
+    def test_find_by_first_and_parent_surname_escapes_a_trailing_backslash(self, collection):
+        repo, coll = collection
+        repo.find_by_first_and_parent_surname("Emma\\", "Johnson")
+        filter_str = coll.get_full_list.call_args[1]["query_params"]["filter"]
+        assert filter_str == "first_name = 'Emma\\\\'"

@@ -12,6 +12,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import TYPE_CHECKING
 
+from api.utils.pb_filters import pb_escape
 from bunking.logging_config import get_logger
 
 if TYPE_CHECKING:
@@ -85,7 +86,7 @@ class SourceLinkRepository:
         """
         try:
             result = self.pb.collection(COLLECTION_NAME).get_list(
-                query_params={"filter": f'bunk_request = "{bunk_request_id}"', "perPage": 100}
+                query_params={"filter": f'bunk_request = "{pb_escape(bunk_request_id)}"', "perPage": 100}
             )
             return [str(item.original_request) for item in result.items]  # type: ignore[attr-defined]
 
@@ -107,7 +108,7 @@ class SourceLinkRepository:
         """
         try:
             result = self.pb.collection(COLLECTION_NAME).get_list(
-                query_params={"filter": f'bunk_request = "{bunk_request_id}"', "perPage": 100}
+                query_params={"filter": f'bunk_request = "{pb_escape(bunk_request_id)}"', "perPage": 100}
             )
             return [
                 {
@@ -135,7 +136,7 @@ class SourceLinkRepository:
         """
         try:
             result = self.pb.collection(COLLECTION_NAME).get_list(
-                query_params={"filter": f'original_request = "{original_request_id}"', "perPage": 100}
+                query_params={"filter": f'original_request = "{pb_escape(original_request_id)}"', "perPage": 100}
             )
             return [str(item.bunk_request) for item in result.items]  # type: ignore[attr-defined]
 
@@ -160,7 +161,7 @@ class SourceLinkRepository:
         try:
             result = self.pb.collection(COLLECTION_NAME).get_list(
                 query_params={
-                    "filter": f'bunk_request = "{bunk_request_id}" && original_request = "{original_request_id}"',
+                    "filter": f'bunk_request = "{pb_escape(bunk_request_id)}" && original_request = "{pb_escape(original_request_id)}"',
                     "perPage": 1,
                 }
             )
@@ -188,7 +189,7 @@ class SourceLinkRepository:
         """
         try:
             result = self.pb.collection(COLLECTION_NAME).get_list(
-                query_params={"filter": f'bunk_request = "{bunk_request_id}"', "perPage": 100}
+                query_params={"filter": f'bunk_request = "{pb_escape(bunk_request_id)}"', "perPage": 100}
             )
 
             deleted = 0
@@ -217,7 +218,7 @@ class SourceLinkRepository:
         try:
             result = self.pb.collection(COLLECTION_NAME).get_list(
                 query_params={
-                    "filter": f'bunk_request = "{bunk_request_id}" && is_primary = true',
+                    "filter": f'bunk_request = "{pb_escape(bunk_request_id)}" && is_primary = true',
                     "perPage": 1,
                 }
             )
@@ -250,7 +251,7 @@ class SourceLinkRepository:
             # Find and update the old primary (set is_primary=false)
             old_primary_result = self.pb.collection(COLLECTION_NAME).get_list(
                 query_params={
-                    "filter": f'bunk_request = "{bunk_request_id}" && is_primary = true',
+                    "filter": f'bunk_request = "{pb_escape(bunk_request_id)}" && is_primary = true',
                     "perPage": 1,
                 }
             )
@@ -261,7 +262,7 @@ class SourceLinkRepository:
             # Find and update the new primary (set is_primary=true)
             new_primary_result = self.pb.collection(COLLECTION_NAME).get_list(
                 query_params={
-                    "filter": f'bunk_request = "{bunk_request_id}" && original_request = "{new_primary_original_id}"',
+                    "filter": f'bunk_request = "{pb_escape(bunk_request_id)}" && original_request = "{pb_escape(new_primary_original_id)}"',
                     "perPage": 1,
                 }
             )
@@ -294,7 +295,7 @@ class SourceLinkRepository:
         try:
             result = self.pb.collection(COLLECTION_NAME).get_list(
                 query_params={
-                    "filter": f'bunk_request = "{bunk_request_id}" && original_request = "{original_request_id}"',
+                    "filter": f'bunk_request = "{pb_escape(bunk_request_id)}" && original_request = "{pb_escape(original_request_id)}"',
                     "perPage": 1,
                 }
             )
@@ -320,7 +321,7 @@ class SourceLinkRepository:
         """
         try:
             result = self.pb.collection(COLLECTION_NAME).get_list(
-                query_params={"filter": f'bunk_request = "{bunk_request_id}"', "perPage": 1}
+                query_params={"filter": f'bunk_request = "{pb_escape(bunk_request_id)}"', "perPage": 1}
             )
             return result.total_items
 
@@ -361,7 +362,7 @@ class SourceLinkRepository:
         try:
             # Get all sources from the request being merged away
             result = self.pb.collection(COLLECTION_NAME).get_list(
-                query_params={"filter": f'bunk_request = "{from_request_id}"', "perPage": 100}
+                query_params={"filter": f'bunk_request = "{pb_escape(from_request_id)}"', "perPage": 100}
             )
 
             transferred = 0
@@ -439,7 +440,7 @@ class SourceLinkRepository:
 
         try:
             # Build OR filter for all request IDs
-            id_conditions = [f'bunk_request = "{rid}"' for rid in bunk_request_ids]
+            id_conditions = [f'bunk_request = "{pb_escape(rid)}"' for rid in bunk_request_ids]
             filter_str = "(" + " || ".join(id_conditions) + ")"
 
             result = self.pb.collection(COLLECTION_NAME).get_list(query_params={"filter": filter_str, "perPage": 500})
