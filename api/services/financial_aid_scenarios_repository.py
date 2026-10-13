@@ -20,6 +20,7 @@ from api.constants.collections import AID_SCENARIO_OPTIONS, AID_SCENARIO_SNAPSHO
 from api.services.financial_aid_ledger_service import parse_pb_datetime
 from api.services.financial_aid_scenario_pricing import SeasonSnapshot, SnapshotError, decode_snapshot
 from api.services.pb_precise_datetime import aid_collection
+from api.services.pb_read import pb_read
 from api.utils.pb_filters import pb_escape
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite, commit_aid_writes
 from bunking.financial_aid.errors import FinancialAidError
@@ -202,13 +203,13 @@ class ScenarioRepository:
         self.pb = pb
 
     async def _page(self, collection: str, query_params: dict[str, Any]) -> list[Any]:
-        rows: list[Any] = await asyncio.to_thread(
+        rows: list[Any] = await pb_read(
             aid_collection(self.pb, collection).get_full_list, batch=PAGE_SIZE, query_params=query_params
         )
         return rows
 
     async def _first(self, collection: str, query_params: dict[str, Any]) -> Any | None:
-        result = await asyncio.to_thread(aid_collection(self.pb, collection).get_list, 1, 1, query_params)
+        result = await pb_read(aid_collection(self.pb, collection).get_list, 1, 1, query_params)
         return result.items[0] if result.items else None
 
     async def latest_snapshot(self, year: int) -> SnapshotMeta | None:
@@ -256,7 +257,7 @@ class ScenarioRepository:
         return trail_record(rows[0]) if rows else None
 
     async def trail_page(self, year: int, page: int, per_page: int) -> tuple[list[TrailRecord], int]:
-        result = await asyncio.to_thread(
+        result = await pb_read(
             aid_collection(self.pb, AID_SCENARIO_TRAIL).get_list,
             page,
             per_page,

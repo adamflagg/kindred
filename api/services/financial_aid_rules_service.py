@@ -63,6 +63,7 @@ from api.services.financial_aid_change_log_reads import fetch_change_log
 from api.services.financial_aid_intake_types import INTAKE_RULES_SECTIONS
 from api.services.financial_aid_rules_effect import EFFECT_ACTION, RULES_EFFECT_ENTITY, ApprovalEffects
 from api.services.pb_precise_datetime import aid_collection
+from api.services.pb_read import pb_read
 from bunking.financial_aid.change_diff import FieldChange, field_changes
 from bunking.financial_aid.change_log import AidGuard, AidOperationResult, AidWrite, commit_aid_writes, record_change
 from bunking.financial_aid.change_replay import LogRow, replay
@@ -305,7 +306,7 @@ async def configured_season_year(pb: Any) -> int:
     `current_season_year` reads, but that one swallows every failure and guesses the calendar year, which would read a
     done season as open after the switch. Here the env var is the only fallback, and anything else raises."""
     try:
-        status = await asyncio.to_thread(pb.send, "/api/custom/sync/status", {"method": "GET"})
+        status = await pb_read(pb.send, "/api/custom/sync/status", {"method": "GET"})
         year = int((status or {}).get("_configured_year") or 0)
     except Exception as exc:  # re-raised below as the one error the router maps
         logger.warning(f"Camperships rules: sync status unreadable ({exc})")
@@ -576,7 +577,7 @@ class AidRulesRepository:
         self._read_only = read_only
 
     async def _page(self, collection: str, query_params: dict[str, Any]) -> list[Any]:
-        rows: list[Any] = await asyncio.to_thread(
+        rows: list[Any] = await pb_read(
             aid_collection(self.pb, collection).get_full_list, batch=PAGE_SIZE, query_params=query_params
         )
         return rows

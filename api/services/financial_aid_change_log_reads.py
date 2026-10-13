@@ -24,6 +24,7 @@ from api.constants.collections import (
 from api.services.financial_aid_ledger_service import household_display_name, parse_pb_datetime, person_display_name
 from api.services.financial_aid_repository import FinancialAidRepository, chunk_filter_terms
 from api.services.pb_precise_datetime import aid_collection
+from api.services.pb_read import pb_read
 from api.utils.pb_filters import pb_escape
 from bunking.financial_aid.change_log import COLLECTION
 from bunking.financial_aid.change_replay import LogRow
@@ -72,7 +73,7 @@ async def fetch_change_log(pb: Any, year: int, entity: str) -> list[LogRow]:
     be missing from it."""
     if not _ENTITY.fullmatch(entity):
         raise ValueError(f"{entity!r} is not an aid_* entity")
-    rows: list[Any] = await asyncio.to_thread(
+    rows: list[Any] = await pb_read(
         aid_collection(pb, COLLECTION).get_full_list,
         batch=PAGE_SIZE,
         query_params={"filter": f'year = {int(year)} && entity = "{entity}"', "sort": "created,id"},
@@ -92,7 +93,7 @@ async def fetch_entity_log(pb: Any, year: int, *, exact: Collection[str], contai
     base = f"year = {int(year)}"
     rows: dict[str, Any] = {}
     for chunk in chunk_filter_terms(len(base), terms):
-        found: list[Any] = await asyncio.to_thread(
+        found: list[Any] = await pb_read(
             aid_collection(pb, COLLECTION).get_full_list,
             batch=PAGE_SIZE,
             query_params={"filter": f"{base} && ({' || '.join(chunk)})", "sort": "created,id"},
@@ -127,7 +128,7 @@ def log_detail(value: Any) -> dict[str, Any] | None:
 
 async def fetch_season_log(pb: Any, year: int) -> list[Any]:
     """Every row of the season's log, in recorded order, without its before/after JSON (History's list; D49)."""
-    rows: list[Any] = await asyncio.to_thread(
+    rows: list[Any] = await pb_read(
         aid_collection(pb, COLLECTION).get_full_list,
         batch=PAGE_SIZE,
         query_params={"filter": f"year = {int(year)}", "sort": "created,id", "fields": _LIST_FIELDS},
@@ -139,7 +140,7 @@ async def fetch_operation(pb: Any, year: int, operation_id: str) -> list[Any]:
     """One operation's rows, whole, in recorded order (History's expanded line)."""
     if not _OPERATION.fullmatch(operation_id):
         raise ValueError(f"{operation_id!r} is not an operation id")
-    rows: list[Any] = await asyncio.to_thread(
+    rows: list[Any] = await pb_read(
         aid_collection(pb, COLLECTION).get_full_list,
         batch=PAGE_SIZE,
         query_params={"filter": f'year = {int(year)} && operation_id = "{operation_id}"', "sort": "created,id"},
@@ -148,7 +149,7 @@ async def fetch_operation(pb: Any, year: int, operation_id: str) -> list[Any]:
 
 
 async def _season_list(pb: Any, collection: str, year: int, fields: str) -> list[Any]:
-    rows: list[Any] = await asyncio.to_thread(
+    rows: list[Any] = await pb_read(
         aid_collection(pb, collection).get_full_list,
         batch=PAGE_SIZE,
         query_params={"filter": f"year = {int(year)}", "sort": "id", "fields": fields},
@@ -181,7 +182,7 @@ async def fetch_recorded(pb: Any, year: int, operation_ids: Collection[str], ent
     terms = [f'operation_id = "{o}"' for o in sorted(set(operation_ids))]
     rows: list[Any] = []
     for chunk in chunk_filter_terms(len(base), terms):
-        found: list[Any] = await asyncio.to_thread(
+        found: list[Any] = await pb_read(
             aid_collection(pb, COLLECTION).get_full_list,
             batch=PAGE_SIZE,
             query_params={
@@ -196,7 +197,7 @@ async def fetch_recorded(pb: Any, year: int, operation_ids: Collection[str], ent
 
 async def fetch_rules_version(pb: Any, year: int, version: int) -> Any | None:
     """One rules version's stored document and approvals (Season › History's diff of a created version, H4)."""
-    rows: list[Any] = await asyncio.to_thread(
+    rows: list[Any] = await pb_read(
         aid_collection(pb, AID_RULES).get_full_list,
         batch=PAGE_SIZE,
         query_params={

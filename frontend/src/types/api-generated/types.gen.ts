@@ -18428,12 +18428,12 @@ export type TraceStep = {
   /**
    * Value
    */
-  value?: string | number | string | boolean | null
+  value?: string | number | boolean | null
   /**
    * Inputs
    */
   inputs?: {
-    [key: string]: string | number | string | boolean | null
+    [key: string]: string | number | boolean | null
   }
   /**
    * Bound
@@ -20197,12 +20197,12 @@ export type TraceStepWritable = {
   /**
    * Value
    */
-  value?: string | number | string | boolean | null
+  value?: string | number | boolean | null
   /**
    * Inputs
    */
   inputs?: {
-    [key: string]: string | number | string | boolean | null
+    [key: string]: string | number | boolean | null
   }
   /**
    * Bound

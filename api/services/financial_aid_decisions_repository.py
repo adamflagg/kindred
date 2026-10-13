@@ -80,6 +80,7 @@ from api.services.financial_aid_to_place import (
     SyncRemoval,
 )
 from api.services.pb_precise_datetime import aid_collection
+from api.services.pb_read import pb_read
 from bunking.financial_aid.change_log import COLLECTION as AID_CHANGE_LOG
 from bunking.financial_aid.change_replay import LogRow
 from bunking.financial_aid.decisions import EVENT_KINDS, HOLD_EVENT_KINDS, DecisionEvent, HoldEvent
@@ -703,7 +704,7 @@ class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
     async def _last_covering_run(self, service: str, year: int) -> datetime | None:
         """The start of `service`'s newest successful run covering the season (`ledger_run_covers`), of
         its newest `_RUN_PAGE` successful runs in the season's window."""
-        result = await asyncio.to_thread(
+        result = await pb_read(
             aid_collection(self.pb, SYNC_RUNS).get_list,
             1,
             _RUN_PAGE,

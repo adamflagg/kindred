@@ -11,6 +11,7 @@ from typing import Any, Final
 
 from api.constants.collections import AID_ARRIVAL_CURVES
 from api.services.pb_precise_datetime import aid_collection
+from api.services.pb_read import pb_read
 from bunking.financial_aid.arrival import ArrivalCurve, points_from_json, points_json
 from bunking.financial_aid.change_diff import changed_fields
 from bunking.financial_aid.change_log import AidWrite, commit_aid_writes
@@ -46,7 +47,7 @@ class ArrivalCurveRepository:
         self.pb = pb
 
     async def _row(self, year: int) -> Any | None:
-        result = await asyncio.to_thread(
+        result = await pb_read(
             aid_collection(self.pb, AID_ARRIVAL_CURVES).get_list, 1, 1, {"filter": f"year = {int(year)}"}
         )
         return result.items[0] if result.items else None

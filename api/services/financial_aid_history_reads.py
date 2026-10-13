@@ -9,7 +9,6 @@ page list reads none of them. Kept apart from financial_aid_change_log_reads, wh
 
 from __future__ import annotations
 
-import asyncio
 import re
 from collections.abc import Collection
 from datetime import datetime
@@ -23,6 +22,7 @@ from api.services.financial_aid_intake_types import SessionRow
 from api.services.financial_aid_repository import chunk_filter_terms
 from api.services.financial_aid_rules_service import PRICING_SECTIONS, AidRulesRepository, FinancialAidRulesService
 from api.services.pb_precise_datetime import aid_collection
+from api.services.pb_read import pb_read
 from bunking.financial_aid.decisions import DecisionEvent
 from bunking.financial_aid.rules import AidRules
 
@@ -44,7 +44,7 @@ async def fetch_decision_events(pb: Any, year: int, request_ids: Collection[str]
     base = f'year = {int(year)} && (event = "post" || event = "unpost")'
     rows: dict[str, Any] = {}
     for chunk in chunk_filter_terms(len(base), [f'request = "{r}"' for r in wanted]):
-        found: list[Any] = await asyncio.to_thread(
+        found: list[Any] = await pb_read(
             aid_collection(pb, AID_DECISIONS).get_full_list,
             batch=PAGE_SIZE,
             query_params={"filter": f"{base} && ({' || '.join(chunk)})", "sort": "created,id", "fields": _TICK_FIELDS},

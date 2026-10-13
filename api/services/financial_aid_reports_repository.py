@@ -14,6 +14,7 @@ from decimal import Decimal
 from typing import Any, Final
 
 from api.constants.collections import AID_REPORTED_HISTORY
+from api.services.pb_read import pb_read
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite, commit_aid_writes
 from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.reports.history import ATS, VIEWS, ReportedFigure
@@ -86,7 +87,7 @@ class ReportsRepository:
 
     async def reported(self) -> list[StoredFigure]:
         """Every typed figure, every season and view (they are few: a few hundred in all)."""
-        rows: list[Any] = await asyncio.to_thread(
+        rows: list[Any] = await pb_read(
             self.pb.collection(AID_REPORTED_HISTORY).get_full_list,
             batch=PAGE_SIZE,
             query_params={"sort": "year,view,metric,pool,tier,phase,at,as_of"},
