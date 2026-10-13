@@ -15,8 +15,9 @@ backslash escapes. It flags:
   or after its closing quote, unless the hole is a bare ``pb_escape(...)`` with
   no format spec or conversion;
 - a hole sitting unquoted right after ``field <op>``, unless it is provably a
-  number (``int(...)``, arithmetic, a literal, or a name in INT_NAMES). There
-  is no quote to break out of there, so a str would be the worse sink.
+  number (``int(...)``, arithmetic whose every operand is one, a literal, or a
+  name in INT_NAMES). There is no quote to break out of there, so a str would
+  be the worse sink.
 
 A logger call's own message is skipped; a filter built inside one of its
 arguments is not.
@@ -123,7 +124,8 @@ def _is_unquotable(node: ast.expr) -> bool:
     if isinstance(node, ast.Call):
         return _terminal_name(node.func) in {"int", "len"}
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Sub | ast.Mult | ast.FloorDiv | ast.Add):
-        return _is_unquotable(node.left) or _is_unquotable(node.right)
+        # Both sides: `PREFIX + scenario_id` and `scenario_id * 1` are str.
+        return _is_unquotable(node.left) and _is_unquotable(node.right)
     if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
         return _is_unquotable(node.operand)
     return bool(INT_NAMES.match(_terminal_name(node)))
@@ -445,6 +447,12 @@ def test_guard_passes_escaped_or_unquoted_values(snippet: str) -> None:
         "'scenario = {}'.format(scenario_id)",
         "f'flag = {str(flag).lower()}'",
         "f'cm_id = {sid}'",
+        # Arithmetic is a number only when every operand is: `+` and `*` also
+        # build a str from a str.
+        "f'scenario = {PREFIX + scenario_id}'",
+        "f'scenario = {scenario_id * 1}'",
+        "f'cm_id = {\"x\" + name}'",
+        'f\'cm_id = {"x" + ("y" + name)}\'',
         # The field or the operator is itself a hole.
         "{'filter': f'{field} = {scenario_id}'}",
         "f'{a} {op} {b}'",
