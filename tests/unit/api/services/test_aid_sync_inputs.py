@@ -150,6 +150,20 @@ async def test_attendees_hold_every_status_with_person_and_session_expanded() ->
 
 
 @pytest.mark.asyncio
+async def test_an_empty_equity_allowlist_is_refused_before_anything_is_read(monkeypatch: pytest.MonkeyPatch) -> None:
+    """With no allowlisted field, the person_custom_values filter would match every field: every camper's every custom
+    answer, read and cached. Refused before the first read instead."""
+    from api.services import financial_aid_intake_repository as intake
+
+    monkeypatch.setattr(intake, "EQUITY_FIELD_CM_IDS", ())
+    pb = _recording_pb()
+    with pytest.raises(ValueError, match="empty person custom-value allowlist"):
+        await aid_sync_inputs(pb, YEAR)
+    assert pb.count("person_custom_values") == 0
+    assert pb.calls == []
+
+
+@pytest.mark.asyncio
 async def test_equity_values_are_only_the_allowlisted_fields() -> None:
     inputs = await aid_sync_inputs(parity_pb(), PARITY_YEAR)
     held = {p: sorted(str(v.value) for v in values) for p, values in inputs.equity_values_by_person_cm_id.items()}

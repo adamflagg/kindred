@@ -157,6 +157,10 @@ class _Loader:
         from api.services import financial_aid_intake_repository as intake  # noqa: PLC0415 - circular
 
         y = int(year)
+        # Privacy: with no allowlisted field the person_custom_values filter below would match every field, reading
+        # and caching every custom answer of every person. Refused before anything is read.
+        if not intake.EQUITY_FIELD_CM_IDS:
+            raise ValueError("an empty person custom-value allowlist would read every field")
         # custom_field_defs has no year: one definition per CampMinder field.
         defs = await self._all(
             CUSTOM_FIELD_DEFS,
