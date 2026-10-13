@@ -1718,6 +1718,43 @@ jobs:
         echo "building against: $label"
         env -u GH_TOKEN -u GUIDE_REPO bash scripts/guide/build_guide.sh "$dir" scripts/guide/facts.json
 
+  guide-impact:
+    name: Docs impact (report-only)
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - name: Check the PR pairs a guide change or says why not
+      env:
+        GUIDE_REPO: ${{ secrets.GUIDE_REPO }}
+        GUIDE_READ_TOKEN: ${{ secrets.GUIDE_READ_TOKEN }}
+        GH_TOKEN: ${{ github.token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        PR_BODY: ${{ github.event.pull_request.body }}
+        BRANCH: ${{ github.head_ref }}
+      run: |
+        printf '%s' "$PR_BODY" > "$RUNNER_TEMP/body.md"
+        if ! gh pr diff "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --name-only > "$RUNNER_TEMP/changed.txt" 2>/dev/null; then
+          echo "docs impact: skipped (could not list changed files)"
+          exit 0
+        fi
+        paired=false
+        note=""
+        if [ -n "$GUIDE_REPO" ] && [ -n "$GUIDE_READ_TOKEN" ]; then
+          enc=$(jq -rn --arg b "$BRANCH" '$b|@uri')
+          ahead=$(GH_TOKEN="$GUIDE_READ_TOKEN" gh api "repos/${GUIDE_REPO}/compare/main...${enc}" --jq .ahead_by 2>/dev/null) || ahead=0
+          case "$ahead" in ''|*[!0-9]*) ahead=0 ;; esac
+          if [ "$ahead" -gt 0 ]; then paired=true; fi
+        else
+          note=" (no guide access: paired branch not checked)"
+        fi
+        out=$(python3 -m scripts.guide.impact_check --changed-file "$RUNNER_TEMP/changed.txt" --body-file "$RUNNER_TEMP/body.md" --paired-has-commits "$paired") && rc=0 || rc=$?
+        echo "${out}${note}"
+        exit "$rc"
+
   # Summary job - gate for PR merges
   summary:
     name: CI Gate
