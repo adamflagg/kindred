@@ -39,7 +39,7 @@ def _patches(mock_runs: dict[str, dict[str, object]], solver_input: DirectSolver
         patch.object(sr_module, "prepare_direct_solver_input", return_value=solver_input),
         patch.object(sr_module, "ConfigLoader"),
         patch.object(sr_module, "solve_and_diagnose"),
-        patch.object(sr_module, "PocketBase"),
+        patch.object(sr_module, "create_task_pb_client"),
         patch.object(sr_module, "get_settings"),
         patch.object(sr_module, "solver_runs", mock_runs),
     ]

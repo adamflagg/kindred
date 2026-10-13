@@ -65,7 +65,7 @@ class ConfigLoader:
         self,
         pb_client: PocketBase | None = None,
         cache_ttl_seconds: int = 300,
-        reauth_interval_seconds: int = 3600,
+        reauth_interval_seconds: int = 60,
     ):
         """
         Initialize the config loader.
@@ -75,7 +75,9 @@ class ConfigLoader:
                 Injected clients are never re-authenticated by the loader.
             cache_ttl_seconds: Cache TTL in seconds (default 5 minutes).
             reauth_interval_seconds: Re-authenticate the loader-owned client when
-                its auth is older than this (default 1 hour).
+                its auth is older than this (default 1 minute: a token dies early
+                whenever the superuser's tokenKey changes, and PocketBase answers a
+                dead token with empty results rather than an error).
         """
         self._owns_client = pb_client is None
         self._reauth_interval = reauth_interval_seconds

@@ -16,12 +16,23 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.responses import JSONResponse, Response
 
 from api.settings import _allow_auth_bypass
+from api.utils.pb_filters import pb_escape
 from bunking.logging_config import get_logger
 
 from .jwt_auth import JWTValidator, PocketBaseTokenValidator, extract_bearer_token
 from .rbac.view_as import VIEW_AS_HEADER, decide_view_as
 
 logger = get_logger(__name__)
+
+# How long the admin token for the permissions lookup is trusted. A token dies
+# early when its superuser's tokenKey changes, and PocketBase then answers it as
+# a guest: the users lookup comes back 200 with no items, so the staff member
+# silently gets no permissions and nothing errors. A 401/403 is retried below,
+# but that silent case can only be bounded by not trusting the token for long.
+# A short cache is the simpler of the two fixes (the other: validate it with
+# auth-refresh when older than this) and costs the same -- at most one
+# PocketBase request a minute, and only while staff are using the app.
+_PB_ADMIN_TOKEN_TTL_SECONDS = 60
 
 
 def _is_docker_environment() -> bool:
@@ -152,8 +163,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 if response.status_code == 200:
                     data = response.json()
                     self._pb_admin_token = data.get("token")
-                    # Cache for 50 minutes (tokens typically valid for 1 hour)
-                    self._pb_admin_token_expires = time.time() + 3000
+                    self._pb_admin_token_expires = time.time() + _PB_ADMIN_TOKEN_TTL_SECONDS
                     return self._pb_admin_token
                 else:
                     logger.warning(f"PB admin auth failed: {response.status_code}")
@@ -161,6 +171,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
         except Exception:
             logger.debug("Failed to authenticate with PocketBase for permission fetch", exc_info=True)
             return None
+
+    def _drop_pb_admin_token(self) -> None:
+        self._pb_admin_token = None
+        self._pb_admin_token_expires = 0.0
 
     async def _populate_user_permissions(self, user: AuthUser) -> None:
         """Fetch cached_permissions and is_admin from PocketBase user record.
@@ -185,11 +199,24 @@ class AuthMiddleware(BaseHTTPMiddleware):
             pb_url = os.getenv("POCKETBASE_URL", "http://127.0.0.1:8090")
 
             async with httpx.AsyncClient(timeout=5.0) as client:
-                response = await client.get(
-                    f"{pb_url}/api/collections/users/records",
-                    params={"filter": f'email = "{user.email}"', "perPage": 1},
-                    headers={"Authorization": admin_token},
-                )
+
+                async def lookup(token: str) -> httpx.Response:
+                    return await client.get(
+                        f"{pb_url}/api/collections/users/records",
+                        params={"filter": f'email = "{pb_escape(user.email)}"', "perPage": 1},
+                        headers={"Authorization": token},
+                    )
+
+                response = await lookup(admin_token)
+                if response.status_code in (401, 403):
+                    # The cached token died early (its superuser's tokenKey
+                    # changed). Drop it, sign in again, and retry once.
+                    logger.warning(f"PB user lookup returned {response.status_code}; re-authenticating once")
+                    self._drop_pb_admin_token()
+                    admin_token = await self._get_pb_admin_token()
+                    if not admin_token:
+                        return
+                    response = await lookup(admin_token)
                 if response.status_code == 200:
                     items = response.json().get("items", [])
                     if items:

@@ -33,7 +33,7 @@ def _patches() -> dict[str, _patch[Any]]:
         "fetch_lock_groups": patch.object(sr_module, "fetch_lock_groups", new_callable=AsyncMock),
         "ConfigLoader": patch.object(sr_module, "ConfigLoader"),
         "solve_and_diagnose": patch.object(sr_module, "solve_and_diagnose"),
-        "PocketBase": patch.object(sr_module, "PocketBase"),
+        "PocketBase": patch.object(sr_module, "create_task_pb_client"),
         "get_settings": patch.object(sr_module, "get_settings"),
     }
 

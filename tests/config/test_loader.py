@@ -6,6 +6,7 @@ implementation (removing the `default=` kwarg) is in place.
 """
 
 import inspect
+import time
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -56,7 +57,7 @@ class TestTokenReauthentication:
         assert superusers.auth_with_password.call_count == 2
 
     def test_does_not_reauth_within_interval(self) -> None:
-        """Fresh auth (default 1h interval) must not re-auth on every query."""
+        """Fresh auth (default interval) must not re-auth on every query."""
         pb, superusers, _ = _make_fake_pb()
         with patch("bunking.config.loader.PocketBase", return_value=pb):
             loader = ConfigLoader()
@@ -64,6 +65,18 @@ class TestTokenReauthentication:
         loader.invalidate_cache()
         loader.get(REQUIRED_KEY)
         assert superusers.auth_with_password.call_count == 1  # startup auth only
+
+    def test_default_interval_is_about_a_minute(self) -> None:
+        """A rotated superuser token is answered as a guest: the config list comes back empty,
+        which reads as "key not found". Re-auth proactively within about a minute, not an hour.
+        """
+        pb, superusers, _ = _make_fake_pb()
+        with patch("bunking.config.loader.PocketBase", return_value=pb):
+            loader = ConfigLoader()
+        start = time.monotonic()
+        with patch("bunking.config.loader.time.monotonic", return_value=start + 61):
+            loader.get(REQUIRED_KEY)
+        assert superusers.auth_with_password.call_count == 2  # startup + re-auth after a minute
 
     def test_injected_client_is_never_reauthed(self) -> None:
         """Injected clients (tests, callers managing their own auth) are left alone."""

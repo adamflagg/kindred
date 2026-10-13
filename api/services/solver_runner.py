@@ -17,8 +17,8 @@ from bunking.config import ConfigLoader, snapshot_config
 from bunking.logging_config import get_logger
 from pocketbase import PocketBase
 
-from ..constants.collections import CAMP_SESSIONS, SOLVER_RUNS, SUPERUSERS
-from ..dependencies import pb_url, prune_solver_runs, solver_runs
+from ..constants.collections import CAMP_SESSIONS, SOLVER_RUNS
+from ..dependencies import authenticate_task_pb, create_task_pb_client, prune_solver_runs, solver_runs
 from ..settings import get_settings
 from .data_fetcher import (
     fetch_historical_bunking,
@@ -139,17 +139,13 @@ async def run_solver_task_v2(
     )
 
     # Create a new PocketBase client for this background task
-    task_pb = PocketBase(pb_url)
+    task_pb = create_task_pb_client()
     settings = get_settings()
 
     try:
         # Authenticate the task-specific client
         logger.info("Authenticating task-specific PocketBase client...")
-        await asyncio.to_thread(
-            task_pb.collection(SUPERUSERS).auth_with_password,
-            settings.pocketbase_admin_email,
-            settings.pocketbase_admin_password,
-        )
+        await authenticate_task_pb(task_pb)
         logger.info("Task PocketBase client authenticated successfully")
 
         solver_runs[run_id]["started_at"] = datetime.now(UTC)

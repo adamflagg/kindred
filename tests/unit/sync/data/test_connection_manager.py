@@ -293,6 +293,23 @@ class TestConnectionManagerReauth:
         assert time.monotonic() - mgr._authed_at < 5  # timestamp advanced
 
     @patch("bunking.sync.bunk_request_processor.data.connection_manager.PocketBase")
+    def test_reauth_after_about_a_minute(self, mock_pb_class):
+        """The shared client lives as long as the api process. A rotated superuser token is
+        answered as a guest (200 with no items on auth-ruled lists), so re-auth proactively
+        within about a minute rather than an hour.
+        """
+        mock_pb = Mock()
+        mock_pb_class.return_value = mock_pb
+        config = ConnectionConfig(admin_email="admin@test.com", admin_password="pw", use_wrapper=False)
+        mgr = ConnectionManager.get_instance(config)
+
+        mgr.get_client()
+        mgr._authed_at = time.monotonic() - 61
+        mgr.get_client()
+
+        assert mock_pb.collection.return_value.auth_with_password.call_count == 2
+
+    @patch("bunking.sync.bunk_request_processor.data.connection_manager.PocketBase")
     def test_no_reauth_when_token_fresh(self, mock_pb_class):
         mock_pb = Mock()
         mock_pb_class.return_value = mock_pb

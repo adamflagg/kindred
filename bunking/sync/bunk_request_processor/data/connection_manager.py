@@ -60,9 +60,12 @@ class ConnectionManager:
 
     _instance: ConnectionManager | None = None
     _lock_initialized: bool = False
-    # Superuser tokens live 24h; re-auth well within that to avoid the
-    # 200-and-empty silent failure (issue #1765).
-    _REAUTH_INTERVAL_SECONDS: float = 3600
+    # Superuser tokens live 24h, but die early whenever the superuser's
+    # tokenKey changes (its password was re-set, e.g. by a container that
+    # re-sets it on start). Either way PocketBase answers the dead token as a
+    # guest -- 200 with no items -- so re-auth proactively, and often enough
+    # that a rotation costs at most a minute (issue #1765).
+    _REAUTH_INTERVAL_SECONDS: float = 60
 
     def __init__(self, config: ConnectionConfig | None = None):
         """

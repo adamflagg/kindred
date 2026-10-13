@@ -32,7 +32,7 @@ class TestSolverRunnerLockGroups:
             patch.object(sr_module, "fetch_lock_groups", new_callable=AsyncMock) as mock_lock_groups,
             patch.object(sr_module, "ConfigLoader") as mock_config_cls,
             patch.object(sr_module, "solve_and_diagnose") as mock_solver_cls,
-            patch.object(sr_module, "PocketBase") as mock_pb_cls,
+            patch.object(sr_module, "create_task_pb_client") as mock_pb_cls,
             patch.object(sr_module, "get_settings") as mock_settings,
             patch.object(sr_module, "solver_runs", mock_runs),
         ):
@@ -93,7 +93,7 @@ class TestSolverRunnerLockGroups:
             patch.object(sr_module, "fetch_lock_groups", new_callable=AsyncMock) as mock_lock_groups,
             patch.object(sr_module, "ConfigLoader") as mock_config_cls,
             patch.object(sr_module, "solve_and_diagnose") as mock_solver_cls,
-            patch.object(sr_module, "PocketBase") as mock_pb_cls,
+            patch.object(sr_module, "create_task_pb_client") as mock_pb_cls,
             patch.object(sr_module, "get_settings") as mock_settings,
             patch.object(sr_module, "solver_runs", mock_runs),
         ):

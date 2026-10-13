@@ -43,7 +43,7 @@ def test_failure_branch_stores_localization_and_impossibility_report() -> None:
         patch.object(sr_module, "prepare_direct_solver_input", return_value=mock_solver_input),
         patch.object(sr_module, "ConfigLoader") as m_config,
         patch.object(sx_module, "DirectBunkingSolver", return_value=mock_solver),
-        patch.object(sr_module, "PocketBase") as m_pb,
+        patch.object(sr_module, "create_task_pb_client") as m_pb,
         patch.object(sr_module, "get_settings") as m_settings,
         patch.object(sx_module, "localize_hard_mso_infeasibility", return_value=fake_iis),
         patch.object(sr_module, "solver_runs", mock_runs),

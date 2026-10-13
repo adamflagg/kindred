@@ -35,7 +35,7 @@ class TestSolverRunnerPocketBaseSave:
             "fetch_lock_groups": patch.object(sr_module, "fetch_lock_groups", new_callable=AsyncMock),
             "ConfigLoader": patch.object(sr_module, "ConfigLoader"),
             "solve_and_diagnose": patch.object(sr_module, "solve_and_diagnose"),
-            "PocketBase": patch.object(sr_module, "PocketBase"),
+            "PocketBase": patch.object(sr_module, "create_task_pb_client"),
             "get_settings": patch.object(sr_module, "get_settings"),
             "solver_runs": patch.object(sr_module, "solver_runs", mock_runs),
         }
@@ -662,7 +662,7 @@ class TestSolverRunnerPocketBaseSave:
             }
             mock_pb = self._configure_mocks(mocks, mock_solver_input)
             # Make auth raise BEFORE started_at is set
-            mock_pb.collection.return_value.auth_with_password.side_effect = ConnectionError("Auth failed")
+            mock_pb.authenticate.side_effect = ConnectionError("Auth failed")
             mock_runs["test_run"] = {"status": "pending"}
 
             # Should NOT raise KeyError
@@ -701,7 +701,7 @@ class TestFailedRunPersistsDetails:
             "fetch_lock_groups": patch.object(sr_module, "fetch_lock_groups", new_callable=AsyncMock),
             "ConfigLoader": patch.object(sr_module, "ConfigLoader"),
             "solve_and_diagnose": patch.object(sr_module, "solve_and_diagnose"),
-            "PocketBase": patch.object(sr_module, "PocketBase"),
+            "PocketBase": patch.object(sr_module, "create_task_pb_client"),
             "get_settings": patch.object(sr_module, "get_settings"),
             "solver_runs": patch.object(sr_module, "solver_runs", mock_runs),
         }
