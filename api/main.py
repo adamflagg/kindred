@@ -62,7 +62,7 @@ from .routers import (
     validation,
 )
 from .schemas.permissions import PermissionEntry, PermissionRegistryResponse, PermissionScreen
-from .services.aid_sync_inputs import schedule_aid_warm
+from .services.aid_sync_inputs import cancel_aid_warm, start_aid_inputs_refresher
 from .services.lodging_cache_warm import start_lodging_cache_refresher
 from .services.metrics_sql_connection import close_connection
 from .settings import get_settings
@@ -84,6 +84,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     prune_solver_logs(SOLVER_LOGS_DIR)
     refresh_task = None
     lodging_refresh_task = None
+    aid_refresh_task = None
     if not settings.skip_pb_auth:
         await authenticate_pb()
         refresh_task = await start_pb_token_refresh()
@@ -96,9 +97,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # and again every TTL -- so a staff member's first click after a
         # restart or an idle quarter-hour is not the one that pays for it.
         lodging_refresh_task = start_lodging_cache_refresher()
-        # Camperships' sync inputs (layer 1), likewise in the background: the first season build after a
-        # restart should not be the one that reads every person, household and registration.
-        schedule_aid_warm()
+        # Camperships' sync inputs (layer 1), likewise in the background, now and after every TTL: the first
+        # season build after a restart or an expiry should not be the one that reads every person, household
+        # and registration.
+        aid_refresh_task = start_aid_inputs_refresher()
     else:
         logger.warning("Skipping PocketBase authentication (SKIP_PB_AUTH=true)")
         auth_state.pb_client = pb
@@ -110,6 +112,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         refresh_task.cancel()
     if lodging_refresh_task:
         lodging_refresh_task.cancel()
+    if aid_refresh_task:
+        aid_refresh_task.cancel()
+    cancel_aid_warm()  # a warm a sync's clear scheduled, if one is still reading
     close_connection()
 
 

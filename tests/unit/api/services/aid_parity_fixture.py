@@ -6,8 +6,8 @@ test can pin what a read returns. It serves the filter shapes the reads emit tod
 cache emits (a bare `year = N`, field_definition by PocketBase id, custom_field_defs by cm_id). Any other
 filter, sort, expand or collection raises NotImplementedError, so a new shape can't silently match everything.
 
-`fields=` is honoured: each row comes back as a projected COPY holding `id`, the named columns and any
-`expand.<relation>.<column>` paths (a read that forgets a column fails); the stored record is never mutated.
+`fields=` is honoured: each row comes back as a projected COPY holding `id`, the named columns (`*`: every column)
+and any `expand.<relation>.<column>` paths (a read that forgets a column fails); the stored record is never mutated.
 `expand` is honoured per query: a row's `expand` dict holds exactly the relations the query asked for, resolved
 from its relation ids. Unprojected, an expanded record is the very object the related collection returns."""
 
@@ -241,6 +241,8 @@ class _FilteringCollection:
         if not columns:
             return SimpleNamespace(**{**vars(record), "expand": expand})
         kept: dict[str, Any] = {"id": record.id}
+        if "*" in columns:  # PocketBase's wildcard: every column at this level
+            kept.update({k: v for k, v in vars(record).items() if k != "expand"})
         nested: dict[str, list[str]] = {}
         for column in columns:
             if column.startswith("expand."):
@@ -253,7 +255,8 @@ class _FilteringCollection:
             if relation in expand:
                 related = expand[relation]
                 projected[relation] = SimpleNamespace(**{a: getattr(related, a) for a in attrs if hasattr(related, a)})
-        kept["expand"] = projected
+        # A bare `*` keeps `expand` whole, as PocketBase does when no `expand.<relation>.<column>` names it.
+        kept["expand"] = expand if "*" in columns and not nested else projected
         return SimpleNamespace(**kept)
 
 

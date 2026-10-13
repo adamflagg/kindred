@@ -16,9 +16,14 @@ Expands are fine; FILTERS through relations are not. `expand=person` is a primar
 `filter=person.cm_id = N` is a join on every candidate row.
 
 SHARED RECORDS. Every request reads the same row objects, so nothing may write to one: a caller that needs
-a changed row copies it first. Households are held with HOUSEHOLD_COLUMNS only, never the hidden adults list
-(fetch_households(adults=True) still reads that itself), so a shared row cannot carry it to a reader that
-was never meant to see it.
+a changed row copies it first, and the lookups themselves are read-only (MappingProxyType over tuples).
+No whole related record sits here: every expand is projected to the columns its readers use (`fields=`),
+because the service reads as a superuser and a whole expanded household would carry the hidden adults list.
+Households are held with HOUSEHOLD_COLUMNS only, never that list (fetch_households(adults=True) still reads
+it itself), so a shared row cannot carry it to a reader that was never meant to see it.
+
+KEPT WARM. After every clear -- a sync's, through invalidate_server_caches -- and every TTL (the refresher,
+started in api/main.py's lifespan), the configured season refills in the background.
 
 Single uvicorn process assumed (docker/Dockerfile.api): with workers this cache is per process.
 """
@@ -27,8 +32,9 @@ from __future__ import annotations
 
 import asyncio
 from collections import defaultdict
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Any, Final
 
 from api.constants.collections import (
@@ -59,6 +65,17 @@ AID_SYNC_INPUT_TABLES: Final[tuple[str, ...]] = (
 )
 _PAGE: Final = 1000
 _HOUSEHOLD_RELATIONS: Final = ("household", "primary_childhood_household", "alternate_childhood_household")
+# Every expand projected to what its readers use. `*` is every column of the row itself.
+# persons: the household relations' cm_id, for the membership joins (build_inputs).
+_PERSON_FIELDS: Final = ",".join(("*", *(f"expand.{r}.cm_id" for r in _HOUSEHOLD_RELATIONS)))
+# attendees: the person's own household_id (fetch_enrollment_states, enrollment_state), and the session columns
+# fetch_enrollments' callers read (the grants and ledger services, the March file).
+_SESSION_COLUMNS: Final = ("cm_id", "name", "session_type", "start_date", "end_date", "parent_id")
+_ATTENDEE_FIELDS: Final = ",".join(
+    ("*", "expand.person.household_id", *(f"expand.session.{c}" for c in _SESSION_COLUMNS))
+)
+# person_custom_values: the answer, whose it is and which field (fetch_equity_answers) -- the read it replaces.
+_EQUITY_VALUE_FIELDS: Final = "id,value,expand.person.cm_id,expand.field_definition.cm_id"
 
 
 @dataclass(frozen=True)
@@ -106,13 +123,18 @@ def build_inputs(
         equity[_cm(v, "person")].append(v)
     return AidSyncInputs(
         year=year,
-        person_by_cm_id={int(p.cm_id): p for p in persons},
-        household_by_cm_id={int(h.cm_id): h for h in households},
-        persons_by_household_id={k: tuple(v) for k, v in by_own.items()},
-        members_by_household={k: tuple(v) for k, v in members.items()},
-        attendees_by_person_cm_id={k: tuple(v) for k, v in by_person.items()},
-        equity_values_by_person_cm_id={k: tuple(v) for k, v in equity.items()},
+        person_by_cm_id=MappingProxyType({int(p.cm_id): p for p in persons}),
+        household_by_cm_id=MappingProxyType({int(h.cm_id): h for h in households}),
+        persons_by_household_id=_frozen(by_own),
+        members_by_household=_frozen(members),
+        attendees_by_person_cm_id=_frozen(by_person),
+        equity_values_by_person_cm_id=_frozen(equity),
     )
+
+
+def _frozen(groups: dict[int, list[Any]]) -> Mapping[int, tuple[Any, ...]]:
+    """A read-only view of `groups`, each group a tuple: the lookups are shared by every request."""
+    return MappingProxyType({k: tuple(v) for k, v in groups.items()})
 
 
 class _Loader:
@@ -140,11 +162,18 @@ class _Loader:
         )
         field_ids = " || ".join(f'field_definition = "{d.id}"' for d in defs) or 'field_definition = ""'
         persons, households, attendees, values = await asyncio.gather(
-            self._all(PERSONS, {"filter": f"year = {y}", "expand": ",".join(_HOUSEHOLD_RELATIONS)}),
-            self._all(HOUSEHOLDS, {"filter": f"year = {y}", "fields": HOUSEHOLD_COLUMNS}),
-            self._all(ATTENDEES, {"filter": f"year = {y}", "expand": "person,session"}),
             self._all(
-                PERSON_CUSTOM_VALUES, {"filter": f"year = {y} && ({field_ids})", "expand": "person,field_definition"}
+                PERSONS, {"filter": f"year = {y}", "expand": ",".join(_HOUSEHOLD_RELATIONS), "fields": _PERSON_FIELDS}
+            ),
+            self._all(HOUSEHOLDS, {"filter": f"year = {y}", "fields": HOUSEHOLD_COLUMNS}),
+            self._all(ATTENDEES, {"filter": f"year = {y}", "expand": "person,session", "fields": _ATTENDEE_FIELDS}),
+            self._all(
+                PERSON_CUSTOM_VALUES,
+                {
+                    "filter": f"year = {y} && ({field_ids})",
+                    "expand": "person,field_definition",
+                    "fields": _EQUITY_VALUE_FIELDS,
+                },
             ),
         )
         return build_inputs(y, persons, households, attendees, values)
@@ -152,7 +181,7 @@ class _Loader:
 
 async def aid_sync_inputs(pb: Any, year: int) -> AidSyncInputs:
     """The season's sync-written inputs: cached per year, and filled once however many callers ask at once."""
-    return await _Loader(pb).load(year)
+    return await _Loader(pb).load(int(year))  # the cache keys on the year's text: 2026 and 2026.0 are one season
 
 
 # The in-flight background warm, if any, held as a strong reference (the event loop holds only a weak one), and
@@ -161,15 +190,30 @@ _warm_task: asyncio.Task[None] | None = None
 _rerun_requested = False
 
 
-async def _warm_current_season() -> None:
-    """Fill layer 1 for the dashboard's configured season. Never raises: nobody is waiting on it."""
+async def _configured_year() -> int:
     # financial_aid_rules_service reaches the repositories that read through this module.
     from api.services.financial_aid_rules_service import configured_season_year  # noqa: PLC0415 - circular
 
+    return await configured_season_year(default_pb)
+
+
+async def warm_aid_year(year: int) -> None:
+    """Fill layer 1 for `year`. Never raises: nobody is waiting on it, and a failed fill leaves the next request
+    to read for itself."""
     try:
-        await aid_sync_inputs(default_pb, await configured_season_year(default_pb))
-    except Exception as exc:  # a failed warm costs a log line; the next request reads for itself
+        await aid_sync_inputs(default_pb, year)
+    except Exception as exc:
+        logger.warning(f"Camperships sync-input warm for {year} failed: {exc}")
+
+
+async def _warm_current_season() -> None:
+    """Fill layer 1 for the dashboard's configured season. Never raises."""
+    try:
+        year = await _configured_year()
+    except Exception as exc:  # no season to warm: a log line, not a task exception
         logger.warning(f"Camperships sync-input warm failed: {exc}")
+        return
+    await warm_aid_year(year)
 
 
 async def _warm_until_settled() -> None:
@@ -191,3 +235,35 @@ def schedule_aid_warm() -> None:
         _rerun_requested = True
         return
     _warm_task = loop.create_task(_warm_until_settled())
+
+
+def cancel_aid_warm() -> None:
+    """Cancel the background warm, if one is pending (the lifespan's shutdown)."""
+    if _warm_task is not None and not _warm_task.done():
+        _warm_task.cancel()
+
+
+async def refresh_aid_inputs_forever(
+    *,
+    interval: float,
+    warm: Callable[[int], Awaitable[None]] = warm_aid_year,
+    year: Callable[[], Awaitable[int]] | None = None,
+) -> None:
+    """Warm now, then every `interval` seconds clear and warm again (refresh_lodging_cache_forever's pattern).
+
+    A TTL expiry is a clear like any other, so it is followed by a warm too: clearing BEFORE the re-warm, rather
+    than letting the entry expire on its own, keeps the staleness bound at the TTL while the configured season
+    stays filled. A request that arrives mid-warm waits on the warm's fill (single-flight per year)."""
+    year_of = _configured_year if year is None else year
+    while True:
+        try:
+            await warm(await year_of())
+        except Exception as exc:  # the loop must outlive one bad pass
+            logger.warning(f"Camperships sync-input refresh failed: {exc}")
+        await asyncio.sleep(interval)
+        aid_inputs_cache.invalidate_all()
+
+
+def start_aid_inputs_refresher() -> asyncio.Task[None]:
+    """The startup hook: warm at once in the background, then clear and re-warm every TTL."""
+    return asyncio.get_running_loop().create_task(refresh_aid_inputs_forever(interval=aid_inputs_cache.ttl_seconds))
