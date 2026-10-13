@@ -316,7 +316,7 @@ class FakeRun:
         elif key == "git clone":
             data = Path(cmd[-1]) / "src" / "data"
             data.mkdir(parents=True, exist_ok=True)
-            (data / "facts.json").write_text(self.guide_main_facts)
+            (data / "facts.json").write_text(self.guide_main_facts, encoding="utf-8")
             self.committed = self.merging = False
             self.conflicts = []
         elif key == "git merge":
@@ -387,7 +387,7 @@ def _spy_writes(monkeypatch: pytest.MonkeyPatch, fake: FakeRun) -> list[dict[str
     def spy(cmd, *a, **k):
         if fake._key(list(cmd)) == "git add":
             root = Path(k["cwd"])
-            written.append({rel: (root / rel).read_text() for rel in OWNED})
+            written.append({rel: (root / rel).read_text(encoding="utf-8") for rel in OWNED})
         return fake(cmd, *a, **k)
 
     monkeypatch.setattr("scripts.guide.lockstep.subprocess.run", spy)
@@ -578,6 +578,17 @@ def test_the_guide_gets_kindred_main_tips_facts_and_stamp(monkeypatch, env, caps
     assert fake.call("git push")[0][-1] == f"HEAD:refs/heads/{BRANCH}"
 
 
+def test_a_dry_run_of_an_error_plan_still_exits_1(monkeypatch, env, capsys):
+    """The workflow_dispatch default is dry_run=true; it must show the same red a real run would."""
+    two = [{"number": n, "headRefName": BRANCH, "baseRefName": "main"} for n in (4242, 4243)]
+    fake = _install(monkeypatch, FakeRun(guide_prs=two))
+    assert main(["--merge-sha", MERGE_SHA, "--dry-run"]) == 1
+    out = capsys.readouterr().out
+    assert out.startswith("plan: error (")
+    _assert_quiet(out)
+    assert not {"git clone", "git push", "gh pr merge", "gh pr create"} & set(fake.called())
+
+
 def test_the_merge_sha_still_decides_the_plan(monkeypatch, env, capsys):
     fake = _install(monkeypatch, FakeRun(guide_prs=[], facts_changed=False))
     assert main(["--merge-sha", MERGE_SHA, "--dry-run"]) == 0
@@ -722,6 +733,31 @@ def test_facts_sync_opens_a_pr_and_merges_it_once_green(monkeypatch, env, capsys
     assert merge[merge.index("--match-head-commit") + 1] == NEW_HEAD
 
 
+def test_a_new_sync_branch_overwrites_an_orphaned_one_of_the_same_name(monkeypatch, env, capsys):
+    """A run that pushed facts-sync/<sha7> but failed to open its PR (or whose PR
+    was closed) leaves the branch with no open PR. The re-run starts a fresh
+    branch from main, so a plain push would be a non-fast-forward forever."""
+    fake = _install(monkeypatch, FakeRun(guide_prs=[], facts_changed=True))
+    assert main(["--merge-sha", MERGE_SHA]) == 0
+    push = fake.call("git push")[0]
+    assert "--force" in push
+    assert push[-1] == f"HEAD:refs/heads/{SYNC_BRANCH}"
+
+
+@pytest.mark.parametrize(
+    "guide_prs",
+    [
+        [{"number": 4242, "headRefName": BRANCH, "baseRefName": "main"}],
+        [{"number": 88, "headRefName": SYNC_BRANCH, "baseRefName": "main"}],
+    ],
+    ids=["paired", "reused-sync"],
+)
+def test_an_existing_branch_is_never_force_pushed(monkeypatch, env, capsys, guide_prs):
+    fake = _install(monkeypatch, FakeRun(guide_prs=guide_prs, facts_changed=True, guide_main_facts=TIP_FACTS))
+    assert main(["--merge-sha", MERGE_SHA]) == 0
+    assert all("--force" not in c and not c[-1].startswith("+") for c in fake.all("git push"))
+
+
 def test_a_rerun_reuses_the_open_sync_pr_for_this_sha(monkeypatch, env, capsys):
     """Round 1, item 1: a sync that failed after opening its PR is recoverable by re-run."""
     existing = [{"number": 88, "headRefName": SYNC_BRANCH, "baseRefName": "main"}]
@@ -852,7 +888,7 @@ def test_an_unexpected_exception_prints_only_its_type(monkeypatch, env, capsys):
 
 
 def _workflow() -> dict[Any, Any]:
-    wf = yaml.safe_load(WORKFLOW.read_text())
+    wf = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
     assert isinstance(wf, dict)
     return wf
 
@@ -877,7 +913,7 @@ def test_workflow_queues_per_merge_sha_and_never_cancels():
 
 def test_workflow_timeout_fits_three_full_check_waits():
     assert _workflow()["jobs"]["lockstep"]["timeout-minutes"] == 75
-    assert lockstep.MERGE_ATTEMPTS * 1200 / 60 < 75
+    assert lockstep.MERGE_ATTEMPTS * lockstep.CHECK_TIMEOUT_S / 60 < 75
 
 
 def test_workflow_step_env_carries_only_secrets_repo_token_sha_and_flag():

@@ -9,10 +9,11 @@ the kindred PR that produced the merge commit, then:
                    own `image` check on that exact head, then merge.
 - open-facts-sync  no pair, but this commit changed scripts/guide/facts.json:
                    the same, on a `facts-sync/<sha7>` PR. A re-run reuses that
-                   PR if it is still open; otherwise one is opened from main.
+                   PR if it is still open; otherwise one is opened from main,
+                   overwriting any orphaned branch of that name.
 - nothing          no pair and no facts change, a pair not based on main, or
                    no same-repo kindred PR for this commit.
-- error            more than one open guide PR on the branch (exit 1).
+- error            more than one open guide PR on the branch (exit 1, dry run too).
 
 Nothing reaches guide main without a green `image` check on the exact head:
 the merge passes --match-head-commit, so a push after the check cannot ride in.
@@ -293,8 +294,14 @@ def _prepare_head(
         if not _SHA.fullmatch(head):
             raise LockstepError("guide rev-parse failed")
         if head != start or new_branch:
+            # A new sync branch is only built when no open PR on main uses that
+            # name, so any remote branch of the same name is an orphan of an
+            # earlier attempt (pushed, then the PR create failed or the PR was
+            # closed): overwrite it, or every re-run is a non-fast-forward.
+            # An existing branch (paired, or a reused sync PR) is never forced.
+            force = ["--force"] if new_branch else []
             _ok(
-                ["git", *_GIT_AUTH, "push", "-q", "origin", f"HEAD:refs/heads/{push_branch}"],
+                ["git", *_GIT_AUTH, "push", "-q", *force, "origin", f"HEAD:refs/heads/{push_branch}"],
                 guide_env,
                 "guide push failed",
                 repo_dir,
@@ -453,11 +460,12 @@ def _lockstep(sha: str, dry_run: bool) -> int:
 
     p = plan(str(pr.get("headRefName") or ""), guide_prs, facts_changed)
     print(f"plan: {p.action} ({p.reason})")
-    if dry_run or p.action == "nothing":
-        return 0
+    # Checked before the dry-run return: a dry run must show the same red.
     if p.action == "error":
         print("lockstep: error; nothing merged")
         return 1
+    if dry_run or p.action == "nothing":
+        return 0
 
     outcome = _execute(
         p,

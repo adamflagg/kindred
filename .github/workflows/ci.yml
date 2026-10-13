@@ -362,6 +362,11 @@ jobs:
             - '.dockerignore'
             - 'scripts/ci/test-copy-private-config.sh'
             - '.github/actions/**'
+            # test-new-guide-flag.sh runs new.sh in a scratch repo, so new.sh
+            # is as much its input as the suite itself.
+            - 'scripts/worktree/new.sh'
+            - 'scripts/worktree/test-new-guide-flag.sh'
+            - 'scripts/colors.sh'
           # docker-lint's real inputs, NOT the broad `docker` filter below,
           # which go-lint's job- and step-level gates also read to catch
           # docker/init-entrypoint.sh for its shellcheck step -- a dependency
@@ -707,6 +712,11 @@ jobs:
     # .github/actions/** as well as scripts/.
     - name: Private config copy self-test
       run: ./scripts/ci/test-copy-private-config.sh
+
+    # new.sh's --guide fail-fast paths. Needs only bash and git; every case
+    # runs new.sh inside a mktemp repo, so a regression builds nothing here.
+    - name: Worktree --guide flag self-test
+      run: ./scripts/worktree/test-new-guide-flag.sh
 
   # Python linting (parallel with other lint jobs)
   python-lint:

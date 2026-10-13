@@ -13,7 +13,9 @@
 # src/data/facts.json becomes a symlink to this worktree's scripts/guide/facts.json,
 # marked skip-worktree so git status / commit -a never see it. To pull a change
 # to that file, run `git update-index --no-skip-worktree src/data/facts.json`
-# there first (if the file is not tracked on the base branch it is excluded instead). A guide-side failure only warns; the kindred worktree is unaffected.
+# there first (if the file is not tracked on the base branch it is excluded
+# instead). A guide-side failure only warns; the kindred worktree is unaffected,
+# and a half-made guide worktree is removed so a later attempt can retry.
 #
 # Creates:
 #   <main-repo>/.worktrees/<feature-name>/
@@ -44,6 +46,11 @@ WITH_GUIDE=false
 if [ -n "$FEATURE_NAME" ]; then
     shift
 fi
+# A flag where the name belongs (`new.sh --guide`) would otherwise survive
+# sanitising and become a worktree literally named after it.
+case "$FEATURE_NAME" in
+    -*) FEATURE_NAME="" ;;
+esac
 for arg in "$@"; do
     case "$arg" in
         --guide) WITH_GUIDE=true ;;
@@ -57,6 +64,10 @@ done
 # Fail fast, before anything is created.
 if [ "$WITH_GUIDE" = true ] && [ -z "${KINDRED_GUIDE_DIR:-}" ]; then
     echo -e "${RED}--guide needs KINDRED_GUIDE_DIR set to your guide checkout${NC}"
+    exit 1
+fi
+if [ "$WITH_GUIDE" = true ] && ! git -C "$KINDRED_GUIDE_DIR" rev-parse --git-dir >/dev/null 2>&1; then
+    echo -e "${RED}KINDRED_GUIDE_DIR is not a git checkout${NC}"
     exit 1
 fi
 
@@ -360,9 +371,9 @@ GUIDE_WT=""
 guide_setup() {
     local gdir="$KINDRED_GUIDE_DIR" common exclude
     GUIDE_WT="$gdir/.worktrees/$FEATURE_NAME"
-    git -C "$gdir" rev-parse --git-dir >/dev/null 2>&1 || return 1
     [ -e "$GUIDE_WT" ] && return 1
-    git -C "$gdir" fetch -q origin || return 1
+    # stderr dropped: a failed fetch prints the remote URL, i.e. the repo name.
+    git -C "$gdir" fetch -q origin 2>/dev/null || return 1
 
     # Keep the guide clone's own status clean: ignore .worktrees/ in its shared exclude.
     common="$(git -C "$gdir" rev-parse --path-format=absolute --git-common-dir)" || return 1
@@ -379,9 +390,19 @@ guide_setup() {
         git -C "$gdir" worktree add -q "$GUIDE_WT" -b "$BRANCH_NAME" origin/main || return 1
     fi
 
+    # From here a failure would leave a half-made worktree that blocks every
+    # retry at the existence check above, so remove it (the branch is kept and
+    # reused next time).
+    if ! guide_fill "$exclude"; then
+        git -C "$gdir" worktree remove --force "$GUIDE_WT" >/dev/null 2>&1
+        return 1
+    fi
+}
+guide_fill() {
+    local exclude="$1"
     (cd "$GUIDE_WT" && npm ci --prefer-offline >/dev/null 2>&1) || return 1
 
-    mkdir -p "$GUIDE_WT/src/data"
+    mkdir -p "$GUIDE_WT/src/data" || return 1
     ln -sfn "$WORKTREE_DIR/scripts/guide/facts.json" "$GUIDE_WT/src/data/facts.json" || return 1
     if git -C "$GUIDE_WT" ls-files --error-unmatch src/data/facts.json >/dev/null 2>&1; then
         # Tracked on this branch: info/exclude cannot hide a typechange, skip-worktree can.
