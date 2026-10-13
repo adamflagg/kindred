@@ -11,6 +11,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 from bunking.rbac.permissions import PERMISSION_AREAS, PERMISSION_INFO
 
@@ -21,8 +22,8 @@ HELP_KEYS_PATH = REPO / "frontend" / "src" / "help" / "helpKeys.json"
 HELP_AREAS = ["home", "summer", "weekend", "aid", "analytics", "manage", "people"]
 
 
-def build_facts() -> dict:
-    help_keys = json.loads(HELP_KEYS_PATH.read_text())
+def build_facts() -> dict[str, Any]:
+    help_keys = json.loads(HELP_KEYS_PATH.read_text(encoding="utf-8"))
     return {
         "version": 1,
         "permissions": {
@@ -41,7 +42,7 @@ def build_facts() -> dict:
     }
 
 
-def render(facts: dict) -> str:
+def render(facts: dict[str, Any]) -> str:
     return json.dumps(facts, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
 
 
@@ -52,11 +53,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     text = render(build_facts())
     if args.check:
-        if not args.path.exists() or args.path.read_text() != text:
+        if not args.path.exists() or args.path.read_text(encoding="utf-8") != text:
             print("facts.json is stale: run uv run python -m scripts.guide.export_facts")
             return 1
         return 0
-    args.path.write_text(text)
+    args.path.write_text(text, encoding="utf-8")
     return 0
 
 

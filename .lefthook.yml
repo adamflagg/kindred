@@ -188,6 +188,8 @@ pre-push:
         - "bunking/rbac/permissions.py"
         - "frontend/src/help/helpKeys.json"
         - "scripts/guide/*"
+      skip:
+        - run: "git fetch origin main --quiet 2>/dev/null || true; git rev-parse -q --verify origin/main >/dev/null 2>&1 && ! git diff --name-only origin/main...HEAD | grep -qE '^(bunking/rbac/permissions\\.py|frontend/src/help/helpKeys\\.json|scripts/guide/)'"
       run: uv run python -m scripts.guide.export_facts --check
 
     # Verify generated API types match the current Python schema.
