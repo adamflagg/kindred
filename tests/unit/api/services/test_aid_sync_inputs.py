@@ -184,7 +184,9 @@ async def test_the_hourly_bunk_assignments_sync_leaves_it_alone() -> None:
     ):
         invalidate_server_caches("bunk_assignments")
     assert aid_inputs_cache.get("load", YEAR) is filled
-    warm.assert_not_called()
+    # Every sync clears the priced season (layer 2), so a warm follows to rebuild it; layer 1 stays filled, so that
+    # warm re-reads none of its tables.
+    warm.assert_called_once()
 
 
 # --- the warm -----------------------------------------------------------------------------------------------------

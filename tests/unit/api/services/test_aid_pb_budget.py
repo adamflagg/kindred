@@ -1,8 +1,8 @@
 """How many PocketBase reads one Camperships season build makes, against a fixed budget.
 
-Every test here is a strict xfail until the caches land: the sync-input cache (layer 1, shared by the
-season's heavy reads) and the season cache (layer 2, keyed by year). Each cache turns its tests green,
-and strict xfail then fails the run until the marker is removed, so a budget cannot quietly stay red.
+Two caches keep these green: the sync-input cache (layer 1, api/services/aid_sync_inputs.py, shared by the
+season's heavy reads) brings a cold build under budget, and the season cache (layer 2,
+api/services/aid_season_cache.py) makes a repeat read free and a rebuild after a write read no heavy table.
 
 The fixture season is 200 request households (300 requests, 300 campers) plus 800 grant-only households:
 1000 households and 1100 persons. This file budgets call COUNTS; it is not a correctness proof (the
@@ -18,10 +18,13 @@ from typing import Any
 
 import pytest
 
+from api.dependencies import aid_season_cache
+from api.services.aid_season_cache import on_aid_commit
 from api.services.financial_aid_decisions_repository import FinancialAidDecisionsRepository
 from api.services.financial_aid_decisions_service import FinancialAidDecisionsService
 from api.services.financial_aid_grants_repository import GrantsRepository
 from api.services.financial_aid_grants_service import GrantsService
+from bunking.financial_aid.change_log import AidWrite
 from tests.unit.api.services.decisions_fakes import FakeRules, approved
 from tests.unit.api.services.financial_aid_fakes import SESSIONS, YEAR
 from tests.unit.api.services.pb_recording import HEAVY, RecordingPb
@@ -186,8 +189,20 @@ def season_pb() -> RecordingPb:
 
 
 def invalidate_after_write(year: int) -> None:
-    """What a commit's listener calls once the season cache exists."""
-    raise NotImplementedError("the season cache is not built yet")
+    """What commit_aid_writes' listener does after a staff write to `year`: the real listener, on a real write."""
+    on_aid_commit(
+        [
+            AidWrite(
+                collection="aid_requests",
+                action="update",
+                year=year,
+                record_id=_rid("req", 0),
+                before={"ask": 1500.0},
+                data={"ask": 1600.0},
+            )
+        ],
+        "staff@example.org",
+    )
 
 
 async def _discard_commit(*_args: Any, **_kwargs: Any) -> None:
@@ -196,20 +211,19 @@ async def _discard_commit(*_args: Any, **_kwargs: Any) -> None:
 
 def _service(pb: RecordingPb, *, cached: bool = False) -> FinancialAidDecisionsService:
     """The real service over the real repositories; only the rules are a fake, because a rules read is not
-    one of the heavy collections. `cached` selects the cached build once it exists."""
-    if cached:
-        raise NotImplementedError("the cached season build is not built yet")
+    one of the heavy collections. `cached` builds through the process's season cache, as every staff read does."""
     store = FinancialAidDecisionsRepository(pb)
     # The one stub: a season read logs the grants register's new placements through a PocketBase BATCH write,
     # which RecordingPb cannot serve (no auth store). It is a write, not one of the counted reads, and the
     # budget concerns reads; every read, the four heavy collections included, goes through real repository code.
     # Side effect: this removes the placement-log self-invalidation path (a read that logs placements writes,
-    # which should drop the season cache), so the Task 7 cache test must cover that path itself.
+    # which must NOT drop the season cache), so test_aid_season_cache.py covers that path itself.
     store.commit = _discard_commit  # type: ignore[method-assign, assignment]
     return FinancialAidDecisionsService(
         store,
         FakeRules(approved()),
         GrantsService(GrantsRepository(pb)).register_rows,
+        season_cache=aid_season_cache if cached else None,
     )
 
 
@@ -221,8 +235,7 @@ def _summary(pb: RecordingPb) -> str:
 
 
 # Layer 1 (aid_sync_inputs) brought the cold build under budget: 167 calls (145 heavy) became 27 (4 heavy, one
-# per table). `raises=` keeps a broken fixture or a changed signature from hiding as "xfailed": the cached tests
-# must fail on the not-yet-built cached path. Task 7 drops their markers.
+# per table).
 @pytest.mark.asyncio
 async def test_a_cold_season_build_stays_under_budget(season_pb: RecordingPb) -> None:
     await _service(season_pb).season(YEAR)
@@ -230,20 +243,18 @@ async def test_a_cold_season_build_stays_under_budget(season_pb: RecordingPb) ->
     assert not [f for _, f in season_pb.calls if _RELATION_PATH.search(f)], "a filter traverses a relation"
 
 
-@pytest.mark.xfail(strict=True, raises=NotImplementedError, reason="layer 1 lands in Task 5, layer 2 in Task 7")
 @pytest.mark.asyncio
 async def test_a_rebuild_after_a_write_reads_no_heavy_table(season_pb: RecordingPb) -> None:
     # A fresh service per call, as production builds one per request: the cache under test must be
     # process-level, shared across service instances, not a per-instance memo.
     await _service(season_pb, cached=True).season(YEAR)
     season_pb.reset()
-    invalidate_after_write(YEAR)  # Task 6/7: what a commit's listener calls
+    invalidate_after_write(YEAR)  # what a staff write's commit listener does
     await _service(season_pb, cached=True).season(YEAR)
     assert len(season_pb.calls) < AFTER_WRITE_BUDGET, _summary(season_pb)
     assert sum(season_pb.count(c) for c in HEAVY) == 0, _summary(season_pb)
 
 
-@pytest.mark.xfail(strict=True, raises=NotImplementedError, reason="layer 2 lands in Task 7")
 @pytest.mark.asyncio
 async def test_a_cached_season_reads_nothing(season_pb: RecordingPb) -> None:
     # Fresh service per call: the cache must be process-level, shared across instances (see above).
