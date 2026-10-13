@@ -64,4 +64,10 @@ ENV TZ=UTC
 HEALTHCHECK --interval=10s --timeout=5s --retries=5 --start-period=30s \
     CMD ["/usr/local/bin/healthcheck", "http://127.0.0.1:8090/api/health"]
 
+# The version CD built this image at (git describe), reported by the version
+# endpoint. CD rebuilds only the images whose files changed, so each component
+# reports its own. Last, so a per-commit value busts no cached layer.
+ARG VERSION=dev
+ENV KINDRED_VERSION=${VERSION}
+
 ENTRYPOINT ["/usr/local/bin/pocketbase", "serve", "--http=0.0.0.0:8090", "--dir=/pb_data", "--publicDir=/dev/null", "--hooksDir=/pb_hooks", "--migrationsDir=/pb_migrations"]

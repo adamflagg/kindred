@@ -1,7 +1,18 @@
 package feedback
 
 import (
+	"bytes"
+	"encoding/json"
+	"io"
+	"maps"
+	"mime/multipart"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
+
+	"github.com/pocketbase/pocketbase/core"
+	pbtests "github.com/pocketbase/pocketbase/tests"
 )
 
 func TestSanitizeFilename(t *testing.T) {
@@ -135,6 +146,124 @@ func TestValidateScreenshotContent(t *testing.T) {
 			}
 			if !tt.wantErr && err != nil {
 				t.Errorf("validateScreenshotContent(%q) unexpected error: %v", tt.name, err)
+			}
+		})
+	}
+}
+
+// feedbackForm builds the multipart body FeedbackModal posts. extra carries
+// the optional fields, so an old client is simply one that omits them.
+func feedbackForm(t testing.TB, extra map[string]string) (body *bytes.Buffer, contentType string) {
+	t.Helper()
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	fields := map[string]string{
+		"category":    "bug",
+		"description": "The save button does not work",
+		"page_url":    "/summer/sessions",
+		"browser":     "Mozilla/5.0",
+		"viewport":    "1920x1080",
+	}
+	maps.Copy(fields, extra)
+	for k, v := range fields {
+		if err := w.WriteField(k, v); err != nil {
+			t.Fatalf("write field %s: %v", k, err)
+		}
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("close multipart: %v", err)
+	}
+	return &buf, w.FormDataContentType()
+}
+
+// TestHandleFeedbackVersions drives the real route: the issue it files names
+// every component version the client knew, and an old client that sends only
+// app_version still files an issue.
+func TestHandleFeedbackVersions(t *testing.T) {
+	cases := []struct {
+		name    string
+		extra   map[string]string
+		wantVer string
+		absent  []string
+	}{
+		{
+			name: "current client sends all three",
+			extra: map[string]string{
+				"app_version":        "v6.4.0-240-gaaaaaaa",
+				"api_version":        "v6.4.0-248-gc35904c",
+				"pocketbase_version": "v6.4.0-245-gbbbbbbb",
+			},
+			wantVer: "- App Version: frontend v6.4.0-240-gaaaaaaa · api v6.4.0-248-gc35904c · pocketbase v6.4.0-245-gbbbbbbb",
+		},
+		{
+			name:    "old client sends only app_version",
+			extra:   map[string]string{"app_version": "v6.4.0-240-gaaaaaaa"},
+			wantVer: "- App Version: frontend v6.4.0-240-gaaaaaaa\n",
+			absent:  []string{"api ", "pocketbase "},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var issueBody string
+			gh := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var payload map[string]any
+				raw, _ := io.ReadAll(r.Body)
+				_ = json.Unmarshal(raw, &payload)
+				issueBody, _ = payload["body"].(string)
+				w.WriteHeader(http.StatusCreated)
+				_, _ = w.Write([]byte(`{"number": 7}`))
+			}))
+			defer gh.Close()
+			t.Setenv("GITHUB_FEEDBACK_TOKEN", "test-token")
+			t.Setenv("GITHUB_FEEDBACK_REPO", "org/feedback")
+			prev := githubBaseURL
+			githubBaseURL = gh.URL
+			defer func() { githubBaseURL = prev }()
+
+			body, contentType := feedbackForm(t, tc.extra)
+			headers := map[string]string{"Content-Type": contentType}
+			(&pbtests.ApiScenario{
+				Name: tc.name, Method: http.MethodPost, URL: "/api/custom/feedback", Body: body, Headers: headers,
+				TestAppFactory: func(t testing.TB) *pbtests.TestApp {
+					app, err := pbtests.NewTestAppWithConfig(core.BaseAppConfig{DataDir: t.TempDir()})
+					if err != nil {
+						t.Fatalf("new test app: %v", err)
+					}
+					return app
+				},
+				BeforeTestFunc: func(t testing.TB, app *pbtests.TestApp, e *core.ServeEvent) {
+					RegisterRoutes(e)
+					users, err := app.FindCollectionByNameOrId("users")
+					if err != nil {
+						t.Fatalf("find users: %v", err)
+					}
+					u := core.NewRecord(users)
+					u.SetEmail("emma.johnson@example.com")
+					u.SetPassword("correct-horse-battery-staple")
+					if err = app.Save(u); err != nil {
+						t.Fatalf("save user: %v", err)
+					}
+					token, err := u.NewAuthToken()
+					if err != nil {
+						t.Fatalf("auth token: %v", err)
+					}
+					headers["Authorization"] = token
+				},
+				ExpectedStatus:  http.StatusOK,
+				ExpectedContent: []string{`"success":true`},
+			}).Test(t)
+
+			if !strings.Contains(issueBody, tc.wantVer) {
+				t.Errorf("issue body missing %q:\n%s", tc.wantVer, issueBody)
+			}
+			_, envLine, found := strings.Cut(issueBody, "- App Version:")
+			if !found {
+				t.Fatalf("issue body has no App Version line:\n%s", issueBody)
+			}
+			for _, a := range tc.absent {
+				if strings.Contains(envLine, a) {
+					t.Errorf("App Version line should not mention %q:\n%s", a, envLine)
+				}
 			}
 		})
 	}

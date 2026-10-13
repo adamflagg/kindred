@@ -6,6 +6,7 @@ import toast from 'react-hot-toast'
 import { Modal } from './ui/Modal'
 import { pb } from '../lib/pocketbase'
 import { useAuth } from '../contexts/AuthContext'
+import { useDeployedVersions } from '../hooks/useDeployedVersions'
 
 const MAX_SCREENSHOT_SIZE = 5 * 1024 * 1024 // 5MB
 
@@ -25,6 +26,7 @@ interface FeedbackModalProps {
 
 export function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
   const { isLoading: isAuthLoading } = useAuth()
+  const versions = useDeployedVersions()
   const [category, setCategory] = useState<Category | null>(null)
   const [description, setDescription] = useState('')
   const [screenshot, setScreenshot] = useState<File | null>(null)
@@ -39,7 +41,11 @@ export function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
       formData.append('page_url', window.location.pathname)
       formData.append('browser', navigator.userAgent)
       formData.append('viewport', `${window.innerWidth}x${window.innerHeight}`)
-      formData.append('app_version', import.meta.env.VITE_APP_VERSION || 'dev')
+      formData.append('app_version', versions.frontend)
+      // Each server's own version, when known: CD rebuilds only the images
+      // whose files changed, so they can differ from the frontend's.
+      if (versions.api) formData.append('api_version', versions.api)
+      if (versions.pocketbase) formData.append('pocketbase_version', versions.pocketbase)
 
       if (screenshot) {
         formData.append('screenshot', screenshot)

@@ -1,6 +1,7 @@
 import type { FC } from 'react'
 import { Tag } from 'lucide-react'
 import { parseVersion } from '../utils/versionParser'
+import { useDeployedVersions } from '../hooks/useDeployedVersions'
 
 interface VersionInfoProps {
   className?: string
@@ -66,9 +67,13 @@ interface VersionMenuRowProps {
  * Styled like the other help items. The tag opens the release page and "+N · sha"
  * opens the compare view; a bare-sha build is one link to the commit. Renders
  * nothing (no divider either) for a dev build.
+ *
+ * Shows the NEWEST of the frontend's, the api's and PocketBase's versions: CD
+ * rebuilds only the images whose files changed, so the frontend's own can lag.
+ * Until the servers answer, or if they fail, it is the frontend's.
  */
 export const VersionMenuRow: FC<VersionMenuRowProps> = ({ onNavigate }) => {
-  const parsed = parseVersion(import.meta.env.VITE_APP_VERSION)
+  const parsed = parseVersion(useDeployedVersions().newest)
   if (!parsed) return null
 
   const isBareSha = parsed.url.includes('/commit/')

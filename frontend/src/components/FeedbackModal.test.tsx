@@ -28,6 +28,17 @@ vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => mockAuthState,
 }))
 
+// The servers' own versions (hooks/useDeployedVersions.test.tsx covers how
+// they are fetched). Unset = not known yet, or that server failed.
+const mockVersions: { frontend: string; api?: string; pocketbase?: string; newest: string } = {
+  frontend: 'v6.4.0-240-gaaaaaaa',
+  newest: 'v6.4.0-240-gaaaaaaa',
+}
+
+vi.mock('../hooks/useDeployedVersions', () => ({
+  useDeployedVersions: () => mockVersions,
+}))
+
 let queryClient: QueryClient
 
 function renderModal(props: { isOpen: boolean; onClose: () => void }) {
@@ -49,6 +60,8 @@ describe('FeedbackModal', () => {
     mockAuthState.isLoading = false
     mockAuthState.isAuthenticated = true
     mockAuthState.user = { id: 'user-1', name: 'Emma Johnson', email: 'emma@example.com' }
+    delete mockVersions.api
+    delete mockVersions.pocketbase
   })
 
   it('renders nothing when closed', () => {
@@ -244,5 +257,41 @@ describe('FeedbackModal', () => {
       // Text should be preserved
       expect(textarea).toHaveValue('Something broke')
     })
+  })
+
+  async function submitAndReadForm(): Promise<FormData> {
+    const { pb } = await import('../lib/pocketbase')
+    vi.mocked(pb.send).mockResolvedValueOnce({ success: true })
+    renderModal({ isOpen: true, onClose: mockOnClose })
+    fireEvent.click(screen.getByText('Bug'))
+    fireEvent.change(screen.getByPlaceholderText(/what happened/i), {
+      target: { value: 'The save button is broken' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+    await waitFor(() => expect(pb.send).toHaveBeenCalledTimes(1))
+    const [path, options] = vi.mocked(pb.send).mock.calls[0]!
+    expect(path).toBe('/api/custom/feedback')
+    return (options as { body: FormData }).body
+  }
+
+  it('sends each server’s own version beside the frontend’s', async () => {
+    vi.stubEnv('VITE_APP_VERSION', 'v6.4.0-240-gaaaaaaa')
+    mockVersions.api = 'v6.4.0-248-gc35904c'
+    mockVersions.pocketbase = 'v6.4.0-245-gbbbbbbb'
+    const form = await submitAndReadForm()
+    expect(form.get('app_version')).toBe('v6.4.0-240-gaaaaaaa')
+    expect(form.get('api_version')).toBe('v6.4.0-248-gc35904c')
+    expect(form.get('pocketbase_version')).toBe('v6.4.0-245-gbbbbbbb')
+    vi.unstubAllEnvs()
+  })
+
+  it('omits a server version it does not know, and still sends the frontend’s', async () => {
+    vi.stubEnv('VITE_APP_VERSION', 'v6.4.0-240-gaaaaaaa')
+    mockVersions.pocketbase = 'v6.4.0-245-gbbbbbbb'
+    const form = await submitAndReadForm()
+    expect(form.get('app_version')).toBe('v6.4.0-240-gaaaaaaa')
+    expect(form.has('api_version')).toBe(false)
+    expect(form.get('pocketbase_version')).toBe('v6.4.0-245-gbbbbbbb')
+    vi.unstubAllEnvs()
   })
 })

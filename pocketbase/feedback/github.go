@@ -23,16 +23,18 @@ type GitHubClient struct {
 
 // IssueParams holds the data needed to create a GitHub issue.
 type IssueParams struct {
-	Description   string
-	Category      string
-	UserName      string
-	UserEmail     string
-	PageURL       string
-	Browser       string
-	Viewport      string
-	AppVersion    string
-	Timestamp     string
-	ScreenshotURL string // Set after uploading screenshot
+	Description       string
+	Category          string
+	UserName          string
+	UserEmail         string
+	PageURL           string
+	Browser           string
+	Viewport          string
+	AppVersion        string // the frontend's
+	APIVersion        string // optional: absent from older clients
+	PocketBaseVersion string // optional: absent from older clients
+	Timestamp         string
+	ScreenshotURL     string // Set after uploading screenshot
 }
 
 var validCategories = map[string]bool{
@@ -206,7 +208,7 @@ func buildIssueBody(params *IssueParams) string {
 	fmt.Fprintf(&b, "\n\n**Environment:**\n")
 	fmt.Fprintf(&b, "- Browser: %s\n", params.Browser)
 	fmt.Fprintf(&b, "- Viewport: %s\n", params.Viewport)
-	fmt.Fprintf(&b, "- App Version: %s", params.AppVersion)
+	fmt.Fprintf(&b, "- App Version: %s", formatAppVersions(params))
 
 	if params.ScreenshotURL != "" {
 		fmt.Fprintf(&b, "\n\n**Screenshot:**\n![Screenshot](%s)", params.ScreenshotURL)
@@ -214,4 +216,24 @@ func buildIssueBody(params *IssueParams) string {
 
 	b.WriteString("\n")
 	return b.String()
+}
+
+// formatAppVersions names each component's own deployed version, omitting any
+// the client did not know. CD rebuilds only the images whose files changed, so
+// the three can differ; an old client sends only the frontend's.
+func formatAppVersions(params *IssueParams) string {
+	parts := make([]string, 0, 3)
+	for _, c := range []struct{ name, version string }{
+		{"frontend", params.AppVersion},
+		{"api", params.APIVersion},
+		{"pocketbase", params.PocketBaseVersion},
+	} {
+		if v := strings.TrimSpace(c.version); v != "" {
+			parts = append(parts, c.name+" "+v)
+		}
+	}
+	if len(parts) == 0 {
+		return "unknown"
+	}
+	return strings.Join(parts, " · ")
 }

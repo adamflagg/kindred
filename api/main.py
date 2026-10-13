@@ -11,6 +11,7 @@ for the React bunking interface. It orchestrates:
 """
 
 import asyncio
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -64,6 +65,7 @@ from .routers import (
     validation,
 )
 from .schemas.permissions import PermissionEntry, PermissionRegistryResponse, PermissionScreen
+from .schemas.version import ApiVersionResponse
 from .services.aid_season_cache import bind_warm_loop, on_aid_commit
 from .services.aid_sync_inputs import cancel_aid_warm, set_season_warmer, start_aid_inputs_refresher
 from .services.lodging_cache_warm import start_lodging_cache_refresher
@@ -248,6 +250,15 @@ def create_app() -> FastAPI:
     async def get_current_user_info(user: AuthUser = Depends(get_current_user)) -> dict[str, Any]:
         """Get current user information including permissions."""
         return user.to_dict()
+
+    @app.get("/api/version", response_model=ApiVersionResponse)
+    async def get_api_version(user: AuthUser = Depends(get_current_user)) -> ApiVersionResponse:
+        """The version this image was built at (KINDRED_VERSION), or "dev".
+
+        Any signed-in user can read this. CD rebuilds only the images whose
+        files changed, so the frontend asks each component for its own.
+        """
+        return ApiVersionResponse(api=os.environ.get("KINDRED_VERSION", "").strip() or "dev")
 
     @app.get("/api/permissions", response_model=PermissionRegistryResponse)
     async def get_permission_registry(user: AuthUser = Depends(get_current_user)) -> PermissionRegistryResponse:

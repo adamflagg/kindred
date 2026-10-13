@@ -31,6 +31,7 @@ import (
 	"github.com/camp/kindred/pocketbase/oidclogout"
 	"github.com/camp/kindred/pocketbase/rbac"
 	"github.com/camp/kindred/pocketbase/sync"
+	"github.com/camp/kindred/pocketbase/version"
 )
 
 func init() {
@@ -293,6 +294,13 @@ func main() {
 	// Register feedback endpoint
 	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
 		feedback.RegisterRoutes(e)
+		return e.Next()
+	})
+
+	// The version this image was built at (pocketbase/version): CD rebuilds
+	// only the images whose files changed, so each component reports its own.
+	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
+		version.RegisterRoutes(e)
 		return e.Next()
 	})
 

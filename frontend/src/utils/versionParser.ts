@@ -70,3 +70,49 @@ export function parseVersion(version: string): ParsedVersion | null {
 
   return null
 }
+
+/** A version's place in release order: tag parts, then commits ahead of it. */
+type VersionKey = readonly [major: number, minor: number, patch: number, ahead: number]
+
+// Tag (with optional describe suffix), captured for ordering.
+const ORDER_RE = /^v(\d+)\.(\d+)(?:\.(\d+))?(?:-(\d+)-g[0-9a-f]+)?$/
+
+function versionKey(version: string | undefined): VersionKey | null {
+  const m = version?.match(ORDER_RE)
+  if (!m) return null
+  return [Number(m[1]), Number(m[2]), Number(m[3] ?? 0), Number(m[4] ?? 0)]
+}
+
+/**
+ * Order two versions by (tag semver, commits ahead): a newer tag wins whatever
+ * the other's commits-ahead count, and on the same tag more commits ahead is
+ * newer. Returns null when either side cannot be ordered (a bare sha, "dev",
+ * empty).
+ */
+export function compareVersions(a: string | undefined, b: string | undefined): number | null {
+  const ka = versionKey(a)
+  const kb = versionKey(b)
+  if (!ka || !kb) return null
+  const [majorA, minorA, patchA, aheadA] = ka
+  const [majorB, minorB, patchB, aheadB] = kb
+  return majorA - majorB || minorA - minorB || patchA - patchB || aheadA - aheadB
+}
+
+/**
+ * The newest of the frontend's version and the servers' (CD rebuilds only the
+ * images whose files changed, so the three can differ). A bare sha or "dev"
+ * cannot be ordered and is ignored beside one that can. With nothing orderable
+ * it is the frontend's version if that displays, else the first server version
+ * that does, else the frontend's. A tie keeps the earlier one, so the
+ * frontend's.
+ */
+export function newestVersion(frontend: string, others: ReadonlyArray<string | undefined>): string {
+  const all = [frontend, ...others]
+  let newest: string | undefined
+  for (const v of all) {
+    if (!versionKey(v)) continue
+    if (newest === undefined || (compareVersions(v, newest) ?? 0) > 0) newest = v
+  }
+  if (newest !== undefined) return newest
+  return all.find((v): v is string => v !== undefined && parseVersion(v) !== null) ?? frontend
+}

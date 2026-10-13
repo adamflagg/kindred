@@ -21,6 +21,10 @@ const MaxScreenshotSize = 5 * 1024 * 1024
 // maxRequestBody is the hard cap on total request body size.
 const maxRequestBody = MaxScreenshotSize + 1024*1024
 
+// githubBaseURL overrides the GitHub API base; empty means the real one.
+// Tests point it at a local server.
+var githubBaseURL = ""
+
 // RegisterRoutes registers the feedback endpoint on the PocketBase router.
 func RegisterRoutes(e *core.ServeEvent) {
 	e.Router.POST("/api/custom/feedback", requireAuth(HandleFeedback))
@@ -69,6 +73,9 @@ func HandleFeedback(e *core.RequestEvent) error {
 	browser := e.Request.FormValue("browser")
 	viewport := e.Request.FormValue("viewport")
 	appVersion := e.Request.FormValue("app_version")
+	// Optional: older clients send only app_version.
+	apiVersion := e.Request.FormValue("api_version")
+	pocketbaseVersion := e.Request.FormValue("pocketbase_version")
 	timestamp := time.Now().UTC().Format(time.RFC3339)
 
 	// Extract user info from auth record
@@ -79,20 +86,23 @@ func HandleFeedback(e *core.RequestEvent) error {
 	}
 
 	client := &GitHubClient{
-		Token: token,
-		Repo:  repo,
+		Token:   token,
+		Repo:    repo,
+		BaseURL: githubBaseURL,
 	}
 
 	params := &IssueParams{
-		Description: description,
-		Category:    category,
-		UserName:    userName,
-		UserEmail:   userEmail,
-		PageURL:     pageURL,
-		Browser:     browser,
-		Viewport:    viewport,
-		AppVersion:  appVersion,
-		Timestamp:   timestamp,
+		Description:       description,
+		Category:          category,
+		UserName:          userName,
+		UserEmail:         userEmail,
+		PageURL:           pageURL,
+		Browser:           browser,
+		Viewport:          viewport,
+		AppVersion:        appVersion,
+		APIVersion:        apiVersion,
+		PocketBaseVersion: pocketbaseVersion,
+		Timestamp:         timestamp,
 	}
 
 	// Handle optional screenshot

@@ -58,6 +58,9 @@ jobs:
     outputs:
       initial_commit: ${{ steps.get-base-sha.outputs.initial_commit }}
       short_sha: ${{ steps.short-sha.outputs.short_sha }}
+      # The git-describe version every rebuilt image bakes in, computed once so
+      # the build arg and integration-test's check read the same string.
+      version: ${{ steps.build-version.outputs.version }}
       # Per-image rebuild decisions — matrix entries read these to choose
       # between full rebuild and a fast retag from :latest.
       build_caddy: ${{ steps.decide-builds.outputs.build_caddy }}
@@ -224,6 +227,16 @@ jobs:
         SHORT_SHA=$(echo "$FULL_SHA" | cut -c1-7)
         echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
         echo "Staging tag will be: :test-$SHORT_SHA"
+
+    - name: Compute build version
+      id: build-version
+      # Always-run for the same reason as short_sha above. The checkout has full
+      # history and tags (fetch-depth: 0), as the build job's does.
+      if: always()
+      run: |
+        VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+        echo "Build version: $VERSION"
 
     - name: Decide per-image build vs retag
       id: decide-builds
@@ -712,13 +725,11 @@ jobs:
         username: ${{ secrets.DHI_USERNAME }}
         password: ${{ secrets.DHI_TOKEN }}
 
-    - name: Get version and build date
+    - name: Get build date
       if: matrix.should_build == 'true'
       id: version
       run: |
-        VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")
         BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
-        echo "version=$VERSION" >> $GITHUB_OUTPUT
         echo "build_date=$BUILD_DATE" >> $GITHUB_OUTPUT
 
     - name: Set up Docker Buildx
@@ -729,7 +740,9 @@ jobs:
       if: matrix.should_build == 'true'
       env:
         INPUT_NO_CACHE: ${{ github.event.inputs.no_cache }}
-        BUILD_VERSION: ${{ steps.version.outputs.version }}
+        # detect-changes computes it once; integration-test checks it against
+        # each rebuilt image's KINDRED_VERSION.
+        BUILD_VERSION: ${{ needs.detect-changes.outputs.version }}
         BUILD_DATE: ${{ steps.version.outputs.build_date }}
         # On pull_request runs, github.sha is the merge-commit SHA; use the PR head
         # SHA so build-arg GIT_SHA stamps the image with the exact source commit.
@@ -928,13 +941,16 @@ jobs:
         done
 
     # Each image REBUILT in this run must carry this run's commit as its
-    # revision label. One retagged from :latest carries the commit it was built
-    # from -- or nothing, if :latest predates the labels -- which is reported,
-    # not failed: that is the image actually being shipped.
+    # revision label, and a rebuilt api or pocketbase image this run's version
+    # as its KINDRED_VERSION (what its version endpoint reports). One retagged
+    # from :latest carries what it was built with -- or nothing, if :latest
+    # predates them -- which is reported, not failed: that is the image
+    # actually being shipped.
     - name: Verify image revision labels
       env:
         SHORT_SHA: ${{ needs.detect-changes.outputs.short_sha }}
         EXPECTED_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        EXPECTED_VERSION: ${{ needs.detect-changes.outputs.version }}
         BUILD_CADDY: ${{ needs.detect-changes.outputs.build_caddy }}
         BUILD_POCKETBASE: ${{ needs.detect-changes.outputs.build_pocketbase }}
         BUILD_API: ${{ needs.detect-changes.outputs.build_api }}
@@ -947,15 +963,25 @@ jobs:
           REF="${REGISTRY}/${USERNAME}/kindred-${IMG}:test-${SHORT_SHA}"
           REVISION=$(docker inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$REF")
           CREATED=$(docker inspect -f '{{index .Config.Labels "org.opencontainers.image.created"}}' "$REF")
+          # Only api and pocketbase bake a version (caddy's is in the frontend
+          # bundle; init reports none).
+          VERSION_NOTE=""
+          if [ "$IMG" = "api" ] || [ "$IMG" = "pocketbase" ]; then
+            BAKED=$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$REF" | sed -n 's/^KINDRED_VERSION=//p')
+            VERSION_NOTE=" KINDRED_VERSION='${BAKED:-<none>}'"
+          fi
           if [ "${!BUILT_VAR}" = "true" ]; then
             if [ "$REVISION" != "$EXPECTED_SHA" ] || [ -z "$CREATED" ]; then
               echo "::error::kindred-${IMG} was rebuilt but its labels are revision='${REVISION}' created='${CREATED}' (want revision=${EXPECTED_SHA} and a created time)"
               FAILED=1
+            elif [ -n "$VERSION_NOTE" ] && [ "$BAKED" != "$EXPECTED_VERSION" ]; then
+              echo "::error::kindred-${IMG} was rebuilt but its KINDRED_VERSION is '${BAKED}' (want ${EXPECTED_VERSION})"
+              FAILED=1
             else
-              echo "kindred-${IMG}: revision=${REVISION} created=${CREATED}"
+              echo "kindred-${IMG}: revision=${REVISION} created=${CREATED}${VERSION_NOTE}"
             fi
           else
-            echo "kindred-${IMG}: retagged from :latest, revision='${REVISION:-<none>}' created='${CREATED:-<none>}'"
+            echo "kindred-${IMG}: retagged from :latest, revision='${REVISION:-<none>}' created='${CREATED:-<none>}'${VERSION_NOTE}"
           fi
         done
         exit "$FAILED"
