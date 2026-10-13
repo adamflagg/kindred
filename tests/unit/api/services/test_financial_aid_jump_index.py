@@ -317,7 +317,7 @@ async def test_the_repository_reads_five_season_tables_with_only_the_ids_it_need
 
 
 @pytest.mark.asyncio
-async def test_the_repository_serves_the_form_contacts_through_the_shared_narrow_read() -> None:
+async def test_the_repository_serves_the_form_contacts_from_the_shared_season_read() -> None:
     row = SimpleNamespace(
         person_id=1000011,
         contact_first_name="Maria",
@@ -325,5 +325,13 @@ async def test_the_repository_serves_the_form_contacts_through_the_shared_narrow
         expand={"household": SimpleNamespace(cm_id=1000002)},
     )
     pb, calls = _pb({"financial_aid_applications": [row]})
-    assert await JumpIndexRepository(pb).fetch_fa_contacts(YEAR) == [FaContact(1000011, 1000002, "Maria", "Garcia")]
-    assert [(n, p["filter"]) for n, p in calls] == [("financial_aid_applications", f"year = {YEAR}")]
+    repo = JumpIndexRepository(pb)
+    assert await repo.fetch_fa_contacts(YEAR) == [FaContact(1000011, 1000002, "Maria", "Garcia")]
+    # Layer 1's one read of the season's mirror (aid_sync_inputs), which every FA reader shares: a second read
+    # makes none.
+    assert [(n, p["filter"]) for n, p in calls if n == "financial_aid_applications"] == [
+        ("financial_aid_applications", f"year = {YEAR}")
+    ]
+    calls.clear()
+    assert await repo.fetch_fa_contacts(YEAR) == [FaContact(1000011, 1000002, "Maria", "Garcia")]
+    assert calls == []

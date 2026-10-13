@@ -25,6 +25,7 @@ from api.services import financial_aid_rules_service as rules_service
 from api.services.aid_sync_inputs import AID_SYNC_INPUT_TABLES, AidSyncInputs, aid_sync_inputs, schedule_aid_warm
 from api.services.financial_aid_intake_repository import ADULT_POC_FIELD_CM_ID, CAMPER_POC_FIELD_CM_ID
 from tests.unit.api.services.aid_parity_fixture import (
+    FA_ID,
     H1,
     H2,
     H4,
@@ -46,7 +47,14 @@ from tests.unit.api.services.test_aid_pb_budget import _RELATION_PATH
 
 ROOT = Path(__file__).resolve().parents[4]
 YEAR = 2026
-FILLED = ("persons", "households", "attendees", "person_custom_values", "custom_field_defs")
+FILLED = (
+    "persons",
+    "households",
+    "attendees",
+    "person_custom_values",
+    "custom_field_defs",
+    "financial_aid_applications",
+)
 
 
 def _recording_pb() -> RecordingPb:
@@ -203,6 +211,59 @@ async def test_equity_values_are_only_the_allowlisted_fields() -> None:
     assert held == {P1: ["No", "Yes"], P2: ["yes"], P4: ["maybe"]}  # P3's only value is on an unrelated field
 
 
+@pytest.mark.asyncio
+async def test_the_custom_values_read_expands_nothing() -> None:
+    """Its two expands were half of each fill (4.6 s on prod). Whose value it is and which field come from the
+    persons and custom_field_defs the same fill reads, joined in Python."""
+    pb = parity_pb()
+    await aid_sync_inputs(pb, PARITY_YEAR)
+    ((params),) = [p for c, p in pb.calls if c == "person_custom_values"]
+    assert "expand" not in params
+    assert not [f for f in str(params["fields"]).split(",") if f.startswith("expand.")]
+    assert not _RELATION_PATH.search(str(params["filter"]))
+
+
+@pytest.mark.asyncio
+async def test_the_fa_mirror_is_held_whole_for_the_season_in_id_order() -> None:
+    """Every row of the season, applicant or not, asking or not: the four readers filter in Python."""
+    inputs = await aid_sync_inputs(parity_pb(), PARITY_YEAR)
+    assert [r.id for r in inputs.fa_applications] == [
+        FA_ID[k] for k in ("f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8")
+    ]
+    assert isinstance(inputs.fa_applications, tuple)
+
+
+@pytest.mark.asyncio
+async def test_the_fa_mirror_rows_leave_the_contact_details_on_the_server() -> None:
+    """The mirror also holds addresses, phone numbers and emails no reader needs; the fill never asks for them, and
+    holds of the household only its cm_id."""
+    inputs = await aid_sync_inputs(parity_pb(), PARITY_YEAR)
+    for row in inputs.fa_applications:
+        assert not {"contact_email", "contact_phone", "contact_address"} & set(vars(row)), row.id
+        for related in row.expand.values():
+            assert set(vars(related)) == {"cm_id"}
+
+
+def test_the_fa_projection_is_exactly_what_its_four_readers_read() -> None:
+    """A superset of each reader's columns (a column left out reads blank, silently) and nothing wider."""
+    from api.services.financial_aid_grants_repository import GRANT_ANSWER_FIELDS
+    from api.services.financial_aid_intake_repository import FA_CONTACT_FIELDS, FA_READ_FIELDS
+    from api.services.financial_aid_repository import FA_REQUEST_FIELDS
+
+    readers = {
+        "fetch_fa_rows": {*FA_READ_FIELDS.split(","), "is_applicant"},  # is_applicant: its filter, now in Python
+        "read_fa_contacts": set(FA_CONTACT_FIELDS.split(",")),
+        "fetch_fa_requests": set(FA_REQUEST_FIELDS.split(",")),
+        "fetch_grant_answers": set(GRANT_ANSWER_FIELDS.split(",")),
+    }
+    columns = set(layer1.fa_application_fields().split(","))
+    for reader, needed in readers.items():
+        assert needed <= columns, (reader, sorted(needed - columns))
+    assert columns == set().union(*readers.values())
+    assert not [c for c in columns if c.startswith("contact_") and c not in ("contact_first_name", "contact_last_name")]
+    assert not [c for c in columns if c.startswith("expand.") and c != "expand.household.cm_id"]
+
+
 # --- what clears it ---------------------------------------------------------------------------------------------
 
 
@@ -218,6 +279,19 @@ async def test_a_sync_writing_persons_clears_it_and_schedules_a_warm() -> None:
         invalidate_server_caches("persons")
     assert aid_inputs_cache.get("load", YEAR) is None
     warm.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_the_fa_mirror_sync_clears_it() -> None:
+    from api.routers.metrics import invalidate_server_caches
+
+    await aid_sync_inputs(_recording_pb(), YEAR)
+    with (
+        patch("api.routers.metrics.schedule_lodging_warm"),
+        patch("api.routers.metrics.schedule_aid_warm"),
+    ):
+        invalidate_server_caches("financial_aid_applications")
+    assert aid_inputs_cache.get("load", YEAR) is None
 
 
 @pytest.mark.asyncio
@@ -458,4 +532,5 @@ def test_the_layer_one_tables_are_the_sync_written_inputs() -> None:
         "person_custom_values",
         "custom_field_defs",
         "camp_sessions",
+        "financial_aid_applications",
     )

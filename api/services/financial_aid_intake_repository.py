@@ -5,10 +5,12 @@ null, and the router gates each call on a financial_aid.* permission first.
 
 Two reads are narrowed on purpose, and tests pin both:
 
-* `fetch_fa_rows` names its columns. financial_aid_applications also holds
-  addresses and phone numbers that intake never needs. (The contact NAME is
-  read, by `read_fa_contacts` below: the Requests grid's Requested by and the
-  jump index's requesters, each column-narrowed too.)
+* `fetch_fa_rows` names its columns (FA_READ_FIELDS). financial_aid_applications
+  also holds addresses and phone numbers that intake never needs. (The contact
+  NAME is read, by `read_fa_contacts` below: the Requests grid's Requested by and
+  the jump index's requesters, column-narrowed too.) Both are answered from
+  layer 1 (aid_sync_inputs), whose one read of the mirror is projected to the
+  union of its readers' columns and nothing wider.
 * `fetch_equity_answers` reads person_custom_values through EQUITY_FIELD_CM_IDS,
   an ALLOWLIST (the precedent: ADULT_NEED_FIELD_CM_IDS in
   api/services/adult_need_answers.py). That table holds race,
@@ -32,7 +34,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Sequence
 from decimal import Decimal
 from typing import Any, Final
 
@@ -43,7 +45,6 @@ from api.constants.collections import (
     AID_REQUESTS,
     ATTENDEES,
     CAMP_SESSIONS,
-    FINANCIAL_AID_APPLICATIONS,
     FINANCIAL_TRANSACTIONS,
 )
 from api.services.aid_build_reads import shared_read
@@ -161,19 +162,12 @@ def _str(value: Any) -> str:
     return str(value or "")
 
 
-async def read_fa_contacts(page: Callable[[str, dict[str, Any]], Awaitable[list[Any]]], year: int) -> list[FaContact]:
+async def read_fa_contacts(pb: Any, year: int) -> list[FaContact]:
     """The contact name on every aid form row of the season, not only applicants, with the camper and household it
-    belongs to: the Requests grid's Requested by, and the jump index's requesters (financial_aid_requesters). Only
-    those columns are read. `page` is a repository's `_page`, so every aid repository shares this one query."""
-    rows = await page(
-        FINANCIAL_AID_APPLICATIONS,
-        {
-            "filter": f"year = {int(year)}",
-            "expand": "household",
-            "fields": FA_CONTACT_FIELDS,
-            "sort": STABLE_SORT,
-        },
-    )
+    belongs to: the Requests grid's Requested by, and the jump index's requesters (financial_aid_requesters). In
+    PocketBase-id order. Answered from layer 1 (aid_sync_inputs), whose FA-mirror projection holds these columns
+    (FA_CONTACT_FIELDS) and not the rest of the contact's details."""
+    rows = (await aid_sync_inputs(pb, year)).fa_applications
     return [
         FaContact(
             _int(getattr(r, "person_id", 0)),
@@ -333,19 +327,14 @@ class FinancialAidIntakeRepository:
     # -- season reads ------------------------------------------------------
 
     async def fetch_fa_rows(self, year: int) -> list[FaRow]:
-        rows = await self._page(
-            FINANCIAL_AID_APPLICATIONS,
-            {
-                "filter": f"year = {year} && is_applicant = true",
-                "expand": "household",
-                "fields": FA_READ_FIELDS,
-                "sort": STABLE_SORT,
-            },
-        )
-        return [_fa_row(r) for r in rows]
+        """The season's applicant rows (`is_applicant = true`), in PocketBase-id order. Answered from layer 1
+        (aid_sync_inputs), which holds every row of the season projected to FA_READ_FIELDS and the other readers'
+        columns."""
+        rows = (await aid_sync_inputs(self.pb, year)).fa_applications
+        return [_fa_row(r) for r in rows if getattr(r, "is_applicant", False) is True]
 
     async def fetch_fa_contacts(self, year: int) -> list[FaContact]:
-        return await read_fa_contacts(self._page, year)
+        return await read_fa_contacts(self.pb, year)
 
     async def fetch_sessions(self, year: int) -> list[SessionRow]:
         rows = await self._page(
@@ -506,9 +495,8 @@ class FinancialAidIntakeRepository:
         poc: dict[int, dict[int, bool | None]] = {}
         gender: dict[int, tuple[str, str]] = {}
         for person in ids:
-            for row in inputs.equity_values_by_person_cm_id.get(person, ()):
-                field_cm_id = _int(getattr(_expanded(row, "field_definition"), "cm_id", 0))
-                poc.setdefault(person, {})[field_cm_id] = parse_poc_answer(_str(getattr(row, "value", "")))
+            for value in inputs.equity_values_by_person_cm_id.get(person, ()):
+                poc.setdefault(person, {})[value.field_cm_id] = parse_poc_answer(_str(value.value))
             record = inputs.person_by_cm_id.get(person)
             if record is not None:
                 gender[person] = (

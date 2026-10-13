@@ -43,7 +43,7 @@ from bunking.financial_aid.reports.zips import HouseholdAddress
 from bunking.pocketbase_batch import BatchRequestFailedError
 
 PAGE_SIZE: Final = 1000
-# The by-id read's ids per filter, under PocketBase's 3,500-character filter limit. The past-seasons read no longer
+# The retired by-id read's ids per filter, under PocketBase's 3,500-character filter limit. The past-seasons read no longer
 # chunks; the parity test still sizes its fixture past it, to prove the cached read answers what the chunks did.
 ID_CHUNK: Final = 50
 FIRST_HISTORY_SEASON: Final = 2017  # D99's default: no summer at camp in 2017 on

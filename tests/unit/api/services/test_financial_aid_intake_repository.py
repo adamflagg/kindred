@@ -13,6 +13,7 @@ import pytest
 
 from api.services.financial_aid_intake_repository import (
     EQUITY_FIELD_CM_IDS,
+    FA_CONTACT_FIELDS,
     FA_READ_FIELDS,
     FA_REGISTRATION_ASK_FIELD,
     FinancialAidIntakeRepository,
@@ -24,6 +25,7 @@ from api.services.financial_aid_requesters import FaContact
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite
 from bunking.financial_aid.rules import SectionName
 from bunking.financial_aid.rules.lifecycle import SectionStatus, initial_status, status_to_json
+from tests.unit.api.services.pb_recording import RecordingPb
 from tests.unit.bunking.financial_aid.fixtures import fictional_rules_json
 
 APPROVED_AT = datetime(2031, 1, 15, 18, 0, tzinfo=UTC)
@@ -65,13 +67,12 @@ async def test_fetch_fa_rows_reads_applicants_only_and_maps_the_household_and_re
         interest_expressed=True,
         total_gross_income=0,
         reported_income_fields='["total_gross_income"]',
+        is_applicant=True,
         expand={"household": SimpleNamespace(cm_id=1000001)},
         **{FA_REGISTRATION_ASK_FIELD: 700},
     )
-    handle = MagicMock()
-    handle.get_full_list.return_value = [record]
-    pb = MagicMock()
-    pb.collection.return_value = handle
+    donation_only = SimpleNamespace(id="fa0000000000003", person_id=1000013, is_applicant=False, expand={})
+    pb = RecordingPb({"financial_aid_applications": [record, donation_only]})
     (row,) = await FinancialAidIntakeRepository(pb).fetch_fa_rows(2027)
     assert (row.person_cm_id, row.household_cm_id, row.summer_program, row.registration_ask) == (
         1000011,
@@ -81,9 +82,9 @@ async def test_fetch_fa_rows_reads_applicants_only_and_maps_the_household_and_re
     )
     assert row.answers["total_gross_income"] == 0
     assert row.reported_income_fields == frozenset({"total_gross_income"})  # a reported $0, not a blank
-    params = handle.get_full_list.call_args.kwargs["query_params"]
-    assert params["filter"] == "year = 2027 && is_applicant = true"
-    assert params["fields"] == FA_READ_FIELDS
+    # Read through layer 1 (aid_sync_inputs): the season's whole mirror, once, its projection a superset of
+    # FA_READ_FIELDS (test_aid_sync_inputs pins the projection).
+    assert [f for c, f in pb.calls if c == "financial_aid_applications"] == ["year = 2027"]
 
 
 @pytest.mark.asyncio
@@ -92,13 +93,12 @@ async def test_a_row_the_sync_has_not_restamped_reports_no_income() -> None:
         id="fa0000000000002",
         person_id=1000012,
         total_gross_income=0,
+        is_applicant=True,
         expand={"household": SimpleNamespace(cm_id=1000001)},
     )
-    handle = MagicMock()
-    handle.get_full_list.return_value = [record]
-    pb = MagicMock()
-    pb.collection.return_value = handle
-    (row,) = await FinancialAidIntakeRepository(pb).fetch_fa_rows(2027)
+    (row,) = await FinancialAidIntakeRepository(RecordingPb({"financial_aid_applications": [record]})).fetch_fa_rows(
+        2027
+    )
     assert row.reported_income_fields == frozenset()  # every 0 then reads as unknown: the safe side
 
 
@@ -231,15 +231,17 @@ async def test_a_payer_share_reads_its_percentage_as_an_exact_decimal() -> None:
 async def test_fetch_equity_answers_reads_only_allowlisted_fields_for_named_people() -> None:
     values = MagicMock()
     values.get_full_list.return_value = [
+        # As the fill reads it: its own relation ids, no expand (layer 1 joins them to persons and the definitions).
         SimpleNamespace(
-            value="Yes",
-            expand={"person": SimpleNamespace(cm_id=1000011), "field_definition": SimpleNamespace(cm_id=165525)},
+            id="pv0000000000001", value="Yes", person="pp0000000000011", field_definition="fd0000000000001"
         ),
     ]
     persons = MagicMock()
     persons.get_full_list.return_value = [
-        SimpleNamespace(cm_id=1000011, gender_identity_name="Non-binary", gender_pronoun_name="They/Them"),
-        SimpleNamespace(cm_id=1000012, gender_identity_name="", gender_pronoun_name=""),
+        SimpleNamespace(
+            id="pp0000000000011", cm_id=1000011, gender_identity_name="Non-binary", gender_pronoun_name="They/Them"
+        ),
+        SimpleNamespace(id="pp0000000000012", cm_id=1000012, gender_identity_name="", gender_pronoun_name=""),
     ]
     defs = MagicMock()
     defs.get_full_list.return_value = [
@@ -374,13 +376,10 @@ async def test_fetch_fa_contacts_reads_every_row_of_the_year_with_only_the_conta
         ),
         SimpleNamespace(id="fa0000000000002", person_id=0, expand={}),  # a row the sync has not stamped
     ]
-    handle = MagicMock()
-    handle.get_full_list.return_value = records
-    pb = MagicMock()
-    pb.collection.return_value = handle
+    pb = RecordingPb({"financial_aid_applications": records})
     contacts = await FinancialAidIntakeRepository(pb).fetch_fa_contacts(2027)
     assert contacts == [FaContact(1000011, 1000001, "Maria", "Garcia"), FaContact(0, 0, "", "")]
-    params = handle.get_full_list.call_args.kwargs["query_params"]
-    assert params["filter"] == "year = 2027"  # not is_applicant: a donation-only row names a household too
-    assert params["fields"] == "id,person_id,contact_first_name,contact_last_name,expand.household.cm_id"
-    assert params["expand"] == "household"
+    # Layer 1's read of the whole season, not only applicants: a donation-only row names a household too. Its
+    # projection holds FA_CONTACT_FIELDS and no other contact column (test_aid_sync_inputs pins it).
+    assert [f for c, f in pb.calls if c == "financial_aid_applications"] == ["year = 2027"]
+    assert FA_CONTACT_FIELDS == "id,person_id,contact_first_name,contact_last_name,expand.household.cm_id"

@@ -186,7 +186,7 @@ def test_a_campers_names_are_campminders_never_the_preferred_name() -> None:
 async def test_the_names_read_asks_persons_for_the_season_and_the_campers() -> None:
     persons, empty = MagicMock(), MagicMock()
     persons.get_full_list.return_value = [
-        SimpleNamespace(cm_id=1000011, first_name="Emma", last_name="Johnson", preferred_name="")
+        SimpleNamespace(id="pp0000000000011", cm_id=1000011, first_name="Emma", last_name="Johnson", preferred_name="")
     ]
     empty.get_full_list.return_value = []
     pb = MagicMock()

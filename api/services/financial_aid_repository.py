@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from collections.abc import Collection, Iterable, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Final
 
 from api.constants.collections import (
     AID_ATTRIBUTION_OVERRIDES,
@@ -25,7 +25,6 @@ from api.constants.collections import (
     AID_POSTINGS,
     AID_SOURCES,
     CAMP_SESSIONS,
-    FINANCIAL_AID_APPLICATIONS,
     FINANCIAL_TRANSACTIONS,
     HOUSEHOLD_COLUMNS,
     HOUSEHOLDS,
@@ -41,10 +40,9 @@ from bunking.financial_aid.change_log import COLLECTION as CHANGE_LOG
 
 PAGE_SIZE = 1000
 ID_CHUNK = 100
-# Households per fetch_fa_requests filter. Sized when a household's family filter was four terms (~145 characters):
-# eight kept one filter near 1,200 characters, well under the 3,500-character limit below. One query per household
-# instead cost ~65 ms each (SP6-core T7).
-HOUSEHOLD_CHUNK = 8
+# The FA mirror's per-program asks (fetch_fa_requests): the columns it reads off layer 1's mirror rows.
+_FA_ASKS = ("summer_amount_requested", "fc_amount_requested", "tbm_amount_requested")
+FA_REQUEST_FIELDS: Final = ",".join((*_FA_ASKS, "expand.household.cm_id"))
 # An email term is under 100 characters, so 25 keep a filter well below the 3,500-character limit below.
 USER_CHUNK = 25
 # PocketBase v0.40.4 refuses any filter over 3500 characters
@@ -281,25 +279,20 @@ class FinancialAidRepository:
         return out
 
     async def fetch_fa_requests(self, year: int, household_ids: Collection[int] | None = None) -> list[FaRequestRow]:
-        """The FA mirror's per-program asks: the season's, or only these households' (spec §10: a single
-        household's read must not pay for the whole season's mirror)."""
-        asked = (
-            f"year = {int(year)} && (summer_amount_requested > 0 || fc_amount_requested > 0"
-            " || tbm_amount_requested > 0)"
-        )
-        params = {"expand": "household", "sort": STABLE_SORT}
-        if household_ids is None:
-            rows = await self._page(FINANCIAL_AID_APPLICATIONS, {"filter": asked, **params})
-        else:
-            rows = []
-            wanted = _positive_unique(household_ids)
-            for start in range(0, len(wanted), HOUSEHOLD_CHUNK):
-                terms = _any_of("household.cm_id", wanted[start : start + HOUSEHOLD_CHUNK])
-                rows += await self._page(FINANCIAL_AID_APPLICATIONS, {"filter": f"{asked} && ({terms})", **params})
+        """The FA mirror's per-program asks (any ask > 0; an unset one is 0): the season's, or only these households'
+        (through the row's household relation), in PocketBase-id order. A row whose household does not expand is left
+        out. Answered from layer 1 (aid_sync_inputs), and no filter goes through the household relation. A deliberate
+        trade: on a cold layer 1, a single household's read waits on the whole season's fill rather than paying for a
+        small read of its own; warm, it reads nothing."""
+        wanted = None if household_ids is None else set(_positive_unique(household_ids))
+        if wanted is not None and not wanted:
+            return []
         out: list[FaRequestRow] = []
-        for r in rows:
+        for r in (await aid_sync_inputs(self.pb, year)).fa_applications:
+            if not any(float(getattr(r, ask, 0) or 0) > 0 for ask in _FA_ASKS):
+                continue
             household = (getattr(r, "expand", None) or {}).get("household")
-            if household is None:
+            if household is None or (wanted is not None and int(household.cm_id) not in wanted):
                 continue
             out.append(
                 FaRequestRow(

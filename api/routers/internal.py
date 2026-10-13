@@ -36,7 +36,7 @@ from bunking.sync.bunk_request_processor.process_requests import (
 from bunking.sync.bunk_request_processor.shared.constants import validate_source_fields
 from pocketbase import PocketBase
 
-from ..dependencies import pb
+from ..dependencies import aid_inputs_cache, pb
 
 logger = get_logger(__name__)
 
@@ -260,6 +260,12 @@ async def run_financial_aid_intake(body: FinancialAidIntakeRun) -> dict[str, int
     which the report returns (sub-project 4a). `warnings` lists season-level
     notes (a weighted yes/no answer no applicant gave); they never hold a request.
     """
+    # Never a warm layer 1 (aid_sync_inputs). The Go FA sync calls this right after writing the mirror and BEFORE its
+    # job-completion cache clear, so the season layer 1 holds could predate the mirror this rebuild must see: a new
+    # applicant would reach intake a sync late and a deleted row would linger. Clearing the season's fill first makes
+    # the build read the mirror as it is now; the generation bump also keeps a fill already in flight, holding the
+    # old mirror, from being stored.
+    aid_inputs_cache.invalidate_read("load", body.year)
     service = FinancialAidIntakeService(FinancialAidIntakeRepository(pb))
     return asdict(await service.build(body.year))
 

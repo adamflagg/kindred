@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter
+from functools import partial
 from types import SimpleNamespace
 from typing import Any
 
@@ -24,6 +25,14 @@ from api.services.financial_aid_decisions_repository import FinancialAidDecision
 from api.services.financial_aid_decisions_service import FinancialAidDecisionsService
 from api.services.financial_aid_grants_repository import GrantsRepository
 from api.services.financial_aid_grants_service import GrantsService
+from api.services.financial_aid_household_page import household_labels
+from api.services.financial_aid_intake_repository import FinancialAidIntakeRepository
+from api.services.financial_aid_jump_index import JumpIndexRepository, JumpIndexService
+from api.services.financial_aid_ledger_service import FinancialAidLedgerService
+from api.services.financial_aid_repository import FinancialAidRepository
+from api.services.financial_aid_rules_service import AidRulesRepository, FinancialAidRulesService
+from api.services.financial_aid_today import TodayService
+from api.services.financial_aid_today_week import TodayWeekService
 from bunking.financial_aid.change_log import AidWrite
 from tests.unit.api.services.decisions_fakes import FakeRules, approved
 from tests.unit.api.services.financial_aid_fakes import SESSIONS, YEAR
@@ -31,6 +40,8 @@ from tests.unit.api.services.pb_recording import HEAVY, RecordingPb
 
 COLD_BUDGET = 100
 AFTER_WRITE_BUDGET = 20
+# The FA mirror is sync-written only, so layer 1 holds it: a rebuild after a write and a warm page set read it never.
+FA_MIRROR = "financial_aid_applications"
 
 HOUSEHOLDS = 200  # applicant households: 100 with two campers, 100 with one
 CAMPERS = 300  # one request each
@@ -253,6 +264,7 @@ async def test_a_rebuild_after_a_write_reads_no_heavy_table(season_pb: Recording
     await _service(season_pb, cached=True).season(YEAR)
     assert len(season_pb.calls) < AFTER_WRITE_BUDGET, _summary(season_pb)
     assert sum(season_pb.count(c) for c in HEAVY) == 0, _summary(season_pb)
+    assert season_pb.count(FA_MIRROR) == 0, _summary(season_pb)
 
 
 @pytest.mark.asyncio
@@ -262,3 +274,58 @@ async def test_a_cached_season_reads_nothing(season_pb: RecordingPb) -> None:
     season_pb.reset()
     await _service(season_pb, cached=True).season(YEAR)
     assert season_pb.calls == []
+
+
+# --- the Requests page set, warm ------------------------------------------------------------------------------------
+
+
+async def _requests_page_set(pb: RecordingPb) -> None:
+    """The reads the Requests page fires that reach PocketBase, through the services its endpoints build
+    (api/routers/financial_aid.py): grid, budget, remaining, today (every section), today/week (every section) and
+    the jump index. Config, definitions and rules/approved read no aid table and are left out. Rules are FakeRules,
+    as in _service; the rules DRAFT reads go through the real rules service, which finds none."""
+    store = FinancialAidDecisionsRepository(pb)
+    store.commit = _discard_commit  # type: ignore[method-assign, assignment]  # see _service
+    labels = partial(household_labels, FinancialAidRepository(pb))
+    decisions = FinancialAidDecisionsService(
+        store,
+        FakeRules(approved()),
+        GrantsService(GrantsRepository(pb)).register_rows,
+        labels=labels,
+        season_cache=aid_season_cache,
+    )
+    await decisions.grid(YEAR)
+    await decisions.budget(YEAR)
+    await decisions.remaining(YEAR)
+    drafts = FinancialAidRulesService(AidRulesRepository(pb))
+    await TodayService(
+        store=store,
+        pricing=FakeRules(approved()),
+        rules=drafts,
+        grants=GrantsService(GrantsRepository(pb)),
+        ledger=FinancialAidLedgerService(FinancialAidRepository(pb)),
+        intake=FinancialAidIntakeRepository(pb),
+        to_place=store,
+        labels=labels,
+        season_cache=aid_season_cache,
+    ).read(YEAR, casework=True, finance=True, development=True, view=True)
+    await TodayWeekService(
+        store=store,
+        grants=GrantsService(GrantsRepository(pb)),
+        pricing=FakeRules(approved()),
+        labels=labels,
+        rules=drafts,
+        season_cache=aid_season_cache,
+    ).read(YEAR, casework=True, finance=True, development=True)
+    await JumpIndexService(JumpIndexRepository(pb)).read(YEAR)
+
+
+@pytest.mark.asyncio
+async def test_a_warm_requests_page_set_reads_the_fa_mirror_never(season_pb: RecordingPb) -> None:
+    """Warm: layer 1 and the season cache already filled, as after the background warm. The FA mirror is
+    sync-written only, so layer 1 holds it and no page read pays for it."""
+    await _requests_page_set(season_pb)
+    season_pb.reset()
+    await _requests_page_set(season_pb)
+    assert season_pb.count(FA_MIRROR) == 0, _summary(season_pb)
+    assert len(season_pb.calls) <= 37, _summary(season_pb)
