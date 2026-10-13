@@ -41,15 +41,26 @@ SCANNED_DIRS = ("api", "bunking", "scripts")
 # just before its opening quote, or just after its closing quote (fexpr accepts
 # the literal on either side).
 _OPERATOR = r"\??(?:!=|!~|>=|<=|=|~|>|<)"
-OPERATOR_BEFORE = re.compile(_OPERATOR + r"\s*$")
-OPERATOR_AFTER = re.compile(r"^\s*" + _OPERATOR)
-# The unquoted case is judged on the full `field <op> ` shape, because prose
-# (`key={value}`, `a -> {b}`, `H = {n}`) reads like a bare operator.
-FIELD_OPERATOR_BEFORE = re.compile(r"(?:^|[\s(&|])[a-z_@][a-z0-9_.@]*\s+" + _OPERATOR + r"\s*$")
 
 # Stands in for an interpolation or a closed literal in the text outside quotes,
 # so an operator is only "before" a value when nothing else sits between them.
 PLACEHOLDER = "\x00"
+# Stands in for a hole that supplies the operator itself (`{field} {op} "..."`).
+# It is a code-chosen token, not judged, but the hole after it is a value.
+OPERATOR_HOLE = "\x01"
+OPERATOR_NAMES = re.compile(r"^(?:op|operator|\w+_op|\w+_operator|cmp|comparator)$")
+
+_ANY_OPERATOR = r"(?:" + _OPERATOR + "|" + OPERATOR_HOLE + r")"
+OPERATOR_BEFORE = re.compile(_ANY_OPERATOR + r"\s*$")
+OPERATOR_AFTER = re.compile(r"^\s*" + _ANY_OPERATOR)
+# The unquoted case is judged on the full `field <op> ` shape, because prose
+# (`key={value}`, `a -> {b}`, `H = {n}`) reads like a bare operator. The field
+# may be a hole too (`{field} = {value}`), as a helper that takes it does; that
+# counts only where a clause starts (string start, `(`, `&&`, `||`), because
+# `- {dep} = {value}` and `{a} + {b} = {total}` are prose.
+FIELD_OPERATOR_BEFORE = re.compile(
+    r"(?:(?:^|[\s(&|])[a-z_@][a-z0-9_.@]*|(?:^|\(|&&|\|\|)\s*" + PLACEHOLDER + r")\s+" + _ANY_OPERATOR + r"\s*$"
+)
 
 # A log line is not a filter, even when it reads like one (`field='{x}'`).
 LOG_METHODS = frozenset({"debug", "info", "warning", "warn", "error", "exception", "critical", "log"})
@@ -116,6 +127,15 @@ def _is_unquotable(node: ast.expr) -> bool:
     if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
         return _is_unquotable(node.operand)
     return bool(INT_NAMES.match(_terminal_name(node)))
+
+
+def _is_operator_hole(node: ast.expr) -> bool:
+    """A hole that supplies a comparison operator, by name or by value."""
+    if isinstance(node, ast.Constant):
+        return isinstance(node.value, str) and re.fullmatch(_OPERATOR, node.value.strip()) is not None
+    if isinstance(node, ast.IfExp):
+        return _is_operator_hole(node.body) and _is_operator_hole(node.orelse)
+    return bool(OPERATOR_NAMES.match(_terminal_name(node)))
 
 
 def _str_constant(node: ast.expr) -> str | None:
@@ -189,7 +209,9 @@ def _template(node: ast.expr) -> Template | None:
         left, right = _template(node.left), _template(node.right)
         if left is None and right is None:
             return None
-        return (left if left is not None else [Hole(node.left)]) + (right if right is not None else [Hole(node.right)])
+        head: Template = left if left is not None else [Hole(node.left)]
+        tail: Template = right if right is not None else [Hole(node.right)]
+        return head + tail
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mod) and (fmt := _str_constant(node.left)) is not None:
         return _percent_template(fmt, node.right)
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
@@ -233,14 +255,20 @@ def _template_offenders(template: Template) -> list[ast.expr]:
                 literal_holes.append(item)
                 escaped = False
                 continue
+            marker = OPERATOR_HOLE if _is_operator_hole(item.node) else PLACEHOLDER
+            if closed is not None:
+                trailing += marker
             settle_closed()
+            if marker == OPERATOR_HOLE:
+                outside += marker
+                continue
             if (
                 FIELD_OPERATOR_BEFORE.search(outside)
                 and not item.numeric
                 and not (_is_unquotable(item.node) and not item.spec)
             ):
                 offenders.append(item.node)
-            outside += PLACEHOLDER
+            outside += marker
             continue
         for ch in item:
             if quote is not None:
@@ -300,8 +328,8 @@ def unescaped_filter_interpolations(source: str) -> list[int]:
             for kw in node.keywords:
                 visit(kw.value)
             return
-        for child in ast.iter_child_nodes(node):
-            visit(child)
+        for sub in ast.iter_child_nodes(node):
+            visit(sub)
 
     visit(ast.parse(source))
     return sorted({node.lineno for node in offenders})
@@ -368,6 +396,11 @@ def test_no_filter_interpolates_an_unescaped_value() -> None:
         # A filter nested inside a log call is still a filter.
         "logger.info(pb.get(f'id = \"{x}\"'))",
         "logger.info('n=%s', pb.collection('c').get_list(1, 1, {'filter': f'id = \"{rid}\"'}))",
+        # The field or the operator is itself a hole: the value is still a value.
+        "f'{field} {op} \"{scenario_id}\"'",
+        "f'{field} != \"{x}\"'",
+        "f'year = {year} && {field} {op} \"{x}\"'",
+        "f'(name {op} \"{x}\")'",
     ],
 )
 def test_guard_flags_an_unescaped_quoted_value(snippet: str) -> None:
@@ -394,6 +427,7 @@ def test_guard_flags_an_unescaped_quoted_value(snippet: str) -> None:
         '"year = %d" % year',
         '"(" + " || ".join(terms) + ")"',
         "f'Found \"{name}\" in {count} rows'",
+        "f'Found {count} {kind} for \"{name}\"'",
     ],
 )
 def test_guard_passes_escaped_or_unquoted_values(snippet: str) -> None:
@@ -411,6 +445,11 @@ def test_guard_passes_escaped_or_unquoted_values(snippet: str) -> None:
         "'scenario = {}'.format(scenario_id)",
         "f'flag = {str(flag).lower()}'",
         "f'cm_id = {sid}'",
+        # The field or the operator is itself a hole.
+        "{'filter': f'{field} = {scenario_id}'}",
+        "f'{a} {op} {b}'",
+        "f' && {field} = {sid}'",
+        "f'({field} >= {at})'",
     ],
 )
 def test_guard_flags_an_unquoted_value_that_is_not_an_int(snippet: str) -> None:
@@ -428,6 +467,12 @@ def test_guard_flags_an_unquoted_value_that_is_not_an_int(snippet: str) -> None:
         "f'cm_id = {int(sid)}'",
         "f\"phase3_triggered = {'true' if flag else 'false'}\"",
         "constraint_logger.log_feasibility_warning(f'capacity >= {group_size}')",
+        # A hole field or operator holds the value to the same rule.
+        "f'{field} = {int(i)}'",
+        "f' && {field} = {int(session_cm_id)}'",
+        "f'{a} {op} {int(b)}'",
+        "f'{field} ~ \"{pb_escape(needle)}\"'",
+        "f'{field} {op} \"{pb_escape(x)}\"'",
     ],
 )
 def test_guard_passes_an_unquoted_int(snippet: str) -> None:
