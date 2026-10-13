@@ -15,7 +15,9 @@ from api.schemas.financial_aid import (
     OverrideRow,
 )
 from api.services import financial_aid_repository
-from api.services.financial_aid_repository import HOUSEHOLD_CHUNK, FinancialAidRepository
+from api.services.financial_aid_repository import FinancialAidRepository
+from tests.unit.api.services.pb_recording import RecordingPb
+from tests.unit.api.services.test_aid_pb_budget import _RELATION_PATH
 
 
 def _pb(rows: list[object] | None = None) -> tuple[MagicMock, list[dict[str, object]]]:
@@ -148,7 +150,7 @@ async def test_fa_requests_take_the_household_cm_id_from_the_expanded_relation()
         tbm_amount_requested=None,
         expand={"household": SimpleNamespace(cm_id=100)},
     )
-    pb, _ = _pb([row])
+    pb = RecordingPb({"financial_aid_applications": [row]})
     got = await FinancialAidRepository(pb).fetch_fa_requests(2026)
     assert [(r.household_cm_id, r.summer, r.family_camp, r.bmitzvah) for r in got] == [(100, 1200.0, 0.0, 0.0)]
 
@@ -164,30 +166,18 @@ async def test_user_names_read_only_people_and_only_their_names() -> None:
 
 
 @pytest.mark.asyncio
-async def test_fa_requests_for_some_households_reads_only_theirs() -> None:
-    """Spec §10's known cost: /households/{id} re-read the whole season's FA mirror on every call."""
-    pb, calls = _pb([])
-    await FinancialAidRepository(pb).fetch_fa_requests(2026, [100, 200])
-    (call,) = calls
-    assert "(household.cm_id = 100 || household.cm_id = 200)" in str(call["filter"])
-    assert str(call["filter"]).startswith("year = 2026 && ")
-
-
-@pytest.mark.asyncio
-async def test_fa_requests_for_many_households_are_chunked_and_concatenated() -> None:
-    """More households than one HOUSEHOLD_CHUNK make several reads, each under the filter limit, whose rows join."""
-    row = SimpleNamespace(
-        summer_amount_requested=1200,
-        fc_amount_requested=0,
-        tbm_amount_requested=None,
-        expand={"household": SimpleNamespace(cm_id=100)},
-    )
-    pb, calls = _pb([row])
-    ids = [1_000_000 + i for i in range(HOUSEHOLD_CHUNK * 2 + 1)]
-    got = await FinancialAidRepository(pb).fetch_fa_requests(2026, ids)
-    assert len(calls) == 3
-    assert all(len(str(c["filter"])) <= 3500 for c in calls)
-    assert len(got) == 3  # one fake row per call, concatenated
+async def test_fa_requests_for_some_households_read_no_mirror_of_their_own() -> None:
+    """Spec §10's known cost: /households/{id} re-read the whole season's FA mirror on every call. Layer 1
+    (aid_sync_inputs) holds the season's mirror, so a household's asks cost one shared read per fill, never a
+    filter through the household relation, and nothing once the fill is warm."""
+    pb = RecordingPb()
+    repo = FinancialAidRepository(pb)
+    await repo.fetch_fa_requests(2026, [100, 200])
+    assert pb.count("financial_aid_applications") == 1
+    assert not [f for _, f in pb.calls if _RELATION_PATH.search(f)]
+    pb.reset()
+    await repo.fetch_fa_requests(2026, list(range(1_000_000, 1_000_017)))
+    assert pb.calls == []
 
 
 @pytest.mark.asyncio

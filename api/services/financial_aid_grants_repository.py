@@ -5,18 +5,28 @@ commit_aid_writes in the service."""
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Final
 
 from api.constants.collections import (
     AID_GRANTS,
     AID_POSTINGS,
     AID_REQUESTS,
-    FINANCIAL_AID_APPLICATIONS,
 )
 from api.services.aid_build_reads import in_build, shared_read
+from api.services.aid_sync_inputs import aid_sync_inputs
 from api.services.financial_aid_repository import FinancialAidRepository
 from api.services.lodging_repository import STABLE_SORT
 from api.utils.pb_filters import pb_escape
+
+# The columns fetch_grant_answers' callers read off its rows (layer 1's projection includes them).
+GRANT_ANSWER_FIELDS: Final = "person_id,one_happy_camper,synagogue_grant,expand.household.cm_id"
+
+
+def _may_say_yes(answer: Any) -> bool:
+    """PocketBase's `answer ~ 'yes'`: SQLite's LIKE '%yes%', which folds ASCII letters only. `lower()` matches it for
+    this pattern (no non-ASCII letter lowercases to y, e, or s); never `casefold()`, which reads 'ſ' as 's' and would
+    widen the match."""
+    return "yes" in str(answer or "").lower()
 
 
 class GrantsRepository(FinancialAidRepository):
@@ -57,15 +67,9 @@ class GrantsRepository(FinancialAidRepository):
         )
 
     async def fetch_grant_answers(self, year: int) -> list[Any]:
-        """FA mirror rows whose One Happy Camper or synagogue-grant answer may say yes (D56). The
-        mirror, never person_custom_values (spec §10). `~` is a loose contains; the service parses
-        the answer strictly."""
-        return await self._page(
-            FINANCIAL_AID_APPLICATIONS,
-            {
-                "filter": f"year = {int(year)} && (one_happy_camper ~ 'yes' || synagogue_grant ~ 'yes')",
-                "expand": "household",
-                "fields": "person_id,one_happy_camper,synagogue_grant,expand.household.cm_id",
-                "sort": STABLE_SORT,
-            },
-        )
+        """FA mirror rows whose One Happy Camper or synagogue-grant answer may say yes (D56), in PocketBase-id order.
+        The mirror, never person_custom_values (spec §10). A loose contains, as the `~ 'yes'` filter it replaces was;
+        the service parses the answer strictly. Answered from layer 1 (aid_sync_inputs): the rows are shared, so
+        read-only, and carry GRANT_ANSWER_FIELDS among the other readers' columns."""
+        rows = (await aid_sync_inputs(self.pb, year)).fa_applications
+        return [r for r in rows if _may_say_yes(r.one_happy_camper) or _may_say_yes(r.synagogue_grant)]

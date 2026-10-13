@@ -46,7 +46,7 @@ def _int(value: Any) -> int:
 
 class JumpIndexRepository(FinancialAidRepository):
     async def fetch_fa_contacts(self, year: int) -> list[FaContact]:
-        return await read_fa_contacts(self._page, year)
+        return await read_fa_contacts(self.pb, year)
 
     async def fetch_touches(self, year: int) -> list[Touch]:
         """The season's aid activity, five reads at once, each with only the ids it needs."""
