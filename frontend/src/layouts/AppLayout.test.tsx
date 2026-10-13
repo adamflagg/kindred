@@ -107,9 +107,6 @@ vi.mock('../components/BrandedLogo', () => ({
 }))
 
 vi.mock('../components/VersionInfo', () => ({
-  VersionInfo: ({ className = '' }: { className?: string }) => (
-    <div data-testid="version-info" className={className} />
-  ),
   VersionMenuRow: ({ onNavigate }: { onNavigate?: () => void }) => (
     <button data-testid="version-menu-row" onClick={onNavigate} />
   ),
@@ -224,7 +221,6 @@ describe('View as switcher', () => {
     renderAppLayout()
     fireEvent.click(screen.getByText('Jane Smith'))
     expect(screen.getByText('My Account')).toBeInTheDocument()
-    expect(screen.queryByTestId('version-info')).toBeNull()
     expect(screen.queryByTestId('version-menu-row')).toBeNull()
   })
 

@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
 import { pb } from '../lib/pocketbase'
 import { parseVersion } from '../utils/versionParser'
-import { VersionInfo, VersionMenuRow } from './VersionInfo'
+import { VersionMenuRow } from './VersionInfo'
 
 vi.mock('../lib/pocketbase', () => ({
   pb: { authStore: { token: 'test-jwt', clear: vi.fn() }, send: vi.fn() },
@@ -14,7 +14,7 @@ vi.mock('../contexts/AuthContext', () => ({
 }))
 
 /**
- * Tests for version parsing and VersionInfo display.
+ * Tests for version parsing and the Help-menu version row.
  *
  * Version formats from CD pipeline:
  * - Clean tag: "v0.8.0" (release build)
@@ -121,48 +121,6 @@ afterEach(() => {
   vi.unstubAllEnvs()
 })
 
-describe('VersionInfo', () => {
-  it('should render release version with link to release page', () => {
-    mockVersion('v0.8.0')
-    render(<VersionInfo />)
-    const link = screen.getByRole('link')
-    expect(link).toHaveTextContent('Kindred v0.8.0')
-    expect(link).toHaveAttribute('href', 'https://github.com/adamflagg/kindred/releases/tag/v0.8.0')
-  })
-
-  it('should render describe version with tag linking to release and +N linking to diff', () => {
-    mockVersion('v0.7.0-5-gabc1234')
-    render(<VersionInfo />)
-    const links = screen.getAllByRole('link')
-    expect(links).toHaveLength(2)
-    expect(links[0]).toHaveTextContent('Kindred v0.7.0')
-    expect(links[0]).toHaveAttribute(
-      'href',
-      'https://github.com/adamflagg/kindred/releases/tag/v0.7.0'
-    )
-    expect(links[1]).toHaveTextContent('+5')
-    expect(links[1]).toHaveAttribute(
-      'href',
-      'https://github.com/adamflagg/kindred/compare/v0.7.0...abc1234'
-    )
-  })
-
-  it('should render nothing for "dev"', () => {
-    mockVersion('dev')
-    const { container } = render(<VersionInfo />)
-    expect(screen.queryByRole('link')).not.toBeInTheDocument()
-    // Container div still renders but is empty
-    expect(container.firstChild).toBeEmptyDOMElement()
-  })
-
-  it('should render nothing for empty version', () => {
-    mockVersion('')
-    const { container } = render(<VersionInfo />)
-    expect(screen.queryByRole('link')).not.toBeInTheDocument()
-    expect(container.firstChild).toBeEmptyDOMElement()
-  })
-})
-
 describe('VersionMenuRow', () => {
   const REPO = 'https://github.com/adamflagg/kindred'
   let fetchSpy: MockInstance<typeof fetch>
@@ -211,6 +169,18 @@ describe('VersionMenuRow', () => {
     }
     expect(container.querySelector('.bg-border.my-2.h-px')).not.toBeNull()
     expect(screen.queryByText(/Kindred/)).toBeNull()
+  })
+
+  it('makes the whole row clickable: the tag link fills the row up to the compare link', () => {
+    mockVersion('v6.4.0-248-gc35904c')
+    renderRow(<VersionMenuRow />)
+    const tag = screen.getByRole('link', { name: 'v6.4.0' })
+    const compare = screen.getByRole('link', { name: /\+248/ })
+    expect(tag).toHaveClass('flex-1')
+    expect(compare).not.toHaveClass('flex-1')
+    // The hover background is on the row, so the tag link must span it.
+    expect(tag.parentElement).toHaveClass('hover:bg-muted/50')
+    expect(tag.parentElement).toContainElement(compare)
   })
 
   it('shows "release" on a clean tag, with only the release link', () => {

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/camp/kindred/pocketbase/version"
 	"github.com/pocketbase/pocketbase/core"
 	pbtests "github.com/pocketbase/pocketbase/tests"
 )
@@ -177,8 +178,10 @@ func feedbackForm(t testing.TB, extra map[string]string) (body *bytes.Buffer, co
 }
 
 // TestHandleFeedbackVersions drives the real route: the issue it files names
-// every component version the client knew, and an old client that sends only
-// app_version still files an issue.
+// the frontend and api versions the client knew, and PocketBase's own version
+// from the server itself. A client-sent pocketbase_version is ignored (a tab
+// left open across a deploy would report a stale one), and an old client that
+// sends only app_version still files an issue.
 func TestHandleFeedbackVersions(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -187,24 +190,26 @@ func TestHandleFeedbackVersions(t *testing.T) {
 		absent  []string
 	}{
 		{
-			name: "current client sends all three",
+			name: "current client: pocketbase comes from the server, not the form",
 			extra: map[string]string{
 				"app_version":        "v6.4.0-240-gaaaaaaa",
 				"api_version":        "v6.4.0-248-gc35904c",
 				"pocketbase_version": "v6.4.0-245-gbbbbbbb",
 			},
-			wantVer: "- App Version: frontend v6.4.0-240-gaaaaaaa · api v6.4.0-248-gc35904c · pocketbase v6.4.0-245-gbbbbbbb",
+			wantVer: "- App Version: frontend v6.4.0-240-gaaaaaaa · api v6.4.0-248-gc35904c · pocketbase v6.4.0-250-gserverpb",
+			absent:  []string{"gbbbbbbb"},
 		},
 		{
 			name:    "old client sends only app_version",
 			extra:   map[string]string{"app_version": "v6.4.0-240-gaaaaaaa"},
-			wantVer: "- App Version: frontend v6.4.0-240-gaaaaaaa\n",
-			absent:  []string{"api ", "pocketbase "},
+			wantVer: "- App Version: frontend v6.4.0-240-gaaaaaaa · pocketbase v6.4.0-250-gserverpb\n",
+			absent:  []string{"api "},
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			var issueBody string
+			t.Setenv(version.EnvVar, "v6.4.0-250-gserverpb")
 			gh := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				var payload map[string]any
 				raw, _ := io.ReadAll(r.Body)

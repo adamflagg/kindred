@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/camp/kindred/pocketbase/version"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
 )
@@ -75,7 +76,9 @@ func HandleFeedback(e *core.RequestEvent) error {
 	appVersion := e.Request.FormValue("app_version")
 	// Optional: older clients send only app_version.
 	apiVersion := e.Request.FormValue("api_version")
-	pocketbaseVersion := e.Request.FormValue("pocketbase_version")
+	// PocketBase's own version is read here, never from the form: a browser
+	// tab left open across a deploy would report the previous image's.
+	pocketbaseVersion := version.Current()
 	timestamp := time.Now().UTC().Format(time.RFC3339)
 
 	// Extract user info from auth record

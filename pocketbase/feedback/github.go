@@ -32,7 +32,7 @@ type IssueParams struct {
 	Viewport          string
 	AppVersion        string // the frontend's
 	APIVersion        string // optional: absent from older clients
-	PocketBaseVersion string // optional: absent from older clients
+	PocketBaseVersion string // the server's own, never client-supplied
 	Timestamp         string
 	ScreenshotURL     string // Set after uploading screenshot
 }

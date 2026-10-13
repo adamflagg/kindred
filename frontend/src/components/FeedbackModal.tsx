@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Loader2, Camera } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -7,6 +7,7 @@ import { Modal } from './ui/Modal'
 import { pb } from '../lib/pocketbase'
 import { useAuth } from '../contexts/AuthContext'
 import { useDeployedVersions } from '../hooks/useDeployedVersions'
+import { queryKeys } from '../utils/queryKeys'
 
 const MAX_SCREENSHOT_SIZE = 5 * 1024 * 1024 // 5MB
 
@@ -27,6 +28,7 @@ interface FeedbackModalProps {
 export function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
   const { isLoading: isAuthLoading } = useAuth()
   const versions = useDeployedVersions()
+  const queryClient = useQueryClient()
   const [category, setCategory] = useState<Category | null>(null)
   const [description, setDescription] = useState('')
   const [screenshot, setScreenshot] = useState<File | null>(null)
@@ -42,10 +44,10 @@ export function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
       formData.append('browser', navigator.userAgent)
       formData.append('viewport', `${window.innerWidth}x${window.innerHeight}`)
       formData.append('app_version', versions.frontend)
-      // Each server's own version, when known: CD rebuilds only the images
-      // whose files changed, so they can differ from the frontend's.
+      // The api's own version, when known: CD rebuilds only the images whose
+      // files changed, so it can differ from the frontend's. PocketBase is not
+      // sent; the feedback handler states its own version server-side.
       if (versions.api) formData.append('api_version', versions.api)
-      if (versions.pocketbase) formData.append('pocketbase_version', versions.pocketbase)
 
       if (screenshot) {
         formData.append('screenshot', screenshot)
@@ -87,6 +89,8 @@ export function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
     if (isOpen) {
       resetForm()
       submitMutation.reset()
+      // A tab left open across a deploy holds a stale api version: re-read it.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.deployedVersion('api') })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen])

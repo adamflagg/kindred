@@ -21,20 +21,20 @@ function versionField(body: unknown, field: string): string | null {
   return typeof value === 'string' && value !== '' ? value : null
 }
 
-// A version is fixed for the life of the deploy: read it once per session.
-// Stale never, kept for the session, and no refetch on focus or reconnect.
-const ONCE_PER_SESSION = {
-  staleTime: Infinity,
-  gcTime: Infinity,
-  refetchOnWindowFocus: false,
-  refetchOnReconnect: false,
+// A version holds only until the next deploy, and a tab can outlive one. So it
+// goes stale after 5 minutes and is re-read when the window regains focus;
+// the feedback modal also forces a fresh api read when it opens.
+const FRESHNESS = {
+  staleTime: 5 * 60 * 1000,
+  refetchOnWindowFocus: true,
 } as const
 
 /**
  * The version each Kindred component was built at. CD rebuilds only the images
  * whose files changed and retags the rest, so after an api-only release the
  * frontend's baked version is older than the api's. Each server reports its
- * own; `newest` is what the Help menu shows, and feedback sends all three.
+ * own; `newest` is what the Help menu shows. Feedback sends the frontend's and
+ * the api's; PocketBase states its own, server-side.
  * On failure or while loading, a server's version is undefined and `newest`
  * falls back to the frontend's, so the row never disappears.
  */
@@ -51,7 +51,7 @@ export function useDeployedVersions(): DeployedVersions {
       return versionField((await res.json()) as ApiVersion, 'api')
     },
     enabled,
-    ...ONCE_PER_SESSION,
+    ...FRESHNESS,
   })
 
   const pocketbase = useQuery({
@@ -59,7 +59,7 @@ export function useDeployedVersions(): DeployedVersions {
     queryFn: async (): Promise<string | null> =>
       versionField(await pb.send('/api/custom/version', { method: 'GET' }), 'pocketbase'),
     enabled,
-    ...ONCE_PER_SESSION,
+    ...FRESHNESS,
   })
 
   const apiVersion = api.data ?? undefined

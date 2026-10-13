@@ -11,6 +11,7 @@ import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 
 import { pb } from '../lib/pocketbase'
+import { queryKeys } from '../utils/queryKeys'
 import { useDeployedVersions } from './useDeployedVersions'
 
 vi.mock('../lib/pocketbase', () => ({
@@ -104,7 +105,20 @@ describe('useDeployedVersions', () => {
     expect(result.current.newest).toBe(POCKETBASE)
   })
 
-  it('asks once per session: a second consumer and a remount reuse the answer', async () => {
+  it('goes stale after 5 minutes and refetches on window focus, so an open tab catches a deploy', async () => {
+    answer(API, POCKETBASE)
+    const { result } = renderHook(() => useDeployedVersions(), { wrapper })
+    await waitFor(() => expect(result.current.pocketbase).toBe(POCKETBASE))
+    for (const component of ['api', 'pocketbase'] as const) {
+      const options = client
+        .getQueryCache()
+        .find({ queryKey: queryKeys.deployedVersion(component) })?.observers[0]?.options
+      expect(options?.staleTime).toBe(5 * 60 * 1000)
+      expect(options?.refetchOnWindowFocus).toBe(true)
+    }
+  })
+
+  it('asks once per fresh window: a second consumer and a remount reuse the answer', async () => {
     answer(API, POCKETBASE)
     const first = renderHook(() => useDeployedVersions(), { wrapper })
     await waitFor(() => expect(first.result.current.api).toBe(API))

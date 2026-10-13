@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 import { FeedbackModal } from './FeedbackModal'
+import { queryKeys } from '../utils/queryKeys'
 
 // Mock pocketbase
 vi.mock('../lib/pocketbase', () => ({
@@ -274,24 +275,38 @@ describe('FeedbackModal', () => {
     return (options as { body: FormData }).body
   }
 
-  it('sends each server’s own version beside the frontend’s', async () => {
+  it('sends the frontend and api versions, but not PocketBase’s: the server states its own', async () => {
     vi.stubEnv('VITE_APP_VERSION', 'v6.4.0-240-gaaaaaaa')
     mockVersions.api = 'v6.4.0-248-gc35904c'
     mockVersions.pocketbase = 'v6.4.0-245-gbbbbbbb'
     const form = await submitAndReadForm()
     expect(form.get('app_version')).toBe('v6.4.0-240-gaaaaaaa')
     expect(form.get('api_version')).toBe('v6.4.0-248-gc35904c')
-    expect(form.get('pocketbase_version')).toBe('v6.4.0-245-gbbbbbbb')
+    expect(form.has('pocketbase_version')).toBe(false)
     vi.unstubAllEnvs()
   })
 
-  it('omits a server version it does not know, and still sends the frontend’s', async () => {
+  it('omits an api version it does not know, and still sends the frontend’s', async () => {
     vi.stubEnv('VITE_APP_VERSION', 'v6.4.0-240-gaaaaaaa')
-    mockVersions.pocketbase = 'v6.4.0-245-gbbbbbbb'
     const form = await submitAndReadForm()
     expect(form.get('app_version')).toBe('v6.4.0-240-gaaaaaaa')
     expect(form.has('api_version')).toBe(false)
-    expect(form.get('pocketbase_version')).toBe('v6.4.0-245-gbbbbbbb')
     vi.unstubAllEnvs()
+  })
+
+  it('refreshes the api version when it opens, so a tab left open across a deploy sends the current one', () => {
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+    const { rerender } = render(
+      <QueryClientProvider client={queryClient}>
+        <FeedbackModal isOpen={false} onClose={mockOnClose} />
+      </QueryClientProvider>
+    )
+    expect(invalidate).not.toHaveBeenCalled()
+    rerender(
+      <QueryClientProvider client={queryClient}>
+        <FeedbackModal isOpen onClose={mockOnClose} />
+      </QueryClientProvider>
+    )
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.deployedVersion('api') })
   })
 })
