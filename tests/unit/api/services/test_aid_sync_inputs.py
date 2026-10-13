@@ -228,8 +228,77 @@ async def test_the_warm_fills_the_configured_season_and_never_raises(monkeypatch
 
 
 @pytest.mark.asyncio
-async def test_startup_warms_layer_one_in_the_background() -> None:
+async def test_the_refresher_warms_at_once_then_clears_and_rewarms_every_ttl() -> None:
+    """A TTL expiry is a clear like any other, so the configured season rebuilds in the background after it too."""
+    warmed: list[int] = []
+    cleared_before_rewarm: list[bool] = []
+
+    async def fake_warm(year: int) -> None:
+        cleared_before_rewarm.append(aid_inputs_cache.get("load", year) is None)
+        warmed.append(year)
+        aid_inputs_cache.set("load", year, object())
+
+    async def fake_year() -> int:
+        return YEAR
+
+    task = asyncio.create_task(layer1.refresh_aid_inputs_forever(interval=0.01, warm=fake_warm, year=fake_year))
+    for _ in range(200):
+        await asyncio.sleep(0.005)
+        if len(warmed) >= 3:
+            break
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert warmed[:3] == [YEAR, YEAR, YEAR]
+    assert all(cleared_before_rewarm[:3])  # each re-warm starts from a cleared cache
+
+
+@pytest.mark.asyncio
+async def test_the_refresher_outlives_a_failed_pass() -> None:
+    passes = 0
+
+    async def failing_year() -> int:
+        nonlocal passes
+        passes += 1
+        raise RuntimeError("no season")
+
+    task = asyncio.create_task(layer1.refresh_aid_inputs_forever(interval=0.01, year=failing_year))
+    for _ in range(200):
+        await asyncio.sleep(0.005)
+        if passes >= 2:
+            break
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert passes >= 2
+
+
+@pytest.mark.asyncio
+async def test_a_pending_warm_is_cancelled_on_request(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def never_done() -> None:
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(layer1, "_warm_current_season", never_done)
+    schedule_aid_warm()
+    task = layer1._warm_task
+    assert task is not None
+    await asyncio.sleep(0)
+    layer1.cancel_aid_warm()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    layer1.cancel_aid_warm()  # nothing pending: a no-op
+
+
+@pytest.mark.asyncio
+async def test_startup_starts_the_refresher_and_shutdown_stops_it_and_any_warm() -> None:
     from api import main
+
+    started: list[asyncio.Task[None]] = []
+
+    def fake_start() -> asyncio.Task[None]:
+        task = asyncio.create_task(asyncio.sleep(3600))
+        started.append(task)
+        return task
 
     settings = SimpleNamespace(skip_pb_auth=False, pocketbase_url="http://pb.invalid")
     with (
@@ -239,10 +308,64 @@ async def test_startup_warms_layer_one_in_the_background() -> None:
         patch.object(main, "ConfigLoader", MagicMock()),
         patch.object(main, "close_connection", MagicMock()),
         patch.object(main, "start_lodging_cache_refresher", MagicMock(return_value=None)),
-        patch.object(main, "schedule_aid_warm") as warm,
+        patch.object(main, "start_aid_inputs_refresher", side_effect=fake_start),
+        patch.object(main, "cancel_aid_warm") as cancel_warm,
     ):
         async with main.lifespan(MagicMock()):
-            warm.assert_called_once()
+            assert len(started) == 1
+            assert not started[0].done(), "the warm must run in the background, not block startup"
+        await asyncio.sleep(0)
+    assert started[0].cancelled()
+    cancel_warm.assert_called_once()
+
+
+# --- shared state ---------------------------------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_the_shared_lookups_are_read_only() -> None:
+    inputs = await aid_sync_inputs(parity_pb(), PARITY_YEAR)
+    for lookup in (
+        inputs.person_by_cm_id,
+        inputs.household_by_cm_id,
+        inputs.persons_by_household_id,
+        inputs.members_by_household,
+        inputs.attendees_by_person_cm_id,
+        inputs.equity_values_by_person_cm_id,
+    ):
+        with pytest.raises(TypeError):
+            lookup[0] = ()  # type: ignore[index]
+    assert all(isinstance(v, tuple) for v in inputs.members_by_household.values())
+
+
+@pytest.mark.asyncio
+async def test_the_cache_is_keyed_on_the_year_as_an_int() -> None:
+    pb = _recording_pb()
+    await aid_sync_inputs(pb, 2026.0)  # type: ignore[arg-type]  # a year that arrives as a float is the same season
+    pb.reset()
+    await aid_sync_inputs(pb, YEAR)
+    assert pb.calls == []
+
+
+@pytest.mark.asyncio
+async def test_every_expand_the_fill_asks_for_is_projected_to_named_columns() -> None:
+    """No whole related record sits in layer 1: each expanded relation names the columns its readers use."""
+    pb = parity_pb()
+    await aid_sync_inputs(pb, PARITY_YEAR)
+    for collection, params in pb.calls:
+        fields = str(params.get("fields", "")).split(",")
+        for relation in (r for r in str(params.get("expand", "")).split(",") if r):
+            assert any(f.startswith(f"expand.{relation}.") for f in fields), (collection, relation, fields)
+
+
+def test_the_fixture_reads_a_star_as_every_column_with_expands_projected() -> None:
+    pb = parity_pb()
+    rows = pb.collection("persons").get_full_list(
+        query_params={"filter": f"year = {PARITY_YEAR}", "expand": "household", "fields": "*,expand.household.cm_id"}
+    )
+    p1 = next(r for r in rows if r.cm_id == P1)
+    assert (p1.first_name, p1.birthdate) == ("Emma", "2012-04-09")
+    assert vars(p1.expand["household"]) == {"cm_id": H1}
 
 
 # --- the classification it rests on ------------------------------------------------------------------------------
@@ -251,9 +374,8 @@ async def test_startup_warms_layer_one_in_the_background() -> None:
 def _aid_write_targets() -> set[str]:
     """Every collection an AidWrite names as a Name or a constant, in the Camperships services."""
     services = ROOT / "api" / "services"
-    files = set(services.glob("financial_aid_*.py")) | set(services.glob("financial_aid_grants*.py"))
     targets: set[str] = set()
-    for path in sorted(files):
+    for path in sorted(services.glob("financial_aid_*.py")):
         for node in ast.walk(ast.parse(path.read_text())):
             if not isinstance(node, ast.Call):
                 continue
