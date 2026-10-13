@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 
 import { useAuth } from '../../contexts/AuthContext'
 import { pb } from '../../lib/pocketbase'
+import { aidRetry } from '../../services/camperships/aidRetry'
 import { queryKeys } from '../../utils/queryKeys'
 
 export interface CatalogSession {
@@ -44,6 +45,9 @@ function useCatalogQuery(year: number) {
         parentId: r.parent_id ?? 0,
       }))
     },
+    // Keyed under a prefix other surfaces share, so it misses the financial-aid retry default
+    // (utils/queryClient.ts) and names Camperships' rule itself.
+    retry: aidRetry,
     enabled: year > 0 && !isLoading,
   })
 }

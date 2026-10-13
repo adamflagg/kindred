@@ -3,16 +3,13 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import {
   compareKey,
   fetchAidScenarioCompare,
-  retryUnlessRefused,
   type CompareQuery,
 } from '../../services/camperships/aidApi'
 import { useAuth } from '../../contexts/AuthContext'
+import { aidRetry } from '../../services/camperships/aidRetry'
 import { queryKeys } from '../../utils/queryKeys'
 import { useApiWithAuth } from '../useApiWithAuth'
 import { useYear } from '../useCurrentYear'
-
-/** A refusal in the server's words answers at once. */
-const retry = retryUnlessRefused([404, 422])
 
 /**
  * The compare (spec §7.4; D38, D138; RPT-17, RPT-32). Waits for auth to settle; the rules permission (finance only, D76) is the caller's gate, so the tab
@@ -31,7 +28,7 @@ export function useAidScenarioCompare(
     queryKey: queryKeys.aidScenarioCompare(year, compareKey(query)),
     queryFn: () => fetchAidScenarioCompare(fetchWithAuth, year, query),
     enabled: enabled && year > 0 && !authLoading,
-    retry,
+    retry: aidRetry,
     // A tick or a request-set change keeps the last table on screen, marked stale, rather than a spinner.
     placeholderData: keepPreviousData,
   })

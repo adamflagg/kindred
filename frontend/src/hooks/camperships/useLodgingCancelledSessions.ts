@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 
 import { useAuth } from '../../contexts/AuthContext'
 import { pb } from '../../lib/pocketbase'
+import { aidRetry } from '../../services/camperships/aidRetry'
 import { queryKeys } from '../../utils/queryKeys'
 
 /**
@@ -25,6 +26,9 @@ export function useLodgingCancelledSessions(year: number): ReadonlySet<number> |
         })
       return new Set(rows.map((r) => r.session_cm_id))
     },
+    // Keyed under a prefix other surfaces share, so it misses the financial-aid retry default
+    // (utils/queryClient.ts) and names Camperships' rule itself.
+    retry: aidRetry,
     enabled: year > 0 && !isLoading,
   }).data
 }

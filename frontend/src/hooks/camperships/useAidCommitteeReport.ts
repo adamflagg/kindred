@@ -9,7 +9,7 @@ import { queryKeys } from '../../utils/queryKeys'
 import { useApiWithAuth } from '../useApiWithAuth'
 import { useYear } from '../useCurrentYear'
 import { usePermissions } from '../usePermissions'
-import { reportRetry } from './reportRetry'
+import { aidRetry } from '../../services/camperships/aidRetry'
 
 /**
  * The committee's year-over-year tables (spec §9.7; S4-2): one read, seasons 2022 to this one, P rows
@@ -27,6 +27,6 @@ export function useAidCommitteeReport(requestSet: AidRequestSet, enabled = true)
     queryKey: queryKeys.aidReport(year, 'committee', params),
     queryFn: () => fetchAidCommitteeReport(fetchWithAuth, year, params),
     enabled: enabled && year > 0 && !authLoading && hasPermission(Permission.FINANCIAL_AID_VIEW),
-    retry: reportRetry,
+    retry: aidRetry,
   })
 }

@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 
 import { useAuth } from '../../contexts/AuthContext'
 import { pb } from '../../lib/pocketbase'
+import { aidRetry } from '../../services/camperships/aidRetry'
 import { queryKeys } from '../../utils/queryKeys'
 import { orderSessions } from '../../utils/sessionOrder'
 
@@ -41,6 +42,9 @@ export function useAidSessionNames(year: number): ReadonlyMap<number, string> | 
       }))
       return new Map(ordered.map((s) => [s.cm_id, s.name] as const))
     },
+    // Keyed under a prefix other surfaces share, so it misses the financial-aid retry default
+    // (utils/queryClient.ts) and names Camperships' rule itself.
+    retry: aidRetry,
     enabled: year > 0 && !isLoading,
   }).data
 }

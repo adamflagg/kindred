@@ -6,16 +6,13 @@ import {
   fetchAidPromotionPreview,
   fitAidScenario,
   makeAidRulesDraft,
-  retryUnlessRefused,
 } from '../../services/camperships/aidApi'
 import type { ApiAidMakeRulesDraftIn, ApiAidRulesDocumentIn } from '../../types/api-types'
+import { aidRetry } from '../../services/camperships/aidRetry'
 import { invalidateAidRulesQueries, queryKeys } from '../../utils/queryKeys'
 import { useApiWithAuth } from '../useApiWithAuth'
 import { useYear } from '../useCurrentYear'
 import { usePermissions } from '../usePermissions'
-
-/** A refusal in the server's words (no such option, 404; nothing to change, 422) answers at once. */
-const retry = retryUnlessRefused([404, 422])
 
 export interface FitVars {
   readonly document: ApiAidRulesDocumentIn
@@ -54,7 +51,7 @@ export function useAidPromotionPreview(code: string | null) {
     queryFn: () => fetchAidPromotionPreview(fetchWithAuth, year, code ?? ''),
     enabled:
       year > 0 && !authLoading && hasPermission(Permission.FINANCIAL_AID_RULES) && code !== null,
-    retry,
+    retry: aidRetry,
   })
 }
 

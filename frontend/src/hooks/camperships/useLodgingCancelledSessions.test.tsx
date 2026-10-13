@@ -35,3 +35,40 @@ describe('useLodgingCancelledSessions (spec §5.3, open item 7)', () => {
     )
   })
 })
+
+describe('useLodgingCancelledSessions: a direct PocketBase read under a shared prefix, so it names aidRetry itself', () => {
+  // A client that would retry three times at once: only the hook's own rule stops it.
+  const retrying = () =>
+    new QueryClient({ defaultOptions: { queries: { retry: 3, retryDelay: 0 } } })
+  const answered = (status: number) => Object.assign(new Error('x'), { status })
+
+  it('reads a server fault once', async () => {
+    const client = retrying()
+    getFullList.mockClear()
+    getFullList.mockImplementation(() => Promise.reject(answered(500)))
+    renderHook(() => useLodgingCancelledSessions(2031), {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      ),
+    })
+    await waitFor(() =>
+      expect(client.getQueryState(queryKeys.weekendSessionsCancelled(2031))?.status).toBe('error')
+    )
+    expect(getFullList).toHaveBeenCalledTimes(1)
+  })
+
+  it("retries a dropped connection (PocketBase's status 0) once", async () => {
+    const client = retrying()
+    getFullList.mockClear()
+    getFullList.mockImplementation(() => Promise.reject(answered(0)))
+    renderHook(() => useLodgingCancelledSessions(2031), {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      ),
+    })
+    await waitFor(() =>
+      expect(client.getQueryState(queryKeys.weekendSessionsCancelled(2031))?.status).toBe('error')
+    )
+    expect(getFullList).toHaveBeenCalledTimes(2)
+  })
+})

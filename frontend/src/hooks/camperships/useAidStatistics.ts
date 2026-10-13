@@ -12,8 +12,8 @@ import { queryKeys } from '../../utils/queryKeys'
 import { useApiWithAuth } from '../useApiWithAuth'
 import { useYear } from '../useCurrentYear'
 import { usePermissions } from '../usePermissions'
-import { reportRetry } from './reportRetry'
 import { useAidAsOf } from './useAidAsOf'
+import { aidRetry } from '../../services/camperships/aidRetry'
 
 /**
  * Reports › Statistics' one read (spec §9.2; D21): the tier table, RPT-9, RPT-22 and RPT-23 for one
@@ -32,6 +32,6 @@ export function useAidStatistics(choice: StatisticsChoice) {
     queryKey: queryKeys.aidReport(year, 'statistics', params),
     queryFn: () => fetchAidStatistics(fetchWithAuth, year, params),
     enabled: year > 0 && !authLoading && hasPermission(Permission.FINANCIAL_AID_VIEW),
-    retry: reportRetry,
+    retry: aidRetry,
   })
 }

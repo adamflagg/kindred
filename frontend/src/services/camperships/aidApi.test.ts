@@ -5,7 +5,6 @@ import {
   fitAidScenario,
   hasStatus,
   keyAidAsk,
-  retryUnlessRefused,
   saveAidRulesSections,
   saveAidScenarioDraft,
   writeMessage,
@@ -33,24 +32,6 @@ describe('writeMessage', () => {
     expect(writeMessage([{ msg: 'Value error, ' }])).toBeNull()
     expect(writeMessage([{ msg: '' }])).toBeNull()
     expect(writeMessage({ message: '' })).toBeNull()
-  })
-})
-
-describe('retryUnlessRefused (Decision 30)', () => {
-  const refused = (status: number) => Object.assign(new Error('refused'), { status })
-
-  it('answers a refusal in the server words at once, and a lapsed sign-in too', () => {
-    const retry = retryUnlessRefused([404, 422])
-    expect(retry(0, refused(404))).toBe(false)
-    expect(retry(0, refused(422))).toBe(false)
-    expect(retry(0, refused(401))).toBe(false)
-  })
-
-  it("keeps the app's three retries for everything else", () => {
-    const retry = retryUnlessRefused([404])
-    expect(retry(0, refused(422))).toBe(true)
-    expect(retry(2, new Error('network'))).toBe(true)
-    expect(retry(3, new Error('network'))).toBe(false)
   })
 })
 

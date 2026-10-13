@@ -1,7 +1,7 @@
 /**
  * The Rules tab's two reads (spec §7.5; D39, D76). `useApiWithAuth` is NOT mocked: the header
- * assertion reads what reaches the network. The client keeps the app's own retry rule, so the test
- * proves a 404 ("no rules yet") answers at once while a 500 is still retried.
+ * assertion reads what reaches the network. The hook's own retry rule (aidRetry) applies, so the test
+ * proves a server answer (a 404 "no rules yet", a 500) is read once and a dropped connection twice.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { renderHook, waitFor } from '@testing-library/react'
@@ -76,11 +76,18 @@ describe('useAidApprovedRules (D76)', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1)
   })
 
-  it('still retries a server fault', async () => {
+  it('reads a server fault once: a 5xx is never retried (it would rebuild the season again)', async () => {
     fetchSpy.mockImplementation(() => Promise.resolve(new Response('', { status: 500 })))
     const { result } = renderHook(() => useAidApprovedRules(null), { wrapper })
     await waitFor(() => expect(result.current.error).not.toBeNull())
-    expect(fetchSpy).toHaveBeenCalledTimes(4)
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('retries a dropped connection once', async () => {
+    fetchSpy.mockImplementation(() => Promise.reject(new TypeError('Failed to fetch')))
+    const { result } = renderHook(() => useAidApprovedRules(null), { wrapper })
+    await waitFor(() => expect(result.current.error).not.toBeNull())
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
   })
 })
 

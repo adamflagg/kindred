@@ -8,7 +8,7 @@ import { queryKeys } from '../../utils/queryKeys'
 import { useApiWithAuth } from '../useApiWithAuth'
 import { useYear } from '../useCurrentYear'
 import { usePermissions } from '../usePermissions'
-import { reportRetry } from './reportRetry'
+import { aidRetry } from '../../services/camperships/aidRetry'
 
 const NO_PARAMS: Readonly<Record<string, string>> = {}
 
@@ -31,6 +31,6 @@ export function useAidDevelopment(column?: AsOfPick | null) {
     ),
     queryFn: () => fetchAidDevelopment(fetchWithAuth, year, asked),
     enabled: year > 0 && !authLoading && canOpenCamperships({ hasPermission }),
-    retry: reportRetry,
+    retry: aidRetry,
   })
 }

@@ -8,7 +8,7 @@ import { queryKeys } from '../../utils/queryKeys'
 import { useApiWithAuth } from '../useApiWithAuth'
 import { useYear } from '../useCurrentYear'
 import { usePermissions } from '../usePermissions'
-import { reportRetry } from './reportRetry'
+import { aidRetry } from '../../services/camperships/aidRetry'
 
 /**
  * ZIP codes' one read (spec §9.4; D90; owner ruling C): one group's two tables, live only. `group`
@@ -25,6 +25,6 @@ export function useAidZip(group: string | null) {
     queryKey: queryKeys.aidReport(year, 'zip', params),
     queryFn: () => fetchAidZip(fetchWithAuth, year, params),
     enabled: year > 0 && !authLoading && canOpenCamperships({ hasPermission }),
-    retry: reportRetry,
+    retry: aidRetry,
   })
 }
