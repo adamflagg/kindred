@@ -2,7 +2,8 @@
 # staff-guide PR (same branch name) once the guide's own `image.yml` workflow
 # run is green on the exact head (read via the Actions API, so the guide token
 # needs "Actions: Read"), or open a facts-sync PR if facts.json changed with no
-# pair.
+# pair. The same token also needs Actions write for release.yml, which starts
+# the guide's release-tag workflow (scripts/guide/release_tag.py).
 # Logic and tests: scripts/guide/lockstep.py, tests/unit/scripts/test_lockstep.py.
 #
 # This log is PUBLIC. Step env is printed in the log header, so it carries only
