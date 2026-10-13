@@ -6,7 +6,7 @@ the kindred PR that produced the merge commit, then:
 - merge-paired     exactly one OPEN guide PR, based on main, whose head branch
                    is the kindred PR's branch: catch it up with guide main,
                    write kindred main's tip facts onto it, wait for the guide's
-                   own `image` check on that exact head, then merge.
+                   own `image.yml` workflow run on that exact head, then merge.
 - open-facts-sync  no pair, but this commit changed scripts/guide/facts.json:
                    the same, on a `facts-sync/<sha7>` PR. A re-run reuses that
                    PR if it is still open; otherwise one is opened from main,
@@ -15,8 +15,11 @@ the kindred PR that produced the merge commit, then:
                    no same-repo kindred PR for this commit.
 - error            more than one open guide PR on the branch (exit 1, dry run too).
 
-Nothing reaches guide main without a green `image` check on the exact head:
-the merge passes --match-head-commit, so a push after the check cannot ride in.
+Nothing reaches guide main without a green `image.yml` workflow run on the
+exact head: the merge passes --match-head-commit, so a push after the run
+cannot ride in. The run is read through the Actions API (ruling D1-f): a
+fine-grained token can be granted "Actions: Read", while no fine-grained
+permission covers the check-runs endpoint.
 
 Runs for different merge SHAs may overlap (ruling D1-e), so what is written is
 state-based: the merge SHA decides the plan, but the facts copied and the
@@ -132,26 +135,29 @@ def _run_id(run: dict[str, Any]) -> int:
 def wait_for_check(
     repo: str,
     sha: str,
-    check_name: str = "image",
+    workflow_file: str = "image.yml",
     timeout_s: int = CHECK_TIMEOUT_S,
     poll_s: int = 20,
     *,
     env: Mapping[str, str] | None = None,
 ) -> str:
-    """Poll `repo`'s check runs on `sha` until `check_name` completes; return its conclusion.
+    """Poll `repo`'s `workflow_file` runs for head `sha` until the newest completes; return its conclusion.
 
-    With several runs of that name (a re-run, a second suite), the most recent
-    -- highest id -- decides. A failed gh call counts as "not ready yet" (a
-    transient API blip should not abort the wait). Raises TimeoutError once
-    `timeout_s` has passed, including when the check never appears.
+    Uses the Actions API (`actions/workflows/<file>/runs?head_sha=`), which a
+    fine-grained token reaches with "Actions: Read" (ruling D1-f). With several
+    runs on the head (a re-run, a second trigger), the most recent -- highest
+    id -- decides; until it is `completed`, keep polling. A failed gh call
+    counts as "not ready yet" (a transient API blip should not abort the wait).
+    Raises TimeoutError once `timeout_s` has passed, including when no run
+    ever appears.
     """
     run_env = env if env is not None else _env(os.environ.get("GUIDE_TOKEN", ""))
     cmd = [
         "gh",
         "api",
-        f"repos/{repo}/commits/{sha}/check-runs?check_name={check_name}",
+        f"repos/{repo}/actions/workflows/{workflow_file}/runs?head_sha={sha}",
         "--jq",
-        "[.check_runs[] | {id, name, status, conclusion}]",
+        "[.workflow_runs[] | {id, status, conclusion}]",
     ]
     deadline = time.monotonic() + timeout_s
     while True:
@@ -161,13 +167,13 @@ def wait_for_check(
                 runs = json.loads(result.stdout or "[]")
             except json.JSONDecodeError:
                 runs = []
-            named = [r for r in runs if isinstance(r, dict) and r.get("name") == check_name]
-            if named:
-                latest = max(named, key=_run_id)
+            runs = [r for r in runs if isinstance(r, dict)] if isinstance(runs, list) else []
+            if runs:
+                latest = max(runs, key=_run_id)
                 if latest.get("status") == "completed":
                     return str(latest.get("conclusion") or "unknown")
         if time.monotonic() >= deadline:
-            raise TimeoutError(check_name)
+            raise TimeoutError(workflow_file)
         time.sleep(poll_s)
 
 

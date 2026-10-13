@@ -106,7 +106,7 @@ def _completed(stdout: str, rc: int = 0) -> subprocess.CompletedProcess[str]:
 
 
 def test_wait_for_check_polls_until_the_check_completes(monkeypatch):
-    responses = iter([[], [{"name": "image", "status": "completed", "conclusion": "success"}]])
+    responses = iter([[], [{"status": "completed", "conclusion": "success"}]])
     monkeypatch.setattr(
         "scripts.guide.lockstep.subprocess.run", lambda *a, **k: _completed(json.dumps(next(responses)))
     )
@@ -114,44 +114,50 @@ def test_wait_for_check_polls_until_the_check_completes(monkeypatch):
     assert wait_for_check("owner/guide", "a" * 40, poll_s=0) == "success"
 
 
-def test_wait_for_check_ignores_other_check_names(monkeypatch):
-    responses = iter(
-        [
-            [{"name": "lint", "status": "completed", "conclusion": "failure"}],
-            [{"name": "image", "status": "completed", "conclusion": "success"}],
-        ]
-    )
-    monkeypatch.setattr(
-        "scripts.guide.lockstep.subprocess.run", lambda *a, **k: _completed(json.dumps(next(responses)))
-    )
-    monkeypatch.setattr("scripts.guide.lockstep.time.sleep", lambda s: None)
+def test_wait_for_check_reads_the_workflow_runs_for_the_exact_head(monkeypatch):
+    """D1-f: the Actions API (fine-grained PAT "Actions: Read"), not check-runs,
+    which no fine-grained permission grants."""
+    seen: list[list[str]] = []
+
+    def run(cmd, *a, **k):
+        seen.append(list(cmd))
+        return _completed(json.dumps([{"id": 1, "status": "completed", "conclusion": "success"}]))
+
+    monkeypatch.setattr("scripts.guide.lockstep.subprocess.run", run)
     assert wait_for_check("owner/guide", "a" * 40, poll_s=0) == "success"
+    assert seen[0][:2] == ["gh", "api"]
+    assert seen[0][2] == f"repos/owner/guide/actions/workflows/image.yml/runs?head_sha={'a' * 40}"
+    assert seen[0][seen[0].index("--jq") + 1] == "[.workflow_runs[] | {id, status, conclusion}]"
+    assert "check-runs" not in " ".join(seen[0])
+
+
+def test_wait_for_check_takes_the_workflow_file_by_keyword(monkeypatch):
+    seen: list[list[str]] = []
+
+    def run(cmd, *a, **k):
+        seen.append(list(cmd))
+        return _completed(json.dumps([{"id": 1, "status": "completed", "conclusion": "success"}]))
+
+    monkeypatch.setattr("scripts.guide.lockstep.subprocess.run", run)
+    assert wait_for_check("owner/guide", "a" * 40, workflow_file="other.yml", poll_s=0) == "success"
+    assert "/actions/workflows/other.yml/runs?" in seen[0][2]
+    params = inspect.signature(wait_for_check).parameters
+    assert params["workflow_file"].default == "image.yml"
+    assert "check_name" not in params
 
 
 def test_wait_for_check_returns_a_failing_conclusion(monkeypatch):
-    run = [{"name": "image", "status": "completed", "conclusion": "failure"}]
+    run = [{"status": "completed", "conclusion": "failure"}]
     monkeypatch.setattr("scripts.guide.lockstep.subprocess.run", lambda *a, **k: _completed(json.dumps(run)))
     assert wait_for_check("owner/guide", "a" * 40, poll_s=0) == "failure"
 
 
 def test_wait_for_check_times_out_on_a_never_completing_run(monkeypatch):
-    run = [{"name": "image", "status": "in_progress", "conclusion": None}]
+    run = [{"status": "in_progress", "conclusion": None}]
     monkeypatch.setattr("scripts.guide.lockstep.subprocess.run", lambda *a, **k: _completed(json.dumps(run)))
     monkeypatch.setattr("scripts.guide.lockstep.time.sleep", lambda s: None)
     with pytest.raises(TimeoutError):
         wait_for_check("owner/guide", "a" * 40, timeout_s=0, poll_s=0)
-
-
-def test_wait_for_check_asks_only_for_the_named_check(monkeypatch):
-    seen: list[list[str]] = []
-
-    def run(cmd, *a, **k):
-        seen.append(list(cmd))
-        return _completed(json.dumps([{"name": "image", "status": "completed", "conclusion": "success"}]))
-
-    monkeypatch.setattr("scripts.guide.lockstep.subprocess.run", run)
-    assert wait_for_check("owner/guide", "a" * 40, poll_s=0) == "success"
-    assert seen[0][2] == f"repos/owner/guide/commits/{'a' * 40}/check-runs?check_name=image"
 
 
 @pytest.mark.parametrize(
@@ -159,15 +165,15 @@ def test_wait_for_check_asks_only_for_the_named_check(monkeypatch):
     [
         (
             [
-                {"id": 11, "name": "image", "status": "completed", "conclusion": "failure"},
-                {"id": 12, "name": "image", "status": "completed", "conclusion": "success"},
+                {"id": 11, "status": "completed", "conclusion": "failure"},
+                {"id": 12, "status": "completed", "conclusion": "success"},
             ],
             "success",
         ),
         (
             [
-                {"id": 12, "name": "image", "status": "completed", "conclusion": "failure"},
-                {"id": 11, "name": "image", "status": "completed", "conclusion": "success"},
+                {"id": 12, "status": "completed", "conclusion": "failure"},
+                {"id": 11, "status": "completed", "conclusion": "success"},
             ],
             "failure",
         ),
@@ -180,8 +186,8 @@ def test_wait_for_check_uses_the_most_recent_run(monkeypatch, runs, expected):
 
 def test_wait_for_check_waits_on_a_newer_run_still_in_progress(monkeypatch):
     runs = [
-        {"id": 11, "name": "image", "status": "completed", "conclusion": "success"},
-        {"id": 12, "name": "image", "status": "in_progress", "conclusion": None},
+        {"id": 11, "status": "completed", "conclusion": "success"},
+        {"id": 12, "status": "in_progress", "conclusion": None},
     ]
     monkeypatch.setattr("scripts.guide.lockstep.subprocess.run", lambda *a, **k: _completed(json.dumps(runs)))
     monkeypatch.setattr("scripts.guide.lockstep.time.sleep", lambda s: None)
@@ -285,8 +291,8 @@ class FakeRun:
         if cmd[0] == "gh":
             if cmd[1] == "api" and "/commits/" in cmd[2] and cmd[2].endswith("/pulls"):
                 return "kindred-pulls"
-            if cmd[1] == "api" and "/check-runs" in cmd[2]:
-                return "check-runs"
+            if cmd[1] == "api" and "/actions/workflows/" in cmd[2]:
+                return "workflow-runs"
             return "gh " + " ".join(cmd[1:3])
         git = [c for c in cmd[1:] if not c.startswith("-c") and "credential" not in c and "=" not in c]
         sub = next(c for c in git if not c.startswith("-") and c != "-C")
@@ -341,8 +347,8 @@ class FakeRun:
                 out = (NEW_HEAD + "\n") if self.merging else ""
             else:
                 out = (NEW_HEAD if self.committed else START_HEAD) + "\n"
-        elif key == "check-runs":
-            out = json.dumps([{"name": "image", "status": "completed", "conclusion": self.conclusion}])
+        elif key == "workflow-runs":
+            out = json.dumps([{"id": 1, "status": "completed", "conclusion": self.conclusion}])
         elif key == "gh pr create":
             out = "https://github.com/owner/private-guide-repo/pull/77\n"
         elif key == "gh pr view":
@@ -550,8 +556,8 @@ def test_merge_paired_happy_path(monkeypatch, env, capsys):
     assert merge[merge.index("--body") + 1] == f"Paired-with: kindred@{MERGE_SHA}"
     assert merge[merge.index("-R") + 1] == GUIDE_REPO
 
-    check = fake.call("check-runs")[0]
-    assert f"repos/{GUIDE_REPO}/commits/{NEW_HEAD}/check-runs" in check[2]
+    check = fake.call("workflow-runs")[0]
+    assert check[2] == f"repos/{GUIDE_REPO}/actions/workflows/image.yml/runs?head_sha={NEW_HEAD}"
 
 
 # D1-e (b): content is state-based -- kindred main's TIP, not the merge commit.
@@ -667,7 +673,7 @@ def test_a_failed_merge_is_retried_from_a_fresh_main_merge(monkeypatch, env, cap
     assert len(fake.all("git clone")) == 2
     assert len([c for c in fake.all("git merge") if "--abort" not in c]) == 2
     assert len(fake.all("git fetch")) == 2, "the kindred tip is re-read each attempt"
-    assert len(fake.all("check-runs")) >= 2
+    assert len(fake.all("workflow-runs")) >= 2
     assert all(c[c.index("--branch") + 1] == BRANCH for c in fake.all("git clone"))
 
 
