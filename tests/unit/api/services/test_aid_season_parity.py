@@ -62,7 +62,7 @@ YEAR = SEASON_YEAR
 NOW = datetime(2027, 5, 1, 17, 0, tzinfo=UTC)
 # Layer 1's reads (aid_sync_inputs): a rebuild over a warm layer 1 makes none of them.
 LAYER_ONE: frozenset[str] = frozenset(
-    {"persons", "households", "attendees", "person_custom_values", "custom_field_defs"}
+    {"persons", "households", "attendees", "person_custom_values", "custom_field_defs", "financial_aid_applications"}
 )
 
 

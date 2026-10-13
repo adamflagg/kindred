@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from fastapi import FastAPI
@@ -40,3 +42,41 @@ def test_an_out_of_range_year_is_rejected() -> None:
     app = FastAPI()
     app.include_router(internal.router)
     assert TestClient(app).post("/api/internal/financial-aid/intake", json={"year": 1999}).status_code == 422
+
+
+def test_the_trigger_sees_the_mirror_the_same_sync_just_wrote() -> None:
+    """The Go FA sync calls this route right after writing the mirror and BEFORE its job-completion cache clear.
+
+    Layer 1 (aid_sync_inputs) holds the FA mirror, so a season it warmed earlier still holds the previous sync's
+    rows at that moment: the trigger must rebuild from the mirror as it is now, or a new applicant reaches intake a
+    sync late and a deleted row lingers."""
+    from api.services.financial_aid_intake_repository import FinancialAidIntakeRepository
+    from tests.unit.api.services.aid_parity_fixture import PARITY_YEAR, parity_pb
+
+    fake_pb = parity_pb()
+    seen: list[set[int]] = []
+
+    class _RecordingService:
+        def __init__(self, repo: FinancialAidIntakeRepository) -> None:
+            self.repo = repo
+
+        async def build(self, year: int) -> IntakeReport:
+            seen.append({r.person_cm_id for r in await self.repo.fetch_fa_rows(year)})
+            return IntakeReport(year, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+
+    app = FastAPI()
+    app.include_router(internal.router)
+    client = TestClient(app)
+    with patch.object(internal, "pb", fake_pb), patch.object(internal, "FinancialAidIntakeService", _RecordingService):
+        # A staff page warms layer 1 with the season as the previous sync left it.
+        warm = asyncio.run(FinancialAidIntakeRepository(fake_pb).fetch_fa_rows(PARITY_YEAR))
+        # The FA sync writes the mirror: a new applicant row lands.
+        mirror = fake_pb.tables["financial_aid_applications"]
+        template = next(r for r in mirror if r.is_applicant is True and int(r.year) == PARITY_YEAR)
+        new_cm = 4_242_424
+        mirror.append(SimpleNamespace(**{**vars(template), "id": "fanewapplicant1", "person_id": new_cm}))
+        # Its in-job trigger, before the completion clear.
+        assert client.post("/api/internal/financial-aid/intake", json={"year": PARITY_YEAR}).status_code == 200
+
+    assert new_cm not in {r.person_cm_id for r in warm}
+    assert new_cm in seen[0], "the intake rebuild read the previous sync's mirror from layer 1"

@@ -281,8 +281,9 @@ class FinancialAidRepository:
     async def fetch_fa_requests(self, year: int, household_ids: Collection[int] | None = None) -> list[FaRequestRow]:
         """The FA mirror's per-program asks (any ask > 0; an unset one is 0): the season's, or only these households'
         (through the row's household relation), in PocketBase-id order. A row whose household does not expand is left
-        out. Answered from layer 1 (aid_sync_inputs), so a single household's read no longer pays for a read of its
-        own (spec §10's concern), and no filter goes through the household relation."""
+        out. Answered from layer 1 (aid_sync_inputs), and no filter goes through the household relation. A deliberate
+        trade: on a cold layer 1, a single household's read waits on the whole season's fill rather than paying for a
+        small read of its own; warm, it reads nothing."""
         wanted = None if household_ids is None else set(_positive_unique(household_ids))
         if wanted is not None and not wanted:
             return []

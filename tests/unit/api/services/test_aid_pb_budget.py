@@ -328,3 +328,4 @@ async def test_a_warm_requests_page_set_reads_the_fa_mirror_never(season_pb: Rec
     season_pb.reset()
     await _requests_page_set(season_pb)
     assert season_pb.count(FA_MIRROR) == 0, _summary(season_pb)
+    assert len(season_pb.calls) <= 37, _summary(season_pb)
