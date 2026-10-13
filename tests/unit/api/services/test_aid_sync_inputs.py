@@ -10,8 +10,10 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import threading
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -103,6 +105,36 @@ async def test_concurrent_callers_share_one_fill() -> None:
     results = await asyncio.gather(*(aid_sync_inputs(pb, YEAR) for _ in range(3)))
     assert pb.count("persons") == 1
     assert results[0] is results[1] is results[2]
+
+
+@pytest.mark.asyncio
+async def test_a_cancelled_first_caller_does_not_cancel_the_shared_fill() -> None:
+    """A browser disconnect cancels its request; the fill other callers (and the season build) wait on must go on."""
+    release = threading.Event()
+
+    class _Gated(RecordingPb):
+        def collection(self, name: str) -> Any:
+            inner = super().collection(name)
+            read = inner.get_full_list
+
+            def gated(batch: int = 500, query_params: dict[str, Any] | None = None) -> list[Any]:
+                release.wait(timeout=10)
+                return read(batch=batch, query_params=query_params)
+
+            inner.get_full_list = gated  # type: ignore[method-assign]
+            return inner
+
+    gated_pb = _Gated(tables=_recording_pb().tables)
+    first = asyncio.create_task(aid_sync_inputs(gated_pb, YEAR))
+    await asyncio.sleep(0.05)
+    second = asyncio.create_task(aid_sync_inputs(gated_pb, YEAR))
+    await asyncio.sleep(0.05)
+    first.cancel()
+    await asyncio.sleep(0.05)
+    release.set()
+    inputs = await asyncio.wait_for(second, timeout=10)
+    assert isinstance(inputs, AidSyncInputs)
+    assert {c: gated_pb.count(c) for c in FILLED} == dict.fromkeys(FILLED, 1)
 
 
 def test_the_cache_is_the_configured_singleton() -> None:

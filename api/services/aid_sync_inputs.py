@@ -187,7 +187,9 @@ class _Loader:
 
 async def aid_sync_inputs(pb: Any, year: int) -> AidSyncInputs:
     """The season's sync-written inputs: cached per year, and filled once however many callers ask at once."""
-    return await _Loader(pb).load(int(year))  # the cache keys on the year's text: 2026 and 2026.0 are one season
+    # The cache keys on the year's text: 2026 and 2026.0 are one season. Shielded because the first caller's task runs
+    # the fill: a browser disconnect cancels that request, and must not cancel the fill every other waiter shares.
+    return await asyncio.shield(_Loader(pb).load(int(year)))
 
 
 # The in-flight background warm, if any, held as a strong reference (the event loop holds only a weak one), and
