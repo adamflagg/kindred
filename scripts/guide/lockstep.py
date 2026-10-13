@@ -3,12 +3,15 @@
 Runs from .github/workflows/guide-lockstep.yml on every push to main. It finds
 the kindred PR that produced the merge commit, then:
 
-- merge-paired     exactly one OPEN guide PR whose head branch is the kindred
-                   PR's branch: push this commit's facts onto it, wait for the
-                   guide's own `image` check on that exact head, then merge.
-- open-facts-sync  no pair, but scripts/guide/facts.json changed: open a sync
-                   PR on the guide carrying the new facts, then the same.
-- nothing          no pair and no facts change, or no kindred PR at all.
+- merge-paired     exactly one OPEN guide PR, based on main, whose head branch
+                   is the kindred PR's branch: catch it up with guide main,
+                   write kindred main's tip facts onto it, wait for the guide's
+                   own `image` check on that exact head, then merge.
+- open-facts-sync  no pair, but this commit changed scripts/guide/facts.json:
+                   the same, on a `facts-sync/<sha7>` PR. A re-run reuses that
+                   PR if it is still open; otherwise one is opened from main.
+- nothing          no pair and no facts change, a pair not based on main, or
+                   no same-repo kindred PR for this commit.
 - error            more than one open guide PR on the branch (exit 1).
 
 Nothing reaches guide main without a green `image` check on the exact head:
@@ -17,7 +20,10 @@ the merge passes --match-head-commit, so a push after the check cannot ride in.
 Runs for different merge SHAs may overlap (ruling D1-e), so what is written is
 state-based: the merge SHA decides the plan, but the facts copied and the
 source.json stamp come from kindred main's TIP, fetched at write time, so the
-last writer is always the newest. Guide main is merged into the branch first;
+last writer is always the newest: an older run that loses the race conflicts
+on squash against the newer stamp on guide main, and its retry re-reads the
+tip, so guide mergeability is what enforces the ordering. Guide main is merged
+into the branch first;
 a conflict outside the two lockstep-owned files stops the run. A failed merge
 redoes that, re-pushes, re-waits and re-merges, up to MERGE_ATTEMPTS in all.
 A sync PR is not opened when guide main already holds the tip's facts.
@@ -60,10 +66,12 @@ _GIT_IDENTITY = [
     "-c",
     "commit.gpgsign=false",
 ]
-# Copied from the runner's env into every subprocess; nothing else is inherited,
-# so an ambient GH_TOKEN (or the other side's token) never reaches a call.
 _OWNED = frozenset({"src/data/facts.json", "src/data/source.json"})  # lockstep writes these
 MERGE_ATTEMPTS = 3
+# 3 attempts x CHECK_TIMEOUT_S must fit the job's timeout-minutes (75).
+CHECK_TIMEOUT_S = 1200
+# Copied from the runner's env into every subprocess; nothing else is inherited,
+# so an ambient GH_TOKEN (or the other side's token) never reaches a call.
 _PASSTHROUGH = ("PATH", "HOME", "TMPDIR", "RUNNER_TEMP", "LANG", "LC_ALL")
 
 
@@ -79,11 +87,15 @@ class LockstepError(Exception):
 
 
 def plan(kindred_branch: str, guide_open_prs: list[dict[str, Any]], facts_changed: bool) -> Plan:
-    """Pure decision. Only an exact head-branch match among OPEN PRs pairs."""
+    """Pure decision. Only an exact head-branch match among OPEN PRs pairs, and
+    only one based on main is merged. A dict without `baseRefName` counts as
+    based on main (the executor always asks gh for it)."""
     matches = [p for p in guide_open_prs if kindred_branch and p.get("headRefName") == kindred_branch]
     if len(matches) > 1:
         return Plan("error", None, f"{len(matches)} open guide PRs on the paired branch")
     if len(matches) == 1:
+        if matches[0].get("baseRefName", "main") != "main":
+            return Plan("nothing", None, "paired guide PR is not based on main")
         return Plan("merge-paired", int(matches[0]["number"]), "one open guide PR on the paired branch")
     if facts_changed:
         return Plan("open-facts-sync", None, "facts changed with no paired guide PR")
@@ -110,19 +122,26 @@ def _ok(cmd: list[str], env: Mapping[str, str], failure: str, cwd: Path | None =
     return result.stdout
 
 
+def _run_id(run: dict[str, Any]) -> int:
+    run_id = run.get("id")
+    return run_id if isinstance(run_id, int) else 0
+
+
 def wait_for_check(
     repo: str,
     sha: str,
     check_name: str = "image",
-    timeout_s: int = 1800,
+    timeout_s: int = CHECK_TIMEOUT_S,
     poll_s: int = 20,
     *,
     env: Mapping[str, str] | None = None,
 ) -> str:
     """Poll `repo`'s check runs on `sha` until `check_name` completes; return its conclusion.
 
-    A failed gh call counts as "not ready yet" (a transient API blip should not
-    abort a 30-minute wait). Raises TimeoutError once `timeout_s` has passed.
+    With several runs of that name (a re-run, a second suite), the most recent
+    -- highest id -- decides. A failed gh call counts as "not ready yet" (a
+    transient API blip should not abort the wait). Raises TimeoutError once
+    `timeout_s` has passed, including when the check never appears.
     """
     run_env = env if env is not None else _env(os.environ.get("GUIDE_TOKEN", ""))
     cmd = [
@@ -130,7 +149,7 @@ def wait_for_check(
         "api",
         f"repos/{repo}/commits/{sha}/check-runs?check_name={check_name}",
         "--jq",
-        "[.check_runs[] | {name, status, conclusion}]",
+        "[.check_runs[] | {id, name, status, conclusion}]",
     ]
     deadline = time.monotonic() + timeout_s
     while True:
@@ -141,22 +160,30 @@ def wait_for_check(
             except json.JSONDecodeError:
                 runs = []
             named = [r for r in runs if isinstance(r, dict) and r.get("name") == check_name]
-            done = [r for r in named if r.get("status") == "completed"]
-            if named and len(done) == len(named):
-                return str(done[0].get("conclusion") or "unknown")
+            if named:
+                latest = max(named, key=_run_id)
+                if latest.get("status") == "completed":
+                    return str(latest.get("conclusion") or "unknown")
         if time.monotonic() >= deadline:
             raise TimeoutError(check_name)
         time.sleep(poll_s)
 
 
 def _kindred_pr(kindred_repo: str, sha: str, token: str) -> dict[str, Any] | None:
+    """The same-repo PR that produced `sha`, or None.
+
+    A fork PR's branch name can collide with an internal one, so only heads in
+    kindred itself count. If several remain, only the one whose merge commit is
+    `sha` does; if none is, there is no PR to pair.
+    """
     out = _ok(
         [
             "gh",
             "api",
             f"repos/{kindred_repo}/commits/{sha}/pulls",
             "--jq",
-            "[.[] | {number, title, headRefName: .head.ref}]",
+            "[.[] | {number, title, headRefName: .head.ref, headRepo: .head.repo.full_name,"
+            " mergeCommit: .merge_commit_sha}]",
         ],
         _env(token),
         "kindred PR lookup failed",
@@ -165,7 +192,11 @@ def _kindred_pr(kindred_repo: str, sha: str, token: str) -> dict[str, Any] | Non
         prs = json.loads(out or "[]")
     except json.JSONDecodeError as exc:
         raise LockstepError("kindred PR lookup failed") from exc
-    return prs[0] if prs else None
+    own = [pr for pr in prs if isinstance(pr, dict) and kindred_repo and pr.get("headRepo") == kindred_repo]
+    if len(own) == 1:
+        return own[0]
+    merged_here = [pr for pr in own if pr.get("mergeCommit") == sha]
+    return merged_here[0] if len(merged_here) == 1 else None
 
 
 def _facts_changed(sha: str) -> bool:
@@ -271,14 +302,40 @@ def _prepare_head(
         return head
 
 
+def sync_branch(sha: str) -> str:
+    return f"facts-sync/{sha[:7]}"
+
+
+def _open_sync_pr(guide_prs: list[dict[str, Any]], sha: str) -> int | None:
+    """The still-open sync PR for this SHA (exact head, based on main), if any."""
+    head = sync_branch(sha)
+    for pr in guide_prs:
+        if pr.get("headRefName") == head and pr.get("baseRefName", "main") == "main":
+            return int(pr["number"])
+    return None
+
+
 def _execute(
-    p: Plan, *, sha: str, branch: str, title: str, guide_repo: str, guide_token: str, kindred_token: str
+    p: Plan,
+    *,
+    sha: str,
+    branch: str,
+    title: str,
+    guide_repo: str,
+    guide_token: str,
+    kindred_token: str,
+    guide_prs: list[dict[str, Any]],
 ) -> str:
     """Land the plan; return the public-safe outcome. Raises LockstepError on failure."""
     guide_env = _env(guide_token)
     sync = p.action == "open-facts-sync"
-    push_branch = f"facts-sync/{sha[:7]}" if sync else branch
+    push_branch = sync_branch(sha) if sync else branch
     number = p.guide_pr
+    if sync:
+        # A re-run of a sync that failed after opening its PR must reuse it: a
+        # fresh branch from main would be a non-fast-forward push onto the old
+        # one, and gh refuses a second PR for the same head.
+        number = _open_sync_pr(guide_prs, sha)
 
     for _attempt in range(MERGE_ATTEMPTS):
         tip, facts = _kindred_tip(kindred_token)
@@ -368,12 +425,24 @@ def _lockstep(sha: str, dry_run: bool) -> int:
 
     pr = _kindred_pr(os.environ.get("KINDRED_REPO", ""), sha, os.environ.get("KINDRED_TOKEN", ""))
     if pr is None:
-        print("plan: nothing (no kindred PR for this commit)")
+        print("plan: nothing (no same-repo kindred PR for this commit)")
         return 0
 
     facts_changed = _facts_changed(sha)
     out = _ok(
-        ["gh", "pr", "list", "-R", guide_repo, "--state", "open", "--limit", "500", "--json", "number,headRefName"],
+        [
+            "gh",
+            "pr",
+            "list",
+            "-R",
+            guide_repo,
+            "--state",
+            "open",
+            "--limit",
+            "500",
+            "--json",
+            "number,headRefName,baseRefName",
+        ],
         _env(guide_token),
         "guide PR list failed",
     )
@@ -398,6 +467,7 @@ def _lockstep(sha: str, dry_run: bool) -> int:
         guide_repo=guide_repo,
         guide_token=guide_token,
         kindred_token=os.environ.get("KINDRED_TOKEN", ""),
+        guide_prs=guide_prs,
     )
     print(f"lockstep: {outcome}")
     return 0

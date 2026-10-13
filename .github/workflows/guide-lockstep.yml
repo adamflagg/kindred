@@ -39,7 +39,8 @@ jobs:
     name: Merge the paired guide PR
     runs-on: ubuntu-latest
     environment: guide-lockstep
-    timeout-minutes: 40
+    # 3 merge attempts x a 20-minute check wait (CHECK_TIMEOUT_S), plus clones.
+    timeout-minutes: 75
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
