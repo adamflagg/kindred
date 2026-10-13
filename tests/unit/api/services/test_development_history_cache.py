@@ -3,8 +3,8 @@ PER PAST SEASON, run concurrently, cached per report year and filtered in Python
 share it.
 
 These pin the read (one read per season of the window, concurrently under pb_read's cap, never a filter through a
-relation -- kindred#3196: one paged read of the whole window chained 19 pages in series), the cache's lifetime (within the
-TTL nothing is re-read whatever campers are asked for, concurrent callers share one fill, report years never mix),
+relation -- kindred#3196: one paged read of the whole window chained 19 pages in series), the cache's lifetime (within
+the TTL nothing is re-read whatever campers are asked for, concurrent callers share one fill, report years never mix),
 what clears it (a sync that writes attendees, persons or camp_sessions), and the before -> after count on a
 Development open plus its ZIP export. What the read RETURNS is pinned separately, unchanged, in
 test_development_history_parity.py."""
@@ -80,9 +80,10 @@ async def test_the_history_is_one_whole_read_per_season_of_the_window() -> None:
 async def test_the_seasons_are_read_concurrently_under_the_shared_cap() -> None:
     """kindred#3196: one paged read of the whole window made the SDK fetch 19 pages one after another, each re-counting
     the window -- 7.3 s in series on production. The seasons must overlap, and never past pb_read's cap."""
-    lock = threading.Lock()
+    overlap = threading.Condition()
     in_flight = 0
     peak = 0
+    serial = False
     pb = history_pb()
     real = pb.collection
 
@@ -91,15 +92,19 @@ async def test_the_seasons_are_read_concurrently_under_the_shared_cap() -> None:
         read = inner.get_full_list
 
         def overlapping_read(batch: int = 500, query_params: dict[str, Any] | None = None) -> list[Any]:
-            nonlocal in_flight, peak
-            with lock:
+            nonlocal in_flight, peak, serial
+            with overlap:
                 in_flight += 1
                 peak = max(peak, in_flight)
+                overlap.notify_all()
+                # Hold until a sibling is in flight, so a loaded box cannot serialise the reads by scheduling alone;
+                # serial reads never get one: the first times out, the rest stop waiting, and the lower bound fails.
+                serial = serial or not overlap.wait_for(lambda: peak >= 2 or serial, timeout=5)
             try:
-                time.sleep(0.05)  # long enough that a concurrent sibling is already in flight
+                time.sleep(0.05)  # and keep each read open, so an uncapped fill would overlap past the cap
                 return read(batch=batch, query_params=query_params)
             finally:
-                with lock:
+                with overlap:
                     in_flight -= 1
 
         inner.get_full_list = overlapping_read  # type: ignore[method-assign]
@@ -353,7 +358,8 @@ def _service(pb: FilteringPb) -> FinancialAidDevelopmentService:
 @pytest.mark.asyncio
 async def test_a_development_open_and_its_zip_export_read_the_history_once() -> None:
     """Before: each _native column chunked 200 campers (4 filters) and 150 family households (3 filters, through
-    person.household_id): 7 history reads for Development, 7 more for the ZIP export. After: one per past season, shared."""
+    person.household_id): 7 history reads for Development, 7 more for the ZIP export. After: one per past season,
+    shared."""
     pb = _season_pb()
     service = _service(pb)
     asked: list[tuple[int, int]] = []

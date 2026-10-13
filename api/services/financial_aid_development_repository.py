@@ -7,7 +7,7 @@ edit, through 4a.
 Development never reads the raw person_custom_values table (§10) and never aid_postings.attributed_* (the grants
 register places outside lines; the camp's money comes from the decisions season).
 
-THE PAST SEASONS ARE ONE CACHED WHOLE READ. `earlier_attendance` used to filter attendees by the campers and
+THE PAST SEASONS ARE ONE CACHED WINDOW. `earlier_attendance` used to filter attendees by the campers and
 households it was asked about, 50 ids to a filter, households through `person.household_id` -- a join through a
 relation, which SQLite cannot index. Measured in production, one open of Development made 82 of those reads and
 18.7 s of database time, and the ZIP export repeated all of it. Now every enrolled registration of the window (2017
