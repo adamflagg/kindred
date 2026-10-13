@@ -592,7 +592,7 @@ jobs:
   # of its known load-bearing occurrences. The guard prints file:line and
   # path/count only; the terms and matched lines never reach this public log.
   # Fork and Dependabot PRs have no deploy key, so the guard skips with a
-  # notice; with the key present but no terms built it fails (exit 2).
+  # notice; with the key present but either term group empty it fails (exit 2).
   private-names-guard:
     name: Private Names Guard
     runs-on: ubuntu-latest

@@ -16,8 +16,14 @@
 #                               to lower the baseline in the same change.
 # Each file holds one term per line; blank lines are ignored.
 #
+# Both groups also apply to tracked PATHS, with zero tolerance (a baseline
+# line naming such a path would itself contain the term); only their count is
+# printed, and the content scan does not run, since its file:line would print
+# them. Binary files are scanned as text.
+#
 # Exit: 0 clean (or skipped: no terms, fork or Dependabot PR), 1 hits or a
-# stale/malformed baseline, 2 no terms at all while PRIVATE_NAMES_REQUIRED=1.
+# stale/malformed baseline, 2 a term group is empty while
+# PRIVATE_NAMES_REQUIRED=1, 3 a scan itself failed, so the tree was never checked.
 # Behaviour pinned by scripts/ci/test-check-private-names.sh.
 set -euo pipefail
 
@@ -35,33 +41,62 @@ nonblank() { if [ -n "$1" ] && [ -r "$1" ]; then grep -v '^[[:space:]]*$' "$1" |
 nonblank "$strict_in" > "$work/strict"
 nonblank "$ratchet_in" > "$work/ratchet"
 
-if [ ! -s "$work/strict" ] && [ ! -s "$work/ratchet" ]; then
-  if [ "${PRIVATE_NAMES_REQUIRED:-0}" = 1 ]; then echo "::error::no private-name terms available"; exit 2; fi
+# With the deploy key present BOTH groups must have terms: one silently empty
+# group (an unreadable file, a renamed branding key) would pass as clean.
+if [ "${PRIVATE_NAMES_REQUIRED:-0}" = 1 ]; then
+  for g in strict ratchet; do
+    [ -s "$work/$g" ] || { echo "::error::no $g private-name terms available"; exit 2; }
+  done
+elif [ ! -s "$work/strict" ] && [ ! -s "$work/ratchet" ]; then
   echo "::notice::no private-name terms on this run (fork or Dependabot PR); guard skipped"; exit 0
 fi
 
-# file:line for every tracked line matching any term in $1. Paths only, never
-# content: `cut` drops everything after the line number.
-scan() { git grep -n -I -i -F -f "$1" -- . ':!*.lock' | cut -d: -f1,2 || true; }
+# A term in a tracked path: count only, never the path, and stop before the
+# content scan, whose file:line output would print it.
+cat "$work/strict" "$work/ratchet" > "$work/all"
+git ls-files -z | tr '\0' '\n' > "$work/paths"
+rc=0; n_paths="$(grep -c -i -F -f "$work/all" "$work/paths" 2>/dev/null)" || rc=$?
+if [ "$rc" -gt 1 ]; then echo "::error::path scan failed (exit $rc); the private-names guard could not scan the tree"; exit 3; fi
+if [ "$n_paths" -gt 0 ]; then
+  echo "::error::$n_paths tracked path(s) contain a private name (paths and term withheld). Rename them to generic wording."
+  exit 1
+fi
+
+# Writes file:line for every tracked line matching any term in $1 to $2 (`-a`:
+# binary files too). Paths only, never content: `cut` drops everything after
+# the line number. git grep exits 1 for "no match" and >1 for an error; an
+# error must fail the guard, not read as a clean tree. Its stderr is dropped
+# because it could quote a term.
+scan() {
+  local rc=0
+  git grep -n -a -i -F -f "$1" -- . ':!*.lock' > "$work/grep-out" 2>/dev/null || rc=$?
+  if [ "$rc" -gt 1 ]; then
+    echo "::error::git grep failed (exit $rc); the private-names guard could not scan the tree"
+    return 1
+  fi
+  cut -d: -f1,2 "$work/grep-out" > "$2"
+}
 
 status=0
 
 if [ -s "$work/strict" ]; then
-  strict_hits="$(scan "$work/strict")"
-  if [ -n "$strict_hits" ]; then
-    printf '%s\n' "$strict_hits"
-    echo "::error::$(printf '%s\n' "$strict_hits" | wc -l | tr -d ' ') line(s) contain a private name that is never allowed (term withheld). Replace with {camp_name} placeholders or generic wording."
+  scan "$work/strict" "$work/strict-hits" || exit 3
+  if [ -s "$work/strict-hits" ]; then
+    cat "$work/strict-hits"
+    echo "::error::$(wc -l < "$work/strict-hits" | tr -d ' ') line(s) contain a private name that is never allowed (term withheld). Replace with {camp_name} placeholders or generic wording."
     status=1
   fi
 fi
 
 if [ -s "$work/ratchet" ]; then
-  scan "$work/ratchet" > "$work/ratchet-hits"
+  scan "$work/ratchet" "$work/ratchet-hits" || exit 3
   if [ -r "$baseline" ]; then cp "$baseline" "$work/baseline"; else : > "$work/baseline"; fi
   # Baseline format: `<path>\t<count>`, one file per line; `#` comments and
   # blank lines are ignored. Output is file:line, path/count, and messages.
+  # FILENAME, not the FNR == NR idiom: an empty baseline has no records, so
+  # FNR == NR would hold for the hits file and read each hit as a baseline line.
   if ! awk -F'\t' '
-    FNR == NR {
+    FILENAME == ARGV[1] {
       if ($0 ~ /^#/ || $0 ~ /^[[:space:]]*$/) next
       if (NF != 2 || $2 !~ /^[0-9]+$/ || ($1 in base)) {
         printf "::error::malformed private-names baseline line %d (want <path><TAB><count>, each path once)\n", FNR

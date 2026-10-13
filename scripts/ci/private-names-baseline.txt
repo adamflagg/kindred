@@ -7,6 +7,9 @@
 # verbatim, applied migrations, the generated PocketBase types, the synthetic
 # seed's column scrub map, and the lodging guard's fallback needle sample.
 #
+# The count is LINES, not occurrences: a second occurrence added to a line that
+# is already counted does not move it, so the ratchet cannot see that addition.
+#
 # The guard fails when:
 #   - a file NOT listed here gains an occurrence;
 #   - a listed file goes ABOVE its count;

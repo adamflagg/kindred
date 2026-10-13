@@ -19,7 +19,7 @@ def test_every_permission_is_exported_with_its_label_and_screens():
 
 
 def test_help_keys_come_from_the_frontend_registry():
-    registry = json.loads((REPO / "frontend/src/help/helpKeys.json").read_text())
+    registry = json.loads((REPO / "frontend/src/help/helpKeys.json").read_text(encoding="utf-8"))
     facts = build_facts()
     assert set(facts["help_keys"]) == {e["key"] for e in registry}
     assert facts["help_keys"]["aid.today"]["area"] == "aid"
@@ -33,7 +33,9 @@ def test_render_is_deterministic_and_ends_with_newline():
 
 
 def test_committed_file_is_fresh():
-    assert FACTS_PATH.read_text() == render(build_facts()), "run: uv run python -m scripts.guide.export_facts"
+    assert FACTS_PATH.read_text(encoding="utf-8") == render(build_facts()), (
+        "run: uv run python -m scripts.guide.export_facts"
+    )
 
 
 def test_check_flag_fails_on_a_stale_file(tmp_path):
