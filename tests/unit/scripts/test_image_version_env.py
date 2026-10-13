@@ -65,3 +65,12 @@ def test_verify_step_checks_kindred_version_on_rebuilt_images():
     assert "KINDRED_VERSION" in script
     assert "EXPECTED_VERSION" in script
     assert ".Config.Env" in script
+
+
+def test_build_version_describes_the_pr_head_not_the_synthetic_merge_commit():
+    """pull_request runs check out a merge commit; the version must name the head the image labels use."""
+    step = _step("detect-changes", "Compute build version")
+    ref = step["env"]["REF"]
+    assert "github.event.pull_request.head.sha" in ref
+    assert "github.sha" in ref
+    assert 'git describe --tags --always "$REF"' in step["run"]

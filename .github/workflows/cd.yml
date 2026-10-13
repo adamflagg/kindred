@@ -233,8 +233,12 @@ jobs:
       # Always-run for the same reason as short_sha above. The checkout has full
       # history and tags (fetch-depth: 0), as the build job's does.
       if: always()
+      env:
+        # pull_request runs check out GitHub's synthetic merge commit; describe
+        # the PR head instead, which the image revision labels also name.
+        REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
       run: |
-        VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")
+        VERSION=$(git describe --tags --always "$REF" 2>/dev/null || echo "dev")
         echo "version=$VERSION" >> "$GITHUB_OUTPUT"
         echo "Build version: $VERSION"
 
