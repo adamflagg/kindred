@@ -52,6 +52,9 @@ Method = Literal["POST", "PATCH", "DELETE"]
 IF_MATCH = "If-Match"
 PRECONDITION_FAILED = 412
 
+# What PocketBase answers a request whose superuser token has died (see send_batch).
+_AUTH_DENIED = frozenset({401, 403})
+
 
 def if_match(revision: int) -> str:
     """The If-Match value for a revision: a quoted strong entity tag, as HTTP writes one ('"7"')."""
@@ -248,6 +251,10 @@ def send_batch(
     unknown (the connection failed, or a success answer could not be read). In
     every ``BatchError`` case except the last, nothing was committed.
 
+    A batch refused 401/403 is resent once if ``pb`` can sign in again (it has
+    ``reauthenticate_if_stale``, as api's superuser client does): a dead token
+    is refused before anything commits.
+
     An empty sequence sends nothing and returns ``[]``.
     """
     if not 1 <= max_requests <= MAX_BATCH_REQUESTS:
@@ -260,6 +267,34 @@ def send_batch(
             "PocketBase would refuse it whole, so nothing was sent"
         )
     content = _encode(requests)
+    stale_token = pb.auth_store.token
+    try:
+        return _send_once(pb, requests, content)
+    except BatchError as refusal:
+        # A dead superuser token is served as a guest's, so a write to a superuser-only collection is refused
+        # 401/403. A refused batch committed nothing, so a client that can sign in again (api's
+        # SuperuserPocketBase) does so and the batch is resent once. An unknown outcome is never resent.
+        reauthenticate = getattr(pb, "reauthenticate_if_stale", None)
+        if (
+            isinstance(refusal, BatchTransportError)
+            or refusal.status not in _AUTH_DENIED
+            or not stale_token
+            or not callable(reauthenticate)
+        ):
+            raise
+        try:
+            reauthenticate(stale_token)
+        except Exception as reauth_error:
+            raise refusal from reauth_error
+        try:
+            return _send_once(pb, requests, content)
+        except BatchError as retry_refusal:
+            if not isinstance(retry_refusal, BatchTransportError) and retry_refusal.status in _AUTH_DENIED:
+                raise refusal from retry_refusal
+            raise
+
+
+def _send_once(pb: PocketBase, requests: Sequence[BatchRequest], content: bytes) -> list[BatchResult]:
     url = str(pb.base_url).rstrip("/") + "/api/batch"
     # Never If-Match here: PocketBase gives every sub-request a copy of the outer request's headers before its own,
     # so an outer If-Match would guard every write in the batch against one revision (pocketbase/aidguard). A

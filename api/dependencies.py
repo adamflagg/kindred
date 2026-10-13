@@ -49,9 +49,10 @@ def _superuser_credentials() -> tuple[str, str]:
 # This client and the per-task ones are SuperuserPocketBase, so a token that
 # dies early (its tokenKey changed) is re-authenticated and the request retried
 # once, at one choke point -- see api/services/pb_superuser_client.py.
-# Not covered by that retry: ConfigLoader and the sync ConnectionManager keep
-# their own clients (they re-auth on an interval instead), and
-# bunking.pocketbase_batch.send_batch posts with this client's token directly.
+# bunking.pocketbase_batch.send_batch posts through the http client instead of
+# send(), and does its own resend-once via reauthenticate_if_stale. Not covered:
+# ConfigLoader and the sync ConnectionManager keep their own clients (they
+# re-auth on an interval instead).
 pb: SuperuserPocketBase = SuperuserPocketBase(pb_url, credentials=_superuser_credentials)
 
 # How often the global client's token is checked. PocketBase answers a dead

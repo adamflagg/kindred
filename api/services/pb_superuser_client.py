@@ -70,8 +70,12 @@ class SuperuserPocketBase(PocketBase):
         email, password = self._credentials()
         self.collection(SUPERUSERS).auth_with_password(email, password)
 
-    def _reauthenticate(self, stale_token: str) -> None:
-        """Re-authenticate unless another thread already replaced ``stale_token``."""
+    def reauthenticate_if_stale(self, stale_token: str) -> None:
+        """Re-authenticate unless another thread already replaced ``stale_token``.
+
+        Public for ``bunking.pocketbase_batch.send_batch``, which posts through the
+        SDK's http client rather than ``send`` and so retries on its own.
+        """
         with self._reauth_lock:
             if self.auth_store.token != stale_token:
                 return
@@ -96,7 +100,7 @@ class SuperuserPocketBase(PocketBase):
                 f"PocketBase answered {original.status} to the superuser client; re-authenticating and retrying once"
             )
             try:
-                self._reauthenticate(stale_token)
+                self.reauthenticate_if_stale(stale_token)
             except Exception as reauth_error:
                 raise original from reauth_error
             try:
@@ -123,4 +127,4 @@ class SuperuserPocketBase(PocketBase):
             self.collection(SUPERUSERS).auth_response(data)
         except ClientResponseError as e:
             logger.warning(f"PocketBase superuser token failed auth-refresh ({e.status}); re-authenticating")
-            self._reauthenticate(stale_token)
+            self.reauthenticate_if_stale(stale_token)
