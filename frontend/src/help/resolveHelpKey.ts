@@ -31,6 +31,17 @@ function score(e: HelpKeyEntry): number {
 
 const ORDERED = [...ENTRIES].sort((a, b) => score(b) - score(a))
 
+/** First literal path segment -> area. An area whose screens share no prefix (people:
+ * /campers, /camper, /users, /user) still gets its fallback from every screen's segment. */
+const AREA_BY_SEGMENT = new Map(
+  ENTRIES.flatMap((e) => {
+    const first = e.path.split('/').filter(Boolean)[0]
+    return first && !first.startsWith(':') && first !== '*'
+      ? [[first.toLowerCase(), e.area] as const]
+      : []
+  })
+)
+
 /** The help key for a location. Never throws; unknown places resolve to their area, then `home`. */
 export function resolveHelpKey(pathname: string, search: string): string {
   const path = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname
@@ -41,5 +52,6 @@ export function resolveHelpKey(pathname: string, search: string): string {
     if (e.tab && query.get('tab') !== e.tab.value) continue
     return e.key
   }
-  return 'home'
+  const first = path.split('/').filter(Boolean)[0]?.toLowerCase()
+  return AREA_BY_SEGMENT.get(first ?? '') ?? 'home'
 }

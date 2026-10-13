@@ -19,6 +19,11 @@ describe('resolveHelpKey', () => {
   it('falls back to the area key for an unknown route inside an area', () => {
     expect(resolveHelpKey('/summer/not-a-page', '')).toBe('summer')
   })
+  it('falls back to people for an unknown route under any people-area prefix', () => {
+    expect(resolveHelpKey('/campers/not-a-page', '')).toBe('people')
+    expect(resolveHelpKey('/users/not-a-page', '')).toBe('people')
+    expect(resolveHelpKey('/camper/1000001/not-a-page', '')).toBe('people')
+  })
   it('resolves a weekend session ref to the session entry, not the area', () => {
     expect(resolveHelpKey('/weekend/1000001', '')).toBe('weekend.session')
   })
@@ -39,5 +44,7 @@ describe('resolveHelpKey', () => {
       expect(HELP_AREAS).toContain(e.area)
       expect(e.key === e.area || e.key.startsWith(`${e.area}.`)).toBe(true)
     }
+    // the area fallback returns the area name as a key, so each must exist
+    for (const a of HELP_AREAS) expect(keys).toContain(a)
   })
 })
