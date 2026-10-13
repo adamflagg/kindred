@@ -610,8 +610,10 @@ jobs:
     # no base copy (the PR introducing the file) means the check skips.
     - name: Fetch the base branch's baseline
       if: github.event_name == 'pull_request'
+      env:
+        BASE_REF: ${{ github.base_ref }}
       run: |
-        git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
+        git fetch --no-tags --depth=1 origin "$BASE_REF"
         git show FETCH_HEAD:scripts/ci/private-names-baseline.txt > "$RUNNER_TEMP/base-baseline.txt" 2>/dev/null || rm -f "$RUNNER_TEMP/base-baseline.txt"
     - name: No private names in tracked files
       env:
