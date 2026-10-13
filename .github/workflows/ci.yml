@@ -1676,6 +1676,44 @@ jobs:
       working-directory: ./frontend
       run: npm run test -- --run --shard=${{ matrix.shard }}/2
 
+  # Report-only (not in summary.needs, continue-on-error): builds the private
+  # staff guide against this PR's facts. CI logs are PUBLIC, so every byte of
+  # clone/build output is discarded or sent to a never-uploaded file, and the
+  # step prints only "guide: pass" / "guide: N errors" -- never the repo name,
+  # the branch name, or any build text. Always runs on same-repo PRs (no paths
+  # filter): it is cheap and non-blocking, and a filter would have to mirror
+  # every input the guide reads. Skips cleanly while the secrets are absent.
+  guide-build:
+    name: Guide build (report-only)
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - name: Setup Node.js
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
+      with:
+        node-version-file: '.nvmrc'
+    - name: Build the guide against this PR's facts
+      env:
+        GUIDE_REPO: ${{ secrets.GUIDE_REPO }}
+        GH_TOKEN: ${{ secrets.GUIDE_READ_TOKEN }}
+        BRANCH: ${{ github.head_ref }}
+      run: |
+        if [ -z "$GUIDE_REPO" ] || [ -z "$GH_TOKEN" ]; then
+          echo "guide: skipped (no guide access configured)"
+          exit 0
+        fi
+        dir="$RUNNER_TEMP/guide"
+        url="https://x-access-token:${GH_TOKEN}@github.com/${GUIDE_REPO}.git"
+        if git ls-remote --exit-code --heads "$url" "$BRANCH" >/dev/null 2>&1; then ref="$BRANCH"; else ref=main; fi
+        git clone -q --depth 1 --branch "$ref" "$url" "$dir" >/dev/null 2>&1 \
+          || { echo "guide: clone failed"; exit 1; }
+        echo "building against: $([ "$ref" = main ] && echo main || echo paired branch)"
+        bash scripts/guide/build_guide.sh "$dir" scripts/guide/facts.json
+
   # Summary job - gate for PR merges
   summary:
     name: CI Gate
