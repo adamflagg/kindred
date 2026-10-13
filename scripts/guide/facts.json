@@ -1,0 +1,314 @@
+{
+  "help_areas": [
+    "home",
+    "summer",
+    "weekend",
+    "aid",
+    "analytics",
+    "manage",
+    "people"
+  ],
+  "help_keys": {
+    "aid": {
+      "area": "aid",
+      "label": "Camperships",
+      "path": "/aid/*"
+    },
+    "aid.household": {
+      "area": "aid",
+      "label": "Camperships › Household",
+      "path": "/aid/households/:householdCmId"
+    },
+    "aid.money": {
+      "area": "aid",
+      "label": "Camperships › Money",
+      "path": "/aid/money/*"
+    },
+    "aid.reports": {
+      "area": "aid",
+      "label": "Camperships › Reports",
+      "path": "/aid/reports/*"
+    },
+    "aid.requests": {
+      "area": "aid",
+      "label": "Camperships › Requests",
+      "path": "/aid/requests"
+    },
+    "aid.season": {
+      "area": "aid",
+      "label": "Camperships › Season",
+      "path": "/aid/season/*"
+    },
+    "aid.today": {
+      "area": "aid",
+      "label": "Camperships › Today",
+      "path": "/aid/today"
+    },
+    "analytics": {
+      "area": "analytics",
+      "label": "Analytics",
+      "path": "/analytics/*"
+    },
+    "analytics.registration": {
+      "area": "analytics",
+      "label": "Analytics › Registration",
+      "path": "/analytics/registration/*"
+    },
+    "analytics.retention": {
+      "area": "analytics",
+      "label": "Analytics › Retention",
+      "path": "/analytics/retention/*"
+    },
+    "analytics.trends": {
+      "area": "analytics",
+      "label": "Analytics › Trends",
+      "path": "/analytics/trends/*"
+    },
+    "home": {
+      "area": "home",
+      "label": "Dashboard",
+      "path": "/"
+    },
+    "manage": {
+      "area": "manage",
+      "label": "Manage",
+      "path": "/manage/*"
+    },
+    "manage.config": {
+      "area": "manage",
+      "label": "Manage › Config",
+      "path": "/manage/config/*"
+    },
+    "manage.lodging": {
+      "area": "manage",
+      "label": "Manage › Lodging",
+      "path": "/manage/lodging/*"
+    },
+    "manage.sync": {
+      "area": "manage",
+      "label": "Manage › Sync",
+      "path": "/manage/sync"
+    },
+    "people": {
+      "area": "people",
+      "label": "People",
+      "path": "/campers"
+    },
+    "people.account": {
+      "area": "people",
+      "label": "My Account",
+      "path": "/user"
+    },
+    "people.camper": {
+      "area": "people",
+      "label": "Camper",
+      "path": "/camper/:camperId"
+    },
+    "people.users": {
+      "area": "people",
+      "label": "Users",
+      "path": "/users"
+    },
+    "summer": {
+      "area": "summer",
+      "label": "Summer",
+      "path": "/summer/*"
+    },
+    "summer.compare": {
+      "area": "summer",
+      "label": "Summer › Compare scenarios",
+      "path": "/summer/session/:sessionId/compare"
+    },
+    "summer.session": {
+      "area": "summer",
+      "label": "Summer › Session board",
+      "path": "/summer/session/:sessionId/*"
+    },
+    "summer.sessions": {
+      "area": "summer",
+      "label": "Summer › Sessions",
+      "path": "/summer/sessions"
+    },
+    "weekend": {
+      "area": "weekend",
+      "label": "Weekend",
+      "path": "/weekend/*"
+    },
+    "weekend.session": {
+      "area": "weekend",
+      "label": "Weekend › Session",
+      "path": "/weekend/:sessionRef/*"
+    },
+    "weekend.sessions": {
+      "area": "weekend",
+      "label": "Weekend › Sessions",
+      "path": "/weekend/sessions"
+    }
+  },
+  "permission_areas": [
+    "Summer and Weekend",
+    "Camperships",
+    "Analytics",
+    "Manage tools",
+    "People"
+  ],
+  "permissions": {
+    "bunking.manage": {
+      "area": "Summer and Weekend",
+      "label": "Bunking and housing",
+      "screens": [
+        {
+          "name": "Summer board",
+          "path": "/summer/sessions"
+        },
+        {
+          "name": "Weekend board",
+          "path": "/weekend/sessions"
+        },
+        {
+          "name": "Manage › Lodging",
+          "path": "/manage/lodging"
+        }
+      ],
+      "short": "Bunking and housing"
+    },
+    "financial_aid.casework": {
+      "area": "Camperships",
+      "label": "Camperships: casework",
+      "screens": [
+        {
+          "name": "Camperships › Requests",
+          "path": "/aid/requests"
+        },
+        {
+          "name": "Camperships › Money",
+          "path": "/aid/money"
+        }
+      ],
+      "short": "Casework"
+    },
+    "financial_aid.grantors": {
+      "area": "Camperships",
+      "label": "Camperships: grantors",
+      "screens": [
+        {
+          "name": "Camperships › Money › Funders",
+          "path": "/aid/money/funders"
+        }
+      ],
+      "short": "Grantors"
+    },
+    "financial_aid.rules": {
+      "area": "Camperships",
+      "label": "Camperships: rules and budget",
+      "screens": [
+        {
+          "name": "Camperships › Season",
+          "path": "/aid/season"
+        }
+      ],
+      "short": "Rules and budget"
+    },
+    "financial_aid.summary": {
+      "area": "Camperships",
+      "label": "Camperships: totals only",
+      "screens": [
+        {
+          "name": "Camperships › Reports",
+          "path": "/aid/reports"
+        }
+      ],
+      "short": "Totals only"
+    },
+    "financial_aid.view": {
+      "area": "Camperships",
+      "label": "Camperships: family detail",
+      "screens": [
+        {
+          "name": "Camperships",
+          "path": "/aid"
+        },
+        {
+          "name": "Camperships › Requests",
+          "path": "/aid/requests"
+        },
+        {
+          "name": "Camperships › Money",
+          "path": "/aid/money"
+        },
+        {
+          "name": "Camperships › Season",
+          "path": "/aid/season"
+        },
+        {
+          "name": "Camperships › Reports",
+          "path": "/aid/reports"
+        }
+      ],
+      "short": "Family detail"
+    },
+    "metrics.financial": {
+      "area": "Analytics",
+      "label": "Financial projections",
+      "screens": [],
+      "short": "Financial projections"
+    },
+    "metrics.geo": {
+      "area": "Analytics",
+      "label": "Geographic data",
+      "screens": [
+        {
+          "name": "Manage › Geo Data",
+          "path": "/manage/geo"
+        }
+      ],
+      "short": "Geographic data"
+    },
+    "registration.manage": {
+      "area": "Manage tools",
+      "label": "Registration settings",
+      "screens": [
+        {
+          "name": "Manage › Registration",
+          "path": "/manage/registration"
+        }
+      ],
+      "short": "Registration settings"
+    },
+    "sheets.export": {
+      "area": "Manage tools",
+      "label": "Google Sheets export",
+      "screens": [
+        {
+          "name": "Manage › Sheets",
+          "path": "/manage/sheets"
+        }
+      ],
+      "short": "Google Sheets export"
+    },
+    "staff.hiring": {
+      "area": "Analytics",
+      "label": "Staff retention",
+      "screens": [
+        {
+          "name": "Analytics › Staff Analysis",
+          "path": "/analytics/retention/staff"
+        }
+      ],
+      "short": "Staff retention"
+    },
+    "users.manage": {
+      "area": "People",
+      "label": "Assign roles",
+      "screens": [
+        {
+          "name": "Users",
+          "path": "/users"
+        }
+      ],
+      "short": "Assign roles"
+    }
+  },
+  "statuses": {},
+  "version": 1
+}
