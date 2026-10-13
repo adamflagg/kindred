@@ -1,0 +1,32 @@
+# Private-names baseline: a SHRINK-ONLY ratchet for scripts/ci/check-private-names.sh.
+#
+# One line per tracked file: <path><TAB><count>, sorted. <count> is how many
+# lines of that file contain the camp's SHORT name (case-insensitive) today.
+# Every entry is a known, load-bearing occurrence: live DB column names and the
+# Go fields mirroring them, CampMinder custom-field labels the sync must match
+# verbatim, applied migrations, the generated PocketBase types, the synthetic
+# seed's column scrub map, and the lodging guard's fallback needle sample.
+#
+# The count is LINES, not occurrences: a second occurrence added to a line that
+# is already counted does not move it, so the ratchet cannot see that addition.
+#
+# The guard fails when:
+#   - a file NOT listed here gains an occurrence;
+#   - a listed file goes ABOVE its count;
+#   - a listed file goes BELOW its count, reaches 0, or no longer exists
+#     ("baseline is stale: lower <path> to <n>" / "remove <path>"). Lower or
+#     delete the line in the same change, so this list only ever shrinks.
+#
+# Never add a line to make CI green: replace the occurrence with a {camp_name}
+# placeholder or generic wording instead. The full camp name and the private
+# guide repo's name are not ratcheted; any occurrence of either fails outright.
+# This file names no term and must never contain one.
+frontend/src/types/pocketbase-types.ts	2
+pocketbase/pb_migrations/1500000046_staff_applications.js	2
+pocketbase/pb_migrations/1500000156_staff_applications_live_2026_fields.js	1
+pocketbase/sync/quest_registrations.go	1
+pocketbase/sync/quest_registrations_test.go	2
+pocketbase/sync/staff_applications.go	16
+pocketbase/sync/staff_applications_test.go	27
+scripts/dev/verify-no-hardcoded-lodging.sh	1
+scripts/setup/synthetic/build_synthetic_db.py	2

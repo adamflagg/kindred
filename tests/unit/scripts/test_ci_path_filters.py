@@ -191,6 +191,25 @@ def test_python_lint_gate_covers_its_non_python_inputs():
     assert not uncovered, f"python-lint step inputs cannot trigger it: {uncovered}"
 
 
+def test_python_lint_gate_covers_the_staff_guide_facts_inputs():
+    """The facts-freshness step reads three inputs, one of them non-Python.
+
+    `export_facts --check` compares scripts/guide/facts.json against
+    bunking/rbac/permissions.py, frontend/src/help/helpKeys.json and the
+    exporter itself. A helpKeys.json-only PR (or a hand edit of facts.json)
+    changes no .py file, so without these paths the check would be skipped.
+    """
+    patterns = _patterns_gating("python-lint")
+    required = [
+        "bunking/rbac/permissions.py",
+        "frontend/src/help/helpKeys.json",
+        "scripts/guide/export_facts.py",
+        "scripts/guide/facts.json",
+    ]
+    uncovered = [f for f in required if not _matches(f, patterns)]
+    assert not uncovered, f"staff-guide facts inputs cannot trigger python-lint: {uncovered}"
+
+
 def test_python_lint_gate_covers_the_workflow_that_defines_it():
     """The steps, their order and their flags all live in ci.yml.
 
