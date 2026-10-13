@@ -585,6 +585,48 @@ jobs:
     - name: Guard self-test
       run: ./scripts/dev/test-verify-no-hardcoded-lodging.sh
 
+  # No private name in tracked files. Two term groups, both built at runtime
+  # and never printed: the full camp name and the guide repo's name (GUIDE_REPO
+  # secret) are STRICT -- any hit fails -- while the camp's short name is
+  # RATCHETED against scripts/ci/private-names-baseline.txt, a shrink-only list
+  # of its known load-bearing occurrences. The guard prints file:line and
+  # path/count only; the terms and matched lines never reach this public log.
+  # Fork and Dependabot PRs have no deploy key, so the guard skips with a
+  # notice; with the key present but no terms built it fails (exit 2).
+  private-names-guard:
+    name: Private Names Guard
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - name: Clone private config
+      uses: ./.github/actions/clone-kindred-local
+      with:
+        deploy-key: ${{ secrets.KINDRED_LOCAL_DEPLOY_KEY }}
+        paths: config/branding.local.json
+    - name: No private names in tracked files
+      env:
+        GUIDE_REPO: ${{ secrets.GUIDE_REPO }}
+        # NOT the secret -- a boolean derived from it, as in lodging-guard.
+        HAVE_DEPLOY_KEY: ${{ secrets.KINDRED_LOCAL_DEPLOY_KEY != '' }}
+      run: |
+        strict="$RUNNER_TEMP/private-names-strict"
+        ratchet="$RUNNER_TEMP/private-names-ratchet"
+        : > "$strict"
+        : > "$ratchet"
+        if [ -r config/branding.local.json ]; then
+          jq -r '.camp_name // empty' config/branding.local.json >> "$strict"
+          jq -r '.camp_name_short // empty' config/branding.local.json >> "$ratchet"
+        fi
+        if [ -n "$GUIDE_REPO" ]; then printf '%s\n' "${GUIDE_REPO#*/}" >> "$strict"; fi
+        sort -u -o "$strict" "$strict"
+        PRIVATE_NAMES_STRICT_FILE="$strict" PRIVATE_NAMES_RATCHET_FILE="$ratchet" \
+          PRIVATE_NAMES_REQUIRED="$([ "$HAVE_DEPLOY_KEY" = true ] && echo 1 || echo 0)" \
+          bash scripts/ci/check-private-names.sh
+    - name: Guard self-test
+      run: bash scripts/ci/test-check-private-names.sh
+
   # kindred#2370: scripts/dev/verify-migration-history.sh gates local
   # start_dev.sh boots and stands between a renumbered migration and a
   # corrupted local DB, but its own 15-test self-test
@@ -1624,7 +1666,7 @@ jobs:
   # Summary job - gate for PR merges
   summary:
     name: CI Gate
-    needs: [detect-changes, secret-scan, lodging-guard, guard-self-tests, python-lint, go-lint, shell-lint, frontend-lint, docker-lint, security-audit-python, security-audit-go, security-audit-frontend, security-lint, dependency-review, tests-python, tests-go, tests-migrations, tests-frontend]
+    needs: [detect-changes, secret-scan, lodging-guard, private-names-guard, guard-self-tests, python-lint, go-lint, shell-lint, frontend-lint, docker-lint, security-audit-python, security-audit-go, security-audit-frontend, security-lint, dependency-review, tests-python, tests-go, tests-migrations, tests-frontend]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -1633,6 +1675,7 @@ jobs:
         DETECT_CHANGES: ${{ needs.detect-changes.result }}
         SECRET_SCAN: ${{ needs.secret-scan.result }}
         LODGING_GUARD: ${{ needs.lodging-guard.result }}
+        PRIVATE_NAMES_GUARD: ${{ needs.private-names-guard.result }}
         GUARD_SELF_TESTS: ${{ needs.guard-self-tests.result }}
         PYTHON_LINT: ${{ needs.python-lint.result }}
         GO_LINT: ${{ needs.go-lint.result }}
@@ -1668,6 +1711,10 @@ jobs:
         fi
         if [ "$LODGING_GUARD" != "success" ]; then
           echo "::error::Lodging name guard failed! A camp unit name may have landed in source -- see docs/reference/lodging-registry.md."
+          exit 1
+        fi
+        if [ "$PRIVATE_NAMES_GUARD" != "success" ]; then
+          echo "::error::Private names guard failed: a private name is in a tracked file (term withheld)."
           exit 1
         fi
         if [ "$GUARD_SELF_TESTS" != "success" ] && [ "$GUARD_SELF_TESTS" != "skipped" ]; then
