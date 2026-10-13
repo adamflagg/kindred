@@ -14,7 +14,7 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 )
 
-// kindred#2803 item B. FastAPI's server caches (metrics 2 h, lodging 15 min,
+// kindred#2803 item B. FastAPI's server caches (metrics 2 h, lodging cache,
 // social graph 15 min) were cleared on a sync only when a browser tab watched
 // that sync finish and called the invalidate endpoint -- so the hourly and
 // nightly scheduled syncs, which nobody watches, left them stale. The
@@ -400,5 +400,31 @@ func TestNotifyAPIRunCompletedWaitsForTheAPIToAnswer(t *testing.T) {
 	notifyAPIRunCompleted("attendees")
 	if answered.Load() != 1 {
 		t.Fatal("notifyAPIRunCompleted returned before FastAPI had answered")
+	}
+}
+
+// InvalidateAPICaches is the waited, error-returning form the lodging hook
+// uses after a staff resolve replays a placement outside any sync run.
+func TestInvalidateAPICachesNamesTheJobAndReportsFailure(t *testing.T) {
+	var gotType atomic.Value
+	status := atomic.Int32{}
+	status.Store(http.StatusOK)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotType.Store(r.URL.Query().Get("sync_type"))
+		w.WriteHeader(int(status.Load()))
+	}))
+	defer srv.Close()
+	t.Setenv("API_URL", srv.URL)
+
+	if err := InvalidateAPICaches("lodging_assignments"); err != nil {
+		t.Fatalf("InvalidateAPICaches: %v", err)
+	}
+	if got, _ := gotType.Load().(string); got != "lodging_assignments" {
+		t.Fatalf("sync_type = %q, want lodging_assignments", got)
+	}
+
+	status.Store(http.StatusInternalServerError)
+	if err := InvalidateAPICaches("lodging_assignments"); err == nil {
+		t.Fatal("a 500 from FastAPI must come back as an error")
 	}
 }

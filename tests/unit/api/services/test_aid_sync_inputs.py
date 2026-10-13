@@ -19,7 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 import api.constants.collections as collections
-from api.dependencies import aid_inputs_cache
+from api.dependencies import AID_INPUTS_BACKSTOP_SECONDS, aid_inputs_cache
 from api.services import aid_sync_inputs as layer1
 from api.services import financial_aid_rules_service as rules_service
 from api.services.aid_sync_inputs import AID_SYNC_INPUT_TABLES, AidSyncInputs, aid_sync_inputs, schedule_aid_warm
@@ -146,9 +146,10 @@ async def test_a_cancelled_first_caller_does_not_cancel_the_shared_fill() -> Non
 
 
 def test_the_cache_is_the_configured_singleton() -> None:
-    """A thirty-minute TTL, and room for two seasons: the current one and the `year - 1` a report reads. One year
+    """A six-hour backstop TTL, and room for two seasons: the current one and the `year - 1` a report reads. One year
     measured 26-30 MB on the 2026-10-07 prod snapshot, on a 1.9 GiB box whose API container is capped at 1 GiB."""
-    assert aid_inputs_cache.ttl_seconds == 1800
+    assert AID_INPUTS_BACKSTOP_SECONDS == 21_600
+    assert aid_inputs_cache.ttl_seconds == AID_INPUTS_BACKSTOP_SECONDS
     assert aid_inputs_cache._max_size == 2
 
 
@@ -534,3 +535,37 @@ def test_the_layer_one_tables_are_the_sync_written_inputs() -> None:
         "camp_sessions",
         "financial_aid_applications",
     )
+
+
+@pytest.mark.asyncio
+async def test_the_refresher_waits_the_interval_it_was_given_between_passes() -> None:
+    """The wait is an injected sleep, so the interval is observable without waiting on a clock."""
+    sleeps: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+        if len(sleeps) >= 2:
+            raise asyncio.CancelledError
+
+    async def fake_warm(year: int) -> None:
+        return None
+
+    async def fake_year() -> int:
+        return YEAR
+
+    with pytest.raises(asyncio.CancelledError):
+        await layer1.refresh_aid_inputs_forever(interval=123.0, warm=fake_warm, year=fake_year, sleep=fake_sleep)
+    assert sleeps == [123.0, 123.0]
+
+
+@pytest.mark.asyncio
+async def test_the_started_refresher_runs_on_the_six_hour_backstop(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A missed sync-completion clear is the only thing the timer repairs, so it waits 21,600 s between passes."""
+    seen: dict[str, Any] = {}
+
+    async def fake_loop(**kwargs: Any) -> None:
+        seen.update(kwargs)
+
+    monkeypatch.setattr(layer1, "refresh_aid_inputs_forever", fake_loop)
+    await layer1.start_aid_inputs_refresher()
+    assert seen["interval"] == 21_600

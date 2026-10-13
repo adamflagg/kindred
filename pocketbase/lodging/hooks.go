@@ -227,6 +227,29 @@ func collectionExists(app core.App, name string) bool {
 // which uses *tests.TestApp rather than *pocketbase.PocketBase, shares one
 // binding implementation with production.
 func wireHooks(app core.App) {
+	wireHooksWith(app, liveReplayDeps())
+}
+
+// replayDeps are the replay and cache-invalidate calls replayOnResolve makes,
+// injectable so a test can drive the hook without the full sync schema and
+// without a FastAPI to call.
+type replayDeps struct {
+	replayIssue     func(app core.App, issueID string) (sync.ReplayResult, error)
+	replayPartyless func(app core.App, issueID string) (int, error)
+	// notify tells FastAPI which job's tables just changed, waits, and returns
+	// any failure. The hook only logs that failure.
+	notify func(syncType string) error
+}
+
+func liveReplayDeps() replayDeps {
+	return replayDeps{
+		replayIssue:     sync.ReplayIssue,
+		replayPartyless: sync.ReplayPartylessIssue,
+		notify:          sync.InvalidateAPICaches,
+	}
+}
+
+func wireHooksWith(app core.App, deps replayDeps) {
 	app.OnRecordDelete(collectionUnits).BindFunc(guardUnitDelete)
 	app.OnRecordDelete(collectionAliases).BindFunc(guardAliasDelete)
 	app.OnRecordCreate(collectionAliases).BindFunc(guardAliasOverlap)
@@ -236,7 +259,7 @@ func wireHooks(app core.App) {
 	app.OnRecordCreate(collectionAssignmentsDraft).BindFunc(guardDraftAssignmentGrain)
 	app.OnRecordUpdate(collectionAssignmentsDraft).BindFunc(guardDraftAssignmentGrain)
 	app.OnRecordUpdate(collectionUnits).BindFunc(guardUnitParentCycle)
-	app.OnRecordAfterUpdateSuccess(collectionIngestIssues).BindFunc(replayOnResolve)
+	app.OnRecordAfterUpdateSuccess(collectionIngestIssues).BindFunc(replayOnResolve(deps))
 
 	// Bind only to collections that actually exist -- a future table removal
 	// must not take the boot down, so this checks rather than assumes before
@@ -786,7 +809,11 @@ func guardUnitParentCycle(e *core.RecordEvent) error {
 // it runs only after Flush returns, and Flush never returns from inside this
 // call chain. Original() holds the record's state as loaded, before this
 // write -- so this only proceeds on a genuine false -> true transition.
-func replayOnResolve(e *core.RecordEvent) error {
+func replayOnResolve(deps replayDeps) func(e *core.RecordEvent) error {
+	return func(e *core.RecordEvent) error { return replayOnResolveEvent(deps, e) }
+}
+
+func replayOnResolveEvent(deps replayDeps, e *core.RecordEvent) error {
 	// The sync's own close (IssueRecorder.CloseAnswered, kindred#2784) is not a
 	// tick: the sync has just placed the weekends itself, and replaying a stale
 	// row's old raw_value would re-record it and reopen the row it closed.
@@ -835,17 +862,27 @@ func replayOnResolve(e *core.RecordEvent) error {
 		return e.Next()
 	}
 
+	runReplay(deps, e, partyScoped)
+	return e.Next()
+}
+
+// runReplay replays the resolved row through the route its shape picks, logs
+// the outcome, and clears FastAPI's lodging cache when the replay wrote.
+func runReplay(deps replayDeps, e *core.RecordEvent, partyScoped bool) {
 	var err error
+	wrote := false
 	if partyScoped {
 		var res sync.ReplayResult
-		res, err = sync.ReplayIssue(e.App, e.Record.Id)
+		res, err = deps.replayIssue(e.App, e.Record.Id)
+		wrote = res.Placed
 		if err == nil && !res.Placed {
 			e.App.Logger().Info("Replay placed nothing; row re-opened",
 				"issue", e.Record.Id, "blockers", res.Blockers)
 		}
 	} else {
 		var placed int
-		placed, err = sync.ReplayPartylessIssue(e.App, e.Record.Id)
+		placed, err = deps.replayPartyless(e.App, e.Record.Id)
+		wrote = placed > 0
 		if err == nil {
 			e.App.Logger().Info("Party-less replay finished",
 				"issue", e.Record.Id, "placed", placed)
@@ -855,5 +892,19 @@ func replayOnResolve(e *core.RecordEvent) error {
 		e.App.Logger().Warn("Replaying a resolved lodging issue",
 			"issue", e.Record.Id, "party_scoped", partyScoped, "error", err)
 	}
-	return e.Next()
+	// A replay that placed something upserted live lodging_assignments, here in
+	// PocketBase and outside any sync run, so the orchestrator's completion
+	// notice never fires for it. Without this, FastAPI's cached read of that
+	// table (LodgingRepository.fetch_live_assignments) would serve the
+	// pre-replay cabin until its backstop expiry. Gated on rows actually
+	// written, not on err: a replay that placed some parties and then failed to
+	// flush still wrote them. Waited, not fire-and-forget, so the browser's
+	// refetch after this resolve cannot beat the clear; a failure costs a
+	// warning, never the resolve.
+	if wrote {
+		if nerr := deps.notify("lodging_assignments"); nerr != nil {
+			e.App.Logger().Warn("Could not ask FastAPI to clear its lodging cache after a replay",
+				"issue", e.Record.Id, "error", nerr)
+		}
+	}
 }

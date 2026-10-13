@@ -31,9 +31,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 from pocketbase.models.record import Record
 
-from api.constants.sync_job_writes import SYNC_JOB_WRITES
-from api.dependencies import lodging_cache
-from api.services.lodging_cache import LodgingYearCache, cached_by_year
+import api.services.lodging_cache_warm as lodging_warm
+from api.constants.sync_job_writes import SYNC_JOB_WRITES, sync_writes_any
+from api.dependencies import LODGING_CACHE_BACKSTOP_SECONDS, lodging_cache
+from api.services.lodging_cache import CACHED_TABLES_ATTR, LodgingYearCache, cached_by_year
 from api.services.lodging_cache_warm import (
     cached_read_tables,
     current_season_year,
@@ -460,3 +461,47 @@ class TestInvalidatingOneRead:
     def test_the_reads_a_table_reaches_are_the_ones_that_declared_it(self) -> None:
         assert reads_depending_on(frozenset({"jotform_submissions"})) == ("fetch_jotform_bunking_rows",)
         assert reads_depending_on(frozenset({"lodging_write_ins"})) == ()
+
+
+class TestSixHourBackstop:
+    """The timed refresh only repairs a MISSED sync-completion invalidate, so it is a six-hour backstop."""
+
+    def test_the_constant_and_the_cache_ttl_agree(self) -> None:
+        assert LODGING_CACHE_BACKSTOP_SECONDS == 21_600
+        assert lodging_cache.ttl_seconds == LODGING_CACHE_BACKSTOP_SECONDS
+
+    @pytest.mark.asyncio
+    async def test_the_refresher_waits_the_interval_it_was_given(self) -> None:
+        sleeps: list[float] = []
+
+        async def fake_sleep(seconds: float) -> None:
+            sleeps.append(seconds)
+            if len(sleeps) >= 2:
+                raise asyncio.CancelledError
+
+        async def fake_warm(year: int) -> None:
+            return None
+
+        async def fake_year() -> int:
+            return 2026
+
+        with pytest.raises(asyncio.CancelledError):
+            await refresh_lodging_cache_forever(interval=77.0, warm=fake_warm, year=fake_year, sleep=fake_sleep)
+        assert sleeps == [77.0, 77.0]
+
+    @pytest.mark.asyncio
+    async def test_the_started_refresher_runs_on_the_backstop(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        seen: dict[str, Any] = {}
+
+        async def fake_loop(**kwargs: Any) -> None:
+            seen.update(kwargs)
+
+        monkeypatch.setattr(lodging_warm, "refresh_lodging_cache_forever", fake_loop)
+        await lodging_warm.start_lodging_cache_refresher()
+        assert seen["interval"] == 21_600
+
+    def test_a_lodging_assignments_completion_clears_the_live_assignments_read(self) -> None:
+        """The Go hook that replays a staff-resolved queue row reports sync_type=lodging_assignments; that call
+        must reach fetch_live_assignments' cache entry, the one cached read a non-sync writer can change."""
+        tables = getattr(LodgingRepository.fetch_live_assignments, CACHED_TABLES_ATTR)
+        assert sync_writes_any("lodging_assignments", tables)

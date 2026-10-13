@@ -1147,7 +1147,7 @@ class LodgingRepository:
         """Households fetched fresh by PocketBase id, bypassing the year cache.
 
         The escape hatch for kindred#2143: `fetch_households`' cached snapshot
-        can be up to 15 minutes stale (kindred#1963), but `build_roster` and
+        can be stale until the next sync clear or the six-hour backstop (kindred#1963), but `build_roster` and
         `build_summary` always fetch attendees fresh. A household created
         after the snapshot was cached is absent from it even though a
         brand-new attendee can already name it -- the roster service calls
@@ -1303,9 +1303,16 @@ class LodgingRepository:
         the CampMinder layer, for a whole cohort at once (kindred#2775).
 
         Cached, unlike the board's own session-scoped `fetch_assignments`,
-        because this read is only ever issued for a PRIOR season, and the Go
-        ingest is the table's sole writer (no API or browser path reaches it --
-        `lodging_write_service` writes drafts and write-ins only).
+        because this read is only ever issued for a PRIOR season, and no API
+        path writes the table (`lodging_write_service` writes drafts and
+        write-ins only). Two Go writers do: the sync ingest, whose completion
+        clears this entry, and PocketBase's `replayOnResolve` hook, which upserts
+        live rows when staff tick a lodging_ingest_issues row resolved in the
+        browser and then calls the invalidate endpoint with
+        sync_type=lodging_assignments (waited, so the browser's refetch cannot
+        beat it when the call answers within its 5-6 s bound; a timeout or failure
+        is only logged and the backstop expiry repairs it). Without that call the six-hour backstop would be the only
+        refresh after a replay.
         No expand: a row is named from its unit ids.
         """
         return await self._page(

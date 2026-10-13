@@ -1986,7 +1986,7 @@ class TestYearHasAnyCabin:
 class TestFetchHouseholdsByIds:
     """The fresh-fetch escape hatch for kindred#2143.
 
-    `fetch_households` is cached for up to 15 minutes (kindred#1963); a
+    `fetch_households` is cached until the next sync clear or the six-hour backstop (kindred#1963); a
     household created after the snapshot was cached is absent from it even
     though a fresh attendee can already name it. This method is the roster
     service's fallback for exactly that gap -- deliberately NOT decorated

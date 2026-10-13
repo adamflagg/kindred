@@ -51,8 +51,10 @@ kindred#2766 added one more, `fetch_adult_need_values`: the same
 the board's own year rather than `year - 1`, and only on an adult board.
 
 kindred#2775 added two more, both only ever read for a PRIOR season:
-`fetch_live_assignments` (live `lodging_assignments`, whose sole writer is the
-Go ingest) and `fetch_family_enrolled_attendees` (`attendees`). Neither is
+`fetch_live_assignments` (live `lodging_assignments`, written by the Go ingest
+and by the hook that replays a staff-resolved queue row, which sends
+sync_type=lodging_assignments to the invalidate endpoint once it has placed
+something) and `fetch_family_enrolled_attendees` (`attendees`). Neither is
 issued before the 2027 board.
 
 Shaped like api/services/metrics_cache.py (TTL + LRU + RLock) per that
@@ -69,14 +71,15 @@ here too, alongside `metrics_cache.invalidate_all()` and geo_service's
 completion: PocketBase's sync orchestrator calls it after each job it
 finishes (kindred#2803), and the frontend's `invalidateSyncData` still does
 too. So a hit here is stale only for the moment between a job finishing and
-that call landing; the TTL is the fallback for a call that fails.
+that call landing; the TTL is the fallback for a call that fails (six hours
+for the singleton, LODGING_CACHE_BACKSTOP_SECONDS in api/dependencies.py).
 
 SCOPED AND WARMED since kindred#2803 (api/services/lodging_cache_warm.py).
 The completion names its sync, and this cache is cleared only when that sync
 writes a table some cached read declares in `cached_by_year(tables=...)` --
 the job-to-table half lives in api/constants/sync_job_writes.py. Before that,
 the HOURLY `bunk_assignments` sync, which writes nothing here, cleared the
-whole cache for every open tab. Every clear, and every TTL, is now followed by
+whole cache for every open tab. Every clear, and every backstop expiry, is now followed by
 a background warm, so the re-read no longer lands on somebody's click; the
 generation counter below stops a warm that straddles a clear from writing its
 pre-clear answer back.

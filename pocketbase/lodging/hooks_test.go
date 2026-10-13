@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	gosync "sync"
 	"testing"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -2250,5 +2251,187 @@ func TestYearRefMapsAgreeOnEveryRelation(t *testing.T) {
 				pair.dependent, pair.target, why,
 			)
 		}
+	}
+}
+
+// recordedInvalidations stands in for the FastAPI cache-invalidate call, so a
+// test can see whether (and with what job id) the hook asked for a clear.
+type recordedInvalidations struct {
+	mu  gosync.Mutex
+	got []string
+	err error
+}
+
+func (r *recordedInvalidations) notify(syncType string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.got = append(r.got, syncType)
+	return r.err
+}
+
+func (r *recordedInvalidations) snapshot() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]string(nil), r.got...)
+}
+
+// resolveWithReplayDeps wires the real hooks with injected replay and notify
+// functions, then ticks one freshly created queue row resolved. kind and the
+// party ids pick the party-scoped or party-less route; mapped sets
+// resolved_alias so a party-less alias row counts as a mapping, not an ignore.
+func resolveWithReplayDeps(
+	t *testing.T, deps replayDeps, kind string, householdCMID int, mapped bool,
+) (saveErr error) {
+	t.Helper()
+	app, err := tests.NewTestAppWithConfig(core.BaseAppConfig{
+		EncryptionEnv: "pb_test_env",
+		IsDev:         true,
+	})
+	if err != nil {
+		t.Fatalf("NewTestAppWithConfig: %v", err)
+	}
+	t.Cleanup(app.Cleanup)
+
+	setupCollections(t, app)
+	issue := newIssue(t, app, kind, "Ridge A 7", 2026, householdCMID, 0)
+	wireHooksWith(app, deps)
+
+	issue.Set("is_resolved", true)
+	if mapped {
+		alias := newAlias(t, app, "Ridge A 7")
+		issue.Set("resolved_alias", alias.Id)
+	}
+	if err := app.Save(issue); err != nil {
+		return fmt.Errorf("saving the resolved issue: %w", err)
+	}
+	return nil
+}
+
+// A staff resolve whose replay wrote a live lodging_assignments row must tell
+// FastAPI to clear its cached read of that table: the replay runs inside
+// PocketBase, outside the sync orchestrator, so nothing else does.
+func TestResolveThatPlacedClearsTheServerCacheOnce(t *testing.T) {
+	t.Parallel()
+	rec := &recordedInvalidations{}
+	deps := replayDeps{
+		replayIssue: func(core.App, string) (sync.ReplayResult, error) {
+			return sync.ReplayResult{Placed: true}, nil
+		},
+		replayPartyless: func(core.App, string) (int, error) { return 0, nil },
+		notify:          rec.notify,
+	}
+	if err := resolveWithReplayDeps(t, deps, "no_session", 2000001, false); err != nil {
+		t.Fatalf("resolve failed: %v", err)
+	}
+	if got := rec.snapshot(); len(got) != 1 || got[0] != "lodging_assignments" {
+		t.Fatalf("notifier calls = %v, want exactly [lodging_assignments]", got)
+	}
+}
+
+func TestPartylessResolveThatPlacedClearsTheServerCacheOnce(t *testing.T) {
+	t.Parallel()
+	rec := &recordedInvalidations{}
+	deps := replayDeps{
+		replayIssue: func(core.App, string) (sync.ReplayResult, error) {
+			return sync.ReplayResult{}, nil
+		},
+		replayPartyless: func(core.App, string) (int, error) { return 3, nil },
+		notify:          rec.notify,
+	}
+	if err := resolveWithReplayDeps(t, deps, "unresolved_alias", 0, true); err != nil {
+		t.Fatalf("resolve failed: %v", err)
+	}
+	if got := rec.snapshot(); len(got) != 1 || got[0] != "lodging_assignments" {
+		t.Fatalf("notifier calls = %v, want exactly [lodging_assignments]", got)
+	}
+}
+
+// A replay that wrote no live assignment (blocked, or placed nobody) leaves the
+// cached read correct, so it must not pay an invalidate.
+func TestResolveThatPlacedNothingDoesNotClearTheServerCache(t *testing.T) {
+	t.Parallel()
+	rec := &recordedInvalidations{}
+	deps := replayDeps{
+		replayIssue: func(core.App, string) (sync.ReplayResult, error) {
+			return sync.ReplayResult{Placed: false, Blockers: []string{"no_session"}}, nil
+		},
+		replayPartyless: func(core.App, string) (int, error) { return 0, nil },
+		notify:          rec.notify,
+	}
+	if err := resolveWithReplayDeps(t, deps, "no_session", 2000001, false); err != nil {
+		t.Fatalf("resolve failed: %v", err)
+	}
+	if err := resolveWithReplayDeps(t, deps, "unresolved_alias", 0, true); err != nil {
+		t.Fatalf("party-less resolve failed: %v", err)
+	}
+	if got := rec.snapshot(); len(got) != 0 {
+		t.Fatalf("notifier calls = %v, want none when nothing was placed", got)
+	}
+}
+
+// A resolve that never reaches a replay (an ignore, a plain untick) writes
+// nothing and must not invalidate.
+func TestIgnoringARowDoesNotClearTheServerCache(t *testing.T) {
+	t.Parallel()
+	rec := &recordedInvalidations{}
+	deps := replayDeps{
+		replayIssue: func(core.App, string) (sync.ReplayResult, error) {
+			return sync.ReplayResult{Placed: true}, nil
+		},
+		replayPartyless: func(core.App, string) (int, error) { return 5, nil },
+		notify:          rec.notify,
+	}
+	if err := resolveWithReplayDeps(t, deps, "unresolved_alias", 0, false); err != nil {
+		t.Fatalf("resolve failed: %v", err)
+	}
+	if got := rec.snapshot(); len(got) != 0 {
+		t.Fatalf("notifier calls = %v, want none for an ignore", got)
+	}
+}
+
+// A down or wedged FastAPI costs a warning, never the staff member's resolve.
+func TestFailingNotifierStillLetsTheResolveSucceed(t *testing.T) {
+	t.Parallel()
+	rec := &recordedInvalidations{err: fmt.Errorf("fastapi unreachable")}
+	deps := replayDeps{
+		replayIssue: func(core.App, string) (sync.ReplayResult, error) {
+			return sync.ReplayResult{Placed: true}, nil
+		},
+		replayPartyless: func(core.App, string) (int, error) { return 0, nil },
+		notify:          rec.notify,
+	}
+	if err := resolveWithReplayDeps(t, deps, "no_session", 2000001, false); err != nil {
+		t.Fatalf("resolve failed because the notifier failed: %v", err)
+	}
+	if got := rec.snapshot(); len(got) != 1 {
+		t.Fatalf("notifier calls = %v, want it attempted once", got)
+	}
+}
+
+// A replay that wrote rows and THEN returned an error (a flush failure after
+// the placements) still changed lodging_assignments, so the cache is cleared.
+func TestReplayThatPlacedAndThenErroredStillClearsTheServerCache(t *testing.T) {
+	t.Parallel()
+	rec := &recordedInvalidations{}
+	deps := replayDeps{
+		replayIssue: func(core.App, string) (sync.ReplayResult, error) {
+			return sync.ReplayResult{Placed: true}, fmt.Errorf("flushing replay issues")
+		},
+		replayPartyless: func(core.App, string) (int, error) {
+			return 3, fmt.Errorf("flushing replay issues")
+		},
+		notify: rec.notify,
+	}
+	if err := resolveWithReplayDeps(t, deps, "no_session", 2000001, false); err != nil {
+		t.Fatalf("party-scoped resolve failed: %v", err)
+	}
+	if got := rec.snapshot(); len(got) != 1 || got[0] != "lodging_assignments" {
+		t.Fatalf("party-scoped notifier calls = %v, want one lodging_assignments", got)
+	}
+	if err := resolveWithReplayDeps(t, deps, "unresolved_alias", 0, true); err != nil {
+		t.Fatalf("party-less resolve failed: %v", err)
+	}
+	if got := rec.snapshot(); len(got) != 2 {
+		t.Fatalf("after the party-less resolve notifier calls = %v, want 2 in total", got)
 	}
 }

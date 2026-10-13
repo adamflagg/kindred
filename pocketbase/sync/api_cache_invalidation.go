@@ -31,13 +31,26 @@ const defaultRunCompletedNotifyTimeout = fastapi.InvalidateTimeout + time.Second
 // twice over: the HTTP client gives up after fastapi.InvalidateTimeout, and a failure costs
 // one warning, never the run -- every cache still expires on its own TTL.
 func notifyAPIRunCompleted(syncType string) {
-	baseURL := fastapi.BaseURL()
-	if err := fastapi.InvalidateCaches(context.Background(), baseURL, syncType); err != nil {
+	if err := InvalidateAPICaches(syncType); err != nil {
 		slog.Warn("Could not ask FastAPI to clear its caches after a sync",
-			"syncType", syncType, "url", baseURL, "error", err)
+			"syncType", syncType, "url", fastapi.BaseURL(), "error", err)
 		return
 	}
 	slog.Debug("FastAPI caches invalidated after sync", "syncType", syncType)
+}
+
+// InvalidateAPICaches asks FastAPI to clear the server caches that writes by syncType could
+// have made stale, waits for the answer, and returns any failure for the caller to log. It
+// is bounded: the context ends the call at defaultRunCompletedNotifyTimeout even if the HTTP
+// client's own InvalidateTimeout does not.
+//
+// Exported for writers that change a synced table OUTSIDE a sync run -- the lodging hook that
+// replays a placement when staff resolve a queue row -- and therefore never reach the
+// orchestrator's notifyRunCompleted. They pass the job id that owns the table.
+func InvalidateAPICaches(syncType string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), defaultRunCompletedNotifyTimeout)
+	defer cancel()
+	return fastapi.InvalidateCaches(ctx, fastapi.BaseURL(), syncType)
 }
 
 // notifyRunCompleted calls runCompletedNotifier and waits for it to return, or for the

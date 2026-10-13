@@ -3547,7 +3547,7 @@ class LodgingRosterService:
         """`households`, patched with any household a fresh attendee names
         that the cached year snapshot does not have (kindred#2143).
 
-        `households` is cached for up to 15 minutes (`fetch_households`,
+        `households` is cached until the next sync clear or the six-hour backstop (`fetch_households`,
         kindred#1963); `attendees` is fetched fresh on every call, in the
         SAME TaskGroup. A household created after the snapshot was cached is
         absent from the cached dict even though a brand-new attendee can

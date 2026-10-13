@@ -10,7 +10,7 @@ entries the difference does not matter). An expired entry is dropped when next r
 Cleared by: every Camperships write (on_aid_commit, registered on commit_aid_writes at startup: the write's own year,
 or every year for a write to a season-spanning table, SEASON_SPANNING_COLLECTIONS), every
 sync job's completion (invalidate_server_caches, unscoped: see its docstring), and the layer-1 refresher's
-TTL clear. Each clear is followed by a background warm of the configured season. This cache's own TTL is
+backstop clear. Each clear is followed by a background warm of the configured season. This cache's own TTL is
 the fallback, not the plan.
 
 Generation-guarded per year: a build that started before a clear is handed to the waiters who already
