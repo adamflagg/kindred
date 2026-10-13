@@ -541,7 +541,7 @@ async def pre_validate_solver(
                 pb.collection(CAMP_SESSIONS).get_full_list,
                 query_params={
                     "filter": (
-                        f"({' || '.join([f'cm_id = {sid}' for sid in ctx.related_session_ids])}) && year = {ctx.year}"
+                        f"({' || '.join([f'cm_id = {int(sid)}' for sid in ctx.related_session_ids])}) && year = {ctx.year}"
                     )
                 },
             )
@@ -929,7 +929,7 @@ async def clear_session_assignments(
         base_filter = f'scenario = "{pb_escape(scenario)}"'
 
         for sid in ctx.related_session_ids:
-            filter_str = f"{base_filter} && session.cm_id = {sid} && year = {ctx.year}"
+            filter_str = f"{base_filter} && session.cm_id = {int(sid)} && year = {ctx.year}"
 
             assignments = await asyncio.to_thread(
                 pb.collection(collection_name).get_full_list, query_params={"filter": filter_str}
@@ -944,7 +944,7 @@ async def clear_session_assignments(
         all_sessions = await asyncio.to_thread(
             pb.collection(CAMP_SESSIONS).get_full_list,
             query_params={
-                "filter": f"({' || '.join([f'cm_id = {sid}' for sid in ctx.related_session_ids])}) && year = {ctx.year}"
+                "filter": f"({' || '.join([f'cm_id = {int(sid)}' for sid in ctx.related_session_ids])}) && year = {ctx.year}"
             },
         )
         for s in all_sessions:

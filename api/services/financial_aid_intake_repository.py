@@ -127,7 +127,7 @@ _BILLING_FIELDS: Final = ",".join(
         "expand.financial_category.name",
     )
 )
-_REGISTERED_FILTER: Final = " || ".join(f"status_id = {s}" for s in sorted(REGISTERED_STATUS_IDS))
+_REGISTERED_FILTER: Final = " || ".join(f"status_id = {int(s)}" for s in sorted(REGISTERED_STATUS_IDS))
 
 
 def allowlist_filter(field_cm_ids: Sequence[int]) -> str:

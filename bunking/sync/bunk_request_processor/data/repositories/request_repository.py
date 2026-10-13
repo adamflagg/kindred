@@ -95,7 +95,7 @@ class RequestRepository:
 
             # Add session filter if provided
             if session_cm_ids:
-                session_conditions = [f"session_id = {sid}" for sid in session_cm_ids]
+                session_conditions = [f"session_id = {int(sid)}" for sid in session_cm_ids]
                 session_filter = "(" + " || ".join(session_conditions) + ")"
                 filter_str += f" && {session_filter}"
 

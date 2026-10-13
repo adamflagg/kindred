@@ -292,7 +292,7 @@ class SocialGraph:
             )
 
             for chunk in batched(person_cm_ids, chunk_size, strict=False):
-                person_filter = " || ".join([f"person.cm_id = {pid}" for pid in chunk])
+                person_filter = " || ".join([f"person.cm_id = {int(pid)}" for pid in chunk])
                 filter_str = f"year < {self.year} && ({type_clause}) && ({person_filter})"
 
                 assignments = self.pb.collection("bunk_assignments").get_full_list(

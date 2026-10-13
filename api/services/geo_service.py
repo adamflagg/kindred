@@ -266,7 +266,7 @@ class GeoService:
             sessions_dict = {int(s.cm_id): s for s in sessions_raw if getattr(s, "cm_id", None)}
             duration_ids = resolve_duration_sessions(sessions_dict, duration)
             if duration_ids:
-                id_clauses = [f"session.cm_id = {sid}" for sid in duration_ids]
+                id_clauses = [f"session.cm_id = {int(sid)}" for sid in duration_ids]
                 att_filter += f" && ({' || '.join(id_clauses)})"
             else:
                 # No sessions match the duration — return empty set
@@ -331,7 +331,7 @@ class GeoService:
             _PERSON_ID_CACHE[cache_key] = (set(), now)
             return set()
 
-        id_clauses = [f"session.cm_id = {sid}" for sid in duration_ids]
+        id_clauses = [f"session.cm_id = {int(sid)}" for sid in duration_ids]
         att_filter = f"year = {year} && ({' || '.join(id_clauses)})"
 
         attendees: list[Any] = await asyncio.to_thread(

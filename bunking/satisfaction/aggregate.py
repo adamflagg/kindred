@@ -292,9 +292,9 @@ def session_satisfaction(
 
     # Filter strings for 1-or-N session ids.
     # session_id_filter covers bunk_requests (direct cm_id field).
-    session_id_filter = " || ".join(f"session_id = {sid}" for sid in session_cm_ids)
+    session_id_filter = " || ".join(f"session_id = {int(sid)}" for sid in session_cm_ids)
     # session_relation_filter covers bunk_assignments (relation field).
-    session_relation_filter = " || ".join(f"session.cm_id = {sid}" for sid in session_cm_ids)
+    session_relation_filter = " || ".join(f"session.cm_id = {int(sid)}" for sid in session_cm_ids)
 
     if scenario_id:
         assignments_collection = BUNK_ASSIGNMENTS_DRAFT
@@ -400,7 +400,7 @@ def session_satisfaction(
     # Chunks of 100 keep the filter string under the practical URL limit.
     missing_cm_ids = sorted(pid for pid in person_to_bunk if pid not in person_grades)
     for chunk in batched(missing_cm_ids, 100, strict=False):
-        cm_id_filter = " || ".join(f"cm_id = {cid}" for cid in chunk)
+        cm_id_filter = " || ".join(f"cm_id = {int(cid)}" for cid in chunk)
         persons = pb_client.collection(PERSONS).get_full_list(
             batch=PB_PAGE_SIZE,
             query_params={"filter": f"year = {year} && ({cm_id_filter})", "fields": "cm_id,grade"},

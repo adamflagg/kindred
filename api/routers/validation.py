@@ -319,7 +319,7 @@ async def validate_bunking(
         all_sessions_data = await asyncio.to_thread(
             pb.collection(CAMP_SESSIONS).get_full_list,
             query_params={
-                "filter": f"({' || '.join([f'cm_id = {sid}' for sid in ctx.related_session_ids])}) && year = {ctx.year}"
+                "filter": f"({' || '.join([f'cm_id = {int(sid)}' for sid in ctx.related_session_ids])}) && year = {ctx.year}"
             },
         )
         all_sessions = [

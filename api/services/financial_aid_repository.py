@@ -371,7 +371,7 @@ class FinancialAidRepository:
         unique within a season, and a row can legitimately match more than one
         query -- e.g. an aid word AND a chunked equality term).
         """
-        outside = " && ".join(f"financial_category_cm_id != {c}" for c in AID_CATEGORY_IDS)
+        outside = " && ".join(f"financial_category_cm_id != {int(c)}" for c in AID_CATEGORY_IDS)
         word_terms = [f"description ~ '{pb_escape(w)}'" for w in AID_LIKE_WORDS]
         equality_terms = [f"description = '{pb_escape(d)}'" for d in aid_descriptions if d]
 

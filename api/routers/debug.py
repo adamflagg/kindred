@@ -1344,7 +1344,7 @@ def get_pipeline_run_summary(
         _validate_allowlist(source_field, VALID_SOURCE_FIELDS, "source_field")
         filter_parts.append(f'source_field = "{pb_escape(source_field)}"')
     if phase3_triggered is not None:
-        filter_parts.append(f"phase3_triggered = {str(phase3_triggered).lower()}")
+        filter_parts.append(f"phase3_triggered = {'true' if phase3_triggered else 'false'}")
     if pre_p1_action:
         _validate_allowlist(pre_p1_action, VALID_PRE_P1_ACTIONS, "pre_p1_action")
         filter_parts.append(f'pre_p1_action = "{pb_escape(pre_p1_action)}"')

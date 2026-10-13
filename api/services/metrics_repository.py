@@ -175,7 +175,7 @@ class MetricsRepository:
         all_results: list[Any] = []
 
         for batch_ids in batched(sorted_ids, self.BATCH_SIZE, strict=False):
-            person_filter = " || ".join(f"person_id = {pid}" for pid in batch_ids)
+            person_filter = " || ".join(f"person_id = {int(pid)}" for pid in batch_ids)
             filter_str = f"({person_filter}) && status_id = 2 && year <= {max_year}"
 
             batch_results = await asyncio.to_thread(
