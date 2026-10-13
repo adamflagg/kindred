@@ -1,7 +1,7 @@
 import { afterEach, describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { parseVersion } from '../utils/versionParser'
-import { VersionInfo } from './VersionInfo'
+import { VersionInfo, VersionMenuRow } from './VersionInfo'
 
 /**
  * Tests for version parsing and VersionInfo display.
@@ -40,6 +40,7 @@ describe('parseVersion', () => {
         url: 'https://github.com/adamflagg/kindred/releases/tag/v0.7.0',
         ahead: {
           display: '+5',
+          sha: 'abc1234',
           url: 'https://github.com/adamflagg/kindred/compare/v0.7.0...abc1234',
         },
       })
@@ -52,6 +53,7 @@ describe('parseVersion', () => {
         url: 'https://github.com/adamflagg/kindred/releases/tag/v1.2.3',
         ahead: {
           display: '+42',
+          sha: 'deadbeef',
           url: 'https://github.com/adamflagg/kindred/compare/v1.2.3...deadbeef',
         },
       })
@@ -64,6 +66,7 @@ describe('parseVersion', () => {
         url: 'https://github.com/adamflagg/kindred/releases/tag/v1.0',
         ahead: {
           display: '+3',
+          sha: '1234567',
           url: 'https://github.com/adamflagg/kindred/compare/v1.0...1234567',
         },
       })
@@ -134,15 +137,6 @@ describe('VersionInfo', () => {
     )
   })
 
-  // Owner ruling (final audit): in the user menu it is one muted line, "v0.7.0 +5", with no "Kindred".
-  it('should render a compact muted line without the product name', () => {
-    mockVersion('v0.7.0-5-gabc1234')
-    render(<VersionInfo compact />)
-    expect(screen.getByRole('link', { name: 'v0.7.0' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: '+5' })).toBeInTheDocument()
-    expect(screen.queryByText(/Kindred/)).toBeNull()
-  })
-
   it('should render nothing for "dev"', () => {
     mockVersion('dev')
     const { container } = render(<VersionInfo />)
@@ -156,5 +150,61 @@ describe('VersionInfo', () => {
     const { container } = render(<VersionInfo />)
     expect(screen.queryByRole('link')).not.toBeInTheDocument()
     expect(container.firstChild).toBeEmptyDOMElement()
+  })
+})
+
+describe('VersionMenuRow', () => {
+  const REPO = 'https://github.com/adamflagg/kindred'
+
+  it('renders a divider and a row for a build ahead of a tag: tag, +N and sha as separate links', () => {
+    mockVersion('v6.4.0-248-gc35904c')
+    const { container } = render(<VersionMenuRow />)
+    const tag = screen.getByRole('link', { name: 'v6.4.0' })
+    expect(tag).toHaveAttribute('href', `${REPO}/releases/tag/v6.4.0`)
+    const compare = screen.getByRole('link', { name: /\+248/ })
+    expect(compare).toHaveAttribute('href', `${REPO}/compare/v6.4.0...c35904c`)
+    expect(compare).toHaveTextContent('+248 · c35904c')
+    expect(compare.querySelector('.font-mono')).toHaveTextContent('c35904c')
+    for (const a of [tag, compare]) {
+      expect(a).toHaveAttribute('target', '_blank')
+      expect(a).toHaveAttribute('rel', 'noopener noreferrer')
+    }
+    expect(container.querySelector('.bg-border.my-2.h-px')).not.toBeNull()
+    expect(screen.queryByText(/Kindred/)).toBeNull()
+  })
+
+  it('shows "release" on a clean tag, with only the release link', () => {
+    mockVersion('v6.5.0')
+    render(<VersionMenuRow />)
+    expect(screen.getAllByRole('link')).toHaveLength(1)
+    const tag = screen.getByRole('link', { name: /v6\.5\.0/ })
+    expect(tag).toHaveAttribute('href', `${REPO}/releases/tag/v6.5.0`)
+    expect(screen.getByText('release')).toBeInTheDocument()
+  })
+
+  it('shows the short sha, linked to the commit, on a bare-sha build', () => {
+    mockVersion('abc1234')
+    render(<VersionMenuRow />)
+    expect(screen.getAllByRole('link')).toHaveLength(1)
+    expect(screen.getByRole('link', { name: /abc1234/ })).toHaveAttribute(
+      'href',
+      `${REPO}/commit/abc1234`
+    )
+    expect(screen.queryByText('release')).toBeNull()
+  })
+
+  it('renders no divider and no row for a dev build', () => {
+    mockVersion('dev')
+    const { container } = render(<VersionMenuRow />)
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  it('calls onNavigate when either link is clicked', () => {
+    mockVersion('v6.4.0-248-gc35904c')
+    const onNavigate = vi.fn()
+    render(<VersionMenuRow onNavigate={onNavigate} />)
+    fireEvent.click(screen.getByRole('link', { name: 'v6.4.0' }))
+    fireEvent.click(screen.getByRole('link', { name: /\+248/ }))
+    expect(onNavigate).toHaveBeenCalledTimes(2)
   })
 })

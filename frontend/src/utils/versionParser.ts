@@ -11,6 +11,7 @@ const SHA_RE = /^[0-9a-f]{7,40}$/
 
 export interface VersionAhead {
   display: string
+  sha: string
   url: string
 }
 
@@ -45,6 +46,7 @@ export function parseVersion(version: string): ParsedVersion | null {
       url: `${GITHUB_REPO_URL}/releases/tag/${tag}`,
       ahead: {
         display: `+${aheadCount}`,
+        sha,
         url: `${GITHUB_REPO_URL}/compare/${tag}...${sha}`,
       },
     }

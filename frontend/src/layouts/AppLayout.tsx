@@ -41,7 +41,7 @@ import { type Program, useProgram } from '../contexts/ProgramContext'
 import { canOpenProgram } from '../config/programAccess'
 import { getProgramFromPath, getProgramHomeUrl } from '../utils/programUrls'
 import { pb } from '../lib/pocketbase'
-import { VersionInfo } from '../components/VersionInfo'
+import { VersionMenuRow } from '../components/VersionInfo'
 import { MANAGE_TABS, canSeeTab } from '../config/manageTabs'
 import { AidNavLinks } from '../components/camperships/shell/AidNavLinks'
 import { PROGRAM_BUTTONS } from '../config/programButtons'
@@ -545,9 +545,6 @@ export const AppLayout = () => {
                           <LogOut className="h-4 w-4" />
                           Sign Out
                         </button>
-
-                        {/* The version, a muted line (owner ruling, final audit): no longer fixed on the page. */}
-                        <VersionInfo compact className="mt-1 justify-center px-3 pt-1" />
                       </div>
                     )}
                   </div>
@@ -564,7 +561,7 @@ export const AppLayout = () => {
                   </button>
 
                   {isHelpMenuOpen && (
-                    <div className="card-lodge shadow-lodge-lg animate-scale-in absolute top-full right-0 z-50 mt-2 w-56 p-2">
+                    <div className="card-lodge shadow-lodge-lg animate-scale-in absolute top-full right-0 z-50 mt-2 w-64 p-2">
                       <button
                         onClick={() => {
                           setIsHelpMenuOpen(false)
@@ -588,6 +585,9 @@ export const AppLayout = () => {
                           Tour This Page
                         </button>
                       )}
+
+                      {/* Owner ruling 2026-10-12: the version lives here, not in the user menu. */}
+                      <VersionMenuRow onNavigate={() => setIsHelpMenuOpen(false)} />
                     </div>
                   )}
                 </div>
