@@ -5,6 +5,19 @@
 #   ./scripts/worktree/new.sh <feature-name>
 #   ./scripts/worktree/new.sh fix-auth-bug
 #   ./scripts/worktree/new.sh social-graph-perf
+#   KINDRED_GUIDE_DIR=/path/to/guide-checkout ./scripts/worktree/new.sh my-feature --guide
+#
+# --guide (optional, after the feature name) also creates a paired worktree in
+# the staff-guide checkout named by $KINDRED_GUIDE_DIR, on the same branch name,
+# so a feature and its guide pages can be edited side by side. In that worktree
+# src/data/facts.json becomes a symlink to this worktree's scripts/guide/facts.json,
+# marked skip-worktree so git status / commit -a never see it. To pull a change
+# to that file, run `git update-index --no-skip-worktree src/data/facts.json`
+# there first (if the file is not tracked on the base branch it is excluded
+# instead). A guide-side failure only warns; the kindred worktree is unaffected,
+# and a half-made guide worktree is removed so a later attempt can retry.
+# cleanup.sh removes the paired guide worktree again (keeping its branch) when
+# it removes this one, if KINDRED_GUIDE_DIR is set.
 #
 # Creates:
 #   <main-repo>/.worktrees/<feature-name>/
@@ -31,9 +44,37 @@ WORKTREES_DIR="$MAIN_REPO/.worktrees"
 
 # Parse arguments
 FEATURE_NAME="${1:-}"
+WITH_GUIDE=false
+if [ -n "$FEATURE_NAME" ]; then
+    shift
+fi
+# A flag where the name belongs (`new.sh --guide`) would otherwise survive
+# sanitising and become a worktree literally named after it.
+case "$FEATURE_NAME" in
+    -*) FEATURE_NAME="" ;;
+esac
+for arg in "$@"; do
+    case "$arg" in
+        --guide) WITH_GUIDE=true ;;
+        *)
+            echo -e "${RED}Unknown argument: $arg${NC}"
+            exit 1
+            ;;
+    esac
+done
+
+# Fail fast, before anything is created.
+if [ "$WITH_GUIDE" = true ] && [ -z "${KINDRED_GUIDE_DIR:-}" ]; then
+    echo -e "${RED}--guide needs KINDRED_GUIDE_DIR set to your guide checkout${NC}"
+    exit 1
+fi
+if [ "$WITH_GUIDE" = true ] && ! git -C "$KINDRED_GUIDE_DIR" rev-parse --git-dir >/dev/null 2>&1; then
+    echo -e "${RED}KINDRED_GUIDE_DIR is not a git checkout${NC}"
+    exit 1
+fi
 
 if [ -z "$FEATURE_NAME" ]; then
-    echo -e "${RED}Usage: $0 <feature-name>${NC}"
+    echo -e "${RED}Usage: $0 <feature-name> [--guide]${NC}"
     echo -e ""
     echo -e "Examples:"
     echo -e "  $0 fix-auth-bug"
@@ -325,6 +366,64 @@ fi
 
 # Create logs directory for local dev
 mkdir -p "$WORKTREE_DIR/logs"
+
+# Optional paired worktree in the guide checkout (--guide). Runs last so a guide
+# failure can never leave the kindred worktree half-made: it only warns.
+GUIDE_WT=""
+guide_setup() {
+    local gdir="$KINDRED_GUIDE_DIR" common exclude
+    # A different repo: an inherited GIT_DIR & co. would override every -C below.
+    unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX
+    GUIDE_WT="$gdir/.worktrees/$FEATURE_NAME"
+    [ -e "$GUIDE_WT" ] && return 1
+    # stderr dropped: a failed fetch prints the remote URL, i.e. the repo name.
+    git -C "$gdir" fetch -q origin 2>/dev/null || return 1
+
+    # Keep the guide clone's own status clean: ignore .worktrees/ in its shared exclude.
+    common="$(git -C "$gdir" rev-parse --path-format=absolute --git-common-dir)" || return 1
+    exclude="$common/info/exclude"
+    mkdir -p "$common/info"
+    grep -qxF '.worktrees/' "$exclude" 2>/dev/null || echo '.worktrees/' >> "$exclude"
+
+    # Reuse the branch if it exists (local, then origin), else branch from origin/main.
+    if git -C "$gdir" show-ref --verify -q "refs/heads/$BRANCH_NAME"; then
+        git -C "$gdir" worktree add -q "$GUIDE_WT" "$BRANCH_NAME" || return 1
+    elif git -C "$gdir" show-ref --verify -q "refs/remotes/origin/$BRANCH_NAME"; then
+        git -C "$gdir" worktree add -q "$GUIDE_WT" -b "$BRANCH_NAME" "origin/$BRANCH_NAME" || return 1
+    else
+        git -C "$gdir" worktree add -q "$GUIDE_WT" -b "$BRANCH_NAME" origin/main || return 1
+    fi
+
+    # From here a failure would leave a half-made worktree that blocks every
+    # retry at the existence check above, so remove it (the branch is kept and
+    # reused next time).
+    if ! guide_fill "$exclude"; then
+        git -C "$gdir" worktree remove --force "$GUIDE_WT" >/dev/null 2>&1
+        return 1
+    fi
+}
+guide_fill() {
+    local exclude="$1"
+    (cd "$GUIDE_WT" && npm ci --prefer-offline >/dev/null 2>&1) || return 1
+
+    mkdir -p "$GUIDE_WT/src/data" || return 1
+    ln -sfn "$WORKTREE_DIR/scripts/guide/facts.json" "$GUIDE_WT/src/data/facts.json" || return 1
+    if git -C "$GUIDE_WT" ls-files --error-unmatch src/data/facts.json >/dev/null 2>&1; then
+        # Tracked on this branch: info/exclude cannot hide a typechange, skip-worktree can.
+        git -C "$GUIDE_WT" update-index --skip-worktree src/data/facts.json || return 1
+    else
+        # Not tracked here (e.g. a base that predates the file): exclude it instead.
+        grep -qxF 'src/data/facts.json' "$exclude" || echo 'src/data/facts.json' >> "$exclude"
+    fi
+}
+if [ "$WITH_GUIDE" = true ]; then
+    echo -e "${BLUE}Creating paired guide worktree...${NC}"
+    if guide_setup; then
+        echo -e "${GREEN}Guide worktree: $GUIDE_WT${NC}"
+    else
+        echo -e "${YELLOW}Warning: guide worktree setup failed; the kindred worktree is fine.${NC}"
+    fi
+fi
 
 # Summary
 echo -e ""

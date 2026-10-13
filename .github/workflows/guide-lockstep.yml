@@ -1,0 +1,70 @@
+# Guide lockstep (spec R14): after a kindred PR merges to main, merge its paired
+# staff-guide PR (same branch name) once the guide's own `image.yml` workflow
+# run is green on the exact head (read via the Actions API, so the guide token
+# needs "Actions: Read"), or open a facts-sync PR if facts.json changed with no
+# pair.
+# Logic and tests: scripts/guide/lockstep.py, tests/unit/scripts/test_lockstep.py.
+#
+# This log is PUBLIC. Step env is printed in the log header, so it carries only
+# secrets (masked), the repo name, the workflow token, the merge SHA and the
+# dry-run flag -- never a PR body, title or branch name. The script prints only
+# `plan: ...` / `lockstep: ...` lines and never echoes gh/git output.
+name: Guide lockstep
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      merge_sha:
+        description: "kindred merge commit"
+        required: true
+      dry_run:
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+# One group per merge SHA: a shared group keeps only ONE pending run, so a
+# merge landing while another run waits on a guide check would be silently
+# dropped. Parallel runs are safe because what they write is state-based
+# (kindred main's tip facts) and each merges guide main in first. The
+# expression holds only a SHA; it is not step env.
+concurrency:
+  group: guide-lockstep-${{ inputs.merge_sha || github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  lockstep:
+    name: Merge the paired guide PR
+    runs-on: ubuntu-latest
+    environment: guide-lockstep
+    # 3 merge attempts x a 20-minute check wait (CHECK_TIMEOUT_S), plus clones.
+    timeout-minutes: 75
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        fetch-depth: 2
+        persist-credentials: false
+    - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+    - name: Merge the paired guide PR once its build is green
+      env:
+        GUIDE_TOKEN: ${{ secrets.GUIDE_WRITE_TOKEN }}
+        GUIDE_REPO: ${{ secrets.GUIDE_REPO }}
+        KINDRED_TOKEN: ${{ github.token }}
+        KINDRED_REPO: ${{ github.repository }}
+        MERGE_SHA: ${{ inputs.merge_sha || github.sha }}
+        DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+      # A dispatched SHA older than the checkout's two commits is fetched by
+      # SHA (public repo, no credentials) so its diff and facts are readable.
+      # The script re-validates MERGE_SHA as 40 hex before any use; the fetch
+      # only runs when it already has that shape.
+      run: |
+        if [[ "$MERGE_SHA" =~ ^[0-9a-f]{40}$ ]] && ! git cat-file -e "${MERGE_SHA}^{commit}" 2>/dev/null; then
+          git fetch -q --no-tags --depth=2 origin "$MERGE_SHA" >/dev/null 2>&1 || true
+        fi
+        args=(--merge-sha "$MERGE_SHA")
+        if [ "$DRY_RUN" = "true" ]; then args+=(--dry-run); fi
+        uv run --no-project python -m scripts.guide.lockstep "${args[@]}"
