@@ -14,6 +14,11 @@
 #                               count, a file not listed, and a file now BELOW
 #                               its count (or gone) all fail, so a cleanup has
 #                               to lower the baseline in the same change.
+# PRIVATE_NAMES_BASE_BASELINE, when set, is the BASE branch's copy of the
+# baseline. The current baseline may not list a path the base lacks, nor raise
+# a count (lowering or removing is fine), so a PR cannot baseline its own new
+# hit. A missing base copy (the PR that introduces the file) skips with a
+# notice. Needs no terms, so it also runs on fork and Dependabot PRs.
 # Each file holds one term per line; blank lines are ignored.
 #
 # Both groups also apply to tracked PATHS, with zero tolerance (a baseline
@@ -34,12 +39,30 @@ baseline="$(abs "${PRIVATE_NAMES_BASELINE:-}")"
 cd "$(git rev-parse --show-toplevel)"
 [ -n "$baseline" ] || baseline="$PWD/scripts/ci/private-names-baseline.txt"
 
+base_baseline="$(abs "${PRIVATE_NAMES_BASE_BASELINE:-}")"
 work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
 # A blank line would be an empty pattern, which `git grep -F -f` matches
 # against every line of every file, so only non-blank terms are kept.
 nonblank() { if [ -n "$1" ] && [ -r "$1" ]; then grep -v '^[[:space:]]*$' "$1" || true; fi; }
 nonblank "$strict_in" > "$work/strict"
 nonblank "$ratchet_in" > "$work/ratchet"
+
+# Shrink-only against the base branch. Prints paths and counts only.
+if [ -n "$base_baseline" ]; then
+  if [ ! -r "$base_baseline" ]; then
+    echo "::notice::no base-branch baseline to compare with; shrink-only check skipped"
+  elif ! awk -F'\t' '
+      FILENAME == ARGV[1] {
+        if ($0 ~ /^#/ || $0 ~ /^[[:space:]]*$/ || NF != 2 || $2 !~ /^[0-9]+$/) next
+        base[$1] = $2 + 0; next
+      }
+      $0 ~ /^#/ || $0 ~ /^[[:space:]]*$/ || NF != 2 || $2 !~ /^[0-9]+$/ { next }
+      !($1 in base) { printf "::error::baseline adds %s: new private-name hits may not be baselined\n", $1; bad = 1; next }
+      $2 + 0 > base[$1] { printf "::error::baseline raises %s from %d to %d\n", $1, base[$1], $2; bad = 1 }
+      END { exit bad }' "$base_baseline" "${baseline}"; then
+    exit 1
+  fi
+fi
 
 # With the deploy key present BOTH groups must have terms: one silently empty
 # group (an unreadable file, a renamed branding key) would pass as clean.

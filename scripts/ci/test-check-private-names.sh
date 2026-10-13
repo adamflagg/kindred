@@ -149,6 +149,31 @@ run 0 "a blank line among terms flags nothing" "$S" "PRIVATE_NAMES_RATCHET_FILE=
 run 0 "no terms, fork or Dependabot" "PRIVATE_NAMES_STRICT_FILE=$TMP/none" "PRIVATE_NAMES_RATCHET_FILE=$TMP/none"
 expect '^::notice::' "a skipped guard must say so with ::notice::"
 
+# --- shrink-only against the base branch's baseline ---------------------------
+# PRIVATE_NAMES_BASE_BASELINE is the base branch's copy: the current baseline
+# may not list a path the base lacks, nor raise a count. Lowering or removing
+# passes; a missing base copy skips with a notice. Runs before the term scan,
+# so no terms are needed (forks included). Strict terms only below: the
+# ratchet half would call these made-up baselines stale.
+B="PRIVATE_NAMES_BASELINE=$TMP/cur"
+printf '# c\na.md\t2\nb.md\t1\n' > "$TMP/base-copy"
+BB="PRIVATE_NAMES_BASE_BASELINE=$TMP/base-copy"
+printf 'a.md\t2\nb.md\t1\n' > "$TMP/cur"
+run 0 "base compare, identical" "$S" "$B" "$BB"
+printf 'a.md\t2\nb.md\t1\nc.md\t1\n' > "$TMP/cur"
+run 1 "base compare, path added" "$S" "$B" "$BB"
+expect 'baseline adds c.md: new private-name hits may not be baselined' "base compare, path added"
+printf 'a.md\t3\nb.md\t1\n' > "$TMP/cur"
+run 1 "base compare, count raised" "$S" "$B" "$BB"
+expect 'baseline raises a.md from 2 to 3' "base compare, count raised"
+printf 'a.md\t1\n' > "$TMP/cur"
+run 0 "base compare, lowered/removed passes" "$S" "$B" "$BB"
+printf 'a.md\t2\nc.md\t1\n' > "$TMP/cur"
+run 1 "base compare, add works without terms" "PRIVATE_NAMES_STRICT_FILE=$TMP/none" "PRIVATE_NAMES_RATCHET_FILE=$TMP/none" "$B" "$BB"
+expect 'baseline adds c.md' "base compare, add works without terms"
+run 0 "base compare, missing base copy skips" "$S" "PRIVATE_NAMES_BASELINE=$TMP/base-empty" "PRIVATE_NAMES_BASE_BASELINE=$TMP/no-such-base"
+expect '^::notice::.*base' "missing base copy skips with a notice"
+
 # --- across EVERY run above: no term and no matched line was ever printed ---
 for leaked in zebracamp secret-repo-name 'Mountain Retreat' visit again 'for details'; do
   if grep -qi -- "$leaked" <<<"$all_out"; then echo "FAIL some run echoed '$leaked'"; fail=1; fi

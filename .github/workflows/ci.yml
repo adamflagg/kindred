@@ -605,6 +605,14 @@ jobs:
       with:
         deploy-key: ${{ secrets.KINDRED_LOCAL_DEPLOY_KEY }}
         paths: config/branding.local.json
+    # Shrink-only: the baseline may not add a path or raise a count relative to
+    # the base branch. A public repo fetches over https with no credentials;
+    # no base copy (the PR introducing the file) means the check skips.
+    - name: Fetch the base branch's baseline
+      if: github.event_name == 'pull_request'
+      run: |
+        git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
+        git show FETCH_HEAD:scripts/ci/private-names-baseline.txt > "$RUNNER_TEMP/base-baseline.txt" 2>/dev/null || rm -f "$RUNNER_TEMP/base-baseline.txt"
     - name: No private names in tracked files
       env:
         GUIDE_REPO: ${{ secrets.GUIDE_REPO }}
@@ -621,7 +629,10 @@ jobs:
         fi
         if [ -n "$GUIDE_REPO" ]; then printf '%s\n' "${GUIDE_REPO#*/}" >> "$strict"; fi
         sort -u -o "$strict" "$strict"
+        base_baseline=""
+        if [ "$GITHUB_EVENT_NAME" = pull_request ]; then base_baseline="$RUNNER_TEMP/base-baseline.txt"; fi
         PRIVATE_NAMES_STRICT_FILE="$strict" PRIVATE_NAMES_RATCHET_FILE="$ratchet" \
+          PRIVATE_NAMES_BASE_BASELINE="$base_baseline" \
           PRIVATE_NAMES_REQUIRED="$([ "$HAVE_DEPLOY_KEY" = true ] && echo 1 || echo 0)" \
           bash scripts/ci/check-private-names.sh
     - name: Guard self-test
