@@ -694,7 +694,7 @@ def invalidate_server_caches(sync_type: str | None) -> dict[str, int]:
     (`api/services/financial_aid_development_repository.py`), is scoped like
     layer 1, against DEVELOPMENT_HISTORY_TABLES (attendees, persons,
     camp_sessions): only a sync writes them. No warm follows its clear: the
-    report is opened rarely, and its next open pays one read of the window.
+    report is opened rarely, and its next open pays one read per season it prices (two in all).
     """
     cleared = metrics_cache.invalidate_all()
     clear_person_id_cache()

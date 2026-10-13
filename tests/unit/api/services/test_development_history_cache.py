@@ -112,6 +112,7 @@ async def test_concurrent_callers_share_one_fill() -> None:
 async def test_a_cancelled_first_caller_does_not_cancel_the_shared_fill() -> None:
     """A browser disconnect cancels its request; the fill another request waits on must go on."""
     release = threading.Event()
+    started = threading.Event()
     pb = history_pb()
     real = pb.collection
 
@@ -120,6 +121,7 @@ async def test_a_cancelled_first_caller_does_not_cancel_the_shared_fill() -> Non
         read = inner.get_full_list
 
         def wait_then_read(batch: int = 500, query_params: dict[str, Any] | None = None) -> list[Any]:
+            started.set()
             release.wait(timeout=10)
             return read(batch=batch, query_params=query_params)
 
@@ -128,7 +130,14 @@ async def test_a_cancelled_first_caller_does_not_cancel_the_shared_fill() -> Non
 
     pb.collection = gated  # type: ignore[method-assign]
     first = asyncio.create_task(DevelopmentRepository(pb).earlier_attendance(REPORT_YEAR, [EMMA], []))
-    await asyncio.sleep(0.05)
+    # Cancel only once the fill is really running in its worker thread, or a slow loop could cancel the first
+    # task before it reaches the shield and the test would stop proving it.
+    for _ in range(500):
+        if started.is_set():
+            break
+        await asyncio.sleep(0.01)
+    else:
+        pytest.fail("the first caller's fill never started")
     second = asyncio.create_task(DevelopmentRepository(pb).earlier_attendance(REPORT_YEAR, [], [LIAM_HOME]))
     await asyncio.sleep(0.05)
     first.cancel()
