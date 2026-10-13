@@ -5,7 +5,7 @@
 set -uo pipefail
 guide="${1:?guide dir}"; facts="${2:?facts.json}"
 log="${RUNNER_TEMP:-/tmp}/guide-build.log"
-cp "$facts" "$guide/src/data/facts.json"
+cp "$facts" "$guide/src/data/facts.json" 2>/dev/null || { echo "guide: 1 errors"; exit 1; }
 cmd="${GUIDE_BUILD_CMD:-npm ci --no-audit --no-fund && npm run build}"
 if (cd "$guide" && bash -c "$cmd") >"$log" 2>&1; then
   echo "guide: pass"; exit 0

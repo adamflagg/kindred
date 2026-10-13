@@ -41,9 +41,20 @@ def test_failure_with_no_error_lines_still_counts_at_least_one(tmp_path):
     assert "Riley" not in r.stdout + r.stderr
 
 
-# --- the CI job: report-only, and silent about the private repo -------------
+def test_facts_copy_failure_fails_loudly_with_one_quiet_line(tmp_path):
+    guide = tmp_path / "guide"
+    guide.mkdir()  # no src/data: the copy cannot succeed
+    facts = tmp_path / "facts.json"
+    facts.write_text("{}\n")
+    env = {**os.environ, "GUIDE_BUILD_CMD": "true", "RUNNER_TEMP": str(tmp_path)}
+    r = subprocess.run(["bash", str(SCRIPT), str(guide), str(facts)], capture_output=True, text=True, env=env)
+    assert r.returncode == 1
+    assert r.stdout.strip() == "guide: 1 errors"
+    assert len(r.stdout.strip().splitlines()) == 1
+    assert r.stderr == ""
 
-import yaml
+
+# --- the CI job: report-only, and silent about the private repo -------------
 
 _CI = yaml.safe_load((REPO / ".github/workflows/ci.yml").read_text())
 
@@ -61,3 +72,30 @@ def test_guide_build_never_interpolates_expressions_in_run_and_silences_git():
     run = next(s["run"] for s in job["steps"] if "run" in s)
     assert run.count(">/dev/null 2>&1") >= 2  # ls-remote and clone
     assert "guide: skipped (no guide access configured)" in run
+
+
+def _run_text():
+    return next(s["run"] for s in _CI["jobs"]["guide-build"]["steps"] if "run" in s)
+
+
+def test_every_git_remote_command_is_silenced():
+    lines = [ln for ln in _run_text().splitlines() if "git ls-remote" in ln or "git clone" in ln]
+    assert len(lines) == 2
+    # a continued line (trailing backslash) carries the redirect on its next line
+    run = _run_text().replace("\\\n", " ")
+    for ln in [ln for ln in run.splitlines() if "git ls-remote" in ln or "git clone" in ln]:
+        assert ">/dev/null 2>&1" in ln, ln
+
+
+def test_no_echo_expands_a_secret_or_name():
+    for ln in _run_text().splitlines():
+        if ln.lstrip().startswith(("echo", "printf")):
+            for var in ("GUIDE_REPO", "url", "BRANCH", "ref", "GH_TOKEN"):
+                assert f"${var}" not in ln and f"${{{var}}}" not in ln, ln
+
+
+def test_token_is_withheld_from_the_guides_code():
+    run = _run_text()
+    assert "remote remove origin" in run
+    assert "env -u GH_TOKEN -u GUIDE_REPO bash scripts/guide/build_guide.sh" in run
+    assert "refs/heads/$BRANCH" in run

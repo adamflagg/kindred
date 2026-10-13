@@ -1708,11 +1708,15 @@ jobs:
         fi
         dir="$RUNNER_TEMP/guide"
         url="https://x-access-token:${GH_TOKEN}@github.com/${GUIDE_REPO}.git"
-        if git ls-remote --exit-code --heads "$url" "$BRANCH" >/dev/null 2>&1; then ref="$BRANCH"; else ref=main; fi
+        label="paired branch"
+        # Exact ref match: a bare name would suffix-match (docs vs feature/docs).
+        if git ls-remote --exit-code --heads "$url" "refs/heads/$BRANCH" >/dev/null 2>&1; then ref="$BRANCH"; else ref=main; label=main; fi
         git clone -q --depth 1 --branch "$ref" "$url" "$dir" >/dev/null 2>&1 \
           || { echo "guide: clone failed"; exit 1; }
-        echo "building against: $([ "$ref" = main ] && echo main || echo paired branch)"
-        bash scripts/guide/build_guide.sh "$dir" scripts/guide/facts.json
+        # The token lives in the clone's origin URL; the guide's own code must not find it.
+        git -C "$dir" remote remove origin >/dev/null 2>&1
+        echo "building against: $label"
+        env -u GH_TOKEN -u GUIDE_REPO bash scripts/guide/build_guide.sh "$dir" scripts/guide/facts.json
 
   # Summary job - gate for PR merges
   summary:
