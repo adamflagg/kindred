@@ -128,6 +128,7 @@ var serialGroups = []struct {
 		tests: []string{
 			"TestBuildNormalizationLookupCompositeKeyDedup",
 			"TestNotifyAPIRunCompletedWaitsForTheAPIToAnswer",
+			"TestInvalidateAPICachesNamesTheJobAndReportsFailure",
 		},
 	},
 	{

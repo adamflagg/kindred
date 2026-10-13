@@ -2404,3 +2404,31 @@ func TestFailingNotifierStillLetsTheResolveSucceed(t *testing.T) {
 		t.Fatalf("notifier calls = %v, want it attempted once", got)
 	}
 }
+
+// A replay that wrote rows and THEN returned an error (a flush failure after
+// the placements) still changed lodging_assignments, so the cache is cleared.
+func TestReplayThatPlacedAndThenErroredStillClearsTheServerCache(t *testing.T) {
+	t.Parallel()
+	rec := &recordedInvalidations{}
+	deps := replayDeps{
+		replayIssue: func(core.App, string) (sync.ReplayResult, error) {
+			return sync.ReplayResult{Placed: true}, fmt.Errorf("flushing replay issues")
+		},
+		replayPartyless: func(core.App, string) (int, error) {
+			return 3, fmt.Errorf("flushing replay issues")
+		},
+		notify: rec.notify,
+	}
+	if err := resolveWithReplayDeps(t, deps, "no_session", 2000001, false); err != nil {
+		t.Fatalf("party-scoped resolve failed: %v", err)
+	}
+	if got := rec.snapshot(); len(got) != 1 || got[0] != "lodging_assignments" {
+		t.Fatalf("party-scoped notifier calls = %v, want one lodging_assignments", got)
+	}
+	if err := resolveWithReplayDeps(t, deps, "unresolved_alias", 0, true); err != nil {
+		t.Fatalf("party-less resolve failed: %v", err)
+	}
+	if got := rec.snapshot(); len(got) != 2 {
+		t.Fatalf("after the party-less resolve notifier calls = %v, want 2 in total", got)
+	}
+}

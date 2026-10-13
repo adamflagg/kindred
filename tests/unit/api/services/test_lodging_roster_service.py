@@ -1173,7 +1173,7 @@ class TestShareWantsWithNamed:
 
 
 class TestFreshHouseholdOutrunsTheCache:
-    """kindred#2143: households is cached for up to 15 minutes (kindred#1963)
+    """kindred#2143: households is cached until a sync clear or the six-hour backstop (kindred#1963)
     but attendees is always fetched fresh, in the SAME TaskGroup. A household
     created after the cache snapshot was taken is absent from the cached dict
     even though a brand-new attendee can already name it. Left unhandled,

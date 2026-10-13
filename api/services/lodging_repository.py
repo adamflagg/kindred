@@ -1310,7 +1310,8 @@ class LodgingRepository:
         live rows when staff tick a lodging_ingest_issues row resolved in the
         browser and then calls the invalidate endpoint with
         sync_type=lodging_assignments (waited, so the browser's refetch cannot
-        beat it). Without that call the six-hour backstop would be the only
+        beat it when the call answers within its 5-6 s bound; a timeout or failure
+        is only logged and the backstop expiry repairs it). Without that call the six-hour backstop would be the only
         refresh after a replay.
         No expand: a row is named from its unit ids.
         """

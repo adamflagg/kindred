@@ -163,7 +163,7 @@ metrics_cache = MetricsCache(ttl_seconds=7200, max_size=200)
 # write a cached table, and every clear and every TTL is followed by a
 # background warm (api/services/lodging_cache_warm.py, started from
 # api/main.py's lifespan).
-
+#
 # The TTL AND the refresher's interval (lodging_cache_warm.start_lodging_cache_refresher),
 # so the two cannot drift apart. It is a BACKSTOP for a MISSED sync-completion
 # invalidate, not the freshness plan: the sync orchestrator clears this cache
