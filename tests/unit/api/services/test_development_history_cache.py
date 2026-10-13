@@ -1,8 +1,10 @@
-"""Reports › Development's past-seasons attendance read (DevelopmentRepository.earlier_attendance) as ONE whole read
-per report year, cached and filtered in Python, so the report and its ZIP export share it.
+"""Reports › Development's past-seasons attendance read (DevelopmentRepository.earlier_attendance) as one whole read
+PER PAST SEASON, run concurrently, cached per report year and filtered in Python, so the report and its ZIP export
+share it.
 
-These pin the read (one read of the window, never a filter through a relation), the cache's lifetime (within the
-TTL nothing is re-read whatever campers are asked for, concurrent callers share one fill, report years never mix),
+These pin the read (one read per season of the window, concurrently under pb_read's cap, never a filter through a
+relation -- kindred#3196: one paged read of the whole window chained 19 pages in series), the cache's lifetime (within
+the TTL nothing is re-read whatever campers are asked for, concurrent callers share one fill, report years never mix),
 what clears it (a sync that writes attendees, persons or camp_sessions), and the before -> after count on a
 Development open plus its ZIP export. What the read RETURNS is pinned separately, unchanged, in
 test_development_history_parity.py."""
@@ -10,7 +12,9 @@ test_development_history_parity.py."""
 from __future__ import annotations
 
 import asyncio
+import re
 import threading
+import time
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
@@ -28,6 +32,7 @@ from api.services.financial_aid_development_repository import (
 from api.services.financial_aid_development_service import FinancialAidDevelopmentService
 from api.services.financial_aid_grants_register import RegisterRow
 from api.services.lodging_cache import LodgingYearCache
+from api.services.pb_read import PB_READ_CONCURRENCY
 from tests.unit.api.services.decisions_fakes import FakeRules, approved
 from tests.unit.api.services.development_history_fixture import FilteringPb, Row
 from tests.unit.api.services.financial_aid_fakes import intake_rules
@@ -42,27 +47,80 @@ from tests.unit.api.services.test_development_history_parity import (
     history_pb,
 )
 
-WINDOW = f"year >= 2017 && year < {REPORT_YEAR} && status_id = 2"
+SEASONS = range(2017, REPORT_YEAR)  # the window: 2017 to the season before the report's
+_SEASON_FILTER = re.compile(r"^year = \d+ && status_id = 2$")
+
+
+def _season_query(season: int) -> dict[str, Any]:
+    return {"filter": f"year = {season} && status_id = 2", "expand": "person,session", "fields": _FIELDS, "sort": "id"}
 
 
 def _history_reads(pb: FilteringPb) -> list[str]:
-    return [
+    """The past-season reads, in season order whatever order they ran in."""
+    return sorted(
         str(r.query.get("filter", ""))
         for r in pb.reads
-        if r.collection == "attendees" and "year >=" in str(r.query.get("filter", ""))
-    ]
+        if r.collection == "attendees" and _SEASON_FILTER.match(str(r.query.get("filter", "")))
+    )
 
 
 # --- the read ---------------------------------------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_the_history_is_one_whole_read_of_the_window() -> None:
+async def test_the_history_is_one_whole_read_per_season_of_the_window() -> None:
     pb = history_pb()
     await DevelopmentRepository(pb).earlier_attendance(REPORT_YEAR, ASKED_PEOPLE, ASKED_HOUSEHOLDS)
-    assert [(r.collection, r.query) for r in pb.reads] == [
-        ("attendees", {"filter": WINDOW, "expand": "person,session", "fields": _FIELDS, "sort": "id"})
+    assert sorted(((r.collection, r.query) for r in pb.reads), key=lambda read: str(read[1]["filter"])) == [
+        ("attendees", _season_query(season)) for season in SEASONS
     ]
+
+
+@pytest.mark.asyncio
+async def test_the_seasons_are_read_concurrently_under_the_shared_cap() -> None:
+    """kindred#3196: one paged read of the whole window made the SDK fetch 19 pages one after another, each re-counting
+    the window -- 7.3 s in series on production. The seasons must overlap, and never past pb_read's cap."""
+    overlap = threading.Condition()
+    in_flight = 0
+    peak = 0
+    serial = False
+    pb = history_pb()
+    real = pb.collection
+
+    def timed(name: str) -> Any:
+        inner = real(name)
+        read = inner.get_full_list
+
+        def overlapping_read(batch: int = 500, query_params: dict[str, Any] | None = None) -> list[Any]:
+            nonlocal in_flight, peak, serial
+            with overlap:
+                in_flight += 1
+                peak = max(peak, in_flight)
+                overlap.notify_all()
+                # Hold until a sibling is in flight, so a loaded box cannot serialise the reads by scheduling alone;
+                # serial reads never get one: the first times out, the rest stop waiting, and the lower bound fails.
+                serial = serial or not overlap.wait_for(lambda: peak >= 2 or serial, timeout=5)
+            try:
+                time.sleep(0.05)  # and keep each read open, so an uncapped fill would overlap past the cap
+                return read(batch=batch, query_params=query_params)
+            finally:
+                with overlap:
+                    in_flight -= 1
+
+        inner.get_full_list = overlapping_read  # type: ignore[method-assign]
+        return inner
+
+    pb.collection = timed  # type: ignore[method-assign]
+    await DevelopmentRepository(pb).earlier_attendance(REPORT_YEAR, ASKED_PEOPLE, ASKED_HOUSEHOLDS)
+    assert pb.count("attendees") == len(SEASONS)
+    assert 2 <= peak <= PB_READ_CONCURRENCY
+
+
+@pytest.mark.asyncio
+async def test_a_report_year_with_no_earlier_season_reads_nothing() -> None:
+    pb = history_pb()
+    assert await DevelopmentRepository(pb).earlier_attendance(2017, ASKED_PEOPLE, ASKED_HOUSEHOLDS) == []
+    assert pb.count("attendees") == 0
 
 
 @pytest.mark.asyncio
@@ -105,7 +163,7 @@ async def test_concurrent_callers_share_one_fill() -> None:
         repo.earlier_attendance(REPORT_YEAR, [], ASKED_HOUSEHOLDS),
         repo.earlier_attendance(REPORT_YEAR, [EMMA], [LIAM_HOME]),
     )
-    assert pb.count("attendees") == 1
+    assert pb.count("attendees") == len(SEASONS)  # one fill: each season read once
 
 
 @pytest.mark.asyncio
@@ -145,7 +203,7 @@ async def test_a_cancelled_first_caller_does_not_cancel_the_shared_fill() -> Non
     release.set()
     found = await asyncio.wait_for(second, timeout=10)
     assert [r.household_cm_id for r in found] == [LIAM_HOME]
-    assert pb.count("attendees") == 1
+    assert pb.count("attendees") == len(SEASONS)
 
 
 @pytest.mark.asyncio
@@ -154,7 +212,7 @@ async def test_report_years_are_separate_fills_and_never_mix() -> None:
     repo = DevelopmentRepository(pb)
     earlier = await repo.earlier_attendance(2021, ASKED_PEOPLE, ASKED_HOUSEHOLDS)
     later = await repo.earlier_attendance(REPORT_YEAR, ASKED_PEOPLE, ASKED_HOUSEHOLDS)
-    assert pb.count("attendees") == 2
+    assert pb.count("attendees") == len(range(2017, 2021)) + len(SEASONS)
     assert max(r.year for r in earlier) < 2021 < max(r.year for r in later)
     pb.reset()
     await repo.earlier_attendance(2021, [EMMA], [])
@@ -300,7 +358,8 @@ def _service(pb: FilteringPb) -> FinancialAidDevelopmentService:
 @pytest.mark.asyncio
 async def test_a_development_open_and_its_zip_export_read_the_history_once() -> None:
     """Before: each _native column chunked 200 campers (4 filters) and 150 family households (3 filters, through
-    person.household_id): 7 history reads for Development, 7 more for the ZIP export. After: one, shared."""
+    person.household_id): 7 history reads for Development, 7 more for the ZIP export. After: one per past season,
+    shared."""
     pb = _season_pb()
     service = _service(pb)
     asked: list[tuple[int, int]] = []
@@ -315,4 +374,4 @@ async def test_a_development_open_and_its_zip_export_read_the_history_once() -> 
         await service.zip_codes(REPORT_YEAR)
     # Both go through earlier_attendance for the same report year, with the season's campers and family households.
     assert asked == [(CAMPERS, FAMILY_HOUSEHOLDS), (CAMPERS, FAMILY_HOUSEHOLDS)]
-    assert _history_reads(pb) == [WINDOW]
+    assert _history_reads(pb) == [f"year = {season} && status_id = 2" for season in SEASONS]
