@@ -11,13 +11,16 @@ from datetime import date
 
 import pytest
 
+from api.services import financial_aid_intake_repository as intake
 from api.services.financial_aid_cancellations import EnrollmentState
 from api.services.financial_aid_decisions_repository import FinancialAidDecisionsRepository
 from api.services.financial_aid_intake_repository import FinancialAidIntakeRepository
 from api.services.financial_aid_intake_types import EquityAnswers
 from api.services.financial_aid_repository import FinancialAidRepository
 from tests.unit.api.services.aid_parity_fixture import (
+    ADULT_FIELD_CM,
     ATTENDEE_ID,
+    CAMPER_FIELD_CM,
     H1,
     H2,
     H3,
@@ -25,6 +28,7 @@ from tests.unit.api.services.aid_parity_fixture import (
     H5,
     H6,
     HH_ID,
+    OTHER_FIELD_CM,
     P1,
     P2,
     P3,
@@ -67,11 +71,18 @@ def test_fixture_serves_the_whole_year_and_cache_shaped_filters() -> None:
     defs = pb.collection("custom_field_defs").get_full_list(query_params={"filter": "cm_id = 165525 || cm_id = 209079"})
     assert len(defs) == 3  # both seasons' camper definition, plus the adult one
     # The expand a person carries is the very household object the households collection returns.
-    p2 = next(r for r in year_rows if r.cm_id == P2)
-    households = {
-        r.id: r for r in pb.collection("households").get_full_list(query_params={"filter": f"year = {PARITY_YEAR}"})
-    }
-    assert p2.expand["primary_childhood_household"] is households[HH_ID[H1]]
+    expanded = pb.collection("persons").get_full_list(
+        query_params={"filter": f"year = {PARITY_YEAR}", "expand": "primary_childhood_household"}
+    )
+    p2 = next(r for r in expanded if r.cm_id == P2)
+    assert set(p2.expand) == {"primary_childhood_household"}  # only what the query asked to expand
+    assert next(r for r in year_rows if r.cm_id == P2).expand == {}
+    # What a person expands to is the stored household the households collection serves (compared by value: a
+    # read returns copies).
+    stored = next(r for r in pb.tables["households"] if r.id == HH_ID[H1])
+    served = pb.collection("households").get_full_list(query_params={"filter": f"cm_id = {H1} && year = {PARITY_YEAR}"})
+    assert [vars(r) | {"expand": {}} for r in served] == [vars(stored) | {"expand": {}}]
+    assert p2.expand["primary_childhood_household"] is stored
 
 
 # --- household membership -------------------------------------------------------------------------------------
@@ -126,10 +137,11 @@ async def test_household_persons_by_household_leaves_out_households_with_nobody_
 @pytest.mark.asyncio
 async def test_household_persons_is_everyone_a_household_claims_in_id_order() -> None:
     repo = FinancialAidRepository(parity_pb())
-    # H1: P1 lives there, P2's primary childhood household. Read sorted by id, and P2's id sorts before P1's.
+    # H1: P1 lives there, P2's primary childhood household. One household is one read, `sort=id`, and P2's id
+    # sorts before P1's, so this order is the read's; across households the order is incidental (compared sorted).
     assert [int(p.cm_id) for p in await repo.fetch_household_persons(PARITY_YEAR, [H1])] == [P2, P1]
     # A person claimed by two requested households is returned once.
-    assert [int(p.cm_id) for p in await repo.fetch_household_persons(PARITY_YEAR, [H1, H2])] == [P2, P1]
+    assert sorted(_cm_ids(await repo.fetch_household_persons(PARITY_YEAR, [H1, H2]))) == [P1, P2]
     assert _cm_ids(await repo.fetch_household_persons(PARITY_YEAR, [H3, H4])) == [P3]
     assert _cm_ids(await repo.fetch_household_persons(PARITY_YEAR, [H5, H6])) == [P4]
     assert await repo.fetch_household_persons(PARITY_YEAR, [999, 0]) == []
@@ -139,7 +151,7 @@ async def test_household_persons_is_everyone_a_household_claims_in_id_order() ->
 async def test_household_members_are_only_people_whose_own_household_it_is() -> None:
     repo = FinancialAidRepository(parity_pb())
     members = await repo.fetch_household_members(PARITY_YEAR, [H1, H5])
-    # P2 is a childhood-household member of H1, not a member; P4 is under H5 by household_id. In id order.
+    # P2 is a childhood-household member of H1, not a member; P4 is under H5 by household_id. Order is the read's `sort=id` (one chunk).
     assert [(int(p.cm_id), int(p.household_id)) for p in members] == [(P1, H1), (P4, H5)]
     assert {int(p.year) for p in members} == {PARITY_YEAR}
     assert await repo.fetch_household_members(PARITY_YEAR, [H6, 999]) == []
@@ -162,6 +174,7 @@ async def test_persons_by_cm_id_come_back_in_their_season_only_and_unknown_ids_a
 @pytest.mark.asyncio
 async def test_persons_come_back_in_id_order() -> None:
     repo = FinancialAidRepository(parity_pb())
+    # Order is the read's `sort=id` (one chunk of ids).
     assert _cm_ids(await repo.fetch_persons(PARITY_YEAR, [P1, P2, P3, P4, P5])) == [P2, P1, P3, P4, P5]
 
 
@@ -172,9 +185,13 @@ async def test_households_by_cm_id_with_and_without_adults() -> None:
     assert [(h.id, int(h.cm_id), int(h.year), h.mailing_title, h.greeting) for h in with_adults] == [
         (HH_ID[H1], H1, PARITY_YEAR, "Mr. and Mrs. Johnson", "Johnson Family")
     ]
-    assert with_adults[0].aid_adults == "[]"
+    assert with_adults[0].aid_adults == '[{"first_name": "Dana", "last_name": "Johnson"}]'
     plain = await repo.fetch_households(PARITY_YEAR, [H2, H1])
-    assert [int(h.cm_id) for h in plain] == [H1, H2]  # sorted by id, whatever order they were asked in
+    # Order is the read's `sort=id` (one chunk), whatever order they were asked in.
+    assert [int(h.cm_id) for h in plain] == [H1, H2]
+    # The plain read projects HOUSEHOLD_COLUMNS, which leaves out the adults CampMinder names.
+    assert all(not hasattr(h, "aid_adults") for h in plain)
+    assert [h.mailing_title for h in plain] == ["Mr. and Mrs. Johnson", ""]
     assert await repo.fetch_households(PARITY_YEAR, [999]) == []
 
 
@@ -185,6 +202,7 @@ async def test_households_by_cm_id_with_and_without_adults() -> None:
 async def test_enrollments_return_every_status_with_the_session_expanded_in_id_order() -> None:
     repo = FinancialAidRepository(parity_pb())
     rows = await repo.fetch_enrollments(PARITY_YEAR, [P1, P2])
+    # Order is the read's `sort=id` (one chunk).
     assert [(r.id, int(r.person_id), int(r.status_id), int(r.expand["session"].cm_id)) for r in rows] == [
         (ATTENDEE_ID["a1"], P1, 2, S1),
         (ATTENDEE_ID["a2"], P1, 4, S2),
@@ -239,6 +257,16 @@ async def test_equity_answers_read_the_two_allowlisted_fields_and_the_person_col
         P2: EquityAnswers(True, "", "he/him"),  # only the adult field, "yes"
         P3: EquityAnswers(None, "Nonbinary", ""),  # an unrelated field's "Yes" is ignored
     }
+
+
+@pytest.mark.asyncio
+async def test_equity_allowlist_is_what_keeps_an_unrelated_field_out(monkeypatch: pytest.MonkeyPatch) -> None:
+    # P3's only custom value is "Yes" on an unrelated field one cm_id off the camper field. Today's allowlist keeps
+    # it out (P3 unanswered, above). Widen the allowlist and the fixture lets it through, so a read that stops
+    # narrowing to the two equity fields would show here.
+    monkeypatch.setattr(intake, "EQUITY_FIELD_CM_IDS", (CAMPER_FIELD_CM, ADULT_FIELD_CM, OTHER_FIELD_CM))
+    answers = await FinancialAidIntakeRepository(parity_pb()).fetch_equity_answers(PARITY_YEAR, [P3])
+    assert answers[P3].bipoc is True
 
 
 @pytest.mark.asyncio

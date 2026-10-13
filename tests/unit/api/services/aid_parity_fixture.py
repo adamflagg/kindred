@@ -6,9 +6,10 @@ test can pin what a read returns. It serves the filter shapes the reads emit tod
 cache emits (a bare `year = N`, field_definition by PocketBase id, custom_field_defs by cm_id). Any other
 filter, sort, expand or collection raises NotImplementedError, so a new shape can't silently match everything.
 
-`fields=` is accepted and ignored (a record always comes back whole). `expand` is honoured per collection;
-a record always carries a populated `expand` dict that is consistent with its relation ids, and an expanded
-record is the very object the related collection returns."""
+`fields=` is honoured: each row comes back as a projected COPY holding `id`, the named columns and any
+`expand.<relation>.<column>` paths (a read that forgets a column fails); the stored record is never mutated.
+`expand` is honoured per query: a row's `expand` dict holds exactly the relations the query asked for, resolved
+from its relation ids. Unprojected, an expanded record is the very object the related collection returns."""
 
 from __future__ import annotations
 
@@ -25,7 +26,7 @@ H1, H2, H3, H4, H5, H6 = 4000101, 4000102, 4000103, 4000104, 4000105, 4000106
 P1, P2, P3, P4, P5 = 1000001, 1000002, 1000003, 1000004, 1000005
 P6_CM = P1  # the 2025-only person shares P1's cm_id: CampMinder ids repeat across years
 S1, S2 = 5000001, 5000002
-CAMPER_FIELD_CM, ADULT_FIELD_CM, OTHER_FIELD_CM = 165525, 209079, 777001
+CAMPER_FIELD_CM, ADULT_FIELD_CM, OTHER_FIELD_CM = 165525, 209079, 165526  # one off the camper field's cm_id
 
 # --- PocketBase record ids (15 chars) ---------------------------------------------------------------------------
 # Person ids are deliberately NOT in cm_id order, and the table is stored in yet another order, so a read that
@@ -217,7 +218,8 @@ class _FilteringCollection:
         if flt:
             tree = _Parser(flt, _COLLECTION_FIELDS[self.name]).parse()
             rows = [r for r in rows if self._evaluate(tree, r)]
-        for expand in filter(None, str(params.get("expand", "")).split(",")):
+        expands = [e for e in str(params.get("expand", "")).split(",") if e]
+        for expand in expands:
             if expand not in _RELATIONS.get(self.name, {}):
                 raise NotImplementedError(f"unsupported expand {expand!r} on {self.name}")
         for key in reversed([k for k in str(params.get("sort", "")).split(",") if k]):
@@ -226,22 +228,37 @@ class _FilteringCollection:
             if attr not in ("id", "created", "cm_id"):
                 raise NotImplementedError(f"unsupported sort {key!r}")
             rows.sort(key=lambda r, a=attr: getattr(r, a, ""), reverse=desc)  # type: ignore[misc]
-        return rows
+        columns = [c for c in str(params.get("fields", "")).split(",") if c]
+        return [self._shape(r, expands, columns) for r in rows]
+
+    def _shape(self, record: Any, expands: list[str], columns: list[str]) -> Any:
+        """A copy of `record` carrying only the requested expand relations, projected to `fields` when given."""
+        expand: dict[str, Any] = {}
+        for relation in expands:
+            rid = getattr(record, relation, "")
+            if rid:
+                expand[relation] = next(r for r in self.pb.tables[_RELATIONS[self.name][relation]] if r.id == rid)
+        if not columns:
+            return SimpleNamespace(**{**vars(record), "expand": expand})
+        kept: dict[str, Any] = {"id": record.id}
+        nested: dict[str, list[str]] = {}
+        for column in columns:
+            if column.startswith("expand."):
+                _, relation, attr = column.split(".", 2)
+                nested.setdefault(relation, []).append(attr)
+            elif hasattr(record, column):
+                kept[column] = getattr(record, column)
+        projected: dict[str, Any] = {}
+        for relation, attrs in nested.items():
+            if relation in expand:
+                related = expand[relation]
+                projected[relation] = SimpleNamespace(**{a: getattr(related, a) for a in attrs if hasattr(related, a)})
+        kept["expand"] = projected
+        return SimpleNamespace(**kept)
 
 
 def _rec(**kw: Any) -> SimpleNamespace:
-    kw.setdefault("expand", {})
     return SimpleNamespace(**kw)
-
-
-def _with_expand(record: SimpleNamespace, collection: str, tables: dict[str, list[Any]]) -> None:
-    """Fill `expand` from the relation ids, with the related collection's own record objects."""
-    for relation, target in _RELATIONS[collection].items():
-        rid = getattr(record, relation, "")
-        if not rid:
-            continue
-        match = next(r for r in tables[target] if r.id == rid)
-        record.expand[relation] = match
 
 
 def parity_pb() -> FilteringPb:
@@ -258,7 +275,7 @@ def parity_pb() -> FilteringPb:
             cm_id=H1,
             greeting="Johnson Family",
             mailing_title="Mr. and Mrs. Johnson",
-            aid_adults="[]",
+            aid_adults='[{"first_name": "Dana", "last_name": "Johnson"}]',
         ),
         _rec(id=HH_ID[H2], year=PARITY_YEAR, cm_id=H2, greeting="Garcia Family", mailing_title="", aid_adults="[]"),
         _rec(id=HH_ID[H3], year=PARITY_YEAR, cm_id=H3, greeting="", mailing_title="", aid_adults="[]"),
@@ -400,7 +417,4 @@ def parity_pb() -> FilteringPb:
         "attendees": attendees,
         "person_custom_values": values,
     }
-    for collection in ("persons", "attendees", "person_custom_values"):
-        for record in tables[collection]:
-            _with_expand(record, collection, tables)
     return FilteringPb(tables=tables)
