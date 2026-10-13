@@ -20,11 +20,12 @@ the merge passes --match-head-commit, so a push after the check cannot ride in.
 
 Runs for different merge SHAs may overlap (ruling D1-e), so what is written is
 state-based: the merge SHA decides the plan, but the facts copied and the
-source.json stamp come from kindred main's TIP, fetched at write time, so the
-last writer is always the newest: an older run that loses the race conflicts
-on squash against the newer stamp on guide main, and its retry re-reads the
-tip, so guide mergeability is what enforces the ordering. Guide main is merged
-into the branch first;
+source.json stamp come from kindred main's TIP, read right AFTER the guide
+clone. Guide main only ever holds stamps from tips read earlier, so the tip
+written is never older than anything the clone's main carries; a run whose
+branch then falls behind a newer stamp landing on guide main conflicts on
+squash, and its retry re-clones and re-reads the tip, so guide mergeability
+is what enforces the ordering. Guide main is merged into the branch first;
 a conflict outside the two lockstep-owned files stops the run. A failed merge
 redoes that, re-pushes, re-waits and re-merges, up to MERGE_ATTEMPTS in all.
 A sync PR is not opened when guide main already holds the tip's facts.
@@ -241,8 +242,7 @@ def _prepare_head(
     clone_ref: str,
     push_branch: str,
     new_branch: bool,
-    tip: str,
-    facts: str,
+    kindred_token: str,
 ) -> str | None:
     """Bring the guide branch up to date with main and the tip's facts; return its head.
 
@@ -267,6 +267,10 @@ def _prepare_head(
             guide_env,
             "guide clone failed",
         )
+        # After the clone, never before: a tip read first can be older than a
+        # stamp another run has since merged into guide main, and merging main
+        # in then writing that older tip would revert it with no conflict.
+        tip, facts = _kindred_tip(kindred_token)
         data = repo_dir / "src" / "data"
         if new_branch:
             current = data / "facts.json"
@@ -345,7 +349,6 @@ def _execute(
         number = _open_sync_pr(guide_prs, sha)
 
     for _attempt in range(MERGE_ATTEMPTS):
-        tip, facts = _kindred_tip(kindred_token)
         new_branch = sync and number is None
         head = _prepare_head(
             guide_repo=guide_repo,
@@ -353,8 +356,7 @@ def _execute(
             clone_ref="main" if new_branch else push_branch,
             push_branch=push_branch,
             new_branch=new_branch,
-            tip=tip,
-            facts=facts,
+            kindred_token=kindred_token,
         )
         if head is None:
             return "facts already in sync"

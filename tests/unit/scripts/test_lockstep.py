@@ -671,6 +671,18 @@ def test_a_failed_merge_is_retried_from_a_fresh_main_merge(monkeypatch, env, cap
     assert all(c[c.index("--branch") + 1] == BRANCH for c in fake.all("git clone"))
 
 
+@pytest.mark.parametrize("guide_prs", [None, []], ids=["paired", "sync"])
+def test_the_kindred_tip_is_read_after_each_guide_clone(monkeypatch, env, capsys, guide_prs):
+    """A tip read BEFORE the clone can be older than a stamp another run has
+    already merged into guide main; merging main in and then writing that older
+    tip reverts guide main without any squash conflict. Read after the clone,
+    the tip is never older than anything the clone's main holds."""
+    fake = _install(monkeypatch, FakeRun(guide_prs=guide_prs, facts_changed=True, pr_merge_failures=1))
+    assert main(["--merge-sha", MERGE_SHA]) == 0
+    order = [k for k in fake.called() if k in ("git clone", "git fetch")]
+    assert order == ["git clone", "git fetch", "git clone", "git fetch"]
+
+
 def test_a_merge_that_landed_but_reported_failure_is_not_retried(monkeypatch, env, capsys):
     """e.g. the squash landed and only --delete-branch failed: a retry would re-clone a gone branch."""
     fake = _install(monkeypatch, FakeRun(pr_merge_failures=1, pr_state_after_failed_merge="MERGED"))

@@ -370,6 +370,8 @@ mkdir -p "$WORKTREE_DIR/logs"
 GUIDE_WT=""
 guide_setup() {
     local gdir="$KINDRED_GUIDE_DIR" common exclude
+    # A different repo: an inherited GIT_DIR & co. would override every -C below.
+    unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX
     GUIDE_WT="$gdir/.worktrees/$FEATURE_NAME"
     [ -e "$GUIDE_WT" ] && return 1
     # stderr dropped: a failed fetch prints the remote URL, i.e. the repo name.
