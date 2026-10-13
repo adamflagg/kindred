@@ -49,7 +49,8 @@ def _step(job: str, name: str) -> dict[str, Any]:
     steps = _cd()["jobs"][job]["steps"]
     matches = [s for s in steps if s.get("name", "").startswith(name)]
     assert len(matches) == 1, f"{job}: expected one step named {name!r}"
-    return matches[0]
+    step: dict[str, Any] = matches[0]
+    return step
 
 
 def test_one_version_string_feeds_the_build_and_the_check():
