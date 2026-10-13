@@ -90,7 +90,7 @@ def test_every_git_remote_command_is_silenced():
 def test_no_echo_expands_a_secret_or_name():
     for ln in _run_text().splitlines():
         if ln.lstrip().startswith(("echo", "printf")):
-            for var in ("GUIDE_REPO", "url", "BRANCH", "ref", "GH_TOKEN"):
+            for var in ("GUIDE_REPO", "url", "BRANCH", "GITHUB_HEAD_REF", "ref", "GH_TOKEN"):
                 assert f"${var}" not in ln, ln
                 assert f"${{{var}}}" not in ln, ln
 
@@ -100,3 +100,10 @@ def test_token_is_withheld_from_the_guides_code():
     assert "remote remove origin" in run
     assert "env -u GH_TOKEN -u GUIDE_REPO bash scripts/guide/build_guide.sh" in run
     assert "refs/heads/$BRANCH" in run
+
+
+def test_branch_is_read_at_run_time_not_through_step_env():
+    # Step `env:` entries are printed in the public log header.
+    step = next(s for s in _CI["jobs"]["guide-build"]["steps"] if "run" in s)
+    assert "BRANCH" not in (step.get("env") or {})
+    assert 'BRANCH="$GITHUB_HEAD_REF"' in step["run"]

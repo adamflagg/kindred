@@ -1700,8 +1700,10 @@ jobs:
       env:
         GUIDE_REPO: ${{ secrets.GUIDE_REPO }}
         GH_TOKEN: ${{ secrets.GUIDE_READ_TOKEN }}
-        BRANCH: ${{ github.head_ref }}
+      # The branch comes from the runner's env, not step env: step env is
+      # printed in the public log header.
       run: |
+        BRANCH="$GITHUB_HEAD_REF"
         if [ -z "$GUIDE_REPO" ] || [ -z "$GH_TOKEN" ]; then
           echo "guide: skipped (no guide access configured)"
           exit 0
@@ -1733,10 +1735,15 @@ jobs:
         GUIDE_READ_TOKEN: ${{ secrets.GUIDE_READ_TOKEN }}
         GH_TOKEN: ${{ github.token }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
-        PR_BODY: ${{ github.event.pull_request.body }}
-        BRANCH: ${{ github.head_ref }}
+      # The body and branch are read at run time, never through step env: step
+      # env is printed in the public log header, and a re-run then sees a body
+      # edited after the push.
       run: |
-        printf '%s' "$PR_BODY" > "$RUNNER_TEMP/body.md"
+        BRANCH="$GITHUB_HEAD_REF"
+        if ! gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json body --jq .body > "$RUNNER_TEMP/body.md" 2>/dev/null; then
+          echo "docs impact: skipped (could not read the PR body)"
+          exit 0
+        fi
         if ! gh pr diff "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --name-only > "$RUNNER_TEMP/changed.txt" 2>/dev/null; then
           echo "docs impact: skipped (could not list changed files)"
           exit 0
@@ -1751,7 +1758,7 @@ jobs:
         else
           note=" (no guide access: paired branch not checked)"
         fi
-        out=$(python3 -m scripts.guide.impact_check --changed-file "$RUNNER_TEMP/changed.txt" --body-file "$RUNNER_TEMP/body.md" --paired-has-commits "$paired") && rc=0 || rc=$?
+        out=$(env -u GUIDE_READ_TOKEN -u GUIDE_REPO python3 -m scripts.guide.impact_check --changed-file "$RUNNER_TEMP/changed.txt" --body-file "$RUNNER_TEMP/body.md" --paired-has-commits "$paired") && rc=0 || rc=$?
         echo "${out}${note}"
         exit "$rc"
 

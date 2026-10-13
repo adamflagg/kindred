@@ -7,7 +7,7 @@ import re
 import sys
 from pathlib import Path
 
-_EXCLUDED = re.compile(r"(\.test\.|/types/api-generated/|pocketbase-types\.ts$)")
+_EXCLUDED = re.compile(r"(\.test\.|^frontend/src/test/|/types/api-generated/|pocketbase-types\.ts$)")
 _STAFF_VISIBLE = re.compile(
     r"^(frontend/src/.*\.(tsx|ts|css)$|bunking/rbac/permissions\.py$|scripts/guide/facts\.json$"
     r"|frontend/src/help/helpKeys\.json$|api/routers/)"
@@ -20,12 +20,17 @@ def needs_docs(changed: list[str]) -> bool:
 
 
 def has_docs_none(body: str) -> bool:
-    in_fence = False
+    fence = ""  # the open fence's marker; only the same marker closes it
     for line in body.splitlines():
-        if line.lstrip().startswith("```"):
-            in_fence = not in_fence
+        s = line.strip()
+        if not fence and s.startswith(("```", "~~~")):
+            fence = s[:3]
             continue
-        if not in_fence and _DOCS_NONE.match(line.strip()):
+        if fence:
+            if s.startswith(fence):
+                fence = ""
+            continue
+        if _DOCS_NONE.match(s):
             return True
     return False
 
@@ -49,7 +54,7 @@ def main() -> int:
     ap.add_argument("--paired-has-commits", choices=["true", "false"], required=True)
     a = ap.parse_args()
     ok, why = decide(
-        a.changed_file.read_text().split(),
+        [p for p in a.changed_file.read_text().splitlines() if p.strip()],
         a.body_file.read_text(),
         a.paired_has_commits == "true",
     )
