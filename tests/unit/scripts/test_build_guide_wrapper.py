@@ -107,3 +107,68 @@ def test_branch_is_read_at_run_time_not_through_step_env():
     step = next(s for s in _CI["jobs"]["guide-build"]["steps"] if "run" in s)
     assert "BRANCH" not in (step.get("env") or {})
     assert 'BRANCH="$GITHUB_HEAD_REF"' in step["run"]
+
+
+# --- the branch lookup: absent ref builds main, a failed lookup fails loudly ---
+
+_STUB_GIT = """#!/usr/bin/env bash
+printf '%s\\n' "$*" >> "$GIT_LOG"
+case "$1" in
+  ls-remote) exit "$LS_REMOTE_RC" ;;
+  clone) mkdir -p "${@: -1}/src/data" ;;
+esac
+exit 0
+"""
+
+
+def _run_build_step(tmp_path, ls_remote_rc):
+    stub = tmp_path / "bin"
+    stub.mkdir()
+    (stub / "git").write_text(_STUB_GIT)
+    (stub / "git").chmod(0o755)
+    env = {
+        **os.environ,
+        "PATH": f"{stub}:{os.environ['PATH']}",
+        "GIT_LOG": str(tmp_path / "git.log"),
+        "LS_REMOTE_RC": str(ls_remote_rc),
+        "GUIDE_REPO": "example-org/example-guide",
+        "GH_TOKEN": "tok-abc",
+        "GITHUB_HEAD_REF": "feature/example",
+        "RUNNER_TEMP": str(tmp_path),
+        "GUIDE_BUILD_CMD": "true",
+    }
+    # GitHub runs `run:` blocks as `bash --noprofile --norc -eo pipefail`.
+    r = subprocess.run(
+        ["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", _run_text()],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    log = (tmp_path / "git.log").read_text() if (tmp_path / "git.log").exists() else ""
+    return r, log
+
+
+def test_existing_paired_branch_is_built(tmp_path):
+    r, log = _run_build_step(tmp_path, 0)
+    assert r.returncode == 0, r.stdout
+    assert "--branch feature/example " in log
+    assert "building against: paired branch" in r.stdout
+
+
+def test_absent_paired_branch_builds_main(tmp_path):
+    # `git ls-remote --exit-code` exits 2 when the ref does not exist.
+    r, log = _run_build_step(tmp_path, 2)
+    assert r.returncode == 0, r.stdout
+    assert "--branch main " in log
+    assert "building against: main" in r.stdout
+
+
+def test_failed_branch_lookup_fails_instead_of_building_main(tmp_path):
+    # 128 is an auth or network failure: building main would report on the wrong tree.
+    r, log = _run_build_step(tmp_path, 128)
+    assert r.returncode != 0
+    assert r.stdout.strip() == "guide: branch lookup failed"
+    assert "clone" not in log
+    for secret in ("example-guide", "feature/example", "tok-abc"):
+        assert secret not in r.stdout + r.stderr

@@ -1712,7 +1712,14 @@ jobs:
         url="https://x-access-token:${GH_TOKEN}@github.com/${GUIDE_REPO}.git"
         label="paired branch"
         # Exact ref match: a bare name would suffix-match (docs vs feature/docs).
-        if git ls-remote --exit-code --heads "$url" "refs/heads/$BRANCH" >/dev/null 2>&1; then ref="$BRANCH"; else ref=main; label=main; fi
+        # --exit-code: 2 means the ref is absent (build main); anything else is an
+        # auth or network failure, which must not quietly report on main instead.
+        rc=0; git ls-remote --exit-code --heads "$url" "refs/heads/$BRANCH" >/dev/null 2>&1 || rc=$?
+        case "$rc" in
+          0) ref="$BRANCH" ;;
+          2) ref=main; label=main ;;
+          *) echo "guide: branch lookup failed"; exit 1 ;;
+        esac
         git clone -q --depth 1 --branch "$ref" "$url" "$dir" >/dev/null 2>&1 \
           || { echo "guide: clone failed"; exit 1; }
         # The token lives in the clone's origin URL; the guide's own code must not find it.

@@ -7,12 +7,13 @@ import re
 import sys
 from pathlib import Path
 
-_EXCLUDED = re.compile(r"(\.test\.|^frontend/src/test/|/types/api-generated/|pocketbase-types\.ts$)")
+_EXCLUDED = re.compile(r"(\.(test|spec)\.|^frontend/src/test/|/types/api-generated/|pocketbase-types\.ts$)")
 _STAFF_VISIBLE = re.compile(
     r"^(frontend/src/.*\.(tsx|ts|css)$|bunking/rbac/permissions\.py$|scripts/guide/facts\.json$"
     r"|frontend/src/help/helpKeys\.json$|api/routers/)"
 )
 _DOCS_NONE = re.compile(r"^Docs: none [—–-] \S.*$")
+_FENCE_OPEN = re.compile(r"^(`{3,}|~{3,})")
 
 
 def needs_docs(changed: list[str]) -> bool:
@@ -20,15 +21,17 @@ def needs_docs(changed: list[str]) -> bool:
 
 
 def has_docs_none(body: str) -> bool:
-    fence = ""  # the open fence's marker; only the same marker closes it
+    # The open fence's marker run. CommonMark: only a bare run of the same
+    # character, at least as long, closes it (```` is not closed by ```).
+    fence = ""
     for line in body.splitlines():
         s = line.strip()
-        if not fence and s.startswith(("```", "~~~")):
-            fence = s[:3]
-            continue
         if fence:
-            if s.startswith(fence):
+            if s and set(s) == {fence[0]} and len(s) >= len(fence):
                 fence = ""
+            continue
+        if m := _FENCE_OPEN.match(s):
+            fence = m.group(1)
             continue
         if _DOCS_NONE.match(s):
             return True

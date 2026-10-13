@@ -14,6 +14,7 @@ REPO = Path(__file__).resolve().parents[3]
     [
         ("frontend/src/pages/camperships/AidTodayPage.tsx", True),
         ("frontend/src/pages/camperships/AidTodayPage.test.tsx", False),
+        ("frontend/src/pages/camperships/AidTodayPage.spec.tsx", False),
         ("frontend/src/types/api-generated/types.gen.ts", False),
         ("frontend/src/lib/pocketbase-types.ts", False),
         ("frontend/src/test/setup.ts", False),
@@ -42,6 +43,12 @@ def test_needs_docs(path, expected):
         ("```\nDocs: none — inside a fence\n```", False),
         ("~~~\nDocs: none — inside a tilde fence\n~~~", False),
         ("~~~\n```\n~~~\nDocs: none — after a tilde fence holding backticks", True),
+        # A fence closes only on the same character, at least as long, and bare.
+        ("````\n```\nDocs: none — inside a four-backtick fence\n````", False),
+        ("~~~~\n~~~\nDocs: none — inside a four-tilde fence\n~~~~", False),
+        ("```\n````\nDocs: none — after a longer closing fence", True),
+        ("```\n```js\nDocs: none — a fence line with an info string does not close\n```", False),
+        ("```python\ncode\n```\nDocs: none — after a fence with an info string", True),
         ("docs: none — lower case", False),
         ("Some text\nDocs: none — tooling only\nmore", True),
     ],
