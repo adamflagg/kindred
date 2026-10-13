@@ -16,6 +16,8 @@
 # there first (if the file is not tracked on the base branch it is excluded
 # instead). A guide-side failure only warns; the kindred worktree is unaffected,
 # and a half-made guide worktree is removed so a later attempt can retry.
+# cleanup.sh removes the paired guide worktree again (keeping its branch) when
+# it removes this one, if KINDRED_GUIDE_DIR is set.
 #
 # Creates:
 #   <main-repo>/.worktrees/<feature-name>/

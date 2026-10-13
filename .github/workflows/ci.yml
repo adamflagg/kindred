@@ -366,6 +366,9 @@ jobs:
             # is as much its input as the suite itself.
             - 'scripts/worktree/new.sh'
             - 'scripts/worktree/test-new-guide-flag.sh'
+            # test-cleanup-guide.sh runs a copy of cleanup.sh in scratch repos.
+            - 'scripts/worktree/cleanup.sh'
+            - 'scripts/worktree/test-cleanup-guide.sh'
             - 'scripts/colors.sh'
           # docker-lint's real inputs, NOT the broad `docker` filter below,
           # which go-lint's job- and step-level gates also read to catch
@@ -717,6 +720,10 @@ jobs:
     # runs new.sh inside a mktemp repo, so a regression builds nothing here.
     - name: Worktree --guide flag self-test
       run: ./scripts/worktree/test-new-guide-flag.sh
+
+    # cleanup.sh's removal of the paired guide worktree; scratch repos only.
+    - name: Worktree cleanup --guide self-test
+      run: ./scripts/worktree/test-cleanup-guide.sh
 
   # Python linting (parallel with other lint jobs)
   python-lint:

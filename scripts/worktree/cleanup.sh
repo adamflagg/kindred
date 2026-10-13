@@ -6,6 +6,12 @@
 #   ./scripts/worktree/cleanup.sh --all-merged
 #   ./scripts/worktree/cleanup.sh fix-auth-bug
 #   ./scripts/worktree/cleanup.sh fix-auth-bug --force  # Force cleanup even if PR not merged
+#
+# If KINDRED_GUIDE_DIR names a staff-guide checkout holding a paired worktree
+# (made by `new.sh <name> --guide`) at $KINDRED_GUIDE_DIR/.worktrees/<name>, it
+# is removed too, for the single-name form and for each worktree --all-merged
+# removes. The guide BRANCH is kept: it is the paired PR's branch. A guide-side
+# failure only prints a warning; it never fails the kindred cleanup.
 
 set -e
 
@@ -44,6 +50,28 @@ is_pr_merged() {
     local state
     state=$(gh pr list --head "$branch" --state merged --json state --jq '.[0].state' 2>/dev/null)
     [ "$state" = "MERGED" ]
+}
+
+# Remove the paired guide worktree new.sh --guide made, if there is one.
+# Silent when KINDRED_GUIDE_DIR is unset or holds no such registered worktree.
+# Never deletes the guide branch, never rm -rf, never fails the caller.
+remove_guide_worktree() {
+    local name="$1" gdir="${KINDRED_GUIDE_DIR:-}" gwt real
+    [ -n "$gdir" ] || return 0
+    (
+        # A different repo: an inherited GIT_DIR & co. would override every -C below.
+        unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX
+        git -C "$gdir" rev-parse --git-dir >/dev/null 2>&1 || exit 0
+        gwt="$gdir/.worktrees/$name"
+        [ -d "$gwt" ] || exit 0
+        real="$(cd "$gwt" 2>/dev/null && pwd -P)" || exit 0
+        git -C "$gdir" worktree list --porcelain 2>/dev/null | grep -qxF "worktree $real" || exit 0
+        if git -C "$gdir" worktree remove --force "$real" >/dev/null 2>&1; then
+            echo -e "${BLUE}Removed paired guide worktree: $name (branch kept)${NC}"
+        else
+            echo -e "${YELLOW}Warning: could not remove the paired guide worktree for $name${NC}"
+        fi
+    ) || true
 }
 
 # Handle --all-merged flag
@@ -156,6 +184,7 @@ fi
 echo -e "${BLUE}Removing worktree...${NC}"
 cd "$MAIN_REPO"
 git worktree remove "$WORKTREE_DIR" --force 2>/dev/null || rm -rf "$WORKTREE_DIR"
+remove_guide_worktree "$FEATURE_NAME"
 
 # Remove branch (the merged-PR gate above passed, or --force overrode it)
 if [ "$KEEP_BRANCH" = false ]; then
