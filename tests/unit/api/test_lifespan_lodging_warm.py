@@ -33,6 +33,7 @@ async def test_startup_starts_the_refresher_and_shutdown_stops_it() -> None:
         patch.object(main, "ConfigLoader", MagicMock()),
         patch.object(main, "close_connection", MagicMock()),
         patch.object(main, "start_lodging_cache_refresher", side_effect=fake_start),
+        patch.object(main, "schedule_aid_warm"),  # Camperships' warm reads whatever PocketBase is reachable
     ):
         async with main.lifespan(MagicMock()):
             assert len(started) == 1

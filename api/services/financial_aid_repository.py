@@ -13,8 +13,7 @@ write whose log row could be lost.
 
 from __future__ import annotations
 
-from collections import defaultdict
-from collections.abc import Collection, Sequence
+from collections.abc import Collection, Iterable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -25,15 +24,14 @@ from api.constants.collections import (
     AID_HOUSEHOLD_LINKS,
     AID_POSTINGS,
     AID_SOURCES,
-    ATTENDEES,
     CAMP_SESSIONS,
     FINANCIAL_AID_APPLICATIONS,
     FINANCIAL_TRANSACTIONS,
     HOUSEHOLD_COLUMNS,
     HOUSEHOLDS,
-    PERSONS,
     USERS,
 )
+from api.services.aid_sync_inputs import aid_sync_inputs
 from api.services.lodging_repository import STABLE_SORT
 from api.services.pb_precise_datetime import aid_collection
 from api.services.pb_read import pb_read
@@ -42,13 +40,12 @@ from bunking.financial_aid.change_log import COLLECTION as CHANGE_LOG
 
 PAGE_SIZE = 1000
 ID_CHUNK = 100
-# A household's family filter is four terms (~145 characters). Eight households keep one filter near
-# 1,200 characters, well under the 3,500-character limit below; 25 go over it and PocketBase answers
-# 400. One query per household instead cost ~65 ms each (SP6-core T7).
+# Households per fetch_fa_requests filter. Sized when a household's family filter was four terms (~145 characters):
+# eight kept one filter near 1,200 characters, well under the 3,500-character limit below. One query per household
+# instead cost ~65 ms each (SP6-core T7).
 HOUSEHOLD_CHUNK = 8
 # An email term is under 100 characters, so 25 keep a filter well below the 3,500-character limit below.
 USER_CHUNK = 25
-_PERSON_HOUSEHOLD_RELATIONS = ("household", "primary_childhood_household", "alternate_childhood_household")
 # PocketBase v0.40.4 refuses any filter over 3500 characters
 # (tools/search/provider.go:31); keep a margin below it and a cap on term count
 # per chunk so one emitted filter never approaches the hard limit.
@@ -77,6 +74,11 @@ def _any_of(field: str, ids: Sequence[int]) -> str:
 
 def _positive_unique(ids: Collection[int]) -> list[int]:
     return sorted({int(i) for i in ids if int(i) > 0})
+
+
+def _in_id_order(records: Iterable[Any]) -> list[Any]:
+    """Records in PocketBase-id order: the order the by-id reads these replace returned (`sort=id`)."""
+    return sorted(records, key=lambda r: str(getattr(r, "id", "")))
 
 
 def chunk_filter_terms(
@@ -188,31 +190,53 @@ class FinancialAidRepository:
     # --- people, sessions, applications ------------------------------------
 
     async def fetch_households(self, year: int, cm_ids: Collection[int], *, adults: bool = False) -> list[Any]:
-        """These households' columns, named. `adults` adds aid_adults (the adults CampMinder names for an aid
-        household, hidden from every reader but the service's superuser): the household page asks for it, for its cards
-        and for the labels its helper names families by on To place, the Ledger and the Grants Register (ruling D), and
-        no other read may (tests/unit/api/services/test_aid_adults_guards.py)."""
-        fields = f"{HOUSEHOLD_COLUMNS},aid_adults" if adults else HOUSEHOLD_COLUMNS
-        return await self._by_ids(HOUSEHOLDS, f"year = {int(year)}", "cm_id", cm_ids, {"fields": fields})
+        """These households' columns, named, in PocketBase-id order. `adults` adds aid_adults (the adults CampMinder
+        names for an aid household, hidden from every reader but the service's superuser): the household page asks
+        for it, for its cards and for the labels its helper names families by on To place, the Ledger and the Grants
+        Register (ruling D), and no other read may (tests/unit/api/services/test_aid_adults_guards.py).
+
+        The plain read is answered from layer 1 (aid_sync_inputs), which holds HOUSEHOLD_COLUMNS only; the adults
+        read still reads its households itself, by cm_id (an indexed column, never a relation)."""
+        if adults:
+            return await self._by_ids(
+                HOUSEHOLDS, f"year = {int(year)}", "cm_id", cm_ids, {"fields": f"{HOUSEHOLD_COLUMNS},aid_adults"}
+            )
+        wanted = _positive_unique(cm_ids)
+        if not wanted:
+            return []
+        inputs = await aid_sync_inputs(self.pb, year)
+        return _in_id_order(inputs.household_by_cm_id[h] for h in wanted if h in inputs.household_by_cm_id)
 
     async def fetch_persons(self, year: int, cm_ids: Collection[int]) -> list[Any]:
-        return await self._by_ids(PERSONS, f"year = {int(year)}", "cm_id", cm_ids)
+        """These people this season, in PocketBase-id order. Answered from layer 1 (aid_sync_inputs)."""
+        wanted = _positive_unique(cm_ids)
+        if not wanted:
+            return []
+        inputs = await aid_sync_inputs(self.pb, year)
+        return _in_id_order(inputs.person_by_cm_id[p] for p in wanted if p in inputs.person_by_cm_id)
 
     async def fetch_household_members(self, year: int, household_ids: Collection[int]) -> list[Any]:
-        """This season's people whose own household is one of these (chunked by id, ID_CHUNK at a time)."""
-        return await self._by_ids(PERSONS, f"year = {int(year)}", "household_id", household_ids)
+        """This season's people whose own household is one of these, in PocketBase-id order. Answered from layer 1
+        (aid_sync_inputs)."""
+        wanted = _positive_unique(household_ids)
+        if not wanted:
+            return []
+        inputs = await aid_sync_inputs(self.pb, year)
+        return _in_id_order(p for h in wanted for p in inputs.persons_by_household_id.get(h, ()))
 
     async def fetch_household_persons(self, year: int, household_ids: Collection[int]) -> list[Any]:
         """Everyone the Go transform treats as a candidate for these households:
-        own household, primary childhood household or alternate childhood household."""
+        own household, primary childhood household or alternate childhood household. Each person once, household by
+        household in cm_id order, each household's people in PocketBase-id order. Answered from layer 1
+        (aid_sync_inputs): one whole-year read joined in Python, never a filter through a relation."""
+        wanted = _positive_unique(household_ids)
+        if not wanted:
+            return []
+        inputs = await aid_sync_inputs(self.pb, year)
         out: dict[str, Any] = {}
-        for h in _positive_unique(household_ids):
-            flt = (
-                f"year = {int(year)} && (household_id = {h} || primary_childhood_household.cm_id = {h}"
-                f" || alternate_childhood_household.cm_id = {h} || household.cm_id = {h})"
-            )
-            for p in await self._page(PERSONS, {"filter": flt, "sort": STABLE_SORT}):
-                out[p.id] = p
+        for h in wanted:
+            for p in inputs.members_by_household.get(h, ()):
+                out.setdefault(str(p.id), p)
         return list(out.values())
 
     async def fetch_household_persons_by_household(
@@ -220,35 +244,22 @@ class FinancialAidRepository:
     ) -> dict[int, list[Any]]:
         """fetch_household_persons' pool for many households at once, split back per household:
         each person lands under every requested household that is their own or a primary or
-        alternate childhood household. Households with nobody are left out."""
+        alternate childhood household. Households with nobody are left out. Answered from layer 1
+        (aid_sync_inputs): one whole-year read joined in Python, never a filter through a relation."""
         wanted = _positive_unique(household_ids)
-        wanted_set = set(wanted)
-        found: dict[int, dict[str, Any]] = defaultdict(dict)
-        for start in range(0, len(wanted), HOUSEHOLD_CHUNK):
-            terms = " || ".join(
-                f"household_id = {h} || primary_childhood_household.cm_id = {h}"
-                f" || alternate_childhood_household.cm_id = {h} || household.cm_id = {h}"
-                for h in wanted[start : start + HOUSEHOLD_CHUNK]
-            )
-            rows = await self._page(
-                PERSONS,
-                {
-                    "filter": f"year = {int(year)} && ({terms})",
-                    "sort": STABLE_SORT,
-                    "expand": ",".join(_PERSON_HOUSEHOLD_RELATIONS),
-                },
-            )
-            for p in rows:
-                expand = getattr(p, "expand", None) or {}
-                households = {int(getattr(p, "household_id", 0) or 0)} | {
-                    int(getattr(expand.get(name), "cm_id", 0) or 0) for name in _PERSON_HOUSEHOLD_RELATIONS
-                }
-                for h in households & wanted_set:
-                    found[h][str(p.id)] = p
-        return {h: list(people.values()) for h, people in found.items()}
+        if not wanted:
+            return {}
+        inputs = await aid_sync_inputs(self.pb, year)
+        return {h: list(inputs.members_by_household[h]) for h in wanted if h in inputs.members_by_household}
 
     async def fetch_enrollments(self, year: int, person_ids: Collection[int]) -> list[Any]:
-        return await self._by_ids(ATTENDEES, f"year = {int(year)}", "person_id", person_ids, {"expand": "session"})
+        """These people's registrations this season, every status, with the session expanded, in PocketBase-id
+        order. Answered from layer 1 (aid_sync_inputs)."""
+        wanted = _positive_unique(person_ids)
+        if not wanted:
+            return []
+        inputs = await aid_sync_inputs(self.pb, year)
+        return _in_id_order(a for p in wanted for a in inputs.attendees_by_person_cm_id.get(p, ()))
 
     async def fetch_session_ids(self, year: int) -> set[int]:
         rows = await self._page(

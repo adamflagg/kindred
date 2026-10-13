@@ -168,6 +168,21 @@ lodging_cache = LodgingYearCache(ttl_seconds=900, max_size=128)
 
 
 # ========================================
+# Camperships Sync-Input Cache (layer 1)
+# ========================================
+
+# The season's sync-written Camperships inputs -- persons, households, attendees
+# and the equity custom values -- read whole once per year and joined in Python
+# (api/services/aid_sync_inputs.py). Only a sync writes them, so the
+# cache-invalidate endpoint clears this when a finished sync writes one of its
+# tables; the 30-minute TTL is the fallback for a missed call. Four entries: the
+# season and the prior years a report reads, never more. A module-level
+# singleton for the same reason as lodging_cache: every request builds fresh
+# repositories.
+aid_inputs_cache = LodgingYearCache(ttl_seconds=1800, max_size=4)
+
+
+# ========================================
 # Solver Runs Storage
 # ========================================
 
@@ -213,6 +228,7 @@ __all__ = [
     "MAX_TERMINAL_SOLVER_RUNS",
     "PB_AUTH_PROBE_INTERVAL_SECONDS",
     "IDLookupCache",
+    "aid_inputs_cache",
     "auth_state",
     "authenticate_pb",
     "authenticate_task_pb",

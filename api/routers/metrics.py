@@ -11,6 +11,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, Query
 
 from api.constants.sync_job_writes import sync_writes_any
+from api.services.aid_sync_inputs import AID_SYNC_INPUT_TABLES, schedule_aid_warm
 from api.services.cancellation_service import CancellationService
 from api.services.comparison_service import ComparisonService
 from api.services.day1_service import Day1Service
@@ -32,7 +33,7 @@ from bunking.graph.social_graph_builder import SocialGraphBuilder
 from bunking.rbac.dependencies import require_any_permission
 from bunking.rbac.permissions import Permission
 
-from ..dependencies import graph_cache, lodging_cache, metrics_cache, pb
+from ..dependencies import aid_inputs_cache, graph_cache, lodging_cache, metrics_cache, pb
 from ..schemas.day1 import Day1Response
 from ..schemas.forecast import ForecastResponse, WeekOption
 from ..schemas.metrics import (
@@ -664,12 +665,21 @@ def invalidate_server_caches(sync_type: str | None) -> dict[str, int]:
     hour. A call naming no sync (the config hook, the registration-dates
     panel) clears it as before. Every clear is followed by a background warm,
     so the next weekend load does not pay for the re-read.
+
+    aid_inputs_cache, the Camperships sync-input cache (layer 1,
+    `api/services/aid_sync_inputs.py`), is scoped the same way, against
+    AID_SYNC_INPUT_TABLES: only a sync writes those tables, so this call is
+    what keeps it current, and its TTL is only the fallback. Every clear is
+    followed by a background warm of the configured season.
     """
     cleared = metrics_cache.invalidate_all()
     clear_person_id_cache()
     if sync_invalidates_lodging_cache(sync_type):
         lodging_cache.invalidate_all()
         schedule_lodging_warm()
+    if sync_writes_any(sync_type, AID_SYNC_INPUT_TABLES):
+        aid_inputs_cache.invalidate_all()
+        schedule_aid_warm()
     # graph_cache (kindred#2803): until now only scenario, solver and position
     # writes cleared it, so a sync rewriting attendees or bunk assignments left
     # the production graph stale for its whole 15-minute TTL. Scoped the same

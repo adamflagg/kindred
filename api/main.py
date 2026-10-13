@@ -62,6 +62,7 @@ from .routers import (
     validation,
 )
 from .schemas.permissions import PermissionEntry, PermissionRegistryResponse, PermissionScreen
+from .services.aid_sync_inputs import schedule_aid_warm
 from .services.lodging_cache_warm import start_lodging_cache_refresher
 from .services.metrics_sql_connection import close_connection
 from .settings import get_settings
@@ -95,6 +96,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # and again every TTL -- so a staff member's first click after a
         # restart or an idle quarter-hour is not the one that pays for it.
         lodging_refresh_task = start_lodging_cache_refresher()
+        # Camperships' sync inputs (layer 1), likewise in the background: the first season build after a
+        # restart should not be the one that reads every person, household and registration.
+        schedule_aid_warm()
     else:
         logger.warning("Skipping PocketBase authentication (SKIP_PB_AUTH=true)")
         auth_state.pb_client = pb

@@ -19,6 +19,7 @@ import pytest
 import api.constants.collections as collections
 from api.dependencies import aid_inputs_cache
 from api.services import aid_sync_inputs as layer1
+from api.services import financial_aid_rules_service as rules_service
 from api.services.aid_sync_inputs import AID_SYNC_INPUT_TABLES, AidSyncInputs, aid_sync_inputs, schedule_aid_warm
 from api.services.financial_aid_intake_repository import ADULT_POC_FIELD_CM_ID, CAMPER_POC_FIELD_CM_ID
 from tests.unit.api.services.aid_parity_fixture import (
@@ -218,11 +219,11 @@ async def test_a_burst_of_warms_runs_one_at_a_time_and_one_rerun(monkeypatch: py
 async def test_the_warm_fills_the_configured_season_and_never_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     pb = _recording_pb()
     monkeypatch.setattr(layer1, "default_pb", pb)
-    monkeypatch.setattr(layer1, "configured_season_year", AsyncMock(return_value=YEAR))
+    monkeypatch.setattr(rules_service, "configured_season_year", AsyncMock(return_value=YEAR))
     await layer1._warm_current_season()
     assert aid_inputs_cache.get("load", YEAR) is not None
 
-    monkeypatch.setattr(layer1, "configured_season_year", AsyncMock(side_effect=RuntimeError("no season")))
+    monkeypatch.setattr(rules_service, "configured_season_year", AsyncMock(side_effect=RuntimeError("no season")))
     await layer1._warm_current_season()  # logged, not raised
 
 

@@ -241,18 +241,28 @@ async def test_fetch_equity_answers_reads_only_allowlisted_fields_for_named_peop
         SimpleNamespace(cm_id=1000011, gender_identity_name="Non-binary", gender_pronoun_name="They/Them"),
         SimpleNamespace(cm_id=1000012, gender_identity_name="", gender_pronoun_name=""),
     ]
+    defs = MagicMock()
+    defs.get_full_list.return_value = [
+        SimpleNamespace(id="fd0000000000001", cm_id=165525),
+        SimpleNamespace(id="fd0000000000002", cm_id=209079),
+    ]
+    empty = MagicMock()
+    empty.get_full_list.return_value = []
+    tables = {"person_custom_values": values, "persons": persons, "custom_field_defs": defs}
     pb = MagicMock()
-    pb.collection.side_effect = lambda name: values if name == "person_custom_values" else persons
+    pb.collection.side_effect = lambda name: tables.get(name, empty)
     result = await FinancialAidIntakeRepository(pb).fetch_equity_answers(2027, [1000012, 1000011])
     assert result == {
         1000011: EquityAnswers(True, "Non-binary", "They/Them"),
         1000012: EquityAnswers(None, "", ""),
     }
+    # Answered from layer 1 (aid_sync_inputs), which reads the season's values once: the definitions by the
+    # allowlisted cm_ids only, then the values by those definitions' ids -- never a field outside the allowlist.
+    assert defs.get_full_list.call_args.kwargs["query_params"]["filter"] == "cm_id = 165525 || cm_id = 209079"
     value_filter = values.get_full_list.call_args.kwargs["query_params"]["filter"]
-    assert "field_definition.cm_id = 165525 || field_definition.cm_id = 209079" in value_filter
-    assert value_filter.count("field_definition.cm_id") == 2
-    assert "person.cm_id = 1000011" in value_filter
-    assert "person.cm_id = 1000012" in value_filter
+    assert (
+        value_filter == 'year = 2027 && (field_definition = "fd0000000000001" || field_definition = "fd0000000000002")'
+    )
 
 
 @pytest.mark.asyncio

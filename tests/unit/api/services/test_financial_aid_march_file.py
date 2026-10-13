@@ -184,16 +184,17 @@ def test_a_campers_names_are_campminders_never_the_preferred_name() -> None:
 
 @pytest.mark.asyncio
 async def test_the_names_read_asks_persons_for_the_season_and_the_campers() -> None:
-    pb = MagicMock()
-    pb.collection.return_value.get_full_list.return_value = [
+    persons, empty = MagicMock(), MagicMock()
+    persons.get_full_list.return_value = [
         SimpleNamespace(cm_id=1000011, first_name="Emma", last_name="Johnson", preferred_name="")
     ]
+    empty.get_full_list.return_value = []
+    pb = MagicMock()
+    pb.collection.side_effect = lambda name: persons if name == "persons" else empty
     names = await FinancialAidDecisionsRepository(pb).fetch_camper_names(YEAR, [1000011])
     assert names == {1000011: ("Emma", "Johnson")}
-    pb.collection.assert_called_with("persons")
-    query = pb.collection.return_value.get_full_list.call_args.kwargs["query_params"]
-    assert f"year = {YEAR}" in query["filter"]
-    assert "1000011" in query["filter"]
+    # Answered from layer 1 (aid_sync_inputs): the season's persons, read whole.
+    assert persons.get_full_list.call_args.kwargs["query_params"]["filter"] == f"year = {YEAR}"
 
 
 # --- the read -----------------------------------------------------------------------------------
@@ -413,8 +414,9 @@ async def test_two_family_camp_requests_share_one_read_and_each_names_its_own_ch
 
 
 @pytest.mark.asyncio
-async def test_the_household_attendees_read_is_two_reads_by_the_membership_rule() -> None:
-    """The people of the households (own or childhood household), then their registrations: two collections read."""
+async def test_the_household_attendees_read_is_one_season_fill_by_the_membership_rule() -> None:
+    """The people of the households (own or childhood household), then their registrations: answered from layer 1
+    (aid_sync_inputs), each table read once."""
     people = [
         SimpleNamespace(
             id="p1", cm_id=LIAM_ID, household_id=HOUSEHOLD, birthdate="2014-03-02 00:00:00.000Z", expand={}
@@ -429,14 +431,18 @@ async def test_the_household_attendees_read_is_two_reads_by_the_membership_rule(
     pb = MagicMock()
     asked: list[str] = []
 
-    def full_list(**kwargs: Any) -> list[SimpleNamespace]:
-        name = pb.collection.call_args.args[0]
-        asked.append(name)
-        return people if name == "persons" else enrolments
+    def table(name: str) -> MagicMock:
+        def full_list(**kwargs: Any) -> list[SimpleNamespace]:
+            asked.append(name)
+            return {"persons": people, "attendees": enrolments}.get(name, [])
 
-    pb.collection.return_value.get_full_list.side_effect = full_list
+        collection = MagicMock()
+        collection.get_full_list.side_effect = full_list
+        return collection
+
+    pb.collection.side_effect = table
     found = await FinancialAidDecisionsRepository(pb).fetch_household_attendees(YEAR, [HOUSEHOLD])
     assert [(a.household_cm_id, a.person_cm_id, a.session_cm_id, a.status_id, a.birthdate) for a in found] == [
         (HOUSEHOLD, LIAM_ID, FC_SESSION, 2, date(2014, 3, 2))
     ]
-    assert asked == ["persons", "attendees"]
+    assert (asked.count("persons"), asked.count("attendees")) == (1, 1)

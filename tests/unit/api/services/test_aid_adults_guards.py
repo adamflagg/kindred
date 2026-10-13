@@ -77,7 +77,9 @@ async def test_aid_household_reads_name_their_columns_and_add_aid_adults_only_wh
     repo = FinancialAidRepository(pb)
     await repo.fetch_households(2026, [1000001])
     await repo.fetch_households(2026, [1000001], adults=True)
-    plain, with_adults = calls
+    # The plain read is answered from layer 1 (aid_sync_inputs), whose one fill also reads persons, attendees and
+    # the equity values; the household reads are the two that name household columns.
+    plain, with_adults = [c for c in calls if "greeting" in _fields(c)]
     assert _fields(plain) == HOUSEHOLD_COLUMNS.split(",")
     assert _fields(with_adults) == [*HOUSEHOLD_COLUMNS.split(","), "aid_adults"]
 
