@@ -593,8 +593,6 @@ describe('sessionName — #2790 tiny vocabulary', () => {
   it.each([
     ['{camp} Family School - East Bay cohort', 'TFS EB'],
     ['{camp} Family School - San Francisco cohort', 'TFS SF'],
-    ['Tawonga Family School - San Francisco cohort', 'TFS SF'],
-    ['Tawonga Family School - East Bay cohort', 'TFS EB'],
     // The cohort after the dash names the region, even when the name mentions the other one.
     ['Family School - San Francisco cohort (East Bay families welcome)', 'TFS SF'],
     ['{camp} Family School (Marin Cohort)', '{camp} Family School (Marin Cohort)'],
@@ -664,8 +662,6 @@ describe('sessionName — #2790 short vocabulary', () => {
   it.each([
     ['{camp} Family School - East Bay cohort', 'Family School EB'],
     ['{camp} Family School - San Francisco cohort', 'Family School SF'],
-    ['Tawonga Family School - San Francisco cohort', 'Family School SF'],
-    ['Tawonga Family School - East Bay cohort', 'Family School EB'],
     ['Family School - San Francisco cohort (East Bay families welcome)', 'Family School SF'],
     ['{camp} Family School (Marin Cohort)', '{camp} Family School (Marin Cohort)'],
   ])('Family School %j → %s', (name, expected) => {

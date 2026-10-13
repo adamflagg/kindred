@@ -1364,7 +1364,7 @@ func TestStaffApplicationsSyncSecondRunIsIdempotent(t *testing.T) {
 	addStaffApplicationsFullCollection(t, app)
 
 	const year = 2026
-	tawongaDefID := addFieldDef(t, app, 92001, "App-Why Tawonga?")
+	whyCampDefID := addFieldDef(t, app, 92001, "App-Why Tawonga?")
 	over21DefID := addFieldDef(t, app, 92002, "App-Over 21")
 
 	householdPBID := addHousehold(t, app, 9001, year)
@@ -1373,7 +1373,7 @@ func TestStaffApplicationsSyncSecondRunIsIdempotent(t *testing.T) {
 		"person_id": 9101, "year": year,
 	})
 
-	addPersonCustomValue(t, app, tawongaDefID, personPBID, "Because it's home.", year)
+	addPersonCustomValue(t, app, whyCampDefID, personPBID, "Because it's home.", year)
 	addPersonCustomValue(t, app, over21DefID, personPBID, "Yes", year)
 
 	s := NewStaffApplicationsSync(app)
@@ -1403,7 +1403,7 @@ func TestStaffApplicationsSyncSecondRunIsIdempotent(t *testing.T) {
 	// return false passes every assertion above -- the record would never
 	// be updated again, silently.
 	const editedValue = "Because it's the best place on earth."
-	updatePersonCustomValue(t, app, tawongaDefID, personPBID, editedValue, year)
+	updatePersonCustomValue(t, app, whyCampDefID, personPBID, editedValue, year)
 
 	if err := s.Sync(context.Background()); err != nil {
 		t.Fatalf("third Sync: %v", err)

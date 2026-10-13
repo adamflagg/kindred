@@ -24,6 +24,9 @@ from pathlib import Path
 
 import pytest
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+PRIVATE_BRANDING = REPO_ROOT / "config" / "branding.local.json"
+
 
 @pytest.fixture
 def build_mod():
@@ -50,8 +53,24 @@ def test_camp_scrub_config_derives_from_branding(build_mod, tmp_path):
     assert replacements[0][0] == "Camp Wildwood"
     assert dict(replacements) == {"Camp Wildwood": "Camp Kindred", "Wildwood": "Kindred"}
     assert set(gate_tokens) == {"Camp Wildwood", "Wildwood"}
-    # the real brand is never hardcoded into the (public) builder module
-    assert "Tawonga" not in Path(build_mod.__file__).read_text()
+
+
+def test_builder_module_does_not_hardcode_the_brand(build_mod):
+    """The real brand is never hardcoded into the (public) builder module.
+
+    The brand is read from the private branding config at runtime, so this test
+    names no brand itself (CI's private-names guard scans tracked files for it).
+    It skips where that config is absent: CI, forks, a fresh clone.
+    """
+    if not PRIVATE_BRANDING.is_file():
+        pytest.skip("private branding config absent")
+    branding = json.loads(PRIVATE_BRANDING.read_text())
+    brands = [b for b in (branding.get("camp_name"), branding.get("camp_name_short")) if b]
+    if not brands:
+        pytest.skip("private branding config names no camp")
+    source = Path(build_mod.__file__).read_text()
+    # any() over a generator, so a failure reports True/False and never the brand.
+    assert not any(b in source for b in brands), "the builder module hardcodes the camp name"
 
 
 def test_camp_scrub_config_missing_branding_fails_loud(build_mod, tmp_path):
