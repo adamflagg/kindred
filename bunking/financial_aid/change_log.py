@@ -39,9 +39,10 @@ PocketBase parses a numeric string into a number field exactly.
 from __future__ import annotations
 
 import json
+import logging
 import re
 import secrets
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -59,6 +60,8 @@ from bunking.pocketbase_batch import (
     send_batch,
 )
 from pocketbase import PocketBase
+
+logger = logging.getLogger(__name__)
 
 COLLECTION = "aid_change_log"
 
@@ -496,7 +499,63 @@ def _pair(
     return record_id, request, BatchRequest.create(COLLECTION, row)
 
 
+CommitListener = Callable[[Sequence["AidWrite"], str], None]
+_LISTENERS: list[CommitListener] = []
+
+
+def add_commit_listener(listener: CommitListener) -> Callable[[], None]:
+    """Run ``listener(writes, actor)`` after every commit_aid_writes call, success or failure -- a chunked
+    operation can partly apply, so a failure may still have changed what readers see. The API registers
+    the Camperships season cache's invalidation here (bunking cannot import api). Runs in the committing
+    thread (callers reach commit_aid_writes through asyncio.to_thread), so a listener must be thread-safe
+    and must not touch the event loop directly. Returns a function that unregisters it."""
+    _LISTENERS.append(listener)
+
+    def remove() -> None:
+        if listener in _LISTENERS:
+            _LISTENERS.remove(listener)
+
+    return remove
+
+
 def commit_aid_writes(
+    pb: PocketBase,
+    writes: Sequence[AidWrite],
+    *,
+    actor: str,
+    operation_id: str | None = None,
+    reason: str | None = None,
+    require_reason: bool = False,
+    allow_chunking: bool = False,
+    max_requests: int = MAX_BATCH_REQUESTS,
+    guards: Sequence[AidGuard] = (),
+) -> AidOperationResult:
+    """Commit ``writes`` and their log rows (see ``_commit_aid_writes``), then tell every listener.
+
+    The listeners hear of a failure too, because a chunked operation can partly commit. A listener that
+    raises is logged and swallowed: a cache must never fail a write.
+    """
+    try:
+        return _commit_aid_writes(
+            pb,
+            writes,
+            actor=actor,
+            operation_id=operation_id,
+            reason=reason,
+            require_reason=require_reason,
+            allow_chunking=allow_chunking,
+            max_requests=max_requests,
+            guards=guards,
+        )
+    finally:
+        for listener in tuple(_LISTENERS):
+            try:
+                listener(writes, actor)
+            except Exception:
+                logger.exception("an aid commit listener failed")
+
+
+def _commit_aid_writes(
     pb: PocketBase,
     writes: Sequence[AidWrite],
     *,
