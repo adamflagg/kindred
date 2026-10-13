@@ -9,8 +9,8 @@ posted). A grant known after Round 1 posted offsets Round 2 only where the rules
 offer" (D43). share_offset reads it live; offset_as_of replays the same rule at a past instant, with no amount,
 for Season › History's Round column.
 
-GET /grants/{year} prices the season once, on the register it shows (OneGrantsLoad), unless the season comes from the shared cache, which every register change clears, as Today and the household page
-do. Nothing here writes.
+GET /grants/{year} prices the season once, on the register it shows (OneGrantsLoad), as Today and the household page
+do, unless the season comes from the shared cache, which every register change clears. Nothing here writes.
 """
 
 from __future__ import annotations
@@ -163,7 +163,8 @@ def with_offsets(response: GrantsResponse, rows: Sequence[RegisterRow], season: 
 
 class GrantsRegisterService:
     """GET /grants/{year}: Grants' one read (D21) with each share's round (ask 10). The season is priced once, on the
-    register the read shows: one grants load (OneGrantsLoad) serves both, unless the season comes from the shared cache, which every register change clears."""
+    register the read shows: one grants load (OneGrantsLoad) serves both, unless the season comes from the shared
+    cache, which every register change clears."""
 
     def __init__(
         self,

@@ -58,6 +58,7 @@ T_EMMA_CAMP, T_CHEN_CAMP, T_GARCIA_CAMP, T_EMMA_GRANT, T_OKAFOR_GRANT, T_PRIOR =
     8000005,
     8000009,
 )
+T_NOAH_CAMP = 8000006
 
 # --- PocketBase record ids (15 chars, lowercase) --------------------------------------------------------------------
 REQ_EMMA, REQ_LIAM, REQ_OLIVIA, REQ_SAM, REQ_NOAH = (
@@ -773,6 +774,9 @@ def _postings() -> list[Any]:
         # Posted, then reversed by CampMinder after her registration was cancelled: the clawback.
         line(T_CHEN_CAMP, CHEN, OLIVIA, -1500.0, "camp", "camp aid", "camp", "2027-03-08", reversed_on="2027-04-15"),
         line(T_GARCIA_CAMP, GARCIA, 0, -400.0, "camp", "camp aid", "camp", "2027-03-15"),  # placed by an override
+        line(
+            T_NOAH_CAMP, RIVERA, NOAH, -300.0, "camp", "camp aid", "camp", "2027-03-10"
+        ),  # Kindred-cancelled, camp aid still live: To reverse
         line(T_EMMA_GRANT, JOHNSON, EMMA, -500.0, "outside", "regional grant", "other_outside", "2027-02-20"),
         line(T_OKAFOR_GRANT, OKAFOR, 0, -250.0, "outside", "regional grant", "other_outside", "2027-02-21"),
         line(T_PRIOR, JOHNSON, EMMA, -7000.0, "camp", "camp aid", "camp", "2026-03-08", year=PRIOR_SEASON),

@@ -48,6 +48,7 @@ from tests.unit.api.services.aid_season_fixture import (
     T_CHEN_CAMP,
     T_EMMA_GRANT,
     T_GARCIA_CAMP,
+    T_NOAH_CAMP,
     T_OKAFOR_GRANT,
     T_PRIOR,
     SeasonPb,
@@ -178,7 +179,7 @@ def test_the_fixture_serves_the_season_shapes_it_adds() -> None:
             "fields": "transaction_cm_id,amount",
         }
     )
-    assert [r.transaction_cm_id for r in camp] == [8000001, T_CHEN_CAMP, T_GARCIA_CAMP]
+    assert [r.transaction_cm_id for r in camp] == [8000001, T_CHEN_CAMP, T_GARCIA_CAMP, T_NOAH_CAMP]
     assert not hasattr(camp[0], "funder_type")  # projected to the fields asked for
     runs = pb.collection("sync_runs").get_list(
         1,
@@ -271,9 +272,11 @@ async def test_the_reference_season_holds_every_route_a_number_takes() -> None:
     # Names, and year scoping: no prior-season row anywhere.
     assert (families[CHEN], campers[LIAM]) == ("Chen Household", "Lee Garcia")
     assert families[JOHNSON] == "Mr. and Mrs. Johnson"  # not the 2026 household's title
-    # CampMinder's cancellation reaches forward demand. (Season.to_reverse, gaps and splits stay empty here: each
-    # needs a case this fixture lacks, and unticked and pending are filled only by with_unticked, not the build.)
+    # CampMinder's cancellation reaches forward demand; Kindred's own cancellation with camp aid still live is To
+    # reverse. (Gaps and splits stay empty here: each needs a case this fixture lacks, and unticked and pending are
+    # filled only by with_unticked, not the build.)
     assert season.cancelled_in_campminder == {REQ_OLIVIA}
+    assert season.to_reverse == {REQ_NOAH}
     assert REQ_PRIOR not in season.requests
     assert T_PRIOR not in {line.transaction_cm_id for line in season.camp_lines}
     assert all(r.year == YEAR for r in season.requests.values())
@@ -290,7 +293,9 @@ async def test_the_cached_season_equals_the_season_built_from_scratch(
     uncached, reference_pb = await _reference()
     assert builds == [YEAR]
     # The uncached unnamed read prices the same season (names=False builds without the names).
-    assert await _service(reference_pb, None).season(YEAR) == uncached[0]
+    # Layer 1 is warm from the reference build here, so this also pins the warm-layer-1 build against the cold one.
+    diff = first_difference(await _service(reference_pb, None).season(YEAR), uncached[0], "Season")
+    assert diff is None, f"uncached season() over a warm layer 1: {diff}"
 
     # (b) Through both layers: a new season cache, over a cold layer 1.
     aid_inputs_cache.invalidate_all()
@@ -334,3 +339,9 @@ async def test_the_cached_season_equals_the_season_built_from_scratch(
     assert pb.refused == [], pb.refused
     assert_same(rebuilt, uncached, "rebuild over a warm layer 1")
     assert (await _service(pb, cache).season(YEAR)) is rebuilt[0]
+
+    # The live read's unticked rounds (CampMinder holds money, no Posted tick) match too: Liam's round 1, on hold.
+    ref_unticked = (await _service(reference_pb, None).with_unticked(uncached[0])).unticked
+    cached_unticked = (await _service(pb, cache).with_unticked(rebuilt[0])).unticked
+    assert ref_unticked
+    assert first_difference(cached_unticked, ref_unticked, "unticked") is None

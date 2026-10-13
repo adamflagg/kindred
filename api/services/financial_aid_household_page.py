@@ -672,9 +672,9 @@ async def _income(casework: CaseworkReads, year: int, household_cm_id: int) -> A
 
 class HouseholdPageService:
     """The household page's one aggregate read (D21): the live season priced once with its grants register
-    (OneGrantsLoad; unless the season comes from the shared cache, which every register change clears), scoped to the family (D26), plus the family's own reads: its names, incomes, postings,
-    the households' details, links and log, and the details of any household outside the scope that a link row or a
-    duplicate waiting names."""
+    (OneGrantsLoad; unless the season comes from the shared cache, which every register change clears), scoped to the
+    family (D26), plus the family's own reads: its names, incomes, postings, the households' details, links and log,
+    and the details of any household outside the scope that a link row or a duplicate waiting names."""
 
     def __init__(
         self,

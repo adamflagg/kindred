@@ -800,7 +800,8 @@ async def _no_fields() -> dict[str, str]:
 
 class TodayService:
     """Today's one aggregate read (D21): the live season priced once, with the grants register it was
-    priced with (OneGrantsLoad; unless the season comes from the shared cache, which every register change clears), and only for finance the rules draft and the season's descriptions."""
+    priced with (OneGrantsLoad; unless the season comes from the shared cache, which every register change clears),
+    and only for finance the rules draft and the season's descriptions."""
 
     def __init__(
         self,
