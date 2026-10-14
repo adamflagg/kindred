@@ -166,6 +166,7 @@ export default function WaitlistAnalysis() {
                 className="border-amber-200 dark:border-amber-800"
                 compareValue={compData?.total_waitlisted}
                 compareYear={compareYear ?? undefined}
+                sentiment="muted"
                 onClick={() =>
                   setFilter({
                     type: 'waitlist_total',

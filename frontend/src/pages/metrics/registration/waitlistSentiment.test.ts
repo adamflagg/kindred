@@ -22,4 +22,12 @@ describe('Total Waitlisted delta is grey', () => {
       'sentiment="muted"'
     )
   })
+
+  // Owner Q5 (recommended, pending): the same number on the Waitlist page reads the same colour.
+  // To flip: drop this case and the prop in WaitlistAnalysis.tsx.
+  it('on Registration › Waitlist', () => {
+    expect(metricCardBlock('WaitlistAnalysis.tsx', 'Total Waitlisted')).toContain(
+      'sentiment="muted"'
+    )
+  })
 })
