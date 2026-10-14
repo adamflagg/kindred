@@ -1175,6 +1175,22 @@ func resolveServiceStatuses(orchestrator *Orchestrator, syncTypes []string) map[
 // but is listed mid-Transform here.
 func statusSyncTypes() []string { return allJobIDs() }
 
+// seasonStatusFields is the season part of the sync status payload. `_configured_year` keeps its
+// meaning (the primary season) and its fallback to the calendar year when the season can't be
+// resolved.
+func seasonStatusFields() map[string]any {
+	now := nowFn()
+	primary, err := PrimarySeason(now)
+	if err != nil {
+		primary = now.Year()
+	}
+	return map[string]any{
+		"_configured_year": primary,
+		"_synced_years":    []int{primary, primary - 1},
+		"_season_source":   SeasonSource(),
+	}
+}
+
 // handleSyncStatus returns the status of all sync jobs
 func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 	orchestrator := scheduler.GetOrchestrator()
@@ -1200,12 +1216,11 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 		statuses["_historical_sync_year"] = orchestrator.GetHistoricalSyncYear()
 	}
 
-	// Add configured year from environment (CAMPMINDER_SEASON_ID)
-	configuredYear, err := ParseSeasonYear()
-	if err != nil {
-		configuredYear = time.Now().Year()
+	// Season fields: the primary season (`_configured_year`), the seasons the scheduled runs
+	// cover, and whether the env override or the Oct 15 rule picked the primary.
+	for k, v := range seasonStatusFields() {
+		statuses[k] = v
 	}
-	statuses["_configured_year"] = configuredYear
 
 	// Add bunk requests CSV upload metadata if a CSV has ever been uploaded.
 	// Read failures are logged but not surfaced — the absence of this field is

@@ -12,13 +12,13 @@ describe('syncTypes', () => {
   const currentYear = 2026
 
   it('includes stranded_assignment_cleanup in transform phase', () => {
-    const transformJobs = getSyncTypesByPhase('transform', currentYear, currentYear)
+    const transformJobs = getSyncTypesByPhase('transform', currentYear, [currentYear])
     const ids = transformJobs.map((t) => t.id)
     expect(ids).toContain('stranded_assignment_cleanup')
   })
 
   it('stranded_assignment_cleanup is last in the transform phase group', () => {
-    const transformJobs = getSyncTypesByPhase('transform', currentYear, currentYear)
+    const transformJobs = getSyncTypesByPhase('transform', currentYear, [currentYear])
     const ids = transformJobs.map((t) => t.id)
     const enrollmentIdx = ids.indexOf('enrollment_snapshots')
     const cleanupIdx = ids.indexOf('stranded_assignment_cleanup')

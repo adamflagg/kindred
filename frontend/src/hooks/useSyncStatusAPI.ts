@@ -179,6 +179,9 @@ export interface SyncStatusResponse {
   _weekly_sync_running?: boolean
   // Configured year from backend (CAMPMINDER_SEASON_ID)
   _configured_year?: number
+  // Seasons the scheduled runs cover, primary first, and what picked the primary (older backends omit both)
+  _synced_years?: number[]
+  _season_source?: 'rule' | 'override'
   // Sync queue
   _queue?: QueuedSyncItem[]
   _queue_length?: number

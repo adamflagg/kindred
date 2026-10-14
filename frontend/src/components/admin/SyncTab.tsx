@@ -177,10 +177,18 @@ export function SyncTab() {
       .filter((job): job is (typeof allSyncTypes)[number] & { year: number } => job !== null)
   }, [syncStatus, currentYear])
 
-  // Compute available sync types based on year (excludes syncedSeasonsOnly types for historical years)
+  // Seasons the scheduled runs cover (primary and the one before it). An older backend omits
+  // the field, so fall back to the same pair from the configured year.
+  const reportedSyncedYears = syncStatus?._synced_years
+  const syncedYears = useMemo(
+    () => reportedSyncedYears ?? [currentYear, currentYear - 1],
+    [reportedSyncedYears, currentYear]
+  )
+
+  // Compute available sync types based on year (excludes syncedSeasonsOnly types for years outside the synced seasons)
   const availableSyncTypes = useMemo(
-    () => getYearSyncTypes(syncYear, currentYear),
-    [syncYear, currentYear]
+    () => getYearSyncTypes(syncYear, syncedYears),
+    [syncYear, syncedYears]
   )
 
   // The Full-mode service dropdown is a manual trigger like any other: picking an entry and
@@ -217,7 +225,7 @@ export function SyncTab() {
     // the year being navigated away from, and the question here is only "is the selected
     // service current-year-only", which does not depend on the year at all.
     const selected = CURRENT_YEAR_SYNC_TYPES.find((t) => t.id === syncService)
-    if (year !== currentYear && selected && isSyncedSeasonsOnly(selected)) {
+    if (!syncedYears.includes(year) && selected && isSyncedSeasonsOnly(selected)) {
       setSyncService('all')
     }
   }
@@ -462,6 +470,14 @@ export function SyncTab() {
     <div className="space-y-4 sm:space-y-6">
       {/* Unified Sync Panel */}
       <div className="space-y-2">
+        {syncStatus._season_source && (
+          <p className="text-muted-foreground text-sm">
+            Season {syncStatus._configured_year ?? currentYear} ·{' '}
+            {syncStatus._season_source === 'override'
+              ? 'pinned by CAMPMINDER_SEASON_ID'
+              : 'rolls over each Oct 15'}
+          </p>
+        )}
         {/* Main Toolbar */}
         <div className="bg-card border-border shadow-lodge-sm overflow-hidden rounded-xl border">
           {/* Controls Row */}
@@ -821,7 +837,7 @@ export function SyncTab() {
 
       {/* Phase-based Sync Types Sections */}
       {SYNC_PHASES.map((phase) => {
-        const types = getSyncTypesByPhase(phase.id, syncYear, currentYear)
+        const types = getSyncTypesByPhase(phase.id, syncYear, syncedYears)
         if (types.length === 0) return null
 
         const PhaseIcon = phase.icon

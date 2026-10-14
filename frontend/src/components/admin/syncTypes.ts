@@ -414,17 +414,21 @@ export function isSyncedSeasonsOnly(syncType: SyncTypeFlags): boolean {
 
 // Get sync types available for a given year
 // For historical years (year < currentYear), excludes types with syncedSeasonsOnly flag
-export function getYearSyncTypes(year: number, currentYear: number) {
-  if (year === currentYear) return YEAR_SYNC_TYPES
+export function getYearSyncTypes(year: number, syncedYears: readonly number[]) {
+  if (syncedYears.includes(year)) return YEAR_SYNC_TYPES
   return YEAR_SYNC_TYPES.filter((t) => !isSyncedSeasonsOnly(t))
 }
 
 // Get sync types for a specific phase and year
-// For historical years (year !== currentYear), excludes types with syncedSeasonsOnly flag
-export function getSyncTypesByPhase(phase: SyncPhase, year: number, currentYear: number) {
+// For years outside the synced seasons, excludes types with syncedSeasonsOnly flag
+export function getSyncTypesByPhase(
+  phase: SyncPhase,
+  year: number,
+  syncedYears: readonly number[]
+) {
   return YEAR_SYNC_TYPES.filter((t) => {
     if (t.phase !== phase) return false
-    if (isSyncedSeasonsOnly(t) && year !== currentYear) return false
+    if (isSyncedSeasonsOnly(t) && !syncedYears.includes(year)) return false
     return true
   })
 }
