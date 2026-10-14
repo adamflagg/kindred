@@ -1693,18 +1693,20 @@ jobs:
       working-directory: ./frontend
       run: npm run test -- --run --shard=${{ matrix.shard }}/2
 
-  # Report-only (not in summary.needs, continue-on-error): builds the private
-  # staff guide against this PR's facts. CI logs are PUBLIC, so every byte of
+  # Gates CI (in summary.needs; owner ruling 2026-10-14, it was report-only):
+  # builds the private staff guide against this PR's facts, at the guide
+  # branch of the same name or else guide main, so a PR that removes a key a
+  # page still names fails here. CI logs are PUBLIC, so every byte of
   # clone/build output is discarded or sent to a never-uploaded file, and the
   # step prints only "guide: pass" / "guide: N errors" -- never the repo name,
   # the branch name, or any build text. Always runs on same-repo PRs (no paths
-  # filter): it is cheap and non-blocking, and a filter would have to mirror
-  # every input the guide reads. Skips cleanly while the secrets are absent.
+  # filter): it is cheap, and a filter would have to mirror every input the
+  # guide reads. Skips cleanly (success) while the secrets are absent, so
+  # Dependabot PRs, which get no Actions secrets, are not blocked.
   guide-build:
-    name: Guide build (report-only)
+    name: Guide build
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
@@ -1744,11 +1746,15 @@ jobs:
         echo "building against: $label"
         env -u GH_TOKEN -u GUIDE_REPO bash scripts/guide/build_guide.sh "$dir" scripts/guide/facts.json
 
+  # Gates CI (owner ruling 2026-10-14): a staff-visible change pairs a guide
+  # branch of the same name with commits, or its body carries a
+  # `Docs: none — <reason>` line (scripts/guide/impact_check.py). CI does not
+  # re-run on a body edit: after adding the line, or pushing the guide branch
+  # later, re-run this workflow's failed jobs.
   guide-impact:
-    name: Docs impact (report-only)
+    name: Docs impact
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
@@ -1789,7 +1795,7 @@ jobs:
   # Summary job - gate for PR merges
   summary:
     name: CI Gate
-    needs: [detect-changes, secret-scan, lodging-guard, private-names-guard, guard-self-tests, python-lint, go-lint, shell-lint, frontend-lint, docker-lint, security-audit-python, security-audit-go, security-audit-frontend, security-lint, dependency-review, tests-python, tests-go, tests-migrations, tests-frontend]
+    needs: [detect-changes, secret-scan, lodging-guard, private-names-guard, guard-self-tests, python-lint, go-lint, shell-lint, frontend-lint, docker-lint, security-audit-python, security-audit-go, security-audit-frontend, security-lint, dependency-review, tests-python, tests-go, tests-migrations, tests-frontend, guide-build, guide-impact]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -1815,6 +1821,8 @@ jobs:
         TESTS_GO: ${{ needs.tests-go.result }}
         TESTS_MIGRATIONS: ${{ needs.tests-migrations.result }}
         TESTS_FRONTEND: ${{ needs.tests-frontend.result }}
+        GUIDE_BUILD: ${{ needs.guide-build.result }}
+        GUIDE_IMPACT: ${{ needs.guide-impact.result }}
       run: |
         # detect-changes: blocking — if this fails, all conditional jobs are skipped
         # and CI passes with zero validation (the paths-filter incident of March 2026)
@@ -1904,6 +1912,15 @@ jobs:
         fi
         if [ "$TESTS_FRONTEND" != "success" ] && [ "$TESTS_FRONTEND" != "skipped" ]; then
           echo "Frontend tests failed!"
+          exit 1
+        fi
+        # Staff guide: same-repo PRs only, so skipped on a push or a fork PR.
+        if [ "$GUIDE_BUILD" != "success" ] && [ "$GUIDE_BUILD" != "skipped" ]; then
+          echo "::error::Guide build failed -- a guide page names something this PR changed or removed. Fix it on a guide branch of the same name."
+          exit 1
+        fi
+        if [ "$GUIDE_IMPACT" != "success" ] && [ "$GUIDE_IMPACT" != "skipped" ]; then
+          echo "::error::Docs impact failed -- a staff-visible change needs a guide branch of the same name, or a 'Docs: none — <reason>' line in the PR body. Then re-run the failed jobs."
           exit 1
         fi
         echo "All CI checks passed!"

@@ -212,6 +212,18 @@ The failure mode is systemic, not occasional. A 2026-08-06 sweep of all 70 open 
 
 **Never implement a Group 84 / lodging issue from its body alone.** Verify against the tree and the data first.
 
+### The Staff Guide Moves With Kindred
+
+Staff documentation lives in a private guide repo. CI reads its name from the `GUIDE_REPO` secret, and that name never appears in this repo. **Every PR answers the docs question, and CI Gate checks that it was answered:** "Docs impact" fails a staff-visible change with no answer, and "Guide build" fails a PR that breaks a guide page.
+
+- **Staff see something new or different → pair a guide PR.** Make a guide branch with **exactly** this PR's branch name and edit the pages there. Kindred CI builds the guide at that branch.
+- **Never merge the paired guide PR by hand.** When the Kindred PR merges, guide lockstep writes the current facts onto it and merges it once its build is green. Until then its "Pairing" check is red ("Held"). That is expected.
+- **Nothing staff-visible → put `Docs: none — <reason>` in the PR body.** A new button, column, permission, status word, route, or a number that now reads differently is docs impact, however small the diff. CI only checks that the line exists. Whether it is true is a reviewer's call: #3201 wrote `Docs: none` while a guide PR for it existed.
+- **Docs-only change → a guide PR with `Pairs: none — <reason>`, merged by hand.** It reaches prod with the next release; prod pins the dashboard and the guide to one version (`docs/reference/git-workflow.md`).
+- **CI does not re-run on a body edit.** After adding the line, or after pushing the guide branch, re-run the failed jobs: `gh run rerun <id> --failed`.
+
+The check counts these as staff-visible: `frontend/src/**` (not tests or generated types), `api/routers/`, `bunking/rbac/permissions.py`, `frontend/src/help/helpKeys.json`, `scripts/guide/facts.json`.
+
 ### Test-Driven Development
 
 Write failing tests first, verify they fail, then implement. **Tests are the specification — never edit a test to match what the implementation happens to do.** Tests and implementation may land in the same commit (PRs are squash-merged); what matters is the order you write them in. Marker semantics and which tests are skipped in CI: `tests/CLAUDE.md`.

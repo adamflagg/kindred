@@ -54,15 +54,21 @@ def test_facts_copy_failure_fails_loudly_with_one_quiet_line(tmp_path):
     assert r.stderr == ""
 
 
-# --- the CI job: report-only, and silent about the private repo -------------
+# --- the CI job: gates CI, and silent about the private repo ----------------
 
 _CI = yaml.safe_load((REPO / ".github/workflows/ci.yml").read_text())
 
 
-def test_guide_build_job_is_report_only():
+def test_guide_build_job_gates_ci():
+    """Owner ruling 2026-10-14: a PR that breaks the guide build (a page naming
+    a key the PR removed) fails CI Gate. It still skips cleanly without the
+    guide secrets, so Dependabot and fork PRs are not blocked."""
     job = _CI["jobs"]["guide-build"]
-    assert job["continue-on-error"] is True
-    assert "guide-build" not in _CI["jobs"]["summary"]["needs"]
+    assert "continue-on-error" not in job
+    assert "guide-build" in _CI["jobs"]["summary"]["needs"]
+    run = next(s["run"] for s in job["steps"] if "run" in s)
+    skip = run.index("guide: skipped (no guide access configured)")
+    assert run[skip:].split("\n", 2)[1].strip() == "exit 0"
 
 
 def test_guide_build_never_interpolates_expressions_in_run_and_silences_git():

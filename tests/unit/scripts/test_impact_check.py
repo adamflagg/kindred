@@ -1,3 +1,4 @@
+import subprocess
 import sys
 from pathlib import Path
 
@@ -78,16 +79,36 @@ def test_cli_reads_one_changed_path_per_line(tmp_path, monkeypatch, capsys):
     assert capsys.readouterr().out.startswith("docs impact: FAIL")
 
 
-# --- the CI job: report-only, body read at run time, silent about the guide --
+# --- the CI job: gates CI, body read at run time, silent about the guide -----
 
 _CI = yaml.safe_load((REPO / ".github/workflows/ci.yml").read_text())
 _JOB = _CI["jobs"]["guide-impact"]
 
 
-def test_guide_impact_job_is_report_only():
-    assert _JOB["continue-on-error"] is True
-    assert "guide-impact" not in _CI["jobs"]["summary"]["needs"]
+def test_guide_impact_job_gates_ci():
+    """Owner ruling 2026-10-14: a staff-visible PR must pair a guide branch or
+    say `Docs: none — <reason>`, or CI Gate fails. It was report-only, and an
+    agent's wrong `Docs: none` plus a hand-merged guide PR went unnoticed."""
+    assert "continue-on-error" not in _JOB
+    assert "guide-impact" in _CI["jobs"]["summary"]["needs"]
     assert "pull_request" in _JOB["if"]
+
+
+@pytest.mark.parametrize("var", ["GUIDE_IMPACT", "GUIDE_BUILD"])
+@pytest.mark.parametrize(
+    ("result", "passes"),
+    [("success", True), ("skipped", True), ("failure", False), ("cancelled", False)],
+)
+def test_ci_gate_verdict_on_the_guide_jobs(var: str, result: str, passes: bool) -> None:
+    """Run the gate's real shell with every other job green. Skipped is fine:
+    both jobs run only on same-repo PRs (a push or a fork PR skips them)."""
+    step = _CI["jobs"]["summary"]["steps"][0]
+    needs = {"GUIDE_IMPACT": "guide-impact", "GUIDE_BUILD": "guide-build"}[var]
+    assert step["env"][var] == "${{ needs.%s.result }}" % needs
+    env = dict.fromkeys(step["env"], "success")
+    env |= {var: result, "EVENT_NAME": "pull_request", "PATH": "/usr/bin:/bin"}
+    proc = subprocess.run(["bash", "-c", step["run"]], env=env, capture_output=True, text=True, check=False)
+    assert (proc.returncode == 0) is passes, proc.stdout + proc.stderr
 
 
 def test_guide_impact_never_interpolates_expressions_in_run():

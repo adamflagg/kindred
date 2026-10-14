@@ -467,7 +467,7 @@ def _jobs_reading_the_node_pin() -> list[str]:
 
     Only steps carrying no `if:` are returned, so the job-level gate is the
     right thing to assert against. Jobs whose `if:` reads no detect-changes
-    output (e.g. the report-only `guide-build`, which runs on every same-repo
+    output (e.g. `guide-build`, which runs on every same-repo
     PR) are skipped: they have no path gate to be orphaned by, and a pin bump
     triggers them trivially.
     """
