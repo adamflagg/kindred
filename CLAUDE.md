@@ -218,11 +218,11 @@ Staff documentation lives in a private guide repo. CI reads its name from the `G
 
 - **Staff see something new or different → pair a guide PR.** Make a guide branch with **exactly** this PR's branch name and edit the pages there. Kindred CI builds the guide at that branch.
 - **Never merge the paired guide PR by hand.** When the Kindred PR merges, guide lockstep writes the current facts onto it and merges it once its build is green. Until then its "Pairing" check is red ("Held"). That is expected.
-- **Nothing staff-visible → put `Docs: none — <reason>` in the PR body.** A new button, column, permission, status word, route, or a number that now reads differently is docs impact, however small the diff. CI only checks that the line exists. Whether it is true is a reviewer's call: #3201 wrote `Docs: none` while a guide PR for it existed.
+- **Nothing staff-visible → put `Docs: none — <reason>` in the PR body.** A new button, column, permission, status word, route, or a number that now reads differently is docs impact, however small the diff. CI only checks that the line exists, with a dash and a non-empty reason, outside any code fence. A failing "Guide build" is not answered by it: that needs a same-named guide branch. Whether it is true is a reviewer's call: #3201 wrote `Docs: none` while a guide PR for it existed.
 - **Docs-only change → a guide PR with `Pairs: none — <reason>`, merged by hand.** It reaches prod with the next release; prod pins the dashboard and the guide to one version (`docs/reference/git-workflow.md`).
 - **CI does not re-run on a body edit.** After adding the line, or after pushing the guide branch, re-run the failed jobs: `gh run rerun <id> --failed`.
 
-The check counts these as staff-visible: `frontend/src/**` (not tests or generated types), `api/routers/`, `bunking/rbac/permissions.py`, `frontend/src/help/helpKeys.json`, `scripts/guide/facts.json`.
+The check counts these as staff-visible: `.ts`, `.tsx` and `.css` under `frontend/src/` (not tests, `frontend/src/test/`, or generated types), anything under `api/routers/`, `bunking/rbac/permissions.py`, `frontend/src/help/helpKeys.json`, `scripts/guide/facts.json`.
 
 ### Test-Driven Development
 
