@@ -1984,7 +1984,7 @@ class TestForecastScopeTotalPrior:
     """Row 23: Grand Total prior is last year's whole-scope total, not the sum of matched rows."""
 
     @staticmethod
-    def _years(with_family: bool):
+    def _years(with_family: bool) -> tuple[dict[int, dict[int, Any]], dict[int, list[Any]]]:
         s2026 = {
             1001: create_mock_session(1001, "Session 1", year=2026),
             1361: create_mock_session(1361, "Counselor In-Training", year=2026, session_type="scit"),
