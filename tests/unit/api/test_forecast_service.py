@@ -2189,6 +2189,24 @@ class TestForecastAGPriorRemainder:
         assert row_sum == result.section_priors["camp"].prior_year_count
 
     @pytest.mark.asyncio
+    async def test_first_means_the_order_the_page_shows_not_fetch_order(self, service, mock_repository):
+        # The page sorts rows by start date, then name. Fetch order lists "AG B" first,
+        # but staff see "AG A" first, so "AG A" carries last year's unmatched count.
+        s2026 = _ag_sessions(2026, 1002, "Session 2", {2003: "AG B", 2002: "AG A"})
+        s2025 = _ag_sessions(2025, 9002, "Session 2", {9101: "AG (9th grade)"})
+        _wire_years(
+            mock_repository,
+            {2026: s2026, 2025: s2025},
+            {2026: [], 2025: [create_mock_attendee(100 + i, 9101, year=2025) for i in range(12)]},
+        )
+
+        result = await service.calculate_forecast(year=2026, session_types=["main", "ag"])
+
+        by_id = {s.session_cm_id: s for s in result.sessions}
+        assert by_id[2002].prior_year_count == 12
+        assert by_id[2003].prior_year_count is None
+
+    @pytest.mark.asyncio
     async def test_partial_match_remainder_goes_to_the_unmatched_sibling(self, service, mock_repository):
         s2026 = _ag_sessions(2026, 1002, "Session 2", {2002: "AG A", 2003: "AG B"})
         s2025 = _ag_sessions(2025, 9002, "Session 2", {2002: "Renamed A", 9102: "Retired cabin"})

@@ -756,9 +756,9 @@ class ForecastService:
         A lone AG row under its parent takes the SUM of the prior year's AG cabins
         under the matching parent. With several AG rows under one parent each keeps
         its own cm_id, then exact-name, match. The remainder (the parent-level sum
-        minus the matched cabins) goes to the FIRST unmatched sibling in row order, so
-        the rows add up to the section prior; further unmatched siblings stay None
-        ("new"). Nothing is attributed when every sibling matched or the remainder is
+        minus the matched cabins) goes to the FIRST unmatched sibling in the order the
+        page shows them (start date, then name), so the rows add up to the section
+        prior; further unmatched siblings stay None ("new"). Nothing is attributed when every sibling matched or the remainder is
         not positive, so a retired cabin is never double counted.
         """
         by_parent: dict[Any, list[int]] = {}
@@ -773,8 +773,15 @@ class ForecastService:
             canonical = resolve_session_alias(getattr(session, "name", ""))
             return counts.get(f"ag-name:{canonical}") if canonical else None
 
+        def page_order(sid: int) -> tuple[str, str]:
+            # The order the page shows rows (sessionUtils.compareByDateThenName): start
+            # date, then name. "First unmatched" must be the first one staff see.
+            session = sessions[sid]
+            return (str(getattr(session, "start_date", "") or ""), str(getattr(session, "name", "")).lower())
+
         resolved: dict[int, int | None] = {}
-        for sibling_ids in by_parent.values():
+        for unordered_ids in by_parent.values():
+            sibling_ids = sorted(unordered_ids, key=page_order)
             parent_key = self._ag_parent_key(sessions[sibling_ids[0]], sessions)
             parent_sum = counts.get(parent_key) if parent_key else None
             if len(sibling_ids) == 1 and parent_sum is not None:
