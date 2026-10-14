@@ -6,6 +6,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { sessionName } from '../../../utils/sessionName'
+import { calculateBarSizing } from '../../../components/metrics/cssChartUtils'
 import {
   CANCEL_SESSION_LABEL_WIDTH,
   cancelSessionChartHeight,
@@ -63,8 +64,13 @@ describe('Cancellations by Session', () => {
 
   it('grows so every row of a long scope fits (no row clipped)', () => {
     expect(cancelSessionChartHeight(6)).toBe(300)
-    // 20px rows plus a 1px gap each, plus the axis: 16 rows need more than 300px.
-    expect(cancelSessionChartHeight(16)).toBeGreaterThanOrEqual(16 * 21 + 32)
+    for (let n = 1; n <= 40; n++) {
+      const h = cancelSessionChartHeight(n)
+      const { barHeight, rowGap, axisArea } = calculateBarSizing(h, n)
+      // A row is never shorter than its 20px label, whatever the bar height.
+      const rows = n * Math.max(barHeight, 20) + (n - 1) * rowGap
+      expect(rows, `${n} rows in ${h}px`).toBeLessThanOrEqual(h - axisArea)
+    }
   })
 })
 

@@ -51,6 +51,12 @@ describe('AnalyticsFreshness', () => {
     expect(screen.getByText(/^Enrollments synced 7h ago · syncing now$/)).toBeInTheDocument()
   })
 
+  it('reads "Enrollments syncing now" while a run is live and no finished time is known', () => {
+    mockFreshness.mockReturnValue({ kind: 'syncing' })
+    render(<AnalyticsFreshness />)
+    expect(screen.getByText(/^Enrollments syncing now$/)).toBeInTheDocument()
+  })
+
   it.each([['none'], ['never'], ['loading']] as const)('renders nothing for %s', (kind) => {
     mockFreshness.mockReturnValue({ kind })
     const { container } = render(<AnalyticsFreshness />)

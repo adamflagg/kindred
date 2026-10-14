@@ -1,3 +1,4 @@
+import { RefreshCw } from 'lucide-react'
 import { FreshnessChip } from '../FreshnessChip'
 import { useAnalyticsFreshness } from '../../hooks/useAnalyticsFreshness'
 import { useCurrentYear } from '../../hooks/useCurrentYear'
@@ -14,6 +15,17 @@ import { useCurrentYear } from '../../hooks/useCurrentYear'
 export function AnalyticsFreshness() {
   const { currentYear } = useCurrentYear()
   const freshness = useAnalyticsFreshness(currentYear)
+  if (freshness.kind === 'syncing') {
+    // A live run with no finished time known this session: the payload carries none to show.
+    return (
+      <div className="text-muted-foreground flex items-center gap-3 text-xs">
+        <span className="flex items-center gap-1.5 whitespace-nowrap">
+          <RefreshCw className="h-3 w-3" />
+          Enrollments syncing now
+        </span>
+      </div>
+    )
+  }
   if (freshness.kind !== 'synced') return null
   return (
     <div className="text-muted-foreground flex items-center gap-3 text-xs">

@@ -51,16 +51,15 @@ const CANCEL_SEGMENTS: StackedSegment[] = [
 ]
 
 /** Board 6 (owner, 2026-10-14): wide enough for the longest short quest/teen name (~22 chars). */
-
 export const CANCEL_SESSION_LABEL_WIDTH = 150
 
 /**
- * The chart's fixed 300px clipped the last rows of a long scope (All Summer) into overflow-hidden.
- * Grow it to fit: 20px rows plus a 1px gap each, plus the axis (cssChartUtils' calculateBarSizing).
+ * The chart's fixed 300px clips rows past 11 into overflow-hidden (All Summer has more). Past
+ * that, size it for calculateBarSizing's dense path: 20px rows, 1px gaps, a 28px axis.
  */
 // eslint-disable-next-line react-refresh/only-export-components
 export function cancelSessionChartHeight(rows: number): number {
-  return Math.max(300, rows * 21 + 32)
+  return rows > 11 ? rows * 21 + 28 : 300
 }
 
 // eslint-disable-next-line react-refresh/only-export-components

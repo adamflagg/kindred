@@ -25,11 +25,12 @@ vi.mock('./useSyncStatusAPI', () => ({
   },
 }))
 
-import { useAnalyticsFreshness } from './useAnalyticsFreshness'
+import { forgetFinishedRuns, useAnalyticsFreshness } from './useAnalyticsFreshness'
 
 const job = (status: string, end_time?: string) => ({ status, ...(end_time ? { end_time } : {}) })
 
 beforeEach(() => {
+  forgetFinishedRuns()
   calls.length = 0
   unscoped = { _synced_years: [2027, 2026], attendees: job('success', '2026-10-27T10:04:00Z') }
   scoped = {}
@@ -52,10 +53,40 @@ describe('useAnalyticsFreshness', () => {
     expect(result.current).toEqual({ kind: 'never' })
   })
 
-  it('reports a running attendees sync, keeping the last finished time', () => {
-    scoped[2026] = { attendees: job('running', '2026-10-26T10:04:00Z') }
-    const { result } = renderHook(() => useAnalyticsFreshness(2026))
+  // A live run carries no end_time: the backend returns the running (or queued) entry in place
+  // of the last finished one (orchestrator.go statusLocked). So the hook remembers the last
+  // finished time it saw, and without one says only that a sync is going.
+  it('keeps the last finished time it saw while a run is live ("… · syncing now")', () => {
+    scoped[2026] = { attendees: job('success', '2026-10-26T10:04:00Z') }
+    const { result, rerender } = renderHook(() => useAnalyticsFreshness(2026))
+    expect(result.current).toEqual({ kind: 'synced', at: '2026-10-26T10:04:00Z', running: false })
+    scoped[2026] = { attendees: job('running') }
+    rerender()
     expect(result.current).toEqual({ kind: 'synced', at: '2026-10-26T10:04:00Z', running: true })
+  })
+
+  it('treats a queued run in the nightly sequence as live too', () => {
+    scoped[2026] = { attendees: job('success', '2026-10-26T10:04:00Z') }
+    const { result, rerender } = renderHook(() => useAnalyticsFreshness(2026))
+    scoped[2026] = { attendees: job('pending') }
+    rerender()
+    expect(result.current).toEqual({ kind: 'synced', at: '2026-10-26T10:04:00Z', running: true })
+  })
+
+  it('says "syncing" for a live run when no finished time has been seen, never "never"', () => {
+    scoped[2027] = { attendees: job('running') }
+    const { result } = renderHook(() => useAnalyticsFreshness(2027))
+    expect(result.current).toEqual({ kind: 'syncing' })
+  })
+
+  it('does not carry one season’s finished time to another', () => {
+    scoped[2026] = { attendees: job('success', '2026-10-26T10:04:00Z') }
+    scoped[2027] = { attendees: job('running') }
+    let year = 2026
+    const { result, rerender } = renderHook(() => useAnalyticsFreshness(year))
+    year = 2027
+    rerender()
+    expect(result.current).toEqual({ kind: 'syncing' })
   })
 
   it('says "never" when the season is synced but its attendees job has not run', () => {
