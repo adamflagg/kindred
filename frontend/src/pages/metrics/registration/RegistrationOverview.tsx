@@ -21,11 +21,11 @@ import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { useDrilldown } from '../../../hooks/useDrilldown'
 import { ComparisonSummaryTable } from '../../../components/metrics/ComparisonSummaryTable'
 import { MetricCard } from '../../../components/metrics/MetricCard'
+import { SessionDetailsTable } from '../../../components/metrics/SessionDetailsTable'
 import { BreakdownChart } from '../../../components/metrics/BreakdownChart'
 import { CssHorizontalBarChart } from '../../../components/metrics/CssHorizontalBarChart'
 import { CssVerticalStackedBarChart } from '../../../components/metrics/CssVerticalStackedBarChart'
-import { sessionName } from '../../../utils/sessionName'
-import { SESSION_NAME_ALIASES, resolveSessionAlias } from '../../../utils/sessionAliases'
+import { SESSION_NAME_ALIASES } from '../../../utils/sessionAliases'
 import {
   buildSessionDateLookup,
   buildSessionTypeLookup,
@@ -778,97 +778,13 @@ export default function RegistrationOverview() {
           <h3 className="text-foreground text-base font-semibold">Session Details</h3>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-border bg-muted/30 border-b">
-                <th className="text-muted-foreground px-4 py-3 text-left font-medium">Session</th>
-                <th className="text-muted-foreground px-4 py-3 text-right font-medium">Enrolled</th>
-                <th className="text-muted-foreground px-4 py-3 text-right font-medium">Capacity</th>
-                <th className="text-muted-foreground px-4 py-3 text-right font-medium">
-                  Utilization
-                </th>
-                {isComparing && compData && (
-                  <>
-                    <th className="text-muted-foreground px-4 py-3 text-right font-medium">
-                      {compareYear} Enrolled
-                    </th>
-                    <th className="text-muted-foreground px-4 py-3 text-right font-medium">
-                      Delta
-                    </th>
-                  </>
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {sortedBySession.map((session, index) => (
-                <tr
-                  key={index}
-                  className="border-border hover:bg-muted/20 border-b transition-colors last:border-0"
-                >
-                  <td className="text-foreground px-4 py-3 font-medium">
-                    {sessionName(session.session_name, undefined, 'chart')}
-                    {isComparing &&
-                      compData &&
-                      (() => {
-                        const compSession = compData.by_session.find(
-                          (s) =>
-                            resolveSessionAlias(s.session_name) ===
-                            resolveSessionAlias(session.session_name)
-                        )
-                        return compSession && compSession.session_name !== session.session_name ? (
-                          <span className="text-muted-foreground ml-1 text-xs">
-                            (was: {compSession.session_name})
-                          </span>
-                        ) : null
-                      })()}
-                  </td>
-                  <td className="text-foreground px-4 py-3 text-right">{session.count}</td>
-                  <td className="text-foreground px-4 py-3 text-right">
-                    {session.capacity ?? '—'}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    {session.utilization !== null ? (
-                      <span
-                        className={
-                          session.utilization > 100
-                            ? 'text-red-600 dark:text-red-400'
-                            : session.utilization >= 90
-                              ? 'text-emerald-600 dark:text-emerald-400'
-                              : 'text-foreground'
-                        }
-                      >
-                        {session.utilization.toFixed(1)}%
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </td>
-                  {isComparing &&
-                    compData &&
-                    (() => {
-                      const compSession = compData.by_session.find(
-                        (s) =>
-                          resolveSessionAlias(s.session_name) ===
-                          resolveSessionAlias(session.session_name)
-                      )
-                      const delta = compSession ? session.count - compSession.count : null
-                      return (
-                        <>
-                          <td className="text-foreground px-4 py-3 text-right">
-                            {compSession?.count ?? '—'}
-                          </td>
-                          <td
-                            className={`px-4 py-3 text-right ${delta && delta > 0 ? 'text-emerald-600 dark:text-emerald-400' : delta && delta < 0 ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}
-                          >
-                            {delta !== null ? (delta > 0 ? `+${delta}` : delta) : '—'}
-                          </td>
-                        </>
-                      )
-                    })()}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <SessionDetailsTable
+            current={sortedBySession}
+            prior={compData?.by_session}
+            isComparing={isComparing}
+            currentYear={currentYear}
+            compareYear={compareYear}
+          />
         </div>
       </div>
 
