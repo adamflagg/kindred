@@ -110,6 +110,24 @@ async def current_season_year(pb: PocketBase) -> int:
     return int(season) if season.isdigit() else datetime.now(tz=UTC).year
 
 
+async def synced_season_years(pb: PocketBase) -> list[int]:
+    """Every season the sync keeps current, primary first.
+
+    The October adult weekends run in the prior season, so the board is read
+    for both. `_synced_years` on the sync-status payload is the authority; a
+    PocketBase that does not send it yet gets `[primary, primary - 1]`.
+    """
+    try:
+        status = await asyncio.to_thread(pb.send, "/api/custom/sync/status", {"method": "GET"})
+        years = [int(y) for y in (status or {}).get("_synced_years") or [] if int(y)]
+        if years:
+            return years
+    except Exception as exc:  # a fallback, logged, never fatal
+        logger.debug(f"Lodging cache warm: synced years unavailable, falling back ({exc})")
+    primary = await current_season_year(pb)
+    return [primary, primary - 1]
+
+
 def _year_reads(repo: LodgingRepository, year: int) -> list[Awaitable[Any]]:
     """Every cached read the landing and a weekend board of `year` issue.
 
@@ -165,7 +183,8 @@ async def warm_lodging_year(year: int, *, pb: PocketBase | None = None) -> None:
 
 
 async def _warm_current_season() -> None:
-    await warm_lodging_year(await current_season_year(default_pb))
+    for year in await synced_season_years(default_pb):
+        await warm_lodging_year(year)
 
 
 async def _warm_until_settled() -> None:
@@ -215,13 +234,20 @@ async def refresh_lodging_cache_forever(
     rather than issuing its own.
     """
 
-    async def _default_year() -> int:
-        return await current_season_year(default_pb)
+    async def _default_years() -> list[int]:
+        return await synced_season_years(default_pb)
 
-    year_of = _default_year if year is None else year
+    def _single_year(of: Callable[[], Awaitable[int]]) -> Callable[[], Awaitable[list[int]]]:
+        async def _years() -> list[int]:
+            return [await of()]
+
+        return _years
+
+    years_of = _default_years if year is None else _single_year(year)
     while True:
         try:
-            await warm(await year_of())
+            for season in await years_of():
+                await warm(season)
         except Exception as exc:  # the loop must outlive one bad pass
             logger.warning(f"Lodging cache refresh failed: {exc}")
         await sleep(interval)
