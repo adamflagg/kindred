@@ -1822,7 +1822,7 @@ class TestCancelledAtCurrentWeek:
         assert prior_summary.cancelled_final == 15
 
     @staticmethod
-    def _enrollment_metric_repo(mock_repository, current_snapshot_dates: list[str]) -> None:
+    def _enrollment_metric_repo(mock_repository: AsyncMock, current_snapshot_dates: list[str]) -> None:
         """2026 reads snapshots; 2025 has none, so it is rebuilt from attendee dates."""
         sessions_2026 = {1001: create_mock_session(1001, "Session 1", year=2026)}
         sessions_2025 = {901: create_mock_session(901, "Session 1", year=2025)}

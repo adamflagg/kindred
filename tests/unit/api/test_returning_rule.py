@@ -74,7 +74,9 @@ class TestEnrolledSitesAgree:
     """A years_at_camp=0 enrolled camper reads "returning" at every enrolled site."""
 
     @pytest.mark.asyncio
-    async def test_drilldown_badge_matches_card_for_zero_years(self, repo, session, persons) -> None:
+    async def test_drilldown_badge_matches_card_for_zero_years(
+        self, repo: Mock, session: Mock, persons: dict[int, Mock]
+    ) -> None:
         repo.fetch_sessions.return_value = {1001: session}
         repo.fetch_persons.return_value = persons
         repo.fetch_attendees.return_value = [_attendee(pid, session) for pid in persons]
@@ -86,7 +88,9 @@ class TestEnrolledSitesAgree:
         assert {r.person_id: r.is_returning for r in result} == {102: True}
 
     @pytest.mark.asyncio
-    async def test_returning_filter_includes_zero_years(self, repo, session, persons) -> None:
+    async def test_returning_filter_includes_zero_years(
+        self, repo: Mock, session: Mock, persons: dict[int, Mock]
+    ) -> None:
         repo.fetch_sessions.return_value = {1001: session}
         repo.fetch_persons.return_value = persons
         repo.fetch_attendees.return_value = [_attendee(pid, session) for pid in persons]
@@ -98,7 +102,7 @@ class TestEnrolledSitesAgree:
         assert {r.person_id for r in returning} == {102, 103}
         assert all(r.is_returning for r in returning)
 
-    def test_registration_card_counts_zero_years_as_returning(self, persons) -> None:
+    def test_registration_card_counts_zero_years_as_returning(self, persons: dict[int, Mock]) -> None:
         service = RegistrationService(Mock())
         result = service._compute_new_vs_returning({101, 102, 103}, persons, 3)
         assert (result.new_count, result.returning_count) == (1, 2)
@@ -108,7 +112,7 @@ class TestWaitlistBadgeUnchanged:
     """Pin: a waitlisted years_at_camp=0 camper still shows no R badge (decision 35 open)."""
 
     @pytest.mark.asyncio
-    async def test_waitlist_session_gender_badge_for_zero_years(self, repo) -> None:
+    async def test_waitlist_session_gender_badge_for_zero_years(self, repo: Mock) -> None:
         repo.fetch_sessions.return_value = {1001: create_mock_session(1001, "Session 1")}
         repo.fetch_attendees_with_persons = AsyncMock(
             side_effect=lambda year, status_filter=None: (
@@ -138,7 +142,9 @@ class TestWaitlistBadgeUnchanged:
         assert [(r.person_id, r.is_returning) for r in result] == [(102, False)]
 
     @pytest.mark.asyncio
-    async def test_waitlist_accepted_badge_for_zero_years(self, repo, session, persons) -> None:
+    async def test_waitlist_accepted_badge_for_zero_years(
+        self, repo: Mock, session: Mock, persons: dict[int, Mock]
+    ) -> None:
         repo.fetch_sessions.return_value = {1001: session}
         repo.fetch_persons.return_value = persons
         repo.fetch_status_history = AsyncMock(
@@ -154,7 +160,9 @@ class TestWaitlistBadgeUnchanged:
         assert [(r.person_id, r.is_returning) for r in result] == [(102, False)]
 
     @pytest.mark.asyncio
-    async def test_waitlist_total_badge_for_zero_years(self, repo, session, persons) -> None:
+    async def test_waitlist_total_badge_for_zero_years(
+        self, repo: Mock, session: Mock, persons: dict[int, Mock]
+    ) -> None:
         waitlisted = [_attendee(102, session, status="waitlisted", status_id=8)]
         repo.fetch_sessions.return_value = {1001: session}
         repo.fetch_persons.return_value = persons
@@ -169,7 +177,9 @@ class TestWaitlistBadgeUnchanged:
         assert [(r.person_id, r.is_returning) for r in result] == [(102, False)]
 
     @pytest.mark.asyncio
-    async def test_cancelled_status_list_badge_for_zero_years(self, repo, session, persons) -> None:
+    async def test_cancelled_status_list_badge_for_zero_years(
+        self, repo: Mock, session: Mock, persons: dict[int, Mock]
+    ) -> None:
         repo.fetch_sessions.return_value = {1001: session}
         repo.fetch_persons.return_value = persons
         repo.fetch_attendees.return_value = [_attendee(102, session, status="cancelled", status_id=32)]
