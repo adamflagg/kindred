@@ -665,9 +665,17 @@ func TestGetSessionTypeFromName(t *testing.T) {
 		// with no children) register. They are adult-only Family Camp attendees, so
 		// the name rule must run BEFORE the "family camp \d" regex below, or a
 		// session returned without its group id would read as a second weekend.
-		{name: "adult reg family camp", input: "Adult Reg: Family Camp 4 (Labor Day Weekend)", expected: sessionTypeFamilyAdult},
+		{
+			name:     "adult reg family camp",
+			input:    "Adult Reg: Family Camp 4 (Labor Day Weekend)",
+			expected: sessionTypeFamilyAdult,
+		},
 		{name: "adult reg bare family camp", input: "Adult Reg: Family Camp 6", expected: sessionTypeFamilyAdult},
-		{name: "adult reg prospective weekend", input: "Adult Reg: Prospective Families Weekend", expected: sessionTypeFamilyAdult},
+		{
+			name:     "adult reg prospective weekend",
+			input:    "Adult Reg: Prospective Families Weekend",
+			expected: sessionTypeFamilyAdult,
+		},
 		{name: "adult reg any case and padding", input: "  ADULT REG:Family Camp 2", expected: sessionTypeFamilyAdult},
 		{name: "family camp weekend stays family", input: "Family Camp 4: Labor Day Weekend", expected: sessionTypeFamily},
 		{name: "adult reg mid-name is not the prefix", input: "Family Camp 3 Adult Reg: notes", expected: sessionTypeFamily},

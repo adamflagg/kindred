@@ -618,7 +618,7 @@ func pairFamilyAdultParents(infos []sessionInfo, types map[int]string) map[int]i
 		if m := familyCampNumberPattern.FindStringSubmatch(rest); m != nil {
 			parent = onlyMatch(func(w sessionInfo) bool {
 				wm := familyCampNumberPattern.FindStringSubmatch(strings.ToLower(w.name))
-				return wm != nil && wm[1] == m[1]
+				return len(wm) > 1 && wm[1] == m[1]
 			})
 		}
 		if parent == 0 {
