@@ -169,6 +169,42 @@ func TestFamilyCampEnrollmentStatusLetsTheFamilyStatusSurfaceOverAnAdultEnrollme
 	}
 }
 
+// TestFamilyCampEnrollmentStatusCountsAdultRegEnrollment pins the owner ruling on
+// kindred#3213 (2026-10-14): an "Adult Reg" (family_adult) enrollment COUNTS as enrolled
+// in Family Camp. From 2027 adults-only Family Camp reaches CampMinder through those
+// sessions, so a household whose only weekend row is an Adult Reg one did attend family
+// camp. The adult-weekend ruling (kindred#2619) is untouched: `adult` still does not count.
+func TestFamilyCampEnrollmentStatusCountsAdultRegEnrollment(t *testing.T) {
+	t.Parallel()
+	const year = 2027
+
+	app := newFamilyCampReplayTestApp(t)
+	seedWeekendSession(t, app, 101, "Family Camp 1", "family", year)
+	adultReg := seedWeekendSession(t, app, 103, "Adult Reg: Family Camp 1", "family_adult", year)
+	adultWeekend := seedWeekendSession(t, app, 102, "Adult Weekend 1", "adult", year)
+
+	adultOnly := seedHouseholdMember(t, app, "hh_adult_reg", year)
+	seedAttendee(t, app, adultOnly, adultReg, "enrolled", 2, year)
+
+	cancelled := seedHouseholdMember(t, app, "hh_adult_reg_cancelled", year)
+	seedAttendee(t, app, cancelled, adultReg, "cancelled", 32, year)
+
+	onAdultWeekend := seedHouseholdMember(t, app, "hh_adult_weekend", year)
+	seedAttendee(t, app, onAdultWeekend, adultWeekend, "enrolled", 2, year)
+
+	statuses := enrollmentStatusesForYear(t, app, year)
+
+	if got := statuses["hh_adult_reg"]; got != enrollmentStatusEnrolled {
+		t.Errorf("hh_adult_reg enrollment_status = %q, want %q", got, enrollmentStatusEnrolled)
+	}
+	if got := statuses["hh_adult_reg_cancelled"]; got != "cancelled" {
+		t.Errorf("hh_adult_reg_cancelled enrollment_status = %q, want %q", got, "cancelled")
+	}
+	if got, present := statuses["hh_adult_weekend"]; present {
+		t.Errorf("hh_adult_weekend is present with %q; an adult weekend is still not family camp", got)
+	}
+}
+
 // TestFamilyCampEnrollmentStatusIgnoresSummerSessions is the other side of the
 // same predicate. A household whose only enrollment that year is a SUMMER
 // session has no family-camp enrollment, and folding summer in would both

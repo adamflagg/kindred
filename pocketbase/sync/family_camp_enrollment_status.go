@@ -22,9 +22,9 @@ const enrollmentStatusColumn = "enrollment_status"
 
 const (
 	// enrollmentStatusEnrolled means at least one member of the household was
-	// actively enrolled (status_id = 2) on a FAMILY weekend that year. Adult
-	// weekends are a different program and do not count -- see
-	// familyCampSessionTypes.
+	// actively enrolled (status_id = 2) on a FAMILY weekend, or its Adult Reg
+	// session, that year. Adult weekends are a different program and do not
+	// count -- see familyCampSessionTypes.
 	enrollmentStatusEnrolled = "enrolled"
 	// enrollmentStatusNoneOnFile means the household has NO family-weekend
 	// attendee row at all for the year -- it registered and never appeared in
@@ -52,17 +52,21 @@ const (
 // this column up is building a new reader, not restoring an old one -- and it
 // must accept the full slug vocabulary rather than a closed two-value set.
 
-// familyCampSessionTypes is which session types ARE family camp.
+// familyCampSessionTypes is which session types ARE family camp: the weekends
+// themselves, and from 2027 their "Adult Reg" sessions (kindred#3213).
 //
-// ⛔ AN ADULT WEEKEND IS NOT FAMILY CAMP, and this list is deliberately one
-// element. Men's and Women's Weekend and the Divorce & Discovery retreat are a
-// SEPARATE PROGRAM that happens to enroll adults directly; they are not family
-// camp at a different grain. The operational fact behind the ruling
-// (kindred#2619): ADULTS-ONLY FAMILY CAMP IS REGISTERED ON PAPER and never
-// reaches CampMinder, so there is no adults-only family-camp cohort in
-// `attendees` for an `adult` pairing to rescue. For a family camp to be visible
-// in CampMinder at all, a child had to register -- which means a family-session
-// attendee row.
+// ⛔ AN ADULT WEEKEND IS STILL NOT FAMILY CAMP. Men's and Women's Weekend and the
+// Divorce & Discovery retreat are a SEPARATE PROGRAM that happens to enroll
+// adults directly; they are not family camp at a different grain (kindred#2619).
+//
+// family_adult IS family camp, by owner ruling (2026-10-14, kindred#3213): an
+// Adult Reg enrollment counts as enrolled. #2619's premise was that adults-only
+// family camp was registered on paper and never reached CampMinder, so no
+// adults-only cohort existed in `attendees`. That held through 2026. From 2027
+// CampMinder files an "Adult Reg: …" session beside each weekend, where adults
+// beyond a family's first two and adults with no children register, so an
+// adults-only household now has a real attendee row -- on a family_adult
+// session, never on an `adult` one.
 //
 // An earlier version of this list carried sessionTypeAdult, on the reasoning
 // that a family-only filter would badge genuine attendees as never enrolled.
@@ -80,11 +84,12 @@ const (
 //   - familyCampSessionTypes answers WHAT IS FAMILY CAMP. An adult weekend is
 //     a different program, so it does not belong here.
 //
-// The Python read layer already filters `session_type = "family"` alone for the
-// family-camp question (lodging_repository.py's household attendee read and
-// lodging_roster_service.py's journey build, both carrying this argument in
-// full). This derivation is what brings Go into line with them.
-var familyCampSessionTypes = []string{sessionTypeFamily}
+// The Python lodging read layer still filters `session_type = "family"` alone
+// (lodging_repository.py's household attendee read and lodging_roster_service.py's
+// journey build). Bringing Adult Reg attendees onto the weekend board -- cards,
+// household linking, cabin attribution -- is later work with the 2027 Family Camp
+// lodging build (kindred#3213 records the ruling).
+var familyCampSessionTypes = []string{sessionTypeFamily, sessionTypeFamilyAdult}
 
 // familyCampStatusPriority ranks the non-enrolled statuses, lower being more
 // relevant. It MIRRORS STATUS_PRIORITY in frontend/src/utils/enrollmentFilter.ts

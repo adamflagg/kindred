@@ -486,3 +486,46 @@ func TestWeeklyCustomValuesCronRetained(t *testing.T) {
 		t.Error("scheduler.go no longer wires the weekly cron to runCustomValuesSync")
 	}
 }
+
+// TestWeekendPersonIDsAnyStatus_IncludesFamilyAdultAttendees covers kindred#3213: an
+// "Adult Reg" (family_adult) attendee is an adult-only Family Camp guest whose cabin is a
+// person custom value like any weekend guest's, so the bounded daily PERSON pass covers
+// them. The HOUSEHOLD twin stays on family weekends: these adults are not linked into
+// households yet, and that linking is later work.
+func TestWeekendPersonIDsAnyStatus_IncludesFamilyAdultAttendees(t *testing.T) {
+	t.Parallel()
+	app := cadenceTestApp(t)
+	const year = 2027
+
+	fc := cadenceAddSession(t, app, 1001, sessionTypeFamily, year)
+	adultReg := cadenceAddSession(t, app, 1201, sessionTypeFamilyAdult, year)
+
+	hhFC := cadenceAddHousehold(t, app, 701, year)
+	hhAdultOnly := cadenceAddHousehold(t, app, 707, year)
+
+	pFC := cadenceAddPerson(t, app, 801, 701, year, hhFC)
+	pAdultOnly := cadenceAddPerson(t, app, 807, 707, year, hhAdultOnly)
+
+	cadenceAddAttendee(t, app, pFC, fc, "enrolled", 801, statusIDActiveEnrolled, year)
+	cadenceAddAttendee(t, app, pAdultOnly, adultReg, "enrolled", 807, statusIDActiveEnrolled, year)
+
+	resolver := NewSessionResolver(app)
+
+	personIDs, err := resolver.GetWeekendPersonIDsAnyStatus(year)
+	if err != nil {
+		t.Fatalf("GetWeekendPersonIDsAnyStatus: %v", err)
+	}
+	if !intsEqual(personIDs, []int{801, 807}) {
+		t.Errorf("GetWeekendPersonIDsAnyStatus = %v, want [801 807] "+
+			"(the Adult Reg attendee is a Family Camp guest)", personIDs)
+	}
+
+	householdIDs, err := resolver.GetFamilyCampHouseholdIDsAnyStatus(year)
+	if err != nil {
+		t.Fatalf("GetFamilyCampHouseholdIDsAnyStatus: %v", err)
+	}
+	if !intsEqual(householdIDs, []int{701}) {
+		t.Errorf("GetFamilyCampHouseholdIDsAnyStatus = %v, want [701] "+
+			"(the household pass stays on family weekends)", householdIDs)
+	}
+}
