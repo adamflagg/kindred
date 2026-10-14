@@ -1287,6 +1287,33 @@ class TestCancelledToDateSummary:
         assert result.cancelled_to_date == 0
 
     @pytest.mark.asyncio
+    async def test_cancelled_to_date_includes_reconstructed_sessions_in_hybrid(self, service, mock_repository):
+        """V7: in hybrid mode the card read only the snapshotted sessions' latest
+        cancelled counts, so a rebuilt Quest session's cancellations were missing
+        from "Cancelled to Date" while the chart's curve included them. The card
+        must equal the merged curve's last cancelled value."""
+        from datetime import date
+
+        mock_repository.fetch_sessions.return_value = {
+            1001: create_mock_session(1001, "Session 1", session_type="main"),
+            2001: create_mock_session(2001, "Quest: Ridge Trail", session_type="quest"),
+        }
+        # Main-session snapshots start mid-season (Feb), so the year is hybrid.
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-02-02", 1001, 2026, enrolled=30, cancelled=2),
+            create_mock_snapshot("2026-02-09", 1001, 2026, enrolled=31, cancelled=4),
+        ]
+        mock_repository.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(101, 2001, "2025-11-05"),
+            create_mock_attendee_with_date(102, 2001, "2026-01-10", status="cancelled", effective_date="2025-11-05"),
+        ]
+
+        result = await service.get_velocity(year=2026, today=date(2026, 3, 1))
+
+        assert result.cancelled_to_date == 5  # 4 from the snapshots + 1 rebuilt Quest cancellation
+        assert result.cancelled_to_date == result.combined.daily[-1].cancelled
+
+    @pytest.mark.asyncio
     async def test_prior_year_cancelled_to_date(self, service, mock_repository):
         """When compare_years provided, prior_year_cancelled_to_date should include
         each prior year's cancellation data at the equivalent week."""
@@ -1793,6 +1820,71 @@ class TestCancelledAtCurrentWeek:
         assert prior_summary.cancelled_at_current_week is not None
         assert prior_summary.cancelled_at_current_week == 2
         assert prior_summary.cancelled_final == 15
+
+    @staticmethod
+    def _enrollment_metric_repo(mock_repository, current_snapshot_dates: list[str]) -> None:
+        """2026 reads snapshots; 2025 has none, so it is rebuilt from attendee dates."""
+        sessions_2026 = {1001: create_mock_session(1001, "Session 1", year=2026)}
+        sessions_2025 = {901: create_mock_session(901, "Session 1", year=2025)}
+
+        async def mock_fetch_sessions(year, **kwargs):
+            return sessions_2026 if year == 2026 else sessions_2025
+
+        async def mock_fetch_snapshots(year, **kwargs):
+            if year == 2026:
+                return [create_mock_snapshot(d, 1001, 2026, enrolled=50) for d in current_snapshot_dates]
+            return []
+
+        async def mock_fetch_attendees(year, **kwargs):
+            if year == 2026:
+                return []
+            # 2025 season starts 2024-11-01 (fixture). Cancellations in Wk 3, Wk 8 and Wk 18.
+            return [
+                create_mock_attendee_with_date(201, 901, "2024-11-05", year=2025),
+                create_mock_attendee_with_date(
+                    202, 901, "2024-11-20", year=2025, status="cancelled", effective_date="2024-11-02"
+                ),
+                create_mock_attendee_with_date(
+                    203, 901, "2024-12-20", year=2025, status="cancelled", effective_date="2024-11-03"
+                ),
+                create_mock_attendee_with_date(
+                    204, 901, "2025-03-01", year=2025, status="withdrawn", effective_date="2024-11-04"
+                ),
+            ]
+
+        mock_repository.fetch_sessions.side_effect = mock_fetch_sessions
+        mock_repository.fetch_enrollment_snapshots.side_effect = mock_fetch_snapshots
+        mock_repository.fetch_attendees_with_dates.side_effect = mock_fetch_attendees
+
+    @pytest.mark.asyncio
+    async def test_cancelled_at_current_week_populated_for_enrollment_metric(self, service, mock_repository):
+        """V4: the Enrollment Velocity card "{prior} Cancelled at Wk N" was always "-"
+        because the value was only filled for metric='cancellation'. It must come
+        from the prior year's own curve at the current week."""
+        from datetime import date
+
+        # 2026-01-05 is day 65 from 2025-11-01, i.e. Wk 10.
+        self._enrollment_metric_repo(mock_repository, ["2025-11-03", "2026-01-05"])
+
+        result = await service.get_velocity(year=2026, compare_years=[2025], today=date(2026, 1, 6))
+
+        assert result.combined.weekly[-1].week_number == 10
+        prior_summary = result.prior_year_cancelled_to_date[0]
+        assert prior_summary.cancelled_at_current_week == 2  # Wk 3 and Wk 8 cancellations
+        assert prior_summary.cancelled_final == 3
+
+    @pytest.mark.asyncio
+    async def test_cancelled_at_current_week_reconciles_with_final_at_last_week(self, service, mock_repository):
+        """At (or past) the prior year's last week, "Cancelled at Wk N" equals the prior final."""
+        from datetime import date
+
+        self._enrollment_metric_repo(mock_repository, ["2025-11-03", "2026-08-10"])
+
+        result = await service.get_velocity(year=2026, compare_years=[2025], today=date(2026, 8, 11))
+
+        prior_summary = result.prior_year_cancelled_to_date[0]
+        assert prior_summary.cancelled_final == 3
+        assert prior_summary.cancelled_at_current_week == prior_summary.cancelled_final
 
 
 class TestCancellationGenderSplit:

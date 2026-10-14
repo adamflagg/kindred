@@ -7,8 +7,10 @@ Computes week-over-week enrollment velocity using either enrollment snapshots
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
+from operator import attrgetter
 from typing import TYPE_CHECKING, Any
 
 from api.schemas.velocity import (
@@ -189,9 +191,13 @@ def _partial_week_info(week_start_str: str, year: int, *, today: date | None = N
     return False, 7
 
 
-def _value_at_week(weekly: list[WeeklyDataPoint], target_wn: int) -> int | None:
-    """Look up enrolled value at target week, falling back to closest prior week."""
-    wn_map = {p.week_number: p.enrolled for p in weekly}
+def _value_at_week(
+    weekly: list[WeeklyDataPoint],
+    target_wn: int,
+    read: Callable[[WeeklyDataPoint], int] = attrgetter("enrolled"),
+) -> int | None:
+    """Look up a point's value (enrolled by default) at target week, falling back to closest prior week."""
+    wn_map = {p.week_number: read(p) for p in weekly}
     value = wn_map.get(target_wn)
     if value is not None:
         return value
@@ -1137,10 +1143,12 @@ class VelocityService:
         )
         by_session = self._build_session_curves(ctx.year, sessions, merged_by_session)
 
+        # "Cancelled to Date" reads the merged curve, so rebuilt sessions (Quests,
+        # teens, pre-snapshot weeks) count on the card exactly as they do on the chart.
         return _CurveResult(
             combined=combined,
             by_session=by_session,
-            cancelled_to_date=snap_result.cancelled_to_date,
+            cancelled_to_date=merged_daily[-1].cancelled if merged_daily else snap_result.cancelled_to_date,
         )
 
     def _curves_from_snapshots(
@@ -1188,15 +1196,6 @@ class VelocityService:
         # Filter out sessions not in the sessions dict (excludes non-summer types)
         session_date_data = {sid: d for sid, d in session_date_data.items() if sid in sessions}
 
-        # Compute cancelled_to_date: sum of latest cancelled_count per session
-        cancelled_to_date = 0
-        for sid in session_date_data:
-            if sid in session_date_cancelled:
-                dates = session_date_cancelled[sid]
-                if dates:
-                    latest_date = max(dates.keys())
-                    cancelled_to_date += dates[latest_date]
-
         # Aggregate to weekly per session (last snapshot per week wins)
         per_session_data: dict[int, list[WeeklyDataPoint]] = {}
 
@@ -1218,6 +1217,10 @@ class VelocityService:
         per_session_daily = self._snapshots_to_daily_per_session(
             session_date_data, session_date_cancelled, season_start_date, ctx.season_end
         )
+
+        # cancelled_to_date: each session's latest in-window cancelled count, summed
+        # (the same value the curve ends on, carrying forward a session's last snapshot)
+        cancelled_to_date = sum(points[-1].cancelled for points in per_session_daily.values() if points)
 
         combined = VelocityCurve(
             year=ctx.year,
@@ -2211,8 +2214,16 @@ class VelocityService:
         cancelled_final = prior_result.cancelled_to_date
 
         cancelled_at_current_week: int | None = None
-        if metric == "cancellation" and current_max_wn is not None and prior_result.combined.weekly:
-            cancelled_at_current_week = _value_at_week(prior_result.combined.weekly, current_max_wn)
+        weekly = prior_result.combined.weekly
+        if current_max_wn is not None and weekly:
+            if metric == "cancellation":
+                # Cancellation curves carry the cumulative cancelled count in `enrolled`.
+                cancelled_at_current_week = _value_at_week(weekly, current_max_wn)
+            else:
+                # Enrollment curves: cumulative cancelled = gross registered - net enrolled.
+                cancelled_at_current_week = _value_at_week(
+                    weekly, current_max_wn, read=lambda p: p.gross_enrolled - p.enrolled
+                )
 
         return PriorYearCancelledSummary(
             year=prior_year,
