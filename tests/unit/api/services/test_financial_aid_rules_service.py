@@ -1364,7 +1364,7 @@ async def test_a_locked_section_saved_together_branches_a_new_version() -> None:
 # --- done seasons (spec §11) ------------------------------------------------------------------
 
 
-def _done_service(store: FakeStore | None = None, configured: int = 2032) -> FinancialAidRulesService:
+def _done_service(store: FakeStore | None = None, configured: int = 2033) -> FinancialAidRulesService:
     async def configured_year() -> int:
         return configured
 
@@ -1378,10 +1378,12 @@ AWARDS_150 = fictional_rules_json()["awards"] | {"minimum": "150"}
 async def test_a_done_seasons_save_is_refused_without_a_reason() -> None:
     store = FakeStore()
     service = _done_service(store)
-    await _service(store).create_version(fictional_rules(), actor=FINANCE)  # 2031 < 2032: done
+    await _service(store).create_version(
+        fictional_rules(), actor=FINANCE
+    )  # 2031 is older than 2032, the prior season of 2033: done
     with pytest.raises(SeasonDoneError) as caught:
         await service.save_section(2031, 1, "awards", AWARDS_150, actor=FINANCE)
-    assert str(caught.value) == "2031 is done (the dashboard's season is 2032): Unlock it with a reason to correct it."
+    assert str(caught.value) == "2031 is done (the dashboard's season is 2033): Unlock it with a reason to correct it."
 
 
 @pytest.mark.asyncio
@@ -1498,7 +1500,7 @@ async def test_a_done_seasons_approval_without_a_note_logs_the_reason_alone() ->
 async def test_a_done_seasons_new_version_and_start_need_a_reason() -> None:
     store = FakeStore()
     await _service(store).create_version(fictional_rules(), actor=FINANCE)
-    service = _done_service(store, configured=2033)
+    service = _done_service(store, configured=2034)
     with pytest.raises(SeasonDoneError):
         await service.new_version(2031, 1, actor=FINANCE)
     created = await service.new_version(2031, 1, actor=FINANCE, past_season_reason="Branch to fix")
@@ -1534,6 +1536,54 @@ async def test_a_sandbox_never_writes_a_done_season() -> None:
             via="B2",
         )
     assert "a sandbox never writes a done season" in str(caught.value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("year", "done"), [(2027, False), (2026, False), (2025, True), (2024, True)])
+async def test_season_done_is_older_than_the_prior_season(year: int, done: bool) -> None:
+    service = _done_service(configured=2027)
+    assert (await service.season_state(year)) == (done, 2027)
+
+
+@pytest.mark.asyncio
+async def test_a_rules_write_to_the_prior_season_needs_no_reason() -> None:
+    service = _done_service(configured=2027)
+    assert await service._done_reason(2026, None) is None
+
+
+@pytest.mark.asyncio
+async def test_a_rules_write_two_seasons_back_still_needs_a_reason() -> None:
+    service = _done_service(configured=2027)
+    with pytest.raises(SeasonDoneError):
+        await service._done_reason(2025, None)
+
+
+@pytest.mark.asyncio
+async def test_a_sandbox_may_promote_into_the_prior_season_but_not_two_back() -> None:
+    store = FakeStore()
+    await _service(store).create_version(fictional_rules(), actor=FINANCE)
+    service = _done_service(store, configured=2032)  # the rules are for 2031: the prior season, so still open
+    promoted = await service.promote(
+        2031,
+        origin_version=1,
+        document=with_lever(fictional_rules(), "awards.minimum", "150"),
+        base_version=1,
+        acknowledged={},
+        actor=FINANCE,
+        via="B2",
+    )
+    assert promoted is not None
+    refused = _done_service(store, configured=2033)  # 2031 is now two seasons back
+    with pytest.raises(SeasonDoneError):
+        await refused.promote(
+            2031,
+            origin_version=1,
+            document=with_lever(fictional_rules(), "awards.minimum", "175"),
+            base_version=1,
+            acknowledged={},
+            actor=FINANCE,
+            via="B2",
+        )
 
 
 @pytest.mark.asyncio

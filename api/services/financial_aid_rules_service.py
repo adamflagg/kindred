@@ -282,8 +282,10 @@ class BudgetTotalMissingError(SectionInvalidError):
 
 
 class SeasonDoneError(FinancialAidError, ValueError):
-    """A rules write to a season earlier than the configured one with no reason, or any sandbox promote to one, reason
-    or not (`sandbox=True`; spec §11.2). #2844 will replace the test with the season's own `closed` state."""
+    """A rules write to a done season with no reason, or any sandbox promote to one, reason or not (`sandbox=True`;
+    spec §11.2). A season is done when older than the prior season (N-1): the prior season stays workable for programs
+    still running after the Oct 15 rollover (owner ruling 2026-10-14). The rollover rule lives in
+    pocketbase/sync/year.go."""
 
     def __init__(self, year: int, configured: int, *, sandbox: bool = False) -> None:
         self.year, self.configured = year, configured
@@ -821,12 +823,13 @@ class FinancialAidRulesService:
         self._clock: Callable[[], datetime] = clock or (lambda: datetime.now(UTC))
 
     async def season_state(self, year: int) -> tuple[bool, int | None]:
-        """(done, the configured season): done when `year` is earlier than the configured season (spec §11.1). The one
-        place that test lives, for #2844 to swap for the season's `closed` state."""
+        """(done, the configured season): done when `year` is older than the prior season (N-1) of the configured
+        season N (spec §11.1): the prior season stays workable for programs still running after the Oct 15 rollover
+        (owner ruling 2026-10-14; the rollover rule lives in pocketbase/sync/year.go). The one place that test lives."""
         if self._configured_year is None:
             return False, None
         configured = await self._configured_year()
-        return year < configured, configured
+        return year < configured - 1, configured
 
     async def _done_reason(self, year: int, past_season_reason: str | None) -> str | None:
         """None for an open season; the stripped reason for a done one; refused (SeasonDoneError) without one."""
