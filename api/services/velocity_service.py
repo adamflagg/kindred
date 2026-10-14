@@ -29,6 +29,7 @@ from api.services.camp_calendar import (
     SEASON_WEEKS,
     format_week_date_range,
     get_camp_today,
+    phase_clamp_offsets,
     same_point_offset,
 )
 from api.services.extractors import extract_gender
@@ -609,6 +610,8 @@ class VelocityService:
 
         # Ruling 10: "today" is the camp date (9am PT boundary), as Forecast reads it, not the UTC date.
         ref_today = today or get_camp_today()
+        # Ruling 11: the early and open dates of THIS season read the prior year through its next day too.
+        phase_offsets = phase_clamp_offsets(reg_dates)
         ctx = SeasonContext(year=year, season_start=season_start_dt, season_end=season_end_dt, today=ref_today)
 
         # Pre-fetch snapshots once for enrollment metric (avoids duplicate fetch
@@ -724,7 +727,7 @@ class VelocityService:
                 # the prior year is read through its second day too. Only the prior side moves.
                 at_current_point = _value_at_day_offset(
                     prior_result.combined.daily,
-                    None if current_day_offset is None else same_point_offset(current_day_offset),
+                    None if current_day_offset is None else same_point_offset(current_day_offset, phase_offsets),
                     attrgetter("enrolled"),
                 )
                 if at_current_point is None and current_max_wn is not None:
@@ -746,6 +749,7 @@ class VelocityService:
                         current_max_wn,
                         current_day_offset,
                         metric=metric,
+                        phase_offsets=phase_offsets,
                     )
                 )
 
@@ -757,6 +761,7 @@ class VelocityService:
                         current_max_wn,
                         current_day_offset,
                         self._current_session_by_prior_sid(sessions, prior_all),
+                        phase_offsets=phase_offsets,
                     )
                 )
 
@@ -2311,6 +2316,7 @@ class VelocityService:
         current_max_wn: int | None,
         current_day_offset: int | None = None,
         metric: str = "enrollment",
+        phase_offsets: tuple[int, ...] = (0,),
     ) -> PriorYearCancelledSummary:
         """Build cancelled summary for a prior year.
 
@@ -2330,7 +2336,7 @@ class VelocityService:
         # Cancellation curves carry the cumulative cancelled count in `enrolled`.
         read_daily = attrgetter("enrolled") if metric == "cancellation" else attrgetter("cancelled")
         # Decision 45: the prior year's priority day spans two dates (next-day batch dating).
-        prior_offset = None if current_day_offset is None else same_point_offset(current_day_offset)
+        prior_offset = None if current_day_offset is None else same_point_offset(current_day_offset, phase_offsets)
         cancelled_at_current_week = _value_at_day_offset(combined.daily, prior_offset, read_daily)
         if cancelled_at_current_week is None and current_max_wn is not None and combined.weekly:
             if metric == "cancellation":
@@ -2354,6 +2360,7 @@ class VelocityService:
         current_max_wn: int | None,
         current_day_offset: int | None = None,
         current_by_prior_sid: dict[int, int] | None = None,
+        phase_offsets: tuple[int, ...] = (0,),
     ) -> list[PriorYearSessionSummary]:
         """Build per-session summaries for a prior year.
 
@@ -2375,7 +2382,7 @@ class VelocityService:
             # Decision 45: the prior year's priority day spans two dates (next-day batch dating).
             enrolled_at_current_week = _value_at_day_offset(
                 prior_result.by_session_daily.get(sid, []) if sid is not None else [],
-                None if current_day_offset is None else same_point_offset(current_day_offset),
+                None if current_day_offset is None else same_point_offset(current_day_offset, phase_offsets),
                 attrgetter("enrolled"),
             )
             if enrolled_at_current_week is None and current_max_wn is not None:

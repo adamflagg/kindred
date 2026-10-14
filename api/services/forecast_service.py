@@ -18,6 +18,7 @@ from api.services.camp_calendar import (
     SEASON_WEEKS,
     format_week_date_range,
     get_camp_today,
+    phase_clamp_offsets,
     same_point_offset,
 )
 from api.services.reconstruction import (
@@ -311,8 +312,9 @@ class ForecastService:
 
         # Decision 45: prior registrations are dated the NEXT day, so the priority day (offset 0)
         # reads the prior years through their second day too. Current-year side and buckets stay.
+        # Ruling 11: so do this season's early and open dates.
         if prior_offset is not None:
-            prior_offset = same_point_offset(prior_offset)
+            prior_offset = same_point_offset(prior_offset, await self._fetch_phase_offsets(year))
 
         # Fetch prior year comparison data
         prior_counts, two_year_counts = await self._fetch_prior_year_counts(
@@ -449,6 +451,14 @@ class ForecastService:
             prior_basis=prior_basis,
             section_priors=section_priors,
         )
+
+    async def _fetch_phase_offsets(self, year: int) -> tuple[int, ...]:
+        """Offsets of the year's priority, early and open dates from its anchor; ``(0,)`` when unreadable."""
+        try:
+            return phase_clamp_offsets(await self.repository.fetch_registration_dates(year))
+        except Exception:
+            logger.warning("Failed to read the %d registration dates for the same-point clamp", year, exc_info=True)
+            return (0,)
 
     async def _fetch_anchor(self, year: int) -> date | None:
         """The year's registration anchor (priority, else early), or None when unset."""

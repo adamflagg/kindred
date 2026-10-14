@@ -12,6 +12,7 @@ from api.services.camp_calendar import (
     get_camp_date,
     get_camp_today,
     primary_season_year,
+    phase_clamp_offsets,
     same_point_offset,
 )
 
@@ -157,6 +158,36 @@ class TestSamePointOffset:
 
     def test_pre_registration_offsets_are_unchanged(self):
         assert same_point_offset(-3) == -3
+
+
+class TestSamePointOffsetPhases:
+    """Ruling 11 (2026-10-14): the early and open phase dates get the same next-day shift (decisions 45 and 11)."""
+
+    def test_early_and_open_offsets_read_through_the_next_day(self):
+        assert same_point_offset(7, (0, 7, 28)) == 8
+        assert same_point_offset(28, (0, 7, 28)) == 29
+
+    def test_priority_still_reads_the_next_day(self):
+        assert same_point_offset(0, (0, 7, 28)) == 1
+
+    def test_other_offsets_are_unchanged(self):
+        assert same_point_offset(8, (0, 7, 28)) == 8
+        assert same_point_offset(6, (0, 7, 28)) == 6
+        assert same_point_offset(-7, (0, 7, 28)) == -7
+
+    def test_default_phase_offsets_keep_priority_only_behaviour(self):
+        assert same_point_offset(7) == 7
+
+    def test_phase_clamp_offsets_from_registration_dates(self):
+        dates = {"priority_reg_date": "2025-11-12", "early_reg_date": "2025-11-19", "open_reg_date": "2025-12-10"}
+        assert phase_clamp_offsets(dates) == (0, 7, 28)
+
+    def test_phase_clamp_offsets_skip_missing_dates(self):
+        assert phase_clamp_offsets({"priority_reg_date": "2025-11-12", "open_reg_date": "2025-12-10"}) == (0, 28)
+        assert phase_clamp_offsets({}) == (0,)
+
+    def test_phase_clamp_offsets_anchor_on_early_without_priority(self):
+        assert phase_clamp_offsets({"early_reg_date": "2025-11-19", "open_reg_date": "2025-11-26T09:00:00Z"}) == (0, 7)
 
 
 class TestPrimarySeasonYear:

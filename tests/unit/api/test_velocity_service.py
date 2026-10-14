@@ -5278,6 +5278,27 @@ class TestVelocitySamePointComparison:
         assert result.prior_year_cancelled_to_date[0].cancelled_at_current_week == 4
 
     @pytest.mark.asyncio
+    async def test_early_reg_date_reads_the_prior_next_day_batch(self, service, mock_repository):
+        """Ruling 11: the early phase date gets the same next-day shift as the priority date (2023)."""
+        self._wire_priority_day(mock_repository, 7)  # early_reg_date is 2025-11-08, offset 7
+        base = mock_repository.fetch_registration_dates.side_effect
+
+        async def reg_dates(year):
+            out = dict(await base(year))
+            out["early_reg_date"] = "2025-11-08" if year == 2026 else "2024-11-08"
+            return out
+
+        mock_repository.fetch_registration_dates.side_effect = reg_dates
+
+        result = await service.get_velocity(year=2026, compare_years=[2025], today=date(2025, 11, 8))
+
+        assert result.current_day_offset == 7
+        assert result.prior_years[0].at_current_point == 60
+        by_sid = {s.session_cm_id: s for s in result.prior_year_session_summaries}
+        assert by_sid[1001].enrolled_at_current_week == 60
+        assert result.prior_year_cancelled_to_date[0].cancelled_at_current_week == 4
+
+    @pytest.mark.asyncio
     @pytest.mark.parametrize("offset", [1, 2, 3, 4, 5, 6])
     async def test_offsets_one_to_six_read_their_own_day(self, service, mock_repository, offset):
         self._wire_priority_day(mock_repository, offset)

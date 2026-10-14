@@ -2171,6 +2171,58 @@ class TestForecastPriorityDayPrior:
         assert live.section_priors["camp"].prior_year_count == 10
 
 
+class TestForecastEarlyRegDatePrior:
+    """Ruling 11: the early phase date reads the prior year through its next day, as the priority date does."""
+
+    @staticmethod
+    def _wire(mock_repository):
+        sessions = {1001: create_mock_session(1001, "Session 1")}
+        prior_sessions = {9001: create_mock_session(9001, "Session 1", year=2025)}
+        prior_att = [
+            *[_reg(i, 9001, "2024-10-10", 2025) for i in range(2)],  # prior anchor
+            *[_reg(10 + i, 9001, "2024-10-17", 2025) for i in range(5)],  # anchor + 7
+            *[_reg(20 + i, 9001, "2024-10-18", 2025) for i in range(3)],  # anchor + 8
+            *[_reg(30 + i, 9001, "2024-10-19", 2025) for i in range(4)],  # anchor + 9
+        ]
+        _wire_dated(
+            mock_repository,
+            {2026: sessions, 2025: prior_sessions},
+            {2026: [], 2025: prior_att},
+            {2026: "2025-10-15", 2025: "2024-10-10"},
+        )
+
+        async def fetch_dates(year):
+            if year == 2026:
+                return {"priority_reg_date": "2025-10-15", "early_reg_date": "2025-10-22"}  # offset 7
+            return {"priority_reg_date": "2024-10-10"}
+
+        mock_repository.fetch_registration_dates.side_effect = fetch_dates
+
+    @pytest.mark.asyncio
+    async def test_live_on_the_early_date_includes_the_next_day(self, service, mock_repository):
+        self._wire(mock_repository)
+
+        result = await service.calculate_forecast(year=2026, today=date(2025, 10, 22))  # offset 7
+
+        assert result.sessions[0].prior_year_count == 10  # 2 + 5 + 3
+
+    @pytest.mark.asyncio
+    async def test_week_mode_on_the_early_offset_includes_the_next_day(self, service, mock_repository):
+        self._wire(mock_repository)
+
+        result = await service.calculate_forecast(year=2026, day_offset=7)
+
+        assert result.sessions[0].prior_year_count == 10
+
+    @pytest.mark.asyncio
+    async def test_the_day_after_the_early_date_is_unchanged(self, service, mock_repository):
+        self._wire(mock_repository)
+
+        result = await service.calculate_forecast(year=2026, today=date(2025, 10, 23))  # offset 8
+
+        assert result.sessions[0].prior_year_count == 10  # 2 + 5 + 3, not the anchor + 9 batch
+
+
 # ============================================================================
 # Decision 43 / K9: AG priors resolve per PARENT, the remainder to the first unmatched sibling
 # ============================================================================
