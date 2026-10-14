@@ -360,8 +360,12 @@ var serialGroups = []struct {
 	},
 	{
 		pkg:    "sync",
-		reason: "t.Setenv: CAMPMINDER_PRIMARY_KEY (campminder.NewClient) builds the boot client a season's services clone",
-		tests:  []string{"TestServicesForYearClonesTheClientForTheSeason"},
+		reason: "t.Setenv: CAMPMINDER_PRIMARY_KEY (campminder.NewClient) builds a season's client",
+		tests: []string{
+			"TestServicesForYearClonesTheClientForTheSeason",
+			"TestBunkRequestsIsANoOpForASeasonWithNoUpload",
+			"TestScopedCustomValuesAreANoOpForASeasonWithNoWeekends",
+		},
 	},
 	{
 		// The season rule reads CAMPMINDER_SEASON_ID and the package-level clock nowFn; these
@@ -370,6 +374,15 @@ var serialGroups = []struct {
 		reason: "t.Setenv (CAMPMINDER_SEASON_ID, API_URL) and swaps the season clock nowFn",
 		tests: []string{
 			"TestRequestProcessorSendsItsOwnYearNotThePrimary",
+			"TestDailySyncRunsPrimaryThenPriorSeason",
+			"TestPriorSeasonPassNeverSwapsTheRegistry",
+			"TestPriorSeasonFailureLeavesPrimaryRecorded",
+			"TestSyncRunsRowsCarryTheirSeason",
+			"TestHourlyRunCollidingWithThePriorSeasonPassIsRefusedNotMisfiled",
+			"TestPrimaryPassFollowsTheRolloverWithoutARestart",
+			"TestEveryScheduledRunMovesThePrimaryClient",
+			"TestOrphanSweepRunsForThePriorSyncedSeason",
+			"TestOrphanSweepStillSkipsAnOlderSeason",
 		},
 	},
 	{

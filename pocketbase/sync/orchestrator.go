@@ -9,6 +9,7 @@ import (
 	"maps"
 	"math/rand/v2"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -538,6 +539,9 @@ type Status struct {
 	// it in twice, at which point the guard silently stops disambiguating and a waiter
 	// accepts the wrong completion.
 	BatchID string `json:"batch_id,omitempty"`
+	// preMarked is true on the status MarkSyncRunning reserves and false on every status a run
+	// is executing under. runSingleSyncInternal adopts a pre-mark; it refuses a live run.
+	preMarked bool
 }
 
 // QueuedSync represents a sync request waiting in the queue
@@ -809,6 +813,10 @@ type Orchestrator struct {
 	// runCompletedNotifyTimeout bounds how long a finished run waits on runCompletedNotifier
 	// before publishing anyway. Zero means defaultRunCompletedNotifyTimeout; tests set it short.
 	runCompletedNotifyTimeout time.Duration
+	// clientServicesFn and yearServicesFn replace clientServices and servicesForYear when set.
+	// Only tests set them, to hand the season logic recorders instead of real services.
+	clientServicesFn func(client *campminder.Client) map[string]Service
+	yearServicesFn   func(year int, debug bool) map[string]Service
 }
 
 // NewOrchestrator creates a new orchestrator
@@ -1019,6 +1027,7 @@ func (o *Orchestrator) publishCompletedLocked(completed *Status) {
 // (publishCompletedLocked), one into the sync_runs write (finishCompletedRun).
 func snapshotStatus(s *Status) Status {
 	out := *s
+	out.preMarked = false // a finished run is not a reservation
 	if s.EndTime != nil {
 		end := *s.EndTime
 		out.EndTime = &end
@@ -1491,7 +1500,8 @@ func (o *Orchestrator) RunSyncSequenceWithServices(
 // "unified" queue branch) fails closed on it too; swallowing the error here would be the one
 // exception, not a neutral default.
 func (o *Orchestrator) RunSingleSync(parentCtx context.Context, syncType string) error {
-	if svc := o.GetService(syncType); svc != nil {
+	svc := o.GetService(syncType)
+	if svc != nil {
 		if yearSetter, ok := svc.(YearSetter); ok {
 			year, err := currentSeasonYear(svc)
 			if err != nil {
@@ -1504,7 +1514,8 @@ func (o *Orchestrator) RunSingleSync(parentCtx context.Context, syncType string)
 		}
 	}
 
-	_, err := o.runSingleSyncInternal(parentCtx, syncType, newBatch(triggerManual), nil)
+	// svc, so the instance configured above is the one that runs (see runSyncAndWaitWithService).
+	_, err := o.runSingleSyncInternal(parentCtx, syncType, newBatch(triggerManual), svc)
 	return err
 }
 
@@ -1516,59 +1527,47 @@ func (o *Orchestrator) RunSingleSync(parentCtx context.Context, syncType string)
 func (o *Orchestrator) runSingleSyncInternal(
 	parentCtx context.Context, syncType string, origin runOrigin, override Service,
 ) (string, error) {
-	// Check if service exists
-	o.mu.RLock()
-	service, exists := o.services[syncType]
-	existingStatus := o.runningJobs[syncType]
-	finishing := o.isFinishingLocked(syncType)
-	o.mu.RUnlock()
+	// Generate a unique token for this run
+	runToken := generateRunToken()
 
+	// The existence check, the "already running" check and the mark are ONE critical section,
+	// as in RunSingleSyncWithService: two callers for the same job id (the hourly cron's
+	// primary bunk_assignments and the nightly N-1 pass's 2026 one, say) can never both pass.
+	o.mu.Lock()
+	service, exists := o.services[syncType]
 	if !exists {
+		o.mu.Unlock()
 		return "", fmt.Errorf("sync service not found: %s", syncType)
-	}
-	// A finished run waiting to publish (claimCompletionLocked) still sits in runningJobs, and
-	// is not a MarkSyncRunning pre-mark to reuse: adopting it would hand the new run a slot the
-	// publish is about to clear.
-	if finishing {
-		return "", fmt.Errorf("sync already in progress: %s", syncType)
 	}
 	if override != nil {
 		service = override
 	}
 
-	// Generate a unique token for this run
-	runToken := generateRunToken()
-
-	// Check if status was pre-marked by MarkSyncRunning
-	// If so, reuse it; otherwise create a new status
 	var status *Status
-	if existingStatus != nil {
-		// Reuse pre-marked status (set by MarkSyncRunning before goroutine started)
-		status = existingStatus
-		// Overwrite the token so runSyncAndWait can track this specific execution, and take
-		// the origin from the caller that is actually starting the work — the pre-mark only
-		// reserved the slot.
-		o.mu.Lock()
+	switch existing := o.runningJobs[syncType]; {
+	case existing != nil && existing.preMarked && !o.isFinishingLocked(syncType):
+		// A slot MarkSyncRunning reserved before this run started: adopt it (keeping its start
+		// time), and take the origin from the caller that is actually starting the work. The
+		// pre-mark only reserved the slot; it says nothing about which weekend or season the
+		// work turned out to be for (kindred#2601).
+		status = existing
+		status.preMarked = false
 		status.RunToken = runToken
 		status.Trigger, status.BatchID, status.Year = origin.trigger, origin.batchID, origin.year
-		// Session comes from the starting caller too, not the pre-mark: a reserved slot says
-		// nothing about which weekend the work turned out to be for (kindred#2601).
 		status.Session = origin.session
+	case existing != nil || o.customValuesGroupRunningLocked(syncType):
+		// A run is live in this slot (or finished and not yet published -- see
+		// claimCompletionLocked), or a job sharing its custom-values collection is running
+		// (kindred#2491 Face B: the daily cron's bounded family-camp pass and the weekly
+		// unrestricted sweep run under different registered names). Refuse rather than adopt
+		// the slot: adopting a live run used to restamp it with this caller's year, trigger and
+		// token, run both at once, and leave the first caller waiting forever on a token that
+		// had been overwritten.
 		o.mu.Unlock()
-	} else {
-		// No pre-marked status - check if something else is running. Uses the collection-
-		// group-aware check (not the plain IsRunning(syncType)) so the daily cron's bounded
-		// family-camp pass and the weekly unrestricted sweep exclude each other even though
-		// they run under different registered names (kindred#2491 Face B) -- this is the path
-		// both getDailySyncJobs (via runSyncAndWait) and RunCustomValuesSync take.
-		o.mu.RLock()
-		blocked := o.customValuesGroupRunningLocked(syncType)
-		o.mu.RUnlock()
-		if blocked {
-			return "", fmt.Errorf("sync already in progress: %s", syncType)
-		}
-
-		// Create status entry
+		slog.Warn("Sync refused: already in progress", "syncType", syncType,
+			"year", origin.year, "trigger", origin.trigger)
+		return "", fmt.Errorf("sync already in progress: %s", syncType)
+	default:
 		status = &Status{
 			Type:      syncType,
 			Status:    statusRunning,
@@ -1580,11 +1579,9 @@ func (o *Orchestrator) runSingleSyncInternal(
 			BatchID:   origin.batchID,
 			Session:   origin.session,
 		}
-
-		o.mu.Lock()
 		o.runningJobs[syncType] = status
-		o.mu.Unlock()
 	}
+	o.mu.Unlock()
 
 	// Run sync with panic recovery
 	// G118 is a false positive here: detaching from the request context is the point.
@@ -1800,6 +1797,7 @@ func (o *Orchestrator) MarkSyncRunning(syncType string) error {
 		Session:   origin.session,
 		Trigger:   origin.trigger,
 		BatchID:   origin.batchID,
+		preMarked: true,
 	}
 
 	o.mu.Lock()
@@ -1873,6 +1871,9 @@ func (o *Orchestrator) FinalizeSyncStatus(syncType string, stats Stats, err erro
 // repair, and a fresh-DB run would then export twice. The bootstrap is a repair path, not a
 // membership question.
 func (o *Orchestrator) checkGlobalTablesEmpty() bool {
+	if o.app == nil { // no database to repair (recordSyncRun makes the same check)
+		return false
+	}
 	// Quick check on person_tag_defs - if empty, globals haven't run
 	records, _ := o.app.FindRecordsByFilter("person_tag_defs", "", "", 1, 0)
 	return len(records) == 0
@@ -1898,6 +1899,7 @@ func getDailySyncJobs() []string { return cadenceQueue(CadenceDaily) }
 // Unlike RunSingleSync this blocks until the run completes, matching every other Run*Sync
 // method here. Both callers already run it on their own goroutine.
 func (o *Orchestrator) RunHourlySync(ctx context.Context) error {
+	o.ensurePrimaryClient()
 	batch := newBatch(triggerHourly)
 	o.registerBatch(batch.batchID)
 	// Unlike the other queues below, this one has no *SyncRunning flag/defer of its own to
@@ -1918,8 +1920,14 @@ func (o *Orchestrator) RunHourlySync(ctx context.Context) error {
 	return nil
 }
 
-// RunDailySync runs all base data syncs in the correct order
+// RunDailySync runs all base data syncs in the correct order: the primary season's daily queue,
+// then the same queue (minus PrimaryOnly and global jobs) for each prior synced season (spec
+// §5). The prior pass runs year-scoped instances through runSeasonPass and never swaps the
+// registry. dailySyncRunning stays true until the last season's pass ends, so Manage > Sync
+// shows the nightly run in progress throughout.
 func (o *Orchestrator) RunDailySync(ctx context.Context) error {
+	o.ensurePrimaryClient()
+
 	// Check if global tables are empty - if so, repair them first (the five PhaseGlobal
 	// tables only -- never the export; see runGlobalTableBootstrap).
 	// This ensures fresh DB setups have required global definitions before daily sync
@@ -1932,15 +1940,29 @@ func (o *Orchestrator) RunDailySync(ctx context.Context) error {
 
 	orderedJobs := getDailySyncJobs()
 
+	// The prior seasons, resolved once so the progress readout and the passes agree.
+	var priorSeasons []int
+	if seasons, err := SyncedSeasons(nowFn()); err != nil {
+		slog.Error("Daily sync: cannot resolve the synced seasons, skipping the prior season", "error", err)
+	} else {
+		priorSeasons = seasons[1:]
+	}
+	priorJobs := orderQueue(secondarySeasonQueue(CadenceDaily))
+	progressQueue := slices.Clone(orderedJobs)
+	for range priorSeasons {
+		progressQueue = append(progressQueue, priorJobs...)
+	}
+
 	// Minted here, after the weekly prologue above: the two are sequential queues, not
 	// nested ones, and each files its own jobs under its own trigger.
 	batch := newBatch(triggerDaily)
 	o.registerBatch(batch.batchID)
 
-	// Set daily sync flag and queue
+	// Set daily sync flag and queue. The queue spans every season's pass, so the progress
+	// readout keeps counting through the prior season instead of ending at the primary's.
 	o.mu.Lock()
 	o.dailySyncRunning = true
-	o.dailySyncQueue = orderedJobs
+	o.dailySyncQueue = progressQueue
 	o.currentRunIndex = 0 // Reset index at start
 	o.mu.Unlock()
 
@@ -1989,7 +2011,138 @@ func (o *Orchestrator) RunDailySync(ctx context.Context) error {
 	}
 
 	slog.Info("Daily sync sequence completed")
+
+	offset := len(orderedJobs)
+	for _, year := range priorSeasons {
+		slog.Info("Daily sync: prior season pass", "year", year, "total", len(priorJobs))
+		base := offset
+		_ = o.runSeasonPass(ctx, year, priorJobs, triggerDaily, func(i int) {
+			o.mu.Lock()
+			o.currentRunIndex = base + i
+			o.mu.Unlock()
+		})
+		offset += len(priorJobs)
+	}
 	return nil
+}
+
+// runSeasonPass runs jobs for one non-primary synced season. Each job gets its own year-scoped
+// instance (servicesForYear) through runSyncAndWaitWithService's override, so the shared
+// registry is never swapped and a concurrent hourly or manual run cannot pick up this season by
+// accident. Its runs are filed under `year` (the batch's forYear), never under the primary.
+//
+// One job failing is logged and the pass moves on, as the primary queues do. A job the factory
+// has no instance for is skipped with an error log rather than run against the primary's
+// registered instance.
+//
+// When this season's run of a job collides with another run of the same job id (the hourly
+// cron's primary bunk_assignments, a manual run), runSingleSyncInternal refuses the second one
+// with "sync already in progress"; the refused run is logged here and records nothing.
+//
+// onJob, when non-nil, is called with each job's index as it starts, for a caller that reports
+// progress (RunDailySync).
+func (o *Orchestrator) runSeasonPass(
+	ctx context.Context, year int, jobs []string, trigger string, onJob func(i int),
+) error {
+	if o.BaseClient() == nil {
+		// Unreachable in production: the scheduler registers no cron if InitializeSyncServices
+		// fails to build the client. Without one, client-backed jobs would get a nil client.
+		slog.Warn("Season pass: no CampMinder client, skipping", "year", year)
+		return nil
+	}
+	build := o.yearServicesFn
+	if build == nil {
+		build = o.servicesForYear
+	}
+	svcs := build(year, false)
+
+	batch := newBatch(trigger).forYear(year)
+	// A pass of one job is not a queue (RunSyncWithOptions' isQueueRun rule): an unregistered
+	// batch hands a ChangedCollectionsAware job nil, "export everything", where a registered
+	// but untouched batch would hand it an empty map and export nothing.
+	if len(jobs) > 1 {
+		o.registerBatch(batch.batchID)
+		defer func() {
+			o.mu.Lock()
+			delete(o.batchChanged, batch.batchID)
+			o.mu.Unlock()
+		}()
+	}
+
+	for i, job := range jobs {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+		if onJob != nil {
+			onJob(i)
+		}
+		if i > 0 {
+			time.Sleep(o.jobSpacing)
+		}
+		svc, ok := svcs[job]
+		if !ok {
+			slog.Error("Season pass: no year-scoped instance, skipping rather than running the primary's",
+				"year", year, "service", job)
+			continue
+		}
+		slog.Info("Season pass: starting service", "year", year, "service", job,
+			"current", i+1, "total", len(jobs))
+		if err := o.runSyncAndWaitWithService(ctx, job, batch, svc); err != nil {
+			slog.Error("Season pass: service failed", "year", year, "service", job, "error", err)
+		} else {
+			slog.Info("Season pass: service completed", "year", year, "service", job)
+		}
+	}
+	return nil
+}
+
+// ensurePrimaryClient moves the boot CampMinder client, and every registered service built on
+// it, to the current primary season when the season has rolled over since boot (audit Fix A).
+// Each scheduled run calls it first, so the hourly run after Oct 15 00:00 Pacific starts
+// syncing the new primary without a restart, and on-demand handlers that build from
+// BaseClient() follow.
+//
+// Concurrency: the new services are built outside the lock and swapped in under it, all at
+// once. A run already in flight keeps the instance it looked up (runSingleSyncInternal holds
+// its own reference, and runSyncAndWaitWithService configures and runs that same instance),
+// so the swap never changes a running job. The swap is skipped, and retried by the next
+// scheduled run, while a queue that configured registered instances is in flight: a historical
+// replay (which swaps the registry itself and restores it at the end) or a manual full run
+// (dailySyncRunning, which sets dry_run/debug on the registered instances). RunDailySync calls
+// this before setting dailySyncRunning, so its own run is not one of them.
+func (o *Orchestrator) ensurePrimaryClient() {
+	primary, err := PrimarySeason(nowFn())
+	if err != nil {
+		slog.Error("Season check: cannot resolve the primary season", "error", err)
+		return
+	}
+	base := o.BaseClient()
+	if base == nil || base.GetSeasonID() == primary {
+		return
+	}
+	next := base.CloneWithYear(primary)
+	build := o.clientServicesFn
+	if build == nil {
+		build = o.clientServices
+	}
+	fresh := build(next)
+
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.baseClient != base {
+		return // another scheduled run moved it first
+	}
+	if o.historicalSyncRunning || o.dailySyncRunning {
+		slog.Warn("Season rolled over, but a running queue holds the registry; the next scheduled run moves it",
+			"from", base.GetSeasonID(), "to", primary)
+		return
+	}
+	o.baseClient = next
+	maps.Copy(o.services, fresh)
+	slog.Info("Season rolled over: scheduled runs now sync the new primary",
+		"from", base.GetSeasonID(), "to", primary)
 }
 
 // RunWeeklySync runs global data syncs that are too expensive for daily sync.
@@ -2003,6 +2156,7 @@ func (o *Orchestrator) RunDailySync(ctx context.Context) error {
 //
 //nolint:dupl // Similar pattern to RunCustomValuesSync, intentional for sync orchestration
 func (o *Orchestrator) RunWeeklySync(ctx context.Context) error {
+	o.ensurePrimaryClient()
 	return o.runWeeklyJobs(ctx, GetWeeklySyncJobs())
 }
 
@@ -2091,6 +2245,7 @@ func (o *Orchestrator) runWeeklyJobs(ctx context.Context, weeklyJobs []string) e
 // Running in parallel is safe because they sync independent tables (person_custom_values vs
 // household_custom_values) using different CampMinder API endpoints.
 func (o *Orchestrator) RunCustomValuesSync(ctx context.Context) error {
+	o.ensurePrimaryClient()
 	// Get the custom values sync jobs
 	customValuesJobs := GetCustomValuesSyncJobs()
 
@@ -2231,7 +2386,10 @@ func (o *Orchestrator) runSyncAndWaitWithService(
 	// Start the sync and capture the token directly from the return value.
 	// This eliminates the race where the goroutine completes before we can
 	// read the token from runningJobs (issue #789).
-	expectedToken, err := o.runSingleSyncInternal(ctx, syncType, origin, override)
+	//
+	// svc, not override: the instance configured above is the instance that runs, even if
+	// ensurePrimaryClient swaps the registry between the lookup and the start.
+	expectedToken, err := o.runSingleSyncInternal(ctx, syncType, origin, svc)
 	if err != nil {
 		return err
 	}
@@ -3107,6 +3265,45 @@ func (o *Orchestrator) IsUnifiedSyncQueued(year int, service string) bool {
 	return false
 }
 
+// clientServices builds every registered service that reads CampMinder through client: the
+// season-scoped source jobs, the globals, the rolling financial_transactions window, and the
+// custom-values passes with their scoped family-camp variants. InitializeSyncServices registers
+// them at boot; ensurePrimaryClient rebuilds them when the season rolls over.
+func (o *Orchestrator) clientServices(client *campminder.Client) map[string]Service {
+	s := serviceSet{}
+	s.add("session_groups", NewSessionGroupsSync(o.app, client))
+	s.add("sessions", NewSessionsSync(o.app, client))
+	s.add("attendees", NewAttendeesSync(o.app, client))
+	s.add("person_tag_defs", NewPersonTagDefinitionsSync(o.app, client))
+	s.add("custom_field_defs", NewCustomFieldDefinitionsSync(o.app, client))
+	// Global lookups: positions, org_categories, program_areas
+	s.add("staff_lookups", NewStaffLookupsSync(o.app, client))
+	// Global lookups: financial_categories, payment_methods
+	s.add("financial_lookups", NewFinancialLookupsSync(o.app, client))
+	s.add("divisions", NewDivisionsSync(o.app, client)) // Division definitions
+	// "persons" is a combined sync that populates persons and households tables
+	// from a single API call (tags are stored as multi-select relation on persons)
+	// Division relation on persons is set during persons sync (derived from persons API)
+	s.add("persons", NewPersonsSync(o.app, client))
+	s.add("bunks", NewBunksSync(o.app, client))
+	s.add("bunk_plans", NewBunkPlansSync(o.app, client))
+	s.add("bunk_assignments", NewBunkAssignmentsSync(o.app, client))
+	s.add("bunk_requests", NewBunkRequestsSync(o.app, client))
+	// Staff sync: year-scoped staff records (depends on staff_lookups running in weekly sync)
+	s.add("staff", NewStaffSync(o.app, client))
+	// Financial transactions, rolling seasons N-1, N and N+1 (campership design §6.1).
+	s.add("financial_transactions", NewRollingFinancialTransactionsSync(o.app, client))
+	// On-demand and weekly custom-values passes (one API call per entity).
+	s.add("person_custom_values", NewPersonCustomFieldValuesSync(o.app, client))
+	s.add("household_custom_values", NewHouseholdCustomFieldValuesSync(o.app, client))
+	// Scoped variants of the two services above -- see scopedServiceRegistrations.
+	for _, reg := range scopedServiceRegistrations(o.app, client) {
+		reg.svc.SetScope(reg.scope)
+		s[scopedID(reg.base, reg.scope)] = reg.svc
+	}
+	return s
+}
+
 // InitializeSyncServices creates and registers all sync services
 func (o *Orchestrator) InitializeSyncServices() error {
 	// Create CampMinder client from environment
@@ -3146,38 +3343,22 @@ func (o *Orchestrator) InitializeSyncServices() error {
 	}
 
 	// Store base client for year overrides
+	o.mu.Lock()
 	o.baseClient = client
+	o.mu.Unlock()
 
-	// Register sync services in dependency order
-	o.RegisterService("session_groups", NewSessionGroupsSync(o.app, client))
-	o.RegisterService("sessions", NewSessionsSync(o.app, client))
-	o.RegisterService("attendees", NewAttendeesSync(o.app, client))
-	o.RegisterService("person_tag_defs", NewPersonTagDefinitionsSync(o.app, client))
-	o.RegisterService("custom_field_defs", NewCustomFieldDefinitionsSync(o.app, client))
-	// Global lookups: positions, org_categories, program_areas
-	o.RegisterService("staff_lookups", NewStaffLookupsSync(o.app, client))
-	// Global lookups: financial_categories, payment_methods
-	o.RegisterService("financial_lookups", NewFinancialLookupsSync(o.app, client))
-	o.RegisterService("divisions", NewDivisionsSync(o.app, client)) // Division definitions
-	// "persons" is a combined sync that populates persons and households tables
-	// from a single API call (tags are stored as multi-select relation on persons)
-	// Division relation on persons is set during persons sync (derived from persons API)
-	o.RegisterService("persons", NewPersonsSync(o.app, client))
-	o.RegisterService("bunks", NewBunksSync(o.app, client))
-	o.RegisterService("bunk_plans", NewBunkPlansSync(o.app, client))
-	o.RegisterService("bunk_assignments", NewBunkAssignmentsSync(o.app, client))
+	// Every service that reads CampMinder through the client; ensurePrimaryClient rebuilds the
+	// same set when the season rolls over.
+	for id, svc := range o.clientServices(client) {
+		o.RegisterService(id, svc)
+	}
 	o.RegisterService("reconcile_request_lifecycle", NewReconcileLifecycleSync(o.app))
 	o.RegisterService("stranded_assignment_cleanup", NewStrandedAssignmentCleanupSync(o.app))
-	o.RegisterService("bunk_requests", NewBunkRequestsSync(o.app, client))
 	// Register the request processor (no CampMinder client needed)
 	processor := NewRequestProcessor(o.app)
 	processor.CollectTraces = true // Always collect traces for scheduled/automated runs
 	processor.Trigger = "scheduled"
 	o.RegisterService("process_requests", processor)
-	// Staff sync: year-scoped staff records (depends on staff_lookups running in weekly sync)
-	o.RegisterService("staff", NewStaffSync(o.app, client))
-	// Financial transactions, rolling seasons N-1, N and N+1 (campership design §6.1).
-	o.RegisterService("financial_transactions", NewRollingFinancialTransactionsSync(o.app, client))
 
 	// Register Google Sheets multi-workbook export (optional, requires configuration)
 	if google.IsEnabled() {
@@ -3199,17 +3380,6 @@ func (o *Orchestrator) InitializeSyncServices() error {
 				slog.Info("Multi-workbook export service registered")
 			}
 		}
-	}
-
-	// Register on-demand sync services (NOT part of daily sync)
-	// These require N API calls (one per entity) so are triggered manually
-	o.RegisterService("person_custom_values", NewPersonCustomFieldValuesSync(o.app, client))
-	o.RegisterService("household_custom_values", NewHouseholdCustomFieldValuesSync(o.app, client))
-
-	// Scoped variants of the two services above -- see scopedServiceRegistrations.
-	for _, reg := range scopedServiceRegistrations(o.app, client) {
-		reg.svc.SetScope(reg.scope)
-		o.RegisterService(scopedID(reg.base, reg.scope), reg.svc)
 	}
 
 	// Family camp derived tables (computes from custom values - on-demand)
