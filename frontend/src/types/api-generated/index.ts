@@ -312,6 +312,7 @@ export type {
   FitScenarioToBudgetApiFinancialAidScenariosYearFitToBudgetPostResponse,
   FitScenarioToBudgetApiFinancialAidScenariosYearFitToBudgetPostResponses,
   FlagOut,
+  ForecastPriorTotals,
   ForecastResponse,
   FormPersonOut,
   ForwardDemandOut,
