@@ -370,6 +370,11 @@ func (s *AttendeesSync) processEnrollment(
 		status = "unknown"
 	}
 
+	// PostDate and LastUpdatedUTC are true UTC instants (measured 2026-10-14: read as UTC, the
+	// Pacific day matched CampMinder's "Enrolled on" on 2,188 of 2,191 rows; as Mountain, 2,148).
+	// EffectiveDate is a calendar date. All three stay on ParseDate; none should move to
+	// ParseCampMinderInstant, which is for the financial-transactions API only.
+
 	// Parse enrollment date (PostDate = current status date)
 	var enrollmentDate string
 	if postDate, ok := enrollment["PostDate"].(string); ok {
