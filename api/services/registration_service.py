@@ -31,6 +31,7 @@ from api.utils.session_metrics import (
     SESSION_LENGTH_ORDER,
     build_ag_parent_map,
     compute_summer_metrics,
+    fetch_summer_windows,
     filter_attendees_by_session,
     find_ag_sessions_for_parent,
     get_session_from_expand,
@@ -192,7 +193,11 @@ class RegistrationService:
 
         # Summer enrollment history metrics (uses shared utility)
         enrollment_history = await self.repo.fetch_summer_enrollment_history(enrolled_person_ids, year)
-        summer_years_by_person, first_year_by_person = compute_summer_metrics(enrollment_history, enrolled_person_ids)
+        history_years = {int(y) for r in enrollment_history if (y := getattr(r, "year", None))}
+        summer_windows = await fetch_summer_windows(self.repo, history_years)
+        summer_years_by_person, first_year_by_person = compute_summer_metrics(
+            enrollment_history, enrolled_person_ids, summer_windows=summer_windows
+        )
         by_summer_years = self._build_summer_years_breakdown(summer_years_by_person, total_enrolled)
         by_first_summer_year = self._build_first_summer_year_breakdown(first_year_by_person, total_enrolled)
 

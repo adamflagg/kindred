@@ -30,6 +30,7 @@ from api.utils.session_metrics import (
     DISPLAY_SESSION_TYPES,
     SUMMER_TEEN_TYPES,
     compute_summer_metrics,
+    fetch_summer_windows,
     get_person_from_expand,
     get_session_from_expand,
     resolve_cohort_session_ids,
@@ -272,7 +273,11 @@ class RetentionService:
         # Summer enrollment breakdowns (calculated from attendees history)
         enrollment_history = await self.repo.fetch_summer_enrollment_history(person_ids_base, base_year)
 
-        summer_years_by_person, first_year_by_person = compute_summer_metrics(enrollment_history, person_ids_base)
+        history_years = {int(y) for r in enrollment_history if (y := getattr(r, "year", None))}
+        summer_windows = await fetch_summer_windows(self.repo, history_years)
+        summer_years_by_person, first_year_by_person = compute_summer_metrics(
+            enrollment_history, person_ids_base, summer_windows=summer_windows
+        )
 
         by_summer_years = self._build_summer_years_breakdown(person_ids_base, returned_ids, summer_years_by_person)
 

@@ -930,3 +930,47 @@ class TestRegistrationTeenCohortGating:
             f"1-week duration; got {result.total_enrolled}"
         )
         assert result.by_session == [], f"Off-season fall CIT must not appear in by_session; got {result.by_session}"
+
+
+# --- #3208 row 8: a teen-only cohort's history has no main rows -----------------
+
+
+def _teen_only_world() -> tuple[dict[int, dict[int, Any]], list[Any]]:
+    """Sessions per year (main + TLI, all inside the summer window) and a TLI-only history for person 1."""
+    sessions: dict[int, dict[int, Any]] = {}
+    history: list[Any] = []
+    for year in (2024, 2025, 2026):
+        main = MockSession(cm_id=10 + year, name="Session 1", session_type="main")
+        main.start_date, main.end_date = f"{year}-06-20", f"{year}-08-10"
+        tli = MockSession(cm_id=20 + year, name="TLI", session_type="tli")
+        tli.start_date, tli.end_date = f"{year}-07-01", f"{year}-07-20"
+        sessions[year] = {main.cm_id: main, tli.cm_id: tli}
+        history.append(MagicMock(person_id=1, year=year, expand={"session": tli}))
+    return sessions, history
+
+
+def _fetch_sessions_by_year(sessions: dict[int, dict[int, Any]], year: int, *args: Any) -> dict[int, Any]:
+    types = args[0] if args else None
+    return {k: v for k, v in sessions[year].items() if types is None or v.session_type in types}
+
+
+class TestRegistrationTeenSummers:
+    @pytest.mark.asyncio
+    async def test_teen_only_cohort_counts_every_summer(self) -> None:
+        """A teen in TLI in 2024, 2025 and 2026 has three summers, not two."""
+        from api.services.registration_service import RegistrationService
+
+        sessions, history = _teen_only_world()
+        mock_repo = AsyncMock()
+        mock_repo.fetch_attendees.return_value = [
+            MockAttendee(person_id=1, expand={"session": sessions[2026][2046]}),
+        ]
+        mock_repo.fetch_persons.return_value = {1: MockPerson(person_id=1)}
+        mock_repo.fetch_sessions.side_effect = lambda y, *a, **k: _fetch_sessions_by_year(sessions, y, *a)
+        mock_repo.fetch_bunk_plans.return_value = []
+        mock_repo.fetch_capacity_config.return_value = 12
+        mock_repo.fetch_summer_enrollment_history.return_value = history
+
+        result = await RegistrationService(mock_repo).calculate_registration(2026, session_types=["scit", "tli"])
+
+        assert {b.summer_years: b.count for b in result.by_summer_years} == {3: 1}

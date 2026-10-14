@@ -73,6 +73,8 @@ def make_mock_session(
     name: str,
     session_type: str = "main",
     parent_id: int | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
 ) -> MagicMock:
     """Create a mock session record."""
     session = MagicMock()
@@ -80,6 +82,8 @@ def make_mock_session(
     session.name = name
     session.session_type = session_type
     session.parent_id = parent_id
+    session.start_date = start_date
+    session.end_date = end_date
     return session
 
 
@@ -935,3 +939,172 @@ class TestCancellationDataCoverage:
         # the flag must say so, not present total_cancelled=0 as trustworthy.
         assert year_metric.has_cancellation_data is False
         assert year_metric.total_cancelled == 0
+
+
+# ============================================================================
+# Scope through the one session resolver (#3208 rows 9 and 12)
+# ============================================================================
+
+
+def _year_repo(
+    sessions_by_year: dict[int, dict[int, Any]],
+    attendees_by_year: dict[int, list[Any]],
+    transitions_by_year: dict[int, list[Any]] | None = None,
+) -> MagicMock:
+    """Repo whose per-year data is keyed by the requested year."""
+    repo = _make_repo_with_defaults()
+    all_persons = {i: make_mock_person(i, "M") for i in range(1, 400)}
+
+    async def fetch_sessions(year: int, session_types: Any = None) -> dict[int, Any]:
+        sessions = sessions_by_year.get(year, {})
+        if session_types is None:
+            return sessions
+        return {k: v for k, v in sessions.items() if v.session_type in session_types}
+
+    async def fetch_transitions(year: int, statuses: Any = None) -> list[Any]:
+        return (transitions_by_year or {}).get(year, [])
+
+    repo.fetch_sessions = AsyncMock(side_effect=fetch_sessions)
+    repo.fetch_attendees = AsyncMock(side_effect=lambda y, *a, **k: attendees_by_year.get(y, []))
+    repo.fetch_persons = AsyncMock(return_value=all_persons)
+    repo.fetch_status_transitions = AsyncMock(side_effect=fetch_transitions)
+    return repo
+
+
+class TestHistoricalSessionResolver:
+    @pytest.mark.asyncio
+    async def test_renamed_session_matched_via_alias(self) -> None:
+        """2026 "Taste of Camp 1" must read its 2025 predecessor "Taste of Camp" (new cm_id)."""
+        from api.services.historical_service import HistoricalService
+
+        repo = _year_repo(
+            {
+                2025: {
+                    1235403: make_mock_session(1235403, "Taste of Camp"),
+                    1235401: make_mock_session(1235401, "Session 1"),
+                },
+                2026: {1378702: make_mock_session(1378702, "Taste of Camp 1")},
+            },
+            {
+                2025: [
+                    make_mock_attendee(1, 1235403, "Taste of Camp"),
+                    make_mock_attendee(2, 1235403, "Taste of Camp"),
+                    make_mock_attendee(3, 1235401, "Session 1"),
+                ],
+                2026: [make_mock_attendee(4, 1378702, "Taste of Camp 1")],
+            },
+        )
+
+        result = await HistoricalService(repo).calculate_historical_trends(
+            years=[2025, 2026], session_types=["main"], session_cm_id=1378702
+        )
+
+        assert {y.year: y.total_enrolled for y in result.years} == {2025: 2, 2026: 1}
+
+    @pytest.mark.asyncio
+    async def test_renamed_session_cancellations_follow_the_alias(self) -> None:
+        from api.services.historical_service import HistoricalService
+
+        repo = _year_repo(
+            {
+                2025: {
+                    1235403: make_mock_session(1235403, "Taste of Camp"),
+                    1235401: make_mock_session(1235401, "Session 1"),
+                },
+                2026: {1378702: make_mock_session(1378702, "Taste of Camp 1")},
+            },
+            {2025: [make_mock_attendee(1, 1235403, "Taste of Camp")], 2026: []},
+            {2025: [make_mock_transition(10, 1235403), make_mock_transition(11, 1235401)]},
+        )
+        repo.fetch_status_history = AsyncMock(return_value=[make_mock_transition(10, 1235403)])
+
+        result = await HistoricalService(repo).calculate_historical_trends(
+            years=[2025, 2026], session_types=["main"], session_cm_id=1378702
+        )
+
+        assert {y.year: y.total_cancelled for y in result.years} == {2025: 1, 2026: 0}
+
+    @pytest.mark.asyncio
+    async def test_single_session_includes_its_ag_cabins(self) -> None:
+        from api.services.historical_service import HistoricalService
+
+        repo = _year_repo(
+            {
+                2025: {
+                    5001: make_mock_session(5001, "Session 4"),
+                    5002: make_mock_session(5002, "Session 3"),
+                    5101: make_mock_session(5101, "AG 4", "ag", parent_id=5001),
+                }
+            },
+            {
+                2025: [
+                    make_mock_attendee(1, 5001, "Session 4"),
+                    make_mock_attendee(2, 5101, "AG 4", "ag"),
+                    make_mock_attendee(3, 5002, "Session 3"),
+                ]
+            },
+        )
+
+        result = await HistoricalService(repo).calculate_historical_trends(
+            years=[2025], session_types=["main", "ag"], session_cm_id=5001
+        )
+
+        assert result.years[0].total_enrolled == 2
+
+    @pytest.mark.asyncio
+    async def test_offseason_teen_sessions_excluded_by_summer_window(self) -> None:
+        """Trends Teens: Aug->May Teen Interns and the Feb L.A. Trip are not summer."""
+        from api.services.historical_service import HistoricalService
+
+        repo = _year_repo(
+            {
+                2018: {
+                    1: make_mock_session(1, "Session 1", "main", start_date="2018-06-20", end_date="2018-08-10"),
+                    2: make_mock_session(2, "SCIT", "scit", start_date="2018-06-22", end_date="2018-08-01"),
+                    3: make_mock_session(
+                        3, "Tawonga Teen Interns", "tli", start_date="2018-08-20", end_date="2019-05-20"
+                    ),
+                    4: make_mock_session(4, "Teen L.A. Trip", "tli", start_date="2018-02-10", end_date="2018-02-14"),
+                }
+            },
+            {
+                2018: [
+                    make_mock_attendee(10, 2, "SCIT", "scit"),
+                    make_mock_attendee(11, 3, "Tawonga Teen Interns", "tli"),
+                    make_mock_attendee(12, 4, "Teen L.A. Trip", "tli"),
+                ]
+            },
+        )
+
+        result = await HistoricalService(repo).calculate_historical_trends(years=[2018], session_types=["scit", "tli"])
+
+        assert result.years[0].total_enrolled == 1
+
+    @pytest.mark.asyncio
+    async def test_family_adult_and_bmitzvah_never_enter_summer_trends(self) -> None:
+        """Pin (#2435/#2455): Family Camp, adult and B*Mitzvah/Hebrew change no summer number."""
+        from api.services.historical_service import HistoricalService
+
+        sessions = {
+            1: make_mock_session(1, "Session 1"),
+            2: make_mock_session(2, "Family Camp", "family"),
+            3: make_mock_session(3, "Adult Weekend", "adult"),
+            4: make_mock_session(4, "B'nai Mitzvah", "bmitzvah"),
+            5: make_mock_session(5, "Hebrew", "hebrew"),
+        }
+        summer_only = [make_mock_attendee(1, 1, "Session 1")]
+        extras = [
+            make_mock_attendee(2, 2, "Family Camp", "family"),
+            make_mock_attendee(3, 3, "Adult Weekend", "adult"),
+            make_mock_attendee(4, 4, "B'nai Mitzvah", "bmitzvah"),
+            make_mock_attendee(5, 5, "Hebrew", "hebrew"),
+        ]
+        transitions = [make_mock_transition(2, 2, "family"), make_mock_transition(1, 1)]
+
+        for kwargs in ({}, {"session_types": ["main", "family", "adult"]}, {"session_cm_id": 2}):
+            clean = _year_repo({2025: sessions}, {2025: summer_only}, {2025: [make_mock_transition(1, 1)]})
+            dirty = _year_repo({2025: sessions}, {2025: summer_only + extras}, {2025: transitions})
+            a = await HistoricalService(clean).calculate_historical_trends(years=[2025], **kwargs)
+            b = await HistoricalService(dirty).calculate_historical_trends(years=[2025], **kwargs)
+            assert a.years[0].total_enrolled == b.years[0].total_enrolled, kwargs
+            assert a.years[0].total_cancelled == b.years[0].total_cancelled, kwargs
