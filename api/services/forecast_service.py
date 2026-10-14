@@ -715,11 +715,12 @@ class ForecastService:
                 )
 
                 # Convert cm_id → prior-count keys (canonical name; AG also cm_id/parent)
-                for cm_id, count in reconstructed.items():
-                    session_obj = prior_sessions.get(cm_id)
-                    if session_obj:
-                        for key in self._prior_count_keys(cm_id, session_obj, prior_sessions):
-                            target_counts[key] = target_counts.get(key, 0) + count
+                # Ruling 7: every offered session contributes its keys, with 0 when nobody is
+                # counted (all cancelled, or no event in the window), so a match reads 0, not "---".
+                for cm_id, session_obj in prior_sessions.items():
+                    count = reconstructed.get(cm_id) or 0
+                    for key in self._prior_count_keys(cm_id, session_obj, prior_sessions):
+                        target_counts[key] = target_counts.get(key, 0) + count
             except Exception:
                 logger.warning(
                     "Failed to reconstruct %d-year-prior data, skipping",
@@ -739,7 +740,8 @@ class ForecastService:
             sid: self._prior_count_keys(sid, session, sessions) for sid, session in sessions.items()
         }
 
-        counts: dict[str, int] = {}
+        # Ruling 7: an offered session with nobody left still has its keys, at 0, so it reads 0 not "---".
+        counts: dict[str, int] = {key: 0 for keys in cm_id_to_keys.values() for key in keys}
         for a in attendees:
             session = get_session_from_expand(a)
             if not session:
