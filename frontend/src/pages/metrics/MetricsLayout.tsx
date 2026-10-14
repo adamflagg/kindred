@@ -16,6 +16,30 @@ import { useSeasonHasRows } from '../../hooks/useSeasonHasRows'
 import { useAnalyticsFreshness } from '../../hooks/useAnalyticsFreshness'
 import { usePriorityRegDate } from '../../hooks/useRegistrationDates'
 import { useViewSeason } from '../../hooks/useViewSeason'
+import { useMetricsSession } from '../../hooks/useMetricsSession'
+import { scopeLine, scopeWords, SUMMER_ONLY } from './scopeLine'
+
+/**
+ * The page title and, under it, what the page counts (PR 4, pick 1A, replacing the subtitle):
+ * "2026 · At Camp — Quests and Teens not counted · counted in campers · Summer only: …".
+ * Inside the session provider, because the line follows the session filter.
+ */
+function MetricsHeader({ title }: { title: string }) {
+  const location = useLocation()
+  const { currentYear } = useCurrentYear()
+  const session = useMetricsSession()
+  const line = scopeLine(location.pathname, currentYear, scopeWords(session))
+  return (
+    <div className="mb-4">
+      <h1 className="text-foreground text-xl font-bold">{title}</h1>
+      <p className="text-muted-foreground mt-0.5 text-sm" data-testid="metrics-scope-line">
+        <span className="text-foreground font-medium">{line.head}</span>
+        {line.left && ` — ${line.left}`}
+        {line.unit && ` · ${line.unit}`} · {SUMMER_ONLY}
+      </p>
+    </div>
+  )
+}
 
 /**
  * The page body, gated on the viewed season having countable summer rows (PR 4, board 9 A).
@@ -70,33 +94,17 @@ export default function MetricsLayout() {
 
   const subNavItems = getSubNavItems()
 
-  // Dynamic header based on section
-  const getHeader = () => {
-    if (location.pathname.startsWith('/analytics/retention')) {
-      return {
-        title: 'Retention',
-        subtitle: 'Prior year → current year returning analysis',
-      }
-    }
-    if (location.pathname.startsWith('/analytics/trends')) {
-      return { title: 'Trend Analysis', subtitle: 'Long-term enrollment and registration trends' }
-    }
-    return {
-      title: 'Registration',
-      subtitle: 'Analyze registration data and enrollment patterns',
-    }
-  }
-  const header = getHeader()
+  const title = location.pathname.startsWith('/analytics/retention')
+    ? 'Retention'
+    : location.pathname.startsWith('/analytics/trends')
+      ? 'Trend Analysis'
+      : 'Registration'
 
   return (
     <MetricsSessionProvider>
       <div className="bg-background min-h-screen">
         <div className="mx-auto max-w-7xl px-4 pt-4 pb-8 sm:px-6 lg:px-8">
-          {/* Header */}
-          <div className="mb-6">
-            <h1 className="text-foreground text-2xl font-bold">{header.title}</h1>
-            <p className="text-muted-foreground mt-1">{header.subtitle}</p>
-          </div>
+          <MetricsHeader title={title} />
 
           {/* Sticky Navigation */}
           <div className="bg-background/95 sticky top-0 z-10 backdrop-blur-sm">

@@ -6,8 +6,8 @@
  * stays on the primary: Summer, Family Camp and Camperships don't move, and a fresh tab or the
  * Dashboard link lands on the primary season again once staff are done looking back.
  *
- * Owner question 2 is still open. If the ruling is "remember it", this whole hook becomes
- * `return useCurrentYear().setCurrentYear`, which writes the saved season too.
+ * Owner ruling 2026-10-14 (question 2 = a): URL only. It must never call setCurrentYear, which
+ * would write the saved season and move every program with it.
  */
 
 import { useCallback } from 'react'

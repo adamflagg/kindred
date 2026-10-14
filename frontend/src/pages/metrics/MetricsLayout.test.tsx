@@ -189,14 +189,50 @@ describe('MetricsLayout', () => {
     renderWithRouter('/analytics/registration/overview')
 
     expect(screen.getByRole('heading', { name: 'Registration' })).toBeInTheDocument()
-    expect(screen.getByText(/analyze registration data/i)).toBeInTheDocument()
   })
 
   it('renders page header with title for retention', () => {
     renderWithRouter('/analytics/retention')
 
     expect(screen.getByRole('heading', { name: 'Retention' })).toBeInTheDocument()
-    expect(screen.getByText(/prior year.*current year.*returning/i)).toBeInTheDocument()
+  })
+
+  describe('scope line (PR 4, pick 1A: replaces the subtitle)', () => {
+    const line = () => screen.getByTestId('metrics-scope-line')
+
+    it('says what Registration Overview counts, under the current filter', () => {
+      renderWithRouter('/analytics/registration/overview')
+      expect(line()).toHaveTextContent(
+        "2026 · At Camp — Quests and Teens not counted · counted in campers · Summer only: Family Camp, B*Mitzvah and winter programs aren't in Analytics"
+      )
+      expect(screen.queryByText(/analyze registration data/i)).not.toBeInTheDocument()
+    })
+
+    it('follows the session filter', () => {
+      renderWithRouter('/analytics/registration/overview?view=all')
+      expect(line()).toHaveTextContent(/^2026 · All Summer · counted in campers · Summer only/)
+    })
+
+    it('reads last season into this one on Retention', () => {
+      renderWithRouter('/analytics/retention')
+      expect(line()).toHaveTextContent(
+        /^2025 → 2026 · At Camp — Quests and Teens not counted · counted in last year's campers/
+      )
+      expect(screen.queryByText(/prior year.*current year.*returning/i)).not.toBeInTheDocument()
+    })
+
+    it('says the filter does not apply on Bunk Analysis', () => {
+      renderWithRouter('/analytics/retention/bunks')
+      expect(line()).toHaveTextContent(
+        /^2025 → 2026 · every 2025 cabin — the session filter doesn't apply here/
+      )
+    })
+
+    it('stays on an empty season', () => {
+      mockSeasonRows.mockReturnValue({ hasRows: false, isLoading: false })
+      renderWithRouter('/analytics/registration/overview')
+      expect(line()).toHaveTextContent(/^2026 · At Camp/)
+    })
   })
 
   it('renders sticky nav container', () => {

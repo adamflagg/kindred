@@ -4,13 +4,11 @@
  * the header, tabs, picker and season bar stay.
  *
  * One line and a link to the prior season. No icon, no banner, no big number (UI taste). An
- * optional second line names the priority date once staff have entered it in Admin.
+ * optional second line names the priority date once staff have entered it in Admin (owner ruling
+ * 2026-10-14, question 4: kept, hidden while no date is set).
  */
 
 import { formatPriorityDate } from '../../hooks/useRegistrationDates'
-
-/** The priority-date line is an owner pick still open (question 4): flip it off here. */
-export const SHOW_PRIORITY_DATE: boolean = true
 
 interface SeasonEmptyStateProps {
   year: number
@@ -26,7 +24,7 @@ interface SeasonEmptyStateProps {
 
 /** "opens" is only true until the day ends; after that the line would be wrong, so drop it. */
 function priorityLine(stored: string | undefined, today: Date): string | null {
-  if (!SHOW_PRIORITY_DATE || !stored) return null
+  if (!stored) return null
   const label = formatPriorityDate(stored)
   if (!label) return null
   const [y, m, d] = stored.slice(0, 10).split('-').map(Number)

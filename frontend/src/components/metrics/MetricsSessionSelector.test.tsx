@@ -1,6 +1,9 @@
 /**
- * Tests for MetricsSessionSelector component
- * Covers Teens quick-pick and Teen Programs section in session dropdown
+ * Tests for MetricsSessionSelector component.
+ *
+ * PR 4: presets are headings with their sessions under them, one option per row (pick 2B), drawn
+ * with the kit AidPicker's heading level plus a session count (board 5, option i). The list is
+ * about ten rows tall (board 7, max-h-96).
  */
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -56,7 +59,7 @@ const baseMockContext = {
   hasTli: true,
   selectedTeenType: null as 'scit' | 'tli' | null,
   setSelectedTeenType: mockSetSelectedTeenType,
-  durationGroups: new Map(),
+  durationGroups: new Map([['1-week', []]]) as MetricsSessionContextType['durationGroups'],
   durationParam: undefined,
   filterOptions: {} as MetricsSessionContextType['filterOptions'],
   expandedRetention: false,
@@ -82,64 +85,81 @@ beforeEach(() => {
   mockUseMetricsSession.mockReturnValue(baseMockContext)
 })
 
-describe('MetricsSessionSelector — teen features', () => {
-  describe('with hasScit:true, hasTli:true', () => {
-    it('shows a "Teens" option in the quick-pick area', async () => {
-      const user = userEvent.setup()
-      render(<MetricsSessionSelector />)
+describe('MetricsSessionSelector — presets as headings (2B, 5i)', () => {
+  const open = async () => {
+    const user = userEvent.setup()
+    render(<MetricsSessionSelector />)
+    await user.click(screen.getByRole('button'))
+    return user
+  }
 
-      // Open the listbox
-      const button = screen.getByRole('button')
-      await user.click(button)
-
-      expect(screen.getByRole('option', { name: 'Teens' })).toBeInTheDocument()
-    })
-
-    it('shows a "Teen Programs" group label', async () => {
-      const user = userEvent.setup()
-      render(<MetricsSessionSelector />)
-
-      const button = screen.getByRole('button')
-      await user.click(button)
-
-      expect(screen.getByText('Teen Programs')).toBeInTheDocument()
-    })
-
-    it('renders SCIT and TLI options under Teen Programs', async () => {
-      const user = userEvent.setup()
-      render(<MetricsSessionSelector />)
-
-      const button = screen.getByRole('button')
-      await user.click(button)
-
-      expect(screen.getByRole('option', { name: 'SCIT' })).toBeInTheDocument()
-      expect(screen.getByRole('option', { name: 'TLI' })).toBeInTheDocument()
-    })
-
-    it('clicking "SCIT" calls setSelectedTeenType("scit")', async () => {
-      const user = userEvent.setup()
-      render(<MetricsSessionSelector />)
-
-      const button = screen.getByRole('button')
-      await user.click(button)
-
-      await user.click(screen.getByRole('option', { name: 'SCIT' }))
-      expect(mockSetSelectedTeenType).toHaveBeenCalledWith('scit')
-    })
-
-    it('clicking "Teens" calls setViewMode("teens")', async () => {
-      const user = userEvent.setup()
-      render(<MetricsSessionSelector />)
-
-      const button = screen.getByRole('button')
-      await user.click(button)
-
-      await user.click(screen.getByRole('option', { name: 'Teens' }))
-      expect(mockSetViewMode).toHaveBeenCalledWith('teens')
-    })
+  it('lists All Summer, then each preset as a heading with its sessions under it', async () => {
+    await open()
+    const names = screen.getAllByRole('option').map((o) => o.textContent)
+    expect(names).toEqual([
+      'All Summer',
+      '✓At Camp1',
+      'Session 1',
+      'Quests0',
+      'Teens2',
+      'SCIT',
+      'TLI',
+      '1 Week',
+    ])
   })
 
-  describe('with hasScit:false, hasTli:false', () => {
+  it('draws the presets as bold headings and their sessions indented', async () => {
+    await open()
+    for (const h of ['At Camp', 'Quests', 'Teens']) {
+      expect(screen.getByRole('option', { name: new RegExp(`^✓?${h}`) })).toHaveClass('font-bold')
+    }
+    expect(screen.getByRole('option', { name: 'Session 1' }).style.paddingLeft).toBe('34px')
+    expect(screen.getByRole('option', { name: 'SCIT' }).style.paddingLeft).toBe('34px')
+  })
+
+  it('keeps By Duration as a plain, unpickable label', async () => {
+    await open()
+    expect(screen.getByText('By Duration')).toHaveAttribute('role', 'presentation')
+    expect(screen.queryByRole('option', { name: /By Duration/ })).not.toBeInTheDocument()
+  })
+
+  it('opens about ten rows tall', async () => {
+    await open()
+    const list = screen.getByRole('listbox')
+    expect(list).toHaveClass('max-h-96')
+    expect(list.className).not.toContain('max-h-[260px]')
+  })
+
+  it('clicking a heading picks the preset', async () => {
+    const user = await open()
+    await user.click(screen.getByRole('option', { name: /^Teens/ }))
+    expect(mockSetViewMode).toHaveBeenCalledWith('teens')
+  })
+
+  it('clicking "SCIT" calls setSelectedTeenType("scit")', async () => {
+    const user = await open()
+    await user.click(screen.getByRole('option', { name: 'SCIT' }))
+    expect(mockSetSelectedTeenType).toHaveBeenCalledWith('scit')
+  })
+
+  it('clicking a session picks it', async () => {
+    const user = await open()
+    await user.click(screen.getByRole('option', { name: 'Session 1' }))
+    expect(mockSetSelectedSessionCmId).toHaveBeenCalledWith(1001)
+  })
+
+  it('clicking a length picks it', async () => {
+    const user = await open()
+    await user.click(screen.getByRole('option', { name: '1 Week' }))
+    expect(mockSetSelectedDuration).toHaveBeenCalledWith('1-week')
+  })
+
+  it('keeps the Analytics button', () => {
+    render(<MetricsSessionSelector />)
+    expect(screen.getByRole('button')).toHaveClass('listbox-button', 'min-w-[180px]')
+  })
+
+  describe('with no teen programs this season', () => {
     beforeEach(() => {
       mockUseMetricsSession.mockReturnValue({
         ...baseMockContext,
@@ -149,65 +169,33 @@ describe('MetricsSessionSelector — teen features', () => {
       })
     })
 
-    it('does NOT render the Teens quick-pick option', async () => {
-      const user = userEvent.setup()
-      render(<MetricsSessionSelector />)
-
-      const button = screen.getByRole('button')
-      await user.click(button)
-
-      expect(screen.queryByRole('option', { name: 'Teens' })).not.toBeInTheDocument()
-    })
-
-    it('does NOT render the Teen Programs group label', async () => {
-      const user = userEvent.setup()
-      render(<MetricsSessionSelector />)
-
-      const button = screen.getByRole('button')
-      await user.click(button)
-
-      expect(screen.queryByText('Teen Programs')).not.toBeInTheDocument()
-    })
-
-    it('does NOT render SCIT or TLI options', async () => {
-      const user = userEvent.setup()
-      render(<MetricsSessionSelector />)
-
-      const button = screen.getByRole('button')
-      await user.click(button)
-
+    it('has no Teens heading and no SCIT or TLI', async () => {
+      await open()
+      expect(screen.queryByRole('option', { name: /^Teens/ })).not.toBeInTheDocument()
       expect(screen.queryByRole('option', { name: 'SCIT' })).not.toBeInTheDocument()
       expect(screen.queryByRole('option', { name: 'TLI' })).not.toBeInTheDocument()
     })
   })
 
-  describe('display label when teen type is selected', () => {
-    it('shows "SCIT" as display label when selectedTeenType is "scit"', () => {
-      mockUseMetricsSession.mockReturnValue({
-        ...baseMockContext,
-        selectedTeenType: 'scit',
-      })
-      render(<MetricsSessionSelector />)
-      expect(screen.getByRole('button')).toHaveTextContent('SCIT')
+  describe('not used on this page (4B)', () => {
+    it('is disabled and says so', () => {
+      render(<MetricsSessionSelector notUsedHere />)
+      const button = screen.getByRole('button')
+      expect(button).toBeDisabled()
+      expect(button).toHaveTextContent('At Camp · not used here')
     })
+  })
 
-    it('shows "TLI" as display label when selectedTeenType is "tli"', () => {
-      mockUseMetricsSession.mockReturnValue({
-        ...baseMockContext,
-        selectedTeenType: 'tli',
-      })
+  describe('display label', () => {
+    it.each([
+      [{ selectedTeenType: 'scit' as const }, 'SCIT'],
+      [{ selectedTeenType: 'tli' as const }, 'TLI'],
+      [{ viewMode: 'teens' as const, selectedTeenType: null }, 'Teens'],
+      [{ selectedDuration: '2-week' as const }, '2 Week'],
+    ])('reads %o as "%s"', (over, label) => {
+      mockUseMetricsSession.mockReturnValue({ ...baseMockContext, ...over })
       render(<MetricsSessionSelector />)
-      expect(screen.getByRole('button')).toHaveTextContent('TLI')
-    })
-
-    it('shows "Teens" as display label when viewMode is "teens" and no selectedTeenType', () => {
-      mockUseMetricsSession.mockReturnValue({
-        ...baseMockContext,
-        viewMode: 'teens' as const,
-        selectedTeenType: null,
-      })
-      render(<MetricsSessionSelector />)
-      expect(screen.getByRole('button')).toHaveTextContent('Teens')
+      expect(screen.getByRole('button')).toHaveTextContent(label)
     })
   })
 })

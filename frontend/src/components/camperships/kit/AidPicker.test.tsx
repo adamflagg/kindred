@@ -198,6 +198,51 @@ describe('AidPicker option levels', () => {
   })
 })
 
+// Analytics' session picker (PR 4, board 5 option i): a heading carries a count of what sits under it.
+describe('AidPicker heading count', () => {
+  it('writes the count on the heading row, after its label', async () => {
+    render(
+      <AidPicker
+        label="Sessions"
+        value="all"
+        onChange={() => undefined}
+        options={[
+          { value: 'all', label: 'All Summer' },
+          { value: 'camp', label: 'At Camp', level: 'heading', count: 7 },
+          { value: 's1', label: 'Session 1', level: 'indent' },
+        ]}
+      />
+    )
+    await userEvent.click(screen.getByRole('button', { name: /Sessions/ }))
+    const heading = screen.getByRole('option', { name: /At Camp/ })
+    expect(heading).toHaveTextContent(/^At Camp7$/)
+    expect(screen.getByText('7')).toHaveClass('text-muted-foreground', 'ml-auto', 'tabular-nums')
+    // A plain option has no count (the picked one carries only its ✓).
+    expect(screen.getByRole('option', { name: /All Summer/ })).toHaveTextContent(/^✓All Summer$/)
+  })
+})
+
+describe('AidPicker caller dress (Analytics keeps its own button and a taller list)', () => {
+  it('takes the caller’s button and list classes', async () => {
+    render(
+      <AidPicker
+        label="Sessions"
+        value="all"
+        onChange={() => undefined}
+        buttonClassName="listbox-button min-w-[180px]"
+        listClassName="my-list max-h-96"
+        faceText="All Summer · not used here"
+        options={[{ value: 'all', label: 'All Summer' }]}
+      />
+    )
+    const button = screen.getByRole('button', { name: /Sessions/ })
+    expect(button).toHaveClass('listbox-button', 'min-w-[180px]')
+    expect(button).toHaveTextContent('All Summer · not used here')
+    await userEvent.click(button)
+    expect(screen.getByRole('listbox')).toHaveClass('my-list', 'max-h-96')
+  })
+})
+
 describe('AidPicker placeholder', () => {
   it('reads the placeholder while the value matches no option', () => {
     render(
