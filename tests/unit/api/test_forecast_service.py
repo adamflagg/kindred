@@ -1950,6 +1950,26 @@ class TestForecastSamePointPrior:
         assert result.prior_basis == "final"
 
     @pytest.mark.asyncio
+    async def test_anchor_read_failure_falls_back_to_final(self, service, mock_repository):
+        # Live mode only reads the anchor to choose the basis; a failed read must not sink the page.
+        self._setup(mock_repository)
+        mock_repository.fetch_registration_dates.side_effect = RuntimeError("config read failed")
+
+        result = await service.calculate_forecast(year=2026, today=date(2025, 11, 14))
+
+        assert result.prior_basis == "final"
+        assert result.sessions[0].enrolled == 1
+
+    @pytest.mark.asyncio
+    async def test_malformed_anchor_falls_back_to_final(self, service, mock_repository):
+        self._setup(mock_repository, anchors={2026: "not-a-date", 2025: "2024-10-10"})
+
+        result = await service.calculate_forecast(year=2026, today=date(2025, 11, 14))
+
+        assert result.prior_basis == "final"
+        assert result.sessions[0].enrolled == 1
+
+    @pytest.mark.asyncio
     async def test_week_mode_basis_is_same_point(self, service, mock_repository):
         self._setup(mock_repository)
 

@@ -224,7 +224,16 @@ class ForecastService:
         week0_window = True
         prior_basis: Literal["same_point", "final"] = "same_point" if day_offset is not None else "final"
         if day_offset is None:
-            live_anchor = await self._fetch_anchor(year)
+            try:
+                live_anchor = await self._fetch_anchor(year)
+            except Exception:
+                # Live mode reads the anchor only to pick the basis: fail soft to "final"
+                logger.warning(
+                    "Failed to read the %d registration anchor, comparing with prior finals",
+                    year,
+                    exc_info=True,
+                )
+                live_anchor = None
             if live_anchor is not None:
                 camp_today = today if today is not None else get_camp_today()
                 if camp_today <= live_anchor + timedelta(days=SEASON_WEEKS * 7 - 1):

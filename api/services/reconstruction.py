@@ -142,8 +142,8 @@ def _reconstruct_core(
         return {}
 
     cutoff_date = (season_start + timedelta(days=day_offset)).date()
-    # Lower bound: clamp to anchor - 7 days for negative offsets (Week 0 forecast)
-    # to prevent counting enrollments from arbitrarily far back.  For positive
+    # Lower bound: with week0_window, clamp to anchor - 7 days for negative offsets (Week 0
+    # forecast) to prevent counting enrollments from arbitrarily far back.  For positive
     # offsets pre-anchor enrollments are part of the cumulative total, so no bound.
     lower_bound = (season_start - timedelta(days=7)).date() if day_offset < 0 and week0_window else None
 
