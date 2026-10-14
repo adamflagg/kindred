@@ -129,13 +129,6 @@ class RetentionTrendsService:
             years, data_by_year, effective_pipeline=effective_pipeline, scope_has_teens=scope_has_teens
         )
 
-        # Calculate average retention rate
-        rates = [y.retention_rate for y in retention_years]
-        avg_rate = sum(rates) / len(rates) if rates else 0.0
-
-        # Determine trend direction
-        trend_direction = self._calculate_trend_direction(rates)
-
         # Fetch enrollment history for summer metrics (union of all person IDs)
         all_person_ids: set[int] = set()
         for year in years:
@@ -148,8 +141,6 @@ class RetentionTrendsService:
 
         return RetentionTrendsResponse(
             years=retention_years,
-            avg_retention_rate=avg_rate,
-            trend_direction=trend_direction,
             enrollment_by_year=enrollment_by_year,
         )
 
@@ -300,30 +291,6 @@ class RetentionTrendsService:
             )
             for g, s in sorted(stats.items(), key=lambda x: (x[0] is None, x[0]))
         ]
-
-    def _calculate_trend_direction(self, rates: list[float]) -> str:
-        """Calculate trend direction from retention rates.
-
-        Args:
-            rates: List of retention rates per transition.
-
-        Returns:
-            Trend direction: 'improving', 'declining', or 'stable'.
-        """
-        if len(rates) < 2:
-            return "stable"
-
-        # Compare most recent rate to average of prior rates
-        current = rates[-1]
-        prior_avg = sum(rates[:-1]) / len(rates[:-1])
-        threshold = 0.02  # 2% threshold for "stable"
-
-        if current > prior_avg + threshold:
-            return "improving"
-        elif current < prior_avg - threshold:
-            return "declining"
-        else:
-            return "stable"
 
     def _compute_enrollment_by_year(
         self,

@@ -18,8 +18,6 @@ from .bunk_requests import (
 from .config import SolverConfigUpdate
 from .manual_review import ManualReviewDecision, ManualReviewResponse
 from .metrics import (
-    ComparisonDelta,
-    ComparisonMetricsResponse,
     GenderBreakdown,
     GradeBreakdown,
     NewVsReturning,
@@ -30,9 +28,7 @@ from .metrics import (
     RetentionByYearsAtCamp,
     RetentionMetricsResponse,
     SessionBreakdown,
-    SessionLengthBreakdown,
     YearsAtCampBreakdown,
-    YearSummary,
 )
 from .social_graph import (
     BunkGraphMetrics,
@@ -74,8 +70,6 @@ __all__ = [  # noqa: RUF022 — grouped by feature for navigability over alphabe
     "SolverRequest",
     "SolverResponse",
     # Metrics
-    "ComparisonDelta",
-    "ComparisonMetricsResponse",
     "GenderBreakdown",
     "GradeBreakdown",
     "NewVsReturning",
@@ -86,8 +80,6 @@ __all__ = [  # noqa: RUF022 — grouped by feature for navigability over alphabe
     "RetentionByYearsAtCamp",
     "RetentionMetricsResponse",
     "SessionBreakdown",
-    "SessionLengthBreakdown",
-    "YearSummary",
     "YearsAtCampBreakdown",
     # Manual Review
     "ManualReviewDecision",

@@ -201,7 +201,6 @@ class RetentionService:
 
         # Overall metrics
         base_total = len(person_ids_base)
-        compare_total = len(person_ids_compare)
         returned_count = len(returned_ids)
         overall_rate = safe_rate(returned_count, base_total)
 
@@ -307,7 +306,6 @@ class RetentionService:
             base_year=base_year,
             compare_year=compare_year,
             base_year_total=base_total,
-            compare_year_total=compare_total,
             returned_count=returned_count,
             overall_retention_rate=overall_rate,
             by_gender=by_gender,

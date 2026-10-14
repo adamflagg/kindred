@@ -444,75 +444,6 @@ class TestRegistrationMetrics:
 
 
 # ============================================================================
-# Comparison Metrics Tests
-# ============================================================================
-
-
-class TestComparisonMetrics:
-    """Tests for year-over-year comparison endpoint."""
-
-    def test_total_change_calculation(
-        self,
-        sample_attendees_2025: list[Mock],
-        sample_attendees_2026: list[Mock],
-    ) -> None:
-        """Test total enrollment change between years.
-
-        2025: 5 enrolled
-        2026: 5 enrolled
-        Change: 0 (0%)
-        """
-        enrolled_2025 = len([a for a in sample_attendees_2025 if a.status == "enrolled"])
-        enrolled_2026 = len([a for a in sample_attendees_2026 if a.status == "enrolled"])
-
-        total_change = enrolled_2026 - enrolled_2025
-        percentage_change = (total_change / enrolled_2025 * 100) if enrolled_2025 > 0 else 0
-
-        assert enrolled_2025 == 5
-        assert enrolled_2026 == 5
-        assert total_change == 0
-        assert percentage_change == pytest.approx(0.0)
-
-    def test_gender_comparison(
-        self,
-        sample_persons_2025: list[Mock],
-        sample_persons_2026: list[Mock],
-        sample_attendees_2025: list[Mock],
-        sample_attendees_2026: list[Mock],
-    ) -> None:
-        """Test gender breakdown comparison between years.
-
-        2025: F=3, M=2
-        2026: F=2, M=3
-        Female change: -1, Male change: +1
-        """
-        persons_2025_by_id = {p.cm_id: p for p in sample_persons_2025}
-        persons_2026_by_id = {p.cm_id: p for p in sample_persons_2026}
-
-        def count_by_gender(attendees: list[Mock], persons_by_id: dict[int, Mock]) -> dict[str, int]:
-            by_gender: dict[str, int] = {}
-            for a in attendees:
-                if a.status == "enrolled":
-                    gender = persons_by_id[a.person_id].gender
-                    by_gender[gender] = by_gender.get(gender, 0) + 1
-            return by_gender
-
-        gender_2025 = count_by_gender(sample_attendees_2025, persons_2025_by_id)
-        gender_2026 = count_by_gender(sample_attendees_2026, persons_2026_by_id)
-
-        assert gender_2025["F"] == 3
-        assert gender_2025["M"] == 2
-        assert gender_2026["F"] == 2
-        assert gender_2026["M"] == 3
-
-        female_change = gender_2026["F"] - gender_2025["F"]
-        male_change = gender_2026["M"] - gender_2025["M"]
-
-        assert female_change == -1
-        assert male_change == 1
-
-
-# ============================================================================
 # Status-based Metrics Tests
 # ============================================================================
 
@@ -1034,19 +965,6 @@ class TestMetricsAPIEndpoints:
             assert "total_enrolled" in data
             assert "new_vs_returning" in data
 
-    def test_comparison_endpoint_returns_200(self, client: TestClient, mock_pocketbase: Mock) -> None:
-        """Test that comparison endpoint returns 200."""
-        mock_pb = mock_pocketbase
-        mock_pb.collection.return_value.get_full_list.return_value = []
-
-        with patch("api.routers.metrics.pb", mock_pb):
-            response = client.get("/api/metrics/comparison?year_a=2025&year_b=2026")
-            assert response.status_code == 200
-            data = response.json()
-            assert data["year_a"]["year"] == 2025
-            assert data["year_b"]["year"] == 2026
-            assert "delta" in data
-
 
 # ============================================================================
 # TDD Tests for Metrics Dashboard Redesign (Phase 1)
@@ -1306,55 +1224,6 @@ class TestStatusesParameter:
 
         # This test will FAIL until we add statuses parameter to the endpoint
         assert "statuses" in param_names, "statuses parameter should be added to get_registration_metrics"
-
-
-class TestComparisonEndpointSessionTypes:
-    """Tests for session_types parameter in comparison endpoint.
-
-    Issue: Compare dropdown does nothing because comparison endpoint
-    doesn't support session_types filtering.
-    """
-
-    @pytest.fixture
-    def app(self) -> Any:
-        """Create test application."""
-        return create_app()
-
-    @pytest.fixture
-    def client(self, app: Any) -> TestClient:
-        """Create test client."""
-        return TestClient(app)
-
-    @requires_pb_db
-    def test_comparison_accepts_session_types_parameter(self, client: TestClient, mock_pocketbase: Mock) -> None:
-        """Test that comparison endpoint accepts session_types parameter.
-
-        The endpoint should accept session_types to filter both years
-        to summer sessions only.
-        """
-        mock_pb = mock_pocketbase
-        mock_pb.collection.return_value.get_full_list.return_value = []
-
-        with patch("api.routers.metrics.pb", mock_pb):
-            # Should accept session_types parameter without error
-            response = client.get("/api/metrics/comparison?year_a=2025&year_b=2026&session_types=main,embedded,ag")
-            assert response.status_code == 200
-
-    def test_comparison_endpoint_has_session_types_parameter(self) -> None:
-        """Test that comparison endpoint declares session_types parameter.
-
-        The endpoint function signature should include session_types parameter
-        for filtering both years to summer sessions only.
-        """
-        import inspect
-
-        from api.routers.metrics import get_comparison_metrics
-
-        sig = inspect.signature(get_comparison_metrics)
-        param_names = list(sig.parameters.keys())
-
-        # This test will FAIL until we add session_types parameter to comparison endpoint
-        assert "session_types" in param_names, "session_types parameter should be added to get_comparison_metrics"
 
 
 # ============================================================================

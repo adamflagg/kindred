@@ -2,7 +2,7 @@
 Metrics Router - Registration and retention metrics endpoints.
 
 This router provides endpoints for analyzing historical registration data,
-retention rates, and year-over-year comparisons.
+retention rates, and historical trends.
 """
 
 import os
@@ -13,7 +13,6 @@ from fastapi import APIRouter, Depends, Query
 from api.constants.sync_job_writes import sync_writes_any
 from api.services.aid_sync_inputs import AID_SYNC_INPUT_TABLES, schedule_aid_warm
 from api.services.cancellation_service import CancellationService
-from api.services.comparison_service import ComparisonService
 from api.services.day1_service import Day1Service
 from api.services.drilldown_service import DrilldownService
 from api.services.financial_aid_development_repository import DEVELOPMENT_HISTORY_TABLES
@@ -47,7 +46,6 @@ from ..schemas.day1 import Day1Response
 from ..schemas.forecast import ForecastResponse, WeekOption
 from ..schemas.metrics import (
     CancellationMetricsResponse,
-    ComparisonMetricsResponse,
     DrilldownAttendee,
     HistoricalTrendsResponse,
     RegistrationMetricsResponse,
@@ -180,43 +178,6 @@ async def get_registration_metrics(
     service = RegistrationService(repository)
     result = await service.calculate_registration(year, type_filter, status_filter, session_cm_id, duration=duration)
     metrics_cache.set("registration", result, **cache_params)
-    return result
-
-
-# ============================================================================
-# Comparison Endpoint
-# ============================================================================
-
-
-@router.get("/comparison", response_model=ComparisonMetricsResponse)
-async def get_comparison_metrics(
-    year_a: int = Query(..., description="First year to compare", ge=2000, le=2100),
-    year_b: int = Query(..., description="Second year to compare", ge=2000, le=2100),
-    session_types: str | None = Query(
-        "main,embedded,ag,quest",
-        description="Comma-separated session types to filter (default: summer camp sessions)",
-    ),
-    user: AuthUser = Depends(get_current_user),
-) -> ComparisonMetricsResponse:
-    """Get year-over-year comparison metrics.
-
-    Compares total enrollment, gender distribution, and grade distribution
-    between two years. Filters to summer camp sessions by default.
-    """
-    cache_params = {"year_a": year_a, "year_b": year_b, "session_types": session_types}
-    cached: ComparisonMetricsResponse | None = metrics_cache.get("comparison", **cache_params)
-    if cached is not None:
-        return cached
-
-    type_filter = session_types.split(",") if session_types else None
-    repository = _create_repository()
-    service = ComparisonService(repository)
-    result = await service.calculate_comparison(
-        year_a=year_a,
-        year_b=year_b,
-        session_types=type_filter,
-    )
-    metrics_cache.set("comparison", result, **cache_params)
     return result
 
 

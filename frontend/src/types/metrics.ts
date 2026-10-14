@@ -40,12 +40,6 @@ export interface YearsAtCampBreakdown {
   percentage: number
 }
 
-export interface SessionLengthBreakdown {
-  length_category: string
-  count: number
-  percentage: number
-}
-
 export interface SessionInLengthCategory {
   session_name: string
   session_cm_id: number
@@ -204,7 +198,6 @@ export interface RetentionMetrics {
   base_year: number
   compare_year: number
   base_year_total: number
-  compare_year_total: number
   returned_count: number
   overall_retention_rate: number
   by_gender: RetentionByGender[]
@@ -232,7 +225,6 @@ export interface RegistrationMetrics {
   by_gender: GenderBreakdown[]
   by_grade: GradeBreakdown[]
   by_session: SessionBreakdown[]
-  by_session_length: SessionLengthBreakdown[]
   by_years_at_camp: YearsAtCampBreakdown[]
   new_vs_returning: NewVsReturning
   // Demographic breakdowns
@@ -245,24 +237,6 @@ export interface RegistrationMetrics {
   by_gender_by_session_length?: GenderBySessionLengthBreakdown[]
   by_summer_years?: SummerYearsBreakdown[]
   by_first_summer_year?: FirstSummerYearBreakdown[]
-}
-
-export interface YearSummary {
-  year: number
-  total: number
-  by_gender: GenderBreakdown[]
-  by_grade: GradeBreakdown[]
-}
-
-export interface ComparisonDelta {
-  total_change: number
-  percentage_change: number
-}
-
-export interface ComparisonMetrics {
-  year_a: YearSummary
-  year_b: YearSummary
-  delta: ComparisonDelta
 }
 
 // Historical trends types
@@ -341,22 +315,6 @@ export interface YearEnrollment {
 }
 
 // Retention trends types (3-year view)
-export interface RetentionTrendValue {
-  from_year: number
-  to_year: number
-  retention_rate: number
-}
-
-export interface RetentionTrendGenderBreakdown {
-  gender: string
-  values: RetentionTrendValue[]
-}
-
-export interface RetentionTrendGradeBreakdown {
-  grade: number | null
-  values: RetentionTrendValue[]
-}
-
 export interface RetentionTrendYear {
   from_year: number
   to_year: number
@@ -370,10 +328,6 @@ export interface RetentionTrendYear {
 
 export interface RetentionTrendsResponse {
   years: RetentionTrendYear[]
-  avg_retention_rate: number
-  trend_direction: 'improving' | 'declining' | 'stable'
-  by_gender_grouped?: RetentionTrendGenderBreakdown[]
-  by_grade_grouped?: RetentionTrendGradeBreakdown[]
   enrollment_by_year?: YearEnrollment[]
 }
 

@@ -8,7 +8,6 @@ import { queryKeys, syncDataOptions } from '../utils/queryKeys'
 import type {
   RetentionMetrics,
   RegistrationMetrics,
-  ComparisonMetrics,
   HistoricalTrendsResponse,
   WaitlistMetrics,
   CancellationMetrics,
@@ -145,45 +144,6 @@ export function useRegistrationMetrics(year: number, options?: RegistrationFilte
       return response.json()
     },
     enabled: year > 0 && !isAuthLoading,
-    placeholderData: keepPreviousData, // Keep showing old data during filter changes
-    ...syncDataOptions,
-  })
-}
-
-/**
- * Fetch comparison metrics between two years.
- */
-export function useComparisonMetrics(yearA: number, yearB: number, options?: MetricsFilterOptions) {
-  const { fetchWithAuth, isAuthLoading } = useApiWithAuth()
-
-  return useQuery({
-    queryKey: queryKeys.comparison(
-      yearA,
-      yearB,
-      options?.sessionTypes,
-      options?.sessionCmId,
-      options?.duration
-    ),
-    queryFn: async (): Promise<ComparisonMetrics> => {
-      const params = new URLSearchParams({
-        year_a: yearA.toString(),
-        year_b: yearB.toString(),
-      })
-      // Backend comparison endpoint only supports session_types today.
-      // sessionCmId/duration are accepted in the type for pattern consistency
-      // but not sent until the backend adds support.
-      if (options?.sessionTypes) {
-        params.set('session_types', options.sessionTypes)
-      }
-
-      const response = await fetchWithAuth(`/api/metrics/comparison?${params}`)
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}))
-        throw new Error(error.detail ?? 'Failed to fetch comparison metrics')
-      }
-      return response.json()
-    },
-    enabled: yearA > 0 && yearB > 0 && !isAuthLoading,
     placeholderData: keepPreviousData, // Keep showing old data during filter changes
     ...syncDataOptions,
   })

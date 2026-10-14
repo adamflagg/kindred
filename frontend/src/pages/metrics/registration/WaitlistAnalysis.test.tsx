@@ -57,7 +57,6 @@ vi.mock('../../../hooks/useMetrics', async (importOriginal) => {
     ...actual,
     useRegistrationMetrics: vi.fn(() => ({ data: null, isLoading: false, error: null })),
     useRetentionMetrics: vi.fn(() => ({ data: null, isLoading: false, error: null })),
-    useComparisonMetrics: vi.fn(() => ({ data: null, isLoading: false, error: null })),
     useHistoricalTrends: vi.fn(() => ({ data: null, isLoading: false, error: null })),
     useWaitlistMetrics: (...args: unknown[]) => mockUseWaitlistMetrics(...args),
   }

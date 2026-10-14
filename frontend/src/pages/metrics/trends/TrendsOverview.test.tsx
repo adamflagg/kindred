@@ -48,8 +48,6 @@ const mockRetentionTrends = {
         by_grade: [],
       },
     ],
-    avg_retention_rate: 0.65,
-    trend_direction: 'stable',
     enrollment_by_year: [],
   },
   isLoading: false,

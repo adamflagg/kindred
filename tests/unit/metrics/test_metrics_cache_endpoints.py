@@ -508,7 +508,6 @@ def _make_retention_response(
         base_year=base_year,
         compare_year=compare_year,
         base_year_total=100,
-        compare_year_total=120,
         returned_count=80,
         overall_retention_rate=0.8,
         by_gender=[],
@@ -531,7 +530,6 @@ def _make_registration_response(year: int = 2026) -> RegistrationMetricsResponse
         by_gender=[],
         by_grade=[],
         by_session=[],
-        by_session_length=[],
         by_years_at_camp=[],
         new_vs_returning=NewVsReturning(
             new_count=50,
@@ -548,9 +546,5 @@ def _make_retention_trends_response() -> RetentionTrendsResponse:
 
     return RetentionTrendsResponse(
         years=[],
-        avg_retention_rate=0.8,
-        trend_direction="stable",
-        by_gender_grouped=[],
-        by_grade_grouped=[],
         enrollment_by_year=[],
     )

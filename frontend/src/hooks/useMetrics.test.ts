@@ -1,7 +1,7 @@
 /**
  * Tests for useMetrics hooks and MetricsFilterOptions type
  *
- * TDD: Tests for #567 (mutual exclusivity) and #562 (useComparisonMetrics options)
+ * TDD: Tests for #567 (mutual exclusivity)
  * written before implementation.
  */
 import { describe, it, expect, assertType } from 'vitest'
@@ -167,26 +167,5 @@ describe('metricsFilter helper', () => {
     })
     expect(result.sessionCmId).toBe(1000)
     expect(result).not.toHaveProperty('duration')
-  })
-})
-
-describe('useComparisonMetrics options (#562)', () => {
-  it('should include filter params in comparison query key', async () => {
-    const { queryKeys } = await import('../utils/queryKeys')
-    const key = queryKeys.comparison(2025, 2026)
-    const keyWithTypes = queryKeys.comparison(2025, 2026, 'main,embedded')
-
-    // Without options, key should be base
-    expect(key).toEqual(['metrics', 'comparison', 2025, 2026, undefined, undefined, undefined])
-    // With sessionTypes, key should include it
-    expect(keyWithTypes).toEqual([
-      'metrics',
-      'comparison',
-      2025,
-      2026,
-      'main,embedded',
-      undefined,
-      undefined,
-    ])
   })
 })

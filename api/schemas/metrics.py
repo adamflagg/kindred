@@ -1,7 +1,7 @@
 """
 Pydantic schemas for metrics API endpoints.
 
-Defines response models for retention, registration, and comparison metrics.
+Defines response models for retention, registration, and trends metrics.
 """
 
 from pydantic import BaseModel, Field
@@ -49,14 +49,6 @@ class YearsAtCampBreakdown(BaseModel):
     """Breakdown of metrics by years at camp."""
 
     years: int = Field(description="Number of years at camp")
-    count: int = Field(description="Number of campers")
-    percentage: float = Field(description="Percentage of total")
-
-
-class SessionLengthBreakdown(BaseModel):
-    """Breakdown of metrics by session length category."""
-
-    length_category: str = Field(description="Session length (1-week, 2-week, 3-week)")
     count: int = Field(description="Number of campers")
     percentage: float = Field(description="Percentage of total")
 
@@ -306,7 +298,6 @@ class RetentionMetricsResponse(BaseModel):
     base_year: int = Field(description="Base year for comparison")
     compare_year: int = Field(description="Comparison year")
     base_year_total: int = Field(description="Total enrolled in base year")
-    compare_year_total: int = Field(description="Total enrolled in compare year")
     returned_count: int = Field(description="Number who returned from base year")
     overall_retention_rate: float = Field(description="Overall retention rate (0-1)")
 
@@ -352,7 +343,6 @@ class RegistrationMetricsResponse(BaseModel):
     by_gender: list[GenderBreakdown] = Field(description="Enrollment by gender")
     by_grade: list[GradeBreakdown] = Field(description="Enrollment by grade")
     by_session: list[SessionBreakdown] = Field(description="Enrollment by session")
-    by_session_length: list[SessionLengthBreakdown] = Field(description="Enrollment by session length")
     by_years_at_camp: list[YearsAtCampBreakdown] = Field(description="Enrollment by years at camp")
     new_vs_returning: NewVsReturning = Field(description="New vs returning breakdown")
     # New breakdowns (computed from persons.school/address_city/synagogue)
@@ -375,35 +365,6 @@ class RegistrationMetricsResponse(BaseModel):
     by_first_summer_year: list[FirstSummerYearBreakdown] = Field(
         default_factory=list, description="Enrollment by first summer year (cohort analysis)"
     )
-
-
-# ============================================================================
-# Comparison Metrics
-# ============================================================================
-
-
-class YearSummary(BaseModel):
-    """Summary metrics for a single year."""
-
-    year: int = Field(description="Year")
-    total: int = Field(description="Total enrolled")
-    by_gender: list[GenderBreakdown] = Field(description="By gender")
-    by_grade: list[GradeBreakdown] = Field(description="By grade")
-
-
-class ComparisonDelta(BaseModel):
-    """Delta between two years."""
-
-    total_change: int = Field(description="Change in total enrollment")
-    percentage_change: float = Field(description="Percentage change")
-
-
-class ComparisonMetricsResponse(BaseModel):
-    """Response model for comparison metrics endpoint."""
-
-    year_a: YearSummary = Field(description="First year summary")
-    year_b: YearSummary = Field(description="Second year summary")
-    delta: ComparisonDelta = Field(description="Change between years")
 
 
 # ============================================================================
@@ -514,28 +475,6 @@ class YearEnrollment(BaseModel):
 # ============================================================================
 
 
-class RetentionTrendValue(BaseModel):
-    """A single retention rate value for a year transition."""
-
-    from_year: int = Field(description="Base year")
-    to_year: int = Field(description="Compare year")
-    retention_rate: float = Field(description="Retention rate (0-1)")
-
-
-class RetentionTrendGenderBreakdown(BaseModel):
-    """Gender retention across multiple year transitions."""
-
-    gender: str = Field(description="Gender (M, F, or other)")
-    values: list[RetentionTrendValue] = Field(description="Retention for each year transition")
-
-
-class RetentionTrendGradeBreakdown(BaseModel):
-    """Grade retention across multiple year transitions."""
-
-    grade: int | None = Field(description="Grade level")
-    values: list[RetentionTrendValue] = Field(description="Retention for each year transition")
-
-
 class RetentionTrendYear(BaseModel):
     """Retention metrics for a single year transition."""
 
@@ -553,15 +492,6 @@ class RetentionTrendsResponse(BaseModel):
     """Response model for retention trends endpoint (3-year view)."""
 
     years: list[RetentionTrendYear] = Field(description="Retention data for each year transition")
-    avg_retention_rate: float = Field(description="Average retention rate across all transitions")
-    trend_direction: str = Field(description="Trend direction: 'improving', 'declining', or 'stable'")
-    # Optional: grouped breakdowns for charts
-    by_gender_grouped: list[RetentionTrendGenderBreakdown] = Field(
-        default_factory=list, description="Gender retention grouped across years"
-    )
-    by_grade_grouped: list[RetentionTrendGradeBreakdown] = Field(
-        default_factory=list, description="Grade retention grouped across years"
-    )
     # Enrollment counts per year for 3-year comparison charts
     enrollment_by_year: list[YearEnrollment] = Field(
         default_factory=list, description="Enrollment counts per year for 3-year comparison"

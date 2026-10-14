@@ -191,7 +191,6 @@ class TestRetentionServiceCalculateRetention:
         assert result.base_year == 2025
         assert result.compare_year == 2026
         assert result.base_year_total == 5
-        assert result.compare_year_total == 4
         assert result.returned_count == 3
         assert result.overall_retention_rate == pytest.approx(0.6)  # 3/5
 
@@ -335,7 +334,7 @@ class TestRetentionServiceCalculateRetention:
 
     @pytest.mark.asyncio
     async def test_compare_year_excludes_non_matching_session_types(self) -> None:
-        """compare_year_total excludes attendees whose session type doesn't match filter."""
+        """returned_count ignores compare-year attendees whose session type does not match the filter."""
         from api.services.retention_service import RetentionService
 
         mock_repo = AsyncMock()
@@ -397,7 +396,6 @@ class TestRetentionServiceCalculateRetention:
         # Base year: 2 campers in main sessions
         assert result.base_year_total == 2
         # Compare year: only 2 in main sessions (family camp excluded)
-        assert result.compare_year_total == 2
         # Person 1 returned
         assert result.returned_count == 1
 
@@ -464,7 +462,6 @@ class TestRetentionServiceCalculateRetention:
         # Only persons 1 and 2 should be counted (base year)
         assert result.base_year_total == 2
         # Compare year: person 5 excluded (different cm_id)
-        assert result.compare_year_total == 2
         assert result.returned_count == 2
 
     @pytest.mark.asyncio
@@ -522,7 +519,6 @@ class TestRetentionServiceCalculateRetention:
         )
 
         # Compare year should only count person 1 (cm_id=1000), not person 3 (cm_id=1001)
-        assert result.compare_year_total == 1
         assert result.returned_count == 1
 
     @pytest.mark.asyncio
@@ -603,7 +599,6 @@ class TestRetentionServiceCalculateRetention:
         # Person 2 should NOT be included (Session 2 is a different session)
         assert result.base_year_total == 1
         # Compare year: person 1 in Taste of Camp 2 (cm_id=2000)
-        assert result.compare_year_total == 1
         assert result.returned_count == 1
 
     @pytest.mark.asyncio

@@ -10,7 +10,6 @@ import {
   transformGenderData,
   transformGradeData,
   transformSessionData,
-  transformSessionLengthData,
   transformSummerYearsData,
   transformFirstSummerYearData,
   transformNewVsReturningData,
@@ -178,26 +177,6 @@ describe('transformSessionData', () => {
     expect(result[0]!.name).toBe('Taste of Camp 1')
     expect(result[1]!.name).toBe('Taste of Camp 2')
     expect(result[2]!.name).toBe('Session 2')
-  })
-})
-
-describe('transformSessionLengthData', () => {
-  it('transforms session length breakdown to chart data', () => {
-    const input = [
-      { length_category: '2-week', count: 80, percentage: 80 },
-      { length_category: '4-week+', count: 20, percentage: 20 },
-    ]
-
-    const result = transformSessionLengthData(input)
-
-    expect(result).toEqual([
-      { name: '2-week', value: 80, percentage: 80 },
-      { name: '4-week+', value: 20, percentage: 20 },
-    ])
-  })
-
-  it('returns empty array for undefined input', () => {
-    expect(transformSessionLengthData(undefined)).toEqual([])
   })
 })
 
