@@ -67,7 +67,7 @@ BunkRequest → saved to PocketBase bunk_requests table
 3. Query params control chaining:
    - `run_sync=true` triggers Go CSV sync after upload
    - `run_process_requests=true` chains Python processing after sync completes
-   - `year` overrides the default year from `CAMPMINDER_SEASON_ID`
+   - `year` overrides the default year (the primary season; `CAMPMINDER_SEASON_ID` overrides it)
 
 ---
 
@@ -97,7 +97,7 @@ Multipart POST received
     │   └─ "First Name" (required)
     │
     ├─ determineUploadYear()
-    │   ├─ Default: from CAMPMINDER_SEASON_ID env var
+    │   ├─ Default: the primary season (CAMPMINDER_SEASON_ID overrides)
     │   └─ Override: ?year= query param (2017-2050 range)
     │
     ├─ saveCSVWithBackup()

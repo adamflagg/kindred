@@ -20,7 +20,7 @@ Every record synced from CampMinder has two IDs:
 | `person` | relation | PocketBase relation field pointing to persons table (resolved from CM ID) |
 | `session` | relation | PocketBase relation field pointing to camp_sessions table |
 | `bunk` | relation | PocketBase relation field pointing to bunks table |
-| `year` | int | Season/year identifier (from `CAMPMINDER_SEASON_ID`) |
+| `year` | int | Season/year identifier (the primary season, or N−1; see `sync/year.go`) |
 
 **Pattern:** Data fields store CM IDs (`person_id = 12345`). Relation fields store PB IDs (`person = "abc123def456789"`). The relation fields are populated by resolving CM IDs at write time.
 

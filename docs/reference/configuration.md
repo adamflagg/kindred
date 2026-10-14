@@ -19,7 +19,9 @@ The `.env` file contains sensitive configuration and API keys. Copy `.env.exampl
 # Required: CampMinder API credentials
 CAMPMINDER_API_KEY=your-api-key-here
 CAMPMINDER_CLIENT_ID=your-client-id
-CAMPMINDER_SEASON_ID=current-season-id  # e.g., 159193 for 2025
+
+# Optional: override the primary season (default: rolls over on Oct 15 Pacific)
+# CAMPMINDER_SEASON_ID=2026
 
 # Optional: Override default endpoints
 CAMPMINDER_API_BASE_URL=https://api.campminder.com

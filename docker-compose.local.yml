@@ -37,6 +37,8 @@ services:
       - CAMPMINDER_API_KEY=${CAMPMINDER_API_KEY:-}
       - CAMPMINDER_PRIMARY_KEY=${CAMPMINDER_PRIMARY_KEY:-}
       - CAMPMINDER_CLIENT_ID=${CAMPMINDER_CLIENT_ID:-}
+      # Optional override of the primary season (it rolls over by itself on Oct 15 Pacific);
+      # this local-dev default pins it.
       - CAMPMINDER_SEASON_ID=${CAMPMINDER_SEASON_ID:-2025}
       - SKIP_CAMPMINDER=${SKIP_CAMPMINDER:-false}
       # Kindred's service superuser (email only), excluded from the admin audit log.

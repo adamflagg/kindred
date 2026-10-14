@@ -66,7 +66,7 @@ the deriving (`cadenceQueue`, `inPhaseWithTrigger`, `jobsWithTrigger`, `hasTrigg
 | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `InitializeSyncServices()`             | Register service with `RegisterService()` in dependency order                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `RunSyncWithOptions()` re-registration | Add `NewXxxSync(o.app, yearClient)` call in historical re-registration block (~line 1966)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `syncJobMeta`                          | Add ONE row: `{ID, Phase, Description, Cadences, Triggers, CurrentYearOnly, Gate}` (plus `Base`/`Scope` for a scoped variant — see scope.go). `Cadences` puts the job on the crons it should run on (`CadenceDaily`, `CadenceHourly`, `CadenceWeeklyGlobal`, `CadenceWeeklyCustomValues` — a bitset, so a job can carry more than one). `Triggers` says which operator-facing entry points may start it (`TriggerIndividualRoute`, `TriggerPhaseRun`, `TriggerFullRun`). `CurrentYearOnly: true` excludes it from a historical replay. `Gate` is an optional `func() bool` environment check (see `process_requests`' `IS_DOCKER` gate or `multi_workbook_export`'s `google.IsEnabled` for the pattern). Physical position in the slice matters too — see §9 below. |
+| `syncJobMeta`                          | Add ONE row: `{ID, Phase, Description, Cadences, Triggers, SyncedSeasonsOnly, Gate}` (plus `Base`/`Scope` for a scoped variant — see scope.go). `Cadences` puts the job on the crons it should run on (`CadenceDaily`, `CadenceHourly`, `CadenceWeeklyGlobal`, `CadenceWeeklyCustomValues` — a bitset, so a job can carry more than one). `Triggers` says which operator-facing entry points may start it (`TriggerIndividualRoute`, `TriggerPhaseRun`, `TriggerFullRun`). `SyncedSeasonsOnly: true` excludes it from a historical replay. `Gate` is an optional `func() bool` environment check (see `process_requests`' `IS_DOCKER` gate or `multi_workbook_export`'s `google.IsEnabled` for the pattern). Physical position in the slice matters too — see §9 below. |
 
 **Common mistake**: Registering the service but leaving its `syncJobMeta` row with no `Cadences`
 and no `Triggers` set — `TestRegistryIntegrity` (`registry_test.go`) fails immediately ("no
@@ -130,11 +130,11 @@ base**, or its writes are dropped from the export skip-optimisation (#2491).
 
 `TestRunSyncWithOptionsPhaseOrdering` pins the unified historical job list **exhaustively** via
 its `expectedOrder` slice (`isCurrentYear=false`). A new job carrying `TriggerFullRun` and no
-`CurrentYearOnly` still fails the suite with a job-count mismatch (`expected 22 jobs, got 23`)
+`SyncedSeasonsOnly` still fails the suite with a job-count mismatch (`expected 22 jobs, got 23`)
 until it is added there, in the position `GetDefaultUnifiedSyncJobs` derives for it.
 
 Unlike before this branch, this is **not** a registration site — the `syncJobMeta` row's
-`Triggers`/`CurrentYearOnly` bits are what actually make the job run in a unified sync; this
+`Triggers`/`SyncedSeasonsOnly` bits are what actually make the job run in a unified sync; this
 test only asserts the derived result stays what it was. It is the same closed-suite pattern as
 `TestDailyQueueDerivation` and `TestUnifiedRunDerivation` (`registry_test.go`) use for the
 daily cron and the full run: skipping the update fails the suite, but nothing here wires
@@ -179,9 +179,9 @@ For jobs with other custom parameters (session, etc.), similar pattern applies.
 
 ### 7. Historical Sync Support (if year-specific)
 
-> **Note**: All year-scoped sync types are automatically available for historical syncs unless marked with `currentYearOnly: true` in syncTypes.ts. No separate array registration needed.
+> **Note**: All year-scoped sync types are automatically available for historical syncs unless marked with `syncedSeasonsOnly: true` in syncTypes.ts. No separate array registration needed.
 
-| Consideration           | When to use `currentYearOnly: true`                                                    |
+| Consideration           | When to use `syncedSeasonsOnly: true`                                                    |
 | ----------------------- | -------------------------------------------------------------------------------------- |
 | Current-year-only jobs  | Jobs like `bunk_requests` and `process_requests` that only make sense for current year |
 | Normal year-scoped jobs | Most jobs don't need this flag and work for any year                                   |
@@ -240,7 +240,7 @@ After implementation, verify ALL of these work:
 - [ ] Job appears in Admin → Sync tab with correct icon/color
 - [ ] Individual "Run" button triggers the sync
 - [ ] Unified sync (current year) includes the job
-- [ ] Unified sync (historical year) includes the job (unless `currentYearOnly: true`)
+- [ ] Unified sync (historical year) includes the job (unless `syncedSeasonsOnly: true`)
 - [ ] Status shows created/updated/errors after completion
 
 ### Common Mistakes (Lessons Learned)
@@ -374,17 +374,16 @@ come from a migration, because the camp's own descriptions name the camp.
 ### Financial transactions: rolling seasons and the one-off backfill
 
 The daily cron's `financial_transactions` re-syncs seasons **N−1, N and N+1** around
-`CAMPMINDER_SEASON_ID`, one `transactiondetails` call per season with no post-date bounds
+the primary season, one `transactiondetails` call per season with no post-date bounds
 (campership design §6.1). `year` is CampMinder's per-row season. A season whose response is
 empty or far shorter than what is stored is **not swept**. The run fails with
 "orphan sweep refused" instead. A historical replay and the `?year=` route sync one season only.
 
-> **Owner note:** FA answers sync only for the configured season, `CAMPMINDER_SEASON_ID`.
-> Every custom-values fetch sends that season to CampMinder, and the daily pass, the weekly
-> full pass and the FA transform all run for it alone. So **next season's FA answers are not
-> synced at all** until the setting is switched to it. Switch it by the time FA applications
-> open (around mid-November). Switching it moves **every** season-scoped sync to the new
-> season, not just FA.
+> **Owner note:** FA answers sync for the two synced seasons only (N and N−1). Every
+> custom-values fetch sends its season to CampMinder. The primary season rolls over by itself
+> on Oct 15 Pacific, so FA answers for the next season start syncing then, ahead of mid-November
+> FA applications. `CAMPMINDER_SEASON_ID`, when set, overrides the primary and moves **every**
+> season-scoped sync with it, not just FA.
 
 **Backfill 2017–2026 (once, after the SP1 migrations deploy).** Use the existing route,
 **one season at a time**. The route runs the season in a background goroutine that is not
@@ -443,5 +442,5 @@ done
 `docker logs --since` accepts this RFC3339 form. The `year=$y([[:space:]]|$)` anchor stops
 `year=201` from matching `year=2017` — `year` is always followed by a space (another `key=value`
 field) or end of line in both log lines (`api.go`'s `slog.Error`/`slog.Info` calls). The route
-accepts seasons up to `max(calendar year, CAMPMINDER_SEASON_ID) + 1`, so N+1 is still accepted
+accepts seasons up to `max(calendar year, primary season) + 1`, so N+1 is still accepted
 after the season is switched ahead of the calendar in November; later seasons are refused.

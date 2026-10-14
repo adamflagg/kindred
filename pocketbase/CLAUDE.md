@@ -77,7 +77,7 @@ Fields use British spelling: `cancelled_count`, `cancelled_at`. Allowed via `ext
 
 All CampMinder data tables include a required `year` field. **Cross-table relationships use CampMinder IDs, never PocketBase IDs.** Unique indexes include `year` (e.g., `person_id, year, session`).
 
-Sync filters by `CAMPMINDER_SEASON_ID` from `.env`. Frontend year dropdown is display-only.
+Sync covers the primary season and the one before it (N, N−1). The primary rolls over every Oct 15 Pacific (`sync/year.go`); `CAMPMINDER_SEASON_ID` is an optional override. Frontend year dropdown is display-only.
 
 ## Build & test
 
@@ -149,7 +149,7 @@ Log people by CampMinder ID or PocketBase id, never by name: production logs sit
    (derived tables), then `process_requests`. **`session_groups` runs first** — `sessions` reads it for the
    group-ID mapping, so a job inserted ahead of it sees no groups. Full phase table:
    `docs/architecture/sync-layer.md` § "Sync Dependencies".
-2. **Year-aware:** sync filters by `CAMPMINDER_SEASON_ID` env var (set in `.env`; see "Year invariant" above)
+2. **Year-aware:** sync covers the primary season and the one before it (N, N−1). The primary rolls over every Oct 15 Pacific (`sync/year.go`); `CAMPMINDER_SEASON_ID` is an optional override (see "Year invariant" above)
 3. **Sessions 1–4 run sequentially** with independent history
 4. **WAL checkpoint required** after database modifications — this scopes to the Go sync layer (e.g. `forceWALCheckpoint()` in `family_camp_derived.go`); migrations don't need their own, since `runHistorySync` in `main.go` checkpoints on every boot after migrations apply (see `pb_migrations/*.js` in `.coderabbit.yaml`). The rationale is durability across a `docker stop`/`start`, not reader visibility. **One deliberate exception:** `sync_runs` (`sync/sync_runs.go`) — a checkpoint on every one of ~100 writes a day is not worth what it buys. PocketBase connects `synchronous=NORMAL`, so the checkpoint is the WAL's fsync point: a committed row already survives a process kill and a `docker stop`, and the checkpoint would only close a **host power loss**. That gap is self-closing — the next job's own checkpoint flushes this row seconds later in a sweep, the next hourly run within the hour, and boot checkpoints too — so only the LAST row of a chain is exposed, for at most an hour. Visibility does not need it either: PocketBase reads its own writes through its own connection. **Reopened and re-affirmed in kindred#2617**, which added the first reader (`fetch_session_scoped_sync_ends`, driving the weekend "Housing synced" line) — #2297 said to revisit when one appeared. It holds because that reader is an *HTTP client of PocketBase*, not a second process opening `data.db`; **a reader that opens the file directly would break the visibility half and is grounds to reopen it again.** The residual edge is a host power loss, which can only make a weekend's freshness understate itself until the next covering run. Nothing else in the sync layer is exempt
 5. **Family-camp data syncs alongside summer data** — summer-camp views must filter `session_type` against the configured valid-summer-session-types list
