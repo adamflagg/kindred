@@ -11,7 +11,6 @@ import type {
   GradeBreakdown,
   NewVsReturning,
   SessionBreakdown,
-  SessionLengthBreakdown,
   SummerYearsBreakdown,
 } from '../types/metrics'
 import { sessionName } from './sessionName'
@@ -89,17 +88,6 @@ export function transformSessionData(
     value: s.count,
     percentage: s.utilization ?? 0,
     id: String(s.session_cm_id),
-  }))
-}
-
-export function transformSessionLengthData(
-  data: SessionLengthBreakdown[] | undefined
-): ChartDataPoint[] {
-  if (!data?.length) return []
-  return data.map((s) => ({
-    name: s.length_category,
-    value: s.count,
-    percentage: s.percentage,
   }))
 }
 

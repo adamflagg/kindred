@@ -26,10 +26,9 @@ from api.schemas.metrics import (
 from api.utils.session_metrics import (
     SUMMER_TEEN_TYPES,
     compute_summer_metrics,
+    fetch_summer_windows,
     filter_attendees_by_session,
-    find_ag_sessions_for_parent,
-    resolve_cohort_session_ids,
-    resolve_duration_sessions,
+    resolve_scope_ids,
 )
 
 from .breakdown_calculator import compute_breakdown, compute_registration_breakdown, safe_rate
@@ -94,27 +93,25 @@ class RetentionTrendsService:
         # Fetch data for all years in parallel
         data_by_year = await self._fetch_all_years_data(years)
 
-        # Apply filters to attendees using cohort-id gating.
-        # resolve_cohort_session_ids handles type membership AND the summer-window
-        # gate for teen types (scit/tli), so off-season teen sessions are excluded.
+        # The picked session's name, from the newest year that has its cm_id, so a
+        # renamed session is found in earlier years (#3208 row 9).
+        reference_name: str | None = None
+        if session_cm_id is not None:
+            for year in reversed(years):
+                picked = data_by_year[year]["sessions"].get(session_cm_id)
+                if picked is not None:
+                    reference_name = getattr(picked, "name", None)
+                    break
+
+        # Scope each year through the one session resolver: type membership, the
+        # teen summer window, duration, and the picked session (matched by id, alias
+        # or name, with its AG cabins).
         for year in years:
             year_data = data_by_year[year]
             attendees = year_data["attendees"]
             sessions = year_data["sessions"]
 
-            # Resolve the cohort session IDs (summer-window-gated for teen types).
-            cohort_ids = resolve_cohort_session_ids(sessions, session_types)
-
-            # Further restrict to a specific session if requested, keeping the
-            # session's AG children (separate cm_ids) so their campers aren't dropped.
-            if session_cm_id is not None:
-                selected_ids = {session_cm_id, *find_ag_sessions_for_parent(sessions, session_cm_id)}
-                cohort_ids &= selected_ids
-
-            # Intersect with duration filter when present.
-            if duration:
-                duration_session_ids = resolve_duration_sessions(sessions, duration)
-                cohort_ids = cohort_ids & duration_session_ids
+            cohort_ids = resolve_scope_ids(sessions, session_types, session_cm_id, duration, reference_name)
 
             attendees = filter_attendees_by_session(attendees, None, session_cm_ids=cohort_ids)
 
@@ -129,13 +126,6 @@ class RetentionTrendsService:
             years, data_by_year, effective_pipeline=effective_pipeline, scope_has_teens=scope_has_teens
         )
 
-        # Calculate average retention rate
-        rates = [y.retention_rate for y in retention_years]
-        avg_rate = sum(rates) / len(rates) if rates else 0.0
-
-        # Determine trend direction
-        trend_direction = self._calculate_trend_direction(rates)
-
         # Fetch enrollment history for summer metrics (union of all person IDs)
         all_person_ids: set[int] = set()
         for year in years:
@@ -144,12 +134,12 @@ class RetentionTrendsService:
         enrollment_history = await self.repo.fetch_summer_enrollment_history(all_person_ids, max_year=current_year)
 
         # Compute enrollment_by_year
-        enrollment_by_year = self._compute_enrollment_by_year(years, data_by_year, enrollment_history)
+        history_years = {int(y) for r in enrollment_history if (y := getattr(r, "year", None))}
+        summer_windows = await fetch_summer_windows(self.repo, history_years)
+        enrollment_by_year = self._compute_enrollment_by_year(years, data_by_year, enrollment_history, summer_windows)
 
         return RetentionTrendsResponse(
             years=retention_years,
-            avg_retention_rate=avg_rate,
-            trend_direction=trend_direction,
             enrollment_by_year=enrollment_by_year,
         )
 
@@ -167,9 +157,9 @@ class RetentionTrendsService:
         """
         # Build fetch tasks for all years.
         # Always fetch ALL sessions (None = no type filter) so that
-        # resolve_cohort_session_ids can derive the summer window from main
+        # resolve_scope_ids can derive the summer window from main
         # sessions even in a teen-only scope.  Type filtering is done later
-        # via resolve_cohort_session_ids(sessions, session_types).
+        # via resolve_scope_ids(sessions, session_types, ...).
         fetch_tasks: list[Any] = []
         for year in years:
             fetch_tasks.append(self.repo.fetch_attendees(year))
@@ -301,35 +291,12 @@ class RetentionTrendsService:
             for g, s in sorted(stats.items(), key=lambda x: (x[0] is None, x[0]))
         ]
 
-    def _calculate_trend_direction(self, rates: list[float]) -> str:
-        """Calculate trend direction from retention rates.
-
-        Args:
-            rates: List of retention rates per transition.
-
-        Returns:
-            Trend direction: 'improving', 'declining', or 'stable'.
-        """
-        if len(rates) < 2:
-            return "stable"
-
-        # Compare most recent rate to average of prior rates
-        current = rates[-1]
-        prior_avg = sum(rates[:-1]) / len(rates[:-1])
-        threshold = 0.02  # 2% threshold for "stable"
-
-        if current > prior_avg + threshold:
-            return "improving"
-        elif current < prior_avg - threshold:
-            return "declining"
-        else:
-            return "stable"
-
     def _compute_enrollment_by_year(
         self,
         years: list[int],
         data_by_year: dict[int, dict[str, Any]],
         enrollment_history: list[Any] | None = None,
+        summer_windows: dict[int, tuple[str, str] | None] | None = None,
     ) -> list[YearEnrollment]:
         """Compute enrollment data for each year.
 
@@ -337,6 +304,8 @@ class RetentionTrendsService:
             years: List of years.
             data_by_year: Data for each year.
             enrollment_history: Optional enrollment history for summer metrics.
+            summer_windows: Each history year's summer window, so a teen-only
+                history still has the window for its teen-only years.
 
         Returns:
             List of YearEnrollment objects.
@@ -387,7 +356,9 @@ class RetentionTrendsService:
             if enrollment_history:
                 # Filter history to records up to this year for scoping
                 history_up_to_year = [r for r in enrollment_history if getattr(r, "year", 0) <= year]
-                summer_years_by_person, first_year_by_person = compute_summer_metrics(history_up_to_year, person_ids)
+                summer_years_by_person, first_year_by_person = compute_summer_metrics(
+                    history_up_to_year, person_ids, summer_windows=summer_windows
+                )
 
                 # Aggregate summer years
                 sy_counts: dict[int, int] = {}

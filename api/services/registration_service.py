@@ -21,7 +21,6 @@ from api.schemas.metrics import (
     SchoolBreakdown,
     SessionBreakdown,
     SessionInLengthCategory,
-    SessionLengthBreakdown,
     SessionLengthBySessionBreakdown,
     SummerYearsBreakdown,
     SynagogueBreakdown,
@@ -32,6 +31,7 @@ from api.utils.session_metrics import (
     SESSION_LENGTH_ORDER,
     build_ag_parent_map,
     compute_summer_metrics,
+    fetch_summer_windows,
     filter_attendees_by_session,
     find_ag_sessions_for_parent,
     get_session_from_expand,
@@ -174,7 +174,6 @@ class RegistrationService:
         by_gender = self._compute_gender_breakdown(enrolled_person_ids, persons, total_enrolled)
         by_grade = self._compute_grade_breakdown(enrolled_person_ids, persons, total_enrolled)
         by_session = self._compute_session_breakdown(combined_attendees, sessions, bunk_plans, default_capacity)
-        by_session_length = self._compute_session_length_breakdown(combined_attendees, total_enrolled)
         by_years_at_camp = self._compute_years_at_camp_breakdown(enrolled_person_ids, persons, total_enrolled)
         new_vs_returning = self._compute_new_vs_returning(enrolled_person_ids, persons, total_enrolled)
 
@@ -194,7 +193,11 @@ class RegistrationService:
 
         # Summer enrollment history metrics (uses shared utility)
         enrollment_history = await self.repo.fetch_summer_enrollment_history(enrolled_person_ids, year)
-        summer_years_by_person, first_year_by_person = compute_summer_metrics(enrollment_history, enrolled_person_ids)
+        history_years = {int(y) for r in enrollment_history if (y := getattr(r, "year", None))}
+        summer_windows = await fetch_summer_windows(self.repo, history_years)
+        summer_years_by_person, first_year_by_person = compute_summer_metrics(
+            enrollment_history, enrolled_person_ids, summer_windows=summer_windows
+        )
         by_summer_years = self._build_summer_years_breakdown(summer_years_by_person, total_enrolled)
         by_first_summer_year = self._build_first_summer_year_breakdown(first_year_by_person, total_enrolled)
 
@@ -206,7 +209,6 @@ class RegistrationService:
             by_gender=by_gender,
             by_grade=by_grade,
             by_session=by_session,
-            by_session_length=by_session_length,
             by_years_at_camp=by_years_at_camp,
             new_vs_returning=new_vs_returning,
             by_school=by_school,
@@ -433,29 +435,6 @@ class RegistrationService:
             for sid, count in merged_counts.items()
             if sid in sessions and getattr(sessions.get(sid), "session_type", None) in DISPLAY_SESSION_TYPES
         }
-
-    def _compute_session_length_breakdown(self, attendees: list[Any], total: int) -> list[SessionLengthBreakdown]:
-        """Compute session length breakdown."""
-        length_counts: dict[str, int] = {}
-        for a in attendees:
-            session = get_session_from_expand(a)
-            if session:
-                start_date = getattr(session, "start_date", "") or ""
-                end_date = getattr(session, "end_date", "") or ""
-                length = get_session_length_category(start_date, end_date)
-                length_counts[length] = length_counts.get(length, 0) + 1
-
-        return [
-            SessionLengthBreakdown(
-                length_category=length,
-                count=c,
-                percentage=calculate_percentage(c, total),
-            )
-            for length, c in sorted(
-                length_counts.items(),
-                key=lambda x: SESSION_LENGTH_ORDER.get(x[0], 5),
-            )
-        ]
 
     def _compute_years_at_camp_breakdown(
         self, person_ids: set[int], persons: dict[int, Any], total: int

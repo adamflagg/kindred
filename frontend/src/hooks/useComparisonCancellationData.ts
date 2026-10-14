@@ -6,6 +6,7 @@
  */
 
 import { useCancellationMetrics } from './useMetrics'
+import { useCompareYearFilter } from './useCompareYearFilter'
 import type { MetricsFilterOptions } from './useMetrics'
 
 export function useComparisonCancellationData(
@@ -16,7 +17,9 @@ export function useComparisonCancellationData(
   const primary = useCancellationMetrics(primaryYear, options)
 
   // Pass 0 to disable the query when not comparing (enabled: year > 0)
-  const comparison = useCancellationMetrics(compareYear ?? 0, options)
+  // The picked session's id belongs to the primary year; map it onto the compare year
+  const compareOptions = useCompareYearFilter(primaryYear, compareYear, options)
+  const comparison = useCancellationMetrics(compareYear ?? 0, compareOptions)
 
   return {
     primary,

@@ -8,7 +8,6 @@ import { queryKeys, syncDataOptions } from '../utils/queryKeys'
 import type {
   RetentionMetrics,
   RegistrationMetrics,
-  ComparisonMetrics,
   HistoricalTrendsResponse,
   WaitlistMetrics,
   CancellationMetrics,
@@ -151,53 +150,15 @@ export function useRegistrationMetrics(year: number, options?: RegistrationFilte
 }
 
 /**
- * Fetch comparison metrics between two years.
- */
-export function useComparisonMetrics(yearA: number, yearB: number, options?: MetricsFilterOptions) {
-  const { fetchWithAuth, isAuthLoading } = useApiWithAuth()
-
-  return useQuery({
-    queryKey: queryKeys.comparison(
-      yearA,
-      yearB,
-      options?.sessionTypes,
-      options?.sessionCmId,
-      options?.duration
-    ),
-    queryFn: async (): Promise<ComparisonMetrics> => {
-      const params = new URLSearchParams({
-        year_a: yearA.toString(),
-        year_b: yearB.toString(),
-      })
-      // Backend comparison endpoint only supports session_types today.
-      // sessionCmId/duration are accepted in the type for pattern consistency
-      // but not sent until the backend adds support.
-      if (options?.sessionTypes) {
-        params.set('session_types', options.sessionTypes)
-      }
-
-      const response = await fetchWithAuth(`/api/metrics/comparison?${params}`)
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}))
-        throw new Error(error.detail ?? 'Failed to fetch comparison metrics')
-      }
-      return response.json()
-    },
-    enabled: yearA > 0 && yearB > 0 && !isAuthLoading,
-    placeholderData: keepPreviousData, // Keep showing old data during filter changes
-    ...syncDataOptions,
-  })
-}
-
-/**
  * Fetch historical trends across multiple years.
  * Default: last 5 years (2021-2025).
  *
  * @param options.years - Comma-separated years (e.g., "2021,2022,2023")
  * @param options.sessionTypes - Comma-separated session types (e.g., "main,embedded,ag")
  * @param options.sessionCmId - Filter to specific session by CampMinder ID.
- *                      Uses name-matching across years to show trends
- *                      for the same session across multiple years.
+ *                      The server matches it in each year by cm_id, then
+ *                      alias group, then exact name, so renamed sessions
+ *                      show their earlier years.
  */
 export function useHistoricalTrends(options?: HistoricalFilterOptions) {
   const { fetchWithAuth, isAuthLoading } = useApiWithAuth()

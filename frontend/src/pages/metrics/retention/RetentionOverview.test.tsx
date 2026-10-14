@@ -17,7 +17,6 @@ const mockData: RetentionMetrics = {
   base_year: 2025,
   compare_year: 2026,
   base_year_total: 100,
-  compare_year_total: 90,
   returned_count: 70,
   overall_retention_rate: 0.7,
   by_gender: [],

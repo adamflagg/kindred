@@ -35,8 +35,6 @@ describe('useRetentionTrends includeTeenPipeline', () => {
       ok: true,
       json: async () => ({
         years: [],
-        avg_retention_rate: 0,
-        trend_direction: 'stable',
         enrollment_by_year: [],
       }),
     })
@@ -92,14 +90,10 @@ describe('useRetentionTrends', () => {
       // }
       const expectedDataShape = {
         years: expect.any(Array),
-        avg_retention_rate: expect.any(Number),
-        trend_direction: expect.any(String),
       }
 
       // Verify the expected shape
       expect(expectedDataShape.years).toBeDefined()
-      expect(expectedDataShape.avg_retention_rate).toBeDefined()
-      expect(expectedDataShape.trend_direction).toBeDefined()
     })
 
     it('should accept currentYear as required parameter', () => {
@@ -213,52 +207,9 @@ describe('RetentionTrendsResponse type', () => {
     // Expected structure for the full response
     const expectedShape = {
       years: [], // Array of RetentionTrendYear
-      avg_retention_rate: 0.63,
-      trend_direction: 'improving', // 'improving' | 'declining' | 'stable'
     }
 
     expect(Object.keys(expectedShape)).toContain('years')
-    expect(Object.keys(expectedShape)).toContain('avg_retention_rate')
-    expect(Object.keys(expectedShape)).toContain('trend_direction')
-  })
-
-  it('trend_direction should be one of valid values', () => {
-    const validDirections = ['improving', 'declining', 'stable']
-
-    expect(validDirections).toContain('improving')
-    expect(validDirections).toContain('declining')
-    expect(validDirections).toContain('stable')
-  })
-})
-
-describe('RetentionTrendBreakdown types', () => {
-  it('should have grouped breakdown structure for charts', () => {
-    // For grouped bar charts, breakdowns should have multi-year data
-    const expectedGenderBreakdownShape = {
-      gender: 'M',
-      values: [
-        { from_year: 2024, to_year: 2025, retention_rate: 0.55 },
-        { from_year: 2025, to_year: 2026, retention_rate: 0.6 },
-      ],
-    }
-
-    expect(expectedGenderBreakdownShape.gender).toBe('M')
-    expect(expectedGenderBreakdownShape.values.length).toBe(2)
-    expect(expectedGenderBreakdownShape.values[0]?.from_year).toBe(2024)
-    expect(expectedGenderBreakdownShape.values[1]?.from_year).toBe(2025)
-  })
-
-  it('should have grouped breakdown structure for grade', () => {
-    const expectedGradeBreakdownShape = {
-      grade: 6,
-      values: [
-        { from_year: 2024, to_year: 2025, retention_rate: 0.7 },
-        { from_year: 2025, to_year: 2026, retention_rate: 0.65 },
-      ],
-    }
-
-    expect(expectedGradeBreakdownShape.grade).toBe(6)
-    expect(expectedGradeBreakdownShape.values.length).toBe(2)
   })
 })
 

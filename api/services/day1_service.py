@@ -19,8 +19,8 @@ from api.services.metrics_repository import MetricsRepository
 from api.services.reconstruction import ENROLLMENT_STATUSES, parse_date_only
 from api.utils.session_metrics import (
     SUMMER_TEEN_TYPES,
-    filter_attendees_by_session,
     get_session_from_expand,
+    resolve_scope_ids,
 )
 from bunking.logging_config import get_logger
 
@@ -35,7 +35,13 @@ class Day1Service:
     def __init__(self, repository: MetricsRepository) -> None:
         self.repository = repository
 
-    async def get_day1(self, year: int, session_types: list[str] | None = None) -> Day1Response:
+    async def get_day1(
+        self,
+        year: int,
+        session_types: list[str] | None = None,
+        session_cm_id: int | None = None,
+        duration: str | None = None,
+    ) -> Day1Response:
         """Get Day 1 registration counts for current year + 2 prior years.
 
         Args:
@@ -43,12 +49,22 @@ class Day1Service:
             session_types: Optional list of session types to include
                 (e.g. ``["main", "quest"]``). ``None`` preserves the existing
                 summer behaviour (At Camp + Quest); teens (scit/tli) are counted
-                only when explicitly requested via ``session_types``.
+                whenever the request is scoped (``session_types``, a single
+                session, or a duration).
+            session_cm_id: Optional single session (with its AG cabins). Prior
+                years match it with the session resolver (cm_id, alias group,
+                exact name), so renamed sessions line up; no match counts 0.
+            duration: Optional duration category ("1-week", ...).
         """
+        reference_name: str | None = None
+        if session_cm_id is not None:
+            picked = (await self.repository.fetch_sessions(year)).get(session_cm_id)
+            reference_name = getattr(picked, "name", None) or None
+
         current, prior_1, prior_2 = await asyncio.gather(
-            self._count_year(year, session_types),
-            self._count_year(year - 1, session_types),
-            self._count_year(year - 2, session_types),
+            self._count_year(year, session_types, session_cm_id, duration, reference_name),
+            self._count_year(year - 1, session_types, session_cm_id, duration, reference_name),
+            self._count_year(year - 2, session_types, session_cm_id, duration, reference_name),
         )
         prior_years = [
             Day1YearData(year=year - 1, tiers=prior_1),
@@ -56,7 +72,14 @@ class Day1Service:
         ]
         return Day1Response(year=year, tiers=current, prior_years=prior_years)
 
-    async def _count_year(self, year: int, session_types: list[str] | None = None) -> list[Day1TierData]:
+    async def _count_year(
+        self,
+        year: int,
+        session_types: list[str] | None = None,
+        session_cm_id: int | None = None,
+        duration: str | None = None,
+        reference_name: str | None = None,
+    ) -> list[Day1TierData]:
         """Count Day 1 registrations for a single year.
 
         Single-pass: iterates attendees once, bucketing each into matching tier windows.
@@ -73,12 +96,21 @@ class Day1Service:
         for cm_id, session in sessions.items():
             session_type_map[cm_id] = session.session_type
 
-        # Apply session type filter when specified. Teens (scit/tli) are counted
-        # only when the caller passes an explicit filter; the param-less (None)
-        # path keeps the historical At Camp + Quest summer scope.
-        count_teens = session_types is not None
-        if session_types is not None:
-            attendees = filter_attendees_by_session(attendees, session_types)
+        # Scope through the shared session resolver whenever the caller narrows
+        # anything (types, one session, a duration): summer types only, teen types
+        # gated to the summer window, a pick matched in THIS year and its AG cabins
+        # folded in. The param-less path keeps the historical At Camp + Quest scope.
+        # Teens count whenever the resolver scopes the request, because its scope
+        # includes them: only the param-less path keeps teens out.
+        scoped = session_types is not None or session_cm_id is not None or bool(duration)
+        count_teens = scoped
+        if scoped:
+            scope = resolve_scope_ids(sessions, session_types, session_cm_id, duration, reference_name)
+            attendees = [
+                att
+                for att in attendees
+                if (sess := get_session_from_expand(att)) is not None and int(sess.cm_id) in scope
+            ]
 
         # Pre-compute tier windows
         tier_windows: list[tuple[str, str, str, date, datetime, datetime]] = []

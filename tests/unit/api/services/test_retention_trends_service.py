@@ -112,10 +112,6 @@ class TestRetentionTrendsServiceBasic:
         assert result.years[2].from_year == 2025
         assert result.years[2].to_year == 2026
 
-        # Should have avg_retention_rate and trend_direction
-        assert isinstance(result.avg_retention_rate, float)
-        assert result.trend_direction in ("improving", "declining", "stable")
-
         # Should have enrollment_by_year for all 4 years
         assert len(result.enrollment_by_year) == 4
 
@@ -286,128 +282,6 @@ class TestRetentionTrendsServiceBreakdowns:
         # 4/6 grade 6 returned = 66.67%
         assert grade_dict[6].base_count == 6
         assert grade_dict[6].returned_count == 4
-
-
-# ============================================================================
-# TestRetentionTrendsServiceTrend - Trend direction calculation
-# ============================================================================
-
-
-class TestRetentionTrendsServiceTrend:
-    """Test trend direction calculation."""
-
-    @pytest.fixture
-    def mock_repository(self) -> MagicMock:
-        """Create a mock MetricsRepository."""
-        repo = MagicMock(spec=MetricsRepository)
-        return repo
-
-    @pytest.mark.asyncio
-    async def test_improving_trend(self, mock_repository: MagicMock) -> None:
-        """Test that improving retention is detected."""
-        from api.services.retention_trends_service import RetentionTrendsService
-
-        # 2024: 10 campers, 2025: 5 returned (50%)
-        attendees_2024 = [make_mock_attendee(i, 100) for i in range(1, 11)]
-        persons_2024 = {i: make_mock_person(i, "M") for i in range(1, 11)}
-
-        # 2025: 5 from 2024 + 5 new = 10 total
-        attendees_2025 = [make_mock_attendee(i, 100) for i in [1, 2, 3, 4, 5, 11, 12, 13, 14, 15]]
-        persons_2025 = {i: make_mock_person(i, "M") for i in [1, 2, 3, 4, 5, 11, 12, 13, 14, 15]}
-
-        # 2026: 8 from 2025 returned (80%)
-        attendees_2026 = [make_mock_attendee(i, 100) for i in [1, 2, 3, 11, 12, 13, 14, 15]]
-        persons_2026 = {i: make_mock_person(i, "M") for i in [1, 2, 3, 11, 12, 13, 14, 15]}
-
-        def mock_fetch_attendees(year: int) -> list[Any]:
-            return {2024: attendees_2024, 2025: attendees_2025, 2026: attendees_2026}[year]
-
-        def mock_fetch_persons(year: int) -> dict[int, Any]:
-            return {2024: persons_2024, 2025: persons_2025, 2026: persons_2026}[year]
-
-        mock_repository.fetch_attendees = AsyncMock(side_effect=mock_fetch_attendees)
-        mock_repository.fetch_persons = AsyncMock(side_effect=mock_fetch_persons)
-        mock_repository.fetch_sessions = AsyncMock(return_value={100: make_mock_session(100)})
-
-        service = RetentionTrendsService(mock_repository)
-        result = await service.calculate_retention_trends(
-            current_year=2026,
-            num_years=2,
-        )
-
-        # 2024→2025: 50%, 2025→2026: 80%, trend is improving
-        assert result.trend_direction == "improving"
-
-    @pytest.mark.asyncio
-    async def test_declining_trend(self, mock_repository: MagicMock) -> None:
-        """Test that declining retention is detected."""
-        from api.services.retention_trends_service import RetentionTrendsService
-
-        # 2024: 10 campers, 2025: 8 returned (80%)
-        attendees_2024 = [make_mock_attendee(i, 100) for i in range(1, 11)]
-        persons_2024 = {i: make_mock_person(i, "M") for i in range(1, 11)}
-
-        attendees_2025 = [make_mock_attendee(i, 100) for i in range(1, 9)]
-        persons_2025 = {i: make_mock_person(i, "M") for i in range(1, 9)}
-
-        # 2026: only 4 from 2025 returned (50%)
-        attendees_2026 = [make_mock_attendee(i, 100) for i in [1, 2, 3, 4]]
-        persons_2026 = {i: make_mock_person(i, "M") for i in [1, 2, 3, 4]}
-
-        def mock_fetch_attendees(year: int) -> list[Any]:
-            return {2024: attendees_2024, 2025: attendees_2025, 2026: attendees_2026}[year]
-
-        def mock_fetch_persons(year: int) -> dict[int, Any]:
-            return {2024: persons_2024, 2025: persons_2025, 2026: persons_2026}[year]
-
-        mock_repository.fetch_attendees = AsyncMock(side_effect=mock_fetch_attendees)
-        mock_repository.fetch_persons = AsyncMock(side_effect=mock_fetch_persons)
-        mock_repository.fetch_sessions = AsyncMock(return_value={100: make_mock_session(100)})
-
-        service = RetentionTrendsService(mock_repository)
-        result = await service.calculate_retention_trends(
-            current_year=2026,
-            num_years=2,
-        )
-
-        # 2024→2025: 80%, 2025→2026: 50%, trend is declining
-        assert result.trend_direction == "declining"
-
-    @pytest.mark.asyncio
-    async def test_stable_trend(self, mock_repository: MagicMock) -> None:
-        """Test that stable retention is detected."""
-        from api.services.retention_trends_service import RetentionTrendsService
-
-        # All years have roughly 70% retention (within 2% threshold)
-        attendees_2024 = [make_mock_attendee(i, 100) for i in range(1, 11)]
-        persons_2024 = {i: make_mock_person(i, "M") for i in range(1, 11)}
-
-        # 7/10 return
-        attendees_2025 = [make_mock_attendee(i, 100) for i in [1, 2, 3, 4, 5, 6, 7]]
-        persons_2025 = {i: make_mock_person(i, "M") for i in [1, 2, 3, 4, 5, 6, 7]}
-
-        # 5/7 return = ~71%
-        attendees_2026 = [make_mock_attendee(i, 100) for i in [1, 2, 3, 4, 5]]
-        persons_2026 = {i: make_mock_person(i, "M") for i in [1, 2, 3, 4, 5]}
-
-        def mock_fetch_attendees(year: int) -> list[Any]:
-            return {2024: attendees_2024, 2025: attendees_2025, 2026: attendees_2026}[year]
-
-        def mock_fetch_persons(year: int) -> dict[int, Any]:
-            return {2024: persons_2024, 2025: persons_2025, 2026: persons_2026}[year]
-
-        mock_repository.fetch_attendees = AsyncMock(side_effect=mock_fetch_attendees)
-        mock_repository.fetch_persons = AsyncMock(side_effect=mock_fetch_persons)
-        mock_repository.fetch_sessions = AsyncMock(return_value={100: make_mock_session(100)})
-
-        service = RetentionTrendsService(mock_repository)
-        result = await service.calculate_retention_trends(
-            current_year=2026,
-            num_years=2,
-        )
-
-        # Both transitions are ~70%, trend is stable
-        assert result.trend_direction == "stable"
 
 
 # ============================================================================
@@ -688,72 +562,6 @@ class TestRetentionTrendsServiceEdgeCases:
         assert result.years[0].base_count == 0
         assert result.years[0].returned_count == 0
         assert result.years[0].retention_rate == 0.0
-
-    @pytest.mark.asyncio
-    async def test_avg_retention_rate_calculation(self, mock_repository: MagicMock) -> None:
-        """Test average retention rate across transitions."""
-        from api.services.retention_trends_service import RetentionTrendsService
-
-        # 2024→2025: 50%, 2025→2026: 80% => avg = 65%
-        attendees_2024 = [make_mock_attendee(i, 100) for i in range(1, 11)]
-        persons_2024 = {i: make_mock_person(i, "M") for i in range(1, 11)}
-
-        # 5/10 return
-        attendees_2025 = [make_mock_attendee(i, 100) for i in range(1, 6)]
-        persons_2025 = {i: make_mock_person(i, "M") for i in range(1, 6)}
-
-        # 4/5 return
-        attendees_2026 = [make_mock_attendee(i, 100) for i in range(1, 5)]
-        persons_2026 = {i: make_mock_person(i, "M") for i in range(1, 5)}
-
-        def mock_fetch_attendees(year: int) -> list[Any]:
-            return {2024: attendees_2024, 2025: attendees_2025, 2026: attendees_2026}[year]
-
-        def mock_fetch_persons(year: int) -> dict[int, Any]:
-            return {2024: persons_2024, 2025: persons_2025, 2026: persons_2026}[year]
-
-        mock_repository.fetch_attendees = AsyncMock(side_effect=mock_fetch_attendees)
-        mock_repository.fetch_persons = AsyncMock(side_effect=mock_fetch_persons)
-        mock_repository.fetch_sessions = AsyncMock(return_value={100: make_mock_session(100)})
-
-        service = RetentionTrendsService(mock_repository)
-        result = await service.calculate_retention_trends(
-            current_year=2026,
-            num_years=2,
-        )
-
-        # (0.5 + 0.8) / 2 = 0.65
-        assert abs(result.avg_retention_rate - 0.65) < 0.001
-
-    @pytest.mark.asyncio
-    async def test_single_year_trend_is_stable(self, mock_repository: MagicMock) -> None:
-        """Test that a single transition defaults to stable trend."""
-        from api.services.retention_trends_service import RetentionTrendsService
-
-        attendees_2024 = [make_mock_attendee(i, 100) for i in range(1, 11)]
-        persons_2024 = {i: make_mock_person(i, "M") for i in range(1, 11)}
-
-        attendees_2025 = [make_mock_attendee(i, 100) for i in range(1, 8)]
-        persons_2025 = {i: make_mock_person(i, "M") for i in range(1, 8)}
-
-        def mock_fetch_attendees(year: int) -> list[Any]:
-            return attendees_2024 if year == 2024 else attendees_2025
-
-        def mock_fetch_persons(year: int) -> dict[int, Any]:
-            return persons_2024 if year == 2024 else persons_2025
-
-        mock_repository.fetch_attendees = AsyncMock(side_effect=mock_fetch_attendees)
-        mock_repository.fetch_persons = AsyncMock(side_effect=mock_fetch_persons)
-        mock_repository.fetch_sessions = AsyncMock(return_value={100: make_mock_session(100)})
-
-        service = RetentionTrendsService(mock_repository)
-        result = await service.calculate_retention_trends(
-            current_year=2025,
-            num_years=1,
-        )
-
-        # With only 1 transition, we can't determine trend - should be stable
-        assert result.trend_direction == "stable"
 
 
 # ============================================================================
@@ -1099,3 +907,126 @@ class TestRetentionTrendsServiceEnrollmentBreakdowns:
         year_2026 = next(e for e in result.enrollment_by_year if e.year == 2026)
         sy_dict_2026 = {s.summer_years: s.count for s in year_2026.by_summer_years}
         assert sy_dict_2026.get(3) == 1  # 3 summers up to 2026
+
+
+# ============================================================================
+# Scope through the one session resolver (#3208 rows 8 and 9)
+# ============================================================================
+
+
+def _dated_session(
+    cm_id: int, session_type: str, name: str, start: str, end: str, parent_id: int | None = None
+) -> MagicMock:
+    session = make_mock_session(cm_id, session_type, name)
+    session.start_date = start
+    session.end_date = end
+    session.parent_id = parent_id
+    return session
+
+
+def _dated_history_record(person_id: int, year: int, session: MagicMock) -> MagicMock:
+    record = MagicMock()
+    record.person_id = person_id
+    record.year = year
+    record.expand = {"session": session}
+    return record
+
+
+class TestRetentionTrendsSessionResolver:
+    @pytest.fixture
+    def mock_repository(self) -> MagicMock:
+        repo = MagicMock(spec=MetricsRepository)
+        repo.fetch_attendees = AsyncMock(return_value=[])
+        repo.fetch_persons = AsyncMock(return_value={})
+        repo.fetch_sessions = AsyncMock(return_value={})
+        repo.fetch_summer_enrollment_history = AsyncMock(return_value=[])
+        return repo
+
+    @pytest.mark.asyncio
+    async def test_renamed_session_matched_via_alias(self, mock_repository: MagicMock) -> None:
+        """2025 "Taste of Camp 1" must read 2024's "Taste of Camp" (a different cm_id)."""
+        from api.services.retention_trends_service import RetentionTrendsService
+
+        sessions = {
+            2024: {
+                200: make_mock_session(200, "main", "Taste of Camp"),
+                201: make_mock_session(201, "main", "Session 1"),
+            },
+            2025: {300: make_mock_session(300, "main", "Taste of Camp 1")},
+        }
+        attendees = {
+            2024: [make_mock_attendee(1, 200), make_mock_attendee(2, 200), make_mock_attendee(3, 201)],
+            2025: [make_mock_attendee(1, 300)],
+        }
+        persons = {i: make_mock_person(i, "M") for i in range(1, 4)}
+
+        mock_repository.fetch_attendees = AsyncMock(side_effect=lambda y: attendees[y])
+        mock_repository.fetch_persons = AsyncMock(return_value=persons)
+        mock_repository.fetch_sessions = AsyncMock(side_effect=lambda y, *a, **k: sessions[y])
+
+        result = await RetentionTrendsService(mock_repository).calculate_retention_trends(
+            current_year=2025, num_years=1, session_types=["main"], session_cm_id=300
+        )
+
+        assert {e.year: e.total for e in result.enrollment_by_year} == {2024: 2, 2025: 1}
+        assert result.years[0].base_count == 2
+        assert result.years[0].returned_count == 1
+
+    @pytest.mark.asyncio
+    async def test_family_adult_and_bmitzvah_never_enter_summer_retention_trends(
+        self, mock_repository: MagicMock
+    ) -> None:
+        """Pin (#2435/#2455): non-summer programs change no summer retention-trend number."""
+        from api.services.retention_trends_service import RetentionTrendsService
+
+        sessions = {
+            100: make_mock_session(100, "main", "Session 1"),
+            900: make_mock_session(900, "family", "Family Camp"),
+            901: make_mock_session(901, "adult", "Adult Weekend"),
+            902: make_mock_session(902, "bmitzvah", "B'nai Mitzvah"),
+            903: make_mock_session(903, "hebrew", "Hebrew"),
+        }
+        summer = [make_mock_attendee(1, 100), make_mock_attendee(2, 100)]
+        extras = [
+            make_mock_attendee(3, 900, "family"),
+            make_mock_attendee(4, 901, "adult"),
+            make_mock_attendee(5, 902, "bmitzvah"),
+            make_mock_attendee(6, 903, "hebrew"),
+        ]
+        persons = {i: make_mock_person(i, "M") for i in range(1, 7)}
+        results = []
+        for attendees in (summer, summer + extras):
+            repo = MagicMock(spec=MetricsRepository)
+            repo.fetch_attendees = AsyncMock(return_value=attendees)
+            repo.fetch_persons = AsyncMock(return_value=persons)
+            repo.fetch_sessions = AsyncMock(return_value=sessions)
+            repo.fetch_summer_enrollment_history = AsyncMock(return_value=[])
+            for kwargs in ({}, {"session_types": ["main", "family", "adult"]}, {"session_cm_id": 900}):
+                r = await RetentionTrendsService(repo).calculate_retention_trends(
+                    current_year=2025, num_years=1, **kwargs
+                )
+                results.append((tuple(kwargs), [e.total for e in r.enrollment_by_year], r.years[0].base_count))
+        assert results[:3] == results[3:]
+
+    @pytest.mark.asyncio
+    async def test_teen_only_cohort_counts_every_summer(self, mock_repository: MagicMock) -> None:
+        """A teen in TLI in 2025 and 2026 has two summers, though the history has no main rows."""
+        from api.services.retention_trends_service import RetentionTrendsService
+
+        main = {y: _dated_session(10 + y, "main", "Session 1", f"{y}-06-20", f"{y}-08-10") for y in (2025, 2026)}
+        tli = {y: _dated_session(20 + y, "tli", "TLI", f"{y}-07-01", f"{y}-07-20") for y in (2025, 2026)}
+        sessions = {y: {main[y].cm_id: main[y], tli[y].cm_id: tli[y]} for y in (2025, 2026)}
+        attendees = {y: [make_mock_attendee(1, tli[y].cm_id, "tli")] for y in (2025, 2026)}
+        history = [_dated_history_record(1, y, tli[y]) for y in (2025, 2026)]
+
+        mock_repository.fetch_attendees = AsyncMock(side_effect=lambda y: attendees[y])
+        mock_repository.fetch_persons = AsyncMock(return_value={1: make_mock_person(1, "M")})
+        mock_repository.fetch_sessions = AsyncMock(side_effect=lambda y, *a, **k: sessions[y])
+        mock_repository.fetch_summer_enrollment_history = AsyncMock(return_value=history)
+
+        result = await RetentionTrendsService(mock_repository).calculate_retention_trends(
+            current_year=2026, num_years=1, session_types=["scit", "tli"]
+        )
+
+        year_2026 = next(e for e in result.enrollment_by_year if e.year == 2026)
+        assert {b.summer_years: b.count for b in year_2026.by_summer_years} == {2: 1}

@@ -6,7 +6,7 @@ moves business logic out of the endpoint and into a testable service.
 
 from dataclasses import dataclass
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -191,7 +191,6 @@ class TestRetentionServiceCalculateRetention:
         assert result.base_year == 2025
         assert result.compare_year == 2026
         assert result.base_year_total == 5
-        assert result.compare_year_total == 4
         assert result.returned_count == 3
         assert result.overall_retention_rate == pytest.approx(0.6)  # 3/5
 
@@ -335,7 +334,7 @@ class TestRetentionServiceCalculateRetention:
 
     @pytest.mark.asyncio
     async def test_compare_year_excludes_non_matching_session_types(self) -> None:
-        """compare_year_total excludes attendees whose session type doesn't match filter."""
+        """returned_count ignores compare-year attendees whose session type does not match the filter."""
         from api.services.retention_service import RetentionService
 
         mock_repo = AsyncMock()
@@ -397,7 +396,6 @@ class TestRetentionServiceCalculateRetention:
         # Base year: 2 campers in main sessions
         assert result.base_year_total == 2
         # Compare year: only 2 in main sessions (family camp excluded)
-        assert result.compare_year_total == 2
         # Person 1 returned
         assert result.returned_count == 1
 
@@ -464,7 +462,6 @@ class TestRetentionServiceCalculateRetention:
         # Only persons 1 and 2 should be counted (base year)
         assert result.base_year_total == 2
         # Compare year: person 5 excluded (different cm_id)
-        assert result.compare_year_total == 2
         assert result.returned_count == 2
 
     @pytest.mark.asyncio
@@ -522,7 +519,6 @@ class TestRetentionServiceCalculateRetention:
         )
 
         # Compare year should only count person 1 (cm_id=1000), not person 3 (cm_id=1001)
-        assert result.compare_year_total == 1
         assert result.returned_count == 1
 
     @pytest.mark.asyncio
@@ -603,7 +599,6 @@ class TestRetentionServiceCalculateRetention:
         # Person 2 should NOT be included (Session 2 is a different session)
         assert result.base_year_total == 1
         # Compare year: person 1 in Taste of Camp 2 (cm_id=2000)
-        assert result.compare_year_total == 1
         assert result.returned_count == 1
 
     @pytest.mark.asyncio
@@ -2278,3 +2273,48 @@ class TestSessionBunkUsesUnfilteredPools:
         # Person returned to Quest — still counts as returned for heatmap
         assert b1.returned_count == 1
         assert b1.retention_rate == 1.0
+
+
+# --- #3208 row 8: a teen-only cohort's history has no main rows -----------------
+
+
+def _teen_only_world() -> tuple[dict[int, dict[int, Any]], list[Any]]:
+    """Sessions per year (main + TLI, all inside the summer window) and a TLI-only history for person 1."""
+    sessions: dict[int, dict[int, Any]] = {}
+    history: list[Any] = []
+    for year in (2024, 2025, 2026):
+        main = MockSession(cm_id=10 + year, name="Session 1", session_type="main")
+        main.start_date, main.end_date = f"{year}-06-20", f"{year}-08-10"
+        tli = MockSession(cm_id=20 + year, name="TLI", session_type="tli")
+        tli.start_date, tli.end_date = f"{year}-07-01", f"{year}-07-20"
+        sessions[year] = {main.cm_id: main, tli.cm_id: tli}
+        history.append(MagicMock(person_id=1, year=year, expand={"session": tli}))
+    return sessions, history
+
+
+def _fetch_sessions_by_year(sessions: dict[int, dict[int, Any]], year: int, *args: Any) -> dict[int, Any]:
+    types = args[0] if args else None
+    return {k: v for k, v in sessions[year].items() if types is None or v.session_type in types}
+
+
+class TestRetentionTeenSummers:
+    @pytest.mark.asyncio
+    async def test_teen_only_cohort_counts_every_summer(self) -> None:
+        """A teen in TLI in 2024 and 2025 is in the "2 summers" bin, with no "0 summers" bin."""
+        from api.services.retention_service import RetentionService
+
+        sessions, history = _teen_only_world()
+        mock_repo = AsyncMock()
+        mock_repo.fetch_attendees.side_effect = lambda y, *a, **k: [
+            MockAttendee(person_id=1, year=y, expand={"session": sessions[y][20 + y]})
+        ]
+        mock_repo.fetch_persons.return_value = {1: MockPerson(cm_id=1, grade=8)}
+        mock_repo.fetch_bunk_assignments.return_value = []
+        mock_repo.fetch_sessions.side_effect = lambda y, *a, **k: _fetch_sessions_by_year(sessions, y, *a)
+        mock_repo.fetch_summer_enrollment_history.side_effect = lambda ids, max_year: [
+            r for r in history if r.year <= max_year
+        ]
+
+        result = await RetentionService(mock_repo).calculate_retention(2025, 2026, session_types=["scit", "tli"])
+
+        assert {b.summer_years: b.base_count for b in result.by_summer_years} == {2: 1}

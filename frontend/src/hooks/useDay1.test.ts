@@ -53,4 +53,26 @@ describe('useDay1', () => {
     const url = decodeURIComponent(String(mockFetchWithAuth.mock.calls[0]?.[0]))
     expect(url).toContain('session_types=main,embedded,ag,quest,scit,tli')
   })
+
+  it('forwards a single-session pick to the endpoint', async () => {
+    renderHook(() => useDay1(2026, 'main,embedded,ag,quest', { sessionCmId: 1000802 }), {
+      wrapper: createWrapper(),
+    })
+
+    await waitFor(() => expect(mockFetchWithAuth).toHaveBeenCalled())
+    const url = decodeURIComponent(String(mockFetchWithAuth.mock.calls[0]?.[0]))
+    expect(url).toContain('session_cm_id=1000802')
+    expect(url).not.toContain('duration=')
+  })
+
+  it('forwards a duration pick to the endpoint', async () => {
+    renderHook(() => useDay1(2026, 'main,embedded,ag,quest', { duration: '1-week' }), {
+      wrapper: createWrapper(),
+    })
+
+    await waitFor(() => expect(mockFetchWithAuth).toHaveBeenCalled())
+    const url = decodeURIComponent(String(mockFetchWithAuth.mock.calls[0]?.[0]))
+    expect(url).toContain('duration=1-week')
+    expect(url).not.toContain('session_cm_id')
+  })
 })

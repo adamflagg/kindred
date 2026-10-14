@@ -188,11 +188,6 @@ class TestMetricsPermissions:
 
         _assert_endpoint_has_auth_dep(get_registration_metrics)
 
-    def test_comparison_requires_authentication(self) -> None:
-        from api.routers.metrics import get_comparison_metrics
-
-        _assert_endpoint_has_auth_dep(get_comparison_metrics)
-
     def test_historical_requires_authentication(self) -> None:
         from api.routers.metrics import get_historical_trends
 

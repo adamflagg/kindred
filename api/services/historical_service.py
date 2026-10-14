@@ -20,8 +20,7 @@ from api.schemas.metrics import (
 )
 from api.utils.session_metrics import (
     filter_attendees_by_session,
-    find_ag_sessions_for_parent,
-    resolve_duration_sessions,
+    resolve_scope_ids,
 )
 
 from .breakdown_calculator import calculate_percentage, compute_registration_breakdown
@@ -52,7 +51,8 @@ class HistoricalService:
             years: List of years to analyze. Default: last 5 years from current year.
             session_types: Optional list of session types to filter.
             session_cm_id: Optional session CampMinder ID to filter by.
-                When provided, filters to sessions with the same NAME across years.
+                When provided, the same session is found in every year by cm_id, then
+                by its alias group, then by name; a year with no match reads 0.
             duration: Optional duration category (e.g., "1-week", "2-week") to filter
                 sessions by length.
 
@@ -64,21 +64,28 @@ class HistoricalService:
             current_year = int(season_id) if season_id.isdigit() else datetime.now(tz=UTC).year
             years = list(range(current_year - 4, current_year + 1))
 
-        # If session_cm_id provided, get the session name to filter by
-        session_name: str | None = None
-        if session_cm_id is not None:
-            session_name = await self._get_session_name_for_filtering(session_cm_id, years, session_types)
+        # Every year's sessions, with no type filter: the summer window that gates
+        # teen programs comes from that year's `main` sessions, so main must be
+        # present even when only teens are requested (#3208 row 12).
+        all_sessions = await asyncio.gather(*[self.repo.fetch_sessions(y) for y in years])
 
-        # Fetch attendees, persons, sessions, and cancellation transitions for all years in parallel
+        # The picked session's name, from the newest year that has its cm_id, so a
+        # renamed session can be found in earlier years (#3208 row 9).
+        reference_name: str | None = None
+        if session_cm_id is not None:
+            for sessions in reversed(all_sessions):
+                if session_cm_id in sessions:
+                    reference_name = getattr(sessions[session_cm_id], "name", None)
+                    break
+
+        # Fetch attendees, persons, and cancellation transitions for all years in parallel
         attendee_futures = [self.repo.fetch_attendees(y) for y in years]
         person_futures = [self.repo.fetch_persons(y) for y in years]
-        session_futures = [self.repo.fetch_sessions(y, session_types=session_types) for y in years]
         cancel_futures = [self._fetch_cancellation_transitions(y) for y in years]
         coverage_futures = [self._fetch_cancellation_data_coverage(y) for y in years]
 
         all_attendees = await asyncio.gather(*attendee_futures)
         all_persons = await asyncio.gather(*person_futures)
-        all_sessions = await asyncio.gather(*session_futures)
         all_cancel_transitions = await asyncio.gather(*cancel_futures)
         all_coverage = await asyncio.gather(*coverage_futures)
 
@@ -88,8 +95,9 @@ class HistoricalService:
         for year, attendees, persons, sessions, cancel_transitions, has_cancellation_data in zip(
             years, all_attendees, all_persons, all_sessions, all_cancel_transitions, all_coverage, strict=True
         ):
-            # Filter attendees by session type and/or session name
-            filtered = self._filter_attendees(attendees, sessions, session_types, session_cm_id, session_name, duration)
+            # One scope per year, through the shared resolver.
+            scope_ids = resolve_scope_ids(sessions, session_types, session_cm_id, duration, reference_name)
+            filtered = filter_attendees_by_session(attendees, None, session_cm_ids=scope_ids)
 
             # Deduplicate by person_id
             person_ids = {pid for a in filtered if (pid := getattr(a, "person_id", None)) is not None}
@@ -104,8 +112,8 @@ class HistoricalService:
             # the coverage flag can never disagree about whether this year was actually
             # measured this call.
             cancellation_fetch_failed = cancel_transitions is None
-            filtered_cancellations = self._filter_attendees(
-                cancel_transitions or [], sessions, session_types, session_cm_id, session_name, duration
+            filtered_cancellations = filter_attendees_by_session(
+                cancel_transitions or [], None, session_cm_ids=scope_ids
             )
             cancelled_person_ids = {
                 pid for t in filtered_cancellations if (pid := getattr(t, "person_id", None)) is not None
@@ -119,58 +127,6 @@ class HistoricalService:
             year_metrics_list.append(year_metric)
 
         return HistoricalTrendsResponse(years=year_metrics_list)
-
-    def _filter_attendees(
-        self,
-        attendees: list[Any],
-        sessions: dict[int, Any],
-        session_types: list[str] | None,
-        session_cm_id: int | None,
-        session_name: str | None,
-        duration: str | None = None,
-    ) -> list[Any]:
-        """Filter attendees by session type and optionally by session name.
-
-        When session_name is provided (from session_cm_id lookup), we find the
-        matching session cm_ids in this year's sessions and filter to those.
-        """
-        # Find target session cm_ids by name matching
-        target_session_cm_id: int | None = None
-        if session_name is not None:
-            for sid, session in sessions.items():
-                if getattr(session, "name", None) == session_name:
-                    target_session_cm_id = sid
-                    break
-            if target_session_cm_id is None:
-                # Session name not found in this year — no matching attendees
-                return []
-
-        ag_session_ids = find_ag_sessions_for_parent(sessions, target_session_cm_id or session_cm_id)
-        duration_session_ids = resolve_duration_sessions(sessions, duration) if duration else None
-        return filter_attendees_by_session(
-            attendees,
-            session_types,
-            target_session_cm_id,
-            ag_session_ids,
-            session_cm_ids=duration_session_ids,
-        )
-
-    async def _get_session_name_for_filtering(
-        self,
-        session_cm_id: int,
-        years: list[int],
-        session_types: list[str] | None = None,
-    ) -> str | None:
-        """Look up the session name to use for filtering across years."""
-        session_futures = [self.repo.fetch_sessions(year, session_types=session_types) for year in years]
-        all_sessions = await asyncio.gather(*session_futures)
-
-        for sessions_dict in all_sessions:
-            if session_cm_id in sessions_dict:
-                session = sessions_dict[session_cm_id]
-                return getattr(session, "name", None)
-
-        return None
 
     async def _fetch_cancellation_transitions(self, year: int) -> list[Any] | None:
         """Fetch raw cancellation status-transition rows for a year.

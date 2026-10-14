@@ -238,8 +238,6 @@ class TestEnrollmentByYearSchemas:
 
         response = RetentionTrendsResponse(
             years=[],
-            avg_retention_rate=0.75,
-            trend_direction="stable",
             enrollment_by_year=[
                 YearEnrollment(year=2024, total=100, by_gender=[], by_grade=[]),
                 YearEnrollment(year=2025, total=110, by_gender=[], by_grade=[]),

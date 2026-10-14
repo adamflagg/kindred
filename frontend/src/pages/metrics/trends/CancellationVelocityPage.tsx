@@ -111,7 +111,9 @@ export default function CancellationVelocityPage() {
 
     let priorAtWeek: number | null = null
     let priorFinal: number | null = null
-    let priorYear: number | null = null
+    // The backend omits a prior year that has no matching session; the label still names
+    // the year the user ticked, and the values stay '-'.
+    let priorYear: number | null = controls.selectedPriorYears[0] ?? null
 
     // Use backend cancelled_at_current_week when available (more accurate with fallback)
     const priorCancelledSummary =
@@ -145,7 +147,7 @@ export default function CancellationVelocityPage() {
       priorYear,
       delta,
     }
-  }, [data])
+  }, [data, controls.selectedPriorYears])
 
   if (isLoading) {
     return (

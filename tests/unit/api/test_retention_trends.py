@@ -143,32 +143,6 @@ class TestRetentionTrendCalculation:
         retention_2025_2026 = len(returned_2025_to_2026) / len(persons_2025)
         assert retention_2025_2026 == pytest.approx(0.6)  # 3/5
 
-    def test_trend_direction_calculation(self) -> None:
-        """Trend direction should be calculated from rate changes.
-
-        - Improving: current rate > average of prior rates
-        - Declining: current rate < average of prior rates
-        - Stable: within a small threshold
-        """
-        # Scenario 1: Improving trend
-        rates = [0.50, 0.55, 0.60]  # 50%, 55%, 60%
-        avg_prior = (rates[0] + rates[1]) / 2
-        current = rates[2]
-        assert current > avg_prior  # Improving
-
-        # Scenario 2: Declining trend
-        rates = [0.70, 0.65, 0.55]  # 70%, 65%, 55%
-        avg_prior = (rates[0] + rates[1]) / 2
-        current = rates[2]
-        assert current < avg_prior  # Declining
-
-        # Scenario 3: Stable trend
-        rates = [0.60, 0.60, 0.61]  # 60%, 60%, 61%
-        avg_prior = (rates[0] + rates[1]) / 2
-        current = rates[2]
-        threshold = 0.02  # 2% threshold
-        assert abs(current - avg_prior) <= threshold  # Stable
-
     def test_retention_by_gender_across_years(
         self,
         multi_year_persons: dict[int, list[Mock]],
@@ -245,16 +219,12 @@ class TestRetentionTrendsResponseStructure:
                     "retention_rate": 0.65,
                     ...
                 }
-            ],
-            "avg_retention_rate": 0.625,
-            "trend_direction": "improving"
+            ]
         }
         """
         # Mock response structure
         expected_fields = {
             "years": list,
-            "avg_retention_rate": (int, float),
-            "trend_direction": str,
         }
 
         # Each year entry should have these fields
@@ -457,8 +427,6 @@ class TestRetentionTrendsEndpoint:
 
                 # Check required fields
                 assert "years" in data
-                assert "avg_retention_rate" in data
-                assert "trend_direction" in data
 
                 # years should be a list
                 assert isinstance(data["years"], list)

@@ -2860,46 +2860,6 @@ export type ComparePartyReport = {
 }
 
 /**
- * ComparisonDelta
- *
- * Delta between two years.
- */
-export type ComparisonDelta = {
-  /**
-   * Total Change
-   *
-   * Change in total enrollment
-   */
-  total_change: number
-  /**
-   * Percentage Change
-   *
-   * Percentage change
-   */
-  percentage_change: number
-}
-
-/**
- * ComparisonMetricsResponse
- *
- * Response model for comparison metrics endpoint.
- */
-export type ComparisonMetricsResponse = {
-  /**
-   * First year summary
-   */
-  year_a: YearSummary
-  /**
-   * Second year summary
-   */
-  year_b: YearSummary
-  /**
-   * Change between years
-   */
-  delta: ComparisonDelta
-}
-
-/**
  * ConfirmationOut
  *
  * Beside every Posted figure (D59): awaiting tonight's sync · ✓ confirmed (on) · CampMinder shows
@@ -13041,12 +13001,6 @@ export type RegistrationMetricsResponse = {
    */
   by_session: Array<SessionBreakdown>
   /**
-   * By Session Length
-   *
-   * Enrollment by session length
-   */
-  by_session_length: Array<SessionLengthBreakdown>
-  /**
    * By Years At Camp
    *
    * Enrollment by years at camp
@@ -14255,12 +14209,6 @@ export type RetentionMetricsResponse = {
    */
   base_year_total: number
   /**
-   * Compare Year Total
-   *
-   * Total enrolled in compare year
-   */
-  compare_year_total: number
-  /**
    * Returned Count
    *
    * Number who returned from base year
@@ -14353,72 +14301,6 @@ export type RetentionMetricsResponse = {
 }
 
 /**
- * RetentionTrendGenderBreakdown
- *
- * Gender retention across multiple year transitions.
- */
-export type RetentionTrendGenderBreakdown = {
-  /**
-   * Gender
-   *
-   * Gender (M, F, or other)
-   */
-  gender: string
-  /**
-   * Values
-   *
-   * Retention for each year transition
-   */
-  values: Array<RetentionTrendValue>
-}
-
-/**
- * RetentionTrendGradeBreakdown
- *
- * Grade retention across multiple year transitions.
- */
-export type RetentionTrendGradeBreakdown = {
-  /**
-   * Grade
-   *
-   * Grade level
-   */
-  grade: number | null
-  /**
-   * Values
-   *
-   * Retention for each year transition
-   */
-  values: Array<RetentionTrendValue>
-}
-
-/**
- * RetentionTrendValue
- *
- * A single retention rate value for a year transition.
- */
-export type RetentionTrendValue = {
-  /**
-   * From Year
-   *
-   * Base year
-   */
-  from_year: number
-  /**
-   * To Year
-   *
-   * Compare year
-   */
-  to_year: number
-  /**
-   * Retention Rate
-   *
-   * Retention rate (0-1)
-   */
-  retention_rate: number
-}
-
-/**
  * RetentionTrendYear
  *
  * Retention metrics for a single year transition.
@@ -14486,30 +14368,6 @@ export type RetentionTrendsResponse = {
    * Retention data for each year transition
    */
   years: Array<RetentionTrendYear>
-  /**
-   * Avg Retention Rate
-   *
-   * Average retention rate across all transitions
-   */
-  avg_retention_rate: number
-  /**
-   * Trend Direction
-   *
-   * Trend direction: 'improving', 'declining', or 'stable'
-   */
-  trend_direction: string
-  /**
-   * By Gender Grouped
-   *
-   * Gender retention grouped across years
-   */
-  by_gender_grouped?: Array<RetentionTrendGenderBreakdown>
-  /**
-   * By Grade Grouped
-   *
-   * Grade retention grouped across years
-   */
-  by_grade_grouped?: Array<RetentionTrendGradeBreakdown>
   /**
    * Enrollment By Year
    *
@@ -16244,32 +16102,6 @@ export type SessionInLengthCategory = {
    * Number of campers in this session
    */
   count: number
-}
-
-/**
- * SessionLengthBreakdown
- *
- * Breakdown of metrics by session length category.
- */
-export type SessionLengthBreakdown = {
-  /**
-   * Length Category
-   *
-   * Session length (1-week, 2-week, 3-week)
-   */
-  length_category: string
-  /**
-   * Count
-   *
-   * Number of campers
-   */
-  count: number
-  /**
-   * Percentage
-   *
-   * Percentage of total
-   */
-  percentage: number
 }
 
 /**
@@ -19890,38 +19722,6 @@ export type YearMetrics = {
 }
 
 /**
- * YearSummary
- *
- * Summary metrics for a single year.
- */
-export type YearSummary = {
-  /**
-   * Year
-   *
-   * Year
-   */
-  year: number
-  /**
-   * Total
-   *
-   * Total enrolled
-   */
-  total: number
-  /**
-   * By Gender
-   *
-   * By gender
-   */
-  by_gender: Array<GenderBreakdown>
-  /**
-   * By Grade
-   *
-   * By grade
-   */
-  by_grade: Array<GradeBreakdown>
-}
-
-/**
  * YearsAtCampBreakdown
  *
  * Breakdown of metrics by years at camp.
@@ -22367,52 +22167,6 @@ export type GetRegistrationMetricsApiMetricsRegistrationGetResponses = {
 export type GetRegistrationMetricsApiMetricsRegistrationGetResponse =
   GetRegistrationMetricsApiMetricsRegistrationGetResponses[keyof GetRegistrationMetricsApiMetricsRegistrationGetResponses]
 
-export type GetComparisonMetricsApiMetricsComparisonGetData = {
-  body?: never
-  path?: never
-  query: {
-    /**
-     * Year A
-     *
-     * First year to compare
-     */
-    year_a: number
-    /**
-     * Year B
-     *
-     * Second year to compare
-     */
-    year_b: number
-    /**
-     * Session Types
-     *
-     * Comma-separated session types to filter (default: summer camp sessions)
-     */
-    session_types?: string | null
-  }
-  url: '/api/metrics/comparison'
-}
-
-export type GetComparisonMetricsApiMetricsComparisonGetErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type GetComparisonMetricsApiMetricsComparisonGetError =
-  GetComparisonMetricsApiMetricsComparisonGetErrors[keyof GetComparisonMetricsApiMetricsComparisonGetErrors]
-
-export type GetComparisonMetricsApiMetricsComparisonGetResponses = {
-  /**
-   * Successful Response
-   */
-  200: ComparisonMetricsResponse
-}
-
-export type GetComparisonMetricsApiMetricsComparisonGetResponse =
-  GetComparisonMetricsApiMetricsComparisonGetResponses[keyof GetComparisonMetricsApiMetricsComparisonGetResponses]
-
 export type GetHistoricalTrendsApiMetricsHistoricalGetData = {
   body?: never
   path?: never
@@ -22432,7 +22186,7 @@ export type GetHistoricalTrendsApiMetricsHistoricalGetData = {
     /**
      * Session Cm Id
      *
-     * Filter to specific session by CampMinder ID. Uses name-matching across years.
+     * Filter to specific session by CampMinder ID. Matched in each year by cm_id, then alias group, then exact name.
      */
     session_cm_id?: number | null
     /**
@@ -22897,6 +22651,18 @@ export type GetDay1ApiMetricsRegistrationDay1GetData = {
      * Comma-separated session types to filter (e.g., 'main,quest')
      */
     session_types?: string | null
+    /**
+     * Session Cm Id
+     *
+     * Filter to specific session by CampMinder ID
+     */
+    session_cm_id?: number | null
+    /**
+     * Duration
+     *
+     * Filter by duration category (e.g., '1-week')
+     */
+    duration?: string | null
   }
   url: '/api/metrics/registration/day1'
 }

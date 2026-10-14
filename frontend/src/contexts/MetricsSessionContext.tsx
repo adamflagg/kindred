@@ -16,11 +16,13 @@
  *
  * Pattern: Similar to CurrentYearContext - provider here, hook in useMetricsSession.ts
  */
-import { type ReactNode, useCallback, useMemo, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { useCurrentYear } from '../hooks/useCurrentYear'
 import { useMetricsSessions } from '../hooks/useMetricsSessions'
 import { metricsFilter } from '../hooks/useMetrics'
+import { useSessionNameByCmId } from '../hooks/useSessionNameByCmId'
+import { matchSessionInYear } from '../utils/resolveSessionForYear'
 import { MetricsSessionContext, type MetricsSessionContextType } from '../hooks/useMetricsSession'
 import {
   sortSessionsByDate,
@@ -93,7 +95,8 @@ export function MetricsSessionProvider({ children }: { children: ReactNode }) {
   const [expandedRetention, setExpandedRetention] = useState(false)
 
   // Fetch sessions for the current year
-  const { data: sessions = [], isLoading } = useMetricsSessions(currentYear)
+  const { data: loadedSessions, isLoading, isPlaceholderData } = useMetricsSessions(currentYear)
+  const sessions = useMemo(() => loadedSessions ?? [], [loadedSessions])
 
   // Get session from URL param
   const selectedSessionCmId = useMemo(() => {
@@ -127,6 +130,39 @@ export function MetricsSessionProvider({ children }: { children: ReactNode }) {
   )
 
   const isComparing = compareYear !== null
+
+  // A ?session= the viewed year doesn't have (Season changed, or a stale
+  // bookmark) is mapped onto that year's session, or dropped. Only judged once
+  // the list is this year's own, never keepPreviousData from the old year.
+  const sessionIsStale =
+    selectedSessionCmId !== null &&
+    loadedSessions !== undefined &&
+    !isPlaceholderData &&
+    !loadedSessions.some((s) => s.cm_id === selectedSessionCmId)
+  const staleName = useSessionNameByCmId(selectedSessionCmId, sessionIsStale)
+  const staleNameResolved = staleName.isSuccess
+  const staleNameValue = staleName.data ?? null
+
+  useEffect(() => {
+    if (!sessionIsStale || !staleNameResolved) return
+    const mapped = matchSessionInYear(sessions, selectedSessionCmId, staleNameValue)
+    setSearchParams(
+      (prev) => {
+        const newParams = new URLSearchParams(prev)
+        if (mapped === null) newParams.delete(SESSION_PARAM)
+        else newParams.set(SESSION_PARAM, mapped.toString())
+        return newParams
+      },
+      { replace: true }
+    )
+  }, [
+    sessionIsStale,
+    staleNameResolved,
+    staleNameValue,
+    selectedSessionCmId,
+    sessions,
+    setSearchParams,
+  ])
 
   // Find the selected session object
   const selectedSession = useMemo(() => {

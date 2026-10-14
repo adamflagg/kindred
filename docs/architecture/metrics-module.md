@@ -25,7 +25,6 @@ Frontend Pages → React Query hooks → FastAPI Router → Domain Services → 
 | `historical_service.py` | `/historical` | Multi-year trends (default 5 years) |
 | `retention_trends_service.py` | `/retention-trends` | 3-year retention transitions |
 | `drilldown_service.py` | `/drilldown` | Chart click-through to attendee lists |
-| `comparison_service.py` | `/comparison` | Year-over-year summary |
 | `session_availability_service.py` | (separate router) | Per-session capacity vs enrollment |
 
 **Shared utilities**: `breakdown_calculator.py` (generic retention/registration aggregation), `extractors.py` (demographic field extraction), `session_context.py` / `session_utils.py` (session type filtering)

@@ -5,7 +5,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, Query
 
 from api.services.session_availability_service import SessionAvailabilityService
-from api.utils.validators import check_duration_session_exclusive
+from api.utils.validators import check_duration_session_exclusive, parse_summer_session_types
 from bunking.auth_middleware import AuthUser, get_current_user
 from bunking.logging_config import get_logger
 
@@ -40,7 +40,7 @@ async def get_session_availability(
     """
     check_duration_session_exclusive(duration, session_cm_id)
 
-    type_filter = session_types.split(",") if session_types else None
+    type_filter = parse_summer_session_types(session_types)
     repository = _create_repository()
     service = SessionAvailabilityService(repository)
     return await service.calculate_availability(

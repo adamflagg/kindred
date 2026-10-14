@@ -52,9 +52,13 @@ function makeData(teenCount: number): Day1Response {
   }
 }
 
-function setSession(sessionTypesParam: string) {
+function setSession(
+  sessionTypesParam: string,
+  pick: { sessionCmId?: number; duration?: string } = {}
+) {
   mockUseMetricsSession.mockReturnValue({
-    selectedSessionCmId: null,
+    selectedSessionCmId: pick.sessionCmId ?? null,
+    durationParam: pick.duration,
     selectedSession: undefined,
     sessions: [],
     isLoading: false,
@@ -87,7 +91,10 @@ describe('Day1Page', () => {
 
     renderPage()
 
-    expect(mockUseDay1).toHaveBeenCalledWith(2026, 'main,embedded,ag,quest,scit,tli')
+    expect(mockUseDay1).toHaveBeenCalledWith(2026, 'main,embedded,ag,quest,scit,tli', {
+      sessionCmId: undefined,
+      duration: undefined,
+    })
   })
 
   it('renders a Teens breakdown when teen counts are present', () => {
@@ -108,5 +115,29 @@ describe('Day1Page', () => {
     renderPage()
 
     expect(screen.queryByText('Teens')).not.toBeInTheDocument()
+  })
+
+  it('sends a single-session pick into the Day 1 query', () => {
+    setSession('main,embedded,ag,quest', { sessionCmId: 1000802 })
+    mockUseDay1.mockReturnValue({ data: makeData(0), isLoading: false, error: null })
+
+    renderPage()
+
+    expect(mockUseDay1).toHaveBeenCalledWith(2026, 'main,embedded,ag,quest', {
+      sessionCmId: 1000802,
+      duration: undefined,
+    })
+  })
+
+  it('sends a duration pick into the Day 1 query', () => {
+    setSession('main,embedded,ag,quest', { duration: '1-week' })
+    mockUseDay1.mockReturnValue({ data: makeData(0), isLoading: false, error: null })
+
+    renderPage()
+
+    expect(mockUseDay1).toHaveBeenCalledWith(2026, 'main,embedded,ag,quest', {
+      sessionCmId: undefined,
+      duration: '1-week',
+    })
   })
 })

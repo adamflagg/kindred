@@ -4,8 +4,11 @@ This module provides shared constants and functions for computing
 summer enrollment metrics across registration and retention services.
 """
 
+from collections.abc import Iterable, Mapping, Sequence
 from datetime import datetime
 from typing import Any
+
+from api.utils.session_aliases import get_alias_group
 
 # Session types for UI display: session dropdowns, session breakdown charts
 # These are sessions that appear in user-facing session selection.
@@ -181,6 +184,100 @@ def resolve_cohort_session_ids(sessions: dict[int, Any], requested_types: list[s
             continue
         result.add(int(cm_id))
     return result
+
+
+# Session types a session pick can resolve to across years. AG is never a target:
+# an AG cabin is reached through its parent (the AG fold), and its name carries a
+# grade band that changes from year to year.
+_MATCHABLE_SESSION_TYPES = tuple(t for t in DISPLAY_SESSION_TYPES if t != "ag")
+
+
+def match_session_in_year(
+    sessions: Mapping[int, Any],
+    session_cm_id: int,
+    reference_name: str | None = None,
+) -> int | None:
+    """Find "the same session" in one year's sessions, or None.
+
+    Matches by cm_id first (CampMinder keeps most session ids across years), then
+    by the alias group of ``reference_name`` (renamed sessions get new ids, see
+    ``session_aliases.py``), then by exact name. Only summer display types other
+    than AG are candidates, so a Family Camp, adult, B*Mitzvah or Hebrew session
+    can never be the match, whatever its id or name (#2435 / #2455).
+
+    Args:
+        sessions: One year's sessions keyed by cm_id.
+        session_cm_id: The picked session's cm_id (from whichever year it was picked in).
+        reference_name: The picked session's name, used when the id is absent this year.
+    """
+    candidates = {
+        int(cm_id): s for cm_id, s in sessions.items() if getattr(s, "session_type", None) in _MATCHABLE_SESSION_TYPES
+    }
+    if int(session_cm_id) in candidates:
+        return int(session_cm_id)
+    if not reference_name:
+        return None
+    for name in (*get_alias_group(reference_name), reference_name):
+        for cm_id, s in candidates.items():
+            if getattr(s, "name", None) == name:
+                return cm_id
+    return None
+
+
+def resolve_scope_ids(
+    sessions: Mapping[int, Any],
+    session_types: Sequence[str] | None,
+    session_cm_id: int | None = None,
+    duration: str | None = None,
+    reference_name: str | None = None,
+) -> set[int]:
+    """The session cm_ids a summer metric counts for one year: the one session resolver.
+
+    Every summer metrics service scopes through this, so one session reads the
+    same on every page (#3208):
+
+    1. Type membership, restricted to ``DISPLAY_SESSION_TYPES`` (Family Camp and
+       other non-summer programs never enter), with the teen summer window
+       applied to SCIT/TLI (``resolve_cohort_session_ids``).
+    2. The duration category, when given.
+    3. A single session, when given: matched in this year by
+       :func:`match_session_in_year`, plus its AG cabins. No match means an empty
+       scope, never the whole year.
+
+    Args:
+        sessions: ALL of the year's sessions keyed by cm_id. Must include the
+            ``main`` sessions, which define the teen summer window.
+        session_types: Requested types; None means all summer.
+        session_cm_id: Optional picked session.
+        duration: Optional duration category ("1-week", ...).
+        reference_name: The picked session's name, for matching in another year.
+    """
+    if session_types is None:
+        scope = resolve_cohort_session_ids(dict(sessions), None)
+    else:
+        summer_types = [t for t in session_types if t in DISPLAY_SESSION_TYPES]
+        if not summer_types:
+            return set()
+        scope = resolve_cohort_session_ids(dict(sessions), summer_types)
+
+    if duration:
+        scope &= resolve_duration_sessions(dict(sessions), duration)
+
+    if session_cm_id is not None:
+        matched = match_session_in_year(sessions, session_cm_id, reference_name)
+        if matched is None:
+            return set()
+        scope &= {matched, *find_ag_sessions_for_parent(dict(sessions), matched)}
+
+    return scope
+
+
+async def fetch_summer_windows(repo: Any, years: Iterable[int]) -> dict[int, tuple[str, str] | None]:
+    """Each year's summer window from that year's ``main`` sessions, for compute_summer_metrics."""
+    windows: dict[int, tuple[str, str] | None] = {}
+    for year in sorted(set(years)):
+        windows[year] = get_summer_window(await repo.fetch_sessions(year, ["main"]))
+    return windows
 
 
 def get_session_from_expand(record: Any) -> Any:
@@ -408,6 +505,8 @@ def _summer_record_year(record: Any, session: Any | None) -> int | None:
 def compute_summer_metrics(
     enrollment_history: list[Any],
     person_ids: set[int],
+    *,
+    summer_windows: Mapping[int, tuple[str, str] | None] | None = None,
 ) -> tuple[dict[int, int], dict[int, int]]:
     """Compute summer enrollment metrics from history.
 
@@ -423,9 +522,18 @@ def compute_summer_metrics(
     summer that runs teen programs also runs main camp); if a year's window can't
     be derived, its teen sessions are conservatively excluded.
 
+    Pass ``summer_windows`` (from :func:`fetch_summer_windows`) wherever the
+    cohort can be teen-only. A teen's history holds no ``main`` rows in the years
+    they attended only SCIT/TLI, so a window derived from the history alone is
+    missing for exactly those years and every teen reads one summer short (#3208
+    row 8). A year present in ``summer_windows`` always uses the supplied window;
+    other years fall back to the history-derived one.
+
     Args:
         enrollment_history: List of attendee records with session expansion.
         person_ids: Set of person IDs to compute metrics for.
+        summer_windows: Optional year -> (start, end) summer window, taken from
+            each year's ``main`` sessions.
 
     Returns:
         Tuple of:
@@ -447,6 +555,8 @@ def compute_summer_metrics(
     summer_window_by_year: dict[int, tuple[str, str] | None] = {
         year: get_summer_window(sessions) for year, sessions in main_sessions_by_year.items()
     }
+    if summer_windows:
+        summer_window_by_year.update(summer_windows)
 
     # Pass 2: group qualifying records by person. Non-teen summer types count
     # unconditionally; teen types (SCIT/TLI) are summer-window-gated.

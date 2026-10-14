@@ -21,6 +21,7 @@ from api.utils.session_metrics import (
 from api.utils.session_metrics import (
     SUMMER_TEEN_TYPES,
     compute_summer_metrics,
+    fetch_summer_windows,
     filter_attendees_by_session,
     find_ag_sessions_for_parent,
     get_person_from_expand,
@@ -307,7 +308,11 @@ class DrilldownService:
             person_ids = {pid for a in filtered_attendees if (pid := getattr(a, "person_id", None)) is not None}
             if person_ids:
                 enrollment_history = await self.repo.fetch_summer_enrollment_history(person_ids, year)
-                summer_years_by_person, first_year_by_person = compute_summer_metrics(enrollment_history, person_ids)
+                history_years = {int(y) for r in enrollment_history if (y := getattr(r, "year", None))}
+                summer_windows = await fetch_summer_windows(self.repo, history_years)
+                summer_years_by_person, first_year_by_person = compute_summer_metrics(
+                    enrollment_history, person_ids, summer_windows=summer_windows
+                )
 
         # Filter by breakdown criteria
         filtered_attendees = self._filter_by_breakdown(

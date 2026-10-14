@@ -234,13 +234,6 @@ export const queryKeys = {
     sessionCmId?: number,
     duration?: string
   ) => ['metrics', 'registration', year, sessionTypes, statuses, sessionCmId, duration] as const,
-  comparison: (
-    yearA: number,
-    yearB: number,
-    sessionTypes?: string,
-    sessionCmId?: number,
-    duration?: string
-  ) => ['metrics', 'comparison', yearA, yearB, sessionTypes, sessionCmId, duration] as const,
   historical: (years?: string, sessionTypes?: string, sessionCmId?: number, duration?: string) =>
     ['metrics', 'historical', years, sessionTypes, sessionCmId, duration] as const,
   retentionTrends: (
@@ -396,7 +389,8 @@ export const queryKeys = {
   geoOverrideCoords: (year: number) => ['geo', 'override-coords', year] as const,
 
   // Day 1 Registration (Tier 1 - sync data, historical analysis)
-  day1: (year: number, sessionTypes?: string) => ['metrics', 'day1', year, sessionTypes] as const,
+  day1: (year: number, sessionTypes?: string, sessionCmId?: number, duration?: string) =>
+    ['metrics', 'day1', year, sessionTypes, sessionCmId, duration] as const,
 
   // Velocity (Tier 1 - sync data, historical analysis)
   velocity: (
@@ -826,6 +820,8 @@ export const queryKeys = {
     report: 'statistics' | 'programs',
     params: Readonly<Record<string, string>>
   ) => ['financial-aid', 'reports', year, 'requests', report, params] as const,
+  /** The newest camp_sessions name for a cm_id, any year (stale ?session= mapping, #3208). */
+  sessionNameByCmId: (cmId: number) => ['metrics', 'session-name', cmId] as const,
 }
 
 /** The Reports reads that are per season (slice 4). */
