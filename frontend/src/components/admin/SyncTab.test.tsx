@@ -820,9 +820,13 @@ describe('SyncTab season line and prior-season cards', () => {
     expect(await screen.findByText(/Season 2027 · rolls over each Oct 15/)).toBeInTheDocument()
     // Shares a row with Refresh Cache rather than taking one of its own.
     const line = screen.getByText(/Season 2027 · rolls over each Oct 15/)
-    expect(line.parentElement).toBe(
-      screen.getByRole('button', { name: /Refresh Cache/ }).parentElement
-    )
+    const button = screen.getByRole('button', { name: /Refresh Cache/ })
+    const row = line.parentElement as HTMLElement
+    expect(row).toContainElement(button)
+    expect(row.className).toContain('justify-between')
+    // Season text leads the row (left), Refresh Cache group ends it (right).
+    expect(row.firstElementChild).toBe(line)
+    expect(row.lastElementChild).toContainElement(button)
   })
 
   it('says when the season is pinned by the env var', async () => {

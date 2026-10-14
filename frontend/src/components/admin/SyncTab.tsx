@@ -672,7 +672,16 @@ export function SyncTab() {
         </div>
 
         {/* Unified Sync Pipeline - combines queue + currently processing */}
-        <div className="flex items-center gap-3">
+        {/* Season line left, Refresh Cache right, one row; the pipeline fills the middle */}
+        <div className="flex items-center justify-between gap-3">
+          {syncStatus._season_source && (
+            <p className="text-muted-foreground text-sm whitespace-nowrap">
+              Season {syncStatus._configured_year ?? currentYear} ·{' '}
+              {syncStatus._season_source === 'override'
+                ? 'pinned by CAMPMINDER_SEASON_ID'
+                : 'rolls over each Oct 15'}
+            </p>
+          )}
           {(hasQueuedItems || runningJobs.length > 0) && (
             <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto py-1">
               {/* Currently Processing - forest green theme */}
@@ -813,16 +822,7 @@ export function SyncTab() {
             </div>
           )}
 
-          {/* Season line + Refresh Cache - right-aligned, one row */}
           <div className="ml-auto flex flex-shrink-0 items-center gap-3">
-            {syncStatus._season_source && (
-              <p className="text-muted-foreground text-sm whitespace-nowrap">
-                Season {syncStatus._configured_year ?? currentYear} ·{' '}
-                {syncStatus._season_source === 'override'
-                  ? 'pinned by CAMPMINDER_SEASON_ID'
-                  : 'rolls over each Oct 15'}
-              </p>
-            )}
             <button
               onClick={() => {
                 clearCache()
