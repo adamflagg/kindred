@@ -299,4 +299,4 @@ def test_an_adult_reg_only_household_family_camp_request_resolves_to_the_weekend
         1000202,
         "enrollment",
     )
-    assert spec.enrolled_session_ids == frozenset({1000212})  # the raw enrollment, as recorded
+    assert spec.enrolled_session_ids == frozenset({1000212, 1000202})  # the enrollment and the weekend it counts as

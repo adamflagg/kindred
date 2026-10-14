@@ -8,7 +8,9 @@ applied, cancelled and the rest never set one. The form's options are
 hand-maintained labels ("Taste of Camp" covers two sessions, one in-training
 option covers two), so their text is not trusted to name a session.
 
-Among the enrolled sessions of the answer's program:
+For family camp an enrolled Adult Reg session (`family_adult`, kindred#3213) counts as
+the weekend its parent_id names, so an adult-only household's request lands on that
+weekend; an unpaired one names none. Among the enrolled sessions of the answer's program:
 
   * exactly one  -> it resolves, method "enrollment";
   * two or more  -> the option text breaks the tie among THOSE sessions only:
@@ -48,7 +50,7 @@ from api.utils.session_metrics import SUMMER_PROGRAM_SESSION_TYPES, SUMMER_TEEN_
 PROGRAM_SESSION_TYPES: Final[Mapping[str, frozenset[str]]] = MappingProxyType(
     {
         PROGRAM_SUMMER: frozenset({*SUMMER_PROGRAM_SESSION_TYPES, *SUMMER_TEEN_TYPES, "teen"}),
-        PROGRAM_FAMILY_CAMP: frozenset({"family"}),
+        PROGRAM_FAMILY_CAMP: frozenset({"family"}),  # Adult Reg counts via its weekend: counted_enrollments
         PROGRAM_BMITZVAH: frozenset({"bmitzvah"}),
         PROGRAM_ADULT_WEEKEND: frozenset({"adult"}),
     }
@@ -98,11 +100,13 @@ def session_named_by(option_text: str, program_key: str, sessions: Sequence[Sess
     return named[0] if len(named) == 1 else 0
 
 
-def _counted_enrollments(program_key: str, sessions: Sequence[SessionRow], enrolled: frozenset[int]) -> frozenset[int]:
+def counted_enrollments(program_key: str, sessions: Sequence[SessionRow], enrolled: frozenset[int]) -> frozenset[int]:
     """The enrolled sessions as the program counts them. For family camp an Adult Reg
     enrollment (`family_adult`, kindred#3213, owner ruling 2026-10-14) counts as the
     weekend its parent_id names, so an adult-only household resolves to that weekend.
-    An unpaired one (parent 0) names no weekend and is never itself the answer."""
+    An unpaired one (parent 0) names no weekend and is never itself the answer. The
+    household builder records this set too, so the planner never reads the weekend
+    as one the household is `not_enrolled` in."""
     if program_key != PROGRAM_FAMILY_CAMP:
         return enrolled
     weekends = {s.parent_cm_id for s in sessions if s.session_type == FAMILY_ADULT and s.cm_id in enrolled}
@@ -115,7 +119,7 @@ def resolve_session(
     sessions: Sequence[SessionRow],
     enrolled_session_ids: frozenset[int],
 ) -> SessionResolution:
-    counted = _counted_enrollments(program_key, sessions, enrolled_session_ids)
+    counted = counted_enrollments(program_key, sessions, enrolled_session_ids)
     in_program = [s for s in _in_program(program_key, sessions) if s.cm_id in counted]
     candidates = tuple(sorted(s.cm_id for s in in_program))
     if len(candidates) == 1:
