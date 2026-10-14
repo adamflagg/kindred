@@ -178,12 +178,14 @@ export function SyncTab() {
       .filter((job): job is (typeof allSyncTypes)[number] & { year: number } => job !== null)
   }, [syncStatus, currentYear])
 
+  // The primary season. currentYear is the season being viewed, which may be the prior one.
+  const primaryYear = syncStatus?._configured_year ?? currentYear
   // Seasons the scheduled runs cover (primary and the one before it). An older backend omits
   // the field, so fall back to the same pair from the configured year.
   const reportedSyncedYears = syncStatus?._synced_years
   const syncedYears = useMemo(
-    () => reportedSyncedYears ?? [currentYear, currentYear - 1],
-    [reportedSyncedYears, currentYear]
+    () => reportedSyncedYears ?? [primaryYear, primaryYear - 1],
+    [reportedSyncedYears, primaryYear]
   )
 
   // Compute available sync types based on year (excludes syncedSeasonsOnly types for years outside the synced seasons)
@@ -520,10 +522,11 @@ export function SyncTab() {
                 className="bg-background focus:ring-primary/20 min-w-[100px] cursor-pointer rounded-lg border-none px-3 py-2 text-sm font-medium focus:ring-2 focus:outline-none"
                 disabled={unifiedSync.isPending || runPhaseSync.isPending}
               >
-                <option value={currentYear}>{currentYear}</option>
+                {/* From the primary down, as the global picker lists them: staff viewing the
+                    prior season can still pick the primary here. */}
                 {Array.from(
-                  { length: currentYear - EARLIEST_AVAILABLE_YEAR },
-                  (_, i) => currentYear - 1 - i
+                  { length: primaryYear - EARLIEST_AVAILABLE_YEAR + 1 },
+                  (_, i) => primaryYear - i
                 ).map((year) => (
                   <option key={year} value={year}>
                     {year}

@@ -905,3 +905,28 @@ describe('SyncTab asks for the status of the season it is viewing', () => {
     expect(toastsViewedYears.at(-1)).toBe(2026)
   })
 })
+
+// Scan fix (#3211): staff remembered on the prior season (ruling 7) must still be able to pick
+// the primary in the tab's own year selector. Its options run from the primary down, as the
+// global picker's do, not from the year being viewed.
+describe('SyncTab year selector reaches the current season', () => {
+  afterEach(() => {
+    seasonStatusFields = {}
+    currentYearMock = 2027
+  })
+
+  it('lists the primary when the tab opens on the prior season', () => {
+    currentYearMock = 2026 // remembered on 2026
+    seasonStatusFields = { _configured_year: 2027, _synced_years: [2027, 2026] }
+    renderSyncTab()
+
+    const yearSelect = screen.getByRole('option', { name: '2026' }).closest('select')
+    const options = Array.from((yearSelect as HTMLSelectElement).options).map((o) => o.value)
+    expect(options[0]).toBe('2027')
+    expect(options.filter((v) => v === '2026')).toHaveLength(1)
+    expect((yearSelect as HTMLSelectElement).value).toBe('2026')
+
+    fireEvent.change(yearSelect as HTMLSelectElement, { target: { value: '2027' } })
+    expect((yearSelect as HTMLSelectElement).value).toBe('2027')
+  })
+})
