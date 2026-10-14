@@ -13,17 +13,21 @@ export function FreshnessChip({
   verb,
   at,
   title,
+  suffix,
 }: {
   noun: string
   verb: 'synced' | 'uploaded'
   at: string
   title: string
+  /** Words after the age, inside the same chip (Analytics' " · syncing now"). */
+  suffix?: string
 }) {
   const Icon = verb === 'synced' ? RefreshCw : Upload
   return (
     <span className="flex items-center gap-1.5 whitespace-nowrap" title={title}>
       <Icon className="h-3 w-3" />
       {noun} {verb} {formatAgo(at)}
+      {suffix}
     </span>
   )
 }

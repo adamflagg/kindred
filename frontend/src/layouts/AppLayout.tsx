@@ -52,6 +52,7 @@ import { useCanViewAs } from '../hooks/useCanViewAs'
 import type { SyncStatusResponse } from '../hooks/useSyncStatusAPI'
 import { buildSyncTooltip } from '../utils/syncTooltip'
 import { AidFreshness } from '../components/camperships/shell/AidFreshness'
+import { AnalyticsFreshness } from '../components/metrics/AnalyticsFreshness'
 import { FreshnessChip } from '../components/FreshnessChip'
 import { AidSecondaryBarRight } from '../components/camperships/shell/AidSecondaryBarRight'
 
@@ -635,6 +636,8 @@ export const AppLayout = () => {
                 <WeekendFreshness syncStatus={syncStatus} session={weekendSession} />
               )}
               {activeProgram === 'aid' && <AidFreshness />}
+              {/* "Enrollments synced 7h ago": the viewed season's attendees run (PR 4, pick 3A). */}
+              {activeProgram === 'analytics' && <AnalyticsFreshness />}
               {/*
                 SUMMER'S PAIR. `Assignments synced` reads `bunk_assignments`
                 and NOT the last job of GetRefreshBunkingJobs, even though that
