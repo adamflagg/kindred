@@ -1738,6 +1738,30 @@ class TestCancellationVelocityCurves:
         assert result.session_swap_count == 1
 
     @pytest.mark.asyncio
+    async def test_cancellation_velocity_swap_scope_includes_ag_cabins(self, service, mock_repository):
+        """A picked session's swap count folds in cancellations from its AG cabins (#3208)."""
+        mock_repository.fetch_sessions.return_value = {
+            1001: _sess(1001, "Session 1", 2026),
+            1002: _sess(1002, "Session 2", 2026),
+            1101: _sess(1101, "Session 1 AG", 2026, session_type="ag", parent_id=1001),
+        }
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=50, cancelled=3),
+        ]
+        # Person 101 cancelled from the AG cabin and enrolled in Session 2: a swap out of Session 1.
+        # Person 102 cancelled from Session 1 itself and enrolled in Session 2.
+        mock_repository.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(101, 1101, "2026-01-10", status="cancelled"),
+            create_mock_attendee_with_date(101, 1002, "2026-01-10", status="enrolled"),
+            create_mock_attendee_with_date(102, 1001, "2026-01-10", status="cancelled"),
+            create_mock_attendee_with_date(102, 1002, "2026-01-10", status="enrolled"),
+        ]
+
+        result = await service.get_velocity(year=2026, metric="cancellation", session_cm_id=1001)
+
+        assert result.session_swap_count == 2
+
+    @pytest.mark.asyncio
     async def test_default_metric_is_enrollment(self, service, mock_repository, sample_sessions):
         """Without metric parameter, should return enrollment curves (existing behavior)."""
         mock_repository.fetch_sessions.return_value = {1001: sample_sessions[1001]}

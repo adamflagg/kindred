@@ -763,12 +763,13 @@ class VelocityService:
             ]
             swap_pids = detect_session_swaps(cancelled_atts, enrolled_atts)
             if session_cm_id is not None:
-                # Filter swap_pids to those with cancellations in the viewed session
-                scoped_pids: set[int] = set()
-                for a in cancelled_atts:
-                    session_info = get_session_from_expand(a)
-                    if session_info and int(getattr(session_info, "cm_id", 0)) == session_cm_id:
-                        scoped_pids.add(int(getattr(a, "person_id", 0)))
+                # Filter swap_pids to those with cancellations in the viewed session.
+                # `scope` is the resolver's picked-session scope, so the session's
+                # AG cabins count with it, as everywhere else on the page.
+                picked_sids = scope & duration_scoped_sids
+                scoped_pids: set[int] = {
+                    int(getattr(a, "person_id", 0)) for a in cancelled_atts if self._attendee_session_in(a, picked_sids)
+                }
                 swap_pids = swap_pids & scoped_pids
             session_swap_count = len(swap_pids)
 
