@@ -3,6 +3,8 @@
 Per-session forecast data with budget goals and revenue projections.
 """
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -20,7 +22,9 @@ class SessionForecast(BaseModel):
     participant_goal: int | None = Field(None, description="Target enrollment from budget config")
     session_fee: float | None = Field(None, description="Per-participant fee from budget config")
     enrolled: int = Field(description="Current enrolled count")
-    waitlisted: int = Field(description="Current waitlist count")
+    waitlisted: int | None = Field(
+        description="Current waitlist count; None in week mode (a past waitlist cannot be rebuilt)"
+    )
     pct_of_goal: float | None = Field(None, description="enrolled / goal * 100")
     prior_year_count: int | None = Field(None, description="Same session name, year-1")
     two_year_prior_count: int | None = Field(None, description="Same session name, year-2")
@@ -34,9 +38,22 @@ class SessionForecast(BaseModel):
     enrolled_girls: int | None = Field(None, description="Enrolled female count (from reconstruction or live)")
 
 
+class ForecastPriorTotals(BaseModel):
+    prior_year_count: int | None = Field(None, description="Last year's whole-scope total for this section")
+    two_year_prior_count: int | None = Field(None, description="Two years ago's whole-scope total for this section")
+
+
 class ForecastResponse(BaseModel):
     year: int
     sessions: list[SessionForecast] = Field(description="Per-session forecast data")
     grand_total: SessionForecast = Field(description="Summed totals across sessions")
     week_number: int | None = Field(None, description="Week number relative to registration anchor")
     day_offset: int | None = Field(None, description="Days since registration anchor")
+    prior_basis: Literal["same_point", "final"] = Field(
+        "final",
+        description="same_point: prior years counted at the same registration day; final: their final enrollment",
+    )
+    section_priors: dict[str, ForecastPriorTotals] = Field(
+        default_factory=dict,
+        description="Prior whole-scope totals by section: camp (main/embedded/ag), quest, teen (scit/tli)",
+    )
