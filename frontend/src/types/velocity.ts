@@ -67,14 +67,21 @@ export interface SessionGenderBreakdown {
 
 export interface PriorYearCancelledSummary {
   year: number
+  /** Cancelled by the same registration day as the current year's latest point. */
   cancelled_at_current_week: number | null
-  cancelled_final: number
+  /** Null when the year has no cancellation data (see has_cancellation_data). */
+  cancelled_final: number | null
+  /** False exactly when cancelled_final is null for lack of status history. */
+  has_cancellation_data?: boolean
 }
 
 export interface PriorYearSessionSummary {
   year: number
   session_name: string | null
   session_cm_id: number | null
+  /** The current-year session this prior session is "the same session" as; null = no match. */
+  current_session_cm_id?: number | null
+  /** Enrolled on the same registration day as the current year's latest point. */
   enrolled_at_current_week: number | null
   final_enrolled: number
 }
@@ -83,6 +90,8 @@ export interface PriorYearVelocity {
   year: number
   daily: DailyDataPoint[]
   weekly: WeeklyDataPoint[]
+  /** Value on the same registration day as current_day_offset (net enrolled, or cumulative cancelled). */
+  at_current_point?: number | null
 }
 
 export interface VelocityResponse {
@@ -102,5 +111,11 @@ export interface VelocityResponse {
   daily: DailyDataPoint[]
   weekly: WeeklyDataPoint[]
   session_swap_count?: number
+  /** Day offset of the current year's latest daily point; null without daily data. */
+  current_day_offset?: number | null
+  /** Today's day offset while the season is live, else null. Drives the TODAY line. */
+  today_day_offset?: number | null
+  /** ISO date of the earliest status-history row (cancellation metric only). */
+  status_history_start?: string | null
   warnings: string[]
 }

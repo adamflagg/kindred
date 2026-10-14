@@ -6,8 +6,13 @@
  * components from accumulating across year transitions (#752).
  */
 
-import { describe, it, expect, vi } from 'vitest'
-import type { VelocityResponse } from '../../../types/velocity'
+import { afterEach, describe, it, expect, vi } from 'vitest'
+import type {
+  PriorYearSessionSummary,
+  VelocityCurve,
+  VelocityResponse,
+  WeeklyDataPoint,
+} from '../../../types/velocity'
 
 // Mock data that passes the component's loading/empty guards
 const mockWeeklyPoint = {
@@ -105,26 +110,36 @@ vi.mock('../../../hooks/useVelocityControls', () => ({
   }),
 }))
 
+const mockState = { data: mockVelocityData }
+
 vi.mock('../../../hooks/useVelocity', () => ({
   useVelocity: () => ({
-    data: mockVelocityData,
+    data: mockState.data,
     isLoading: false,
     error: null,
   }),
 }))
 
+const mockChart = {
+  comparisonYear: null as number | null,
+  sortedBySession: [] as VelocityCurve[],
+  priorSessionMap: new Map<number | string, PriorYearSessionSummary>(),
+  priorWeekMap: null as Map<number, WeeklyDataPoint> | null,
+}
+
 vi.mock('../../../hooks/useVelocityChartData', () => ({
   useVelocityChartData: () => ({
     weeklyChartData: [{ week_number: 1, label: 'Jan 5' }],
     dailyChartData: [{ day_offset: 0, date: '2026-01-01' }],
-    sortedBySession: [],
+    sortedBySession: mockChart.sortedBySession,
     weekLabelMap: new Map([[1, 'Jan 5']]),
     phaseLines: [],
     phaseDayOffsets: [],
     dailyTickFormatter: () => '',
     dailyZoomMilestones: [],
-    priorSessionMap: new Map(),
-    priorWeekMap: null,
+    priorSessionMap: mockChart.priorSessionMap,
+    priorWeekMap: mockChart.priorWeekMap,
+    comparisonYear: mockChart.comparisonYear,
   }),
 }))
 
@@ -138,10 +153,12 @@ vi.mock('../../../hooks/useChartZoom', () => ({
   }),
 }))
 
-vi.mock('../../../components/velocity', () => ({
-  VelocityControls: () => <div data-testid="velocity-controls" />,
-  SessionBreakdownTable: () => <div data-testid="session-table" />,
-  WeeklyDeltaTable: () => <div data-testid="delta-table" />,
+// The real tables render, so the column headers and cells the page builds are visible.
+vi.mock('../../../components/velocity', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../components/velocity')>()),
+  VelocityControls: ({ extraControls }: { extraControls?: React.ReactNode }) => (
+    <div data-testid="velocity-controls">{extraControls}</div>
+  ),
 }))
 
 vi.mock('recharts', () => ({
@@ -155,11 +172,20 @@ vi.mock('recharts', () => ({
   YAxis: () => <div />,
   CartesianGrid: () => <div />,
   Tooltip: () => <div />,
-  Legend: () => <div />,
+  // Renders what the page's formatter makes of the combined series names.
+  Legend: ({ formatter }: { formatter?: (name: string) => React.ReactNode }) => (
+    <div data-testid="legend">
+      {formatter && ['2026', '2025'].map((name) => <span key={name}>{formatter(name)}</span>)}
+    </div>
+  ),
   ResponsiveContainer: ({ children }: Record<string, unknown>) => (
     <div data-testid="responsive-container">{children as React.ReactNode}</div>
   ),
-  ReferenceLine: () => <div />,
+  ReferenceLine: ({ x, label }: { x?: number; label?: { value?: string } }) => (
+    <div data-testid="reference-line" data-x={x}>
+      {label?.value}
+    </div>
+  ),
   ReferenceArea: () => <div />,
   Brush: () => <div />,
 }))
@@ -179,7 +205,7 @@ vi.mock('../../../utils/chartFormatters', () => ({
   priorYearDailyDateLabel: () => null,
 }))
 
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import VelocityPage from './VelocityPage'
 
 describe('VelocityPage chart remount on year change (#752)', () => {
@@ -223,5 +249,162 @@ describe('VelocityPage cards when the prior year has no matching session', () =>
     } finally {
       mockControls.selectedPriorYears = []
     }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// #3209: one comparison year, same-point comparisons, TODAY line, legend totals
+// ---------------------------------------------------------------------------
+
+function wk(overrides: Partial<WeeklyDataPoint> = {}): WeeklyDataPoint {
+  return { ...mockWeeklyPoint, ...overrides }
+}
+
+function sessionCurve(cmId: number, name: string, enrolled: number): VelocityCurve {
+  return {
+    year: 2026,
+    session_cm_id: cmId,
+    session_name: name,
+    gender: null,
+    daily: [],
+    weekly: [wk({ enrolled })],
+  }
+}
+
+function priorSummary(overrides: Partial<PriorYearSessionSummary>): PriorYearSessionSummary {
+  return {
+    year: 2025,
+    session_name: 'Session 1',
+    session_cm_id: 500,
+    current_session_cm_id: 1,
+    enrolled_at_current_week: 25,
+    final_enrolled: 40,
+    ...overrides,
+  }
+}
+
+/** Current 2026 at Wk 1: net 100, gross 110. 2025 ends at net 130 / gross 150. */
+const comparedData: VelocityResponse = {
+  ...mockVelocityData,
+  today_day_offset: 80,
+  current_day_offset: 6,
+  prior_years: [
+    {
+      year: 2024,
+      daily: [],
+      weekly: [wk({ enrolled: 60 }), wk({ week_number: 2, enrolled: 70 })],
+      at_current_point: 55,
+    },
+    {
+      year: 2025,
+      daily: [],
+      weekly: [
+        wk({ enrolled: 90, gross_enrolled: 95 }),
+        wk({ week_number: 2, enrolled: 130, gross_enrolled: 150 }),
+      ],
+      at_current_point: 95,
+    },
+  ],
+}
+
+function useComparison(selected: number[], comparisonYear: number | null) {
+  mockControls.selectedPriorYears = selected
+  mockChart.comparisonYear = comparisonYear
+  mockState.data = comparedData
+}
+
+function cardValue(label: string): string | null | undefined {
+  return screen.getByText(label).nextElementSibling?.textContent
+}
+
+describe('VelocityPage compares with one year at the same point (#3209)', () => {
+  afterEach(() => {
+    mockControls.selectedPriorYears = []
+    mockChart.comparisonYear = null
+    mockChart.sortedBySession = []
+    mockChart.priorSessionMap = new Map()
+    mockState.data = mockVelocityData
+  })
+
+  it('cards read the comparison year, at the same registration day', () => {
+    // Ticked 2024 and 2025; the response lists 2024 first. Cards must follow 2025.
+    useComparison([2024, 2025], 2025)
+    render(<VelocityPage />)
+    expect(cardValue('2025 at Wk 1')).toBe('95')
+    expect(cardValue('vs 2025')).toBe('+5')
+    expect(cardValue('2025 Final')).toBe('130')
+  })
+
+  it('captions the Enrolled card "camper-sessions"', () => {
+    useComparison([2025], 2025)
+    render(<VelocityPage />)
+    const card = screen.getByText('Enrolled (2026, Wk 1)').parentElement
+    expect(card).toHaveTextContent('camper-sessions')
+  })
+
+  it('By Session names the year and compares with the prior same point', () => {
+    useComparison([2025], 2025)
+    mockChart.sortedBySession = [sessionCurve(1, 'Session 1', 30), sessionCurve(2, 'Session 2', 12)]
+    mockChart.priorSessionMap = new Map([[1, priorSummary({})]])
+    render(<VelocityPage />)
+
+    expect(screen.getByRole('columnheader', { name: '2025 (Wk 1)' })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: '2025 Final' })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'vs 2025' })).toBeInTheDocument()
+
+    const matched = screen.getByText('Session 1').closest('tr')!
+    // 30 now vs 25 at the same point last year — not 30 vs the 40 final.
+    expect(within(matched).getByText('+5')).toBeInTheDocument()
+    expect(within(matched).getByText('40')).toBeInTheDocument()
+  })
+
+  it('marks a session with no prior match "new"', () => {
+    useComparison([2025], 2025)
+    mockChart.sortedBySession = [sessionCurve(1, 'Session 1', 30), sessionCurve(2, 'Session 2', 12)]
+    mockChart.priorSessionMap = new Map([[1, priorSummary({})]])
+    render(<VelocityPage />)
+
+    const unmatched = screen.getByText('Session 2').closest('tr')!
+    expect(within(unmatched).getByText('new')).toBeInTheDocument()
+    expect(within(unmatched).getAllByText('-')).toHaveLength(2)
+  })
+
+  it('draws a TODAY line at the day offset on the daily chart while live', () => {
+    useComparison([2025], 2025)
+    render(<VelocityPage />)
+    expect(screen.getByText('TODAY')).toHaveAttribute('data-x', '80')
+  })
+
+  it('draws the TODAY line at the week number on the Weekly Delta chart', () => {
+    useComparison([2025], 2025)
+    render(<VelocityPage />)
+    fireEvent.click(screen.getByRole('button', { name: 'Weekly Delta' }))
+    expect(screen.getByText('TODAY')).toHaveAttribute('data-x', '12')
+  })
+
+  it('draws no TODAY line once the season is over', () => {
+    useComparison([2025], 2025)
+    mockState.data = { ...comparedData, today_day_offset: null }
+    render(<VelocityPage />)
+    expect(screen.queryByText('TODAY')).not.toBeInTheDocument()
+  })
+
+  it('legend totals follow the line mode, "at Wk N" while live', () => {
+    useComparison([2025], 2025)
+    render(<VelocityPage />)
+    const legend = screen.getByTestId('legend')
+    expect(legend).toHaveTextContent('2026 (100 at Wk 1)')
+    expect(legend).toHaveTextContent('2025 (130 final)')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Gross Cumulative' }))
+    expect(screen.getByTestId('legend')).toHaveTextContent('2026 (110 at Wk 1)')
+    expect(screen.getByTestId('legend')).toHaveTextContent('2025 (150 final)')
+  })
+
+  it('legend reads "final" for the current year once the season is over', () => {
+    useComparison([2025], 2025)
+    mockState.data = { ...comparedData, today_day_offset: null }
+    render(<VelocityPage />)
+    expect(screen.getByTestId('legend')).toHaveTextContent('2026 (100 final)')
   })
 })
