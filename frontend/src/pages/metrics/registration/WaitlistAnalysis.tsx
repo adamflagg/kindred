@@ -21,6 +21,7 @@ import {
   type StackedBarDataItem,
   type StackedSegment,
 } from '../../../components/metrics/CssStackedHorizontalBarChart'
+import { sessionName } from '../../../utils/sessionName'
 import { transformGenderData } from '../../../utils/metricsTransforms'
 import { SESSION_NAME_ALIASES, resolveSessionAlias } from '../../../utils/sessionAliases'
 import { ComparisonSummaryTable } from '../../../components/metrics/ComparisonSummaryTable'
@@ -48,7 +49,8 @@ const WAITLIST_GRADE_SEGMENTS: StackedSegment[] = [
   { key: 'has_enrollment', label: 'Has Other Sessions', color: 'hsl(160, 100%, 35%)' },
 ]
 
-function transformWaitlistSessionData(
+// eslint-disable-next-line react-refresh/only-export-components
+export function transformWaitlistSessionData(
   bySession: WaitlistSessionBreakdown[],
   sessionDateLookup: Record<string, string>,
   sessionTypeLookup: Record<string, string>
@@ -57,7 +59,11 @@ function transformWaitlistSessionData(
   const enrolledSessions = new Map<number, string>()
   for (const item of sorted) {
     for (const enrolled of item.enrolled_in) {
-      enrolledSessions.set(enrolled.session_cm_id, enrolled.session_name)
+      // The shared short form (board 6), not CampMinder's raw name.
+      enrolledSessions.set(
+        enrolled.session_cm_id,
+        sessionName(enrolled.session_name, sessionTypeLookup[enrolled.session_name], 'short')
+      )
     }
   }
   const enrolledList = Array.from(enrolledSessions.entries())
@@ -71,7 +77,7 @@ function transformWaitlistSessionData(
   ]
   const data: StackedBarDataItem[] = sorted.map((item) => {
     const point: StackedBarDataItem = {
-      name: item.session_name,
+      name: sessionName(item.session_name, sessionTypeLookup[item.session_name], 'short'),
       total: item.no_enrollment + item.has_enrollment,
       no_enrollment: item.no_enrollment,
     }
@@ -307,9 +313,10 @@ export default function WaitlistAnalysis() {
                     onBarClick={(item) =>
                       setFilter({
                         type: 'waitlist_total',
+                        // Bars carry the short name; find the row by position, not by name.
                         value: String(
-                          primarySession.sorted.find((s) => s.session_name === item.name)
-                            ?.session_cm_id ?? ''
+                          primarySession.sorted[primarySession.data.indexOf(item)]?.session_cm_id ??
+                            ''
                         ),
                         label: item.name,
                       })

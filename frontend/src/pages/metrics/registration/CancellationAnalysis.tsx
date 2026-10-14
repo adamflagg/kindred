@@ -39,6 +39,7 @@ import {
   sortSessionDataByCampThenQuest,
 } from '../../../utils/sessionUtils'
 import type { CancellationSessionBreakdown } from '../../../types/metrics'
+import { sessionName } from '../../../utils/sessionName'
 import { MetricsQueryGuard } from '../../../components/metrics/MetricsQueryGuard'
 
 const CANCEL_SEGMENTS: StackedSegment[] = [
@@ -49,7 +50,21 @@ const CANCEL_SEGMENTS: StackedSegment[] = [
   { key: 'unknown', label: 'Unknown', color: 'hsl(0, 0%, 75%)' },
 ]
 
-function transformCancelSessionData(
+/** Board 6 (owner, 2026-10-14): wide enough for the longest short quest/teen name (~22 chars). */
+
+export const CANCEL_SESSION_LABEL_WIDTH = 150
+
+/**
+ * The chart's fixed 300px clipped the last rows of a long scope (All Summer) into overflow-hidden.
+ * Grow it to fit: 20px rows plus a 1px gap each, plus the axis (cssChartUtils' calculateBarSizing).
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function cancelSessionChartHeight(rows: number): number {
+  return Math.max(300, rows * 21 + 32)
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function transformCancelSessionData(
   bySession: CancellationSessionBreakdown[],
   sessionDateLookup: Record<string, string>,
   sessionTypeLookup: Record<string, string>
@@ -62,7 +77,8 @@ function transformCancelSessionData(
       (item.was_applied ?? 0) +
       (item.other_prior_status ?? 0)
     return {
-      name: item.session_name,
+      // The shared short form (board 6), not CampMinder's raw name.
+      name: sessionName(item.session_name, sessionTypeLookup[item.session_name], 'short'),
       total: item.total_cancelled,
       was_enrolled: item.was_enrolled,
       was_waitlisted: item.was_waitlisted,
@@ -416,10 +432,11 @@ export default function CancellationAnalysis() {
                         ? `${currentYear} Cancellations by Session`
                         : 'Cancellations by Session'
                     }
+                    labelWidth={CANCEL_SESSION_LABEL_WIDTH}
+                    height={cancelSessionChartHeight(primarySession.data.length)}
                     onBarClick={(item) => {
-                      const session = primarySession.sorted.find(
-                        (s) => s.session_name === item.name
-                      )
+                      // Bars carry the short name; find the row by position, not by name.
+                      const session = primarySession.sorted[primarySession.data.indexOf(item)]
                       if (session) {
                         setFilter({
                           type: 'cancellation_total',
@@ -434,6 +451,10 @@ export default function CancellationAnalysis() {
                       data={compSessionData.data}
                       segments={CANCEL_SEGMENTS}
                       title={`${compareYear} Cancellations by Session`}
+                      labelWidth={CANCEL_SESSION_LABEL_WIDTH}
+                      height={cancelSessionChartHeight(
+                        Math.max(primarySession.data.length, compSessionData.data.length)
+                      )}
                     />
                   )}
                 </div>
