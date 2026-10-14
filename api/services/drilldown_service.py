@@ -521,6 +521,10 @@ class DrilldownService:
 
             elif breakdown_type == "returning_status":
                 if person:
+                    # The enrolled rule for every status, waitlisted rows included (the
+                    # waitlist drill-down calls this too). Pre-existing: it was `!= 1`
+                    # before the shared helper, so a 0-year waitlister lands under
+                    # "returning" while its R badge (> 1) says not. Open owner decision 35.
                     years = getattr(person, "years_at_camp", None)
                     if breakdown_value == "new":
                         if is_new_camper(years):
@@ -766,7 +770,8 @@ class DrilldownService:
             enrolled_attendee_groups: If provided, maps person_id to their
                 enrolled attendee records (for populating enrolled_sessions).
             returned_person_ids: If provided, determines is_returning based on
-                membership in this set instead of years_at_camp > 1.
+                membership in this set. Otherwise enrolled rows use
+                is_returning_camper and non-enrolled rows use years_at_camp > 1.
 
         Returns:
             List of DrilldownAttendee records.

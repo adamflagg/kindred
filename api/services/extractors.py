@@ -81,9 +81,11 @@ def is_new_camper(years_at_camp: int | None) -> bool:
 def is_returning_camper(years_at_camp: int | None) -> bool:
     """Returning = every enrolled camper who is not new, including 0 or no years recorded.
 
-    Enrolled rows only. Waitlisted, cancelled and other non-enrolled rows keep
-    `years_at_camp > 1` in the drill-downs: about half of them carry 0 years,
-    and whether those count as returning is an open owner decision.
+    Meant for enrolled rows. The drill-down R badge keeps `years_at_camp > 1` for
+    waitlisted, cancelled and other non-enrolled rows: about half of them carry
+    0 years, and whether those count as returning is an open owner decision.
+    One exception predates this helper: the drill-down `returning_status` filter
+    applies it to every status, waitlisted rows included.
     """
     return not is_new_camper(years_at_camp)
 
