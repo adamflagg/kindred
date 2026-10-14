@@ -104,7 +104,7 @@ def test_ci_gate_verdict_on_the_guide_jobs(var: str, result: str, passes: bool) 
     both jobs run only on same-repo PRs (a push or a fork PR skips them)."""
     step = _CI["jobs"]["summary"]["steps"][0]
     needs = {"GUIDE_IMPACT": "guide-impact", "GUIDE_BUILD": "guide-build"}[var]
-    assert step["env"][var] == "${{ needs.%s.result }}" % needs
+    assert step["env"][var] == "${{ needs." + needs + ".result }}"
     env = dict.fromkeys(step["env"], "success")
     env |= {var: result, "EVENT_NAME": "pull_request", "PATH": "/usr/bin:/bin"}
     proc = subprocess.run(["bash", "-c", step["run"]], env=env, capture_output=True, text=True, check=False)
