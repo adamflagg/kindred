@@ -3187,7 +3187,7 @@ class TestPartialWeekInfo:
         from datetime import date
 
         # week_start is Monday Jan 5 2026, today is Thursday Jan 8 2026 (day 4 of 7)
-        is_partial, days = _partial_week_info("2026-01-05", 2026, today=date(2026, 1, 8))
+        is_partial, days = _partial_week_info("2026-01-05", today=date(2026, 1, 8))
         assert is_partial is True
         assert days == 4  # Mon=1, Tue=2, Wed=3, Thu=4
 
@@ -3195,7 +3195,7 @@ class TestPartialWeekInfo:
         """Today being the first day of the week means only 1 day of data."""
         from datetime import date
 
-        is_partial, days = _partial_week_info("2026-01-05", 2026, today=date(2026, 1, 5))
+        is_partial, days = _partial_week_info("2026-01-05", today=date(2026, 1, 5))
         assert is_partial is True
         assert days == 1
 
@@ -3204,7 +3204,7 @@ class TestPartialWeekInfo:
         from datetime import date
 
         # week_start is Jan 5, day 7 is Jan 11
-        is_partial, days = _partial_week_info("2026-01-05", 2026, today=date(2026, 1, 11))
+        is_partial, days = _partial_week_info("2026-01-05", today=date(2026, 1, 11))
         assert is_partial is True
         assert days == 7
 
@@ -3213,7 +3213,7 @@ class TestPartialWeekInfo:
         from datetime import date
 
         # week_start is Jan 5, week ends Jan 12. Today is Jan 12 (next week).
-        is_partial, days = _partial_week_info("2026-01-05", 2026, today=date(2026, 1, 12))
+        is_partial, days = _partial_week_info("2026-01-05", today=date(2026, 1, 12))
         assert is_partial is False
         assert days == 7
 
@@ -3221,7 +3221,7 @@ class TestPartialWeekInfo:
         """A week starting after today is not partial (shouldn't happen, but safe)."""
         from datetime import date
 
-        is_partial, days = _partial_week_info("2026-01-12", 2026, today=date(2026, 1, 5))
+        is_partial, days = _partial_week_info("2026-01-12", today=date(2026, 1, 5))
         assert is_partial is False
         assert days == 7
 
@@ -3230,7 +3230,7 @@ class TestPartialWeekInfo:
         from datetime import date
 
         # 2025 data with today in 2026 — should not be partial
-        is_partial, days = _partial_week_info("2025-01-06", 2025, today=date(2026, 1, 8))
+        is_partial, days = _partial_week_info("2025-01-06", today=date(2026, 1, 8))
         assert is_partial is False
         assert days == 7
 
@@ -3239,7 +3239,7 @@ class TestPartialWeekInfo:
         from datetime import date
 
         # week_start is Jan 5 2026, today is Jan 20 2026 (well past that week)
-        is_partial, days = _partial_week_info("2026-01-05", 2026, today=date(2026, 1, 20))
+        is_partial, days = _partial_week_info("2026-01-05", today=date(2026, 1, 20))
         assert is_partial is False
         assert days == 7
 
@@ -4731,3 +4731,115 @@ class TestPerSessionSnapshotCoverage:
         assert result.combined.weekly, "Quest cancellation curve must not come back empty"
         assert result.combined.weekly[-1].enrolled == 1
         assert result.cancelled_to_date == 1
+
+
+# ============================================================================
+# Season window edges (C1, B8, C3)
+# ============================================================================
+
+
+class TestSeasonWindowEdges:
+    """The season window is [priority_reg_date, priority_reg_date + SEASON_WEEKS weeks).
+
+    C1: the end was treated as inclusive, so a past season grew a one-day "Wk 42".
+    B8: a cancellation dated after the window was dropped while its in-window
+        enrollment was kept, so a past season's final read one camper high.
+    C3: the partial-week check compared calendar years, so a season whose priority
+        registration falls in the prior calendar year never showed a partial week.
+    """
+
+    @pytest.mark.asyncio
+    async def test_past_season_reconstruction_ends_at_week_41(self, service, mock_repository):
+        from datetime import date
+
+        mock_repository.fetch_sessions.return_value = {1001: create_mock_session(1001, "Session 1")}
+        mock_repository.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(101, 1001, "2025-11-05"),
+        ]
+
+        # 2026 season: 2025-11-01 .. 2026-08-14 inclusive; today is well past it.
+        result = await service.get_velocity(year=2026, today=date(2026, 10, 7))
+
+        last = result.combined.weekly[-1]
+        assert last.week_number == SEASON_WEEKS
+        assert last.days_in_week == 7
+        assert result.combined.daily[-1].date == "2026-08-14"
+
+    @pytest.mark.asyncio
+    async def test_snapshot_on_window_end_date_is_excluded(self, service, mock_repository):
+        from datetime import date
+
+        mock_repository.fetch_sessions.return_value = {1001: create_mock_session(1001, "Session 1")}
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2025-11-03", 1001, 2026, enrolled=10),
+            create_mock_snapshot("2026-08-14", 1001, 2026, enrolled=40),  # last day of the window
+            create_mock_snapshot("2026-08-15", 1001, 2026, enrolled=41),  # first day after it
+        ]
+
+        result = await service.get_velocity(year=2026, today=date(2026, 10, 7))
+
+        assert result.combined.weekly[-1].week_number == SEASON_WEEKS
+        assert result.combined.weekly[-1].enrolled == 40
+
+    @pytest.mark.asyncio
+    async def test_post_window_cancellation_lowers_past_final(self, service, mock_repository):
+        """A camper who registered inside the window and cancelled after it is not
+        enrolled any more, so the past season's final must not count them."""
+        from datetime import date
+
+        mock_repository.fetch_sessions.return_value = {1001: create_mock_session(1001, "Session 1")}
+        mock_repository.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(101, 1001, "2025-11-05"),
+            create_mock_attendee_with_date(102, 1001, "2025-11-06"),
+            # Registered in the window, cancelled months after it closed.
+            create_mock_attendee_with_date(103, 1001, "2026-09-20", status="cancelled", effective_date="2025-11-07"),
+        ]
+
+        result = await service.get_velocity(year=2026, today=date(2026, 10, 7))
+
+        assert result.combined.weekly[-1].enrolled == 2  # the two campers still enrolled
+        assert result.combined.weekly[-1].gross_enrolled == 3
+        assert result.cancelled_to_date == 1
+
+    @pytest.mark.asyncio
+    async def test_post_window_cancellation_of_post_window_registration_is_not_counted(self, service, mock_repository):
+        """Clipping applies only to a cancellation whose registration was counted."""
+        from datetime import date
+
+        mock_repository.fetch_sessions.return_value = {1001: create_mock_session(1001, "Session 1")}
+        mock_repository.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(101, 1001, "2025-11-05"),
+            create_mock_attendee_with_date(102, 1001, "2026-09-20", status="cancelled", effective_date="2026-09-01"),
+        ]
+
+        result = await service.get_velocity(year=2026, today=date(2026, 10, 7))
+
+        assert result.combined.weekly[-1].enrolled == 1
+        assert result.cancelled_to_date == 0
+
+    def test_partial_week_detected_when_season_year_differs_from_calendar_year(self):
+        from datetime import date
+
+        # The 2027 season opens 2026-11-03; on 2026-11-05 its first week is 3 days old.
+        is_partial, days = _partial_week_info("2026-11-03", today=date(2026, 11, 5))
+        assert is_partial is True
+        assert days == 3
+
+    @pytest.mark.asyncio
+    async def test_current_week_partial_for_season_opening_in_prior_calendar_year(self, service, mock_repository):
+        from datetime import date
+
+        mock_repository.fetch_registration_dates.side_effect = None
+        mock_repository.fetch_registration_dates.return_value = {"priority_reg_date": "2026-11-03"}
+        mock_repository.fetch_sessions.return_value = {1001: create_mock_session(1001, "Session 1", year=2027)}
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-11-03", 1001, 2027, enrolled=40),
+            create_mock_snapshot("2026-11-05", 1001, 2027, enrolled=55),
+        ]
+
+        result = await service.get_velocity(year=2027, today=date(2026, 11, 5))
+
+        last = result.combined.weekly[-1]
+        assert last.week_number == 1
+        assert last.is_partial is True
+        assert last.days_in_week == 3

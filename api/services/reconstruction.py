@@ -365,6 +365,7 @@ def reconstruct_daily_multi(
     per_session_has_gender: dict[int, bool] = {}
 
     _empty_bucket: dict[str, int] = dict.fromkeys(_BUCKET_FIELDS, 0)
+    end_iso = end_date.isoformat()
 
     for att in attendees:
         session = get_session_from_expand(att)
@@ -403,6 +404,7 @@ def reconstruct_daily_multi(
 
         # Enrollment event
         enroll_date_str = get_enrollment_date(att)
+        enroll_day: str | None = None
         if enroll_date_str:
             enroll_day = parse_date_only(enroll_date_str)
 
@@ -428,6 +430,12 @@ def reconstruct_daily_multi(
             canc_date_raw = getattr(att, "enrollment_date", "") or ""
             if canc_date_raw:
                 canc_day = parse_date_only(canc_date_raw)
+                # A cancellation dated after the output range whose registration falls
+                # inside it is clipped onto the last day, so the final point reads who is
+                # actually still enrolled. Left alone, the registration would count and
+                # the cancellation would not, and a past season's final would run high.
+                if canc_day > end_iso and enroll_day is not None and enroll_day <= end_iso:
+                    canc_day = end_iso
 
                 if include_in_combined:
                     bucket = combined_events.setdefault(canc_day, dict(_empty_bucket))

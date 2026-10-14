@@ -161,7 +161,12 @@ def _compute_season_start(reg_dates: dict[str, str], year: int) -> datetime | No
 
 
 def _season_end(priority_reg_date: datetime) -> datetime:
-    """Return the season end: priority_reg_date + SEASON_WEEKS * 7 days."""
+    """Return the season end: priority_reg_date + SEASON_WEEKS * 7 days.
+
+    The end is EXCLUSIVE: the window is [priority_reg_date, season_end), i.e.
+    exactly SEASON_WEEKS full weeks. Treating it as inclusive added a one-day
+    "Wk 42" to every past season.
+    """
     return priority_reg_date + timedelta(days=SEASON_WEEKS * 7)
 
 
@@ -175,15 +180,16 @@ def _week_number(d: datetime | date, priority_reg_date: datetime | date) -> int:
     return days // 7 + 1
 
 
-def _partial_week_info(week_start_str: str, year: int, *, today: date | None = None) -> tuple[bool, int]:
+def _partial_week_info(week_start_str: str, *, today: date | None = None) -> tuple[bool, int]:
     """Check if a week bucket is partial (incomplete). Returns (is_partial, days_in_week).
 
-    Only the current year can have partial weeks. A week is partial when
-    today falls within the 7-day bucket starting at week_start_str.
+    A week is partial when today falls within the 7-day bucket starting at
+    week_start_str, which can only happen in the season that is running now.
+    This deliberately does not compare calendar years: a season's priority
+    registration falls in the calendar year before its season year (2027 opens
+    in November 2026), so a year check hid the partial week all autumn.
     """
     ref = today or datetime.now(tz=UTC).date()
-    if year != ref.year:
-        return False, 7
     ws = datetime.strptime(week_start_str, "%Y-%m-%d").date()
     week_end = ws + timedelta(days=7)
     if ws <= ref < week_end:
@@ -215,7 +221,6 @@ def _daily_counts_to_weekly_points(
     season_start: datetime,
     *,
     track_gross: bool = False,
-    year: int = 0,
     today: date | None = None,
 ) -> list[WeeklyDataPoint]:
     """Bucket daily counts into weekly periods and build cumulative WeeklyDataPoints.
@@ -226,7 +231,6 @@ def _daily_counts_to_weekly_points(
         track_gross: If True, set gross_enrolled/weekly_new from the count
                      (used for enrollment). If False, leave them at 0
                      (used for cancellation curves).
-        year: Data year, used for partial week detection.
         today: Override for current date (testing).
     """
     weekly_counts: dict[str, int] = defaultdict(int)
@@ -248,7 +252,7 @@ def _daily_counts_to_weekly_points(
         bucket_dt = datetime.strptime(bucket_key, "%Y-%m-%d")
         wn = _week_number(bucket_dt, season_start)
         week_end_date = bucket_dt + timedelta(days=6)
-        is_partial, days_in_week = _partial_week_info(bucket_key, year, today=today)
+        is_partial, days_in_week = _partial_week_info(bucket_key, today=today)
         points.append(
             WeeklyDataPoint(
                 week_start=bucket_key,
@@ -462,7 +466,7 @@ class VelocityService:
             sessions: Known sessions dict (used for filtering).
             session_cm_id: If set, only build for this session.
             season_start: Season start date for day_offset calculation.
-            season_end: If set, filter out dates outside [season_start, season_end].
+            season_end: If set, filter out dates outside [season_start, season_end) (end exclusive).
             data_source: Label for DailyDataPoint.data_source.
             cumulative_input: If True, values in date_counts are cumulative totals
                 (daily delta = current - previous). If False, values are daily counts
@@ -479,7 +483,7 @@ class VelocityService:
             cum = 0
             for ds in sorted(date_data.keys()):
                 dt = datetime.strptime(ds, "%Y-%m-%d").date()
-                if season_end is not None and (dt < season_start or dt > season_end):
+                if season_end is not None and (dt < season_start or dt >= season_end):
                     continue
                 c = date_data[ds]
                 if cumulative_input:
@@ -1126,7 +1130,7 @@ class VelocityService:
 
         season_start_date = ctx.season_start.date() if isinstance(ctx.season_start, datetime) else ctx.season_start
         season_end_date = ctx.season_end.date() if isinstance(ctx.season_end, datetime) else ctx.season_end
-        is_current_season = season_start_date <= ctx.today <= season_end_date
+        is_current_season = season_start_date <= ctx.today < season_end_date
         combined_weekly = rollup_daily_to_weekly(merged_daily, season_start_date, is_current_year=is_current_season)
 
         # Fall back to weekly merge if daily merge produced no data
@@ -1248,7 +1252,7 @@ class VelocityService:
     ) -> list[WeeklyDataPoint]:
         """Aggregate snapshot data to weekly points (priority_reg_date bucketing, last snapshot per week wins).
 
-        Filters out data before season_start or after season_end.
+        Filters out data before season_start or on/after season_end (exclusive).
         """
         # Bucket by 7-day periods anchored to season_start (= priority_reg_date)
         weekly_data: dict[str, dict[str, int]] = {}
@@ -1258,7 +1262,7 @@ class VelocityService:
             dt = datetime.strptime(parse_date_only(date_str), "%Y-%m-%d")
             if dt.date() < ctx.season_start.date():
                 continue
-            if dt.date() > ctx.season_end.date():
+            if dt.date() >= ctx.season_end.date():
                 continue
             bucket = _week_start(dt, ctx.season_start)
             bucket_key = bucket.strftime("%Y-%m-%d")
@@ -1282,7 +1286,7 @@ class VelocityService:
             bucket_dt = datetime.strptime(bucket_key, "%Y-%m-%d")
             wn = _week_number(bucket_dt, ctx.season_start)
             week_end_date = bucket_dt + timedelta(days=6)
-            is_partial, days_in_week = _partial_week_info(bucket_key, ctx.year, today=ctx.today)
+            is_partial, days_in_week = _partial_week_info(bucket_key, today=ctx.today)
             points.append(
                 WeeklyDataPoint(
                     week_start=bucket_key,
@@ -1315,7 +1319,7 @@ class VelocityService:
         """Convert deduplicated snapshot data to daily data points.
 
         Sums enrolled/cancelled across all sessions per date, sorted chronologically.
-        Only includes dates within [season_start, season_end].
+        Only includes dates within [season_start, season_end).
         """
         # Sum across sessions per date
         combined_dates: dict[str, dict[str, int]] = defaultdict(lambda: {"enrolled": 0, "cancelled": 0})
@@ -1324,7 +1328,7 @@ class VelocityService:
                 dt = datetime.strptime(parse_date_only(date_str), "%Y-%m-%d")
                 if dt.date() < season_start:
                     continue
-                if dt.date() > season_end.date():
+                if dt.date() >= season_end.date():
                     continue
                 combined_dates[date_str]["enrolled"] += counts.get("enrolled", 0)
             # Add cancelled data
@@ -1332,7 +1336,7 @@ class VelocityService:
                 dt = datetime.strptime(parse_date_only(date_str), "%Y-%m-%d")
                 if dt.date() < season_start:
                     continue
-                if dt.date() > season_end.date():
+                if dt.date() >= season_end.date():
                     continue
                 combined_dates[date_str]["cancelled"] += canc
 
@@ -1389,7 +1393,7 @@ class VelocityService:
             session_dates: dict[str, dict[str, int]] = {}
             for date_str, counts in date_data.items():
                 dt = datetime.strptime(parse_date_only(date_str), "%Y-%m-%d")
-                if dt.date() < season_start or dt.date() > season_end.date():
+                if dt.date() < season_start or dt.date() >= season_end.date():
                     continue
                 clean_date = dt.strftime("%Y-%m-%d")
                 session_dates[clean_date] = {
@@ -1558,8 +1562,8 @@ class VelocityService:
 
         season_start_date = ctx.season_start.date() if isinstance(ctx.season_start, datetime) else ctx.season_start
         season_end_date = ctx.season_end.date() if isinstance(ctx.season_end, datetime) else ctx.season_end
-        is_current_season = season_start_date <= ctx.today <= season_end_date
-        end_date = ctx.today if is_current_season else season_end_date
+        is_current_season = season_start_date <= ctx.today < season_end_date
+        end_date = ctx.today if is_current_season else season_end_date - timedelta(days=1)
 
         anchor_str = season_start_date.strftime("%Y-%m-%d")
         has_week0 = await self.repo.has_pre_anchor_enrollments(ctx.year, anchor_str)
@@ -1648,7 +1652,7 @@ class VelocityService:
             if not enroll_date_str:
                 continue
             dt = datetime.strptime(enroll_date_str, "%Y-%m-%d")
-            if dt.date() > ctx.season_end.date():
+            if dt.date() >= ctx.season_end.date():
                 continue
             date_key = dt.strftime("%Y-%m-%d")
             gender_session_daily[gender][effective_sid][date_key] += 1
@@ -1670,9 +1674,7 @@ class VelocityService:
                 session_daily = {sid: dates for sid, dates in session_daily.items() if sid == session_cm_id}
 
             gender_per_session[gender] = {
-                sid: _daily_counts_to_weekly_points(
-                    daily, ctx.season_start, track_gross=True, year=ctx.year, today=ctx.today
-                )
+                sid: _daily_counts_to_weekly_points(daily, ctx.season_start, track_gross=True, today=ctx.today)
                 for sid, daily in session_daily.items()
             }
 
@@ -1892,7 +1894,7 @@ class VelocityService:
             weekly_data: dict[str, int] = {}
             for date_str, cancelled in sorted(date_data.items()):
                 dt = datetime.strptime(parse_date_only(date_str), "%Y-%m-%d")
-                if dt.date() < ctx.season_start.date() or dt.date() > ctx.season_end.date():
+                if dt.date() < ctx.season_start.date() or dt.date() >= ctx.season_end.date():
                     continue
                 bucket = _week_start(dt, ctx.season_start)
                 bucket_key = bucket.strftime("%Y-%m-%d")
@@ -1906,7 +1908,7 @@ class VelocityService:
                 bucket_dt = datetime.strptime(bucket_key, "%Y-%m-%d")
                 wn = _week_number(bucket_dt, ctx.season_start)
                 week_end_date = bucket_dt + timedelta(days=6)
-                is_partial, days_in_week = _partial_week_info(bucket_key, ctx.year, today=ctx.today)
+                is_partial, days_in_week = _partial_week_info(bucket_key, today=ctx.today)
                 points.append(
                     WeeklyDataPoint(
                         week_start=bucket_key,
@@ -1939,7 +1941,7 @@ class VelocityService:
                 continue
             for date_str, cancelled in date_data.items():
                 dt = datetime.strptime(date_str, "%Y-%m-%d")
-                if dt.date() < season_start_date or dt.date() > ctx.season_end.date():
+                if dt.date() < season_start_date or dt.date() >= ctx.season_end.date():
                     continue
                 combined_dates[date_str] += cancelled
 
@@ -2023,7 +2025,7 @@ class VelocityService:
                 continue
 
             dt = datetime.strptime(parse_date_only(cancel.detected_at), "%Y-%m-%d")
-            if dt.date() < ctx.season_start.date() or dt.date() > ctx.season_end.date():
+            if dt.date() < ctx.season_start.date() or dt.date() >= ctx.season_end.date():
                 continue
             bucket = _week_start(dt, ctx.season_start)
             bucket_key = bucket.strftime("%Y-%m-%d")
@@ -2045,7 +2047,7 @@ class VelocityService:
                 bucket_dt = datetime.strptime(bucket_key, "%Y-%m-%d")
                 wn = _week_number(bucket_dt, ctx.season_start)
                 week_end_date = bucket_dt + timedelta(days=6)
-                is_partial, days_in_week = _partial_week_info(bucket_key, ctx.year, today=ctx.today)
+                is_partial, days_in_week = _partial_week_info(bucket_key, today=ctx.today)
                 points.append(
                     WeeklyDataPoint(
                         week_start=bucket_key,
@@ -2164,7 +2166,7 @@ class VelocityService:
                 continue
 
             dt = datetime.strptime(parse_date_only(cancel.detected_at), "%Y-%m-%d")
-            if dt.date() < ctx.season_start.date() or dt.date() > ctx.season_end.date():
+            if dt.date() < ctx.season_start.date() or dt.date() >= ctx.season_end.date():
                 continue
             date_key = dt.strftime("%Y-%m-%d")
             gender_session_daily[gender][effective_sid][date_key] += 1
@@ -2184,7 +2186,7 @@ class VelocityService:
             session_daily = gender_session_daily.get(gender, {})
 
             per_session_data: dict[int, list[WeeklyDataPoint]] = {
-                sid: _daily_counts_to_weekly_points(daily, ctx.season_start, year=ctx.year, today=ctx.today)
+                sid: _daily_counts_to_weekly_points(daily, ctx.season_start, today=ctx.today)
                 for sid, daily in session_daily.items()
             }
 
