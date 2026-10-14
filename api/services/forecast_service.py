@@ -7,7 +7,9 @@ and revenue projections.
 from __future__ import annotations
 
 import asyncio
+import re
 from datetime import date, datetime, timedelta
+from functools import cmp_to_key
 from typing import TYPE_CHECKING, Any, Literal
 
 from api.schemas.forecast import ForecastPriorTotals, ForecastResponse, SessionForecast, WeekOption
@@ -42,6 +44,35 @@ if TYPE_CHECKING:
     from api.services.metrics_repository import MetricsRepository
 
 logger = get_logger(__name__)
+
+_SESSION_NUMBER = re.compile(r"session\s+(\d+)([a-z])?", re.IGNORECASE)
+
+
+def _parse_session_name(name: str) -> tuple[int, str]:
+    """Port of the frontend's sessionUtils.parseSessionName: (number, letter suffix)."""
+    match = _SESSION_NUMBER.search(name)
+    if match:
+        return int(match.group(1)), (match.group(2) or "").lower()
+    return 0, name.lower()
+
+
+def _page_row_compare(a: Any, b: Any) -> int:
+    """Port of the frontend's sessionUtils.compareByDateThenName, which orders Forecast rows.
+
+    Start date first (only when both have one), then the session number and its
+    letter suffix. AG cabins under one parent share the date and the "Session N", so
+    they tie here and the page keeps the order the API sent them in.
+    """
+    date_a = str(getattr(a, "start_date", "") or "")
+    date_b = str(getattr(b, "start_date", "") or "")
+    if date_a and date_b and date_a != date_b:
+        return -1 if date_a < date_b else 1
+    num_a, suffix_a = _parse_session_name(str(getattr(a, "name", "") or ""))
+    num_b, suffix_b = _parse_session_name(str(getattr(b, "name", "") or ""))
+    if num_a != num_b:
+        return num_a - num_b
+    return (suffix_a > suffix_b) - (suffix_a < suffix_b)
+
 
 # Session type -> the forecast section its whole-scope prior total belongs to.
 _SECTION_BY_TYPE: dict[str, str] = {
@@ -757,9 +788,10 @@ class ForecastService:
         under the matching parent. With several AG rows under one parent each keeps
         its own cm_id, then exact-name, match. The remainder (the parent-level sum
         minus the matched cabins) goes to the FIRST unmatched sibling in the order the
-        page shows them (start date, then name), so the rows add up to the section
-        prior; further unmatched siblings stay None ("new"). Nothing is attributed when every sibling matched or the remainder is
-        not positive, so a retired cabin is never double counted.
+        page shows them (see _page_row_compare), so the rows add up to the section
+        prior; further unmatched siblings stay None ("new"). Nothing is attributed
+        when every sibling matched or the remainder is not positive, so a retired
+        cabin is never double counted.
         """
         by_parent: dict[Any, list[int]] = {}
         for sid, session in sessions.items():
@@ -773,15 +805,13 @@ class ForecastService:
             canonical = resolve_session_alias(getattr(session, "name", ""))
             return counts.get(f"ag-name:{canonical}") if canonical else None
 
-        def page_order(sid: int) -> tuple[str, str]:
-            # The order the page shows rows (sessionUtils.compareByDateThenName): start
-            # date, then name. "First unmatched" must be the first one staff see.
-            session = sessions[sid]
-            return (str(getattr(session, "start_date", "") or ""), str(getattr(session, "name", "")).lower())
+        def page_order(a: int, b: int) -> int:
+            return _page_row_compare(sessions[a], sessions[b])
 
         resolved: dict[int, int | None] = {}
         for unordered_ids in by_parent.values():
-            sibling_ids = sorted(unordered_ids, key=page_order)
+            # A stable sort over the API row order (sessions order), as the page's toSorted is
+            sibling_ids = sorted(unordered_ids, key=cmp_to_key(page_order))
             parent_key = self._ag_parent_key(sessions[sibling_ids[0]], sessions)
             parent_sum = counts.get(parent_key) if parent_key else None
             if len(sibling_ids) == 1 and parent_sum is not None:
