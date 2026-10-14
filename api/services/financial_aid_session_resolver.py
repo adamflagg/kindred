@@ -54,6 +54,8 @@ PROGRAM_SESSION_TYPES: Final[Mapping[str, frozenset[str]]] = MappingProxyType(
     }
 )
 
+FAMILY_ADULT: Final = "family_adult"
+
 _QUOTES: Final = str.maketrans({"‘": "'", "’": "'", "`": "'", "´": "'", "“": '"', "”": '"'})
 _SPACES: Final = re.compile(r"\s+")
 
@@ -96,13 +98,25 @@ def session_named_by(option_text: str, program_key: str, sessions: Sequence[Sess
     return named[0] if len(named) == 1 else 0
 
 
+def _counted_enrollments(program_key: str, sessions: Sequence[SessionRow], enrolled: frozenset[int]) -> frozenset[int]:
+    """The enrolled sessions as the program counts them. For family camp an Adult Reg
+    enrollment (`family_adult`, kindred#3213, owner ruling 2026-10-14) counts as the
+    weekend its parent_id names, so an adult-only household resolves to that weekend.
+    An unpaired one (parent 0) names no weekend and is never itself the answer."""
+    if program_key != PROGRAM_FAMILY_CAMP:
+        return enrolled
+    weekends = {s.parent_cm_id for s in sessions if s.session_type == FAMILY_ADULT and s.cm_id in enrolled}
+    return enrolled | (weekends - {0})
+
+
 def resolve_session(
     option_text: str,
     program_key: str,
     sessions: Sequence[SessionRow],
     enrolled_session_ids: frozenset[int],
 ) -> SessionResolution:
-    in_program = [s for s in _in_program(program_key, sessions) if s.cm_id in enrolled_session_ids]
+    counted = _counted_enrollments(program_key, sessions, enrolled_session_ids)
+    in_program = [s for s in _in_program(program_key, sessions) if s.cm_id in counted]
     candidates = tuple(sorted(s.cm_id for s in in_program))
     if len(candidates) == 1:
         return SessionResolution(candidates[0], "enrollment", candidates)

@@ -63,7 +63,8 @@ independently.
     dates.
   - **Counts as Family Camp** for the household's Family Camp enrollment status (owner ruling 2026-10-14), the camper
     journey, the daily person custom-values cohort, and Camperships (aid is `family_camp`; an unclaimed one takes its
-    weekend's rules program).
+    weekend's rules program; a household's Family Camp aid request resolves to the paired weekend when Adult Reg is its
+    only enrollment, `api/services/financial_aid_session_resolver.py`).
   - **Not yet on the weekend board**: no cards, no household linking, no cabin attribution. That arrives with the 2027
     Family Camp lodging work. It stays off the Jotform tab, the adult board and summer metrics.
 

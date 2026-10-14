@@ -6,7 +6,7 @@ answer's program decide; the option text only breaks a tie between them.
 
 from __future__ import annotations
 
-from api.services.financial_aid_intake_types import SessionResolution
+from api.services.financial_aid_intake_types import SessionResolution, SessionRow
 from api.services.financial_aid_session_resolver import (
     normalize_option_text,
     resolve_adult_session,
@@ -89,3 +89,51 @@ def test_an_adult_request_takes_the_one_adult_weekend_the_person_is_enrolled_in(
         0, "unmatched", (1000401, 1000402)
     )
     assert resolve_adult_session(SESSIONS, frozenset()) == SessionResolution(0, "unmatched", ())
+
+
+# Adult Reg (kindred#3213, owner ruling 2026-10-14): an adult-only Family Camp guest enrolls in
+# an Adult Reg session (`family_adult`) whose parent_id names its weekend. For a family camp
+# answer that enrollment counts as the weekend's, so an adult-only household resolves.
+ADULT_REG_FC6 = SessionRow(1000212, "Adult Reg: Family Camp 6", "family_adult", "2027-08-20", parent_cm_id=1000202)
+ADULT_REG_FC3 = SessionRow(1000211, "Adult Reg: Family Camp 3", "family_adult", "2027-05-28", parent_cm_id=1000201)
+ADULT_REG_UNPAIRED = SessionRow(1000219, "Adult Reg: Prospective Weekend", "family_adult", "2027-04-10")
+WITH_ADULT_REG = (*SESSIONS, ADULT_REG_FC6, ADULT_REG_FC3, ADULT_REG_UNPAIRED)
+
+
+def test_an_adult_reg_only_household_resolves_to_its_paired_weekend() -> None:
+    assert resolve_session("Family Camp 6", "family_camp", WITH_ADULT_REG, frozenset({1000212})) == (
+        SessionResolution(1000202, "enrollment", (1000202,))
+    )
+
+
+def test_an_adult_reg_enrollment_and_its_own_weekend_count_once() -> None:
+    assert resolve_session("Family Camp 3", "family_camp", WITH_ADULT_REG, frozenset({1000202, 1000212})) == (
+        SessionResolution(1000202, "enrollment", (1000202,))
+    )
+
+
+def test_adult_reg_weekends_tie_like_any_two_weekends_and_the_text_breaks_it() -> None:
+    enrolled = frozenset({1000202, 1000211})
+    assert resolve_session("Family Camp 3", "family_camp", WITH_ADULT_REG, enrolled) == SessionResolution(
+        1000201, "enrollment_text", (1000201, 1000202)
+    )
+    assert resolve_session("Family Camp", "family_camp", WITH_ADULT_REG, enrolled) == SessionResolution(
+        0, "unmatched", (1000201, 1000202)
+    )
+
+
+def test_an_unpaired_adult_reg_enrollment_names_no_weekend() -> None:
+    # parent_id 0: the sync could not pair it. It is never itself the answer (Rules/Costs
+    # price weekends), so it stays unmatched for staff to re-point.
+    assert resolve_session("Family Camp 6", "family_camp", WITH_ADULT_REG, frozenset({1000219})) == (
+        SessionResolution(0, "unmatched", ())
+    )
+
+
+def test_adult_reg_counts_for_family_camp_only() -> None:
+    for program in ("summer", "adult_weekend", "bmitzvah"):
+        assert resolve_session("Family Camp 6", program, WITH_ADULT_REG, frozenset({1000212})) == (
+            SessionResolution(0, "unmatched", ())
+        ), program
+    assert resolve_adult_session(WITH_ADULT_REG, frozenset({1000212})) == SessionResolution(0, "unmatched", ())
+    assert session_named_by("Adult Reg: Family Camp 6", "family_camp", WITH_ADULT_REG) == 0
