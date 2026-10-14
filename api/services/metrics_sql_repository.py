@@ -150,11 +150,15 @@ class MetricsSQLRepository:
     # ------------------------------------------------------------------
 
     async def fetch_persons(self, year: int) -> dict[int, Any]:
-        """Fetch persons as dict keyed by cm_id (int)."""
+        """Fetch persons as dict keyed by cm_id (int).
+
+        preferred_name, age and address_state feed the drill-down list and CSV.
+        Blank strings read as None so the drill-down's ``??`` fallbacks apply.
+        """
         rows = self._query(
-            """SELECT cm_id, first_name, last_name, gender, grade, school,
-                      normalized_school, address_city, normalized_city,
-                      normalized_congregation, years_at_camp, household_id
+            """SELECT cm_id, first_name, last_name, preferred_name, gender, grade, age,
+                      school, normalized_school, address_city, address_state,
+                      normalized_city, normalized_congregation, years_at_camp, household_id
                FROM persons WHERE year = ?""",
             (year,),
         )
@@ -163,11 +167,14 @@ class MetricsSQLRepository:
                 cm_id=int(r["cm_id"]),
                 first_name=r["first_name"],
                 last_name=r["last_name"],
+                preferred_name=r["preferred_name"] or None,
                 gender=r["gender"],
                 grade=r["grade"],
+                age=r["age"],
                 school=r["school"],
                 normalized_school=r["normalized_school"],
                 address_city=r["address_city"],
+                address_state=r["address_state"] or None,
                 normalized_city=r["normalized_city"],
                 normalized_congregation=r["normalized_congregation"],
                 years_at_camp=r["years_at_camp"],

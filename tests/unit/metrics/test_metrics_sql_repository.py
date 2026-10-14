@@ -144,6 +144,35 @@ class TestFetchPersons:
         assert emma.years_at_camp == 3
         assert emma.household_id == 2001
 
+    @pytest.mark.asyncio
+    async def test_drilldown_display_fields(self, sql_db: sqlite3.Connection) -> None:
+        """fetch_persons carries preferred_name, age and address_state.
+
+        The drill-down list and its CSV read all three off these person objects.
+        Without the columns every drill-down showed legal first names, a blank
+        Age and a mostly blank State. A mocked repository can't catch this, so
+        it is pinned here against the real query.
+        """
+        sql_db.execute("UPDATE persons SET age = 11.5 WHERE id = 'per_emma'")
+        repo = _make_repo(sql_db)
+        result = await repo.fetch_persons(2025)
+        emma = result[1001]
+        assert emma.preferred_name == "Emmy"
+        assert emma.age == 11.5
+        assert emma.address_state == "CA"
+
+    @pytest.mark.asyncio
+    async def test_blank_display_fields_read_as_none(self, sql_db: sqlite3.Connection) -> None:
+        """A stored blank string reads as None, so the drill-down's `??` fallbacks
+        (preferred name → first name) take effect instead of showing nothing."""
+        sql_db.execute("UPDATE persons SET address_state = '' WHERE id = 'per_liam'")
+        repo = _make_repo(sql_db)
+        result = await repo.fetch_persons(2025)
+        liam = result[1002]
+        assert liam.preferred_name is None
+        assert liam.address_state is None
+        assert liam.age is None
+
 
 # ============================================================================
 # Test: fetch_sessions
