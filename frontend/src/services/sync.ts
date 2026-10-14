@@ -46,12 +46,20 @@ export const syncService = {
    * year, which is what this call did before the parameter existed — the
    * server treats an absent session exactly that way, so the omission is a
    * supported mode rather than an accident.
+   *
+   * `year` is the season the weekend belongs to, when it is not the primary
+   * (absent = the primary). The server resolves the weekend and runs the whole
+   * chain in that season (Plan Review Focus 1).
    */
   async refreshFamilyCamp(
     fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>,
-    sessionCmId?: number
+    sessionCmId?: number,
+    year?: number
   ): Promise<unknown> {
-    const query = sessionCmId === undefined ? '' : `?session=${sessionCmId}`
+    const params = new URLSearchParams()
+    if (sessionCmId !== undefined) params.set('session', String(sessionCmId))
+    if (year !== undefined) params.set('year', String(year))
+    const query = params.size > 0 ? `?${params.toString()}` : ''
     const response = await fetchWithAuth(`${API_BASE}/refresh-family-camp${query}`, {
       method: 'POST',
     })

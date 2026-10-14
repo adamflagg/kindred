@@ -42,7 +42,9 @@ import { Modal } from '../ui'
 import { syncService } from '../../services/sync'
 import { useApiWithAuth } from '../../hooks/useApiWithAuth'
 import { FAMILY_CAMP_REFRESH_CHAIN, useSyncSequenceRun } from '../../hooks/useSyncSequenceRun'
+import { useYear } from '../../hooks/useCurrentYear'
 import { invalidateLodgingRegistryQueries, queryKeys } from '../../utils/queryKeys'
+import { seasonToSync } from '../../utils/syncSeason'
 import { weekendHousingSyncedAt } from './weekendFreshness'
 
 /** The running readout — whole minutes, because it is a moving estimate. */
@@ -70,6 +72,10 @@ export function RefreshHousingButton({ session }: RefreshHousingButtonProps) {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const queryClient = useQueryClient()
   const { fetchWithAuth } = useApiWithAuth()
+  // The shell resolved this weekend in the season on screen, so the press refreshes that
+  // season: after the Oct 15 rollover the October adult weekends are the prior one, and
+  // CampMinder reuses session ids across years (Plan Review Focus 1).
+  const currentYear = useYear()
 
   const run = useSyncSequenceRun({
     chain: FAMILY_CAMP_REFRESH_CHAIN,
@@ -103,7 +109,12 @@ export function RefreshHousingButton({ session }: RefreshHousingButtonProps) {
   })
 
   const startRefresh = useMutation({
-    mutationFn: () => syncService.refreshFamilyCamp(fetchWithAuth, session.session_cm_id),
+    mutationFn: () =>
+      syncService.refreshFamilyCamp(
+        fetchWithAuth,
+        session.session_cm_id,
+        seasonToSync(queryClient, currentYear)
+      ),
     onError: (error: Error) => {
       // The POST never started a chain, so the detector must be disarmed or it
       // would sit forcing polling for its whole arming window.

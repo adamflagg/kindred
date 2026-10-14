@@ -59,6 +59,25 @@ describe('syncService', () => {
       )
     })
 
+    /**
+     * Plan Review Focus 1: after the Oct 15 rollover the weekends on screen can
+     * be the prior season's. The server resolves the weekend and runs the
+     * whole chain in the season it is told, so the season must reach the URL.
+     */
+    it('refreshes the season it is given', async () => {
+      const mockFetchWithAuth = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ status: 'started' }),
+      })
+
+      await syncService.refreshFamilyCamp(mockFetchWithAuth, 900, 2026)
+
+      expect(mockFetchWithAuth).toHaveBeenCalledWith(
+        '/api/custom/sync/refresh-family-camp?session=900&year=2026',
+        expect.objectContaining({ method: 'POST' })
+      )
+    })
+
     it('should throw on non-ok response', async () => {
       const mockFetchWithAuth = vi.fn().mockResolvedValue({
         ok: false,

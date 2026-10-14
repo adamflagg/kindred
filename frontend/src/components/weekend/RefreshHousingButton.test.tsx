@@ -60,6 +60,13 @@ vi.mock('react-hot-toast', () => ({
   }),
 }))
 
+// The season on screen. The shell resolves the weekend in this year, so the press must refresh
+// it in this year too (Plan Review Focus 1). Defaults to the primary the status reports.
+let viewedYear = 2026
+vi.mock('../../hooks/useCurrentYear', () => ({
+  useYear: () => viewedYear,
+}))
+
 import { RefreshHousingButton } from './RefreshHousingButton'
 
 const BASELINE_END = '2026-04-22T09:13:08.000Z'
@@ -75,6 +82,7 @@ function status(overrides: Record<string, unknown> = {}): SyncStatusResponse {
     },
     family_camp_derived: { status: 'success', end_time: '2026-04-22T09:13:06.000Z' },
     lodging_assignments: { status: 'success', end_time: BASELINE_END },
+    _configured_year: 2026,
     ...overrides,
   } as unknown as SyncStatusResponse
 }
@@ -250,7 +258,11 @@ describe('RefreshHousingButton — resting and the press modal', () => {
     fireEvent.click(screen.getByRole('button', { name: /Refresh Housing/i }))
     fireEvent.click(screen.getByRole('button', { name: /Start refresh/i }))
     await waitFor(() => expect(refreshFamilyCamp).toHaveBeenCalledTimes(1))
-    expect(refreshFamilyCamp).toHaveBeenCalledWith(fetchWithAuth, TEST_SESSION.session_cm_id)
+    expect(refreshFamilyCamp).toHaveBeenCalledWith(
+      fetchWithAuth,
+      TEST_SESSION.session_cm_id,
+      undefined
+    )
   })
 })
 
@@ -275,7 +287,27 @@ describe('RefreshHousingButton — scoped to the weekend in view (kindred#2601)'
     fireEvent.click(screen.getByRole('button', { name: /Refresh Housing/i }))
     fireEvent.click(screen.getByRole('button', { name: /Start refresh/i }))
     await waitFor(() => expect(refreshFamilyCamp).toHaveBeenCalledTimes(1))
-    expect(refreshFamilyCamp).toHaveBeenCalledWith(fetchWithAuth, 900)
+    expect(refreshFamilyCamp).toHaveBeenCalledWith(fetchWithAuth, 900, undefined)
+  })
+
+  /**
+   * Plan Review Focus 1: after the Oct 15 rollover the October adult weekends
+   * are the PRIOR season. CampMinder reuses session ids across years, so a
+   * refresh that left the season to the server would check and sync the
+   * primary's weekend of the same id and report success.
+   */
+  it('refreshes the season being viewed', async () => {
+    viewedYear = 2026
+    setStatus(status({ _configured_year: 2027 }))
+    try {
+      renderButton()
+      fireEvent.click(screen.getByRole('button', { name: /Refresh Housing/i }))
+      fireEvent.click(screen.getByRole('button', { name: /Start refresh/i }))
+      await waitFor(() => expect(refreshFamilyCamp).toHaveBeenCalledTimes(1))
+      expect(refreshFamilyCamp).toHaveBeenCalledWith(fetchWithAuth, 900, 2026)
+    } finally {
+      setStatus(status())
+    }
   })
 
   /**
