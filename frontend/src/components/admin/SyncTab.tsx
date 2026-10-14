@@ -474,14 +474,6 @@ export function SyncTab() {
     <div className="space-y-4 sm:space-y-6">
       {/* Unified Sync Panel */}
       <div className="space-y-2">
-        {syncStatus._season_source && (
-          <p className="text-muted-foreground text-sm">
-            Season {syncStatus._configured_year ?? currentYear} ·{' '}
-            {syncStatus._season_source === 'override'
-              ? 'pinned by CAMPMINDER_SEASON_ID'
-              : 'rolls over each Oct 15'}
-          </p>
-        )}
         {/* Main Toolbar */}
         <div className="bg-card border-border shadow-lodge-sm overflow-hidden rounded-xl border">
           {/* Controls Row */}
@@ -821,8 +813,16 @@ export function SyncTab() {
             </div>
           )}
 
-          {/* Refresh Cache - right-aligned */}
-          <div className="ml-auto flex-shrink-0">
+          {/* Season line + Refresh Cache - right-aligned, one row */}
+          <div className="ml-auto flex flex-shrink-0 items-center gap-3">
+            {syncStatus._season_source && (
+              <p className="text-muted-foreground text-sm whitespace-nowrap">
+                Season {syncStatus._configured_year ?? currentYear} ·{' '}
+                {syncStatus._season_source === 'override'
+                  ? 'pinned by CAMPMINDER_SEASON_ID'
+                  : 'rolls over each Oct 15'}
+              </p>
+            )}
             <button
               onClick={() => {
                 clearCache()
