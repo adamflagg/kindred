@@ -1768,29 +1768,31 @@ jobs:
       # The body and branch are read at run time, never through step env: step
       # env is printed in the public log header, and a re-run then sees a body
       # edited after the push.
+      # Without the guide secrets (Dependabot gets none) it skips, as
+      # guide-build does: the pairing cannot be checked, and a bot cannot add
+      # a Docs: none line. With them, a read failure fails closed -- this gates
+      # CI, so "could not check" must not pass. Changed files come from the
+      # paginated files API, which `gh pr diff` gives up on for a large PR.
       run: |
         BRANCH="$GITHUB_HEAD_REF"
-        if ! gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json body --jq .body > "$RUNNER_TEMP/body.md" 2>/dev/null; then
-          echo "docs impact: skipped (could not read the PR body)"
+        if [ -z "$GUIDE_REPO" ] || [ -z "$GUIDE_READ_TOKEN" ]; then
+          echo "docs impact: skipped (no guide access configured)"
           exit 0
         fi
-        if ! gh pr diff "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --name-only > "$RUNNER_TEMP/changed.txt" 2>/dev/null; then
-          echo "docs impact: skipped (could not list changed files)"
-          exit 0
+        if ! gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json body --jq .body > "$RUNNER_TEMP/body.md" 2>/dev/null; then
+          echo "docs impact: could not read the PR body; re-run the failed jobs"
+          exit 1
+        fi
+        if ! gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" --jq '.[].filename' > "$RUNNER_TEMP/changed.txt" 2>/dev/null; then
+          echo "docs impact: could not list changed files; re-run the failed jobs"
+          exit 1
         fi
         paired=false
-        note=""
-        if [ -n "$GUIDE_REPO" ] && [ -n "$GUIDE_READ_TOKEN" ]; then
-          enc=$(jq -rn --arg b "$BRANCH" '$b|@uri')
-          ahead=$(GH_TOKEN="$GUIDE_READ_TOKEN" gh api "repos/${GUIDE_REPO}/compare/main...${enc}" --jq .ahead_by 2>/dev/null) || ahead=0
-          case "$ahead" in ''|*[!0-9]*) ahead=0 ;; esac
-          if [ "$ahead" -gt 0 ]; then paired=true; fi
-        else
-          note=" (no guide access: paired branch not checked)"
-        fi
-        out=$(env -u GUIDE_READ_TOKEN -u GUIDE_REPO python3 -m scripts.guide.impact_check --changed-file "$RUNNER_TEMP/changed.txt" --body-file "$RUNNER_TEMP/body.md" --paired-has-commits "$paired") && rc=0 || rc=$?
-        echo "${out}${note}"
-        exit "$rc"
+        enc=$(jq -rn --arg b "$BRANCH" '$b|@uri')
+        ahead=$(GH_TOKEN="$GUIDE_READ_TOKEN" gh api "repos/${GUIDE_REPO}/compare/main...${enc}" --jq .ahead_by 2>/dev/null) || ahead=0
+        case "$ahead" in ''|*[!0-9]*) ahead=0 ;; esac
+        if [ "$ahead" -gt 0 ]; then paired=true; fi
+        env -u GUIDE_READ_TOKEN -u GUIDE_REPO python3 -m scripts.guide.impact_check --changed-file "$RUNNER_TEMP/changed.txt" --body-file "$RUNNER_TEMP/body.md" --paired-has-commits "$paired"
 
   # Summary job - gate for PR merges
   summary:
