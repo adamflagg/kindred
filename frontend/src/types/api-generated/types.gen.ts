@@ -22651,6 +22651,18 @@ export type GetDay1ApiMetricsRegistrationDay1GetData = {
      * Comma-separated session types to filter (e.g., 'main,quest')
      */
     session_types?: string | null
+    /**
+     * Session Cm Id
+     *
+     * Filter to specific session by CampMinder ID
+     */
+    session_cm_id?: number | null
+    /**
+     * Duration
+     *
+     * Filter by duration category (e.g., '1-week')
+     */
+    duration?: string | null
   }
   url: '/api/metrics/registration/day1'
 }

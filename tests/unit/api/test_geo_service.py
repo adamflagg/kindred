@@ -585,6 +585,8 @@ class TestActiveOnlyFiltering:
                     "normalized_mappings": mappings,
                     "geo_overrides": [],
                     "attendees": attendees,
+                    # A types filter now scopes via the session resolver, which reads the year's sessions.
+                    "camp_sessions": [_make_session_record(cm_id=1001, session_type="main")],
                 }
             )
 
@@ -2936,3 +2938,129 @@ class TestListOverridesYearScoped:
         filter_str = call_args.kwargs["query_params"]["filter"]
         assert "year = 2026" in filter_str
         assert 'category = "school"' in filter_str
+
+
+class TestGeoSessionScopeUsesResolver:
+    """Geo person-id helpers scope through the one session resolver (#3208).
+
+    A single session keeps its AG cabins, teen types are summer-window gated, and
+    Family Camp never folds in. The all-None path is untouched: the admin geo
+    pages call it with only ``active_only`` and legitimately cover every program.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _clean_cache(self) -> Generator[None]:
+        from api.services.geo_service import clear_person_id_cache
+
+        clear_person_id_cache()
+        yield
+        clear_person_id_cache()
+
+    @staticmethod
+    def _sessions() -> list[Mock]:
+        def mk(cm_id: int, stype: str, name: str, start: str, end: str, parent_id: int | None = None) -> Mock:
+            rec = _make_session_record(cm_id, start, end, stype, 2025)
+            rec.name = name
+            rec.parent_id = parent_id
+            return rec
+
+        return [
+            mk(1001, "main", "Session 2", "2025-06-22", "2025-07-12"),
+            mk(1101, "ag", "AG 2", "2025-06-22", "2025-07-12", parent_id=1001),
+            mk(1002, "main", "Session 3", "2025-07-13", "2025-08-02"),
+            mk(1301, "scit", "CIT Summer", "2025-06-25", "2025-07-20"),
+            mk(1302, "scit", "Family Camp 5 CIT", "2025-09-04", "2025-09-07"),
+            mk(1401, "family", "Family Camp", "2025-09-04", "2025-09-07"),
+        ]
+
+    def _wire(self, mock_pb: MagicMock) -> list[str]:
+        sessions = self._sessions()
+        filters: list[str] = []
+
+        def router(name: str) -> MagicMock:
+            coll = MagicMock()
+            if name == "camp_sessions":
+                coll.get_full_list.return_value = sessions
+            else:
+
+                def grab(**kwargs: Any) -> list[Mock]:
+                    filters.append(kwargs.get("query_params", {}).get("filter", ""))
+                    return [_make_attendee_record("p1")]
+
+                coll.get_full_list.side_effect = grab
+            return coll
+
+        mock_pb.collection.side_effect = router
+        return filters
+
+    @staticmethod
+    def _ids(filt: str) -> set[int]:
+        import re
+
+        return {int(m) for m in re.findall(r"session\.cm_id = (\d+)", filt)}
+
+    @pytest.mark.asyncio
+    async def test_active_single_session_includes_its_ag_cabins(self) -> None:
+        from api.services.geo_service import GeoService
+
+        pb = MagicMock()
+        filters = self._wire(pb)
+        await GeoService(pb)._fetch_active_person_pb_ids(2025, ["main", "ag"], session_cm_id=1001)
+
+        assert self._ids(filters[0]) == {1001, 1101}
+
+    @pytest.mark.asyncio
+    async def test_active_teen_types_are_summer_window_gated(self) -> None:
+        from api.services.geo_service import GeoService
+
+        pb = MagicMock()
+        filters = self._wire(pb)
+        await GeoService(pb)._fetch_active_person_pb_ids(2025, ["scit", "tli"])
+
+        assert self._ids(filters[0]) == {1301}
+
+    @pytest.mark.asyncio
+    async def test_duration_single_session_includes_its_ag_cabins(self) -> None:
+        from api.services.geo_service import GeoService
+
+        pb = MagicMock()
+        filters = self._wire(pb)
+        await GeoService(pb)._fetch_duration_person_pb_ids(
+            2025, "3-week", session_types=["main", "ag"], session_cm_id=1001
+        )
+
+        assert self._ids(filters[0]) == {1001, 1101}
+
+    @pytest.mark.asyncio
+    async def test_duration_teen_types_are_summer_window_gated(self) -> None:
+        from api.services.geo_service import GeoService
+
+        pb = MagicMock()
+        filters = self._wire(pb)
+        # 1302 is the only 1-week teen session and it is off-season: empty scope, no query.
+        result = await GeoService(pb)._fetch_duration_person_pb_ids(2025, "1-week", session_types=["scit"])
+
+        assert result == set()
+        assert filters == []
+
+    @pytest.mark.asyncio
+    async def test_family_session_never_folds_in_and_unmatched_pick_is_empty(self) -> None:
+        from api.services.geo_service import GeoService
+
+        pb = MagicMock()
+        filters = self._wire(pb)
+        svc = GeoService(pb)
+        assert await svc._fetch_active_person_pb_ids(2025, ["family"]) == set()
+        assert await svc._fetch_active_person_pb_ids(2025, ["main"], session_cm_id=1401) == set()
+        assert filters == []  # empty scope never queries attendees
+
+    @pytest.mark.asyncio
+    async def test_all_none_path_unchanged_covers_every_program(self) -> None:
+        from api.services.geo_service import GeoService
+
+        pb = MagicMock()
+        filters = self._wire(pb)
+        await GeoService(pb)._fetch_active_person_pb_ids(2025)
+
+        assert "session.cm_id" not in filters[0]
+        assert "session.session_type" not in filters[0]

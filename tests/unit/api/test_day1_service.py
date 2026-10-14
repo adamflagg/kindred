@@ -26,10 +26,22 @@ def _make_attendee(
     return att
 
 
-def _make_session(cm_id: int, session_type: str = "main") -> MagicMock:
+def _make_session(
+    cm_id: int,
+    session_type: str = "main",
+    *,
+    name: str = "",
+    start_date: str = "2026-06-21",
+    end_date: str = "2026-07-11",
+    parent_id: int | None = None,
+) -> MagicMock:
     s = MagicMock()
     s.cm_id = cm_id
     s.session_type = session_type
+    s.name = name or f"Session {cm_id}"
+    s.start_date = start_date
+    s.end_date = end_date
+    s.parent_id = parent_id
     return s
 
 
@@ -295,3 +307,139 @@ async def test_day1_session_types_all_including_teens():
     assert teen.count == 1
     # 2 main + 1 quest + 1 scit
     assert priority_tier.total.count == 4
+
+
+# ============================================================================
+# Session resolver scoping (#3208): single session, duration, summer window
+# ============================================================================
+
+_REG_DATES = {"priority_reg_date": "2025-11-12"}
+_DAY1 = "2025-11-12"
+_SUMMER_TYPES = ["main", "embedded", "ag", "quest"]
+
+
+def _repo_by_year(sessions_by_year: dict[int, dict], attendees_by_year: dict[int, list]) -> AsyncMock:
+    repo = AsyncMock()
+    repo.fetch_registration_dates.return_value = _REG_DATES
+
+    async def _sessions(year, *_a, **_k):
+        return sessions_by_year.get(year, {})
+
+    async def _attendees(year, *_a, **_k):
+        return attendees_by_year.get(year, [])
+
+    repo.fetch_sessions.side_effect = _sessions
+    repo.fetch_attendees_with_dates.side_effect = _attendees
+    return repo
+
+
+def _att(cm_id: int, stype: str = "main") -> MagicMock:
+    return _make_attendee(session_cm_id=cm_id, session_type=stype, effective_date=_DAY1)
+
+
+def _total(result, which: str = "current") -> int:
+    tiers = result.tiers if which == "current" else result.prior_years[0 if which == "prior1" else 1].tiers
+    return next(t for t in tiers if t.tier == "priority").total.count
+
+
+@pytest.mark.asyncio
+async def test_single_session_pick_counts_only_that_session_and_its_ag():
+    sessions = {
+        1001: _make_session(1001, "main", name="Session 2"),
+        1101: _make_session(1101, "ag", name="AG 2", parent_id=1001),
+        1002: _make_session(1002, "main", name="Session 3"),
+    }
+    atts = [_att(1001)] * 2 + [_att(1101, "ag")] + [_att(1002)] * 3
+    repo = _repo_by_year({2026: sessions, 2025: sessions}, {2026: atts, 2025: [_att(1001)] + [_att(1002)] * 4})
+    result = await Day1Service(repo).get_day1(2026, session_types=_SUMMER_TYPES, session_cm_id=1001)
+
+    assert _total(result) == 3  # 2 in Session 2 + 1 in its AG cabin
+    assert _total(result, "prior1") == 1  # same session last year, not the whole summer
+
+
+@pytest.mark.asyncio
+async def test_renamed_session_matches_prior_years_via_alias():
+    cur = {1378702: _make_session(1378702, "embedded", name="Taste of Camp 1"), 1002: _make_session(1002, "main")}
+    prior = {1235403: _make_session(1235403, "embedded", name="Taste of Camp"), 1002: _make_session(1002, "main")}
+    repo = _repo_by_year(
+        {2026: cur, 2025: prior, 2024: prior},
+        {
+            2026: [_att(1378702, "embedded")] * 2 + [_att(1002)],
+            2025: [_att(1235403, "embedded")] * 3 + [_att(1002)] * 5,
+            2024: [_att(1235403, "embedded")] * 4,
+        },
+    )
+    result = await Day1Service(repo).get_day1(2026, session_types=_SUMMER_TYPES, session_cm_id=1378702)
+
+    assert _total(result) == 2
+    assert _total(result, "prior1") == 3
+    assert _total(result, "prior2") == 4
+
+
+@pytest.mark.asyncio
+async def test_pick_with_no_match_in_prior_year_counts_zero_not_whole_summer():
+    cur = {1378702: _make_session(1378702, "embedded", name="Taste of Camp 1"), 1002: _make_session(1002, "main")}
+    prior = {1002: _make_session(1002, "main")}
+    repo = _repo_by_year({2026: cur, 2025: prior}, {2026: [_att(1378702, "embedded")], 2025: [_att(1002)] * 5})
+    result = await Day1Service(repo).get_day1(2026, session_types=_SUMMER_TYPES, session_cm_id=1378702)
+
+    assert _total(result) == 1
+    assert _total(result, "prior1") == 0
+
+
+@pytest.mark.asyncio
+async def test_offseason_teen_sessions_excluded_by_summer_window():
+    sessions = {
+        1001: _make_session(1001, "main"),
+        1301: _make_session(1301, "scit", name="CIT Summer", start_date="2026-06-25", end_date="2026-07-20"),
+        1302: _make_session(1302, "scit", name="Family Camp 5 CIT", start_date="2026-09-04", end_date="2026-09-07"),
+    }
+    atts = [_att(1301, "scit")] * 2 + [_att(1302, "scit")] * 7
+    repo = _repo_by_year({2026: sessions}, {2026: atts})
+    result = await Day1Service(repo).get_day1(2026, session_types=["scit", "tli"])
+
+    priority = next(t for t in result.tiers if t.tier == "priority")
+    teen = next(c for c in priority.categories if c.category == "teen")
+    assert teen.count == 2
+
+
+@pytest.mark.asyncio
+async def test_duration_pick_scopes_day1():
+    sessions = {
+        1001: _make_session(1001, "main", start_date="2026-06-21", end_date="2026-06-27"),  # 1-week
+        1002: _make_session(1002, "main", start_date="2026-06-28", end_date="2026-07-18"),  # 3-week
+    }
+    atts = [_att(1001)] * 2 + [_att(1002)] * 5
+    repo = _repo_by_year({2026: sessions}, {2026: atts})
+    result = await Day1Service(repo).get_day1(2026, session_types=_SUMMER_TYPES, duration="1-week")
+
+    assert _total(result) == 2
+
+
+@pytest.mark.asyncio
+async def test_day1_summer_numbers_unchanged_by_family_adult_and_bmitzvah_sessions():
+    """Family Camp / adult / B*Mitzvah / Hebrew never fold into summer Day 1 (#2435)."""
+    base = {1001: _make_session(1001, "main", name="Session 2"), 1002: _make_session(1002, "quest")}
+    extra = {
+        1401: _make_session(1401, "family", name="Session 2"),  # same name as a summer session
+        1402: _make_session(1402, "adult"),
+        1403: _make_session(1403, "bmitzvah"),
+        1404: _make_session(1404, "hebrew"),
+    }
+    summer_atts = [_att(1001)] * 2 + [_att(1002, "quest")]
+    other_atts = [_att(1401, "family")] * 4 + [_att(1402, "adult")] * 3 + [_att(1403, "bmitzvah"), _att(1404, "hebrew")]
+
+    async def run(with_extra: bool, **kw):
+        sessions = {**base, **(extra if with_extra else {})}
+        atts = summer_atts + (other_atts if with_extra else [])
+        repo = _repo_by_year({2026: sessions, 2025: sessions}, {2026: atts, 2025: atts})
+        return await Day1Service(repo).get_day1(2026, **kw)
+
+    for kw in (
+        {},
+        {"session_types": _SUMMER_TYPES},
+        {"session_types": _SUMMER_TYPES, "session_cm_id": 1001},
+        {"session_types": ["family", "adult"]},
+    ):
+        plain, mixed = await run(False, **kw), await run(True, **kw)
+        assert mixed.model_dump() == plain.model_dump(), kw

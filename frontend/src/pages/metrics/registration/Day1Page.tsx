@@ -2,8 +2,10 @@
  * Day1Page - First-24-hour registration analysis per tier opening.
  *
  * Honors the shared metrics session picker (like every other registration
- * page): the picker's session_types flow into the Day 1 query, so "All Summer"
- * includes teens and "Teens" scopes to SCIT/TLI.
+ * page): the picker's session_types, single session and duration flow into the
+ * Day 1 query, so "All Summer" includes teens, "Teens" scopes to SCIT/TLI, and a
+ * single session shows its own first-24-hour sign-ups against the matching
+ * session in prior years (renames matched server-side).
  *
  * Shows:
  * - Hero cards (one per tier: priority/early/open) with current year totals
@@ -337,8 +339,11 @@ function ComparisonTable({ data, currentYear }: ComparisonTableProps) {
 
 export default function Day1Page() {
   const { currentYear } = useCurrentYear()
-  const { sessionTypesParam } = useMetricsSession()
-  const { data, isLoading, error } = useDay1(currentYear, sessionTypesParam)
+  const { sessionTypesParam, selectedSessionCmId, durationParam } = useMetricsSession()
+  const { data, isLoading, error } = useDay1(currentYear, sessionTypesParam, {
+    sessionCmId: selectedSessionCmId ?? undefined,
+    duration: durationParam,
+  })
 
   return (
     <div className="space-y-6">

@@ -27,7 +27,7 @@ from api.services.retention_service import RetentionService
 from api.services.retention_trends_service import RetentionTrendsService
 from api.services.velocity_service import VelocityService
 from api.services.waitlist_service import WaitlistService
-from api.utils.validators import check_duration_session_exclusive
+from api.utils.validators import check_duration_session_exclusive, parse_summer_session_types
 from bunking.auth_middleware import AuthUser, get_current_user
 from bunking.graph.social_graph_builder import SocialGraphBuilder
 from bunking.rbac.dependencies import require_any_permission
@@ -110,7 +110,7 @@ async def get_retention_metrics(
     if cached is not None:
         return cached
 
-    type_filter = session_types.split(",") if session_types else None
+    type_filter = parse_summer_session_types(session_types)
     repository = _create_repository()
     service = RetentionService(repository)
     result = await service.calculate_retention(
@@ -172,7 +172,7 @@ async def get_registration_metrics(
     if cached is not None:
         return cached
 
-    type_filter = session_types.split(",") if session_types else None
+    type_filter = parse_summer_session_types(session_types)
     status_filter = [s.strip() for s in (statuses or "enrolled").split(",")]
     repository = _create_repository()
     service = RegistrationService(repository)
@@ -221,7 +221,7 @@ async def get_historical_trends(
         return cached
 
     year_list = [int(y.strip()) for y in years.split(",")] if years else None
-    type_filter = session_types.split(",") if session_types else None
+    type_filter = parse_summer_session_types(session_types)
     repository = _create_repository()
     service = HistoricalService(repository)
     result = await service.calculate_historical_trends(
@@ -285,7 +285,7 @@ async def get_retention_trends(
     if cached is not None:
         return cached
 
-    type_filter = session_types.split(",") if session_types else None
+    type_filter = parse_summer_session_types(session_types)
     repository = _create_repository()
     service = RetentionTrendsService(repository)
     result = await service.calculate_retention_trends(
@@ -336,7 +336,7 @@ async def get_waitlist_metrics(
     if cached is not None:
         return cached
 
-    type_filter = session_types.split(",") if session_types else None
+    type_filter = parse_summer_session_types(session_types)
     repository = _create_repository()
     service = WaitlistService(repository)
     result = await service.calculate_waitlist(
@@ -384,7 +384,7 @@ async def get_cancellation_metrics(
     if cached is not None:
         return cached
 
-    type_filter = session_types.split(",") if session_types else None
+    type_filter = parse_summer_session_types(session_types)
     repository = _create_repository()
     service = CancellationService(repository)
     result = await service.calculate_cancellations(
@@ -450,7 +450,7 @@ async def get_drilldown_attendees(
     """
     check_duration_session_exclusive(duration, session_cm_id)
 
-    session_types_list = session_types.split(",") if session_types else None
+    session_types_list = parse_summer_session_types(session_types)
     status_list = status_filter.split(",") if status_filter else None
 
     repository = _create_repository()
@@ -504,7 +504,7 @@ async def get_velocity(
         return cached
 
     compare_year_list = [int(y.strip()) for y in compare_years.split(",")] if compare_years else None
-    type_filter = session_types.split(",") if session_types else None
+    type_filter = parse_summer_session_types(session_types)
     repository = _create_repository()
     service = VelocityService(repository)
     result = await service.get_velocity(
@@ -563,7 +563,7 @@ async def get_forecast(
     if cached is not None:
         return cached
 
-    type_filter = session_types.split(",") if session_types else None
+    type_filter = parse_summer_session_types(session_types)
     repository = _create_repository()
     service = ForecastService(repository)
     result = await service.calculate_forecast(
@@ -586,18 +586,21 @@ async def get_forecast(
 async def get_day1(
     year: int = Query(description="Camp year", ge=2000, le=2100),
     session_types: str | None = Query(None, description="Comma-separated session types to filter (e.g., 'main,quest')"),
+    session_cm_id: int | None = Query(None, description="Filter to specific session by CampMinder ID"),
+    duration: str | None = Query(None, description="Filter by duration category (e.g., '1-week')"),
     user: AuthUser = Depends(get_current_user),
 ) -> Day1Response:
     """Get Day 1 first-24h registration counts by tier."""
-    cache_params = {"year": year, "session_types": session_types}
+    check_duration_session_exclusive(duration, session_cm_id)
+    cache_params = {"year": year, "session_types": session_types, "session_cm_id": session_cm_id, "duration": duration}
     cached: Day1Response | None = metrics_cache.get("day1", **cache_params)
     if cached is not None:
         return cached
 
-    type_filter = session_types.split(",") if session_types else None
+    type_filter = parse_summer_session_types(session_types)
     repository = _create_repository()
     service = Day1Service(repository)
-    result = await service.get_day1(year, session_types=type_filter)
+    result = await service.get_day1(year, session_types=type_filter, session_cm_id=session_cm_id, duration=duration)
 
     metrics_cache.set("day1", result, **cache_params)
     return result

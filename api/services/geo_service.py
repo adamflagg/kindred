@@ -34,7 +34,7 @@ from api.schemas.geo import (
     SourcesResponse,
 )
 from api.utils.pb_filters import pb_escape
-from api.utils.session_metrics import resolve_duration_sessions
+from api.utils.session_metrics import resolve_scope_ids
 from bunking.logging_config import get_logger
 from pocketbase import PocketBase
 
@@ -228,6 +228,33 @@ class GeoService:
             filt += f" && {extra_filter}"
         return {"filter": filt, "sort": "year"}
 
+    async def _resolve_scope_cm_ids(
+        self,
+        year: int,
+        session_types: list[str] | None,
+        session_cm_id: int | None,
+        duration: str | None,
+    ) -> set[int]:
+        """The year's session cm_ids a scoped geo query covers, via the one session resolver.
+
+        Callers only reach this when at least one of types / pick / duration is set.
+        A picked session keeps its AG cabins, teen types are summer-window gated, and
+        Family Camp never folds in. An empty set means "nothing matches".
+        """
+        sessions_raw: list[Any] = await asyncio.to_thread(
+            self.pb.collection(CAMP_SESSIONS).get_full_list,
+            query_params={"filter": f"year = {year}"},
+        )
+        sessions = {int(s.cm_id): s for s in sessions_raw if getattr(s, "cm_id", None)}
+        reference_name = getattr(sessions.get(session_cm_id), "name", None) if session_cm_id is not None else None
+        return resolve_scope_ids(
+            sessions,
+            session_types or None,
+            session_cm_id,
+            duration,
+            reference_name if isinstance(reference_name, str) else None,
+        )
+
     async def _fetch_active_person_pb_ids(
         self,
         year: int,
@@ -251,27 +278,14 @@ class GeoService:
                 return result
 
         att_filter = f"year = {year} && {ACTIVE_ENROLLED_FILTER}"
-        if session_cm_id is not None:
-            att_filter += f" && session.cm_id = {session_cm_id}"
-        elif session_types:
-            clauses = [f'session.session_type = "{pb_escape(t)}"' for t in session_types]
-            att_filter += f" && ({' || '.join(clauses)})"
-
-        # Apply duration filter by resolving to matching session cm_ids
-        if duration:
-            sessions_raw: list[Any] = await asyncio.to_thread(
-                self.pb.collection(CAMP_SESSIONS).get_full_list,
-                query_params={"filter": f"year = {year}"},
-            )
-            sessions_dict = {int(s.cm_id): s for s in sessions_raw if getattr(s, "cm_id", None)}
-            duration_ids = resolve_duration_sessions(sessions_dict, duration)
-            if duration_ids:
-                id_clauses = [f"session.cm_id = {int(sid)}" for sid in duration_ids]
-                att_filter += f" && ({' || '.join(id_clauses)})"
-            else:
-                # No sessions match the duration — return empty set
+        if session_types or session_cm_id is not None or duration:
+            scope_ids = await self._resolve_scope_cm_ids(year, session_types, session_cm_id, duration)
+            if not scope_ids:
+                # Nothing in scope (no match, off-season teens, non-summer types): empty set
                 _PERSON_ID_CACHE[cache_key] = (set(), now)
                 return set()
+            id_clauses = [f"session.cm_id = {int(sid)}" for sid in sorted(scope_ids)]
+            att_filter += f" && ({' || '.join(id_clauses)})"
 
         attendees: list[Any] = await asyncio.to_thread(
             self.pb.collection(ATTENDEES).get_full_list,
@@ -310,28 +324,13 @@ class GeoService:
             if now - cached_at < _PERSON_ID_CACHE_TTL_SECONDS:
                 return result
 
-        sessions_raw: list[Any] = await asyncio.to_thread(
-            self.pb.collection(CAMP_SESSIONS).get_full_list,
-            query_params={"filter": f"year = {year}"},
-        )
-        sessions_dict = {int(s.cm_id): s for s in sessions_raw if getattr(s, "cm_id", None)}
-        duration_ids = resolve_duration_sessions(sessions_dict, duration)
-
-        # Filter to requested session types if specified
-        if session_types:
-            duration_ids = {
-                sid for sid in duration_ids if getattr(sessions_dict.get(sid), "session_type", None) in session_types
-            }
-
-        # Filter to specific session if requested
-        if session_cm_id is not None:
-            duration_ids = {sid for sid in duration_ids if sid == session_cm_id}
+        duration_ids = await self._resolve_scope_cm_ids(year, session_types, session_cm_id, duration)
 
         if not duration_ids:
             _PERSON_ID_CACHE[cache_key] = (set(), now)
             return set()
 
-        id_clauses = [f"session.cm_id = {int(sid)}" for sid in duration_ids]
+        id_clauses = [f"session.cm_id = {int(sid)}" for sid in sorted(duration_ids)]
         att_filter = f"year = {year} && ({' || '.join(id_clauses)})"
 
         attendees: list[Any] = await asyncio.to_thread(
