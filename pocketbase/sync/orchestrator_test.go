@@ -717,55 +717,57 @@ func TestMarkSyncRunningPreservesStatus(t *testing.T) {
 	}
 }
 
-// TestRunSingleSyncRespectsPreMarkedStatus tests that RunSingleSync uses existing status
-// if MarkSyncRunning was called first
-func TestRunSingleSyncRespectsPreMarkedStatus(t *testing.T) {
+// TestRunSingleSyncRefusesAPreMarkedSlot pins that a scheduled or queued run never adopts a
+// slot MarkSyncRunning reserved. The only production callers of MarkSyncRunning are the
+// process_requests API handlers, which run processor.Sync themselves and finish through
+// FinalizeSyncStatus; none of them ever calls RunSingleSync afterwards. Adopting their slot
+// (as this test used to require) let a daily queue reaching process_requests mid-run start a
+// second sync beside the operator's, and replace the token the operator's finalize belongs to
+// (CodeRabbit on #3211). The reservation must stay the operator's, untouched.
+func TestRunSingleSyncRefusesAPreMarkedSlot(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		o := NewOrchestrator(nil)
 
-		// Register a fast mock service
 		mock := &MockService{name: "test_service", delay: 10 * time.Millisecond}
 		o.RegisterService("test", mock)
 
-		// Pre-mark as running (simulating what API handler will do)
-		err := o.MarkSyncRunning("test")
-		if err != nil {
-			t.Fatalf("MarkSyncRunning failed: %v", err)
+		// The API handler's reservation, for an operator's run of the prior season.
+		if err := o.markSyncRunningForYear("test", 2026); err != nil {
+			t.Fatalf("markSyncRunningForYear failed: %v", err)
 		}
-
-		// Get the start time from pre-marked status
 		o.mu.RLock()
-		preMarkedStatus := o.runningJobs["test"]
-		preMarkedStartTime := preMarkedStatus.StartTime
+		reserved := *o.runningJobs["test"]
 		o.mu.RUnlock()
 
-		// RunSingleSync should use the existing status, not create a new one
-		ctx := context.Background()
-		err = o.RunSingleSync(ctx, "test")
-		if err != nil {
-			t.Fatalf("RunSingleSync failed: %v", err)
+		err := o.RunSingleSync(context.Background(), "test")
+		if err == nil || !strings.Contains(err.Error(), "already in progress") {
+			t.Fatalf("RunSingleSync on a reserved slot: got %v, want an \"already in progress\" refusal", err)
 		}
 
-		// Wait for the sync goroutine to complete (virtual time advances past the mock's 10ms delay).
 		time.Sleep(50 * time.Millisecond)
-
-		// Check that the service was actually called
-		if mock.GetCallCount() != 1 {
-			t.Errorf("expected 1 call to Sync, got %d", mock.GetCallCount())
+		if got := mock.GetCallCount(); got != 0 {
+			t.Errorf("the refused run must not execute the service; Sync was called %d times", got)
 		}
 
-		// The status should have been moved to lastCompletedStatus on success
 		o.mu.RLock()
-		completedStatus := o.lastCompletedStatus["test"]
+		slot := o.runningJobs["test"]
 		o.mu.RUnlock()
-
-		if completedStatus == nil {
-			t.Fatal("expected completed status, got nil")
+		if slot == nil {
+			t.Fatal("the operator's reservation was removed")
 		}
-		// Start time should be preserved from pre-marked status
-		if !completedStatus.StartTime.Equal(preMarkedStartTime) {
-			t.Errorf("expected StartTime to be preserved from MarkSyncRunning, got different time")
+		if slot.RunToken != reserved.RunToken || slot.Year != reserved.Year ||
+			slot.Trigger != reserved.Trigger || slot.BatchID != reserved.BatchID {
+			t.Errorf("the operator's reservation was restamped:\n got  %+v\n want %+v", *slot, reserved)
+		}
+
+		// The operator's run still finishes through its own path.
+		o.FinalizeSyncStatus("test", Stats{}, nil)
+		o.mu.RLock()
+		done := o.lastCompletedStatus["test"]
+		o.mu.RUnlock()
+		if done == nil || done.RunToken != reserved.RunToken || done.Year != 2026 {
+			t.Errorf("the operator's run must finish under its own token and season, got %+v", done)
 		}
 	})
 }

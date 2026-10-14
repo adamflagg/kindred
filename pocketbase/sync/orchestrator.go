@@ -540,9 +540,6 @@ type Status struct {
 	// it in twice, at which point the guard silently stops disambiguating and a waiter
 	// accepts the wrong completion.
 	BatchID string `json:"batch_id,omitempty"`
-	// preMarked is true on the status MarkSyncRunning reserves and false on every status a run
-	// is executing under. runSingleSyncInternal adopts a pre-mark; it refuses a live run.
-	preMarked bool
 }
 
 // QueuedSync represents a sync request waiting in the queue
@@ -1058,7 +1055,6 @@ func (o *Orchestrator) publishCompletedLocked(completed *Status) {
 // (publishCompletedLocked), one into the sync_runs write (finishCompletedRun).
 func snapshotStatus(s *Status) Status {
 	out := *s
-	out.preMarked = false // a finished run is not a reservation
 	if s.EndTime != nil {
 		end := *s.EndTime
 		out.EndTime = &end
@@ -1597,19 +1593,11 @@ func (o *Orchestrator) startSingleSync(
 
 	var status *Status
 	switch existing := o.runningJobs[syncType]; {
-	case existing != nil && existing.preMarked && !o.isFinishingLocked(syncType):
-		// A slot MarkSyncRunning reserved before this run started: adopt it (keeping its start
-		// time), and take the origin from the caller that is actually starting the work. The
-		// pre-mark only reserved the slot; it says nothing about which weekend or season the
-		// work turned out to be for (kindred#2601).
-		status = existing
-		status.preMarked = false
-		status.RunToken = runToken
-		status.Trigger, status.BatchID, status.Year = origin.trigger, origin.batchID, origin.year
-		status.Session = origin.session
 	case existing != nil || o.customValuesGroupRunningLocked(syncType):
-		// A run is live in this slot (or finished and not yet published -- see
-		// claimCompletionLocked), or a job sharing its custom-values collection is running
+		// A run is live in this slot -- including a slot MarkSyncRunning reserved for an API
+		// handler's own run, which the handler finishes through FinalizeSyncStatus (CodeRabbit
+		// on #3211) -- or one finished and not yet published (see claimCompletionLocked), or a
+		// job sharing its custom-values collection is running
 		// (kindred#2491 Face B: the daily cron's bounded family-camp pass and the weekly
 		// unrestricted sweep run under different registered names). Refuse rather than adopt
 		// the slot: adopting a live run used to restamp it with this caller's year, trigger and
@@ -1859,7 +1847,6 @@ func (o *Orchestrator) markSyncRunningForYear(syncType string, year int) error {
 		Session:   origin.session,
 		Trigger:   origin.trigger,
 		BatchID:   origin.batchID,
-		preMarked: true,
 	}
 
 	o.mu.Lock()

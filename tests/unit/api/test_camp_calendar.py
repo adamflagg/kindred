@@ -10,6 +10,7 @@ from api.services.camp_calendar import (
     day1_window,
     get_camp_date,
     get_camp_today,
+    primary_season_year,
 )
 
 
@@ -133,3 +134,27 @@ class TestDay1Window:
         start, end = day1_window(date(2025, 11, 12))
         start_utc = start.astimezone(ZoneInfo("UTC"))
         assert start_utc.hour == 17  # 9am PST = 5pm UTC
+
+
+class TestPrimarySeasonYear:
+    """The camp season rolls over at Oct 15 00:00 Pacific -- the rule PocketBase's
+    sync/year.go PrimarySeason applies, mirrored for the API's last-resort fallbacks."""
+
+    def test_before_the_rollover_is_the_calendar_year(self):
+        # Oct 15 06:59 UTC = Oct 14 23:59 PDT
+        assert primary_season_year(datetime(2026, 10, 15, 6, 59, tzinfo=UTC)) == 2026
+
+    def test_at_the_rollover_is_next_year(self):
+        # Oct 15 07:00 UTC = Oct 15 00:00 PDT
+        assert primary_season_year(datetime(2026, 10, 15, 7, 0, tzinfo=UTC)) == 2027
+
+    def test_late_october_is_next_year(self):
+        assert primary_season_year(datetime(2026, 10, 20, 10, 0, tzinfo=UTC)) == 2027
+
+    def test_new_years_day_pacific_is_still_that_season(self):
+        # Jan 1 05:00 UTC = Dec 31 21:00 PST, still the 2027 season; so is Jan 1 Pacific.
+        assert primary_season_year(datetime(2027, 1, 1, 5, 0, tzinfo=UTC)) == 2027
+        assert primary_season_year(datetime(2027, 1, 2, 0, 0, tzinfo=UTC)) == 2027
+
+    def test_spring_is_the_calendar_year(self):
+        assert primary_season_year(datetime(2027, 3, 1, tzinfo=UTC)) == 2027

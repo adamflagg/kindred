@@ -26,10 +26,12 @@ vi.mock('react-hot-toast', () => ({
 let mockSyncStatus: Partial<SyncStatusResponse> | null = null
 // The options every useSyncStatusAPI call was given, so a test can see which season was asked for.
 let statusCalls: Array<{ year?: number } | undefined> = []
+// useSyncStatusAPI keeps the previous season's payload as placeholder data while a new season loads.
+let mockIsPlaceholderData = false
 vi.mock('./useSyncStatusAPI', () => ({
   useSyncStatusAPI: (opts?: { year?: number }) => {
     statusCalls.push(opts)
-    return { data: mockSyncStatus }
+    return { data: mockSyncStatus, isPlaceholderData: mockIsPlaceholderData }
   },
 }))
 
@@ -370,5 +372,72 @@ describe('useSyncCompletionToasts asks for the viewed season', () => {
   it('asks for no season when no year is given', () => {
     renderHook(() => useSyncCompletionToasts())
     expect(statusCalls.every((opts) => opts?.year === undefined)).toBe(true)
+  })
+})
+
+// CodeRabbit on #3211: useSyncStatusAPI keeps the previous season's payload as placeholder data
+// while the newly viewed season loads. Those statuses are not the new season's, so they must not
+// become its baseline -- else a job running in the old season and finished in the new one reads
+// as a completion that never happened.
+describe('useSyncCompletionToasts ignores the old season while the new one loads', () => {
+  const seasons = { _configured_year: 2027, _synced_years: [2027, 2026] }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockIsPlaceholderData = false
+  })
+
+  it('fires no completion when the old season showed a job running and the new one shows it done', () => {
+    mockSyncStatus = {
+      ...seasons,
+      attendees: { status: 'running' },
+    } as unknown as SyncStatusResponse
+    const { rerender } = renderHook(({ viewed }) => useSyncCompletionToasts(viewed), {
+      initialProps: { viewed: 2027 },
+    })
+
+    // Switch to 2026: the first render still carries 2027's payload, as placeholder data.
+    mockIsPlaceholderData = true
+    rerender({ viewed: 2026 })
+
+    // 2026's own payload arrives: its attendees run long finished.
+    mockIsPlaceholderData = false
+    mockSyncStatus = {
+      ...seasons,
+      attendees: { status: 'success', summary: { created: 0, updated: 1, skipped: 0, errors: 0 } },
+    } as unknown as SyncStatusResponse
+    rerender({ viewed: 2026 })
+
+    expect(invalidateSyncData).not.toHaveBeenCalled()
+    expect(toast.success).not.toHaveBeenCalled()
+  })
+
+  it('still fires a real completion in the new season once its own payload is in', () => {
+    mockSyncStatus = {
+      ...seasons,
+      attendees: { status: 'success' },
+    } as unknown as SyncStatusResponse
+    const { rerender } = renderHook(({ viewed }) => useSyncCompletionToasts(viewed), {
+      initialProps: { viewed: 2027 },
+    })
+
+    mockIsPlaceholderData = true
+    rerender({ viewed: 2026 })
+
+    mockIsPlaceholderData = false
+    mockSyncStatus = {
+      ...seasons,
+      attendees: { status: 'running' },
+    } as unknown as SyncStatusResponse
+    rerender({ viewed: 2026 })
+
+    mockSyncStatus = {
+      ...seasons,
+      attendees: { status: 'success', summary: { created: 0, updated: 1, skipped: 0, errors: 0 } },
+    } as unknown as SyncStatusResponse
+    rerender({ viewed: 2026 })
+
+    expect(invalidateSyncData).toHaveBeenCalledTimes(1)
+    expect(invalidateSyncData).toHaveBeenCalledWith('attendees')
   })
 })

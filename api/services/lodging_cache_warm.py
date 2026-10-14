@@ -42,6 +42,7 @@ from typing import TYPE_CHECKING, Any
 from api.constants.sync_job_writes import sync_writes_any
 from api.dependencies import LODGING_CACHE_BACKSTOP_SECONDS, lodging_cache
 from api.dependencies import pb as default_pb
+from api.services.camp_calendar import primary_season_year
 from api.services.lodging_cache import CACHED_TABLES_ATTR
 from api.services.lodging_repository import LodgingRepository
 from api.services.person_housing_rules import LIVE_HOUSING_FROM_YEAR
@@ -97,7 +98,7 @@ async def current_season_year(pb: PocketBase) -> int:
     `_configured_year` on PocketBase's sync-status payload is exactly what the
     frontend's `CurrentYearContext` defaults to. The API container is not
     given `CAMPMINDER_SEASON_ID` in production, so that env var is only the
-    fallback, and the calendar year the last resort.
+    fallback, and the Oct 15 season rule the last resort.
     """
     try:
         status = await asyncio.to_thread(pb.send, "/api/custom/sync/status", {"method": "GET"})
@@ -107,7 +108,12 @@ async def current_season_year(pb: PocketBase) -> int:
     except Exception as exc:  # a fallback, logged, never fatal
         logger.debug(f"Lodging cache warm: sync status unavailable, falling back ({exc})")
     season = os.environ.get("CAMPMINDER_SEASON_ID", "")
-    return int(season) if season.isdigit() else datetime.now(tz=UTC).year
+    return int(season) if season.isdigit() else primary_season_year(_utcnow())
+
+
+def _utcnow() -> datetime:
+    """The clock the last-resort season reads; a seam for tests."""
+    return datetime.now(tz=UTC)
 
 
 async def synced_season_years(pb: PocketBase) -> list[int]:

@@ -250,6 +250,15 @@ func TestProcessRequestsRouteProcessesTheViewedSeason(t *testing.T) {
 	capture.serve(t)
 
 	o, _ := newRecordingOrchestrator(t, nil, client, "process_requests")
+	// The handler runs process_requests on a real goroutine (capture.serve is a real HTTP
+	// server, so no synctest bubble). Cleanups run last-in first-out, so this one waits that run
+	// out before withNow's restores nowFn -- on the failure paths too, where waitForFinished is
+	// never reached (CodeRabbit nitpick on #3211).
+	t.Cleanup(func() {
+		for deadline := time.Now().Add(30 * time.Second); o.IsRunning("process_requests") && time.Now().Before(deadline); {
+			time.Sleep(20 * time.Millisecond)
+		}
+	})
 	scheduler := &Scheduler{orchestrator: o}
 	resp := callHandler(t, nil, "/?year=2026", func(e *core.RequestEvent) error {
 		return handleProcessRequests(e, scheduler)

@@ -108,12 +108,14 @@ export function useSyncCompletionToasts(
     viewedYear !== undefined && seasons?._synced_years?.includes(viewedYear)
       ? viewedYear
       : undefined
-  const { data: syncStatus } = useSyncStatusAPI({ year })
+  const { data: syncStatus, isPlaceholderData } = useSyncStatusAPI({ year })
   const previousStatuses = useRef<PreviousStatuses>({})
   const previousYear = useRef(year)
 
   useEffect(() => {
-    if (!syncStatus) return
+    // While a newly viewed season loads, the payload is still the previous season's
+    // (placeholder data): not this season's statuses, so not its baseline either.
+    if (!syncStatus || isPlaceholderData) return
     // A different season's statuses are not transitions of the ones before: start over.
     if (previousYear.current !== year) {
       previousYear.current = year
@@ -208,7 +210,7 @@ export function useSyncCompletionToasts(
       // Update previous status
       previousStatuses.current[syncType] = currentStatus
     }
-  }, [syncStatus, year])
+  }, [syncStatus, isPlaceholderData, year])
 
   return syncStatus
 }

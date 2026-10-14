@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -320,6 +321,19 @@ class TestCurrentSeasonYear:
         monkeypatch.setenv("CAMPMINDER_SEASON_ID", "2025")
 
         assert await current_season_year(pb) == 2025
+
+    @pytest.mark.asyncio
+    async def test_the_last_resort_follows_the_october_15_rollover(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """No status and no override: the season rule, not the calendar year.
+        On Oct 20 2026 the primary is 2027, so the warm covers [2027, 2026]
+        (CodeRabbit on #3211)."""
+        pb = MagicMock()
+        pb.send.side_effect = RuntimeError("unreachable")
+        monkeypatch.delenv("CAMPMINDER_SEASON_ID", raising=False)
+        monkeypatch.setattr(lodging_warm, "_utcnow", lambda: datetime(2026, 10, 20, 10, 0, tzinfo=UTC))
+
+        assert await current_season_year(pb) == 2027
+        assert await synced_season_years(pb) == [2027, 2026]
 
 
 class TestSyncedSeasonYears:
