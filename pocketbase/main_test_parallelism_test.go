@@ -383,6 +383,8 @@ var serialGroups = []struct {
 			"TestEveryScheduledRunMovesThePrimaryClient",
 			"TestOrphanSweepRunsForThePriorSyncedSeason",
 			"TestOrphanSweepStillSkipsAnOlderSeason",
+			"TestHourlySyncCoversBothSeasons",
+			"TestWeeklyExportCoversBothSeasonsButCustomValuesStayPrimary",
 		},
 	},
 	{

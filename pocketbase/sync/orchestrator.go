@@ -1887,7 +1887,8 @@ func (o *Orchestrator) checkGlobalTablesEmpty() bool {
 func getDailySyncJobs() []string { return cadenceQueue(CadenceDaily) }
 
 // RunHourlySync runs the hourly refresh — cadenceQueue(CadenceHourly), which today is the
-// single service bunk_assignments — and waits for each to finish.
+// single service bunk_assignments — for the primary season, then for the prior season (spec
+// §5), and waits for each to finish.
 //
 // It exists so the hourly cron has an origin the orchestrator can see. Every other queue is
 // identifiable from a *SyncRunning flag, but the hourly job drove RunSingleSync directly and
@@ -1912,12 +1913,35 @@ func (o *Orchestrator) RunHourlySync(ctx context.Context) error {
 		delete(o.batchChanged, batch.batchID)
 		o.mu.Unlock()
 	}()
+	var primaryErr error
 	for _, job := range cadenceQueue(CadenceHourly) {
 		if err := o.runSyncAndWait(ctx, job, batch); err != nil {
-			return err
+			primaryErr = err
+			break
 		}
 	}
-	return nil
+	// The prior season's hourly jobs run whatever the primary's outcome: the two seasons are
+	// independent, and the primary has already had its turn.
+	o.runPriorSeasons(ctx, secondarySeasonQueue(CadenceHourly), triggerHourly)
+	return primaryErr
+}
+
+// runPriorSeasons runs jobs once for each synced season after the primary (spec §5), through
+// runSeasonPass. Failures are logged there, never returned: the primary pass that ran before it
+// is what the caller reports.
+func (o *Orchestrator) runPriorSeasons(ctx context.Context, jobs []string, trigger string) {
+	if len(jobs) == 0 {
+		return
+	}
+	seasons, err := SyncedSeasons(nowFn())
+	if err != nil {
+		slog.Error("Cannot resolve the synced seasons, skipping the prior season",
+			"trigger", trigger, "error", err)
+		return
+	}
+	for _, year := range seasons[1:] {
+		_ = o.runSeasonPass(ctx, year, jobs, trigger, nil)
+	}
 }
 
 // RunDailySync runs all base data syncs in the correct order: the primary season's daily queue,
@@ -2154,10 +2178,17 @@ func (o *Orchestrator) ensurePrimaryClient() {
 // job list instead, deliberately excluding the export (spec §3: "a repair path, not a
 // membership question").
 //
+// After the weekly queue, the prior season gets its own run of the season-scoped weekly jobs
+// (secondarySeasonQueue drops the globals, so that is multi_workbook_export alone, and only when
+// Google Sheets is configured): the prior season's workbook stays current through the winter
+// programs (spec §5).
+//
 //nolint:dupl // Similar pattern to RunCustomValuesSync, intentional for sync orchestration
 func (o *Orchestrator) RunWeeklySync(ctx context.Context) error {
 	o.ensurePrimaryClient()
-	return o.runWeeklyJobs(ctx, GetWeeklySyncJobs())
+	err := o.runWeeklyJobs(ctx, GetWeeklySyncJobs())
+	o.runPriorSeasons(ctx, secondarySeasonQueue(CadenceWeeklyGlobal), triggerWeekly)
+	return err
 }
 
 // runGlobalTableBootstrap is checkGlobalTablesEmpty's repair path, called by RunDailySync and
@@ -2241,6 +2272,8 @@ func (o *Orchestrator) runWeeklyJobs(ctx context.Context, weeklyJobs []string) e
 }
 
 // RunCustomValuesSync runs custom field values syncs for person and household entities in parallel.
+// Primary season only, by ruling (spec §5, ruling 4): the prior season's custom values are kept
+// current by the scoped daily family-camp passes in the nightly N-1 pass, not by this full sweep.
 // These are expensive syncs (1 API call per entity) that run weekly after the main weekly sync.
 // Running in parallel is safe because they sync independent tables (person_custom_values vs
 // household_custom_values) using different CampMinder API endpoints.

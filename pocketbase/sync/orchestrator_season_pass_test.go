@@ -39,6 +39,9 @@ type seasonRecorder struct {
 	fail    map[seasonRun]bool
 	block   map[seasonRun]chan struct{}
 	blocked chan seasonRun
+	// filters holds the changed-collections filter each run of a ChangedCollectionsAware
+	// recorder was handed (nil means "export everything").
+	filters map[seasonRun]map[string]bool
 }
 
 func newSeasonRecorder() *seasonRecorder {
@@ -46,6 +49,7 @@ func newSeasonRecorder() *seasonRecorder {
 		fail:    map[seasonRun]bool{},
 		block:   map[seasonRun]chan struct{}{},
 		blocked: make(chan seasonRun, 8),
+		filters: map[seasonRun]map[string]bool{},
 	}
 }
 
@@ -130,16 +134,32 @@ func (s *clientRecorder) Sync(ctx context.Context) error {
 }
 func (s *clientRecorder) GetStats() Stats { return Stats{Updated: 1} }
 
-// yearRecorder stands in for a job that reads its season from a field (a YearSetter).
+// yearRecorder stands in for a job that reads its season from a field (a YearSetter). It is
+// ChangedCollectionsAware too, so a test can see which filter the export was handed.
 type yearRecorder struct {
-	id   string
-	year int
-	rec  *seasonRecorder
+	id      string
+	year    int
+	changed map[string]bool
+	rec     *seasonRecorder
 }
 
-func (s *yearRecorder) Sync(ctx context.Context) error { return s.rec.run(ctx, s.id, s.year) }
-func (s *yearRecorder) GetStats() Stats                { return Stats{Updated: 1} }
-func (s *yearRecorder) SetYear(year int)               { s.year = year }
+func (s *yearRecorder) Sync(ctx context.Context) error {
+	s.rec.mu.Lock()
+	s.rec.filters[seasonRun{ID: s.id, Year: s.year}] = s.changed
+	s.rec.mu.Unlock()
+	return s.rec.run(ctx, s.id, s.year)
+}
+func (s *yearRecorder) GetStats() Stats                               { return Stats{Updated: 1} }
+func (s *yearRecorder) SetYear(year int)                              { s.year = year }
+func (s *yearRecorder) SetChangedCollections(changed map[string]bool) { s.changed = changed }
+
+// filterFor is the changed-collections filter id's run for year was handed, and whether it ran.
+func (r *seasonRecorder) filterFor(id string, year int) (map[string]bool, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	f, ok := r.filters[seasonRun{ID: id, Year: year}]
+	return f, ok
+}
 
 // newRecordingOrchestrator builds an orchestrator whose every job (or only the given ones) is a
 // recorder, booted the way InitializeSyncServices boots: a base client for the current primary
@@ -187,7 +207,16 @@ func newRecordingOrchestrator(
 		yearClient := o.BaseClient().CloneWithYear(year)
 		out := map[string]Service{}
 		// Built with no app: only the key set matters, so the real factory decides coverage.
-		for id := range NewOrchestrator(nil).servicesForYear(year, false) {
+		// The real factory builds the export only beside a registered exporter.
+		keys := NewOrchestrator(nil)
+		if wanted("multi_workbook_export") {
+			exp, err := NewMultiWorkbookExport(nil, nil, nil, year)
+			if err != nil {
+				t.Errorf("NewMultiWorkbookExport: %v", err)
+			}
+			keys.RegisterService("multi_workbook_export", exp)
+		}
+		for id := range keys.servicesForYear(year, false) {
 			if wanted(id) {
 				out[id] = recorderFor(id, yearClient, year)
 			}
@@ -421,6 +450,12 @@ func TestPrimaryPassFollowsTheRolloverWithoutARestart(t *testing.T) {
 		if !rec.Ran("bunk_assignments", 2027) {
 			t.Errorf("the primary pass must sync 2027 after the rollover: %+v", rec.Runs())
 		}
+		if !rec.Ran("bunk_assignments", 2026) {
+			t.Errorf("the hourly N-1 pass must sync 2026, the new prior season: %+v", rec.Runs())
+		}
+		if got := rec.count("bunk_assignments", 2026); got != 1 {
+			t.Errorf("2026 ran %d times, want once (the N-1 pass; the primary pass must not sync it)", got)
+		}
 		if got := o.BaseClient().GetSeasonID(); got != 2027 {
 			t.Errorf("BaseClient season = %d, want 2027 (on-demand handlers build from it)", got)
 		}
@@ -562,4 +597,63 @@ func TestScopedCustomValuesAreANoOpForASeasonWithNoWeekends(t *testing.T) {
 			t.Errorf("%s: Stats = %+v, want a no-op", name, st)
 		}
 	}
+}
+
+// TestHourlySyncCoversBothSeasons is spec §5's hourly row: bunk_assignments for both seasons.
+func TestHourlySyncCoversBothSeasons(t *testing.T) {
+	t.Setenv("CAMPMINDER_SEASON_ID", "")
+	withNow(t, time.Date(2026, time.October, 20, 10, 0, 0, 0, time.UTC))
+	client := newTestCampMinderClient(t, 2027)
+
+	runInBubble(t, func(t *testing.T) {
+		o, rec := newRecordingOrchestrator(t, nil, client)
+		if err := o.RunHourlySync(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if !rec.Ran("bunk_assignments", 2027) || !rec.Ran("bunk_assignments", 2026) {
+			t.Fatalf("hourly bunk_assignments must run for 2027 and 2026: %+v", rec.Runs())
+		}
+		if runs := rec.Runs(); runs[0] != (seasonRun{ID: "bunk_assignments", Year: 2027}) {
+			t.Errorf("the primary must run first, got %+v", runs)
+		}
+		if st := o.GetStatus("bunk_assignments"); st == nil || st.Year != 2026 || st.Trigger != triggerHourly {
+			t.Errorf("the N-1 hourly run must be filed as an hourly 2026 run, got %+v", st)
+		}
+	})
+}
+
+// TestWeeklyExportCoversBothSeasonsButCustomValuesStayPrimary is spec §5's weekly row: the
+// export writes the prior season's workbook too, while the full custom-values passes are primary
+// only (ruling 4).
+func TestWeeklyExportCoversBothSeasonsButCustomValuesStayPrimary(t *testing.T) {
+	t.Setenv("CAMPMINDER_SEASON_ID", "")
+	t.Setenv("GOOGLE_SHEETS_ENABLED", "true")
+	withNow(t, time.Date(2026, time.October, 20, 10, 0, 0, 0, time.UTC))
+	client := newTestCampMinderClient(t, 2027)
+
+	runInBubble(t, func(t *testing.T) {
+		o, rec := newRecordingOrchestrator(t, nil, client)
+		_ = o.RunWeeklySync(context.Background())
+		_ = o.RunCustomValuesSync(context.Background())
+		if !rec.Ran("multi_workbook_export", 2027) || !rec.Ran("multi_workbook_export", 2026) {
+			t.Errorf("the 2027 and 2026 workbooks must both stay current: %+v", rec.Runs())
+		}
+		if rec.Ran("person_custom_values", 2026) || rec.Ran("household_custom_values", 2026) {
+			t.Error("the weekly full custom-values pass is primary only")
+		}
+		if !rec.Ran("person_custom_values", 2027) || !rec.Ran("household_custom_values", 2027) {
+			t.Error("the weekly full custom-values pass must still run for the primary")
+		}
+		for _, id := range GetJobsForPhase(PhaseGlobal) {
+			if rec.Ran(id, 2026) {
+				t.Errorf("global job %s ran in the N-1 pass; globals run once", id)
+			}
+		}
+		// The N-1 export is a batch of one: nothing ran before it in its batch, so it must
+		// export everything (nil), never the empty filter that exports nothing.
+		filter, ran := rec.filterFor("multi_workbook_export", 2026)
+		if !ran || filter != nil {
+			t.Errorf("the 2026 export must get the nil filter (export everything), got %v (ran %v)", filter, ran)
+		}
+	})
 }
