@@ -326,8 +326,8 @@ var serialGroups = []struct {
 		reason: "t.Setenv: CAMPMINDER_PRIMARY_KEY (campminder.NewClient) builds the boot-time client; " +
 			"InitializeSyncServices reads CAMPMINDER_* itself",
 		tests: []string{
-			"TestRunSyncWithOptionsHistoricalReRegistersScopedFamilyCampVariants",
-			"TestRunSyncWithOptionsHistoricalTransactionsAreSingleSeason",
+			"TestHistoricalReplayRunsYearScopedFamilyCampVariants",
+			"TestHistoricalReplayTransactionsAreSingleSeason",
 			"TestInitializeSyncServicesRegistersRollingTransactions",
 		},
 	},
@@ -379,6 +379,8 @@ var serialGroups = []struct {
 			"TestPriorSeasonFailureLeavesPrimaryRecorded",
 			"TestSyncRunsRowsCarryTheirSeason",
 			"TestHourlyRunCollidingWithThePriorSeasonPassIsRefusedNotMisfiled",
+			"TestHourlyRunDuringAManualPriorSeasonRunSyncsThePrimary",
+			"TestManualPriorSeasonRunLeavesTheRegistryAsItFoundIt",
 			"TestPrimaryPassFollowsTheRolloverWithoutARestart",
 			"TestEveryScheduledRunMovesThePrimaryClient",
 			"TestOrphanSweepRunsForThePriorSyncedSeason",

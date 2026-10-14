@@ -657,3 +657,126 @@ func TestWeeklyExportCoversBothSeasonsButCustomValuesStayPrimary(t *testing.T) {
 		}
 	})
 }
+
+// registrySnapshot copies the registry's id -> instance map, for comparing before and after.
+func registrySnapshot(o *Orchestrator) map[string]Service {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	snap := make(map[string]Service, len(o.services))
+	for id, svc := range o.services {
+		snap[id] = svc
+	}
+	return snap
+}
+
+// TestHourlyRunDuringAManualPriorSeasonRunSyncsThePrimary is the plan's Review Focus 2 for a
+// staff-started run: after the rollover, Manage > Sync "run all" for N-1 (RunSyncWithOptions
+// with Year 2026, primary 2027) is a normal action. The hourly cron firing while it runs must
+// sync the season it means to. A replay that registered its own instances for the run made the
+// hourly primary pass pick up 2026's bunk_assignments and file it as the hourly primary run.
+func TestHourlyRunDuringAManualPriorSeasonRunSyncsThePrimary(t *testing.T) {
+	t.Setenv("CAMPMINDER_SEASON_ID", "")
+	withNow(t, time.Date(2026, time.October, 20, 10, 0, 0, 0, time.UTC)) // primary 2027
+	client := newTestCampMinderClient(t, 2027)
+
+	t.Run("a different job is running", func(t *testing.T) {
+		runInBubble(t, func(t *testing.T) {
+			o, rec := newRecordingOrchestrator(t, nil, client)
+			primaryBunks := o.GetService("bunk_assignments")
+
+			release := make(chan struct{})
+			rec.blockDuring("attendees", 2026, release) // pause the manual N-1 run mid-way
+			done := make(chan error, 1)
+			go func() { done <- o.RunSyncWithOptions(context.Background(), Options{Year: 2026}) }()
+			rec.waitUntilBlocked(t)
+
+			if got := o.GetService("bunk_assignments"); got != primaryBunks {
+				t.Errorf("the registry's bunk_assignments changed during the manual 2026 run: an hourly " +
+					"run would sync the replay's season and file it under the primary")
+			}
+
+			before2026 := rec.count("bunk_assignments", 2026)
+			if err := o.RunHourlySync(context.Background()); err != nil {
+				t.Fatalf("RunHourlySync: %v", err)
+			}
+			if got := rec.count("bunk_assignments", 2027); got != 1 {
+				t.Errorf("the hourly primary pass must sync bunk_assignments for 2027 once, ran %d times: %+v",
+					got, rec.Runs())
+			}
+			if got := rec.count("bunk_assignments", 2026) - before2026; got != 1 {
+				t.Errorf("the hourly run must sync 2026 once (its N-1 pass), ran %d times: the primary pass "+
+					"must not sync the replay's season", got)
+			}
+
+			close(release)
+			if err := <-done; err != nil {
+				t.Fatalf("RunSyncWithOptions: %v", err)
+			}
+		})
+	})
+
+	t.Run("the same job is running", func(t *testing.T) {
+		runInBubble(t, func(t *testing.T) {
+			o, rec := newRecordingOrchestrator(t, nil, client)
+
+			release := make(chan struct{})
+			rec.blockDuring("bunk_assignments", 2026, release)
+			done := make(chan error, 1)
+			go func() { done <- o.RunSyncWithOptions(context.Background(), Options{Year: 2026}) }()
+			rec.waitUntilBlocked(t)
+
+			err := o.RunHourlySync(context.Background())
+			if err == nil || !strings.Contains(err.Error(), "already in progress") {
+				t.Errorf("the colliding hourly run must be refused, got %v", err)
+			}
+			if got := rec.count("bunk_assignments", 2027); got != 0 {
+				t.Errorf("the refused hourly run still ran bunk_assignments for 2027 (%d runs)", got)
+			}
+			if st := o.GetStatus("bunk_assignments"); st == nil || st.Year != 2026 || st.Trigger != triggerHistorical {
+				t.Errorf("the manual 2026 run's slot was restamped: %+v", st)
+			}
+
+			close(release)
+			if err := <-done; err != nil {
+				t.Fatalf("RunSyncWithOptions: %v", err)
+			}
+			o.mu.RLock()
+			last := o.lastCompletedStatus["bunk_assignments"]
+			o.mu.RUnlock()
+			if last == nil || last.Year != 2026 || last.Trigger != triggerHistorical {
+				t.Errorf("the manual 2026 bunk_assignments run was filed as %+v, want year 2026, trigger historical", last)
+			}
+		})
+	})
+}
+
+// TestManualPriorSeasonRunLeavesTheRegistryAsItFoundIt pins that a manual season run never
+// touches the registry, so there is nothing to restore when it ends: the same ids, the same
+// instances, and the run itself still went to the replay's season.
+func TestManualPriorSeasonRunLeavesTheRegistryAsItFoundIt(t *testing.T) {
+	t.Setenv("CAMPMINDER_SEASON_ID", "")
+	withNow(t, time.Date(2026, time.October, 20, 10, 0, 0, 0, time.UTC)) // primary 2027
+	client := newTestCampMinderClient(t, 2027)
+
+	runInBubble(t, func(t *testing.T) {
+		o, rec := newRecordingOrchestrator(t, nil, client)
+		before := registrySnapshot(o)
+
+		if err := o.RunSyncWithOptions(context.Background(), Options{Year: 2026}); err != nil {
+			t.Fatalf("RunSyncWithOptions: %v", err)
+		}
+
+		after := registrySnapshot(o)
+		if len(after) != len(before) {
+			t.Errorf("the registry holds %d services after the run, %d before", len(after), len(before))
+		}
+		for id, svc := range before {
+			if after[id] != svc {
+				t.Errorf("the registry's %s is a different instance after the manual 2026 run", id)
+			}
+		}
+		if !rec.Ran("attendees", 2026) || rec.Ran("attendees", 2027) {
+			t.Errorf("the manual run must sync 2026 and only 2026: %+v", rec.Runs())
+		}
+	})
+}

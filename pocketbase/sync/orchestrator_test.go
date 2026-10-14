@@ -4525,11 +4525,7 @@ func TestCurrentYearDefaultSyncStillRejectsDryRun(t *testing.T) {
 }
 
 // registrationSnapshotProbe is a Service whose Sync captures whatever is registered under each
-// of `ids` at the moment IT runs. That is the only point from which RunSyncWithOptions'
-// year-override re-registration (the block starting "If year override is specified") is
-// observable from outside the function: the block's own defer restores o.services to its
-// pre-call state before RunSyncWithOptions returns, so inspecting o.services after the call
-// would only ever show the restored, pre-call registrations.
+// of `ids` at the moment IT runs, so a test can see the registry from inside a running replay.
 type registrationSnapshotProbe struct {
 	orchestrator *Orchestrator
 	ids          []string
@@ -4545,22 +4541,22 @@ func (p *registrationSnapshotProbe) Sync(_ context.Context) error {
 }
 func (p *registrationSnapshotProbe) GetStats() Stats { return Stats{} }
 
-// TestRunSyncWithOptionsHistoricalReRegistersScopedFamilyCampVariants pins kindred#2608: a
-// historical replay (opts.Year > 0) re-registers the unrestricted person_custom_values /
-// household_custom_values pair against a year-specific client, but until this fix left the two
-// scoped family-camp variants (person_custom_values_family_camp,
-// household_custom_values_family_camp) untouched -- so a historical run of one of them kept
-// running against whatever client it was constructed with at boot (InitializeSyncServices),
-// current season and all, while the run was labeled as replaying a past year.
+// TestHistoricalReplayRunsYearScopedFamilyCampVariants pins kindred#2608: a historical replay
+// (opts.Year > 0) runs the unrestricted person_custom_values / household_custom_values pair
+// against a year-specific client, but until that fix left the two scoped family-camp variants
+// (person_custom_values_family_camp, household_custom_values_family_camp) on the boot-time
+// instances -- so a historical run of one of them kept running against whatever client it was
+// constructed with at boot (InitializeSyncServices), current season and all, while the run was
+// labeled as replaying a past year.
 //
-// It proves re-registration happened, not just that a service exists, by pre-registering the
-// scoped ids with sentinel instances standing in for InitializeSyncServices' boot-time
-// registration (bound to bootClient) and then asserting the registrationSnapshotProbe sees
-// DIFFERENT instances mid-run: identical pointers would mean the historical block left the
-// boot-time registration alone.
+// A replay used to re-register the year's instances for its duration; it now hands each job
+// its year's instance (replayOverrides) and never touches the registry, so an hourly run during
+// it still finds the primary's. Both halves are pinned: the instance the replay runs is a fresh,
+// family-camp-scoped one for the replay's season, and the registry mid-run still holds the
+// boot-time instances.
 //
 // Registered in serialGroups: CAMPMINDER_PRIMARY_KEY (campminder.NewClient) is t.Setenv.
-func TestRunSyncWithOptionsHistoricalReRegistersScopedFamilyCampVariants(t *testing.T) {
+func TestHistoricalReplayRunsYearScopedFamilyCampVariants(t *testing.T) {
 	t.Setenv("CAMPMINDER_PRIMARY_KEY", "test-key")
 
 	app := newDryRunTestApp(t)
@@ -4587,51 +4583,53 @@ func TestRunSyncWithOptionsHistoricalReRegistersScopedFamilyCampVariants(t *test
 	bootHousehold.SetScope(ScopeFamilyCamp)
 	o.RegisterService(householdID, bootHousehold)
 
+	overrides := o.replayOverrides(2020, false) // a replay distinct from bootClient's SeasonID 2025
+
+	personRuns, ok := overrides[personID].(*PersonCustomFieldValuesSync)
+	switch {
+	case !ok:
+		t.Errorf("%s: a 2020 replay must run its own *PersonCustomFieldValuesSync, got %T",
+			personID, overrides[personID])
+	case personRuns == bootPerson:
+		t.Errorf("%s: a 2020 replay runs the boot-time instance (kindred#2608)", personID)
+	case personRuns.Scope != ScopeFamilyCamp:
+		t.Errorf("%s: expected Scope=%q, got %q", personID, ScopeFamilyCamp, personRuns.Scope)
+	case personRuns.Client.GetSeasonID() != 2020:
+		t.Errorf("%s: a 2020 replay reads CampMinder for %d", personID, personRuns.Client.GetSeasonID())
+	}
+
+	householdRuns, ok := overrides[householdID].(*HouseholdCustomFieldValuesSync)
+	switch {
+	case !ok:
+		t.Errorf("%s: a 2020 replay must run its own *HouseholdCustomFieldValuesSync, got %T",
+			householdID, overrides[householdID])
+	case householdRuns == bootHousehold:
+		t.Errorf("%s: a 2020 replay runs the boot-time instance (kindred#2608)", householdID)
+	case householdRuns.Scope != ScopeFamilyCamp:
+		t.Errorf("%s: expected Scope=%q, got %q", householdID, ScopeFamilyCamp, householdRuns.Scope)
+	case householdRuns.Client.GetSeasonID() != 2020:
+		t.Errorf("%s: a 2020 replay reads CampMinder for %d", householdID, householdRuns.Client.GetSeasonID())
+	}
+
 	probe := &registrationSnapshotProbe{orchestrator: o, ids: []string{personID, householdID}}
 	o.RegisterService("probe", probe)
-
 	if err := o.RunSyncWithOptions(context.Background(), Options{
-		Year:     2020, // a historical replay, distinct from bootClient's SeasonID 2025
+		Year:     2020,
 		Services: []string{"probe"},
 	}); err != nil {
 		t.Fatalf("RunSyncWithOptions: %v", err)
 	}
-
-	personSeen := probe.seen[personID]
-	if personSeen == nil {
-		t.Fatalf("%s was not registered at all during the historical run", personID)
-	}
-	if personSeen == Service(bootPerson) {
-		t.Errorf("%s still pointed at the boot-time instance during a historical run -- it was "+
-			"never re-registered against the year-specific client (kindred#2608)", personID)
-	}
-	if pcv, ok := personSeen.(*PersonCustomFieldValuesSync); !ok {
-		t.Errorf("%s: expected *PersonCustomFieldValuesSync, got %T", personID, personSeen)
-	} else if pcv.Scope != ScopeFamilyCamp {
-		t.Errorf("%s: expected Scope=%q, got %q", personID, ScopeFamilyCamp, pcv.Scope)
-	}
-
-	householdSeen := probe.seen[householdID]
-	if householdSeen == nil {
-		t.Fatalf("%s was not registered at all during the historical run", householdID)
-	}
-	if householdSeen == Service(bootHousehold) {
-		t.Errorf("%s still pointed at the boot-time instance during a historical run -- it was "+
-			"never re-registered against the year-specific client (kindred#2608)", householdID)
-	}
-	if hcv, ok := householdSeen.(*HouseholdCustomFieldValuesSync); !ok {
-		t.Errorf("%s: expected *HouseholdCustomFieldValuesSync, got %T", householdID, householdSeen)
-	} else if hcv.Scope != ScopeFamilyCamp {
-		t.Errorf("%s: expected Scope=%q, got %q", householdID, ScopeFamilyCamp, hcv.Scope)
+	if probe.seen[personID] != Service(bootPerson) || probe.seen[householdID] != Service(bootHousehold) {
+		t.Error("the registry changed during the replay; an hourly run would pick up 2020's instances")
 	}
 }
 
 // Only the registered current-year instance rolls. A historical replay (opts.Year > 0)
-// must re-register financial_transactions single-season, or a 2019 replay would also
-// rewrite 2018 and 2020.
+// must run financial_transactions single-season, or a 2019 replay would also rewrite 2018 and
+// 2020 -- and must not register that instance, or the nightly run would stop rolling.
 //
 // Registered in serialGroups: CAMPMINDER_PRIMARY_KEY (campminder.NewClient) is t.Setenv.
-func TestRunSyncWithOptionsHistoricalTransactionsAreSingleSeason(t *testing.T) {
+func TestHistoricalReplayTransactionsAreSingleSeason(t *testing.T) {
 	t.Setenv("CAMPMINDER_PRIMARY_KEY", "test-key")
 	app := newDryRunTestApp(t)
 	o := NewOrchestrator(app)
@@ -4641,19 +4639,24 @@ func TestRunSyncWithOptionsHistoricalTransactionsAreSingleSeason(t *testing.T) {
 		t.Fatalf("campminder.NewClient: %v", err)
 	}
 	o.baseClient = bootClient
-	o.RegisterService("financial_transactions", NewRollingFinancialTransactionsSync(app, bootClient))
+	rolling := NewRollingFinancialTransactionsSync(app, bootClient)
+	o.RegisterService("financial_transactions", rolling)
+
+	ft, ok := o.replayOverrides(2020, false)["financial_transactions"].(*FinancialTransactionsSync)
+	if !ok {
+		t.Fatalf("financial_transactions for a 2020 replay = %T", o.replayOverrides(2020, false)["financial_transactions"])
+	}
+	if ft.RollingSeasons {
+		t.Error("the historical run's financial_transactions instance rolls; it must be single-season")
+	}
 
 	probe := &registrationSnapshotProbe{orchestrator: o, ids: []string{"financial_transactions"}}
 	o.RegisterService("probe", probe)
 	if err := o.RunSyncWithOptions(context.Background(), Options{Year: 2020, Services: []string{"probe"}}); err != nil {
 		t.Fatalf("RunSyncWithOptions: %v", err)
 	}
-	ft, ok := probe.seen["financial_transactions"].(*FinancialTransactionsSync)
-	if !ok {
-		t.Fatalf("financial_transactions during the historical run = %T", probe.seen["financial_transactions"])
-	}
-	if ft.RollingSeasons {
-		t.Error("the historical run's financial_transactions instance rolls; it must be single-season")
+	if probe.seen["financial_transactions"] != Service(rolling) {
+		t.Error("the replay registered its single-season financial_transactions; the nightly run would stop rolling")
 	}
 }
 

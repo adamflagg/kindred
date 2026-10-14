@@ -2143,8 +2143,9 @@ func (o *Orchestrator) runSeasonPass(
 // its own reference, and runSyncAndWaitWithService configures and runs that same instance),
 // so the swap never changes a running job. The swap is skipped, and retried by the next
 // scheduled run, while a queue that configured registered instances is in flight: a historical
-// replay (which swaps the registry itself and restores it at the end) or a manual full run
-// (dailySyncRunning, which sets dry_run/debug on the registered instances). RunDailySync calls
+// replay (which sets dry_run/debug on the registered instances of the jobs it has no season
+// instance for -- globals, the windowed jobs -- and runs them later in the queue) or a manual
+// full run (dailySyncRunning, which sets dry_run/debug on the registered instances). RunDailySync calls
 // this before setting dailySyncRunning, so its own run is not one of them.
 func (o *Orchestrator) ensurePrimaryClient() {
 	primary, err := PrimarySeason(nowFn())
@@ -2594,9 +2595,9 @@ func (s serviceSet) add(id string, svc Service) { s[id] = svc }
 
 // servicesForYear returns a fresh instance of every year-scoped job, configured for `year`:
 // client-backed services read CampMinder through a client cloned to `year`, and the others get
-// their Year field set. Nothing is registered: the caller decides whether to hand the instances
-// to runSyncAndWaitWithService one by one (the N-1 pass, which must never swap the registry) or
-// to re-register them (a historical replay).
+// their Year field set. Nothing is registered: every caller (the N-1 pass, a historical replay,
+// a staff-triggered run for a non-primary season) hands the instances to
+// runSyncAndWaitWithService one by one, so the registry always holds the primary's.
 //
 // Globals (person_tag_defs, custom_field_defs, divisions, the lookups) are absent on purpose:
 // they have no season, so a season's pass must not re-run them.
@@ -2791,6 +2792,17 @@ func (o *Orchestrator) runForSeason(ctx context.Context, job string, year int, s
 	return o.runSyncAndWaitWithService(ctx, job, newBatch(triggerManual).forYear(year), svc)
 }
 
+// replayOverrides is the instance a historical replay of year runs for each job it has one for:
+// the season's own (yearServices), handed to runSyncAndWaitWithService as its override and never
+// registered. multi_workbook_export is left out, so the registered singleton runs:
+// runSyncAndWait gives it the replay's year (TestHistoricalRunSetsTheExportsYear), and every
+// later run sets its year again before it starts.
+func (o *Orchestrator) replayOverrides(year int, debug bool) map[string]Service {
+	overrides := o.yearServices(year, debug)
+	delete(overrides, "multi_workbook_export")
+	return overrides
+}
+
 // RunSyncWithOptions runs syncs with custom options including year override
 func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) error {
 	// Set the current sync year
@@ -2833,8 +2845,8 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 	// inserted before transform. opts.Year == 0 means the live/current-year run (see
 	// ResolveUnifiedSyncServices); opts.Year > 0 is a historical replay of a specific year.
 	//
-	// A prior synced season (N-1) is still a replay mechanically -- its own instances are
-	// registered for the run -- but it runs the SyncedSeasonsOnly jobs like its nightly pass
+	// A prior synced season (N-1) is still a replay mechanically -- each job runs its own
+	// year-scoped instance -- but it runs the SyncedSeasonsOnly jobs like its nightly pass
 	// does. Only a season outside the synced pair skips them (spec §5, audit Fix E).
 	servicesToRun := opts.Services
 	if len(servicesToRun) == 0 {
@@ -2909,45 +2921,32 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		}()
 	}
 
-	// A historical replay re-registers the year-scoped services for its year (globals are not
-	// in servicesForYear, so person_tag_defs, custom_field_defs and divisions never run in a
-	// replay) and restores the originals when it ends. The scheduled N-1 pass never does this:
-	// it hands each job its own instance instead (runSeasonPass).
+	// A historical replay runs each job with its own year-scoped instance (servicesForYear)
+	// through runSyncAndWaitWithService's override, the way the scheduled N-1 pass does
+	// (runSeasonPass). It never touches the registry: the registered instances stay the
+	// primary's, so an hourly run, a card sync or the nightly primary pass that starts during
+	// the replay still syncs the primary. A job the factory builds no instance for (the globals,
+	// the primary-only windowed jobs) runs its registered instance, as it always has.
+	var overrides map[string]Service
 	if opts.Year > 0 {
 		if o.BaseClient() == nil {
 			slog.Error("Cannot run historical sync - baseClient is nil")
 			return fmt.Errorf("baseClient not initialized")
 		}
-
-		// Store original services
-		originalServices := make(map[string]Service)
-		o.mu.Lock()
-		maps.Copy(originalServices, o.services)
-		o.mu.Unlock()
-
-		for id, svc := range o.yearServices(opts.Year, opts.Debug) {
-			// The export singleton stays: runSyncAndWait already gives it the replay's year
-			// (TestHistoricalRunSetsTheExportsYear), and the restore below would only hide that.
-			if id == "multi_workbook_export" {
-				continue
-			}
-			o.RegisterService(id, svc)
-		}
-
-		// Restore original services after sync completes, and drop any the replay added that
-		// were not registered before it (jotform_submissions in a deployment without it).
-		defer func() {
-			o.mu.Lock()
-			for name := range o.services {
-				if _, had := originalServices[name]; !had {
-					delete(o.services, name)
-				}
-			}
-			maps.Copy(o.services, originalServices)
-			o.mu.Unlock()
-		}()
+		overrides = o.replayOverrides(opts.Year, opts.Debug)
 
 		slog.Info("Running sync with year override", "year", opts.Year)
+	}
+
+	// The instance each job will actually run, resolved once so the debug and dry-run flags
+	// below are set on, and reset on, the same object that runs.
+	instances := make(map[string]Service, len(servicesToRun))
+	for _, serviceName := range servicesToRun {
+		if svc := overrides[serviceName]; svc != nil {
+			instances[serviceName] = svc
+		} else if svc := o.GetService(serviceName); svc != nil {
+			instances[serviceName] = svc
+		}
 	}
 
 	// Run services
@@ -2959,20 +2958,16 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 
 	// Apply debug flag to all services if enabled
 	if opts.Debug {
-		for _, serviceName := range servicesToRun {
-			if svc := o.GetService(serviceName); svc != nil {
-				if debuggable, ok := svc.(Debuggable); ok {
-					debuggable.SetDebug(true)
-				}
+		for _, svc := range instances {
+			if debuggable, ok := svc.(Debuggable); ok {
+				debuggable.SetDebug(true)
 			}
 		}
 		// Reset debug flag after sync completes
 		defer func() {
-			for _, serviceName := range servicesToRun {
-				if svc := o.GetService(serviceName); svc != nil {
-					if debuggable, ok := svc.(Debuggable); ok {
-						debuggable.SetDebug(false)
-					}
+			for _, svc := range instances {
+				if debuggable, ok := svc.(Debuggable); ok {
+					debuggable.SetDebug(false)
 				}
 			}
 		}()
@@ -2987,21 +2982,17 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		if unsupported := o.UnsupportedDryRunServices(servicesToRun); len(unsupported) > 0 {
 			return fmt.Errorf("dry_run requested but not supported by: %s", strings.Join(unsupported, ", "))
 		}
-		for _, serviceName := range servicesToRun {
-			if svc := o.GetService(serviceName); svc != nil {
-				if dryRunnable, ok := svc.(DryRunnable); ok {
-					dryRunnable.SetDryRun(true)
-				}
+		for _, svc := range instances {
+			if dryRunnable, ok := svc.(DryRunnable); ok {
+				dryRunnable.SetDryRun(true)
 			}
 		}
 		// Reset dry_run after sync completes so the registered singleton doesn't leak the
 		// flag into the next, unrelated run (same reasoning as the debug reset above).
 		defer func() {
-			for _, serviceName := range servicesToRun {
-				if svc := o.GetService(serviceName); svc != nil {
-					if dryRunnable, ok := svc.(DryRunnable); ok {
-						dryRunnable.SetDryRun(false)
-					}
+			for _, svc := range instances {
+				if dryRunnable, ok := svc.(DryRunnable); ok {
+					dryRunnable.SetDryRun(false)
 				}
 			}
 		}()
@@ -3038,7 +3029,7 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		}
 
 		// Run sync and wait for completion
-		if err := o.runSyncAndWait(ctx, serviceName, batch); err != nil {
+		if err := o.runSyncAndWaitWithService(ctx, serviceName, batch, overrides[serviceName]); err != nil {
 			if opts.Year > 0 {
 				slog.Error("Historical sync: service failed", "year", opts.Year, "service", serviceName, "error", err)
 			} else {

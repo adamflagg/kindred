@@ -1541,7 +1541,7 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 
 	// IMPORTANT: Orchestrator uses Year=0 to indicate current year mode
 	// This enables bunk_requests and process_requests inclusion
-	// Year > 0 triggers historical mode (re-registers services with year-specific client)
+	// Year > 0 triggers historical mode (each job runs a year-scoped instance; the registry is untouched)
 	optsYear := year
 	if year == currentYear {
 		optsYear = 0 // Current year mode

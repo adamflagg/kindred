@@ -234,7 +234,7 @@ func (s *LodgingAssignmentsSync) Sync(ctx context.Context) error {
 	// before it (SyncedSeasons; the prior season's attendees are synced nightly
 	// too, and from Oct 15 the adult weekends run in it) -- never merely to
 	// whatever `year` this particular call carries. handleLodgingAssignmentsSync's ?year= query param and the
-	// orchestrator's historical re-registration (opts.Year) both drive this
+	// orchestrator's historical replay (opts.Year) both drive this
 	// Sync() with an arbitrary year, and s.householdSessionIndex /
 	// s.personSessionIndex above are built from the LOCAL attendees table for
 	// THAT year, not from CampMinder. Before this guard, a stale or partial
@@ -1169,7 +1169,7 @@ func (s *LodgingAssignmentsSync) partySize(in *ingestContext, sessionID string) 
 // activeSeasonYear resolves the primary season this deployment is maintaining
 // right now, independent of s.Year. deleteLodgingOrphans runs for it and the
 // season before it (sweepSeasons); any other year (an explicit ?year= sync, a
-// historical re-registration) is one this ingest is not currently responsible
+// historical replay) is one this ingest is not currently responsible
 // for, and gets create/update only.
 //
 // s.ActiveSeasonYear, when set, is returned directly -- the injection point
