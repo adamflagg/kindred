@@ -1588,3 +1588,109 @@ class TestFamilyCampIsNotEnrolledAtCamp:
 
         assert result.waitlisted_no_enrollment == 1
         assert result.waitlisted_has_enrollment == 0
+
+
+# ============================================================================
+# One session resolver (#3208): single pick keeps AG cabins, teens are window-gated
+# ============================================================================
+
+
+def _typed_fetch_sessions(all_sessions: dict[int, Mock]):
+    """A fetch_sessions fake that filters by type, like the real repository."""
+
+    async def fetch_sessions(year: int, types: list[str] | None = None) -> dict[int, Mock]:
+        return {k: v for k, v in all_sessions.items() if v.session_type in (types or [])}
+
+    return fetch_sessions
+
+
+def _waitlisted_repo(mock_repository: Mock, all_sessions: dict[int, Mock], waitlisted: list[Mock]) -> None:
+    mock_repository.fetch_sessions = AsyncMock(side_effect=_typed_fetch_sessions(all_sessions))
+    mock_repository.fetch_attendees = AsyncMock(
+        side_effect=lambda year, status_filter=None: waitlisted if status_filter == "waitlisted" else []
+    )
+    mock_repository.fetch_status_history = AsyncMock(return_value=[])
+
+
+class TestSessionResolverScope:
+    @pytest.mark.asyncio
+    async def test_single_session_includes_ag_children(
+        self,
+        waitlist_service: WaitlistService,
+        mock_repository: Mock,
+        sample_sessions: dict[int, Mock],
+        sample_persons: dict[int, Mock],
+    ) -> None:
+        """Picking Session 1 counts its AG cabin's waitlist too, folded into Session 1."""
+        main_session = sample_sessions[1001]
+        ag_session = sample_sessions[1004]  # AG Session 1, parent_id=1001
+        waitlisted = [
+            create_mock_attendee(101, session_cm_id=1001, session=main_session, status="waitlisted", status_id=8),
+            create_mock_attendee(102, session_cm_id=1004, session=ag_session, status="waitlisted", status_id=8),
+        ]
+        _waitlisted_repo(mock_repository, sample_sessions, waitlisted)
+        mock_repository.fetch_persons.return_value = sample_persons
+
+        result = await waitlist_service.calculate_waitlist(year=2026, session_cm_id=1001)
+
+        assert result.total_waitlisted == 2
+        assert [(s.session_cm_id, s.waitlisted) for s in result.by_session] == [(1001, 2)]
+
+    @pytest.mark.asyncio
+    async def test_offseason_teen_sessions_excluded_by_summer_window(
+        self,
+        waitlist_service: WaitlistService,
+        mock_repository: Mock,
+        sample_persons: dict[int, Mock],
+    ) -> None:
+        """A fall 'Family Camp CIT' typed scit is not a summer teen session."""
+        main_session = create_mock_session(1001, "Session 1", 2026, "main", "2026-06-15", "2026-07-05")
+        summer_scit = create_mock_session(2001, "SCIT", 2026, "scit", "2026-06-15", "2026-07-05")
+        fall_scit = create_mock_session(2002, "Family Camp CIT", 2026, "scit", "2026-09-11", "2026-09-13")
+        all_sessions = {1001: main_session, 2001: summer_scit, 2002: fall_scit}
+        waitlisted = [
+            create_mock_attendee(101, session_cm_id=2001, session=summer_scit, status="waitlisted", status_id=8),
+            create_mock_attendee(102, session_cm_id=2002, session=fall_scit, status="waitlisted", status_id=8),
+        ]
+        _waitlisted_repo(mock_repository, all_sessions, waitlisted)
+        mock_repository.fetch_persons.return_value = sample_persons
+
+        result = await waitlist_service.calculate_waitlist(year=2026, session_types=["scit", "tli"])
+
+        assert result.total_waitlisted == 1
+        assert [s.session_cm_id for s in result.by_session] == [2001]
+
+    @pytest.mark.asyncio
+    async def test_family_adult_and_bmitzvah_never_enter_summer_numbers(
+        self,
+        waitlist_service: WaitlistService,
+        mock_repository: Mock,
+        sample_sessions: dict[int, Mock],
+        sample_persons: dict[int, Mock],
+    ) -> None:
+        """Family Camp / adult / B*Mitzvah sessions and attendees leave summer outputs unchanged."""
+        main_session = sample_sessions[1001]
+        summer_waitlisted = [
+            create_mock_attendee(101, session_cm_id=1001, session=main_session, status="waitlisted", status_id=8),
+        ]
+        _waitlisted_repo(mock_repository, sample_sessions, summer_waitlisted)
+        mock_repository.fetch_persons.return_value = sample_persons
+        baseline = await waitlist_service.calculate_waitlist(year=2026)
+
+        family = create_mock_session(3001, "Fall Family Camp", 2026, "family", "2026-09-11", "2026-09-13")
+        adult = create_mock_session(3002, "Adult Weekend", 2026, "adult", "2026-06-20", "2026-06-22")
+        bmitzvah = create_mock_session(3003, "B*Mitzvah Weekend", 2026, "bmitzvah", "2026-06-20", "2026-06-22")
+        with_extras = {**sample_sessions, 3001: family, 3002: adult, 3003: bmitzvah}
+        waitlisted = summer_waitlisted + [
+            create_mock_attendee(102 + i, session_cm_id=s.cm_id, session=s, status="waitlisted", status_id=8)
+            for i, s in enumerate((family, adult, bmitzvah))
+        ]
+        _waitlisted_repo(mock_repository, with_extras, waitlisted)
+
+        result = await waitlist_service.calculate_waitlist(year=2026)
+
+        assert result.model_dump() == baseline.model_dump()
+
+        family_only = await waitlist_service.calculate_waitlist(year=2026, session_types=["family"])
+        assert family_only.total_waitlisted == 0
+        assert family_only.by_session == []

@@ -28,7 +28,7 @@ from api.utils.session_metrics import (
     SUMMER_TEEN_TYPES,
     build_ag_parent_map,
     get_session_from_expand,
-    resolve_duration_sessions,
+    resolve_scope_ids,
 )
 from api.utils.session_swap import detect_session_swaps
 from bunking.logging_config import get_logger
@@ -84,20 +84,14 @@ class CancellationService:
         teen_sessions = await self.repository.fetch_sessions(year, list(SUMMER_TEEN_TYPES))
         enrollment_session_ids = set(all_sessions.keys()) | set(teen_sessions.keys())
 
-        # Fetch filtered sessions for display
+        # Display scope through the one session resolver (#3208): summer types only
+        # (Family Camp never enters), teen sessions gated to the summer window, and a
+        # picked session keeps its AG cabins. The resolver needs ALL the year's
+        # sessions (main defines the teen window), so scope over summer + teen.
         effective_types = session_types or list(SUMMER_SESSION_TYPES)
-        if effective_types == list(SUMMER_SESSION_TYPES):
-            filtered_sessions = all_sessions
-        else:
-            filtered_sessions = await self.repository.fetch_sessions(year, effective_types)
-
-        # Build session cm_id set for filtering
-        valid_session_ids = set(filtered_sessions.keys())
-        if session_cm_id is not None:
-            valid_session_ids = {sid for sid in valid_session_ids if sid == session_cm_id}
-        if duration:
-            duration_session_ids = resolve_duration_sessions(filtered_sessions, duration)
-            valid_session_ids = valid_session_ids & duration_session_ids
+        year_sessions = {**all_sessions, **teen_sessions}
+        valid_session_ids = resolve_scope_ids(year_sessions, effective_types, session_cm_id, duration)
+        filtered_sessions = {sid: s for sid, s in year_sessions.items() if sid in valid_session_ids}
 
         # --- Fetch cancelled and enrolled attendees ---
         cancelled_attendees = await self.repository.fetch_attendees(year, status_filter=CANCELLED_STATUSES)

@@ -607,3 +607,112 @@ class TestFamilyCampIsNotStillAttending:
 
         assert result.no_other_sessions == 1
         assert result.has_other_sessions == 0
+
+
+# ============================================================================
+# One session resolver (#3208): single pick keeps AG cabins, teens are window-gated
+# ============================================================================
+
+
+def _typed_fetch_sessions(all_sessions):
+    """A fetch_sessions fake that filters by type, like the real repository."""
+
+    async def fetch_sessions(year, types=None):
+        return {k: v for k, v in all_sessions.items() if v.session_type in (types or [])}
+
+    return fetch_sessions
+
+
+def _cancelled_repo(mock_repository, all_sessions, cancelled):
+    mock_repository.fetch_sessions = AsyncMock(side_effect=_typed_fetch_sessions(all_sessions))
+    mock_repository.fetch_attendees = AsyncMock(
+        side_effect=lambda year, status_filter=None: (
+            cancelled if status_filter == ["cancelled", "withdrawn", "dismissed"] else []
+        )
+    )
+    mock_repository.fetch_status_history = AsyncMock(return_value=[])
+
+
+class TestSessionResolverScope:
+    @pytest.mark.asyncio
+    async def test_single_session_includes_ag_children(self, cancellation_service, mock_repository, sample_persons):
+        main_session = create_mock_session(1001, "Session 1", 2026, "main", "2026-06-15", "2026-07-05")
+        ag_session = create_mock_session(1004, "AG Session 1", 2026, "ag", "2026-06-15", "2026-07-05", parent_id=1001)
+        other = create_mock_session(1002, "Session 2", 2026, "main", "2026-07-06", "2026-07-26")
+        all_sessions = {1001: main_session, 1004: ag_session, 1002: other}
+        cancelled = [
+            create_mock_attendee(
+                101, session_cm_id=1001, session=main_session, status="cancelled", effective_date="2026-01-10"
+            ),
+            create_mock_attendee(
+                102, session_cm_id=1004, session=ag_session, status="cancelled", effective_date="2026-01-10"
+            ),
+            create_mock_attendee(
+                103, session_cm_id=1002, session=other, status="cancelled", effective_date="2026-01-10"
+            ),
+        ]
+        _cancelled_repo(mock_repository, all_sessions, cancelled)
+        mock_repository.fetch_persons.return_value = sample_persons
+
+        result = await cancellation_service.calculate_cancellations(year=2026, session_cm_id=1001)
+
+        assert result.total_cancelled == 2
+        assert [(s.session_cm_id, s.total_cancelled) for s in result.by_session] == [(1001, 2)]
+
+    @pytest.mark.asyncio
+    async def test_offseason_teen_sessions_excluded_by_summer_window(
+        self, cancellation_service, mock_repository, sample_persons
+    ):
+        main_session = create_mock_session(1001, "Session 1", 2026, "main", "2026-06-15", "2026-07-05")
+        summer_scit = create_mock_session(2001, "SCIT", 2026, "scit", "2026-06-15", "2026-07-05")
+        fall_scit = create_mock_session(2002, "Family Camp CIT", 2026, "scit", "2026-09-11", "2026-09-13")
+        all_sessions = {1001: main_session, 2001: summer_scit, 2002: fall_scit}
+        cancelled = [
+            create_mock_attendee(
+                101, session_cm_id=2001, session=summer_scit, status="cancelled", effective_date="2026-01-10"
+            ),
+            create_mock_attendee(
+                102, session_cm_id=2002, session=fall_scit, status="cancelled", effective_date="2026-01-10"
+            ),
+        ]
+        _cancelled_repo(mock_repository, all_sessions, cancelled)
+        mock_repository.fetch_persons.return_value = sample_persons
+
+        result = await cancellation_service.calculate_cancellations(year=2026, session_types=["scit", "tli"])
+
+        assert result.total_cancelled == 1
+        assert [s.session_cm_id for s in result.by_session] == [2001]
+
+    @pytest.mark.asyncio
+    async def test_family_adult_and_bmitzvah_never_enter_summer_numbers(
+        self, cancellation_service, mock_repository, sample_sessions, sample_persons
+    ):
+        main_session = sample_sessions[1001]
+        summer_cancelled = [
+            create_mock_attendee(
+                101, session_cm_id=1001, session=main_session, status="cancelled", effective_date="2026-01-10"
+            ),
+        ]
+        _cancelled_repo(mock_repository, sample_sessions, summer_cancelled)
+        mock_repository.fetch_persons.return_value = sample_persons
+        baseline = await cancellation_service.calculate_cancellations(year=2026)
+
+        family = create_mock_session(3001, "Fall Family Camp", 2026, "family", "2026-09-11", "2026-09-13")
+        adult = create_mock_session(3002, "Adult Weekend", 2026, "adult", "2026-06-20", "2026-06-22")
+        bmitzvah = create_mock_session(3003, "B*Mitzvah Weekend", 2026, "bmitzvah", "2026-06-20", "2026-06-22")
+        with_extras = {**sample_sessions, 3001: family, 3002: adult, 3003: bmitzvah}
+        cancelled = summer_cancelled + [
+            create_mock_attendee(
+                102 + i, session_cm_id=s.cm_id, session=s, status="cancelled", effective_date="2026-01-10"
+            )
+            for i, s in enumerate((family, adult, bmitzvah))
+        ]
+        _cancelled_repo(mock_repository, with_extras, cancelled)
+
+        result = await cancellation_service.calculate_cancellations(year=2026)
+
+        assert result.model_dump() == baseline.model_dump()
+
+        family_only = await cancellation_service.calculate_cancellations(year=2026, session_types=["family"])
+        assert family_only.total_cancelled == 0
+        assert family_only.by_session == []
