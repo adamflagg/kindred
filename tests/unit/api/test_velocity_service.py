@@ -16,6 +16,7 @@ Tests verify the enrollment velocity curve computation:
 """
 
 from datetime import datetime
+from typing import Any
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -186,7 +187,7 @@ def create_mock_status_transition(
     return record
 
 
-def _sess(cm_id: int, name: str, year: int, session_type: str = "main", **kw):
+def _sess(cm_id: int, name: str, year: int, session_type: str = "main", **kw: Any) -> Any:
     """A session whose dates sit inside that year's summer."""
     return create_mock_session(
         cm_id,
@@ -5025,7 +5026,7 @@ class TestVelocityScopeResolver:
         curves, in the current year or the prior one."""
         from datetime import date
 
-        def year_sessions(year: int) -> dict:
+        def year_sessions(year: int) -> dict[int, Any]:
             return {
                 1001: _sess(1001, "Session 1", year),
                 3001: _sess(3001, "Counselor In-Training", year, session_type="scit"),
@@ -5039,7 +5040,7 @@ class TestVelocityScopeResolver:
                 ),
             }
 
-        def year_attendees(year: int) -> list:
+        def year_attendees(year: int) -> list[Any]:
             return [
                 create_mock_attendee_with_date(1, 1001, f"{year}-01-03", year=year),
                 create_mock_attendee_with_date(2, 3001, f"{year}-01-04", year=year),
@@ -5077,7 +5078,7 @@ class TestVelocityScopeResolver:
                 2026: [create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=20)],
                 2025: [create_mock_snapshot("2025-01-06", 1001, 2025, enrolled=15)],
             }
-            atts: dict[int, list] = {2026: [], 2025: []}
+            atts: dict[int, list[Any]] = {2026: [], 2025: []}
             if extra:
                 for y in (2026, 2025):
                     sessions[y][5001] = _sess(5001, "Family Camp 1", y, session_type="family")

@@ -8,6 +8,7 @@ These tests are written FIRST before implementation (TDD).
 """
 
 from datetime import date
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -1815,7 +1816,7 @@ class TestForecastAGPriorByParent:
 
     @pytest.mark.asyncio
     async def test_summer_rows_unchanged_by_family_adult_and_bmitzvah(self, service, mock_repository):
-        def build(extra: bool):
+        def build(extra: bool) -> Any:
             s2026 = _ag_sessions(2026, 1002, "Session 2", {2002: "AG (7th & 8th grades)"})
             s2025 = _ag_sessions(2025, 9002, "Session 2", {9101: "AG (9th grades)"})
             att26 = [create_mock_attendee(1, 1002, year=2026), create_mock_attendee(2, 2002, year=2026)]

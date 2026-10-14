@@ -1,5 +1,6 @@
 """Tests for Day 1 registration counting service."""
 
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -318,7 +319,7 @@ _DAY1 = "2025-11-12"
 _SUMMER_TYPES = ["main", "embedded", "ag", "quest"]
 
 
-def _repo_by_year(sessions_by_year: dict[int, dict], attendees_by_year: dict[int, list]) -> AsyncMock:
+def _repo_by_year(sessions_by_year: dict[int, dict[int, Any]], attendees_by_year: dict[int, list[Any]]) -> AsyncMock:
     repo = AsyncMock()
     repo.fetch_registration_dates.return_value = _REG_DATES
 
@@ -337,9 +338,10 @@ def _att(cm_id: int, stype: str = "main") -> MagicMock:
     return _make_attendee(session_cm_id=cm_id, session_type=stype, effective_date=_DAY1)
 
 
-def _total(result, which: str = "current") -> int:
+def _total(result: Any, which: str = "current") -> int:
     tiers = result.tiers if which == "current" else result.prior_years[0 if which == "prior1" else 1].tiers
-    return next(t for t in tiers if t.tier == "priority").total.count
+    count: int = next(t for t in tiers if t.tier == "priority").total.count
+    return count
 
 
 @pytest.mark.asyncio
@@ -429,7 +431,7 @@ async def test_day1_summer_numbers_unchanged_by_family_adult_and_bmitzvah_sessio
     summer_atts = [_att(1001)] * 2 + [_att(1002, "quest")]
     other_atts = [_att(1401, "family")] * 4 + [_att(1402, "adult")] * 3 + [_att(1403, "bmitzvah"), _att(1404, "hebrew")]
 
-    async def run(with_extra: bool, **kw):
+    async def run(with_extra: bool, **kw: Any) -> Any:
         sessions = {**base, **(extra if with_extra else {})}
         atts = summer_atts + (other_atts if with_extra else [])
         repo = _repo_by_year({2026: sessions, 2025: sessions}, {2026: atts, 2025: atts})

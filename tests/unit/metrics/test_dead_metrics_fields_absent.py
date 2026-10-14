@@ -6,6 +6,7 @@ computed on every request for no reader.
 
 from __future__ import annotations
 
+import importlib
 import os
 from unittest.mock import patch
 
@@ -43,7 +44,7 @@ def test_comparison_schema_and_service_are_gone():
     assert not hasattr(schemas, "ComparisonMetricsResponse")
     assert not hasattr(metrics_schemas, "ComparisonMetricsResponse")
     with pytest.raises(ImportError):
-        import api.services.comparison_service  # noqa: F401
+        importlib.import_module("api.services.comparison_service")
 
 
 def test_retention_trends_drops_unread_fields():

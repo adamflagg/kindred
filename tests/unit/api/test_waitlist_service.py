@@ -8,6 +8,7 @@ These tests verify waitlist analysis logic for the four use cases:
 - UC4: Previously waitlisted, declined (cancelled/withdrawn/dismissed)
 """
 
+from typing import Any
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -1595,7 +1596,7 @@ class TestFamilyCampIsNotEnrolledAtCamp:
 # ============================================================================
 
 
-def _typed_fetch_sessions(all_sessions: dict[int, Mock]):
+def _typed_fetch_sessions(all_sessions: dict[int, Mock]) -> Any:
     """A fetch_sessions fake that filters by type, like the real repository."""
 
     async def fetch_sessions(year: int, types: list[str] | None = None) -> dict[int, Mock]:

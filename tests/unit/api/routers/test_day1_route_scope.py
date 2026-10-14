@@ -1,9 +1,11 @@
 """The /registration/day1 route passes the session pick and duration to the service (#3208)."""
 
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from api.dependencies import metrics_cache
 from bunking.auth_middleware import AuthUser
 
 
@@ -15,7 +17,7 @@ def _user() -> AuthUser:
 async def test_day1_route_forwards_session_cm_id_and_duration() -> None:
     from api.routers import metrics
 
-    metrics.metrics_cache.invalidate_all()
+    metrics_cache.invalidate_all()
     with (
         patch("api.routers.metrics._create_repository", return_value=object()),
         patch("api.routers.metrics.Day1Service") as svc_cls,
@@ -33,8 +35,8 @@ async def test_day1_route_forwards_session_cm_id_and_duration() -> None:
 async def test_day1_route_cache_key_distinguishes_session_and_duration() -> None:
     from api.routers import metrics
 
-    metrics.metrics_cache.invalidate_all()
-    calls: list[dict] = []
+    metrics_cache.invalidate_all()
+    calls: list[dict[str, Any]] = []
 
     async def fake_get_day1(year, **kw):
         calls.append(kw)
