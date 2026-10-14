@@ -595,7 +595,7 @@ describe('SyncTab service dropdown offers only triggerable jobs (kindred#2593)',
 })
 
 // kindred#2593: the year-change reset named bunk_requests/process_requests literally, while
-// five YEAR_SYNC_TYPES entries now carry currentYearOnly. A selection that survives the switch
+// five YEAR_SYNC_TYPES entries now carry syncedSeasonsOnly. A selection that survives the switch
 // is not merely stale: the option disappears from the <select> while `syncService` still holds
 // it, so Run Sync POSTs a current-year-only service against a historical year.
 describe('SyncTab clears a current-year-only service on year change (kindred#2593)', () => {
@@ -716,7 +716,7 @@ describe('SyncTab phase header counts membership, button counts what it starts (
 // until the backend's `_configured_year` loads (CurrentYearContext.tsx). SyncTab used to snapshot
 // that into local state with `useState(currentYear)`, so once currentYear later resolved to the
 // real year the component's own syncYear stayed frozen at 0 forever -- 0 !== the real year, so
-// every currentYearOnly type (all four Process-phase cards) vanished from the page, and any card
+// every syncedSeasonsOnly type (all four Process-phase cards) vanished from the page, and any card
 // whose Run button calls `<hook>.mutate(syncYear)` would have submitted a sync for year 0.
 // Navigating to the tab from elsewhere never hit this because currentYear is already resolved by
 // the time SyncTab mounts.

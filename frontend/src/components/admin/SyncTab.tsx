@@ -43,7 +43,7 @@ import {
   CURRENT_YEAR_SYNC_TYPES,
   getYearSyncTypes,
   hasManualTrigger,
-  isCurrentYearOnly,
+  isSyncedSeasonsOnly,
   Globe,
   SYNC_PHASES,
   getSyncTypesByPhase,
@@ -68,7 +68,7 @@ export function SyncTab() {
   // Unified sync state (replaces separate daily/historical). currentYear is 0 until the
   // backend's _configured_year loads (CurrentYearContext.tsx) -- on a hard refresh SyncTab
   // mounts before that resolves. Snapshotting it into useState would freeze syncYear at 0
-  // forever once currentYear later updates, hiding every currentYearOnly card and submitting
+  // forever once currentYear later updates, hiding every syncedSeasonsOnly card and submitting
   // year-0 syncs from the per-card Run buttons. Track only the user's explicit override and
   // derive the effective year from the live currentYear otherwise, so it tracks context updates
   // after mount the same way it does before mount.
@@ -177,7 +177,7 @@ export function SyncTab() {
       .filter((job): job is (typeof allSyncTypes)[number] & { year: number } => job !== null)
   }, [syncStatus, currentYear])
 
-  // Compute available sync types based on year (excludes currentYearOnly types for historical years)
+  // Compute available sync types based on year (excludes syncedSeasonsOnly types for historical years)
   const availableSyncTypes = useMemo(
     () => getYearSyncTypes(syncYear, currentYear),
     [syncYear, currentYear]
@@ -210,14 +210,14 @@ export function SyncTab() {
     setSyncYearOverride(year === currentYear ? null : year)
     // Reset a current-year-only selection when switching to a historical year. Derived from the
     // flag rather than a hand-written list of ids: the literal pair this used to name was
-    // already two short of the five entries carrying currentYearOnly, and a stale selection is
+    // already two short of the five entries carrying syncedSeasonsOnly, and a stale selection is
     // not merely cosmetic -- the option vanishes from the <select> while syncService still holds
     // it, so Run Sync submits a current-year-only service against a historical year.
     // Looked up in the unfiltered list, not `availableSyncTypes`: that memo is still keyed to
     // the year being navigated away from, and the question here is only "is the selected
     // service current-year-only", which does not depend on the year at all.
     const selected = CURRENT_YEAR_SYNC_TYPES.find((t) => t.id === syncService)
-    if (year !== currentYear && selected && isCurrentYearOnly(selected)) {
+    if (year !== currentYear && selected && isSyncedSeasonsOnly(selected)) {
       setSyncService('all')
     }
   }

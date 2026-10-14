@@ -113,7 +113,7 @@ export const GLOBAL_SYNC_TYPES = [
 // Year-specific sync types - data that follows the sync chain
 // Note: "persons" is a combined sync that populates persons and households tables
 // from a single API call (tags are stored as multi-select relation on persons)
-// Types with currentYearOnly: true are only available for current year syncs
+// Types with syncedSeasonsOnly: true are only available for current year syncs
 export const YEAR_SYNC_TYPES = [
   // Source phase - CampMinder API calls
   {
@@ -200,7 +200,7 @@ export const YEAR_SYNC_TYPES = [
   // getDailySyncJobs, always covered minutes earlier by the daily cron, so there is nothing
   // for a Run button to call (phaseExecutionJobs deliberately excludes them from an
   // admin-triggered PhaseExpensive run too, to avoid re-fetching a cohort already fresh).
-  // currentYearOnly: the daily cron always targets the configured season, never a historical
+  // syncedSeasonsOnly: the daily cron always targets the configured season, never a historical
   // year, matching bunk_requests/process_requests below.
   {
     id: 'person_custom_values_family_camp',
@@ -210,7 +210,7 @@ export const YEAR_SYNC_TYPES = [
     color: 'text-violet-500',
     phase: 'expensive' as SyncPhase,
     manualTrigger: false,
-    currentYearOnly: true,
+    syncedSeasonsOnly: true,
   },
   {
     id: 'household_custom_values_family_camp',
@@ -220,7 +220,7 @@ export const YEAR_SYNC_TYPES = [
     color: 'text-orange-500',
     phase: 'expensive' as SyncPhase,
     manualTrigger: false,
-    currentYearOnly: true,
+    syncedSeasonsOnly: true,
   },
   // Transform phase - derived tables
   {
@@ -337,7 +337,7 @@ export const YEAR_SYNC_TYPES = [
     color: 'text-teal-500',
     phase: 'process' as SyncPhase,
     manualTrigger: false,
-    currentYearOnly: true,
+    syncedSeasonsOnly: true,
   },
   {
     id: 'bunk_requests',
@@ -345,7 +345,7 @@ export const YEAR_SYNC_TYPES = [
     icon: FileText,
     color: 'text-orange-600',
     phase: 'process' as SyncPhase,
-    currentYearOnly: true,
+    syncedSeasonsOnly: true,
   },
   // kindred#2759: the adult-weekend Jotform pull. Runs on the daily cron now, gated on
   // JOTFORM_API_KEY being configured -- this card's Run button still starts it on demand.
@@ -355,7 +355,7 @@ export const YEAR_SYNC_TYPES = [
     icon: ClipboardList,
     color: 'text-violet-500',
     phase: 'process' as SyncPhase,
-    currentYearOnly: true,
+    syncedSeasonsOnly: true,
   },
   {
     id: 'process_requests',
@@ -363,7 +363,7 @@ export const YEAR_SYNC_TYPES = [
     icon: Brain,
     color: 'text-teal-600',
     phase: 'process' as SyncPhase,
-    currentYearOnly: true,
+    syncedSeasonsOnly: true,
   },
   // Export phase - Google Sheets. Was published on the status payload and had toast +
   // invalidation coverage the whole time; it just had no card, because YEAR_SYNC_TYPES had
@@ -391,7 +391,7 @@ export const CURRENT_YEAR_SYNC_TYPES = YEAR_SYNC_TYPES
 interface SyncTypeFlags {
   readonly id: string
   readonly manualTrigger?: boolean
-  readonly currentYearOnly?: boolean
+  readonly syncedSeasonsOnly?: boolean
 }
 
 // True when the backend registers no individual POST route for this job, so the admin UI must
@@ -408,23 +408,23 @@ export function hasManualTrigger(syncType: SyncTypeFlags): boolean {
 // The single reading of the flag: the card grid, the service dropdown and SyncTab's
 // year-change reset all go through here rather than naming ids by hand (kindred#2593 -- the
 // reset previously listed two of the five entries that carry the flag).
-export function isCurrentYearOnly(syncType: SyncTypeFlags): boolean {
-  return syncType.currentYearOnly === true
+export function isSyncedSeasonsOnly(syncType: SyncTypeFlags): boolean {
+  return syncType.syncedSeasonsOnly === true
 }
 
 // Get sync types available for a given year
-// For historical years (year < currentYear), excludes types with currentYearOnly flag
+// For historical years (year < currentYear), excludes types with syncedSeasonsOnly flag
 export function getYearSyncTypes(year: number, currentYear: number) {
   if (year === currentYear) return YEAR_SYNC_TYPES
-  return YEAR_SYNC_TYPES.filter((t) => !isCurrentYearOnly(t))
+  return YEAR_SYNC_TYPES.filter((t) => !isSyncedSeasonsOnly(t))
 }
 
 // Get sync types for a specific phase and year
-// For historical years (year !== currentYear), excludes types with currentYearOnly flag
+// For historical years (year !== currentYear), excludes types with syncedSeasonsOnly flag
 export function getSyncTypesByPhase(phase: SyncPhase, year: number, currentYear: number) {
   return YEAR_SYNC_TYPES.filter((t) => {
     if (t.phase !== phase) return false
-    if (isCurrentYearOnly(t) && year !== currentYear) return false
+    if (isSyncedSeasonsOnly(t) && year !== currentYear) return false
     return true
   })
 }

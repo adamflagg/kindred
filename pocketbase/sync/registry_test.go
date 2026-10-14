@@ -364,9 +364,9 @@ func TestUnifiedRunDerivation(t *testing.T) {
 			t.Errorf("includeCustomValues=true must include %s", id)
 		}
 	}
-	// process_requests' Gate (IS_DOCKER) is closed here, independent of CurrentYearOnly --
+	// process_requests' Gate (IS_DOCKER) is closed here, independent of SyncedSeasonsOnly --
 	// isCurrentYear is true, so this is what pins available() being consulted inside
-	// GetDefaultUnifiedSyncJobs rather than only the CurrentYearOnly filter the historical
+	// GetDefaultUnifiedSyncJobs rather than only the SyncedSeasonsOnly filter the historical
 	// block below exercises.
 	if slices.Contains(full, "process_requests") {
 		t.Error("process_requests must be gated out of a current-year full run when IS_DOCKER is unset")
@@ -380,18 +380,18 @@ func TestUnifiedRunDerivation(t *testing.T) {
 	historical := ResolveUnifiedSyncServices(DefaultService, true, false)
 	for _, id := range []string{"reconcile_request_lifecycle", "bunk_requests", "process_requests"} {
 		if slices.Contains(historical, id) {
-			t.Errorf("%s is CurrentYearOnly and must not be in a historical replay", id)
+			t.Errorf("%s is SyncedSeasonsOnly and must not be in a historical replay", id)
 		}
 	}
 	if got := full[len(full)-1]; got != "stranded_assignment_cleanup" {
 		t.Errorf("full run ends with %q, want stranded_assignment_cleanup", got)
 	}
 
-	// process_requests' CurrentYearOnly bit and its Gate are independent controls and both
-	// must hold for it to run. Re-run under IS_DOCKER=true so the CurrentYearOnly clause is
+	// process_requests' SyncedSeasonsOnly bit and its Gate are independent controls and both
+	// must hold for it to run. Re-run under IS_DOCKER=true so the SyncedSeasonsOnly clause is
 	// pinned non-vacuously -- the block above already proves the Gate half, but with the gate
 	// closed there process_requests is absent for the gate's reason regardless of what
-	// CurrentYearOnly says, so removing that flag from the registry row would leave every
+	// SyncedSeasonsOnly says, so removing that flag from the registry row would leave every
 	// assertion above green.
 	t.Setenv("IS_DOCKER", "true")
 	dockerFull := ResolveUnifiedSyncServices(DefaultService, true, true)
@@ -400,7 +400,7 @@ func TestUnifiedRunDerivation(t *testing.T) {
 	}
 	dockerHistorical := ResolveUnifiedSyncServices(DefaultService, true, false)
 	if slices.Contains(dockerHistorical, "process_requests") {
-		t.Error("process_requests is CurrentYearOnly and must not be in a historical replay, even when IS_DOCKER=true")
+		t.Error("process_requests is SyncedSeasonsOnly and must not be in a historical replay, even when IS_DOCKER=true")
 	}
 
 	// The full ordered sequence, pinned the same way TestDailyQueueDerivation pins the daily
@@ -442,50 +442,50 @@ func TestStatusSyncTypesIsTheWholeRegistry(t *testing.T) {
 	}
 }
 
-// TestCurrentYearOnlyMatchesTheFrontend pins the Go flag to syncTypes.ts's, the way #2593
+// TestSyncedSeasonsOnlyMatchesTheFrontend pins the Go flag to syncTypes.ts's, the way #2593
 // pinned manualTrigger to the route table. The frontend flag gates both the card grid and the
 // Full-mode dropdown; a job current-year-only on one side and not the other means Run Sync
 // submits a current-year-only service against a historical year.
-func TestCurrentYearOnlyMatchesTheFrontend(t *testing.T) {
+func TestSyncedSeasonsOnlyMatchesTheFrontend(t *testing.T) {
 	t.Parallel()
 
-	frontend := frontendCurrentYearOnlyIDs(t)
+	frontend := frontendSyncedSeasonsOnlyIDs(t)
 	var registry []string
 	for _, m := range syncJobMeta {
-		if m.CurrentYearOnly {
+		if m.SyncedSeasonsOnly {
 			registry = append(registry, m.ID)
 		}
 	}
-	assertSameSet(t, "currentYearOnly", registry, frontend)
+	assertSameSet(t, "syncedSeasonsOnly", registry, frontend)
 }
 
 // frontendSyncTypesPath is syncTypes.ts relative to this package's working directory, which
 // `go test` sets to pocketbase/sync.
 const frontendSyncTypesPath = "../../frontend/src/components/admin/syncTypes.ts"
 
-// frontendCurrentYearOnlyIDs parses the ids carrying `currentYearOnly: true` out of
+// frontendSyncedSeasonsOnlyIDs parses the ids carrying `syncedSeasonsOnly: true` out of
 // frontend/src/components/admin/syncTypes.ts, so the Go flag can be pinned against the
 // TypeScript one across a language boundary nothing else crosses.
 //
 // Like postRouteSegments (scope_test.go) and the mirror-image parser on the TypeScript side
 // (frontend/src/test/backendSyncJobIds.ts), it FATALS on anything it does not recognize
-// rather than returning a plausible-but-wrong set. TestCurrentYearOnlyMatchesTheFrontend is
+// rather than returning a plausible-but-wrong set. TestSyncedSeasonsOnlyMatchesTheFrontend is
 // anchored to what this returns, so a parser that silently missed a flagged entry would turn
 // that assertion green over exactly the drift it exists to catch -- the two sides would
 // "agree" because neither the frontend list nor the parse mentioned the job.
 //
 // Three shapes therefore fail loudly: an entry whose `id:` line is not a plain lowercase
-// string literal, a `currentYearOnly:` that is not `true,`/`false,`, and an entry list whose
+// string literal, a `syncedSeasonsOnly:` that is not `true,`/`false,`, and an entry list whose
 // markers have moved. Comments are truncated at their `//` first -- syncTypes.ts's own prose
-// says "currentYearOnly:" in at least one comment, and a naive substring count trips on it.
-func frontendCurrentYearOnlyIDs(t *testing.T) []string {
+// says "syncedSeasonsOnly:" in at least one comment, and a naive substring count trips on it.
+func frontendSyncedSeasonsOnlyIDs(t *testing.T) []string {
 	t.Helper()
 
 	src := readSourceFile(t, frontendSyncTypesPath)
 
-	const flagToken = "currentYearOnly:"
+	const flagToken = "syncedSeasonsOnly:"
 	idLine := regexp.MustCompile(`^\s+id: '([a-z0-9_]+)',$`)
-	flagLine := regexp.MustCompile(`^\s+currentYearOnly: (true|false),$`)
+	flagLine := regexp.MustCompile(`^\s+syncedSeasonsOnly: (true|false),$`)
 
 	var ids []string
 	entries := 0
@@ -518,12 +518,12 @@ func frontendCurrentYearOnlyIDs(t *testing.T) []string {
 			m := flagLine.FindStringSubmatch(line)
 			if m == nil {
 				t.Fatalf("%s, in %s, line %d: unparseable %q -- this parser understands only "+
-					"`currentYearOnly: true,` or `: false,` and refuses to guess, because "+
-					"TestCurrentYearOnlyMatchesTheFrontend is anchored to what it returns",
+					"`syncedSeasonsOnly: true,` or `: false,` and refuses to guess, because "+
+					"TestSyncedSeasonsOnlyMatchesTheFrontend is anchored to what it returns",
 					frontendSyncTypesPath, marker, n+1, strings.TrimSpace(raw))
 			}
 			if current == "" {
-				t.Fatalf("%s, in %s, line %d: currentYearOnly with no `id:` line before it in "+
+				t.Fatalf("%s, in %s, line %d: syncedSeasonsOnly with no `id:` line before it in "+
 					"this entry -- the flag cannot be attributed to a job",
 					frontendSyncTypesPath, marker, n+1)
 			}
@@ -543,7 +543,7 @@ func frontendCurrentYearOnlyIDs(t *testing.T) []string {
 			frontendSyncTypesPath, entries)
 	}
 	if len(ids) == 0 {
-		t.Fatalf("%s: parsed zero currentYearOnly ids -- the comparison anchored to this "+
+		t.Fatalf("%s: parsed zero syncedSeasonsOnly ids -- the comparison anchored to this "+
 			"would be vacuous", frontendSyncTypesPath)
 	}
 	return ids
@@ -1653,5 +1653,36 @@ func TestRecordBatchChangeMapsFamilyCampVariantsToSharedCollections(t *testing.T
 	}
 	if !got["household_custom_values"] {
 		t.Error("expected household_custom_values recorded via the bounded family-camp job's completion")
+	}
+}
+
+func TestPrimaryOnlyJobsAreTheWindowedOnes(t *testing.T) {
+	want := map[string]bool{"financial_transactions": true, "aid_postings": true}
+	for _, m := range syncJobMeta {
+		if m.PrimaryOnly != want[m.ID] {
+			t.Errorf("%s: PrimaryOnly = %v, want %v", m.ID, m.PrimaryOnly, want[m.ID])
+		}
+	}
+}
+
+func TestSecondarySeasonDailyQueue(t *testing.T) {
+	t.Setenv("JOTFORM_API_KEY", "test-key") // jotform_submissions is gated on it
+	q := secondarySeasonQueue(CadenceDaily)
+	for _, id := range q {
+		if id == "financial_transactions" || id == "aid_postings" {
+			t.Errorf("%s covers its own N-1..N+1 window and must not run in the N-1 pass", id)
+		}
+	}
+	for _, must := range []string{"attendees", "persons", "bunk_assignments", "jotform_submissions",
+		"person_custom_values_family_camp", "household_custom_values_family_camp",
+		"financial_aid_applications", "enrollment_snapshots"} {
+		if !slices.Contains(q, must) {
+			t.Errorf("N-1 daily queue is missing %s", must)
+		}
+	}
+	for _, mustNot := range []string{"person_custom_values", "household_custom_values"} {
+		if slices.Contains(q, mustNot) {
+			t.Errorf("%s is the weekly full pass; N-1 runs the scoped daily pass only (owner ruling A)", mustNot)
+		}
 	}
 }

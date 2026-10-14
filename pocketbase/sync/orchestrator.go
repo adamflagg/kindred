@@ -102,11 +102,13 @@ type JobMeta struct {
 	// Triggers is the set of operator-facing entry points that may start this job. See the
 	// Trigger type.
 	Triggers Trigger
-	// CurrentYearOnly marks a job that only makes sense against the live season -- a
-	// historical replay must exclude it. Must match the frontend's `currentYearOnly` flag
-	// (frontend/src/components/admin/syncTypes.ts) exactly; Stage 3 adds the test that pins
-	// the two together.
-	CurrentYearOnly bool
+	// SyncedSeasonsOnly marks a job that runs for every synced season (primary and N-1) and
+	// that a manual historical replay must exclude. Must match the frontend's
+	// `syncedSeasonsOnly` flag (frontend/src/components/admin/syncTypes.ts) exactly;
+	// TestSyncedSeasonsOnlyMatchesTheFrontend pins the two together.
+	SyncedSeasonsOnly bool
+	// PrimaryOnly: covers its own N-1..N+1 window from the primary pass; the N-1 pass skips it.
+	PrimaryOnly bool
 	// Gate is an environment check a job must pass before a derived queue includes it --
 	// IS_DOCKER for process_requests, google.IsEnabled for multi_workbook_export. nil means
 	// unconditionally available. This is a RUNTIME check, distinct from Cadences/Triggers,
@@ -184,7 +186,8 @@ var syncJobMeta = []JobMeta{
 	// Source data: depends on sessions, persons, households, divisions.
 	{ID: "financial_transactions", Phase: PhaseSource,
 		Description: "Financial transactions from CampMinder",
-		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
+		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun,
+		PrimaryOnly: true},
 
 	// Expensive phase - Custom values (on-demand, rate limited)
 	// The unrestricted pair runs on the weekly custom-values cron ("0 4 * * 0"), not the
@@ -220,12 +223,12 @@ var syncJobMeta = []JobMeta{
 		Description: "Person custom field values -- bounded daily pass: family-camp and " +
 			"adult-program attendees (any status) plus the financial-aid cohort",
 		Base: "person_custom_values", Scope: ScopeFamilyCamp,
-		Cadences: CadenceDaily, CurrentYearOnly: true},
+		Cadences: CadenceDaily, SyncedSeasonsOnly: true},
 	{ID: "household_custom_values_family_camp", Phase: PhaseExpensive,
 		Description: "Household custom field values -- bounded daily pass: family-camp attendees " +
 			"(any status) plus the financial-aid cohort's households",
 		Base: "household_custom_values", Scope: ScopeFamilyCamp,
-		Cadences: CadenceDaily, CurrentYearOnly: true},
+		Cadences: CadenceDaily, SyncedSeasonsOnly: true},
 
 	// Transform phase - PocketBase → PocketBase. On the daily cron, these run using the
 	// freshest source data above, plus today's family-camp custom values (the bounded pass
@@ -254,7 +257,8 @@ var syncJobMeta = []JobMeta{
 	// transaction sync re-fetches.
 	{ID: "aid_postings", Phase: PhaseTransform,
 		Description: "Materialize the aid ledger from financial-aid transactions (live, plus reversed history)",
-		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
+		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun,
+		PrimaryOnly: true},
 	{ID: "household_demographics", Phase: PhaseTransform,
 		Description: "Compute household demographics from custom values",
 		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
@@ -285,7 +289,7 @@ var syncJobMeta = []JobMeta{
 
 	// Process phase - CSV + AI
 	// reconcile_request_lifecycle has no individual POST route (it runs only inside the
-	// daily cron and a current-year unified run, via its CurrentYearOnly bit), but a Run
+	// daily cron and a current-year unified run, via its SyncedSeasonsOnly bit), but a Run
 	// Phase button on the Process phase really does start it, so TriggerPhaseRun stays set
 	// even though TriggerIndividualRoute does not.
 	//
@@ -295,12 +299,12 @@ var syncJobMeta = []JobMeta{
 	// set by hand.
 	{ID: "reconcile_request_lifecycle", Phase: PhaseProcess,
 		Description: "Mark moved-requester OBRs for reprocessing",
-		Cadences:    CadenceDaily, Triggers: TriggerPhaseRun | TriggerFullRun, CurrentYearOnly: true},
+		Cadences:    CadenceDaily, Triggers: TriggerPhaseRun | TriggerFullRun, SyncedSeasonsOnly: true},
 	// Depends on persons.
 	{ID: "bunk_requests", Phase: PhaseProcess,
 		Description: "Import bunk request CSV",
 		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun,
-		CurrentYearOnly: true},
+		SyncedSeasonsOnly: true},
 	// kindred#2759. The adult-weekend Jotform pull: every answered question of
 	// every ENABLED form in jotform_forms for the season, plus the auto-match
 	// against each session's enrolled guests (so it reads attendees and persons,
@@ -313,15 +317,15 @@ var syncJobMeta = []JobMeta{
 	// historical replay must not re-pull a live external form.
 	{ID: "jotform_submissions", Phase: PhaseProcess,
 		Description: "Adult-weekend Jotform submissions (bunking requests)",
-		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute, CurrentYearOnly: true,
+		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute, SyncedSeasonsOnly: true,
 		Gate: jotformConfigured},
 	// process_requests only runs in Docker (Gate) -- development skips AI processing to
 	// avoid unnecessary API costs, matching getDailySyncJobs' IS_DOCKER check.
 	{ID: "process_requests", Phase: PhaseProcess,
 		Description: "AI processing of bunk requests",
 		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun,
-		CurrentYearOnly: true,
-		Gate:            func() bool { return os.Getenv("IS_DOCKER") == boolTrueStr }},
+		SyncedSeasonsOnly: true,
+		Gate:              func() bool { return os.Getenv("IS_DOCKER") == boolTrueStr }},
 
 	// Export phase - Google Sheets
 	// TriggerFullRun (Stage 4/Task 13): a full or historical run now queues this job like any
@@ -378,7 +382,7 @@ func GetPhaseForJob(jobID string) Phase {
 
 // GetDefaultUnifiedSyncJobs returns the jobs a unified ("all services") sync runs.
 //
-// Derived from the registry: every job carrying TriggerFullRun, minus CurrentYearOnly jobs on
+// Derived from the registry: every job carrying TriggerFullRun, minus SyncedSeasonsOnly jobs on
 // a historical replay (isCurrentYear must mean what RunSyncWithOptions's opts.Year == 0 means),
 // minus the whole Expensive phase unless includeCustomValues (the flag has always gated the
 // phase, not per-job opinions), minus closed environment gates (process_requests' IS_DOCKER
@@ -390,7 +394,7 @@ func GetDefaultUnifiedSyncJobs(includeCustomValues, isCurrentYear bool) []string
 		if m.Triggers&TriggerFullRun == 0 {
 			continue
 		}
-		if m.CurrentYearOnly && !isCurrentYear {
+		if m.SyncedSeasonsOnly && !isCurrentYear {
 			continue
 		}
 		if m.Phase == PhaseExpensive && !includeCustomValues {

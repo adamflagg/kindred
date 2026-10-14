@@ -140,3 +140,21 @@ func orderQueue(ids []string) []string {
 
 // cadenceQueue is the runnable, correctly-ordered queue for one cron.
 func cadenceQueue(c Cadence) []string { return orderQueue(available(jobsWithCadence(c))) }
+
+// secondarySeasonQueue is cadenceQueue minus PrimaryOnly jobs: what the N-1 pass runs.
+func secondarySeasonQueue(c Cadence) []string {
+	primaryOnly := make(map[string]bool)
+	for _, m := range syncJobMeta {
+		if m.PrimaryOnly {
+			primaryOnly[m.ID] = true
+		}
+	}
+	var out []string
+	for _, id := range cadenceQueue(c) {
+		if primaryOnly[id] {
+			continue
+		}
+		out = append(out, id)
+	}
+	return out
+}
