@@ -1535,3 +1535,56 @@ class TestWaitlistDuration:
         assert result.avg_days_to_acceptance == pytest.approx(104.5, abs=1)
         # median of [89, 120] = 104.5
         assert result.median_days_to_acceptance == pytest.approx(104.5, abs=1)
+
+
+class TestFamilyCampIsNotEnrolledAtCamp:
+    """Family Camp must NOT count as "enrolled at camp" for the waitlist split.
+
+    The waitlist metrics track the CAMPER journey through summer. A camper on a
+    summer waitlist whose only enrollment is a Family Camp weekend has no summer
+    placement, so they read as "waitlisted, no enrollment" — Family Camp is a
+    separate program, not a summer session they hold.
+
+    The waitlist half of the owner ruling made on 2026-08-18 after #2435 shipped
+    the opposite behaviour in both services and was reverted. The cancellation
+    half is pinned by TestFamilyCampIsNotStillAttending in
+    test_cancellation_service.py. Teen programs (SCIT/TLI) are summer and ARE
+    folded into the enrollment lookup; Family Camp is not. Do not add `family`
+    to `enrollment_session_ids` without a new ruling.
+    """
+
+    @pytest.mark.asyncio
+    async def test_summer_waitlist_with_only_family_camp_is_no_enrollment(
+        self,
+        waitlist_service: WaitlistService,
+        mock_repository: Mock,
+        sample_persons: dict[int, Mock],
+    ) -> None:
+        session1 = create_mock_session(1001, "Session 1", 2026, "main")
+        family_weekend = create_mock_session(3001, "Fall Family Camp", 2026, "family", "2026-09-11", "2026-09-13")
+        all_sessions = {1001: session1, 3001: family_weekend}
+
+        # The real repository filters by type, so a lookup that asked for
+        # `family` would find the weekend — which is exactly what must not happen.
+        async def fetch_sessions(year: int, types: list[str] | None = None) -> dict[int, Mock]:
+            return {k: v for k, v in all_sessions.items() if v.session_type in (types or [])}
+
+        # Noah is on the Session 1 waitlist; his only enrollment is a Family Camp weekend.
+        waitlisted = [
+            create_mock_attendee(104, session_cm_id=1001, session=session1, status="waitlisted", status_id=8),
+        ]
+        enrolled = [
+            create_mock_attendee(104, session_cm_id=3001, session=family_weekend, status="enrolled", status_id=2),
+        ]
+
+        mock_repository.fetch_sessions = AsyncMock(side_effect=fetch_sessions)
+        mock_repository.fetch_persons.return_value = sample_persons
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: waitlisted if status_filter == "waitlisted" else enrolled
+        )
+        mock_repository.fetch_status_history = AsyncMock(return_value=[])
+
+        result = await waitlist_service.calculate_waitlist(year=2026)
+
+        assert result.waitlisted_no_enrollment == 1
+        assert result.waitlisted_has_enrollment == 0
