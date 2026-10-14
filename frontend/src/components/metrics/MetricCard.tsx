@@ -21,8 +21,12 @@ interface MetricCardProps {
   /** Year for comparison label (e.g., "vs 2024") */
   compareYear?: number | undefined
   className?: string | undefined
-  /** Color semantics for trend direction */
-  sentiment?: 'default' | 'inverse' | 'neutral' | undefined
+  /**
+   * Color semantics for trend direction. 'default': up is green. 'inverse': up is red.
+   * 'neutral': either way is blue. 'muted': either way is grey, for a change that is neither
+   * good nor bad news (the waitlist, decision 16); the arrow still shows the direction.
+   */
+  sentiment?: 'default' | 'inverse' | 'neutral' | 'muted' | undefined
   /** Click handler for drilldown functionality */
   onClick?: (() => void) | undefined
 }
@@ -40,17 +44,23 @@ export function MetricCard({
   onClick,
 }: MetricCardProps) {
   const trendColors =
-    sentiment === 'neutral'
+    sentiment === 'muted'
       ? {
-          up: 'text-blue-600 dark:text-blue-400',
-          down: 'text-blue-600 dark:text-blue-400',
+          up: 'text-muted-foreground',
+          down: 'text-muted-foreground',
           neutral: 'text-muted-foreground',
         }
-      : {
-          up: 'text-emerald-600 dark:text-emerald-400',
-          down: 'text-red-600 dark:text-red-400',
-          neutral: 'text-muted-foreground',
-        }
+      : sentiment === 'neutral'
+        ? {
+            up: 'text-blue-600 dark:text-blue-400',
+            down: 'text-blue-600 dark:text-blue-400',
+            neutral: 'text-muted-foreground',
+          }
+        : {
+            up: 'text-emerald-600 dark:text-emerald-400',
+            down: 'text-red-600 dark:text-red-400',
+            neutral: 'text-muted-foreground',
+          }
 
   const TrendIcon = {
     up: TrendingUp,

@@ -279,6 +279,7 @@ export default function RegistrationOverview() {
           value={data.total_waitlisted}
           compareValue={compData?.total_waitlisted}
           compareYear={compareYear ?? undefined}
+          sentiment="muted"
           subtitle="On waitlist"
           onClick={() =>
             setFilter({

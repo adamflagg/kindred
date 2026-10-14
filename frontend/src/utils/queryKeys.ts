@@ -230,6 +230,8 @@ export const queryKeys = {
       includeTeenPipeline,
     ] as const,
   metricsSessions: (year: number) => ['metrics', 'sessions', year] as const,
+  // Does a season have any countable summer attendee rows? Drives Analytics' empty state (PR 4).
+  metricsSeasonRows: (year: number) => ['metrics', 'season-rows', year] as const,
   registration: (
     year: number,
     sessionTypes?: string,
