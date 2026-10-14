@@ -591,7 +591,7 @@ async def get_day1(
     duration: str | None = Query(None, description="Filter by duration category (e.g., '1-week')"),
     user: AuthUser = Depends(get_current_user),
 ) -> Day1Response:
-    """Get Day 1 first-24h registration counts by tier."""
+    """Get Day 1 (first two days) registration counts by tier."""
     check_duration_session_exclusive(duration, session_cm_id)
     cache_params = {"year": year, "session_types": session_types, "session_cm_id": session_cm_id, "duration": duration}
     cached: Day1Response | None = metrics_cache.get("day1", **cache_params)

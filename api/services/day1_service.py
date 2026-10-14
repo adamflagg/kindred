@@ -1,11 +1,13 @@
 """Day 1 registration counting service.
 
-Counts first-24h enrollments at each registration tier opening
-by matching attendee effective_date against tier opening dates.
+Counts first-two-day enrollments at each registration tier opening by matching
+attendee effective_date against the tier opening date and the following day
+(decision 45: in 2023 and 2025 CampMinder dated most opening-day sign-ups the
+following day).
 """
 
 import asyncio
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from api.schemas.day1 import (
     Day1Category,
@@ -14,7 +16,7 @@ from api.schemas.day1 import (
     Day1TierData,
     Day1YearData,
 )
-from api.services.camp_calendar import REGISTRATION_TIERS, day1_window
+from api.services.camp_calendar import PRIORITY_DAY_DAYS, REGISTRATION_TIERS, day1_window
 from api.services.metrics_repository import MetricsRepository
 from api.services.reconstruction import ENROLLMENT_STATUSES, parse_date_only
 from api.utils.session_metrics import (
@@ -129,8 +131,11 @@ class Day1Service:
         counts: dict[str, dict[str, int]] = {tw[0]: {"at_camp": 0, "quest": 0, "teen": 0} for tw in tier_windows}
         approximate_flags: dict[str, bool] = {tw[0]: False for tw in tier_windows}
 
-        # Build tier date lookup for simple date comparison
-        tier_dates: list[tuple[str, date]] = [(tw[0], tw[3]) for tw in tier_windows]
+        # Each tier counts the ISO dates of its first PRIORITY_DAY_DAYS days (decision 45).
+        tier_dates: list[tuple[str, frozenset[str]]] = [
+            (tw[0], frozenset((tw[3] + timedelta(days=d)).isoformat() for d in range(PRIORITY_DAY_DAYS)))
+            for tw in tier_windows
+        ]
 
         # Single pass over attendees
         for att in attendees:
@@ -149,8 +154,8 @@ class Day1Service:
             sid = int(session.cm_id) if session else 0
             stype = session_type_map.get(sid, "")
 
-            for tier_key, tier_date in tier_dates:
-                if eff_date_str != tier_date.isoformat():
+            for tier_key, day_strs in tier_dates:
+                if eff_date_str not in day_strs:
                     continue
                 approximate_flags[tier_key] = True
 

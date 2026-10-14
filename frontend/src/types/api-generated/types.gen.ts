@@ -3407,7 +3407,7 @@ export type Day1Category = {
   /**
    * Count
    *
-   * Enrollments in the 24h window for this category
+   * Enrollments in the first two days for this category
    */
   count: number
 }
@@ -3419,7 +3419,7 @@ export type Day1CategoryCounts = {
   /**
    * Count
    *
-   * Number of enrollments in the 24h window
+   * Number of enrollments in the first two days (phase date and the next day)
    */
   count: number
 }

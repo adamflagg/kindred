@@ -4,13 +4,13 @@ from pydantic import BaseModel, Field
 
 
 class Day1CategoryCounts(BaseModel):
-    count: int = Field(description="Number of enrollments in the 24h window")
+    count: int = Field(description="Number of enrollments in the first two days (phase date and the next day)")
 
 
 class Day1Category(BaseModel):
     category: str = Field(description="'at_camp', 'quest', or 'teen'")
     label: str = Field(description="'At Camp', 'Quest', or 'Teens'")
-    count: int = Field(description="Enrollments in the 24h window for this category")
+    count: int = Field(description="Enrollments in the first two days for this category")
 
 
 class Day1TierData(BaseModel):
