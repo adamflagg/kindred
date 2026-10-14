@@ -321,6 +321,36 @@ class TestVelocityFromSnapshots:
         # by_session should have separate curves
         assert len(result.by_session) == 2
 
+    @pytest.mark.asyncio
+    async def test_quest_scope_reconstructs_when_snapshots_cover_only_main_from_season_start(
+        self, service, mock_repository
+    ):
+        """V6: the snapshot job covers only main/embedded/AG sessions. Once its rows
+        start in the first week of the season (as 2027's will), Quest and teen
+        sessions — which never get snapshots — must still be rebuilt from attendee
+        dates, not dropped. The snapshot-vs-rebuild choice is made per session."""
+        from datetime import date
+
+        quest = create_mock_session(2001, "Quest: Ridge Trail", session_type="quest")
+        mock_repository.fetch_sessions.return_value = {2001: quest}
+        # Snapshots exist only for a main session, from the first week of the season
+        # (priority_reg_date 2025-11-01 from the fixture).
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2025-11-03", 1001, 2026, enrolled=10),
+            create_mock_snapshot("2025-12-01", 1001, 2026, enrolled=20),
+        ]
+        mock_repository.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(101, 2001, "2025-11-05"),
+            create_mock_attendee_with_date(102, 2001, "2025-12-10"),
+            create_mock_attendee_with_date(103, 2001, "2026-01-10", status="cancelled", effective_date="2025-11-05"),
+        ]
+
+        result = await service.get_velocity(year=2026, session_types=["quest"], today=date(2026, 3, 1))
+
+        assert result.combined.weekly, "Quest scope must not come back empty"
+        assert result.combined.weekly[-1].enrolled == 2  # 3 registered, 1 cancelled
+        assert [c.session_cm_id for c in result.by_session] == [2001]
+
 
 # ============================================================================
 # Reconstruction Fallback Tests
@@ -4466,3 +4496,146 @@ class TestRollupDailyWeek0:
         assert 1 in week_nums
         week0 = next(w for w in weekly if w.week_number == 0)
         assert week0.enrolled == 1
+
+
+# ============================================================================
+# Per-session snapshot coverage (V6)
+# ============================================================================
+
+
+class TestPerSessionSnapshotCoverage:
+    """V6: snapshots cover only main/embedded/AG sessions (enrollment_snapshots.go).
+
+    A single global "earliest snapshot" check used to pick the pure snapshot path
+    as soon as ANY session had snapshots from the first week, which silently
+    dropped every session the snapshot job never covers (Quests, SCIT, TLI).
+    Each session must use its own coverage: snapshots where they exist from the
+    start, the attendee rebuild for the weeks (or sessions) they don't cover.
+    """
+
+    @staticmethod
+    def _quest_attendees(gender: bool = False) -> list[Mock]:
+        return [
+            create_mock_attendee_with_date(101, 2001, "2025-11-05", gender="M" if gender else None),
+            create_mock_attendee_with_date(102, 2001, "2025-12-10", gender="F" if gender else None),
+            create_mock_attendee_with_date(
+                103,
+                2001,
+                "2026-01-10",
+                status="cancelled",
+                effective_date="2025-11-05",
+                gender="F" if gender else None,
+            ),
+        ]
+
+    @staticmethod
+    def _main_snapshots(with_gender: bool = False) -> list[Mock]:
+        rows = [
+            # (date, enrolled, cancelled, (male, female, cancelled_male, cancelled_female))
+            ("2025-11-03", 10, 0, (5, 5, 0, 0)),
+            ("2025-12-01", 20, 1, (10, 10, 1, 0)),
+            ("2026-02-02", 30, 2, (15, 15, 1, 1)),
+        ]
+        snaps = []
+        for day, enrolled, cancelled, (m, f, cm, cf) in rows:
+            gender = (
+                {"enrolled_male": m, "enrolled_female": f, "cancelled_male": cm, "cancelled_female": cf}
+                if with_gender
+                else {}
+            )
+            snaps.append(create_mock_snapshot(day, 1001, 2026, enrolled=enrolled, cancelled=cancelled, **gender))
+        return snaps
+
+    @pytest.fixture
+    def all_summer_sessions(self) -> dict[int, Mock]:
+        return {
+            1001: create_mock_session(1001, "Session 1", session_type="main"),
+            2001: create_mock_session(2001, "Quest: Ridge Trail", session_type="quest"),
+        }
+
+    @pytest.mark.asyncio
+    async def test_all_summer_keeps_quest_when_snapshots_cover_only_main_from_season_start(
+        self, service, mock_repository, all_summer_sessions
+    ):
+        from datetime import date
+
+        mock_repository.fetch_sessions.return_value = all_summer_sessions
+        mock_repository.fetch_enrollment_snapshots.return_value = self._main_snapshots()
+        mock_repository.fetch_attendees_with_dates.return_value = self._quest_attendees()
+
+        result = await service.get_velocity(year=2026, today=date(2026, 3, 1))
+
+        by_sid = {c.session_cm_id: c for c in result.by_session}
+        assert set(by_sid) == {1001, 2001}
+        # The snapshotted session still reads its snapshots...
+        assert by_sid[1001].weekly[-1].enrolled == 30
+        # ...and the Quest session is rebuilt from attendee dates.
+        assert by_sid[2001].weekly[-1].enrolled == 2
+        assert result.combined.weekly[-1].enrolled == 32
+
+    @pytest.mark.asyncio
+    async def test_main_only_scope_with_full_coverage_stays_on_snapshots(self, service, mock_repository):
+        """When every session in scope has snapshots from the first week, no rebuild is needed."""
+        from datetime import date
+
+        mock_repository.fetch_sessions.return_value = {
+            1001: create_mock_session(1001, "Session 1", session_type="main"),
+        }
+        mock_repository.fetch_enrollment_snapshots.return_value = self._main_snapshots()
+
+        result = await service.get_velocity(year=2026, today=date(2026, 3, 1))
+
+        mock_repository.fetch_attendees_with_dates.assert_not_called()
+        assert result.combined.weekly[-1].enrolled == 30
+
+    @pytest.mark.asyncio
+    async def test_gender_split_keeps_quest_when_snapshots_cover_only_main_from_season_start(
+        self, service, mock_repository
+    ):
+        from datetime import date
+
+        mock_repository.fetch_sessions.return_value = {
+            2001: create_mock_session(2001, "Quest: Ridge Trail", session_type="quest"),
+        }
+        mock_repository.fetch_enrollment_snapshots.return_value = self._main_snapshots(with_gender=True)
+        mock_repository.fetch_attendees_with_dates.return_value = self._quest_attendees(gender=True)
+
+        result = await service.get_velocity(
+            year=2026, session_types=["quest"], split_by_gender=True, today=date(2026, 3, 1)
+        )
+
+        curves = {c.gender: c for c in result.by_gender}
+        assert curves["M"].weekly, "Quest boys curve must not come back empty"
+        assert curves["F"].weekly, "Quest girls curve must not come back empty"
+
+        # The Quest session reads exactly what it reads with no snapshots at all:
+        # main-session snapshots must not change how a Quest session is built.
+        mock_repository.fetch_enrollment_snapshots.return_value = []
+        rebuilt = await service.get_velocity(
+            year=2026, session_types=["quest"], split_by_gender=True, today=date(2026, 3, 1)
+        )
+        rebuilt_curves = {c.gender: c for c in rebuilt.by_gender}
+        for g in ("M", "F"):
+            assert [p.enrolled for p in curves[g].weekly] == [p.enrolled for p in rebuilt_curves[g].weekly]
+
+    @pytest.mark.asyncio
+    async def test_cancellation_metric_keeps_quest_when_snapshots_cover_only_main_from_season_start(
+        self, service, mock_repository
+    ):
+        from datetime import date
+
+        mock_repository.fetch_sessions.return_value = {
+            2001: create_mock_session(2001, "Quest: Ridge Trail", session_type="quest"),
+        }
+        mock_repository.fetch_enrollment_snapshots.return_value = self._main_snapshots()
+        mock_repository.fetch_status_transitions.return_value = [
+            create_mock_status_transition(103, 2001, "2026-01-10"),
+        ]
+
+        result = await service.get_velocity(
+            year=2026, session_types=["quest"], metric="cancellation", today=date(2026, 3, 1)
+        )
+
+        assert result.combined.weekly, "Quest cancellation curve must not come back empty"
+        assert result.combined.weekly[-1].enrolled == 1
+        assert result.cancelled_to_date == 1

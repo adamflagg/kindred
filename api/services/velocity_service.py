@@ -768,16 +768,40 @@ class VelocityService:
         )
 
     @staticmethod
-    def _find_earliest_snapshot_datetime(snapshots: list[Any], season_start: datetime) -> datetime | None:
-        """Find the earliest snapshot_datetime >= season_start across all snapshots."""
-        earliest: datetime | None = None
+    def _snapshots_cover_scope(
+        snapshots: list[Any],
+        sessions: dict[int, Any],
+        ag_parent_map: dict[int, int],
+        session_cm_id: int | None,
+        season_start: datetime,
+    ) -> bool:
+        """True when every session in scope has snapshots from the season's first week.
+
+        The decision is per session: the snapshot job covers only main, embedded
+        and AG sessions (``enrollment_snapshots.go``), so Quest and teen sessions
+        never have snapshots. One session's early coverage must not stand in for
+        a session that has none — when any in-scope session starts its snapshots
+        late or never, the caller takes the hybrid path, which rebuilds each
+        session from attendee dates up to that session's own first snapshot.
+        """
+        first_dates: dict[int, datetime] = {}
         for snap in snapshots:
             dt = datetime.strptime(parse_date_only(snap.snapshot_datetime), "%Y-%m-%d")
             if dt.date() < season_start.date():
                 continue
-            if earliest is None or dt < earliest:
-                earliest = dt
-        return earliest
+            raw_sid = int(snap.session_cm_id)
+            sid = ag_parent_map.get(raw_sid, raw_sid)
+            if sid not in first_dates or dt < first_dates[sid]:
+                first_dates[sid] = dt
+
+        in_scope = {ag_parent_map.get(sid, sid) for sid in sessions}
+        in_scope &= set(sessions)
+        if session_cm_id is not None:
+            in_scope &= {session_cm_id}
+
+        return all(
+            sid in first_dates and _week_start(first_dates[sid], season_start) <= season_start for sid in in_scope
+        )
 
     @staticmethod
     def _recompute_deltas(points: list[WeeklyDataPoint]) -> list[WeeklyDataPoint]:
@@ -1075,14 +1099,8 @@ class VelocityService:
 
         snap_result = self._curves_from_snapshots(ctx, snapshots, sessions, ag_parent_map, session_cm_id)
 
-        # Determine if we need hybrid mode
-        earliest = self._find_earliest_snapshot_datetime(snapshots, ctx.season_start)
-        if earliest is None:
-            return snap_result
-
-        first_snapshot_week = _week_start(earliest, ctx.season_start)
-        if first_snapshot_week <= ctx.season_start:
-            # Snapshots cover from the start — pure snapshot path
+        # Pure snapshot path only when every in-scope session is covered from the start
+        if self._snapshots_cover_scope(snapshots, sessions, ag_parent_map, session_cm_id, ctx.season_start):
             return snap_result
 
         # Hybrid: need reconstruction for pre-snapshot weeks
@@ -1751,10 +1769,8 @@ class VelocityService:
 
         snap_gps, snap_totals = self._gender_data_from_snapshots(ctx, snapshots, sessions, ag_parent_map, session_cm_id)
 
-        # Check if hybrid needed
-        earliest = self._find_earliest_snapshot_datetime(snapshots, ctx.season_start)
-        if earliest is None or _week_start(earliest, ctx.season_start) <= ctx.season_start:
-            # Snapshots cover full season → pure snapshot fast path
+        # Pure snapshot path only when every in-scope session is covered from the start
+        if self._snapshots_cover_scope(snapshots, sessions, ag_parent_map, session_cm_id, ctx.season_start):
             return self._assemble_gender_curves(
                 ctx.year, session_cm_id, sessions, snap_gps, snap_totals, combined_daily=combined_daily
             )
@@ -1797,13 +1813,8 @@ class VelocityService:
 
         snap_result = self._cancellation_curves_from_snapshots(ctx, snapshots, sessions, ag_parent_map, session_cm_id)
 
-        # Determine if we need hybrid mode
-        earliest = self._find_earliest_snapshot_datetime(snapshots, ctx.season_start)
-        if earliest is None:
-            return snap_result
-
-        first_snapshot_week = _week_start(earliest, ctx.season_start)
-        if first_snapshot_week <= ctx.season_start:
+        # Pure snapshot path only when every in-scope session is covered from the start
+        if self._snapshots_cover_scope(snapshots, sessions, ag_parent_map, session_cm_id, ctx.season_start):
             return snap_result
 
         # Hybrid: need reconstruction for pre-snapshot weeks
