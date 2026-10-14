@@ -25,7 +25,7 @@ from api.utils.session_metrics import (
 )
 
 from .breakdown_calculator import calculate_percentage, compute_registration_breakdown
-from .extractors import extract_gender
+from .extractors import extract_gender, is_new_camper
 
 if TYPE_CHECKING:
     from .metrics_repository import MetricsRepository
@@ -237,7 +237,9 @@ class HistoricalService:
         ]
 
         # New vs returning from persons.years_at_camp
-        new_count = sum(1 for pid in person_ids if persons.get(pid) and getattr(persons[pid], "years_at_camp", 0) == 1)
+        new_count = sum(
+            1 for pid in person_ids if persons.get(pid) and is_new_camper(getattr(persons[pid], "years_at_camp", None))
+        )
         returning_count = total_enrolled - new_count
 
         new_vs_returning = NewVsReturning(

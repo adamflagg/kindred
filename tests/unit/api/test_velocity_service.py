@@ -321,6 +321,36 @@ class TestVelocityFromSnapshots:
         # by_session should have separate curves
         assert len(result.by_session) == 2
 
+    @pytest.mark.asyncio
+    async def test_quest_scope_reconstructs_when_snapshots_cover_only_main_from_season_start(
+        self, service, mock_repository
+    ):
+        """V6: the snapshot job covers only main/embedded/AG sessions. Once its rows
+        start in the first week of the season (as 2027's will), Quest and teen
+        sessions — which never get snapshots — must still be rebuilt from attendee
+        dates, not dropped. The snapshot-vs-rebuild choice is made per session."""
+        from datetime import date
+
+        quest = create_mock_session(2001, "Quest: Ridge Trail", session_type="quest")
+        mock_repository.fetch_sessions.return_value = {2001: quest}
+        # Snapshots exist only for a main session, from the first week of the season
+        # (priority_reg_date 2025-11-01 from the fixture).
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2025-11-03", 1001, 2026, enrolled=10),
+            create_mock_snapshot("2025-12-01", 1001, 2026, enrolled=20),
+        ]
+        mock_repository.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(101, 2001, "2025-11-05"),
+            create_mock_attendee_with_date(102, 2001, "2025-12-10"),
+            create_mock_attendee_with_date(103, 2001, "2026-01-10", status="cancelled", effective_date="2025-11-05"),
+        ]
+
+        result = await service.get_velocity(year=2026, session_types=["quest"], today=date(2026, 3, 1))
+
+        assert result.combined.weekly, "Quest scope must not come back empty"
+        assert result.combined.weekly[-1].enrolled == 2  # 3 registered, 1 cancelled
+        assert [c.session_cm_id for c in result.by_session] == [2001]
+
 
 # ============================================================================
 # Reconstruction Fallback Tests
@@ -1257,6 +1287,33 @@ class TestCancelledToDateSummary:
         assert result.cancelled_to_date == 0
 
     @pytest.mark.asyncio
+    async def test_cancelled_to_date_includes_reconstructed_sessions_in_hybrid(self, service, mock_repository):
+        """V7: in hybrid mode the card read only the snapshotted sessions' latest
+        cancelled counts, so a rebuilt Quest session's cancellations were missing
+        from "Cancelled to Date" while the chart's curve included them. The card
+        must equal the merged curve's last cancelled value."""
+        from datetime import date
+
+        mock_repository.fetch_sessions.return_value = {
+            1001: create_mock_session(1001, "Session 1", session_type="main"),
+            2001: create_mock_session(2001, "Quest: Ridge Trail", session_type="quest"),
+        }
+        # Main-session snapshots start mid-season (Feb), so the year is hybrid.
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-02-02", 1001, 2026, enrolled=30, cancelled=2),
+            create_mock_snapshot("2026-02-09", 1001, 2026, enrolled=31, cancelled=4),
+        ]
+        mock_repository.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(101, 2001, "2025-11-05"),
+            create_mock_attendee_with_date(102, 2001, "2026-01-10", status="cancelled", effective_date="2025-11-05"),
+        ]
+
+        result = await service.get_velocity(year=2026, today=date(2026, 3, 1))
+
+        assert result.cancelled_to_date == 5  # 4 from the snapshots + 1 rebuilt Quest cancellation
+        assert result.cancelled_to_date == result.combined.daily[-1].cancelled
+
+    @pytest.mark.asyncio
     async def test_prior_year_cancelled_to_date(self, service, mock_repository):
         """When compare_years provided, prior_year_cancelled_to_date should include
         each prior year's cancellation data at the equivalent week."""
@@ -1763,6 +1820,71 @@ class TestCancelledAtCurrentWeek:
         assert prior_summary.cancelled_at_current_week is not None
         assert prior_summary.cancelled_at_current_week == 2
         assert prior_summary.cancelled_final == 15
+
+    @staticmethod
+    def _enrollment_metric_repo(mock_repository: AsyncMock, current_snapshot_dates: list[str]) -> None:
+        """2026 reads snapshots; 2025 has none, so it is rebuilt from attendee dates."""
+        sessions_2026 = {1001: create_mock_session(1001, "Session 1", year=2026)}
+        sessions_2025 = {901: create_mock_session(901, "Session 1", year=2025)}
+
+        async def mock_fetch_sessions(year, **kwargs):
+            return sessions_2026 if year == 2026 else sessions_2025
+
+        async def mock_fetch_snapshots(year, **kwargs):
+            if year == 2026:
+                return [create_mock_snapshot(d, 1001, 2026, enrolled=50) for d in current_snapshot_dates]
+            return []
+
+        async def mock_fetch_attendees(year, **kwargs):
+            if year == 2026:
+                return []
+            # 2025 season starts 2024-11-01 (fixture). Cancellations in Wk 3, Wk 8 and Wk 18.
+            return [
+                create_mock_attendee_with_date(201, 901, "2024-11-05", year=2025),
+                create_mock_attendee_with_date(
+                    202, 901, "2024-11-20", year=2025, status="cancelled", effective_date="2024-11-02"
+                ),
+                create_mock_attendee_with_date(
+                    203, 901, "2024-12-20", year=2025, status="cancelled", effective_date="2024-11-03"
+                ),
+                create_mock_attendee_with_date(
+                    204, 901, "2025-03-01", year=2025, status="withdrawn", effective_date="2024-11-04"
+                ),
+            ]
+
+        mock_repository.fetch_sessions.side_effect = mock_fetch_sessions
+        mock_repository.fetch_enrollment_snapshots.side_effect = mock_fetch_snapshots
+        mock_repository.fetch_attendees_with_dates.side_effect = mock_fetch_attendees
+
+    @pytest.mark.asyncio
+    async def test_cancelled_at_current_week_populated_for_enrollment_metric(self, service, mock_repository):
+        """V4: the Enrollment Velocity card "{prior} Cancelled at Wk N" was always "-"
+        because the value was only filled for metric='cancellation'. It must come
+        from the prior year's own curve at the current week."""
+        from datetime import date
+
+        # 2026-01-05 is day 65 from 2025-11-01, i.e. Wk 10.
+        self._enrollment_metric_repo(mock_repository, ["2025-11-03", "2026-01-05"])
+
+        result = await service.get_velocity(year=2026, compare_years=[2025], today=date(2026, 1, 6))
+
+        assert result.combined.weekly[-1].week_number == 10
+        prior_summary = result.prior_year_cancelled_to_date[0]
+        assert prior_summary.cancelled_at_current_week == 2  # Wk 3 and Wk 8 cancellations
+        assert prior_summary.cancelled_final == 3
+
+    @pytest.mark.asyncio
+    async def test_cancelled_at_current_week_reconciles_with_final_at_last_week(self, service, mock_repository):
+        """At (or past) the prior year's last week, "Cancelled at Wk N" equals the prior final."""
+        from datetime import date
+
+        self._enrollment_metric_repo(mock_repository, ["2025-11-03", "2026-08-10"])
+
+        result = await service.get_velocity(year=2026, compare_years=[2025], today=date(2026, 8, 11))
+
+        prior_summary = result.prior_year_cancelled_to_date[0]
+        assert prior_summary.cancelled_final == 3
+        assert prior_summary.cancelled_at_current_week == prior_summary.cancelled_final
 
 
 class TestCancellationGenderSplit:
@@ -3065,7 +3187,7 @@ class TestPartialWeekInfo:
         from datetime import date
 
         # week_start is Monday Jan 5 2026, today is Thursday Jan 8 2026 (day 4 of 7)
-        is_partial, days = _partial_week_info("2026-01-05", 2026, today=date(2026, 1, 8))
+        is_partial, days = _partial_week_info("2026-01-05", today=date(2026, 1, 8))
         assert is_partial is True
         assert days == 4  # Mon=1, Tue=2, Wed=3, Thu=4
 
@@ -3073,7 +3195,7 @@ class TestPartialWeekInfo:
         """Today being the first day of the week means only 1 day of data."""
         from datetime import date
 
-        is_partial, days = _partial_week_info("2026-01-05", 2026, today=date(2026, 1, 5))
+        is_partial, days = _partial_week_info("2026-01-05", today=date(2026, 1, 5))
         assert is_partial is True
         assert days == 1
 
@@ -3082,7 +3204,7 @@ class TestPartialWeekInfo:
         from datetime import date
 
         # week_start is Jan 5, day 7 is Jan 11
-        is_partial, days = _partial_week_info("2026-01-05", 2026, today=date(2026, 1, 11))
+        is_partial, days = _partial_week_info("2026-01-05", today=date(2026, 1, 11))
         assert is_partial is True
         assert days == 7
 
@@ -3091,7 +3213,7 @@ class TestPartialWeekInfo:
         from datetime import date
 
         # week_start is Jan 5, week ends Jan 12. Today is Jan 12 (next week).
-        is_partial, days = _partial_week_info("2026-01-05", 2026, today=date(2026, 1, 12))
+        is_partial, days = _partial_week_info("2026-01-05", today=date(2026, 1, 12))
         assert is_partial is False
         assert days == 7
 
@@ -3099,7 +3221,7 @@ class TestPartialWeekInfo:
         """A week starting after today is not partial (shouldn't happen, but safe)."""
         from datetime import date
 
-        is_partial, days = _partial_week_info("2026-01-12", 2026, today=date(2026, 1, 5))
+        is_partial, days = _partial_week_info("2026-01-12", today=date(2026, 1, 5))
         assert is_partial is False
         assert days == 7
 
@@ -3108,7 +3230,7 @@ class TestPartialWeekInfo:
         from datetime import date
 
         # 2025 data with today in 2026 — should not be partial
-        is_partial, days = _partial_week_info("2025-01-06", 2025, today=date(2026, 1, 8))
+        is_partial, days = _partial_week_info("2025-01-06", today=date(2026, 1, 8))
         assert is_partial is False
         assert days == 7
 
@@ -3117,7 +3239,7 @@ class TestPartialWeekInfo:
         from datetime import date
 
         # week_start is Jan 5 2026, today is Jan 20 2026 (well past that week)
-        is_partial, days = _partial_week_info("2026-01-05", 2026, today=date(2026, 1, 20))
+        is_partial, days = _partial_week_info("2026-01-05", today=date(2026, 1, 20))
         assert is_partial is False
         assert days == 7
 
@@ -4466,3 +4588,258 @@ class TestRollupDailyWeek0:
         assert 1 in week_nums
         week0 = next(w for w in weekly if w.week_number == 0)
         assert week0.enrolled == 1
+
+
+# ============================================================================
+# Per-session snapshot coverage (V6)
+# ============================================================================
+
+
+class TestPerSessionSnapshotCoverage:
+    """V6: snapshots cover only main/embedded/AG sessions (enrollment_snapshots.go).
+
+    A single global "earliest snapshot" check used to pick the pure snapshot path
+    as soon as ANY session had snapshots from the first week, which silently
+    dropped every session the snapshot job never covers (Quests, SCIT, TLI).
+    Each session must use its own coverage: snapshots where they exist from the
+    start, the attendee rebuild for the weeks (or sessions) they don't cover.
+    """
+
+    @staticmethod
+    def _quest_attendees(gender: bool = False) -> list[Mock]:
+        return [
+            create_mock_attendee_with_date(101, 2001, "2025-11-05", gender="M" if gender else None),
+            create_mock_attendee_with_date(102, 2001, "2025-12-10", gender="F" if gender else None),
+            create_mock_attendee_with_date(
+                103,
+                2001,
+                "2026-01-10",
+                status="cancelled",
+                effective_date="2025-11-05",
+                gender="F" if gender else None,
+            ),
+        ]
+
+    @staticmethod
+    def _main_snapshots(with_gender: bool = False) -> list[Mock]:
+        rows = [
+            # (date, enrolled, cancelled, (male, female, cancelled_male, cancelled_female))
+            ("2025-11-03", 10, 0, (5, 5, 0, 0)),
+            ("2025-12-01", 20, 1, (10, 10, 1, 0)),
+            ("2026-02-02", 30, 2, (15, 15, 1, 1)),
+        ]
+        snaps = []
+        for day, enrolled, cancelled, (m, f, cm, cf) in rows:
+            gender = (
+                {"enrolled_male": m, "enrolled_female": f, "cancelled_male": cm, "cancelled_female": cf}
+                if with_gender
+                else {}
+            )
+            snaps.append(create_mock_snapshot(day, 1001, 2026, enrolled=enrolled, cancelled=cancelled, **gender))
+        return snaps
+
+    @pytest.fixture
+    def all_summer_sessions(self) -> dict[int, Mock]:
+        return {
+            1001: create_mock_session(1001, "Session 1", session_type="main"),
+            2001: create_mock_session(2001, "Quest: Ridge Trail", session_type="quest"),
+        }
+
+    @pytest.mark.asyncio
+    async def test_all_summer_keeps_quest_when_snapshots_cover_only_main_from_season_start(
+        self, service, mock_repository, all_summer_sessions
+    ):
+        from datetime import date
+
+        mock_repository.fetch_sessions.return_value = all_summer_sessions
+        mock_repository.fetch_enrollment_snapshots.return_value = self._main_snapshots()
+        mock_repository.fetch_attendees_with_dates.return_value = self._quest_attendees()
+
+        result = await service.get_velocity(year=2026, today=date(2026, 3, 1))
+
+        by_sid = {c.session_cm_id: c for c in result.by_session}
+        assert set(by_sid) == {1001, 2001}
+        # The snapshotted session still reads its snapshots...
+        assert by_sid[1001].weekly[-1].enrolled == 30
+        # ...and the Quest session is rebuilt from attendee dates.
+        assert by_sid[2001].weekly[-1].enrolled == 2
+        assert result.combined.weekly[-1].enrolled == 32
+
+    @pytest.mark.asyncio
+    async def test_main_only_scope_with_full_coverage_stays_on_snapshots(self, service, mock_repository):
+        """When every session in scope has snapshots from the first week, no rebuild is needed."""
+        from datetime import date
+
+        mock_repository.fetch_sessions.return_value = {
+            1001: create_mock_session(1001, "Session 1", session_type="main"),
+        }
+        mock_repository.fetch_enrollment_snapshots.return_value = self._main_snapshots()
+
+        result = await service.get_velocity(year=2026, today=date(2026, 3, 1))
+
+        mock_repository.fetch_attendees_with_dates.assert_not_called()
+        assert result.combined.weekly[-1].enrolled == 30
+
+    @pytest.mark.asyncio
+    async def test_gender_split_keeps_quest_when_snapshots_cover_only_main_from_season_start(
+        self, service, mock_repository
+    ):
+        from datetime import date
+
+        mock_repository.fetch_sessions.return_value = {
+            2001: create_mock_session(2001, "Quest: Ridge Trail", session_type="quest"),
+        }
+        mock_repository.fetch_enrollment_snapshots.return_value = self._main_snapshots(with_gender=True)
+        mock_repository.fetch_attendees_with_dates.return_value = self._quest_attendees(gender=True)
+
+        result = await service.get_velocity(
+            year=2026, session_types=["quest"], split_by_gender=True, today=date(2026, 3, 1)
+        )
+
+        curves = {c.gender: c for c in result.by_gender}
+        assert curves["M"].weekly, "Quest boys curve must not come back empty"
+        assert curves["F"].weekly, "Quest girls curve must not come back empty"
+
+        # The Quest session reads exactly what it reads with no snapshots at all:
+        # main-session snapshots must not change how a Quest session is built.
+        mock_repository.fetch_enrollment_snapshots.return_value = []
+        rebuilt = await service.get_velocity(
+            year=2026, session_types=["quest"], split_by_gender=True, today=date(2026, 3, 1)
+        )
+        rebuilt_curves = {c.gender: c for c in rebuilt.by_gender}
+        for g in ("M", "F"):
+            assert [p.enrolled for p in curves[g].weekly] == [p.enrolled for p in rebuilt_curves[g].weekly]
+
+    @pytest.mark.asyncio
+    async def test_cancellation_metric_keeps_quest_when_snapshots_cover_only_main_from_season_start(
+        self, service, mock_repository
+    ):
+        from datetime import date
+
+        mock_repository.fetch_sessions.return_value = {
+            2001: create_mock_session(2001, "Quest: Ridge Trail", session_type="quest"),
+        }
+        mock_repository.fetch_enrollment_snapshots.return_value = self._main_snapshots()
+        mock_repository.fetch_status_transitions.return_value = [
+            create_mock_status_transition(103, 2001, "2026-01-10"),
+        ]
+
+        result = await service.get_velocity(
+            year=2026, session_types=["quest"], metric="cancellation", today=date(2026, 3, 1)
+        )
+
+        assert result.combined.weekly, "Quest cancellation curve must not come back empty"
+        assert result.combined.weekly[-1].enrolled == 1
+        assert result.cancelled_to_date == 1
+
+
+# ============================================================================
+# Season window edges (C1, B8, C3)
+# ============================================================================
+
+
+class TestSeasonWindowEdges:
+    """The season window is [priority_reg_date, priority_reg_date + SEASON_WEEKS weeks).
+
+    C1: the end was treated as inclusive, so a past season grew a one-day "Wk 42".
+    B8: a cancellation dated after the window was dropped while its in-window
+        enrollment was kept, so a past season's final read one camper high.
+    C3: the partial-week check compared calendar years, so a season whose priority
+        registration falls in the prior calendar year never showed a partial week.
+    """
+
+    @pytest.mark.asyncio
+    async def test_past_season_reconstruction_ends_at_week_41(self, service, mock_repository):
+        from datetime import date
+
+        mock_repository.fetch_sessions.return_value = {1001: create_mock_session(1001, "Session 1")}
+        mock_repository.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(101, 1001, "2025-11-05"),
+        ]
+
+        # 2026 season: 2025-11-01 .. 2026-08-14 inclusive; today is well past it.
+        result = await service.get_velocity(year=2026, today=date(2026, 10, 7))
+
+        last = result.combined.weekly[-1]
+        assert last.week_number == SEASON_WEEKS
+        assert last.days_in_week == 7
+        assert result.combined.daily[-1].date == "2026-08-14"
+
+    @pytest.mark.asyncio
+    async def test_snapshot_on_window_end_date_is_excluded(self, service, mock_repository):
+        from datetime import date
+
+        mock_repository.fetch_sessions.return_value = {1001: create_mock_session(1001, "Session 1")}
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2025-11-03", 1001, 2026, enrolled=10),
+            create_mock_snapshot("2026-08-14", 1001, 2026, enrolled=40),  # last day of the window
+            create_mock_snapshot("2026-08-15", 1001, 2026, enrolled=41),  # first day after it
+        ]
+
+        result = await service.get_velocity(year=2026, today=date(2026, 10, 7))
+
+        assert result.combined.weekly[-1].week_number == SEASON_WEEKS
+        assert result.combined.weekly[-1].enrolled == 40
+
+    @pytest.mark.asyncio
+    async def test_post_window_cancellation_lowers_past_final(self, service, mock_repository):
+        """A camper who registered inside the window and cancelled after it is not
+        enrolled any more, so the past season's final must not count them."""
+        from datetime import date
+
+        mock_repository.fetch_sessions.return_value = {1001: create_mock_session(1001, "Session 1")}
+        mock_repository.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(101, 1001, "2025-11-05"),
+            create_mock_attendee_with_date(102, 1001, "2025-11-06"),
+            # Registered in the window, cancelled months after it closed.
+            create_mock_attendee_with_date(103, 1001, "2026-09-20", status="cancelled", effective_date="2025-11-07"),
+        ]
+
+        result = await service.get_velocity(year=2026, today=date(2026, 10, 7))
+
+        assert result.combined.weekly[-1].enrolled == 2  # the two campers still enrolled
+        assert result.combined.weekly[-1].gross_enrolled == 3
+        assert result.cancelled_to_date == 1
+
+    @pytest.mark.asyncio
+    async def test_post_window_cancellation_of_post_window_registration_is_not_counted(self, service, mock_repository):
+        """Clipping applies only to a cancellation whose registration was counted."""
+        from datetime import date
+
+        mock_repository.fetch_sessions.return_value = {1001: create_mock_session(1001, "Session 1")}
+        mock_repository.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(101, 1001, "2025-11-05"),
+            create_mock_attendee_with_date(102, 1001, "2026-09-20", status="cancelled", effective_date="2026-09-01"),
+        ]
+
+        result = await service.get_velocity(year=2026, today=date(2026, 10, 7))
+
+        assert result.combined.weekly[-1].enrolled == 1
+        assert result.cancelled_to_date == 0
+
+    def test_partial_week_detected_when_season_year_differs_from_calendar_year(self):
+        from datetime import date
+
+        # The 2027 season opens 2026-11-03; on 2026-11-05 its first week is 3 days old.
+        is_partial, days = _partial_week_info("2026-11-03", today=date(2026, 11, 5))
+        assert is_partial is True
+        assert days == 3
+
+    @pytest.mark.asyncio
+    async def test_current_week_partial_for_season_opening_in_prior_calendar_year(self, service, mock_repository):
+        from datetime import date
+
+        mock_repository.fetch_registration_dates.side_effect = None
+        mock_repository.fetch_registration_dates.return_value = {"priority_reg_date": "2026-11-03"}
+        mock_repository.fetch_sessions.return_value = {1001: create_mock_session(1001, "Session 1", year=2027)}
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-11-03", 1001, 2027, enrolled=40),
+            create_mock_snapshot("2026-11-05", 1001, 2027, enrolled=55),
+        ]
+
+        result = await service.get_velocity(year=2027, today=date(2026, 11, 5))
+
+        last = result.combined.weekly[-1]
+        assert last.week_number == 1
+        assert last.is_partial is True
+        assert last.days_in_week == 3

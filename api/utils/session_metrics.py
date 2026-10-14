@@ -23,7 +23,9 @@ from typing import Any
 # the DISPLAY membership check — so adding teens here does NOT bypass the gate.
 #
 # Excludes:
-# - family: Family camp (adult-focused, separate program)
+# - family: Family Camp — a separate program, never part of summer metrics in either
+#   direction (#2435 reverted by #2455). Not "adult-focused": its enrollment rows are
+#   overwhelmingly children; the separation is about program, not age.
 DISPLAY_SESSION_TYPES = ("main", "embedded", "ag", "quest", "scit", "tli")
 
 # Default cohort for endpoints that scope to summer when the client sends no
@@ -42,7 +44,7 @@ DEFAULT_SUMMER_SESSION_TYPES = ("main", "embedded", "ag", "quest")
 #
 # Excludes:
 # - quest: Adventure program (no traditional cabin bunking)
-# - family: Family camp (adult-focused, same bunk names but separate program)
+# - family: Family Camp (same bunk names, but a separate program)
 # - scit: SCIT teen program (different program)
 # - tli: Teen Leadership Initiative
 BUNK_SESSION_TYPES = ("main", "embedded", "ag")
@@ -68,7 +70,7 @@ SESSION_LENGTH_ORDER: dict[str, int] = {
 # - quest: Quest adventure programs (child-oriented, counts toward years at camp)
 #
 # Excludes:
-# - family: Family camp (adult-focused) — never counts
+# - family: Family Camp (a separate program, not summer) — never counts
 # NOTE: SCIT/TLI are intentionally NOT in this tuple, but they DO count toward
 # "summers at camp" when within the summer window — admitted separately (with a
 # window gate the tuple can't express) in compute_summer_metrics(), per #1599.
