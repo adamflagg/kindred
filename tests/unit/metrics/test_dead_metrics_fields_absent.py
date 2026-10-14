@@ -7,7 +7,6 @@ computed on every request for no reader.
 from __future__ import annotations
 
 import importlib
-import os
 from unittest.mock import patch
 
 import pytest
@@ -21,15 +20,13 @@ from api.schemas.metrics import (
 
 
 @pytest.fixture
-def client():
-    os.environ["AUTH_MODE"] = "bypass"
-    os.environ["SKIP_PB_AUTH"] = "true"
+def client(monkeypatch):
+    monkeypatch.setenv("AUTH_MODE", "bypass")
+    monkeypatch.setenv("SKIP_PB_AUTH", "true")
     with patch("api.routers.metrics.schedule_aid_warm"):
         from api.main import create_app
 
         yield TestClient(create_app())
-    os.environ.pop("AUTH_MODE", None)
-    os.environ.pop("SKIP_PB_AUTH", None)
 
 
 def test_comparison_route_is_gone(client):

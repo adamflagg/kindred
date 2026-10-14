@@ -168,7 +168,7 @@ class ForecastService:
 
         Args:
             year: The year to forecast.
-            session_types: Session types to include (default: main, embedded, ag).
+            session_types: Session types to include (default: main, embedded, ag, quest).
             session_cm_id: Filter to a specific session (AG children included).
             day_offset: Days since registration anchor. When set, compute enrollment
                 at that offset using snapshots (preferred) or reconstruction.

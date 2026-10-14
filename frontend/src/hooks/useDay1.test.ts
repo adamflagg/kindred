@@ -55,13 +55,13 @@ describe('useDay1', () => {
   })
 
   it('forwards a single-session pick to the endpoint', async () => {
-    renderHook(() => useDay1(2026, 'main,embedded,ag,quest', { sessionCmId: 1378702 }), {
+    renderHook(() => useDay1(2026, 'main,embedded,ag,quest', { sessionCmId: 1000802 }), {
       wrapper: createWrapper(),
     })
 
     await waitFor(() => expect(mockFetchWithAuth).toHaveBeenCalled())
     const url = decodeURIComponent(String(mockFetchWithAuth.mock.calls[0]?.[0]))
-    expect(url).toContain('session_cm_id=1378702')
+    expect(url).toContain('session_cm_id=1000802')
     expect(url).not.toContain('duration=')
   })
 

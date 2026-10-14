@@ -26,9 +26,9 @@ async def test_day1_route_forwards_session_cm_id_and_duration() -> None:
         svc.get_day1 = AsyncMock(return_value=MagicMock())
         svc_cls.return_value = svc
 
-        await metrics.get_day1(year=2026, session_types="main,ag", session_cm_id=1378702, duration=None, user=_user())
+        await metrics.get_day1(year=2026, session_types="main,ag", session_cm_id=1000802, duration=None, user=_user())
 
-    svc.get_day1.assert_awaited_once_with(2026, session_types=["main", "ag"], session_cm_id=1378702, duration=None)
+    svc.get_day1.assert_awaited_once_with(2026, session_types=["main", "ag"], session_cm_id=1000802, duration=None)
 
 
 @pytest.mark.asyncio

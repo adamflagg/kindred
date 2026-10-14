@@ -22186,7 +22186,7 @@ export type GetHistoricalTrendsApiMetricsHistoricalGetData = {
     /**
      * Session Cm Id
      *
-     * Filter to specific session by CampMinder ID. Uses name-matching across years.
+     * Filter to specific session by CampMinder ID. Matched in each year by cm_id, then alias group, then exact name.
      */
     session_cm_id?: number | null
     /**

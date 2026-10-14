@@ -156,8 +156,9 @@ export function useRegistrationMetrics(year: number, options?: RegistrationFilte
  * @param options.years - Comma-separated years (e.g., "2021,2022,2023")
  * @param options.sessionTypes - Comma-separated session types (e.g., "main,embedded,ag")
  * @param options.sessionCmId - Filter to specific session by CampMinder ID.
- *                      Uses name-matching across years to show trends
- *                      for the same session across multiple years.
+ *                      The server matches it in each year by cm_id, then
+ *                      alias group, then exact name, so renamed sessions
+ *                      show their earlier years.
  */
 export function useHistoricalTrends(options?: HistoricalFilterOptions) {
   const { fetchWithAuth, isAuthLoading } = useApiWithAuth()

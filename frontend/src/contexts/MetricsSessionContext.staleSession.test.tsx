@@ -65,16 +65,16 @@ describe('MetricsSessionProvider stale ?session=', () => {
   beforeEach(() => {
     getList.mockReset()
     sessionsState.value = {
-      data: [mk(1378702, 'Taste of Camp 1'), mk(1378703, 'Taste of Camp 2')],
+      data: [mk(1000802, 'Taste of Camp 1'), mk(1000803, 'Taste of Camp 2')],
       isLoading: false,
       isPlaceholderData: false,
     }
   })
 
   it('rewrites the id to the viewed year when the session was renamed', async () => {
-    getList.mockResolvedValue({ items: [{ cm_id: 1235403, name: 'Taste of Camp', year: 2025 }] })
-    renderAt('/analytics/registration?session=1235403')
-    await waitFor(() => expect(screen.getByTestId('url-session')).toHaveTextContent('1378702'))
+    getList.mockResolvedValue({ items: [{ cm_id: 1000103, name: 'Taste of Camp', year: 2025 }] })
+    renderAt('/analytics/registration?session=1000103')
+    await waitFor(() => expect(screen.getByTestId('url-session')).toHaveTextContent('1000802'))
   })
 
   it('removes the param when nothing in the year matches', async () => {
@@ -90,21 +90,21 @@ describe('MetricsSessionProvider stale ?session=', () => {
   })
 
   it('leaves an id the year has alone and never looks it up', async () => {
-    renderAt('/analytics/registration?session=1378703')
+    renderAt('/analytics/registration?session=1000803')
     await new Promise((r) => setTimeout(r, 20))
-    expect(screen.getByTestId('url-session')).toHaveTextContent('1378703')
+    expect(screen.getByTestId('url-session')).toHaveTextContent('1000803')
     expect(getList).not.toHaveBeenCalled()
   })
 
   it('waits while the sessions are the previous year placeholder', async () => {
     sessionsState.value = {
-      data: [mk(1235403, 'Taste of Camp')],
+      data: [mk(1000103, 'Taste of Camp')],
       isLoading: false,
       isPlaceholderData: true,
     }
-    renderAt('/analytics/registration?session=1356534')
+    renderAt('/analytics/registration?session=1000534')
     await new Promise((r) => setTimeout(r, 20))
-    expect(screen.getByTestId('url-session')).toHaveTextContent('1356534')
+    expect(screen.getByTestId('url-session')).toHaveTextContent('1000534')
     expect(getList).not.toHaveBeenCalled()
   })
 

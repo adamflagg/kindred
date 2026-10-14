@@ -6,7 +6,6 @@ Camp, adult and B*Mitzvah/Hebrew never fold into summer metrics (#2435).
 
 from __future__ import annotations
 
-import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -21,10 +20,10 @@ ENDPOINTS = [
 
 
 @pytest.fixture
-def client():
-    os.environ["AUTH_MODE"] = "bypass"
-    os.environ["SKIP_PB_AUTH"] = "true"
-    os.environ["METRICS_SQL_ENABLED"] = "false"
+def client(monkeypatch):
+    monkeypatch.setenv("AUTH_MODE", "bypass")
+    monkeypatch.setenv("SKIP_PB_AUTH", "true")
+    monkeypatch.setenv("METRICS_SQL_ENABLED", "false")
     service = MagicMock()
     for name in ("get_gaps", "search_canonicals", "get_sources", "calculate_availability"):
         setattr(service, name, AsyncMock(side_effect=RuntimeError("reached service")))
@@ -36,8 +35,6 @@ def client():
         from api.main import create_app
 
         yield TestClient(create_app(), raise_server_exceptions=False)
-    for key in ("AUTH_MODE", "SKIP_PB_AUTH", "METRICS_SQL_ENABLED"):
-        os.environ.pop(key, None)
 
 
 @pytest.mark.parametrize("bad", ["family", "family,main", "adult", "bmitzvah"])

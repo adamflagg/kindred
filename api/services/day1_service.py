@@ -49,7 +49,8 @@ class Day1Service:
             session_types: Optional list of session types to include
                 (e.g. ``["main", "quest"]``). ``None`` preserves the existing
                 summer behaviour (At Camp + Quest); teens (scit/tli) are counted
-                only when explicitly requested via ``session_types``.
+                whenever the request is scoped (``session_types``, a single
+                session, or a duration).
             session_cm_id: Optional single session (with its AG cabins). Prior
                 years match it with the session resolver (cm_id, alias group,
                 exact name), so renamed sessions line up; no match counts 0.
@@ -99,9 +100,11 @@ class Day1Service:
         # anything (types, one session, a duration): summer types only, teen types
         # gated to the summer window, a pick matched in THIS year and its AG cabins
         # folded in. The param-less path keeps the historical At Camp + Quest scope.
-        # Teens count only when requested via types or a picked session.
-        count_teens = session_types is not None or session_cm_id is not None
-        if session_types is not None or session_cm_id is not None or duration:
+        # Teens count whenever the resolver scopes the request, because its scope
+        # includes them: only the param-less path keeps teens out.
+        scoped = session_types is not None or session_cm_id is not None or bool(duration)
+        count_teens = scoped
+        if scoped:
             scope = resolve_scope_ids(sessions, session_types, session_cm_id, duration, reference_name)
             attendees = [
                 att

@@ -980,23 +980,23 @@ class TestHistoricalSessionResolver:
         repo = _year_repo(
             {
                 2025: {
-                    1235403: make_mock_session(1235403, "Taste of Camp"),
-                    1235401: make_mock_session(1235401, "Session 1"),
+                    1000103: make_mock_session(1000103, "Taste of Camp"),
+                    1000101: make_mock_session(1000101, "Session 1"),
                 },
-                2026: {1378702: make_mock_session(1378702, "Taste of Camp 1")},
+                2026: {1000802: make_mock_session(1000802, "Taste of Camp 1")},
             },
             {
                 2025: [
-                    make_mock_attendee(1, 1235403, "Taste of Camp"),
-                    make_mock_attendee(2, 1235403, "Taste of Camp"),
-                    make_mock_attendee(3, 1235401, "Session 1"),
+                    make_mock_attendee(1, 1000103, "Taste of Camp"),
+                    make_mock_attendee(2, 1000103, "Taste of Camp"),
+                    make_mock_attendee(3, 1000101, "Session 1"),
                 ],
-                2026: [make_mock_attendee(4, 1378702, "Taste of Camp 1")],
+                2026: [make_mock_attendee(4, 1000802, "Taste of Camp 1")],
             },
         )
 
         result = await HistoricalService(repo).calculate_historical_trends(
-            years=[2025, 2026], session_types=["main"], session_cm_id=1378702
+            years=[2025, 2026], session_types=["main"], session_cm_id=1000802
         )
 
         assert {y.year: y.total_enrolled for y in result.years} == {2025: 2, 2026: 1}
@@ -1008,18 +1008,18 @@ class TestHistoricalSessionResolver:
         repo = _year_repo(
             {
                 2025: {
-                    1235403: make_mock_session(1235403, "Taste of Camp"),
-                    1235401: make_mock_session(1235401, "Session 1"),
+                    1000103: make_mock_session(1000103, "Taste of Camp"),
+                    1000101: make_mock_session(1000101, "Session 1"),
                 },
-                2026: {1378702: make_mock_session(1378702, "Taste of Camp 1")},
+                2026: {1000802: make_mock_session(1000802, "Taste of Camp 1")},
             },
-            {2025: [make_mock_attendee(1, 1235403, "Taste of Camp")], 2026: []},
-            {2025: [make_mock_transition(10, 1235403), make_mock_transition(11, 1235401)]},
+            {2025: [make_mock_attendee(1, 1000103, "Taste of Camp")], 2026: []},
+            {2025: [make_mock_transition(10, 1000103), make_mock_transition(11, 1000101)]},
         )
-        repo.fetch_status_history = AsyncMock(return_value=[make_mock_transition(10, 1235403)])
+        repo.fetch_status_history = AsyncMock(return_value=[make_mock_transition(10, 1000103)])
 
         result = await HistoricalService(repo).calculate_historical_trends(
-            years=[2025, 2026], session_types=["main"], session_cm_id=1378702
+            years=[2025, 2026], session_types=["main"], session_cm_id=1000802
         )
 
         assert {y.year: y.total_cancelled for y in result.years} == {2025: 1, 2026: 0}

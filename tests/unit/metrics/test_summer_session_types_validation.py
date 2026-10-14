@@ -6,7 +6,6 @@ pages. Every summer endpoint now validates against DISPLAY_SESSION_TYPES.
 
 from __future__ import annotations
 
-import os
 from unittest.mock import patch
 
 import pytest
@@ -30,10 +29,10 @@ ENDPOINTS = [
 
 
 @pytest.fixture
-def client():
-    os.environ["AUTH_MODE"] = "bypass"
-    os.environ["SKIP_PB_AUTH"] = "true"
-    os.environ["METRICS_SQL_ENABLED"] = "false"
+def client(monkeypatch):
+    monkeypatch.setenv("AUTH_MODE", "bypass")
+    monkeypatch.setenv("SKIP_PB_AUTH", "true")
+    monkeypatch.setenv("METRICS_SQL_ENABLED", "false")
     with (
         patch("api.routers.metrics.metrics_cache", MetricsCache(ttl_seconds=300, max_size=100)),
         patch("api.routers.metrics.schedule_aid_warm"),
@@ -41,8 +40,6 @@ def client():
         from api.main import create_app
 
         yield TestClient(create_app(), raise_server_exceptions=False)
-    for key in ("AUTH_MODE", "SKIP_PB_AUTH", "METRICS_SQL_ENABLED"):
-        os.environ.pop(key, None)
 
 
 @pytest.mark.parametrize("bad", ["family", "family,main", "adult", "bmitzvah", "main,hebrew"])

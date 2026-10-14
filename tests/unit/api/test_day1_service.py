@@ -361,17 +361,17 @@ async def test_single_session_pick_counts_only_that_session_and_its_ag():
 
 @pytest.mark.asyncio
 async def test_renamed_session_matches_prior_years_via_alias():
-    cur = {1378702: _make_session(1378702, "embedded", name="Taste of Camp 1"), 1002: _make_session(1002, "main")}
-    prior = {1235403: _make_session(1235403, "embedded", name="Taste of Camp"), 1002: _make_session(1002, "main")}
+    cur = {1000802: _make_session(1000802, "embedded", name="Taste of Camp 1"), 1002: _make_session(1002, "main")}
+    prior = {1000103: _make_session(1000103, "embedded", name="Taste of Camp"), 1002: _make_session(1002, "main")}
     repo = _repo_by_year(
         {2026: cur, 2025: prior, 2024: prior},
         {
-            2026: [_att(1378702, "embedded")] * 2 + [_att(1002)],
-            2025: [_att(1235403, "embedded")] * 3 + [_att(1002)] * 5,
-            2024: [_att(1235403, "embedded")] * 4,
+            2026: [_att(1000802, "embedded")] * 2 + [_att(1002)],
+            2025: [_att(1000103, "embedded")] * 3 + [_att(1002)] * 5,
+            2024: [_att(1000103, "embedded")] * 4,
         },
     )
-    result = await Day1Service(repo).get_day1(2026, session_types=_SUMMER_TYPES, session_cm_id=1378702)
+    result = await Day1Service(repo).get_day1(2026, session_types=_SUMMER_TYPES, session_cm_id=1000802)
 
     assert _total(result) == 2
     assert _total(result, "prior1") == 3
@@ -380,10 +380,10 @@ async def test_renamed_session_matches_prior_years_via_alias():
 
 @pytest.mark.asyncio
 async def test_pick_with_no_match_in_prior_year_counts_zero_not_whole_summer():
-    cur = {1378702: _make_session(1378702, "embedded", name="Taste of Camp 1"), 1002: _make_session(1002, "main")}
+    cur = {1000802: _make_session(1000802, "embedded", name="Taste of Camp 1"), 1002: _make_session(1002, "main")}
     prior = {1002: _make_session(1002, "main")}
-    repo = _repo_by_year({2026: cur, 2025: prior}, {2026: [_att(1378702, "embedded")], 2025: [_att(1002)] * 5})
-    result = await Day1Service(repo).get_day1(2026, session_types=_SUMMER_TYPES, session_cm_id=1378702)
+    repo = _repo_by_year({2026: cur, 2025: prior}, {2026: [_att(1000802, "embedded")], 2025: [_att(1002)] * 5})
+    result = await Day1Service(repo).get_day1(2026, session_types=_SUMMER_TYPES, session_cm_id=1000802)
 
     assert _total(result) == 1
     assert _total(result, "prior1") == 0
@@ -416,6 +416,24 @@ async def test_duration_pick_scopes_day1():
     result = await Day1Service(repo).get_day1(2026, session_types=_SUMMER_TYPES, duration="1-week")
 
     assert _total(result) == 2
+
+
+@pytest.mark.asyncio
+async def test_duration_only_request_counts_the_teens_its_scope_includes():
+    """A duration with no session_types scopes to every summer type, teens included,
+    so the teens in that scope are counted rather than silently dropped."""
+    sessions = {
+        1001: _make_session(1001, "main", start_date="2026-06-21", end_date="2026-06-27"),  # 1-week
+        1301: _make_session(1301, "scit", name="CIT Week", start_date="2026-06-21", end_date="2026-06-27"),
+    }
+    atts = [_att(1001)] * 2 + [_att(1301, "scit")] * 3
+    repo = _repo_by_year({2026: sessions}, {2026: atts})
+    result = await Day1Service(repo).get_day1(2026, duration="1-week")
+
+    priority = next(t for t in result.tiers if t.tier == "priority")
+    teen = next(c for c in priority.categories if c.category == "teen")
+    assert teen.count == 3
+    assert _total(result) == 5
 
 
 @pytest.mark.asyncio

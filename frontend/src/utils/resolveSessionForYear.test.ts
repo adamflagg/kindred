@@ -11,8 +11,8 @@ const s = (cm_id: number, name: string): MetricsSession => ({
   end_date: '2026-06-20',
 })
 
-const y2026 = [s(1378702, 'Taste of Camp 1'), s(1378703, 'Taste of Camp 2'), s(11, 'Session 3')]
-const y2025 = [s(1235403, 'Taste of Camp'), s(1356534, 'Session 2b'), s(12, 'Session 3')]
+const y2026 = [s(1000802, 'Taste of Camp 1'), s(1000803, 'Taste of Camp 2'), s(11, 'Session 3')]
+const y2025 = [s(1000103, 'Taste of Camp'), s(1000534, 'Session 2b'), s(12, 'Session 3')]
 
 describe('getAliasGroup', () => {
   it('returns canonical first, then alternates', () => {
@@ -27,12 +27,12 @@ describe('matchSessionInYear', () => {
     expect(matchSessionInYear(y2026, 11, 'Whatever')).toBe(11)
   })
   it('maps an old name forward through the alias group', () => {
-    expect(matchSessionInYear(y2026, 1235403, 'Taste of Camp')).toBe(1378702)
-    expect(matchSessionInYear(y2026, 1356534, 'Session 2b')).toBe(1378703)
+    expect(matchSessionInYear(y2026, 1000103, 'Taste of Camp')).toBe(1000802)
+    expect(matchSessionInYear(y2026, 1000534, 'Session 2b')).toBe(1000803)
   })
   it('maps a canonical name backward', () => {
-    expect(matchSessionInYear(y2025, 1378702, 'Taste of Camp 1')).toBe(1235403)
-    expect(matchSessionInYear(y2025, 1378703, 'Taste of Camp 2')).toBe(1356534)
+    expect(matchSessionInYear(y2025, 1000802, 'Taste of Camp 1')).toBe(1000103)
+    expect(matchSessionInYear(y2025, 1000803, 'Taste of Camp 2')).toBe(1000534)
   })
   it('falls back to an exact name', () => {
     expect(matchSessionInYear(y2026, 12, 'Session 3')).toBe(11)

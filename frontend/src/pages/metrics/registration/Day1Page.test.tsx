@@ -118,13 +118,13 @@ describe('Day1Page', () => {
   })
 
   it('sends a single-session pick into the Day 1 query', () => {
-    setSession('main,embedded,ag,quest', { sessionCmId: 1378702 })
+    setSession('main,embedded,ag,quest', { sessionCmId: 1000802 })
     mockUseDay1.mockReturnValue({ data: makeData(0), isLoading: false, error: null })
 
     renderPage()
 
     expect(mockUseDay1).toHaveBeenCalledWith(2026, 'main,embedded,ag,quest', {
-      sessionCmId: 1378702,
+      sessionCmId: 1000802,
       duration: undefined,
     })
   })

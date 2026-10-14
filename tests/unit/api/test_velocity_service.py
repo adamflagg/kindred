@@ -619,26 +619,26 @@ class TestVelocitySessionFilter:
         _wire_years(
             mock_repository,
             sessions={
-                2026: {1378702: _sess(1378702, "Taste of Camp 1", 2026)},
+                2026: {1000802: _sess(1000802, "Taste of Camp 1", 2026)},
                 2025: {
-                    1235403: _sess(1235403, "Taste of Camp", 2025),
-                    1235404: _sess(1235404, "Session 2", 2025),
+                    1000103: _sess(1000103, "Taste of Camp", 2025),
+                    1000104: _sess(1000104, "Session 2", 2025),
                 },
             },
             snapshots={
-                2026: [create_mock_snapshot("2026-01-05", 1378702, 2026, enrolled=20)],
+                2026: [create_mock_snapshot("2026-01-05", 1000802, 2026, enrolled=20)],
                 2025: [
-                    create_mock_snapshot("2025-01-06", 1235403, 2025, enrolled=11),
-                    create_mock_snapshot("2025-01-06", 1235404, 2025, enrolled=90),
+                    create_mock_snapshot("2025-01-06", 1000103, 2025, enrolled=11),
+                    create_mock_snapshot("2025-01-06", 1000104, 2025, enrolled=90),
                 ],
             },
         )
 
-        result = await service.get_velocity(year=2026, session_cm_id=1378702, compare_years=[2025])
+        result = await service.get_velocity(year=2026, session_cm_id=1000802, compare_years=[2025])
 
         assert [p.year for p in result.prior_years] == [2025]
         assert result.prior_years[0].weekly[-1].enrolled == 11
-        assert [s.session_cm_id for s in result.prior_year_session_summaries] == [1235403]
+        assert [s.session_cm_id for s in result.prior_year_session_summaries] == [1000103]
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("metric", ["enrollment", "cancellation"])

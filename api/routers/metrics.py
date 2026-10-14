@@ -192,7 +192,8 @@ async def get_historical_trends(
     session_types: str | None = Query("main,ag,embedded,quest", description="Comma-separated session types to filter"),
     session_cm_id: int | None = Query(
         None,
-        description="Filter to specific session by CampMinder ID. Uses name-matching across years.",
+        description="Filter to specific session by CampMinder ID. Matched in each year by cm_id, then alias group, "
+        "then exact name.",
     ),
     duration: Literal["1-week", "2-week", "3-week", "4-week+"] | None = Query(
         None, description="Filter by session duration category (1-week, 2-week, 3-week, 4-week+)"
@@ -204,9 +205,9 @@ async def get_historical_trends(
     Returns aggregated metrics for each year to enable line chart visualization.
     Default: last 5 years from current year (based on CAMPMINDER_SEASON_ID).
 
-    When session_cm_id is provided, resolves to the session name and filters by name
-    across years. CampMinder often reuses cm_ids year-over-year, but names can change
-    (e.g., "Session 2a" → "Taste of Camp 2"), so name-matching handles both cases.
+    When session_cm_id is provided, each year is matched with the shared session
+    resolver (``match_session_in_year``): cm_id first, then the alias group, then exact
+    name, so renamed sessions line up. AG cabins are folded in through their parent.
     """
     check_duration_session_exclusive(duration, session_cm_id)
 
