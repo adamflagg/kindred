@@ -339,6 +339,15 @@ async def test_only_sessions_of_an_aid_eligible_program_are_in_a_group() -> None
     assert found.by_family["bmitzvah"] == "bmitzvah_pool"
 
 
+async def test_an_adult_reg_session_is_grouped_with_its_family_weekend() -> None:
+    """kindred#3213: an Adult Reg (family_adult) session's aid is Family Camp aid. It joins its weekend's pool, and
+    that pool still reads as a families group."""
+    sessions = [*SESSIONS, SessionRow(1000203, "Adult Reg: Family Camp 3", "family_adult", parent_cm_id=1000201)]
+    found = grouping(intake_rules(), sessions)
+    assert found.by_session[1000203] == found.by_session[1000201]
+    assert {g.key: g.kind for g in found.groups}[found.by_session[1000201]] == "families"
+
+
 async def test_an_unclaimed_ag_session_is_grouped_with_its_parents_program() -> None:
     """Spec §8: an AG session no program claims takes its parent session's program, so its attendees count under
     that program's group; a session that is not an AG session and is claimed by nothing still counts nowhere."""

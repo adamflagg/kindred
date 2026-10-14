@@ -147,6 +147,21 @@ const TABLE: ReadonlyArray<readonly [string, string, string, Row]> = [
       tiny: 'WW', // #2790 owner ruling 2026-10-09 (was the identity whole)
     },
   ],
+  [
+    // kindred#3213: adult-only guests of Family Camp 4, registered from 2027.
+    'family adult (Adult Reg)',
+    'family_adult',
+    'Adult Reg: Family Camp 4 (Labor Day Weekend)',
+    {
+      full: 'Adult Reg: Family Camp 4 (Labor Day Weekend)',
+      identity: 'Family Camp 4 Adults',
+      title: 'Family Camp 4 Adults',
+      short: 'Family Camp 4 Adults',
+      matrix: 'Adult Reg: Family Camp 4 (Labor Day Weekend)',
+      chart: 'Adult Reg: Family Camp...',
+      tiny: 'FC4 Adults',
+    },
+  ],
 ]
 
 describe('sessionName — one row per program per form', () => {
@@ -157,6 +172,26 @@ describe('sessionName — one row per program per form', () => {
       })
     })
   }
+})
+
+describe('sessionName — an Adult Reg session reads as its weekend, plus "Adults" (kindred#3213)', () => {
+  it.each<[string, string]>([
+    ['Adult Reg: Family Camp 6', 'Family Camp 6'],
+    ['Adult Reg: Prospective Families Weekend', 'Prospective Families Weekend'],
+    ['adult reg:  Family Camp 2 (Pride Weekend)', 'Family Camp 2: Pride Weekend'],
+  ])('%s', (adultReg, weekend) => {
+    for (const form of ['identity', 'title', 'short', 'tiny'] as const) {
+      expect(sessionName(adultReg, 'family_adult', form)).toBe(
+        `${sessionName(weekend, 'family', form)} Adults`
+      )
+    }
+  })
+
+  it('never falls through to the summer rules', () => {
+    expect(sessionName('Adult Reg: Family Camp 6', 'family_adult', 'tiny')).not.toBe(
+      sessionName('Adult Reg: Family Camp 6', 'main', 'tiny')
+    )
+  })
 })
 
 describe('sessionName — the closed set of forms', () => {

@@ -114,7 +114,29 @@ function renderDetail() {
   )
 }
 
-describe('CamperDetail — adult-program-only person (adult camper journey)', () => {
+/**
+ * The adult-only programs a person can be enrolled on directly. kindred#3213: from
+ * 2027 an "Adult Reg" (family_adult) session sits beside each Family Camp weekend,
+ * where adults without children register — their record must not dead-end either.
+ */
+const ADULT_ONLY_PROGRAMS = [
+  {
+    label: 'adult-program-only person (adult camper journey)',
+    session: { id: 'sess_ww', cm_id: 9200001, name: "Women's Weekend", session_type: 'adult' },
+  },
+  {
+    label: 'Adult Reg-only person (adult-only Family Camp guest, kindred#3213)',
+    session: {
+      id: 'sess_adult_reg',
+      cm_id: 9200002,
+      name: 'Adult Reg: Family Camp 4',
+      session_type: 'family_adult',
+      parent_id: 9100004,
+    },
+  },
+]
+
+describe.each(ADULT_ONLY_PROGRAMS)('CamperDetail — $label', ({ session }) => {
   beforeEach(() => {
     vi.clearAllMocks()
     historyLoading.value = false
@@ -137,7 +159,7 @@ describe('CamperDetail — adult-program-only person (adult camper journey)', ()
       id: 'att_adult',
       person_id: PERSON_CM_ID,
       person: 'person_pb_3',
-      session: 'sess_ww',
+      session: session.id,
       status: 'enrolled',
       status_id: 2,
       year: YEAR,
@@ -151,13 +173,7 @@ describe('CamperDetail — adult-program-only person (adult camper journey)', ()
           last_name: 'Garcia',
           year: YEAR,
         },
-        session: {
-          id: 'sess_ww',
-          cm_id: 9200001,
-          name: "Women's Weekend",
-          session_type: 'adult',
-          year: YEAR,
-        },
+        session: { ...session, year: YEAR },
       },
     }
 

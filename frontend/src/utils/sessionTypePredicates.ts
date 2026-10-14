@@ -50,7 +50,9 @@ export const TEEN_PROGRAM_TYPES = ['scit', 'tli'] as const
  *
  * Adult programs joined in 2026-09: an
  * adult-only person's record dead-ended on "no active enrollments" exactly as
- * a family-only one did before #2149.
+ * a family-only one did before #2149. `family_adult` (an "Adult Reg" session,
+ * kindred#3213) joined with the 2027 season for the same reason: adults
+ * without children register for Family Camp there.
  */
 export const CAMPER_DETAIL_TYPES = [
   'main',
@@ -60,6 +62,7 @@ export const CAMPER_DETAIL_TYPES = [
   'scit',
   'tli',
   'family',
+  'family_adult',
   'adult',
 ] as const
 
@@ -90,8 +93,8 @@ export const CAMPER_JOURNEY_TYPES = Array.from(
 
 /**
  * Programs a CHILD attends — the Siblings panel's set. Deliberately
- * excludes 'adult': a parent only ever has
- * adult-program rows, so excluding them is what keeps parents out of a
+ * excludes 'adult' and 'family_adult' (Adult Reg, kindred#3213): a parent only
+ * ever has adult-program rows, so excluding them is what keeps parents out of a
  * child's Siblings panel without the old `grade > 0` heuristic (which also
  * hid 236 family-camp preschoolers).
  */
@@ -121,6 +124,7 @@ export const SESSION_TYPE_LITERALS = [
   'embedded',
   'ag',
   'family',
+  'family_adult',
   'quest',
   'scit',
   'bmitzvah',
@@ -257,6 +261,25 @@ export function isFamilySessionType(sessionType: string | null | undefined): boo
 /** True if the session_type string is "adult" (Women's/Men's Weekend, D&D, ...) */
 export function isAdultSessionType(sessionType: string | null | undefined): boolean {
   return sessionType === 'adult'
+}
+
+/**
+ * True if the session_type string is "family_adult": an "Adult Reg" session,
+ * whose attendees are adult-only guests of the Family Camp weekend its
+ * `parent_id` names (kindred#3213). Not an adult weekend — it stays off every
+ * weekend-board surface `isAdultSessionType` drives.
+ */
+export function isFamilyAdultSessionType(sessionType: string | null | undefined): boolean {
+  return sessionType === 'family_adult'
+}
+
+/**
+ * True for a program that enrolls the ADULT directly: an adult weekend or an
+ * Adult Reg session. The camper record's adult branch (no grade, no school, a
+ * Household panel) reads this, not `isAdultSessionType`.
+ */
+export function isAdultOnlySessionType(sessionType: string | null | undefined): boolean {
+  return isAdultSessionType(sessionType) || isFamilyAdultSessionType(sessionType)
 }
 
 // ============================================================================

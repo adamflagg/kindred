@@ -49,6 +49,14 @@ def test_an_ag_session_no_program_claims_takes_its_parents_program() -> None:
     assert resolve_program(rules, 1000199, "ag", ag_parent=(1000101, "main")) == "summer"
 
 
+def test_an_adult_reg_session_takes_its_family_weekends_program() -> None:
+    """kindred#3213: an Adult Reg (family_adult) session points at its Family Camp weekend through parent_id, and
+    its aid is Family Camp aid -- so, like an AG session, one no program claims takes its parent's program."""
+    rules = fictional_rules()  # family_camp claims 1000201; nothing claims 1000202 or "family_adult"
+    assert resolve_program(rules, 1000202, "family_adult") is None
+    assert resolve_program(rules, 1000202, "family_adult", ag_parent=(1000201, "family")) == "family_camp"
+
+
 def test_only_an_unclaimed_ag_session_falls_back() -> None:
     rules = fictional_rules()
     assert resolve_program(rules, 1000199, "embedded", ag_parent=(1000101, "main")) is None

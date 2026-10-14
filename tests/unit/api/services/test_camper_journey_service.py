@@ -1086,6 +1086,40 @@ class TestAdultAgeMatchesTheClient:
         assert int(match.group(1)) == ADULT_AGE
 
 
+class TestAdultRegCountsAsFamilyCamp:
+    """kindred#3213: from 2027 an "Adult Reg" (family_adult) session sits beside each
+    Family Camp weekend, its parent_id naming that weekend. Its attendees are
+    adult-only Family Camp guests, so the journey counts the weekend as Family Camp."""
+
+    @pytest.mark.asyncio
+    async def test_an_adult_reg_enrollment_is_a_family_weekend_row_with_no_cabin(self, pb: FakePB) -> None:
+        pb.lists["attendees"].return_value = [
+            attendee(2024, 950, "family_adult", "Adult Reg: Family Camp 2", parent_id=900, start_date="2024-05-24")
+        ]
+        out = await _feed(pb)
+        assert len(out.rows) == 1
+        # Cabin attribution for these guests is later work: no label, never a borrowed one.
+        assert_matches(out.rows[0], session_type="family_adult", bunk_name=None)
+        assert out.family_weekends == 1
+        assert out.adult_weekends == 0
+
+    @pytest.mark.asyncio
+    async def test_a_lone_summer_bunk_that_year_never_labels_the_adult_reg_row(self, pb: FakePB) -> None:
+        pb.lists["attendees"].return_value = [attendee(2024, 950, "family_adult", "Adult Reg: Family Camp 2", 900)]
+        pb.lists["bunk_assignments"].return_value = [assignment(2024, 111, "B-7", "main")]
+        out = await _feed(pb)
+        assert out.rows[0].bunk_name is None
+
+    @pytest.mark.asyncio
+    async def test_the_adult_reg_weekend_and_the_households_weekend_count_once(self, pb: FakePB) -> None:
+        """An adult on Family Camp 2's Adult Reg whose child was enrolled on Family
+        Camp 2 itself attended ONE weekend: keyed on the parent, not two."""
+        pb.lists["attendees"].return_value = [attendee(2024, 950, "family_adult", "Adult Reg: Family Camp 2", 900)]
+        out = await _feed(pb, family_years=[household_year()], viewer_is_adult=True)
+        assert out.family_weekends == 1
+        assert [r.session_type for r in out.rows] == ["family_adult"]
+
+
 class TestJourneyTypesMatchTheClient:
     def test_the_journey_session_types_are_the_clients_camper_journey_types(self) -> None:
         """`CAMPER_JOURNEY_TYPES` is CAMPER_DETAIL_TYPES plus 'family', deduped,
@@ -1094,7 +1128,7 @@ class TestJourneyTypesMatchTheClient:
         predicates = Path(__file__).resolve().parents[4] / "frontend" / "src" / "utils" / "sessionTypePredicates.ts"
         match = re.search(r"export const CAMPER_DETAIL_TYPES = \[(.*?)\] as const", predicates.read_text(), re.DOTALL)
         assert match is not None
-        detail = set(re.findall(r"'([a-z]+)'", match.group(1)))
+        detail = set(re.findall(r"'([a-z_]+)'", match.group(1)))
         assert set(CAMPER_JOURNEY_SESSION_TYPES) == detail | {"family"}
         assert len(set(CAMPER_JOURNEY_SESSION_TYPES)) == len(CAMPER_JOURNEY_SESSION_TYPES)
 

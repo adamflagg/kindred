@@ -153,6 +153,18 @@ describe('useSiblings', () => {
     expect(mockAssignments).not.toHaveBeenCalled()
   })
 
+  // kindred#3213: an Adult Reg (family_adult) guest has no cabin until their
+  // attribution is built with the 2027 Family Camp lodging work.
+  it('no bunk lookup when the primary program is an Adult Reg session', async () => {
+    mockPersons.mockResolvedValue([member(3000002, { grade: 0 })])
+    mockAttendees.mockResolvedValue([enrolment('Adult Reg: Family Camp 1', 'family_adult')])
+    mockAssignments.mockResolvedValue([{ expand: { bunk: { name: 'Day Group B' } } }])
+    const { result } = renderHook(() => useSiblings(555, 3000001, 2026, 'adult'), { wrapper })
+    await waitFor(() => expect(result.current.siblings).toHaveLength(1))
+    expect(result.current.siblings[0]?.bunkName).toBeNull()
+    expect(mockAssignments).not.toHaveBeenCalled()
+  })
+
   // Owner ruling 2026-09-22 (late, Q9): a teen program's CampMinder "bunk" is
   // a program group ("SCIT A", "TLI") and a Quest's is a trip name — never a
   // cabin. Both sibling surfaces (the record's SiblingsPanel and the board

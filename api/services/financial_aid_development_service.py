@@ -119,7 +119,7 @@ SUMMER_AID_FAMILIES: Final = frozenset({"summer", "quest", "teen"})
 TEEN_PROGRAM_TYPES: Final = frozenset({"scit", "tli"})  # §5.11: "TLI + SCIT stays a program line"
 # Not camper programs development reports (queue "Known limits": B*Mitzvah is; Family School and "other" aren't).
 NOT_REPORTED_FAMILIES: Final = frozenset({"family_school", "other"})
-FAMILY_TYPES: Final = frozenset({"family", "adult"})
+FAMILY_TYPES: Final = frozenset({"family", "family_adult", "adult"})  # family_adult: Adult Reg (kindred#3213)
 FIRST_TIME_SUMMER: Final = "No Summer Camp or Quest session at camp in any earlier season from 2017 (the default)"
 FIRST_TIME_FAMILY: Final = (
     "The household's first weekend program: no earlier Family or Adult weekend session at camp since 2017 (the default)"

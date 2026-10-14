@@ -87,6 +87,7 @@ type Program =
   | 'quest'
   | 'teen'
   | 'family'
+  | 'family_adult'
   | 'adult'
   | 'bmitzvah'
   | 'hebrew'
@@ -386,6 +387,23 @@ const SUMMER_MAIN: Readonly<Record<SessionNameForm, Render>> = {
   tiny: sessionNumber,
 }
 
+/**
+ * An Adult Reg session's weekend, spelled the way the weekend itself is
+ * (kindred#3213): the "Adult Reg:" prefix dropped, and a trailing parenthetical
+ * read as the subtitle a weekend carries after its colon —
+ * "Adult Reg: Family Camp 4 (Labor Day Weekend)" → "Family Camp 4: Labor Day Weekend".
+ */
+function adultRegWeekend(name: string): string {
+  const weekend = name.replace(/^\s*adult reg:\s*/i, '').trim()
+  if (weekend.includes(':')) return weekend
+  return weekend.replace(/\s*\(([^()]+)\)\s*$/, ': $1')
+}
+
+/** The family weekend's rule for one form, read off the Adult Reg session's weekend, plus "Adults". */
+function adultRegForm(rule: Render): Render {
+  return (name) => `${rule(adultRegWeekend(name))} Adults`
+}
+
 const RULES: Readonly<Record<Program, Readonly<Record<SessionNameForm, Render>>>> = {
   main: SUMMER_MAIN,
   embedded: { ...SUMMER_MAIN, chart: embeddedChart },
@@ -409,6 +427,15 @@ const RULES: Readonly<Record<Program, Readonly<Record<SessionNameForm, Render>>>
   // label is built from. `short` is the number without its theme (#2790): a
   // weekend's theme moves between numbers year to year.
   family: { ...SUMMER_MAIN, title: weekendTitle, short: familyShortName, tiny: weekendLabel },
+  // Adult Reg (kindred#3213): adult-only guests of a Family Camp weekend read as
+  // that weekend plus "Adults" — "Family Camp 4 Adults", tiny "FC4 Adults".
+  family_adult: {
+    ...SUMMER_MAIN,
+    identity: adultRegForm(shortWeekendName),
+    title: adultRegForm(weekendTitle),
+    short: adultRegForm(familyShortName),
+    tiny: adultRegForm(weekendLabel),
+  },
   // Adult tiny: only Women's / Men's Weekend are mapped (WW / MW, #2790); any
   // other adult program reads as its identity, never an abbreviation.
   adult: {
@@ -426,6 +453,7 @@ function programOfType(sessionType: string | undefined): Program {
     case 'ag':
     case 'quest':
     case 'family':
+    case 'family_adult':
     case 'adult':
     case 'bmitzvah':
     case 'hebrew':
@@ -454,7 +482,9 @@ const PROGRAM_FOR: Readonly<
   full: (_name, sessionType) => programOfType(sessionType),
   identity: (_name, sessionType) => programOfType(sessionType),
   title: (name, sessionType) => {
-    if (sessionType === 'family' || sessionType === 'adult') return sessionType
+    if (sessionType === 'family' || sessionType === 'family_adult' || sessionType === 'adult') {
+      return sessionType
+    }
     if (sessionType === 'ag' || looksAgStrict(name)) return 'ag'
     return programOfType(sessionType)
   },
@@ -473,7 +503,9 @@ const PROGRAM_FOR: Readonly<
     return sessionType === 'embedded' ? 'embedded' : 'main'
   },
   tiny: (name, sessionType) => {
-    if (sessionType === 'family' || sessionType === 'adult') return sessionType
+    if (sessionType === 'family' || sessionType === 'family_adult' || sessionType === 'adult') {
+      return sessionType
+    }
     if (
       sessionType === 'bmitzvah' ||
       sessionType === 'hebrew' ||

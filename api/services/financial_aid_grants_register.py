@@ -55,6 +55,7 @@ PROGRAM_FAMILY_BY_SESSION_TYPE: Final[Mapping[str, str]] = {
     "bmitzvah": "bmitzvah",
     "hebrew": "bmitzvah",
     "family": "family_camp",
+    "family_adult": "family_camp",  # an Adult Reg session: adult-only Family Camp guests (kindred#3213)
     "adult": "adult_weekend",
     "school": "family_school",
 }
