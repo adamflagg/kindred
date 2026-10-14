@@ -36,7 +36,8 @@ from api.utils.session_metrics import (
     build_ag_parent_map,
     get_person_from_expand,
     get_session_from_expand,
-    resolve_duration_sessions,
+    match_session_in_year,
+    resolve_scope_ids,
 )
 from api.utils.session_swap import detect_session_swaps
 
@@ -569,11 +570,14 @@ class VelocityService:
 
         season_end_dt = _season_end(season_start_dt)
         # Fetch sessions for the year
-        sessions = await self.repo.fetch_sessions(year, session_types=session_types)
-        # Filter sessions by duration category
-        if duration:
-            duration_session_ids = resolve_duration_sessions(sessions, duration)
-            sessions = {sid: s for sid, s in sessions.items() if sid in duration_session_ids}
+        # ALL of the year's sessions: the resolver needs the main ones to define the
+        # teen summer window. It scopes by type, window, duration and the picked
+        # session (with its AG cabins); every build below sees only that scope.
+        all_sessions = await self.repo.fetch_sessions(year)
+        scope = resolve_scope_ids(all_sessions, session_types, session_cm_id, duration)
+        sessions = {sid: s for sid, s in all_sessions.items() if sid in scope}
+        picked = all_sessions.get(session_cm_id) if session_cm_id is not None else None
+        reference_name = getattr(picked, "name", None)
         ag_parent_map = build_ag_parent_map(sessions)
 
         ref_today = today or datetime.now(tz=UTC).date()
@@ -583,7 +587,10 @@ class VelocityService:
         # when both _build_curves and _build_gender_curves need the same data).
         snapshots: list[Any] | None = None
         if metric != "cancellation":
-            snapshots = await self.repo.fetch_enrollment_snapshots(ctx.year, session_cm_id=session_cm_id)
+            # Not filtered by session_cm_id: an AG cabin's snapshot rows carry the AG
+            # session's own id, and the picked session's curve folds them in. The
+            # scoped ``sessions`` dict does the narrowing.
+            snapshots = await self.repo.fetch_enrollment_snapshots(ctx.year)
 
         # Pre-fetch status transitions once for cancellation metric (avoids duplicate fetch
         # when both _build_cancellation_curves and _build_cancellation_gender_curves need the same data).
@@ -647,10 +654,16 @@ class VelocityService:
                     continue
                 prior_year_season_starts[prior_year] = prior_season_start.strftime("%Y-%m-%d")
                 prior_season_end = _season_end(prior_season_start)
-                prior_sessions = await self.repo.fetch_sessions(prior_year, session_types=session_types)
-                if duration:
-                    prior_duration_ids = resolve_duration_sessions(prior_sessions, duration)
-                    prior_sessions = {sid: s for sid, s in prior_sessions.items() if sid in prior_duration_ids}
+                prior_all = await self.repo.fetch_sessions(prior_year)
+                prior_scope = resolve_scope_ids(prior_all, session_types, session_cm_id, duration, reference_name)
+                prior_sessions = {sid: s for sid, s in prior_all.items() if sid in prior_scope}
+                prior_cm_id: int | None = None
+                if session_cm_id is not None:
+                    # "No match means no line": a picked session the prior year does not
+                    # have is absent from the response, never padded with the whole year.
+                    prior_cm_id = match_session_in_year(prior_all, session_cm_id, reference_name)
+                    if prior_cm_id is None or not prior_sessions:
+                        continue
                 prior_ag_map = build_ag_parent_map(prior_sessions)
                 prior_ctx = SeasonContext(
                     year=prior_year,
@@ -664,14 +677,14 @@ class VelocityService:
                         prior_ctx,
                         prior_sessions,
                         prior_ag_map,
-                        session_cm_id=None,
+                        session_cm_id=prior_cm_id,
                     )
                 else:
                     prior_result = await self._build_curves(
                         prior_ctx,
                         prior_sessions,
                         prior_ag_map,
-                        session_cm_id=None,
+                        session_cm_id=prior_cm_id,
                     )
                 prior_years.append(
                     PriorYearVelocity(
@@ -706,14 +719,14 @@ class VelocityService:
                             prior_ctx,
                             prior_sessions,
                             prior_ag_map,
-                            session_cm_id=None,
+                            session_cm_id=prior_cm_id,
                         )
                     else:
                         prior_gender_curves, _ = await self._build_gender_curves(
                             prior_ctx,
                             prior_sessions,
                             prior_ag_map,
-                            session_cm_id=None,
+                            session_cm_id=prior_cm_id,
                             combined_daily=prior_result.combined.daily,
                         )
                     prior_year_by_gender.extend(prior_gender_curves)
@@ -734,7 +747,9 @@ class VelocityService:
             all_attendees = await self.repo.fetch_attendees_with_dates(year, session_cm_id=session_cm_id)
             # Filter attendees to duration-scoped sessions so swap count
             # reflects the same scope as the cancellation curves.
-            duration_scoped_sids = set(sessions.keys())
+            # A swap crosses sessions, so the swap's other half is looked up in the
+            # whole type/duration scope, not just the picked session (narrowed below).
+            duration_scoped_sids = resolve_scope_ids(all_sessions, session_types, None, duration)
             cancelled_atts = [
                 a
                 for a in all_attendees
@@ -1102,7 +1117,7 @@ class VelocityService:
         fills pre-snapshot weeks, snapshots cover the rest.
         """
         if snapshots is None:
-            snapshots = await self.repo.fetch_enrollment_snapshots(ctx.year, session_cm_id=session_cm_id)
+            snapshots = await self.repo.fetch_enrollment_snapshots(ctx.year)
 
         if not snapshots:
             return await self._curves_from_reconstruction(ctx, sessions, ag_parent_map, session_cm_id)
@@ -1763,7 +1778,7 @@ class VelocityService:
         3. Snapshots start mid-season → hybrid (reconstruction pre-snapshot + snapshots post)
         """
         if snapshots is None:
-            snapshots = await self.repo.fetch_enrollment_snapshots(ctx.year, session_cm_id=session_cm_id)
+            snapshots = await self.repo.fetch_enrollment_snapshots(ctx.year)
 
         if not snapshots or not self._snapshots_have_gender_data(snapshots):
             # No gender data → pure reconstruction
@@ -1809,7 +1824,7 @@ class VelocityService:
         Uses hybrid mode when snapshots don't cover the full season: reconstruction
         fills pre-snapshot weeks, snapshots cover the rest.
         """
-        snapshots = await self.repo.fetch_enrollment_snapshots(ctx.year, session_cm_id=session_cm_id)
+        snapshots = await self.repo.fetch_enrollment_snapshots(ctx.year)
 
         if not snapshots:
             return await self._cancellation_curves_from_reconstruction(

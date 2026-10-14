@@ -186,6 +186,46 @@ def create_mock_status_transition(
     return record
 
 
+def _sess(cm_id: int, name: str, year: int, session_type: str = "main", **kw):
+    """A session whose dates sit inside that year's summer."""
+    return create_mock_session(
+        cm_id,
+        name,
+        year=year,
+        session_type=session_type,
+        start_date=kw.pop("start_date", f"{year}-06-15"),
+        end_date=kw.pop("end_date", f"{year}-07-05"),
+        **kw,
+    )
+
+
+def _wire_years(repo, sessions, snapshots=None, attendees=None, transitions=None):
+    """Wire a mock repo like the SQL one: per-year data, session_types and session_cm_id
+    honoured on sessions/snapshots, attendees returned for the whole year."""
+    snapshots = snapshots or {}
+    attendees = attendees or {}
+    transitions = transitions or {}
+
+    async def fetch_sessions(year, session_types=None):
+        return {
+            cm: s for cm, s in sessions.get(year, {}).items() if not session_types or s.session_type in session_types
+        }
+
+    async def fetch_snapshots(year, session_cm_id=None):
+        return [sn for sn in snapshots.get(year, []) if session_cm_id is None or sn.session_cm_id == session_cm_id]
+
+    async def fetch_attendees(year, session_cm_id=None, expand_person=False):
+        return attendees.get(year, [])
+
+    async def fetch_transitions(year, *args, **kwargs):
+        return transitions.get(year, [])
+
+    repo.fetch_sessions.side_effect = fetch_sessions
+    repo.fetch_enrollment_snapshots.side_effect = fetch_snapshots
+    repo.fetch_attendees_with_dates.side_effect = fetch_attendees
+    repo.fetch_status_transitions.side_effect = fetch_transitions
+
+
 # ============================================================================
 # Fixtures
 # ============================================================================
@@ -547,6 +587,91 @@ class TestVelocitySessionFilter:
         # by_session should have only 1 entry
         assert len(result.by_session) == 1
         assert result.by_session[0].session_cm_id == 1001
+
+    @pytest.mark.asyncio
+    async def test_prior_year_overlay_scoped_to_selected_session(self, service, mock_repository):
+        """With one session picked, the prior-year line is that session's, not the whole prior scope."""
+        _wire_years(
+            mock_repository,
+            sessions={
+                2026: {1001: _sess(1001, "Session 1", 2026), 1002: _sess(1002, "Session 2", 2026)},
+                2025: {1001: _sess(1001, "Session 1", 2025), 1002: _sess(1002, "Session 2", 2025)},
+            },
+            snapshots={
+                2026: [create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=20)],
+                2025: [
+                    create_mock_snapshot("2025-01-06", 1001, 2025, enrolled=15),
+                    create_mock_snapshot("2025-01-06", 1002, 2025, enrolled=100),
+                ],
+            },
+        )
+
+        result = await service.get_velocity(year=2026, session_cm_id=1001, compare_years=[2025])
+
+        assert [p.year for p in result.prior_years] == [2025]
+        assert result.prior_years[0].weekly[-1].enrolled == 15
+        assert [s.session_cm_id for s in result.prior_year_session_summaries] == [1001]
+
+    @pytest.mark.asyncio
+    async def test_prior_overlay_resolves_renamed_session_via_alias(self, service, mock_repository):
+        """2026 "Taste of Camp 1" (new cm_id) is 2025's "Taste of Camp" (alias group)."""
+        _wire_years(
+            mock_repository,
+            sessions={
+                2026: {1378702: _sess(1378702, "Taste of Camp 1", 2026)},
+                2025: {
+                    1235403: _sess(1235403, "Taste of Camp", 2025),
+                    1235404: _sess(1235404, "Session 2", 2025),
+                },
+            },
+            snapshots={
+                2026: [create_mock_snapshot("2026-01-05", 1378702, 2026, enrolled=20)],
+                2025: [
+                    create_mock_snapshot("2025-01-06", 1235403, 2025, enrolled=11),
+                    create_mock_snapshot("2025-01-06", 1235404, 2025, enrolled=90),
+                ],
+            },
+        )
+
+        result = await service.get_velocity(year=2026, session_cm_id=1378702, compare_years=[2025])
+
+        assert [p.year for p in result.prior_years] == [2025]
+        assert result.prior_years[0].weekly[-1].enrolled == 11
+        assert [s.session_cm_id for s in result.prior_year_session_summaries] == [1235403]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("metric", ["enrollment", "cancellation"])
+    async def test_prior_overlay_absent_when_session_has_no_match(self, service, mock_repository, metric):
+        """No match in the prior year means no prior line at all, never the whole prior year.
+
+        The prior year also holds a Family Camp session under the picked cm_id: it must
+        not be taken for the match (#2435)."""
+        _wire_years(
+            mock_repository,
+            sessions={
+                2026: {1001: _sess(1001, "Session 1", 2026)},
+                2025: {
+                    1001: _sess(1001, "Family Camp 1", 2025, session_type="family"),
+                    2001: _sess(2001, "Session 9", 2025),
+                },
+            },
+            snapshots={
+                2026: [create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=20)],
+                2025: [
+                    create_mock_snapshot("2025-01-06", 1001, 2025, enrolled=70),
+                    create_mock_snapshot("2025-01-06", 2001, 2025, enrolled=80),
+                ],
+            },
+            attendees={2026: [create_mock_attendee_with_date(1, 1001, "2026-01-03")]},
+            transitions={2026: [create_mock_status_transition(1, 1001, "2026-01-10T00:00:00Z")]},
+        )
+
+        result = await service.get_velocity(year=2026, session_cm_id=1001, compare_years=[2025], metric=metric)
+
+        assert result.prior_years == []
+        assert result.prior_year_cancelled_to_date == []
+        assert result.prior_year_session_summaries == []
+        assert result.prior_year_by_gender == []
 
 
 # ============================================================================
@@ -4843,3 +4968,133 @@ class TestSeasonWindowEdges:
         assert last.week_number == 1
         assert last.is_partial is True
         assert last.days_in_week == 3
+
+
+# ============================================================================
+# One session resolver (#3208): scope, summer window, Family Camp separation
+# ============================================================================
+
+
+class TestVelocityScopeResolver:
+    """The current line and the prior line scope through resolve_scope_ids."""
+
+    @pytest.mark.asyncio
+    async def test_hybrid_current_line_is_the_picked_session_plus_its_ag_cabins(self, service, mock_repository):
+        """Snapshots that start late make _build_curves rebuild the early weeks from attendees.
+        The rebuild saw every attendee in the year, so a picked session read as the whole
+        scope (prod: Session 4 showed 1,193). It is the session and its AG cabins only."""
+        from datetime import date
+
+        _wire_years(
+            mock_repository,
+            sessions={
+                2026: {
+                    1001: _sess(1001, "Session 1", 2026),
+                    1002: _sess(1002, "Session 2", 2026),
+                    1003: _sess(1003, "AG Cabin-Session 1", 2026, session_type="ag", parent_id=1001),
+                }
+            },
+            snapshots={
+                2026: [
+                    create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=20),
+                    create_mock_snapshot("2026-01-05", 1002, 2026, enrolled=50),
+                    create_mock_snapshot("2026-01-05", 1003, 2026, enrolled=5),
+                ]
+            },
+            attendees={
+                2026: [
+                    create_mock_attendee_with_date(1, 1001, "2025-11-05"),
+                    create_mock_attendee_with_date(2, 1001, "2025-11-06"),
+                    create_mock_attendee_with_date(3, 1002, "2025-11-05"),
+                    create_mock_attendee_with_date(4, 1002, "2025-11-06"),
+                    create_mock_attendee_with_date(5, 1003, "2025-11-07"),
+                ]
+            },
+        )
+
+        result = await service.get_velocity(year=2026, session_cm_id=1001, today=date(2026, 1, 12))
+
+        assert result.combined.weekly[-1].enrolled == 25  # 20 in Session 1 + 5 in its AG cabin
+        assert [c.session_cm_id for c in result.by_session] == [1001]
+        week1 = next(p for p in result.combined.weekly if p.week_number == 1)
+        assert week1.enrolled == 3  # rebuilt: two Session 1 attendees + the AG one, not all five
+
+    @pytest.mark.asyncio
+    async def test_offseason_teen_sessions_excluded_by_summer_window(self, service, mock_repository):
+        """A scit session outside the summer span of the main sessions never enters the
+        curves, in the current year or the prior one."""
+        from datetime import date
+
+        def year_sessions(year: int) -> dict:
+            return {
+                1001: _sess(1001, "Session 1", year),
+                3001: _sess(3001, "Counselor In-Training", year, session_type="scit"),
+                3002: _sess(
+                    3002,
+                    "Teen Interns",
+                    year,
+                    session_type="scit",
+                    start_date=f"{year - 1}-11-15",
+                    end_date=f"{year}-03-01",
+                ),
+            }
+
+        def year_attendees(year: int) -> list:
+            return [
+                create_mock_attendee_with_date(1, 1001, f"{year}-01-03", year=year),
+                create_mock_attendee_with_date(2, 3001, f"{year}-01-04", year=year),
+                create_mock_attendee_with_date(3, 3002, f"{year}-01-05", year=year),
+                create_mock_attendee_with_date(4, 3002, f"{year}-01-06", year=year),
+            ]
+
+        _wire_years(
+            mock_repository,
+            sessions={2026: year_sessions(2026), 2025: year_sessions(2025)},
+            attendees={2026: year_attendees(2026), 2025: year_attendees(2025)},
+        )
+
+        result = await service.get_velocity(
+            year=2026,
+            session_types=["main", "scit"],
+            compare_years=[2025],
+            today=date(2026, 3, 1),
+        )
+
+        assert result.combined.weekly[-1].enrolled == 2
+        assert sorted(c.session_cm_id for c in result.by_session) == [1001, 3001]
+        assert result.prior_years[0].weekly[-1].enrolled == 2
+        assert sorted(s.session_cm_id for s in result.prior_year_session_summaries) == [1001, 3001]
+
+    @pytest.mark.asyncio
+    async def test_summer_numbers_unchanged_by_family_adult_and_bmitzvah(self, service, mock_repository):
+        """Family Camp never folds into summer metrics in either direction (#2435 / #2455):
+        family, adult and B*Mitzvah sessions, attendees and snapshots change nothing."""
+        from datetime import date
+
+        def build(extra: bool) -> None:
+            sessions = {y: {1001: _sess(1001, "Session 1", y)} for y in (2026, 2025)}
+            snaps = {
+                2026: [create_mock_snapshot("2026-01-05", 1001, 2026, enrolled=20)],
+                2025: [create_mock_snapshot("2025-01-06", 1001, 2025, enrolled=15)],
+            }
+            atts: dict[int, list] = {2026: [], 2025: []}
+            if extra:
+                for y in (2026, 2025):
+                    sessions[y][5001] = _sess(5001, "Family Camp 1", y, session_type="family")
+                    sessions[y][5002] = _sess(5002, "Women's Weekend", y, session_type="adult")
+                    sessions[y][5003] = _sess(5003, "B*Mitzvah Year 1", y, session_type="bmitzvah")
+                    snaps[y] += [create_mock_snapshot(f"{y}-01-05", sid, y, enrolled=40) for sid in (5001, 5002, 5003)]
+                    atts[y] += [
+                        create_mock_attendee_with_date(90 + i, 5001 + i, f"{y}-01-03", year=y) for i in range(3)
+                    ]
+            _wire_years(mock_repository, sessions=sessions, snapshots=snaps, attendees=atts)
+
+        build(extra=False)
+        base = await service.get_velocity(year=2026, compare_years=[2025], today=date(2026, 1, 12))
+        build(extra=True)
+        polluted = await service.get_velocity(year=2026, compare_years=[2025], today=date(2026, 1, 12))
+
+        assert polluted.combined.weekly == base.combined.weekly
+        assert polluted.prior_years == base.prior_years
+        assert [c.session_cm_id for c in polluted.by_session] == [1001]
+        assert [s.session_cm_id for s in polluted.prior_year_session_summaries] == [1001]
