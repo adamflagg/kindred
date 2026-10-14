@@ -86,7 +86,8 @@ export function SyncTab() {
   const [collapsedPhases, setCollapsedPhases] = useState<Set<SyncPhase>>(new Set())
 
   // Use the completion toasts hook - it wraps useSyncStatusAPI and fires toasts on completion
-  const syncStatus = useSyncCompletionToasts()
+  // Asked for the season on screen, so each season's cards show their own last runs.
+  const syncStatus = useSyncCompletionToasts(syncYear)
   const isLoading = !syncStatus
   const runIndividualSync = useRunIndividualSync()
   const runOnDemandSync = useRunOnDemandSync()

@@ -732,7 +732,8 @@ func TestHourlyRunDuringAManualPriorSeasonRunSyncsThePrimary(t *testing.T) {
 			if got := rec.count("bunk_assignments", 2027); got != 0 {
 				t.Errorf("the refused hourly run still ran bunk_assignments for 2027 (%d runs)", got)
 			}
-			if st := o.GetStatus("bunk_assignments"); st == nil || st.Year != 2026 || st.Trigger != triggerHistorical {
+			// A manual run of the prior synced season is filed as manual, not historical (scan fix).
+			if st := o.GetStatus("bunk_assignments"); st == nil || st.Year != 2026 || st.Trigger != triggerManual {
 				t.Errorf("the manual 2026 run's slot was restamped: %+v", st)
 			}
 
@@ -743,8 +744,8 @@ func TestHourlyRunDuringAManualPriorSeasonRunSyncsThePrimary(t *testing.T) {
 			o.mu.RLock()
 			last := o.lastCompletedStatus["bunk_assignments"]
 			o.mu.RUnlock()
-			if last == nil || last.Year != 2026 || last.Trigger != triggerHistorical {
-				t.Errorf("the manual 2026 bunk_assignments run was filed as %+v, want year 2026, trigger historical", last)
+			if last == nil || last.Year != 2026 || last.Trigger != triggerManual {
+				t.Errorf("the manual 2026 bunk_assignments run was filed as %+v, want year 2026, trigger manual", last)
 			}
 		})
 	})

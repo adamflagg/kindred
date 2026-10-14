@@ -781,6 +781,18 @@ type Orchestrator struct {
 	mu                  sync.RWMutex
 	runningJobs         map[string]*Status
 	lastCompletedStatus map[string]*Status // Store last completed status for each job
+	// lastCompletedBySeason keeps each job's last completion per season (the Status.Year it was
+	// filed under, 0 being the primary). lastCompletedStatus is the latest of any season, and
+	// since the scheduled runs cover two seasons a 2026 run overwrites 2027's there every night;
+	// Manage > Sync reads this one through GetStatusForSeason so each season's cards keep their
+	// own counts, errors and duration.
+	lastCompletedBySeason map[seasonKey]*Status
+	// awaitedRuns holds, per run token, the completion of a run someone is waiting on
+	// (runSyncAndWaitWithService): nil until the run is published, then its Status. The waiter
+	// deletes its entry when it has read it or gives up, so the map only ever holds runs in
+	// flight. A waiter that read the job's single last completion instead could miss its own run
+	// when another run of the job finished inside one poll gap, and wait forever.
+	awaitedRuns map[string]*Status
 	// finishingJobs holds, per job, the runningJobs entry of a run that has finished but is
 	// not yet published: its sync_runs row and FastAPI notification are in flight. The entry
 	// stays in runningJobs meanwhile, so the run still reads as running and its slot stays
@@ -789,15 +801,19 @@ type Orchestrator struct {
 	// batchChanged accumulates each in-flight batch's own changed-collections set, keyed by
 	// BatchID -- the batch-scoped counterpart to lastCompletedStatus's process-lifetime view.
 	// See recordBatchChange and batchChangedCollections.
-	batchChanged            map[string]map[string]bool
-	jobSpacing              time.Duration
-	baseClient              *campminder.Client // Base client for year overrides
-	currentSyncYear         int                // Year being synced (0 = current year from env)
-	dailySyncRunning        bool               // Track if daily sync sequence is in progress
-	dailySyncQueue          []string           // Services queued for daily sync
-	historicalSyncRunning   bool               // Track if historical sync sequence is in progress
-	historicalSyncQueue     []string           // Services queued for historical sync
-	historicalSyncYear      int                // Year being synced in historical sync
+	batchChanged          map[string]map[string]bool
+	jobSpacing            time.Duration
+	baseClient            *campminder.Client // Base client for year overrides
+	currentSyncYear       int                // Year being synced (0 = current year from env)
+	dailySyncRunning      bool               // Track if daily sync sequence is in progress
+	dailySyncQueue        []string           // Services queued for daily sync
+	historicalSyncRunning bool               // Track if historical sync sequence is in progress
+	historicalSyncQueue   []string           // Services queued for historical sync
+	historicalSyncYear    int                // Year being synced in historical sync
+	// historicalSyncSeason is true when that year queue is a synced season (N-1) rather than a
+	// replay: a manual Run Sync of the prior season. It still runs as a year queue (its own
+	// instances, the primary's registry untouched), but it reports as a season run, not historical.
+	historicalSyncSeason    bool
 	weeklySyncRunning       bool               // Track if weekly sync sequence is in progress
 	weeklySyncQueue         []string           // Services queued for weekly sync
 	customValuesSyncRunning bool               // Track if custom values sync sequence is in progress
@@ -820,16 +836,26 @@ type Orchestrator struct {
 	yearServicesFn   func(year int, debug bool) map[string]Service
 }
 
+// seasonKey names one job's completions for one season: the Status.Year a run was filed under,
+// where 0 is the primary (a request for the primary may also name it, so the primary's view
+// reads both 0 and its year).
+type seasonKey struct {
+	job  string
+	year int
+}
+
 // NewOrchestrator creates a new orchestrator
 func NewOrchestrator(app core.App) *Orchestrator {
 	return &Orchestrator{
-		app:                 app,
-		services:            make(map[string]Service),
-		runningJobs:         make(map[string]*Status),
-		lastCompletedStatus: make(map[string]*Status),
-		finishingJobs:       make(map[string]*Status),
-		batchChanged:        make(map[string]map[string]bool),
-		jobSpacing:          2 * time.Second, // Default 2 seconds between jobs
+		app:                   app,
+		services:              make(map[string]Service),
+		runningJobs:           make(map[string]*Status),
+		lastCompletedStatus:   make(map[string]*Status),
+		lastCompletedBySeason: make(map[seasonKey]*Status),
+		awaitedRuns:           make(map[string]*Status),
+		finishingJobs:         make(map[string]*Status),
+		batchChanged:          make(map[string]map[string]bool),
+		jobSpacing:            2 * time.Second, // Default 2 seconds between jobs
 	}
 }
 
@@ -1014,6 +1040,10 @@ func (o *Orchestrator) publishCompletedLocked(completed *Status) {
 	// which nothing states and nothing tests.
 	published := snapshotStatus(completed)
 	o.lastCompletedStatus[completed.Type] = &published
+	o.lastCompletedBySeason[seasonKey{job: completed.Type, year: completed.Year}] = &published
+	if _, awaited := o.awaitedRuns[completed.RunToken]; awaited && completed.RunToken != "" {
+		o.awaitedRuns[completed.RunToken] = &published
+	}
 	if claimed := o.finishingJobs[completed.Type]; claimed != nil && o.runningJobs[completed.Type] == claimed {
 		delete(o.runningJobs, completed.Type)
 	}
@@ -1175,18 +1205,21 @@ func (o *Orchestrator) GetRunningJobs() []string {
 	return running
 }
 
-// IsDailySyncRunning returns whether a daily sync sequence is in progress
+// IsDailySyncRunning returns whether a daily sync sequence is in progress. A manual run of the
+// prior synced season counts: it is a season run, like a manual run of the primary, and the
+// client keeps polling on this flag (useSyncStatusAPI's refetchInterval).
 func (o *Orchestrator) IsDailySyncRunning() bool {
 	o.mu.RLock()
 	defer o.mu.RUnlock()
-	return o.dailySyncRunning
+	return o.dailySyncRunning || (o.historicalSyncRunning && o.historicalSyncSeason)
 }
 
-// IsHistoricalSyncRunning returns whether a historical sync sequence is in progress
+// IsHistoricalSyncRunning returns whether a historical sync sequence is in progress: a replay
+// of a season outside the synced pair. A manual run of the prior synced season is not one.
 func (o *Orchestrator) IsHistoricalSyncRunning() bool {
 	o.mu.RLock()
 	defer o.mu.RUnlock()
-	return o.historicalSyncRunning
+	return o.historicalSyncRunning && !o.historicalSyncSeason
 }
 
 // GetHistoricalSyncYear returns the year being synced in historical sync
@@ -1320,6 +1353,9 @@ func (o *Orchestrator) GetCurrentRunProgress() (runType string, remaining []stri
 		queue = o.dailySyncQueue
 	case o.historicalSyncRunning:
 		runType = runTypeHistorical
+		if o.historicalSyncSeason {
+			runType = runTypeDaily // a synced season's run, as IsDailySyncRunning reports it
+		}
 		queue = o.historicalSyncQueue
 	case o.weeklySyncRunning:
 		runType = runTypeWeekly
@@ -1534,6 +1570,15 @@ func (o *Orchestrator) RunSingleSync(parentCtx context.Context, syncType string)
 func (o *Orchestrator) runSingleSyncInternal(
 	parentCtx context.Context, syncType string, origin runOrigin, override Service,
 ) (string, error) {
+	return o.startSingleSync(parentCtx, syncType, origin, override, false)
+}
+
+// startSingleSync is runSingleSyncInternal. awaited registers the run in awaitedRuns, inside the
+// same critical section that marks it running, so its completion is kept for the caller that
+// will wait on it however fast the run finishes (see runSyncAndWaitWithService).
+func (o *Orchestrator) startSingleSync(
+	parentCtx context.Context, syncType string, origin runOrigin, override Service, awaited bool,
+) (string, error) {
 	// Generate a unique token for this run
 	runToken := generateRunToken()
 
@@ -1587,6 +1632,9 @@ func (o *Orchestrator) runSingleSyncInternal(
 			Session:   origin.session,
 		}
 		o.runningJobs[syncType] = status
+	}
+	if awaited {
+		o.awaitedRuns[runToken] = nil
 	}
 	o.mu.Unlock()
 
@@ -2433,12 +2481,20 @@ func (o *Orchestrator) runSyncAndWaitWithService(
 	//
 	// svc, not override: the instance configured above is the instance that runs, even if
 	// ensurePrimaryClient swaps the registry between the lookup and the start.
-	expectedToken, err := o.runSingleSyncInternal(ctx, syncType, origin, svc)
+	expectedToken, err := o.startSingleSync(ctx, syncType, origin, svc, true)
 	if err != nil {
 		return err
 	}
+	// The entry is this waiter's to remove, whichever way it stops waiting.
+	defer func() {
+		o.mu.Lock()
+		delete(o.awaitedRuns, expectedToken)
+		o.mu.Unlock()
+	}()
 
-	// Wait for completion
+	// Wait for completion. The run's own completion is read by its token from awaitedRuns, not
+	// from the job's single last completion: another run of the same job can start and finish
+	// inside one poll gap, and would then be all the waiter could see.
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 
@@ -2447,136 +2503,159 @@ func (o *Orchestrator) runSyncAndWaitWithService(
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
-			if !o.IsRunning(syncType) {
-				// Check final status — only accept if the token matches this run
-				o.mu.RLock()
-				status := o.lastCompletedStatus[syncType]
-				o.mu.RUnlock()
+			o.mu.RLock()
+			status := o.awaitedRuns[expectedToken]
+			o.mu.RUnlock()
 
-				if status != nil && status.RunToken == expectedToken {
-					if status.Status == statusFailed {
-						return fmt.Errorf("%s", status.Error)
-					}
-					return nil
+			if status != nil {
+				if status.Status == statusFailed {
+					return fmt.Errorf("%s", status.Error)
 				}
-				// Token doesn't match — a stale completion; keep waiting
+				return nil
 			}
 		}
 	}
 }
 
-// GetStatus returns the status of a sync job
+// GetStatus returns the status of a sync job: its live run, or its latest completion of any
+// season. This is the status payload without a ?year=, which every surface but Manage > Sync
+// reads -- Refresh Housing and the CSV upload watch a prior season's run finish through it.
 func (o *Orchestrator) GetStatus(syncType string) *Status {
 	o.mu.RLock()
 	defer o.mu.RUnlock()
+	return o.statusLocked(syncType, nil)
+}
 
-	// Check running jobs first
-	if status, exists := o.runningJobs[syncType]; exists {
-		// Return a copy to avoid race conditions
+// GetStatusForSeason returns the status of a sync job as the given season's Manage > Sync card
+// shows it: a run of that season in flight, or that season's own last completion. Runs of the
+// other season never stand in for it. primary is the primary season; its view reads the runs
+// filed under 0 and under its year, and keeps GetStatus's pending readout for the queues it
+// belongs to. Another season's view is its running run or its last completion, nothing else:
+// the client keeps polling during its runs on IsDailySyncRunning.
+func (o *Orchestrator) GetStatusForSeason(syncType string, year, primary int) *Status {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	if year == 0 || year == primary {
+		return o.statusLocked(syncType, []int{0, primary})
+	}
+	return o.statusLocked(syncType, []int{year})
+}
+
+// seasonCompletedLocked returns syncType's newest completion filed under any of years. The
+// caller must hold o.mu.
+func (o *Orchestrator) seasonCompletedLocked(syncType string, years []int) *Status {
+	var newest *Status
+	for _, year := range years {
+		status := o.lastCompletedBySeason[seasonKey{job: syncType, year: year}]
+		if status == nil {
+			continue
+		}
+		if newest == nil || (status.EndTime != nil && (newest.EndTime == nil || status.EndTime.After(*newest.EndTime))) {
+			newest = status
+		}
+	}
+	return newest
+}
+
+// statusLocked is GetStatus (seasonYears nil: any season) and GetStatusForSeason (the
+// Status.Year values that belong to the viewed season; the primary's view lists 0). The caller
+// must hold o.mu. Every return is a copy, so a caller can never reach the stored Status.
+func (o *Orchestrator) statusLocked(syncType string, seasonYears []int) *Status {
+	anySeason := seasonYears == nil
+	primaryView := anySeason || slices.Contains(seasonYears, 0)
+	completed := func() *Status {
+		if anySeason {
+			return o.lastCompletedStatus[syncType]
+		}
+		return o.seasonCompletedLocked(syncType, seasonYears)
+	}
+	copyOf := func(status *Status) *Status {
 		statusCopy := *status
 		return &statusCopy
 	}
 
+	// Check running jobs first
+	if status, exists := o.runningJobs[syncType]; exists && (anySeason || slices.Contains(seasonYears, status.Year)) {
+		return copyOf(status)
+	}
+	if !primaryView {
+		if status := completed(); status != nil {
+			return copyOf(status)
+		}
+		return nil
+	}
+
 	// If daily sync is running and this service is queued, return pending status
-	if o.dailySyncRunning {
-		for _, queuedService := range o.dailySyncQueue {
-			if queuedService == syncType {
-				// This service is part of the daily sync sequence
-				// Check if it has already completed in this sequence
-				if status, exists := o.lastCompletedStatus[syncType]; exists {
-					// If the status is from the current year (Year == 0), it might be from this sequence
-					// Check if it was completed very recently (within the last hour)
-					if status.Year == 0 && status.EndTime != nil {
-						if time.Since(*status.EndTime) < time.Hour {
-							statusCopy := *status
-							return &statusCopy
-						}
-					}
-				}
-				// Otherwise, it's pending
-				return &Status{
-					Type:   syncType,
-					Status: statusPending,
-					Year:   0, // Current year
-				}
+	if o.dailySyncRunning && slices.Contains(o.dailySyncQueue, syncType) {
+		// This service is part of the daily sync sequence. Check whether the primary has already
+		// completed it in this sequence: a run filed under the primary (Year 0) within the last
+		// hour. The primary's own completion, not the latest of any season -- the queue goes on
+		// to the prior season's pass, and that run of the same job must not turn the primary's
+		// finished card back to pending.
+		if status := o.lastCompletedBySeason[seasonKey{job: syncType, year: 0}]; status != nil && status.EndTime != nil {
+			if time.Since(*status.EndTime) < time.Hour {
+				return copyOf(status)
 			}
+		}
+		// Otherwise, it's pending
+		return &Status{
+			Type:   syncType,
+			Status: statusPending,
+			Year:   0, // Current year
 		}
 	}
 
-	// If historical sync is running and this service is queued, return pending status
-	if o.historicalSyncRunning {
-		for _, queuedService := range o.historicalSyncQueue {
-			if queuedService == syncType {
-				// This service is part of the historical sync sequence
-				// Check if it has already completed in this sequence
-				if status, exists := o.lastCompletedStatus[syncType]; exists {
-					// If the status year matches the historical sync year, it's from this sequence
-					if status.Year == o.historicalSyncYear {
-						statusCopy := *status
-						return &statusCopy
-					}
-				}
-				// Otherwise, it's pending
-				return &Status{
-					Type:   syncType,
-					Status: statusPending,
-					Year:   o.historicalSyncYear,
-				}
+	// If historical sync is running and this service is queued, return pending status. Only in
+	// the any-season view: a replay is not the primary's, and its year's cards are not a view
+	// GetStatusForSeason serves.
+	if anySeason && o.historicalSyncRunning && slices.Contains(o.historicalSyncQueue, syncType) {
+		// Check if it has already completed in this sequence
+		if status, exists := o.lastCompletedStatus[syncType]; exists {
+			// If the status year matches the historical sync year, it's from this sequence
+			if status.Year == o.historicalSyncYear {
+				return copyOf(status)
 			}
+		}
+		// Otherwise, it's pending
+		return &Status{
+			Type:   syncType,
+			Status: statusPending,
+			Year:   o.historicalSyncYear,
 		}
 	}
 
 	// If weekly sync is running and this service is queued, return pending status
-	if o.weeklySyncRunning {
-		for _, queuedService := range o.weeklySyncQueue {
-			if queuedService == syncType {
-				// Check if it has already completed in this sequence
-				if status, exists := o.lastCompletedStatus[syncType]; exists {
-					// If completed very recently (within the last hour), show that status
-					if status.EndTime != nil && time.Since(*status.EndTime) < time.Hour {
-						statusCopy := *status
-						return &statusCopy
-					}
-				}
-				// Otherwise, it's pending
-				return &Status{
-					Type:   syncType,
-					Status: statusPending,
-					Year:   0, // Global sync (no year)
-				}
-			}
+	if o.weeklySyncRunning && slices.Contains(o.weeklySyncQueue, syncType) {
+		// If completed very recently (within the last hour), show that status
+		if status := completed(); status != nil && status.EndTime != nil && time.Since(*status.EndTime) < time.Hour {
+			return copyOf(status)
+		}
+		// Otherwise, it's pending
+		return &Status{
+			Type:   syncType,
+			Status: statusPending,
+			Year:   0, // Global sync (no year)
 		}
 	}
 
 	// If custom values sync is running and this service is queued, return pending status
-	if o.customValuesSyncRunning {
-		for _, queuedService := range o.customValuesSyncQueue {
-			if queuedService == syncType {
-				// Check if it has already completed in this sequence
-				if status, exists := o.lastCompletedStatus[syncType]; exists {
-					// If completed very recently (within the last hour), show that status
-					if status.EndTime != nil && time.Since(*status.EndTime) < time.Hour {
-						statusCopy := *status
-						return &statusCopy
-					}
-				}
-				// Otherwise, it's pending
-				return &Status{
-					Type:   syncType,
-					Status: statusPending,
-					Year:   o.currentSyncYear, // Custom values sync uses current sync year
-				}
-			}
+	if o.customValuesSyncRunning && slices.Contains(o.customValuesSyncQueue, syncType) {
+		// If completed very recently (within the last hour), show that status
+		if status := completed(); status != nil && status.EndTime != nil && time.Since(*status.EndTime) < time.Hour {
+			return copyOf(status)
+		}
+		// Otherwise, it's pending
+		return &Status{
+			Type:   syncType,
+			Status: statusPending,
+			Year:   o.currentSyncYear, // Custom values sync uses current sync year
 		}
 	}
 
 	// Check last completed status
-	if status, exists := o.lastCompletedStatus[syncType]; exists {
-		// Return a copy to avoid race conditions
-		statusCopy := *status
-		return &statusCopy
+	if status := completed(); status != nil {
+		return copyOf(status)
 	}
-
 	return nil
 }
 
@@ -2871,16 +2950,26 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 	// filed under a backfill's year.
 	var batch runOrigin
 	if opts.Year > 0 {
-		batch = newBatch(triggerHistorical).forYear(opts.Year)
+		// A run of the prior synced season is a staff member's run of a season the scheduled
+		// runs sync, not a replay: it is filed as manual, like a manual run of the primary, and
+		// reports as a season run (historicalSyncSeason). Only a season outside the synced pair
+		// is historical.
+		syncedSeason := syncedSeasonsInclude(opts.Year)
+		trigger := triggerHistorical
+		if syncedSeason {
+			trigger = triggerManual
+		}
+		batch = newBatch(trigger).forYear(opts.Year)
 		if isQueueRun {
 			o.registerBatch(batch.batchID)
 		}
 
-		// Historical sync tracking
+		// Year-queue tracking (a replay, or the prior synced season)
 		o.mu.Lock()
 		o.historicalSyncRunning = true
 		o.historicalSyncQueue = servicesToRun
 		o.historicalSyncYear = opts.Year
+		o.historicalSyncSeason = syncedSeason
 		o.currentRunIndex = 0 // Reset index at start
 		o.mu.Unlock()
 
@@ -2889,6 +2978,7 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 			o.historicalSyncRunning = false
 			o.historicalSyncQueue = nil
 			o.historicalSyncYear = 0
+			o.historicalSyncSeason = false
 			o.currentRunIndex = 0
 			delete(o.batchChanged, batch.batchID)
 			o.mu.Unlock()
@@ -3315,6 +3405,7 @@ func (o *Orchestrator) ClearSyncFlags() {
 	o.historicalSyncRunning = false
 	o.historicalSyncQueue = nil
 	o.historicalSyncYear = 0
+	o.historicalSyncSeason = false
 	o.weeklySyncRunning = false
 	o.weeklySyncQueue = nil
 	o.customValuesSyncRunning = false

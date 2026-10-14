@@ -24,8 +24,13 @@ vi.mock('react-hot-toast', () => ({
 // mocking that hook lets a test drive a running->success transition across two renders
 // without standing up a real QueryClient/pb network layer.
 let mockSyncStatus: Partial<SyncStatusResponse> | null = null
+// The options every useSyncStatusAPI call was given, so a test can see which season was asked for.
+let statusCalls: Array<{ year?: number } | undefined> = []
 vi.mock('./useSyncStatusAPI', () => ({
-  useSyncStatusAPI: () => ({ data: mockSyncStatus }),
+  useSyncStatusAPI: (opts?: { year?: number }) => {
+    statusCalls.push(opts)
+    return { data: mockSyncStatus }
+  },
 }))
 
 // kindred#2803: spied so a test can see WHICH sync the completion names. Every other
@@ -341,5 +346,29 @@ describe('useSyncCompletionToasts names the completed sync when it invalidates',
     rerender()
 
     expect(invalidateSyncData).toHaveBeenCalledWith('persons')
+  })
+})
+
+// Scan fix (#3211): Manage > Sync's status is the viewed season's when that is a synced season,
+// so each season's cards show their own last runs. Any other year reads the payload as before.
+describe('useSyncCompletionToasts asks for the viewed season', () => {
+  beforeEach(() => {
+    statusCalls = []
+    mockSyncStatus = { _configured_year: 2027, _synced_years: [2027, 2026] }
+  })
+
+  it.each([2027, 2026])('asks for synced season %i', (viewed) => {
+    renderHook(() => useSyncCompletionToasts(viewed))
+    expect(statusCalls.some((opts) => opts?.year === viewed)).toBe(true)
+  })
+
+  it('asks for no season when the viewed year is not synced', () => {
+    renderHook(() => useSyncCompletionToasts(2019))
+    expect(statusCalls.every((opts) => opts?.year === undefined)).toBe(true)
+  })
+
+  it('asks for no season when no year is given', () => {
+    renderHook(() => useSyncCompletionToasts())
+    expect(statusCalls.every((opts) => opts?.year === undefined)).toBe(true)
   })
 })

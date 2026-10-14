@@ -325,6 +325,18 @@ type syncRunRow struct {
 // telemetry query that cannot run must not take the status endpoint down with it. The caller
 // gets an empty map and falls back to `idle`, which is exactly the old behavior.
 func (o *Orchestrator) LastRecordedRuns() map[string]*Status {
+	return o.lastRecordedRuns(0)
+}
+
+// LastRecordedRunsForSeason is LastRecordedRuns over one season's rows (sync_runs.year), for the
+// per-season status payload Manage > Sync reads: without the filter, the prior season's nightly
+// run is every job's newest row and would stand in for the primary's after a restart.
+func (o *Orchestrator) LastRecordedRunsForSeason(year int) map[string]*Status {
+	return o.lastRecordedRuns(year)
+}
+
+// lastRecordedRuns is LastRecordedRuns, over every season's rows when year is 0.
+func (o *Orchestrator) lastRecordedRuns(year int) map[string]*Status {
 	out := make(map[string]*Status)
 	if o.app == nil {
 		return out
@@ -371,9 +383,9 @@ func (o *Orchestrator) LastRecordedRuns() map[string]*Status {
 		FROM (
 			SELECT *, ROW_NUMBER() OVER (PARTITION BY service ORDER BY started DESC, id DESC) AS rn
 			FROM ` + syncRunsCollection + `
-			WHERE status = {:success}
+			WHERE status = {:success} AND ({:year} = 0 OR year = {:year})
 		)
-		WHERE rn = 1`).Bind(dbx.Params{"success": statusSuccess})
+		WHERE rn = 1`).Bind(dbx.Params{"success": statusSuccess, "year": year})
 	if err := query.All(&rows); err != nil {
 		slog.Warn("Failed to read sync_runs history; status falls back to idle", "error", err)
 		return out

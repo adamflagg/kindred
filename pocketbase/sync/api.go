@@ -1288,6 +1288,44 @@ func resolveServiceStatuses(orchestrator *Orchestrator, syncTypes []string) map[
 	return statuses
 }
 
+// resolveServiceStatusesForSeason is resolveServiceStatuses for one synced season's Manage >
+// Sync cards (?year=): each job's live run or last completion of THAT season
+// (GetStatusForSeason), falling back to that season's rows in sync_runs. primary is the primary
+// season.
+func resolveServiceStatusesForSeason(orchestrator *Orchestrator, syncTypes []string, year, primary int) map[string]any {
+	recorded := orchestrator.LastRecordedRunsForSeason(year)
+
+	statuses := make(map[string]any, len(syncTypes))
+	for _, syncType := range syncTypes {
+		live := orchestrator.GetStatusForSeason(syncType, year, primary)
+		switch {
+		case live != nil:
+			statuses[syncType] = live
+		case recorded[syncType] != nil:
+			statuses[syncType] = recorded[syncType]
+		default:
+			statuses[syncType] = map[string]string{
+				"status": "idle",
+			}
+		}
+	}
+	return statuses
+}
+
+// statusYearParam reads the sync-status endpoint's optional ?year=. Absent (0) is the
+// any-season payload every surface but Manage > Sync reads, unchanged; a named year must be
+// one of the synced seasons, [primary, primary-1].
+func statusYearParam(raw string, primary int) (int, error) {
+	if raw == "" {
+		return 0, nil
+	}
+	year, err := strconv.Atoi(raw)
+	if err != nil || (year != primary && year != primary-1) {
+		return 0, fmt.Errorf("year must be one of the synced seasons, %d or %d", primary, primary-1)
+	}
+	return year, nil
+}
+
 // statusSyncTypes returns every job the sync-status payload reports on.
 //
 // Derived from the registry, because the failure mode of a hand-written list here is severe
@@ -1321,15 +1359,22 @@ func resolveServiceStatuses(orchestrator *Orchestrator, syncTypes []string) map[
 // but is listed mid-Transform here.
 func statusSyncTypes() []string { return allJobIDs() }
 
-// seasonStatusFields is the season part of the sync status payload. `_configured_year` keeps its
-// meaning (the primary season) and its fallback to the calendar year when the season can't be
-// resolved.
-func seasonStatusFields() map[string]any {
+// statusPrimarySeason is the primary season the sync status payload reports, falling back to
+// the calendar year when the season can't be resolved.
+func statusPrimarySeason() int {
 	now := nowFn()
 	primary, err := PrimarySeason(now)
 	if err != nil {
 		primary = now.Year()
 	}
+	return primary
+}
+
+// seasonStatusFields is the season part of the sync status payload. `_configured_year` keeps its
+// meaning (the primary season) and its fallback to the calendar year when the season can't be
+// resolved.
+func seasonStatusFields() map[string]any {
+	primary := statusPrimarySeason()
 	return map[string]any{
 		"_configured_year": primary,
 		"_synced_years":    []int{primary, primary - 1},
@@ -1337,9 +1382,21 @@ func seasonStatusFields() map[string]any {
 	}
 }
 
-// handleSyncStatus returns the status of all sync jobs
+// handleSyncStatus returns the status of all sync jobs.
+//
+// Optional ?year= names a synced season, and the per-job entries are then that season's own
+// (Manage > Sync passes the season it is viewing): the scheduled runs sync two seasons, and the
+// prior season's nightly run would otherwise stand in for the primary's on every card. Without
+// it the payload is exactly what it was -- each job's latest run of any season -- because the
+// other surfaces watch a prior season's Refresh Housing or CSV processing finish through it.
 func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 	orchestrator := scheduler.GetOrchestrator()
+
+	primary := statusPrimarySeason()
+	viewedYear, err := statusYearParam(e.Request.URL.Query().Get("year"), primary)
+	if err != nil {
+		return e.JSON(http.StatusBadRequest, map[string]any{"error": err.Error()})
+	}
 
 	// Get status of all known sync types. The payload is a JSON object keyed by job
 	// name, so this order is documentation rather than protocol -- it is kept aligned
@@ -1348,7 +1405,12 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 	// tables from a single API call - there are no separate households or person_tags syncs
 	syncTypes := statusSyncTypes()
 
-	statuses := resolveServiceStatuses(orchestrator, syncTypes)
+	var statuses map[string]any
+	if viewedYear == 0 {
+		statuses = resolveServiceStatuses(orchestrator, syncTypes)
+	} else {
+		statuses = resolveServiceStatusesForSeason(orchestrator, syncTypes, viewedYear, primary)
+	}
 
 	// Add daily sync status
 	statuses["_daily_sync_running"] = orchestrator.IsDailySyncRunning()

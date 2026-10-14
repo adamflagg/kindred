@@ -403,6 +403,9 @@ var serialGroups = []struct {
 			"TestBunkRequestsUploadForThePriorSeasonSyncsThatSeason",
 			"TestProcessRequestsRouteProcessesTheViewedSeason",
 			"TestSeasonStatusFields",
+			"TestTwoSeasonDailyRunKeepsEachSeasonsLastRunApart",
+			"TestPrimaryCardsStayFinishedDuringThePriorSeasonPass",
+			"TestManualRunOfThePriorSyncedSeasonIsNotHistorical",
 		},
 	},
 	{

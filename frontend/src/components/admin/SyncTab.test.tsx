@@ -52,37 +52,44 @@ let aidPostingsStatus: unknown = idleStatus
 // absent by default, like an older backend. Reset in the season-line describe's afterEach.
 let seasonStatusFields: Record<string, unknown> = {}
 
+// The season SyncTab asks the status for, one entry per render (useSyncCompletionToasts'
+// argument). Reset in the per-season status describe's afterEach.
+let toastsViewedYears: Array<number | undefined> = []
+
 vi.mock('../../hooks/useSyncCompletionToasts', () => ({
-  useSyncCompletionToasts: () => ({
-    ...seasonStatusFields,
-    family_camp_derived: idleStatus,
-    lodging_assignments: idleStatus,
-    staff_skills: idleStatus,
-    financial_aid_applications: idleStatus,
-    get aid_postings() {
-      return aidPostingsStatus
-    },
-    household_demographics: idleStatus,
-    camper_dietary: idleStatus,
-    quest_registrations: idleStatus,
-    staff_applications: idleStatus,
-    staff_vehicle_info: idleStatus,
-    get stranded_assignment_cleanup() {
-      return strandedAssignmentCleanupStatus
-    },
-    get persons() {
-      return personsStatus
-    },
-    get staff_lookups() {
-      return staffLookupsStatus
-    },
-    get staff() {
-      return staffStatus
-    },
-    get camper_transportation() {
-      return camperTransportationStatus
-    },
-  }),
+  useSyncCompletionToasts: (viewedYear?: number) => {
+    toastsViewedYears.push(viewedYear)
+    return {
+      ...seasonStatusFields,
+      family_camp_derived: idleStatus,
+      lodging_assignments: idleStatus,
+      staff_skills: idleStatus,
+      financial_aid_applications: idleStatus,
+      get aid_postings() {
+        return aidPostingsStatus
+      },
+      household_demographics: idleStatus,
+      camper_dietary: idleStatus,
+      quest_registrations: idleStatus,
+      staff_applications: idleStatus,
+      staff_vehicle_info: idleStatus,
+      get stranded_assignment_cleanup() {
+        return strandedAssignmentCleanupStatus
+      },
+      get persons() {
+        return personsStatus
+      },
+      get staff_lookups() {
+        return staffLookupsStatus
+      },
+      get staff() {
+        return staffStatus
+      },
+      get camper_transportation() {
+        return camperTransportationStatus
+      },
+    }
+  },
 }))
 
 const notPending = { mutate: vi.fn(), isPending: false }
@@ -875,5 +882,26 @@ describe('SyncTab card runs carry the season being viewed', () => {
       debug: false,
       year: 2026,
     })
+  })
+})
+
+// Scan fix (#3211): the scheduled runs sync two seasons, and each Manage > Sync card shows its
+// job's last run. The tab asks the status for the season it is viewing, so the prior season's
+// nightly run no longer stands in for the primary's on every card.
+describe('SyncTab asks for the status of the season it is viewing', () => {
+  afterEach(() => {
+    toastsViewedYears = []
+    seasonStatusFields = {}
+    currentYearMock = 2027
+  })
+
+  it('passes the viewed year, and follows the year selector', () => {
+    seasonStatusFields = { _configured_year: 2027, _synced_years: [2027, 2026] }
+    renderSyncTab()
+    expect(toastsViewedYears.at(-1)).toBe(2027)
+
+    const yearSelect = screen.getByRole('option', { name: '2026' }).closest('select')
+    fireEvent.change(yearSelect as HTMLSelectElement, { target: { value: '2026' } })
+    expect(toastsViewedYears.at(-1)).toBe(2026)
   })
 })

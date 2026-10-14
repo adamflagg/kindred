@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../contexts/AuthContext'
 import { pb } from '../lib/pocketbase'
 import { queryKeys } from '../utils/queryKeys'
@@ -229,11 +229,18 @@ export function useSyncStatusAPI(
      * same cache entry is on.
      */
     forcePolling?: boolean
+    /**
+     * A synced season whose per-job statuses to read (`?year=`): that season's own last runs,
+     * never the other season's. Manage > Sync passes the season it is viewing. Absent, the
+     * payload is each job's latest run of any season, which every other surface reads.
+     */
+    year?: number | undefined
   } = {}
 ) {
   const { isLoading } = useAuth()
   const outerEnabled = opts.enabled ?? true
   const forcePolling = opts.forcePolling ?? false
+  const year = opts.year
   const queryClient = useQueryClient()
 
   // Fresh-login race: the very first /sync/status request can fire before
@@ -254,10 +261,12 @@ export function useSyncStatusAPI(
   }, [queryClient])
 
   return useQuery<SyncStatusResponse | null>({
-    queryKey: queryKeys.syncStatus(),
+    queryKey: year === undefined ? queryKeys.syncStatus() : queryKeys.syncStatusForYear(year),
     queryFn: async (): Promise<SyncStatusResponse | null> => {
       try {
-        const response = await pb.send('/api/custom/sync/status', {
+        const path =
+          year === undefined ? '/api/custom/sync/status' : `/api/custom/sync/status?year=${year}`
+        const response = await pb.send(path, {
           method: 'GET',
         })
         return response as SyncStatusResponse
@@ -305,6 +314,9 @@ export function useSyncStatusAPI(
     },
     // Always refetch on window focus to get latest status
     refetchOnWindowFocus: true,
+    // Switching the viewed season changes the key: keep showing the last payload until the new
+    // season's arrives, rather than dropping the whole tab back to its loading state.
+    placeholderData: keepPreviousData,
     enabled: !isLoading && outerEnabled,
   })
 }
