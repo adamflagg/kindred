@@ -12,7 +12,18 @@ import {
   cancelSessionChartHeight,
   transformCancelSessionData,
 } from './CancellationAnalysis'
-import { transformWaitlistSessionData } from './WaitlistAnalysis'
+import { transformWaitlistSessionData, waitlistSessionChartHeight } from './WaitlistAnalysis'
+
+/** Every row of an n-row chart fits in the height chosen for it, for n = 1..40. */
+function expectEveryRowFits(heightFor: (rows: number) => number) {
+  for (let n = 1; n <= 40; n++) {
+    const h = heightFor(n)
+    const { barHeight, rowGap, axisArea } = calculateBarSizing(h, n)
+    // A row is never shorter than its 20px label, whatever the bar height.
+    const rows = n * Math.max(barHeight, 20) + (n - 1) * rowGap
+    expect(rows, `${n} rows in ${h}px`).toBeLessThanOrEqual(h - axisArea)
+  }
+}
 
 const AG_RAW = 'All-Gender Session 2 (7th & 8th grades)'
 const types = { 'Session 1': 'main', [AG_RAW]: 'ag' }
@@ -64,13 +75,7 @@ describe('Cancellations by Session', () => {
 
   it('grows so every row of a long scope fits (no row clipped)', () => {
     expect(cancelSessionChartHeight(6)).toBe(300)
-    for (let n = 1; n <= 40; n++) {
-      const h = cancelSessionChartHeight(n)
-      const { barHeight, rowGap, axisArea } = calculateBarSizing(h, n)
-      // A row is never shorter than its 20px label, whatever the bar height.
-      const rows = n * Math.max(barHeight, 20) + (n - 1) * rowGap
-      expect(rows, `${n} rows in ${h}px`).toBeLessThanOrEqual(h - axisArea)
-    }
+    expectEveryRowFits(cancelSessionChartHeight)
   })
 })
 
@@ -93,5 +98,10 @@ describe('Waitlist by Session', () => {
     expect(segments.find((s) => s.key === 'session_1')?.label).toBe(
       sessionName(AG_RAW, 'ag', 'short')
     )
+  })
+
+  it('keeps its 340px for a short scope and grows so every row of a long one fits', () => {
+    expect(waitlistSessionChartHeight(6)).toBe(340)
+    expectEveryRowFits(waitlistSessionChartHeight)
   })
 })

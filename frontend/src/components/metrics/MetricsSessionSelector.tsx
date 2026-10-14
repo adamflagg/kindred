@@ -6,7 +6,7 @@
  *   row (pick 2B): At Camp › camp sessions, Quests › quest sessions, Teens › SCIT / TLI.
  * - The headings are the kit AidPicker's heading level with a session count (board 5, option i).
  * - By Duration stays a plain, unpickable label: the contrast that shows the headings are choices.
- * - About ten rows tall (board 7, max-h-96), in Analytics' own button.
+ * - About ten rows tall (board 7), in Analytics' own button.
  * - On a page that reads unfiltered data it shows disabled and says so (pick 4B).
  */
 
@@ -34,8 +34,11 @@ const VIEW_MODE_VALUES: Record<MetricsViewMode, string> = {
   sessions: ALL_SESSIONS_VALUE,
 }
 
-/** The kit popover, about ten rows tall instead of its 260px cap (board 7). */
-const LIST_CLASS = CS_PICKER_OPTIONS.replace('max-h-[260px]', 'max-h-96')
+/**
+ * The kit popover, about ten rows tall (board 7): ten 26px rows (py-1 + an 18px line) plus the
+ * list's p-1. The ruling is the row count; max-h-96 was only the proposed way there, and showed ~14.
+ */
+const LIST_CLASS = CS_PICKER_OPTIONS.replace('max-h-[260px]', 'max-h-[270px]')
 
 export function MetricsSessionSelector({ notUsedHere = false }: { notUsedHere?: boolean } = {}) {
   const session = useMetricsSession()

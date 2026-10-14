@@ -49,6 +49,16 @@ const WAITLIST_GRADE_SEGMENTS: StackedSegment[] = [
   { key: 'has_enrollment', label: 'Has Other Sessions', color: 'hsl(160, 100%, 35%)' },
 ]
 
+/**
+ * The fixed 340px clips rows past 13 into overflow-hidden (All Summer has more), as Cancellations'
+ * 300px did past 11. Past that, size it the same way: calculateBarSizing's dense path of 20px
+ * rows, 1px gaps and a 28px axis.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function waitlistSessionChartHeight(rows: number): number {
+  return rows > 13 ? rows * 21 + 28 : 340
+}
+
 // eslint-disable-next-line react-refresh/only-export-components
 export function transformWaitlistSessionData(
   bySession: WaitlistSessionBreakdown[],
@@ -309,7 +319,7 @@ export default function WaitlistAnalysis() {
                       isComparing ? `${currentYear} Waitlist by Session` : 'Waitlist by Session'
                     }
                     labelWidth={140}
-                    height={340}
+                    height={waitlistSessionChartHeight(primarySession.data.length)}
                     onBarClick={(item) =>
                       setFilter({
                         type: 'waitlist_total',
@@ -328,7 +338,7 @@ export default function WaitlistAnalysis() {
                       segments={compSession.segments}
                       title={`${compareYear} Waitlist by Session`}
                       labelWidth={140}
-                      height={340}
+                      height={waitlistSessionChartHeight(compSession.data.length)}
                     />
                   )}
                 </div>

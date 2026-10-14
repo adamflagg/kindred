@@ -3,7 +3,7 @@
  *
  * PR 4: presets are headings with their sessions under them, one option per row (pick 2B), drawn
  * with the kit AidPicker's heading level plus a session count (board 5, option i). The list is
- * about ten rows tall (board 7, max-h-96).
+ * about ten rows tall (board 7): ten 26px kit rows plus the list's 8px padding, so 270px.
  */
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -126,7 +126,9 @@ describe('MetricsSessionSelector — presets as headings (2B, 5i)', () => {
   it('opens about ten rows tall', async () => {
     await open()
     const list = screen.getByRole('listbox')
-    expect(list).toHaveClass('max-h-96')
+    // Ten 26px kit rows (py-1 + 18px line) plus p-1, not max-h-96's ~14 rows nor the kit's 260px.
+    expect(list).toHaveClass('max-h-[270px]')
+    expect(list.className).not.toContain('max-h-96')
     expect(list.className).not.toContain('max-h-[260px]')
   })
 
