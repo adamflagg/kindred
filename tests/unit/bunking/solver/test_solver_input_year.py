@@ -46,7 +46,7 @@ def mock_config() -> Generator[Any]:
         yield cfg
 
 
-def _campers(n: int) -> list:
+def _campers(n: int) -> list[Any]:
     return [
         create_person(
             cm_id=1001 + i,
@@ -59,7 +59,7 @@ def _campers(n: int) -> list:
     ]
 
 
-def test_single_bunk_assignments_carry_the_input_year(monkeypatch: pytest.MonkeyPatch, mock_config) -> None:
+def test_single_bunk_assignments_carry_the_input_year(monkeypatch: pytest.MonkeyPatch, mock_config: Any) -> None:
     monkeypatch.setenv("CAMPMINDER_SEASON_ID", "2026")  # a stale global must not leak in
     inp = build_direct_solver_input(
         persons=_campers(3), bunks=[create_bunk(cm_id=2001, name="B-1", gender="M", capacity=12)], year=2027
@@ -70,7 +70,7 @@ def test_single_bunk_assignments_carry_the_input_year(monkeypatch: pytest.Monkey
     assert {a.year for a in out.assignments} == {2027}
 
 
-def test_multi_bunk_assignments_carry_the_input_year(monkeypatch: pytest.MonkeyPatch, mock_config) -> None:
+def test_multi_bunk_assignments_carry_the_input_year(monkeypatch: pytest.MonkeyPatch, mock_config: Any) -> None:
     monkeypatch.setenv("CAMPMINDER_SEASON_ID", "2026")
     bunks = [
         create_bunk(cm_id=2001, name="B-1", gender="M", capacity=12),
