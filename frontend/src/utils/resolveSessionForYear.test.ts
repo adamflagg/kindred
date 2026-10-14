@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { matchSessionInYear } from './resolveSessionForYear'
-import { getAliasGroup } from './sessionAliases'
+import { getAliasGroup, resolveSessionAlias } from './sessionAliases'
 import type { MetricsSession } from '../hooks/useMetricsSessions'
 
 const s = (cm_id: number, name: string): MetricsSession => ({
@@ -40,5 +40,19 @@ describe('matchSessionInYear', () => {
   it('returns null with no match or no name', () => {
     expect(matchSessionInYear(y2026, 999, 'Nope')).toBeNull()
     expect(matchSessionInYear(y2026, 999, null)).toBeNull()
+  })
+})
+
+// Pins (owner, 2026-10-14): 2027 returns to "Taste of Camp", which is 2026's "Taste of Camp 1".
+// An alias group is an equivalence class, so the match holds in both directions.
+describe('2027 Taste of Camp and 2026 Taste of Camp 1 are the same session', () => {
+  it('maps 2027 "Taste of Camp" onto 2026 "Taste of Camp 1"', () => {
+    expect(matchSessionInYear([s(900261, 'Taste of Camp 1')], 900271, 'Taste of Camp')).toBe(900261)
+  })
+  it('maps 2026 "Taste of Camp 1" onto 2027 "Taste of Camp"', () => {
+    expect(matchSessionInYear([s(900271, 'Taste of Camp')], 900261, 'Taste of Camp 1')).toBe(900271)
+  })
+  it('gives both names one alias key', () => {
+    expect(resolveSessionAlias('Taste of Camp')).toBe(resolveSessionAlias('Taste of Camp 1'))
   })
 })

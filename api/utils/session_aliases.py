@@ -4,7 +4,11 @@ When CampMinder creates new sessions (new cm_ids) that replace old ones,
 name-based matching can't bridge them. This map lets the forecast and
 retention logic treat renamed sessions as the same entity.
 
-Keys: old/alternate session names -> Values: canonical (current year) name.
+Keys: alternate session names -> Values: the alias group's key.
+
+A group is an equivalence class: every name in it is the same session, in either
+direction across years. The value is just the group's key, not necessarily the
+current year's name (2027 returns to "Taste of Camp", keyed "Taste of Camp 1").
 """
 
 SESSION_NAME_ALIASES: dict[str, str] = {
@@ -19,7 +23,7 @@ for _old, _canonical in SESSION_NAME_ALIASES.items():
 
 
 def resolve_session_alias(name: str) -> str:
-    """Resolve a session name to its canonical form."""
+    """Resolve a session name to its alias group's key (the name itself when it has none)."""
     return SESSION_NAME_ALIASES.get(name, name)
 
 

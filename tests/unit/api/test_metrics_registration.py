@@ -1661,6 +1661,22 @@ class TestSessionCapacityUtilization:
         # Utilization should also be None (can't calculate without capacity)
         assert session_2_breakdown.utilization is None
 
+    def test_session_breakdown_carries_session_type(self) -> None:
+        """Ruling 12 (K8): Session Details matches teen programs by type, so each row says its type."""
+        from api.services.registration_service import RegistrationService
+
+        main = create_mock_session(2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05")
+        tli = create_mock_session(3001, "TLI", 2026, "tli", "2026-06-15", "2026-07-20")
+        sessions_dict = {2001: main, 3001: tli}
+        attendees = [
+            create_mock_attendee(100, session_cm_id=main.cm_id, session=main, year=2026),
+            create_mock_attendee(101, session_cm_id=tli.cm_id, session=tli, year=2026),
+        ]
+
+        result = RegistrationService(Mock())._compute_session_breakdown(attendees, sessions_dict, [], 12)
+
+        assert {s.session_cm_id: s.session_type for s in result} == {2001: "main", 3001: "tli"}
+
 
 # ============================================================================
 # School/City/Synagogue Breakdown Count Consistency Tests

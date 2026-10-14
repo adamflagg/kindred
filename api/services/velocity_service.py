@@ -245,6 +245,22 @@ def _value_at_day_offset(
     return read(max(at_or_before, key=attrgetter("day_offset")))
 
 
+def _history_start_offset(status_history_start: str | None, season_start: datetime) -> int | None:
+    """The registration day a season's status history starts on; None when it is unknown.
+
+    Ruling 8 (owner, 2026-10-14): a year whose history starts partway through its season has no
+    same-day cancellation figure before that day, so the read is None ("-"), never 0.
+    """
+    if not status_history_start:
+        return None
+    return (date.fromisoformat(status_history_start) - season_start.date()).days
+
+
+def _before_history(day_offset: int | None, history_from: int | None) -> bool:
+    """True when a same-day read falls before the prior year's status history starts (ruling 8)."""
+    return day_offset is not None and history_from is not None and day_offset < history_from
+
+
 def _daily_counts_to_weekly_points(
     daily_counts: dict[str, int],
     season_start: datetime,
@@ -679,6 +695,8 @@ class VelocityService:
             (ctx.today - season_start_date).days if season_start_date <= ctx.today < season_end_dt.date() else None
         )
 
+        status_history_start = await self._status_history_start() if metric == "cancellation" else None
+
         if compare_years:
             for prior_year in compare_years:
                 prior_reg_dates = await self.repo.fetch_registration_dates(prior_year)
@@ -741,6 +759,8 @@ class VelocityService:
                     )
                 )
 
+                history_from = _history_start_offset(status_history_start, prior_season_start)
+
                 # Build prior year cancelled summary
                 prior_year_cancelled_to_date.append(
                     self._build_prior_cancelled_summary(
@@ -750,6 +770,7 @@ class VelocityService:
                         current_day_offset,
                         metric=metric,
                         phase_offsets=phase_offsets,
+                        history_from=history_from,
                     )
                 )
 
@@ -762,6 +783,7 @@ class VelocityService:
                         current_day_offset,
                         self._current_session_by_prior_sid(sessions, prior_all),
                         phase_offsets=phase_offsets,
+                        history_from=history_from,
                     )
                 )
 
@@ -824,10 +846,6 @@ class VelocityService:
                 }
                 swap_pids = swap_pids & scoped_pids
             session_swap_count = len(swap_pids)
-
-        status_history_start: str | None = None
-        if metric == "cancellation":
-            status_history_start = await self._status_history_start()
 
         return VelocityResponse(
             year=year,
@@ -2317,6 +2335,7 @@ class VelocityService:
         current_day_offset: int | None = None,
         metric: str = "enrollment",
         phase_offsets: tuple[int, ...] = (0,),
+        history_from: int | None = None,
     ) -> PriorYearCancelledSummary:
         """Build cancelled summary for a prior year.
 
@@ -2337,6 +2356,10 @@ class VelocityService:
         read_daily = attrgetter("enrolled") if metric == "cancellation" else attrgetter("cancelled")
         # Decision 45: the prior year's priority day spans two dates (next-day batch dating).
         prior_offset = None if current_day_offset is None else same_point_offset(current_day_offset, phase_offsets)
+        if _before_history(prior_offset, history_from):
+            return PriorYearCancelledSummary(
+                year=prior_year, cancelled_at_current_week=None, cancelled_final=prior_result.cancelled_to_date
+            )
         cancelled_at_current_week = _value_at_day_offset(combined.daily, prior_offset, read_daily)
         if cancelled_at_current_week is None and current_max_wn is not None and combined.weekly:
             if metric == "cancellation":
@@ -2361,6 +2384,7 @@ class VelocityService:
         current_day_offset: int | None = None,
         current_by_prior_sid: dict[int, int] | None = None,
         phase_offsets: tuple[int, ...] = (0,),
+        history_from: int | None = None,
     ) -> list[PriorYearSessionSummary]:
         """Build per-session summaries for a prior year.
 
@@ -2380,12 +2404,15 @@ class VelocityService:
 
             sid = curve.session_cm_id
             # Decision 45: the prior year's priority day spans two dates (next-day batch dating).
+            prior_offset = None if current_day_offset is None else same_point_offset(current_day_offset, phase_offsets)
             enrolled_at_current_week = _value_at_day_offset(
                 prior_result.by_session_daily.get(sid, []) if sid is not None else [],
-                None if current_day_offset is None else same_point_offset(current_day_offset, phase_offsets),
+                prior_offset,
                 attrgetter("enrolled"),
             )
-            if enrolled_at_current_week is None and current_max_wn is not None:
+            if _before_history(prior_offset, history_from):
+                enrolled_at_current_week = None
+            elif enrolled_at_current_week is None and current_max_wn is not None:
                 enrolled_at_current_week = _value_at_week(curve.weekly, current_max_wn)
 
             summaries.append(

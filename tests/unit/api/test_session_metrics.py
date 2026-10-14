@@ -13,6 +13,7 @@ These tests are written FIRST before implementation (TDD).
 """
 
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import MagicMock, Mock
 
 import pytest
@@ -1387,6 +1388,35 @@ class TestMatchSessionInYear:
         from api.utils.session_metrics import match_session_in_year
 
         assert match_session_in_year(_year_2025(), 1000767, None) is None
+
+
+class TestAliasGroupIsAnEquivalenceClass:
+    """Pins (owner, 2026-10-14): 2027 returns to "Taste of Camp", which is 2026's "Taste of Camp 1".
+
+    An alias group is an equivalence class: its value is only the group's key, not the current
+    year's name, so matching works whichever year carries which name.
+    """
+
+    @staticmethod
+    def _year(year: int, cm_id: int, name: str) -> dict[int, Any]:
+        return {cm_id: create_mock_session(cm_id, name, year, "embedded", f"{year}-06-07", f"{year}-06-12")}
+
+    def test_2027_taste_of_camp_matches_2026_taste_of_camp_1(self) -> None:
+        from api.utils.session_metrics import match_session_in_year
+
+        y2026 = self._year(2026, 900261, "Taste of Camp 1")
+        assert match_session_in_year(y2026, 900271, "Taste of Camp") == 900261
+
+    def test_2026_taste_of_camp_1_matches_2027_taste_of_camp(self) -> None:
+        from api.utils.session_metrics import match_session_in_year
+
+        y2027 = self._year(2027, 900271, "Taste of Camp")
+        assert match_session_in_year(y2027, 900261, "Taste of Camp 1") == 900271
+
+    def test_both_names_share_one_key(self) -> None:
+        from api.utils.session_aliases import resolve_session_alias
+
+        assert resolve_session_alias("Taste of Camp") == resolve_session_alias("Taste of Camp 1")
 
 
 class TestResolveScopeIds:

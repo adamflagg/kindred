@@ -15913,6 +15913,12 @@ export type SessionBreakdown = {
    */
   session_name: string
   /**
+   * Session Type
+   *
+   * Session type (main, embedded, quest, scit, tli...); teen programs match by type
+   */
+  session_type?: string | null
+  /**
    * Count
    *
    * Number of campers

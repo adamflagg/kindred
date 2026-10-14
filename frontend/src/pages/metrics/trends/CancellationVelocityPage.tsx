@@ -49,6 +49,8 @@ import { DefinitionNotes, DefRef } from '../../../components/camperships/kit/Def
 import {
   PRIORITY_DAY_NOTE,
   PRIORITY_DAY_NOTES,
+  PRIORITY_DAY_PENDING,
+  PRIORITY_DAY_PENDING_CLASS,
   isPriorityDayOffset,
 } from '../../../utils/priorityDay'
 import { PHASE_COLORS } from './phaseColors'
@@ -286,8 +288,9 @@ export default function CancellationVelocityPage() {
           {
             header: priorLabel ? `vs ${priorLabel}` : 'vs Prior',
             accessor: (session, priorSession) => {
-              // A session the comparison year has no match for is new, not missing data
-              if (!priorSession && comparisonYear != null) {
+              // A session the comparison year has no match for is new, not missing data. A year
+              // with no status history has no sessions to match, so its rows read '-' (ruling 6).
+              if (!priorSession && comparisonYear != null && !summaryCards?.noHistory) {
                 return <span className={MUTED_PILL_CLASS}>new</span>
               }
               // Same point last year, not last year's final (#3209 row 19).
@@ -296,6 +299,9 @@ export default function CancellationVelocityPage() {
                 session.weekly.at(-1)?.enrolled,
                 priorSession?.enrolled_at_current_week
               )
+              if (priorityDayMark && vsPrior != null) {
+                return <span className={PRIORITY_DAY_PENDING_CLASS}>{PRIORITY_DAY_PENDING}</span>
+              }
               return (
                 <span className={invertedDeltaColorClass(vsPrior)}>
                   {vsPrior != null ? formatDeltaValue(vsPrior) : '-'}
@@ -405,7 +411,13 @@ export default function CancellationVelocityPage() {
           <div className="card-lodge p-3">
             <p className="text-muted-foreground text-xs font-medium">vs {summaryCards.priorYear}</p>
             <p className={`text-xl font-bold ${invertedDeltaColorClass(summaryCards.delta)}`}>
-              {summaryCards.delta != null ? formatDeltaValue(summaryCards.delta) : '-'}
+              {priorityDayMark && summaryCards.delta != null ? (
+                <span className={PRIORITY_DAY_PENDING_CLASS}>{PRIORITY_DAY_PENDING}</span>
+              ) : summaryCards.delta != null ? (
+                formatDeltaValue(summaryCards.delta)
+              ) : (
+                '-'
+              )}
             </p>
           </div>
           <div className="card-lodge p-3">

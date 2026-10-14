@@ -18,3 +18,14 @@ export const PRIORITY_DAY_NOTES: readonly DefinitionNote[] = [{ n: 1, text: PRIO
 export function isPriorityDayOffset(dayOffset: number | null | undefined): boolean {
   return dayOffset === 0
 }
+
+/**
+ * Ruling 9 (owner, 2026-10-14): on the priority date itself, this year's data holds only day 0
+ * until the next morning's sync, so a same-point delta would read behind. The delta cell shows
+ * this instead, on that one day only; the numbered note stays.
+ */
+export const PRIORITY_DAY_PENDING = 'updates tomorrow'
+
+/** Compact muted text, sized to sit in a delta cell or a card value. */
+export const PRIORITY_DAY_PENDING_CLASS =
+  'text-muted-foreground text-xs font-normal whitespace-nowrap'

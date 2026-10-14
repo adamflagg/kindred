@@ -24,6 +24,8 @@ import { DefinitionNotes, DefRef } from '../../../components/camperships/kit/Def
 import {
   PRIORITY_DAY_NOTE,
   PRIORITY_DAY_NOTES,
+  PRIORITY_DAY_PENDING,
+  PRIORITY_DAY_PENDING_CLASS,
   isPriorityDayOffset,
 } from '../../../utils/priorityDay'
 
@@ -114,7 +116,16 @@ function ForecastTableHeader({
   )
 }
 
-function SessionRow({ session, isTotal }: { session: SessionForecast; isTotal?: boolean }) {
+function SessionRow({
+  session,
+  isTotal,
+  priorityDay = false,
+}: {
+  session: SessionForecast
+  isTotal?: boolean
+  /** On the priority date the same-point delta reads "updates tomorrow" (ruling 9). */
+  priorityDay?: boolean
+}) {
   const rowClass = isTotal ? 'font-bold bg-muted/30' : 'border-border border-b last:border-b-0'
 
   return (
@@ -148,7 +159,11 @@ function SessionRow({ session, isTotal }: { session: SessionForecast; isTotal?: 
       <td
         className={`px-3 py-2 text-right text-sm ${deltaColor(session.participants_vs_prior_year)}`}
       >
-        {fmtSigned(session.participants_vs_prior_year)}
+        {priorityDay && session.participants_vs_prior_year !== null ? (
+          <span className={PRIORITY_DAY_PENDING_CLASS}>{PRIORITY_DAY_PENDING}</span>
+        ) : (
+          fmtSigned(session.participants_vs_prior_year)
+        )}
       </td>
       <td className="px-3 py-2 text-right text-sm">{fmt(session.two_year_prior_count)}</td>
       <td className="hidden px-3 py-2 text-right text-sm lg:table-cell">
@@ -320,12 +335,16 @@ export default function ForecastPage() {
                   <ForecastTableHeader priorBasis={data.prior_basis} priorityDay={priorityDay} />
                   <tbody>
                     {section.sessions.map((s) => (
-                      <SessionRow key={`${s.session_type}-${s.session_cm_id}`} session={s} />
+                      <SessionRow
+                        key={`${s.session_type}-${s.session_cm_id}`}
+                        session={s}
+                        priorityDay={priorityDay}
+                      />
                     ))}
                   </tbody>
                   {showSectionTotal && (
                     <tfoot>
-                      <SessionRow session={section.total} isTotal />
+                      <SessionRow session={section.total} isTotal priorityDay={priorityDay} />
                     </tfoot>
                   )}
                 </table>
@@ -339,7 +358,7 @@ export default function ForecastPage() {
           <div className="border-border overflow-x-auto rounded-xl border">
             <table className="w-full border-collapse">
               <tbody>
-                <SessionRow session={grand_total} isTotal />
+                <SessionRow session={grand_total} isTotal priorityDay={priorityDay} />
               </tbody>
             </table>
           </div>

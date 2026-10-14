@@ -5474,6 +5474,72 @@ class TestVelocityCancellationCoverage:
         assert result.status_history_start is None
 
 
+class TestVelocityCancellationBeforeHistoryStart:
+    """Ruling 8 (2026-10-14): a prior year whose status history starts partway through its
+    season has no same-day cancellation figure before that start. It reads None ("-"), not 0.
+
+    2027 vs 2026: 2026's season starts 2025-11-01 and its history starts 2026-02-11 (offset 102).
+    """
+
+    @staticmethod
+    def _wire(repo: Any, *, current_cancel_at: str) -> None:
+        _wire_years(
+            repo,
+            sessions={y: {1001: _sess(1001, "Session 1", y)} for y in (2027, 2026)},
+            transitions={
+                2027: [create_mock_status_transition(1, 1001, current_cancel_at, year=2027)],
+                2026: [
+                    create_mock_status_transition(2, 1001, "2026-02-20T00:00:00Z", year=2026),
+                    create_mock_status_transition(3, 1001, "2026-03-01T00:00:00Z", year=2026),
+                ],
+            },
+        )
+        repo.fetch_status_history_start = AsyncMock(return_value="2026-02-11 10:00:00.000Z")
+
+    @pytest.mark.asyncio
+    async def test_day_before_prior_history_start_reads_none(self, service, mock_repository):
+        from datetime import date
+
+        self._wire(mock_repository, current_cancel_at="2026-11-05T00:00:00Z")  # 2027 offset 4
+        result = await service.get_velocity(
+            year=2027, compare_years=[2026], metric="cancellation", today=date(2026, 11, 10)
+        )
+
+        summary = result.prior_year_cancelled_to_date[0]
+        assert summary.cancelled_at_current_week is None
+        assert summary.cancelled_final == 2  # the final is real: only the same-day figure is unknown
+        assert summary.has_cancellation_data is True
+        sessions = {s.session_cm_id: s for s in result.prior_year_session_summaries}
+        assert sessions[1001].enrolled_at_current_week is None
+        assert sessions[1001].final_enrolled == 2
+
+    @pytest.mark.asyncio
+    async def test_day_on_or_after_prior_history_start_reads_the_curve(self, service, mock_repository):
+        from datetime import date
+
+        self._wire(mock_repository, current_cancel_at="2027-02-25T00:00:00Z")  # 2027 offset 116
+        result = await service.get_velocity(
+            year=2027, compare_years=[2026], metric="cancellation", today=date(2027, 2, 26)
+        )
+
+        assert result.prior_year_cancelled_to_date[0].cancelled_at_current_week == 1
+        assert result.prior_year_session_summaries[0].enrolled_at_current_week == 1
+
+    @pytest.mark.asyncio
+    async def test_history_start_before_the_prior_season_changes_nothing(self, service, mock_repository):
+        """A prior year whose whole season has history keeps reading 0 before its first cancellation."""
+        from datetime import date
+
+        self._wire(mock_repository, current_cancel_at="2026-11-05T00:00:00Z")
+        mock_repository.fetch_status_history_start = AsyncMock(return_value="2024-11-09 10:00:00.000Z")
+        result = await service.get_velocity(
+            year=2027, compare_years=[2026], metric="cancellation", today=date(2026, 11, 10)
+        )
+
+        assert result.prior_year_cancelled_to_date[0].cancelled_at_current_week == 0
+        assert result.prior_year_session_summaries[0].enrolled_at_current_week == 0
+
+
 class TestVelocityFamilyCampNeverFoldsIn:
     """Pin (#2435): Family Camp / adult data with status history changes none of the new fields."""
 

@@ -49,6 +49,8 @@ import { DefinitionNotes, DefRef } from '../../../components/camperships/kit/Def
 import {
   PRIORITY_DAY_NOTE,
   PRIORITY_DAY_NOTES,
+  PRIORITY_DAY_PENDING,
+  PRIORITY_DAY_PENDING_CLASS,
   isPriorityDayOffset,
 } from '../../../utils/priorityDay'
 import { PHASE_COLORS } from './phaseColors'
@@ -339,6 +341,9 @@ export default function VelocityPage() {
                 session.weekly.at(-1)?.enrolled,
                 priorSession?.enrolled_at_current_week
               )
+              if (priorityDayMark && vsPrior != null) {
+                return <span className={PRIORITY_DAY_PENDING_CLASS}>{PRIORITY_DAY_PENDING}</span>
+              }
               return (
                 <span className={deltaColorClass(vsPrior)}>
                   {vsPrior != null ? formatDeltaValue(vsPrior) : '-'}
@@ -455,7 +460,13 @@ export default function VelocityPage() {
           <div className="card-lodge p-3">
             <p className="text-muted-foreground text-xs font-medium">vs {summaryCards.priorYear}</p>
             <p className={`text-xl font-bold ${deltaColorClass(summaryCards.delta)}`}>
-              {summaryCards.delta != null ? formatDeltaValue(summaryCards.delta) : '-'}
+              {priorityDayMark && summaryCards.delta != null ? (
+                <span className={PRIORITY_DAY_PENDING_CLASS}>{PRIORITY_DAY_PENDING}</span>
+              ) : summaryCards.delta != null ? (
+                formatDeltaValue(summaryCards.delta)
+              ) : (
+                '-'
+              )}
             </p>
           </div>
           <div className="card-lodge p-3">

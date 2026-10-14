@@ -690,4 +690,47 @@ describe('ForecastPage priority-day note (decision 45)', () => {
     await waitFor(() => expect(screen.getByText('vs final')).toBeInTheDocument())
     expect(screen.queryByText(NOTE)).not.toBeInTheDocument()
   })
+
+  describe('on the priority date the vs-same-point cells read "updates tomorrow" (ruling 9)', () => {
+    const twoSessions = [
+      session({ session_cm_id: 1, session_name: 'Session 2', participants_vs_prior_year: 5 }),
+      session({
+        session_cm_id: 2,
+        session_name: 'Session 3',
+        prior_year_count: null,
+        participants_vs_prior_year: null,
+      }),
+    ]
+
+    it('replaces each row delta and the section total, keeping the prior counts', async () => {
+      setupMockFetch(mockResponse(twoSessions, {}, { prior_basis: 'same_point', day_offset: 0 }))
+      renderWithProviders(<ForecastPage />)
+      await waitFor(() => expect(screen.getByText('Session 2')).toBeInTheDocument())
+
+      const matched = screen.getByText('Session 2').closest('tr')!
+      expect(within(matched).getByText('updates tomorrow')).toBeInTheDocument()
+      expect(within(matched).queryByText('+5')).not.toBeInTheDocument()
+      expect(within(matched).getByText('75')).toBeInTheDocument()
+      // A row with no prior match has no delta to replace.
+      const unmatched = screen.getByText('Session 3').closest('tr')!
+      expect(within(unmatched).queryByText('updates tomorrow')).not.toBeInTheDocument()
+      const total = screen.getByText('At Camp').closest('tr')!
+      expect(within(total).getByText('updates tomorrow')).toBeInTheDocument()
+      expect(screen.getByText(NOTE)).toBeInTheDocument()
+    })
+
+    it('shows the delta on a later day', async () => {
+      setupMockFetch(mockResponse(twoSessions, {}, { prior_basis: 'same_point', day_offset: 1 }))
+      renderWithProviders(<ForecastPage />)
+      await waitFor(() => expect(screen.getByText('Session 2')).toBeInTheDocument())
+      expect(screen.queryByText('updates tomorrow')).not.toBeInTheDocument()
+    })
+
+    it('shows the delta against prior finals', async () => {
+      setupMockFetch(mockResponse(twoSessions, {}, { prior_basis: 'final', day_offset: 0 }))
+      renderWithProviders(<ForecastPage />)
+      await waitFor(() => expect(screen.getByText('Session 2')).toBeInTheDocument())
+      expect(screen.queryByText('updates tomorrow')).not.toBeInTheDocument()
+    })
+  })
 })

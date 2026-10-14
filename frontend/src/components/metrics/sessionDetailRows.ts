@@ -1,5 +1,6 @@
 import type { SessionBreakdown } from '../../types/metrics'
 import { resolveSessionAlias } from '../../utils/sessionAliases'
+import { TEEN_PROGRAM_TYPES } from '../../utils/sessionTypePredicates'
 
 /** One row of the Overview's Session Details table. */
 export interface SessionDetailRow {
@@ -10,7 +11,7 @@ export interface SessionDetailRow {
   enrolled: number | null
   capacity: number | null
   utilization: number | null
-  /** The prior year's name when an alias matched a renamed session ("was: …"). */
+  /** The prior year's name when one prior session matched under another name ("was: …"). */
   priorName: string | null
   /** Prior-year count; null outside compare mode or with no prior match. */
   priorEnrolled: number | null
@@ -20,12 +21,21 @@ export interface SessionDetailRow {
   retired: boolean
 }
 
+function teenType(session: SessionBreakdown): string | null {
+  const type = session.session_type ?? null
+  return type != null && (TEEN_PROGRAM_TYPES as readonly string[]).includes(type) ? type : null
+}
+
 /**
  * Session Details rows. Current sessions keep their order, matched to the prior year by
  * alias-resolved name. In compare mode, each prior session no current session matches follows
  * them as a retired row (decision 43 / K8), so the Delta column sums to the real change.
- * Teen routes are not matched by type: a single current teen session and two prior routes stay
- * one unmatched row and two retired rows.
+ *
+ * Teen programs (SCIT, TLI) match by program type, as Forecast does (ruling 12, 2026-10-14): a
+ * prior teen row no name matches goes to the first current row of its type with no name match,
+ * or to the type's only current row, so one TLI row is compared with every prior TLI route. A
+ * lone current row of a type therefore takes the whole prior type. Prior teen rows of a type
+ * the current year does not run stay retired rows.
  */
 export function buildSessionDetailRows(
   current: readonly SessionBreakdown[],
@@ -41,27 +51,49 @@ export function buildSessionDetailRows(
     }
   }
 
-  const matched = new Set<string>()
-  const rows: SessionDetailRow[] = current.map((session) => {
-    const name = resolveSessionAlias(session.session_name)
-    const match = comparing ? priorByName.get(name) : undefined
-    if (match) matched.add(name)
+  // Each current row's prior sessions: its name match, then any teen rows of its type.
+  const matchedPrior: SessionBreakdown[][] = current.map((session) => {
+    const match = comparing ? priorByName.get(resolveSessionAlias(session.session_name)) : undefined
+    return match ? [match] : []
+  })
+  const nameMatched = matchedPrior.map((m) => m.length > 0)
+  const used = new Set<SessionBreakdown>(matchedPrior.flat())
+  const matchedNames = new Set([...used].map((p) => resolveSessionAlias(p.session_name)))
+
+  if (comparing) {
+    for (const p of prior) {
+      const type = teenType(p)
+      if (type == null || used.has(p) || matchedNames.has(resolveSessionAlias(p.session_name)))
+        continue
+      const ofType = current.flatMap((c, i) => (teenType(c) === type ? [i] : []))
+      const target =
+        ofType.find((i) => !nameMatched[i]) ?? (ofType.length === 1 ? ofType[0] : undefined)
+      if (target === undefined) continue
+      matchedPrior[target]?.push(p)
+      used.add(p)
+    }
+  }
+
+  const rows: SessionDetailRow[] = current.map((session, i) => {
+    const matches = matchedPrior[i] ?? []
+    const priorEnrolled = matches.length ? matches.reduce((sum, p) => sum + p.count, 0) : null
+    const only = matches.length === 1 ? matches[0] : undefined
     return {
       key: `current-${session.session_cm_id}-${session.session_name}`,
       sessionName: session.session_name,
       enrolled: session.count,
       capacity: session.capacity,
       utilization: session.utilization,
-      priorName: match && match.session_name !== session.session_name ? match.session_name : null,
-      priorEnrolled: match?.count ?? null,
-      delta: match ? session.count - match.count : null,
+      priorName: only && only.session_name !== session.session_name ? only.session_name : null,
+      priorEnrolled,
+      delta: priorEnrolled != null ? session.count - priorEnrolled : null,
       retired: false,
     }
   })
 
   if (!comparing) return rows
   for (const p of prior) {
-    if (matched.has(resolveSessionAlias(p.session_name))) continue
+    if (used.has(p) || matchedNames.has(resolveSessionAlias(p.session_name))) continue
     rows.push({
       key: `retired-${p.session_cm_id}-${p.session_name}`,
       sessionName: p.session_name,

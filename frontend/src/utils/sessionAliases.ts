@@ -5,7 +5,11 @@
  * old ones, matchKey="id" can't bridge them. This map lets the
  * merge logic treat renamed sessions as the same row.
  *
- * Keys: old/alternate session names → Values: canonical (current year) name
+ * Keys: alternate session names → Values: the alias group's key
+ *
+ * A group is an equivalence class: every name in it is the same session, in either direction
+ * across years. The value is just the group's key, not necessarily the current year's name
+ * (2027 returns to "Taste of Camp", keyed "Taste of Camp 1").
  */
 export const SESSION_NAME_ALIASES: Record<string, string> = {
   'Taste of Camp': 'Taste of Camp 1',
@@ -13,8 +17,8 @@ export const SESSION_NAME_ALIASES: Record<string, string> = {
 }
 
 /**
- * Resolve a session name to its canonical form.
- * Returns the alias if one exists, otherwise the original name.
+ * Resolve a session name to its alias group's key.
+ * Returns the key if the name is in a group, otherwise the original name.
  */
 export function resolveSessionAlias(name: string): string {
   return SESSION_NAME_ALIASES[name] ?? name
