@@ -4,11 +4,52 @@
  * Wraps content with MetricsSessionProvider for unified session filtering
  */
 import { Outlet, useLocation } from 'react-router'
+import { Loader2 } from 'lucide-react'
 import MetricsTypeTabs from '../../components/metrics/MetricsTypeTabs'
 import MetricsSubNav from '../../components/metrics/MetricsSubNav'
 import type { SubNavItem } from '../../components/metrics/MetricsSubNav'
 import { MetricsSessionProvider } from '../../contexts/MetricsSessionContext'
 import { RETENTION_SUB_NAV, REGISTRATION_SUB_NAV, TRENDS_SUB_NAV } from './metricsNav'
+import { SeasonEmptyState } from '../../components/metrics/SeasonEmptyState'
+import { useCurrentYear } from '../../hooks/useCurrentYear'
+import { useSeasonHasRows } from '../../hooks/useSeasonHasRows'
+import { useAnalyticsFreshness } from '../../hooks/useAnalyticsFreshness'
+import { usePriorityRegDate } from '../../hooks/useRegistrationDates'
+import { useViewSeason } from '../../hooks/useViewSeason'
+
+/**
+ * The page body, gated on the viewed season having countable summer rows (PR 4, board 9 A).
+ * After the Oct 26 rollover the new season has no sign-ups for weeks, and every page would
+ * otherwise draw zeros under it. One gate here covers every page; the header, tabs, sub-nav,
+ * picker and season bar stay. While the count loads, a spinner stands in so no zeros flash.
+ */
+function SeasonGatedOutlet() {
+  const { currentYear } = useCurrentYear()
+  const { hasRows } = useSeasonHasRows(currentYear)
+  const freshness = useAnalyticsFreshness(currentYear)
+  const priorityDate = usePriorityRegDate(currentYear)
+  const viewSeason = useViewSeason()
+
+  if (hasRows === undefined) {
+    return (
+      <div className="flex items-center justify-center py-12" data-testid="season-rows-loading">
+        <Loader2 className="text-primary h-8 w-8 animate-spin" />
+      </div>
+    )
+  }
+  if (!hasRows) {
+    return (
+      <SeasonEmptyState
+        year={currentYear}
+        prior={currentYear - 1}
+        neverSynced={freshness.kind === 'never'}
+        priorityDate={priorityDate}
+        onViewPrior={() => viewSeason(currentYear - 1)}
+      />
+    )
+  }
+  return <Outlet />
+}
 
 export default function MetricsLayout() {
   const location = useLocation()
@@ -65,7 +106,7 @@ export default function MetricsLayout() {
 
           {/* Page Content */}
           <div className="mt-6">
-            <Outlet />
+            <SeasonGatedOutlet />
           </div>
         </div>
       </div>

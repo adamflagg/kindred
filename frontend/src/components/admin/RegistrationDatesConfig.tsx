@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { CalendarDays, Loader2, Save } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { pb } from '../../lib/pocketbase'
 import { useCurrentYear } from '../../hooks/useCurrentYear'
-import { queryKeys, userDataOptions } from '../../utils/queryKeys'
+import { queryKeys } from '../../utils/queryKeys'
+import { useRegistrationDates } from '../../hooks/useRegistrationDates'
 import { invalidateServerCaches } from '../../utils/queryClient'
 import type { ConfigRecord } from '../../types/pocketbase-types'
 
@@ -33,20 +34,6 @@ const REG_DATE_FIELDS: Array<Omit<RegDateConfig, 'id' | 'value'>> = [
     description: 'When open/general registration opens',
   },
 ]
-
-function useRegistrationDates(year: number) {
-  return useQuery({
-    queryKey: queryKeys.registrationDatesConfig(year),
-    ...userDataOptions,
-    queryFn: async () => {
-      const records = await pb.collection('config').getFullList<ConfigRecord>({
-        filter: `category = "registration" && subcategory = "${year}"`,
-        sort: 'config_key',
-      })
-      return records
-    },
-  })
-}
 
 export function RegistrationDatesConfig() {
   const { currentYear } = useCurrentYear()

@@ -4,7 +4,7 @@
  */
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import MetricsTypeTabs from './MetricsTypeTabs'
 import { MetricsSessionProvider } from '../../contexts/MetricsSessionContext'
@@ -30,6 +30,23 @@ vi.mock('../../hooks/useMetricsSessions', () => ({
     isLoading: false,
   })),
 }))
+
+// The empty-season gate (PR 4, board 9 A). Default: the season has rows.
+interface SeasonRowsResult {
+  hasRows: boolean | undefined
+  isLoading: boolean
+}
+const mockSeasonRows = vi.fn((_year: number): SeasonRowsResult => ({
+  hasRows: true,
+  isLoading: false,
+}))
+vi.mock('../../hooks/useSeasonHasRows', () => ({
+  useSeasonHasRows: (year: number) => mockSeasonRows(year),
+}))
+
+beforeEach(() => {
+  mockSeasonRows.mockReset().mockReturnValue({ hasRows: true, isLoading: false })
+})
 
 const renderWithRouter = (initialPath: string) => {
   const queryClient = new QueryClient({
@@ -167,11 +184,13 @@ describe('MetricsTypeTabs', () => {
       expect(nav.querySelector('.justify-between')).toBeInTheDocument()
     })
 
-    it('hides session selector on bunk analysis route', () => {
+    it('greys the session selector on bunk analysis, saying it is not used there (4B)', () => {
       renderWithRouter('/analytics/retention/bunks')
 
-      // Session selector should NOT be visible — bunk analysis uses unfiltered data
+      // Bunk analysis uses unfiltered data: the picker shows, disabled, with the reason inside.
       expect(screen.queryByText('At Camp')).not.toBeInTheDocument()
+      const picker = screen.getByRole('button', { name: /At Camp · not used here/ })
+      expect(picker).toBeDisabled()
     })
 
     it('shows session selector on other retention routes', () => {
@@ -183,47 +202,109 @@ describe('MetricsTypeTabs', () => {
   })
 
   describe('retention teen-pipeline checkbox', () => {
-    // New label: "Include camp → teen transition"
-    // New visibility: only shown in teen-inclusive scopes (?view=all or ?view=teens)
+    const teenBox = () => screen.getByRole('checkbox', { name: /include camp.*teen transition/i })
 
-    it('shows "Include camp → teen transition" checkbox on retention route with teen-inclusive scope (?view=all)', () => {
+    it('is live on retention with a teen-inclusive scope (?view=all)', () => {
       renderWithRouter('/analytics/retention?view=all')
-
-      expect(
-        screen.getByRole('checkbox', { name: /include camp.*teen transition/i })
-      ).toBeInTheDocument()
+      expect(teenBox()).toBeEnabled()
     })
 
-    it('shows checkbox on retention route with teens-only scope (?view=teens)', () => {
+    it('is live on retention with the teens-only scope (?view=teens)', () => {
       renderWithRouter('/analytics/retention?view=teens')
+      expect(teenBox()).toBeEnabled()
+    })
 
+    it('is disabled with its reason inside on a scope without teens (4B)', () => {
+      renderWithRouter('/analytics/retention')
+      expect(teenBox()).toBeDisabled()
       expect(
-        screen.getByRole('checkbox', { name: /include camp.*teen transition/i })
+        screen.getByText('Include camp → teen transition: needs Teens or All Summer')
       ).toBeInTheDocument()
     })
 
-    it('does NOT show the checkbox on retention route with non-teen scope (default / At Camp)', () => {
-      renderWithRouter('/analytics/retention')
-
+    it('is disabled on Bunk Analysis, saying so', () => {
+      renderWithRouter('/analytics/retention/bunks?view=all')
+      expect(teenBox()).toBeDisabled()
       expect(
-        screen.queryByRole('checkbox', { name: /include camp.*teen transition/i })
-      ).not.toBeInTheDocument()
+        screen.getByText('Include camp → teen transition: not on Bunk Analysis')
+      ).toBeInTheDocument()
     })
 
-    it('does NOT show the checkbox on registration route', () => {
+    it('does NOT show on registration', () => {
       renderWithRouter('/analytics/registration?view=all')
-
       expect(
         screen.queryByRole('checkbox', { name: /include camp.*teen transition/i })
       ).not.toBeInTheDocument()
     })
 
-    it('does NOT show the checkbox on trends route', () => {
+    it('does NOT show on trends', () => {
       renderWithRouter('/analytics/trends?view=all')
-
       expect(
         screen.queryByRole('checkbox', { name: /include camp.*teen transition/i })
       ).not.toBeInTheDocument()
+    })
+  })
+
+  describe('disabled with the reason inside (PR 4, pick 4B)', () => {
+    it('Compare reads "not on Day 1" on Day 1, where it does nothing', () => {
+      renderWithRouter('/analytics/registration/day1')
+      expect(screen.getByRole('button', { name: 'Compare: not on Day 1' })).toBeDisabled()
+    })
+
+    it('Compare reads "not on Forecast" on Forecast instead of vanishing', () => {
+      renderWithRouter('/analytics/registration/forecast')
+      expect(screen.getByRole('button', { name: 'Compare: not on Forecast' })).toBeDisabled()
+    })
+
+    it('Compare is live on Overview', () => {
+      renderWithRouter('/analytics/registration/overview')
+      expect(screen.getByRole('button', { name: /Compare to/ })).toBeEnabled()
+    })
+
+    it('Expanded analysis reads "not on Cancellations" on Trends › Cancellations', () => {
+      renderWithRouter('/analytics/trends/cancellations')
+      expect(screen.getByRole('checkbox', { name: /Expanded analysis/ })).toBeDisabled()
+      expect(screen.getByText('Expanded analysis: not on Cancellations')).toBeInTheDocument()
+    })
+
+    it('Expanded analysis is live on the Trends overview', () => {
+      renderWithRouter('/analytics/trends')
+      expect(screen.getByRole('checkbox', { name: /Expanded analysis/ })).toBeEnabled()
+    })
+  })
+
+  describe('empty season (board 9 A)', () => {
+    beforeEach(() => {
+      mockSeasonRows.mockReturnValue({ hasRows: false, isLoading: false })
+    })
+
+    it('asks about the viewed season', () => {
+      renderWithRouter('/analytics/registration/overview')
+      expect(mockSeasonRows).toHaveBeenCalledWith(2026)
+    })
+
+    it('greys Compare with "no 2026 enrollments yet"', () => {
+      renderWithRouter('/analytics/registration/overview')
+      expect(
+        screen.getByRole('button', { name: 'Compare: no 2026 enrollments yet' })
+      ).toBeDisabled()
+    })
+
+    it('greys Expanded analysis and the teen box the same way', () => {
+      renderWithRouter('/analytics/trends')
+      expect(screen.getByText('Expanded analysis: no 2026 enrollments yet')).toBeInTheDocument()
+    })
+
+    it('greys the teen box on Retention', () => {
+      renderWithRouter('/analytics/retention?view=all')
+      expect(
+        screen.getByText('Include camp → teen transition: no 2026 enrollments yet')
+      ).toBeInTheDocument()
+    })
+
+    it('keeps the session picker live', () => {
+      renderWithRouter('/analytics/registration/overview')
+      expect(screen.getByRole('button', { name: /At Camp/ })).toBeEnabled()
     })
   })
 })

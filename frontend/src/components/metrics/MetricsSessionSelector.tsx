@@ -55,7 +55,7 @@ const VIEW_MODE_VALUES: Record<MetricsViewMode, string> = {
   sessions: ALL_SESSIONS_VALUE,
 }
 
-export function MetricsSessionSelector() {
+export function MetricsSessionSelector({ notUsedHere = false }: { notUsedHere?: boolean } = {}) {
   const {
     selectedSessionCmId,
     selectedSession,
@@ -81,7 +81,8 @@ export function MetricsSessionSelector() {
     if (selectedDuration) return DURATION_LABELS[selectedDuration]
     return VIEW_MODE_LABELS[viewMode]
   }
-  const displayName = getDisplayName()
+  // PR 4, pick 4B: on a page that reads unfiltered data, the picker shows disabled and says so.
+  const displayName = notUsedHere ? `${getDisplayName()} · not used here` : getDisplayName()
 
   // Determine current listbox value (session → teen type → duration → view-mode grouping)
   function getCurrentValue(): string {
@@ -115,9 +116,9 @@ export function MetricsSessionSelector() {
   return (
     <div className="flex items-center gap-2" data-tour="retention-session-selector">
       <CalendarDays className="text-muted-foreground h-4 w-4" />
-      <Listbox value={currentValue} onChange={handleChange} disabled={isLoading}>
+      <Listbox value={currentValue} onChange={handleChange} disabled={isLoading || notUsedHere}>
         <div className="relative">
-          <ListboxButton className="listbox-button min-w-[180px]">
+          <ListboxButton className="listbox-button min-w-[180px] disabled:cursor-not-allowed disabled:opacity-50">
             <span className="flex-1 truncate text-left">{displayName}</span>
             <ChevronDown className="text-muted-foreground h-4 w-4 flex-shrink-0" />
           </ListboxButton>
