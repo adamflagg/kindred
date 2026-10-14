@@ -5,6 +5,7 @@ import toast from 'react-hot-toast'
 import { extractErrorMessage } from './createSyncMutation'
 import type { ProcessRequestOptionsState } from '../components/admin/ProcessRequestOptions'
 import { buildFieldLabelMap } from '../utils/sourceFieldLabels'
+import { seasonToSync } from '../utils/syncSeason'
 
 interface ProcessRequestsResponse {
   status: string
@@ -24,9 +25,17 @@ export function useProcessRequests() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async (options: ProcessRequestOptionsState): Promise<ProcessRequestsResponse> => {
+    mutationFn: async (
+      options: ProcessRequestOptionsState & { year?: number | undefined }
+    ): Promise<ProcessRequestsResponse> => {
       // Build query params
       const params = new URLSearchParams()
+
+      // The season on screen, when it is not the primary (seasonToSync)
+      const season = seasonToSync(queryClient, options.year)
+      if (season !== undefined) {
+        params.set('year', String(season))
+      }
 
       // Session is a cm_id string (e.g., '1000003') or 'all'
       if (options.session !== 'all') {

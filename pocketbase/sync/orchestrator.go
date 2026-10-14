@@ -384,18 +384,19 @@ func GetPhaseForJob(jobID string) Phase {
 // GetDefaultUnifiedSyncJobs returns the jobs a unified ("all services") sync runs.
 //
 // Derived from the registry: every job carrying TriggerFullRun, minus SyncedSeasonsOnly jobs on
-// a historical replay (isCurrentYear must mean what RunSyncWithOptions's opts.Year == 0 means),
+// a historical replay of a season outside the synced pair (isSyncedSeason must mean what
+// RunSyncWithOptions passes: opts.Year == 0, or a year SyncedSeasons covers),
 // minus the whole Expensive phase unless includeCustomValues (the flag has always gated the
 // phase, not per-job opinions), minus closed environment gates (process_requests' IS_DOCKER
 // check runs here via its Gate), ordered by orderQueue -- so stranded_assignment_cleanup now
 // runs dead-last, matching the daily cron, instead of mid-Transform (#1416, #1417).
-func GetDefaultUnifiedSyncJobs(includeCustomValues, isCurrentYear bool) []string {
+func GetDefaultUnifiedSyncJobs(includeCustomValues, isSyncedSeason bool) []string {
 	var ids []string
 	for _, m := range syncJobMeta {
 		if m.Triggers&TriggerFullRun == 0 {
 			continue
 		}
-		if m.SyncedSeasonsOnly && !isCurrentYear {
+		if m.SyncedSeasonsOnly && !isSyncedSeason {
 			continue
 		}
 		if m.Phase == PhaseExpensive && !includeCustomValues {
@@ -424,14 +425,14 @@ func GetDefaultUnifiedSyncJobs(includeCustomValues, isCurrentYear bool) []string
 //
 // nil, not an empty slice: an unresolvable service is a 400 in handleUnifiedSync, never a run
 // of nothing. Callers that distinguish must check for nil explicitly.
-func ResolveUnifiedSyncServices(service string, includeCustomValues, isCurrentYear bool) []string {
+func ResolveUnifiedSyncServices(service string, includeCustomValues, isSyncedSeason bool) []string {
 	if service != DefaultService {
 		if !hasTrigger(service, TriggerIndividualRoute) {
 			return nil
 		}
 		return []string{service}
 	}
-	return GetDefaultUnifiedSyncJobs(includeCustomValues, isCurrentYear)
+	return GetDefaultUnifiedSyncJobs(includeCustomValues, isSyncedSeason)
 }
 
 // Service defines the interface for sync services
@@ -1464,8 +1465,14 @@ func (o *Orchestrator) RunSyncSequenceWithServices(
 	// in the batch is attributable -- including the four year-wide ones. The claim it makes
 	// is "this run was started for weekend X", which is what a surface needs to know, not
 	// "every job in it was narrowed".
-	batch := newBatch(triggerManual).forSession(session)
+	return o.runSyncSequence(ctx, services, overrides, newBatch(triggerManual).forSession(session))
+}
 
+// runSyncSequence runs services in order as one batch. Refresh Housing for a season other than
+// the primary calls it directly with a batch filed under that season (forYear).
+func (o *Orchestrator) runSyncSequence(
+	ctx context.Context, services []string, overrides map[string]Service, batch runOrigin,
+) error {
 	for _, svc := range services {
 		if err := o.runSyncAndWaitWithService(ctx, svc, batch, overrides[svc]); err != nil {
 			return fmt.Errorf("sync sequence failed on %s: %w", svc, err)
@@ -1767,6 +1774,13 @@ func (o *Orchestrator) RunSingleSyncWithService(
 // Used by API handlers to ensure status is visible before the goroutine executes.
 // This prevents the race condition where the frontend polls before the status is set.
 func (o *Orchestrator) MarkSyncRunning(syncType string) error {
+	return o.markSyncRunningForYear(syncType, 0)
+}
+
+// markSyncRunningForYear is MarkSyncRunning for a run of an explicit season (0 = the primary):
+// the process_requests handlers run a prior season's processing when staff are viewing it, and
+// its sync_runs row must be filed under that season.
+func (o *Orchestrator) markSyncRunningForYear(syncType string, year int) error {
 	// Check if service exists
 	o.mu.RLock()
 	_, exists := o.services[syncType]
@@ -1781,10 +1795,10 @@ func (o *Orchestrator) MarkSyncRunning(syncType string) error {
 	}
 
 	// Both production callers are the process_requests API handlers, which run the service
-	// themselves and finish through FinalizeSyncStatus: an operator's run, for the current
-	// season. Taking the year from o.currentSyncYear instead would let a historical backfill
-	// that happens to be in flight stamp its year onto this run.
-	origin := newBatch(triggerManual)
+	// themselves and finish through FinalizeSyncStatus: an operator's run, for the season the
+	// request named (year, 0 = the primary). Taking the year from o.currentSyncYear instead
+	// would let a historical backfill that happens to be in flight stamp its year onto this run.
+	origin := newBatch(triggerManual).forYear(year)
 
 	// Create status entry with a unique run token
 	status := &Status{
@@ -2074,11 +2088,7 @@ func (o *Orchestrator) runSeasonPass(
 		slog.Warn("Season pass: no CampMinder client, skipping", "year", year)
 		return nil
 	}
-	build := o.yearServicesFn
-	if build == nil {
-		build = o.servicesForYear
-	}
-	svcs := build(year, false)
+	svcs := o.yearServices(year, false)
 
 	batch := newBatch(trigger).forYear(year)
 	// A pass of one job is not a queue (RunSyncWithOptions' isQueueRun rule): an unregistered
@@ -2751,6 +2761,36 @@ func (o *Orchestrator) servicesForYear(year int, debug bool) map[string]Service 
 	return s
 }
 
+// yearServices is servicesForYear, or the test seam that stands in for it (yearServicesFn).
+// Every caller that needs a season's own instances goes through here: the scheduled N-1 pass,
+// a historical replay, and the staff-triggered runs for a season other than the primary.
+func (o *Orchestrator) yearServices(year int, debug bool) map[string]Service {
+	if o.yearServicesFn != nil {
+		return o.yearServicesFn(year, debug)
+	}
+	return o.servicesForYear(year, debug)
+}
+
+// seasonInstance is a fresh instance of job configured for season year, for a staff-triggered run
+// of a season other than the primary (Manage > Sync, Jotform's Pull now, Refresh Housing, the
+// CSV upload). It never touches the registry: the registered instances stay the primary's, so a
+// cron firing meanwhile still syncs the primary. nil when the job has no season (a global).
+func (o *Orchestrator) seasonInstance(job string, year int, debug bool) Service {
+	svc := o.yearServices(year, debug)[job]
+	if svc == nil {
+		return nil
+	}
+	if d, ok := svc.(Debuggable); ok && debug {
+		d.SetDebug(true)
+	}
+	return svc
+}
+
+// runForSeason runs svc, a seasonInstance, as one manual run filed under year.
+func (o *Orchestrator) runForSeason(ctx context.Context, job string, year int, svc Service) error {
+	return o.runSyncAndWaitWithService(ctx, job, newBatch(triggerManual).forYear(year), svc)
+}
+
 // RunSyncWithOptions runs syncs with custom options including year override
 func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) error {
 	// Set the current sync year
@@ -2792,9 +2832,14 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 	// (source → [CV] → transform), same order as RunDailySync, with optional CV phase
 	// inserted before transform. opts.Year == 0 means the live/current-year run (see
 	// ResolveUnifiedSyncServices); opts.Year > 0 is a historical replay of a specific year.
+	//
+	// A prior synced season (N-1) is still a replay mechanically -- its own instances are
+	// registered for the run -- but it runs the SyncedSeasonsOnly jobs like its nightly pass
+	// does. Only a season outside the synced pair skips them (spec §5, audit Fix E).
 	servicesToRun := opts.Services
 	if len(servicesToRun) == 0 {
-		servicesToRun = ResolveUnifiedSyncServices(DefaultService, opts.IncludeCustomValues, opts.Year == 0)
+		servicesToRun = ResolveUnifiedSyncServices(DefaultService, opts.IncludeCustomValues,
+			opts.Year == 0 || syncedSeasonsInclude(opts.Year))
 	}
 
 	// A run of exactly one service is not a queue: nothing else in this run could have
@@ -2880,7 +2925,7 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		maps.Copy(originalServices, o.services)
 		o.mu.Unlock()
 
-		for id, svc := range o.servicesForYear(opts.Year, opts.Debug) {
+		for id, svc := range o.yearServices(opts.Year, opts.Debug) {
 			// The export singleton stays: runSyncAndWait already gives it the replay's year
 			// (TestHistoricalRunSetsTheExportsYear), and the restore below would only hide that.
 			if id == "multi_workbook_export" {

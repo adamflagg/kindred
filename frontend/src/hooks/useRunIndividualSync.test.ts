@@ -1,6 +1,18 @@
-import { describe, it, expect } from 'vitest'
-import { SYNC_TYPE_NAMES } from './useRunIndividualSync'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { act, renderHook } from '@testing-library/react'
+import { createElement, type ReactNode } from 'react'
+import { beforeEach, describe, it, expect, vi } from 'vitest'
+import { SYNC_TYPE_NAMES, useRunIndividualSync } from './useRunIndividualSync'
 import { getBackendSyncJobIds, getBackendSyncPostRouteSegments } from '../test/backendSyncJobIds'
+import { queryKeys } from '../utils/queryKeys'
+
+const send = vi.fn()
+vi.mock('../lib/pocketbase', () => ({
+  pb: { send: (...args: unknown[]) => send(...args) as unknown },
+}))
+vi.mock('react-hot-toast', () => ({
+  default: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }),
+}))
 
 describe('SYNC_TYPE_NAMES', () => {
   it('includes stranded_assignment_cleanup', () => {
@@ -32,5 +44,39 @@ describe('SYNC_TYPE_NAMES', () => {
     expect(runnableIds.length).toBeLessThan(getBackendSyncJobIds().length)
 
     expect(Object.keys(SYNC_TYPE_NAMES).sort()).toEqual(runnableIds.slice().sort())
+  })
+})
+
+// Plan Review Focus 1: after the Oct 15 rollover staff keep working the prior season. A card run
+// (or Jotform's Pull now) while viewing it must sync that season, so the season reaches the URL
+// -- only when it is not the primary (the status payload's `_configured_year`), so a primary
+// run's request is exactly what it always was.
+describe('useRunIndividualSync', () => {
+  let client: QueryClient
+  function wrapper({ children }: { children: ReactNode }) {
+    return createElement(QueryClientProvider, { client }, children)
+  }
+
+  beforeEach(() => {
+    client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    client.setQueryData(queryKeys.syncStatus(), { _configured_year: 2027 })
+    send.mockReset()
+    send.mockResolvedValue({ status: 'started' })
+  })
+
+  it('runs the season being viewed when it is not the primary', async () => {
+    const { result } = renderHook(() => useRunIndividualSync(), { wrapper })
+    await act(() => result.current.mutateAsync({ syncType: 'jotform_submissions', year: 2026 }))
+    expect(send).toHaveBeenCalledWith('/api/custom/sync/jotform-submissions?year=2026', {
+      method: 'POST',
+    })
+  })
+
+  it('sends no year for the primary, or when none is given', async () => {
+    const { result } = renderHook(() => useRunIndividualSync(), { wrapper })
+    await act(() => result.current.mutateAsync({ syncType: 'attendees', year: 2027 }))
+    await act(() => result.current.mutateAsync({ syncType: 'attendees' }))
+    expect(send).toHaveBeenNthCalledWith(1, '/api/custom/sync/attendees', { method: 'POST' })
+    expect(send).toHaveBeenNthCalledWith(2, '/api/custom/sync/attendees', { method: 'POST' })
   })
 })

@@ -29,6 +29,7 @@ vi.mock('react-hot-toast', () => {
 
 let client: QueryClient
 let job: { status: string; end_time?: string }
+let primary: number | undefined
 
 function wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>
@@ -46,10 +47,11 @@ beforeEach(() => {
   vi.useFakeTimers({ shouldAdvanceTime: true })
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   job = { status: 'success', end_time: '2026-09-24T08:00:00Z' }
+  primary = undefined
   send.mockReset()
   send.mockImplementation((path: string) => {
     if (path === '/api/custom/sync/status') {
-      return Promise.resolve({ [JOTFORM_SYNC_ID]: { ...job } })
+      return Promise.resolve({ [JOTFORM_SYNC_ID]: { ...job }, _configured_year: primary })
     }
     return Promise.resolve({ status: 'started' })
   })
@@ -116,6 +118,30 @@ describe('useJotformPull', () => {
       await vi.advanceTimersByTimeAsync(15000)
     })
     expect(statusCalls()).toBe(before)
+  })
+
+  // Plan Review Focus 1: after the Oct 15 rollover the October adult weekends are the prior
+  // season. Pull now on that season's tab must pull that season's forms.
+  it('pulls Jotform for the season the admin is viewing', async () => {
+    primary = 2027
+    const { result } = renderHook(() => useJotformPull(2026), { wrapper })
+    await waitFor(() => expect(client.getQueryData(queryKeys.syncStatus())).toBeTruthy())
+    await act(async () => {
+      await result.current.pull()
+    })
+    expect(send).toHaveBeenCalledWith('/api/custom/sync/jotform-submissions?year=2026', {
+      method: 'POST',
+    })
+  })
+
+  it('pulls the primary with no year, as before', async () => {
+    primary = 2027
+    const { result } = renderHook(() => useJotformPull(2027), { wrapper })
+    await waitFor(() => expect(client.getQueryData(queryKeys.syncStatus())).toBeTruthy())
+    await act(async () => {
+      await result.current.pull()
+    })
+    expect(send).toHaveBeenCalledWith('/api/custom/sync/jotform-submissions', { method: 'POST' })
   })
 
   it('does not watch a pull the server refused', async () => {

@@ -843,3 +843,37 @@ describe('SyncTab season line and prior-season cards', () => {
     expect(await screen.findByText('Jotform Submissions', { selector: 'div' })).toBeInTheDocument()
   })
 })
+
+// Plan Review Focus 1: a card run while the tab shows the prior season syncs that season. The
+// hooks decide whether `year` reaches the URL (only when it is not the primary); the tab's job
+// is to hand them the year it is showing.
+describe('SyncTab card runs carry the season being viewed', () => {
+  afterEach(() => {
+    notPending.mutate.mockClear()
+    seasonStatusFields = {}
+  })
+
+  function showPriorSeason() {
+    seasonStatusFields = { _configured_year: 2027, _synced_years: [2027, 2026] }
+    renderSyncTab()
+    const yearSelect = screen.getByRole('option', { name: '2026' }).closest('select')
+    fireEvent.change(yearSelect as HTMLSelectElement, { target: { value: '2026' } })
+  }
+
+  it('runs an individual sync for the season on screen', () => {
+    showPriorSeason()
+    fireEvent.click(getCardRunButton('Jotform Submissions'))
+    expect(notPending.mutate).toHaveBeenCalledWith({ syncType: 'jotform_submissions', year: 2026 })
+  })
+
+  it('runs an on-demand custom-values sync for the season on screen', () => {
+    showPriorSeason()
+    fireEvent.click(getCardRunButton('Person CV'))
+    expect(notPending.mutate).toHaveBeenCalledWith({
+      syncType: 'person_custom_values',
+      session: 'all',
+      debug: false,
+      year: 2026,
+    })
+  })
+})

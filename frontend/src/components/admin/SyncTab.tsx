@@ -272,7 +272,7 @@ export function SyncTab() {
     const handleRun = () => {
       switch (syncType.id) {
         case 'process_requests':
-          runIndividualSync.mutate(syncType.id)
+          runIndividualSync.mutate({ syncType: syncType.id, year: syncYear })
           break
         case 'family_camp_derived':
           familyCampDerivedSync.mutate(syncYear)
@@ -313,10 +313,11 @@ export function SyncTab() {
             syncType: syncType.id,
             session: 'all',
             debug: false,
+            year: syncYear,
           })
           break
         default:
-          runIndividualSync.mutate(syncType.id)
+          runIndividualSync.mutate({ syncType: syncType.id, year: syncYear })
       }
     }
 
@@ -1003,7 +1004,8 @@ export function SyncTab() {
 
                   {/* Run button */}
                   <button
-                    onClick={() => runIndividualSync.mutate(syncType.id)}
+                    // Global definitions have no season, so no year.
+                    onClick={() => runIndividualSync.mutate({ syncType: syncType.id })}
                     disabled={isRunning || isPending || runIndividualSync.isPending}
                     className="bg-muted/50 dark:bg-muted hover:bg-muted text-muted-foreground hover:text-foreground mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-medium transition-colors disabled:opacity-50 sm:text-sm"
                   >
@@ -1027,7 +1029,7 @@ export function SyncTab() {
         isOpen={showProcessOptions}
         onClose={() => setShowProcessOptions(false)}
         onSubmit={(options: ProcessRequestOptionsState) => {
-          processRequests.mutate(options)
+          processRequests.mutate({ ...options, year: syncYear })
           setShowProcessOptions(false)
         }}
         isProcessing={processRequests.isPending}
