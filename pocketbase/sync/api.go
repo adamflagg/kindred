@@ -1679,6 +1679,19 @@ func processQueuedSyncs(orchestrator *Orchestrator) {
 				break
 			}
 
+			// The prior synced season runs its own instance (see phaseSeasonInstance).
+			if seasonSvc, skip := phaseSeasonInstance(orchestrator, jobID, qs.Year, qs.Debug); skip {
+				slog.Error("Queued phase sync: no instance for its season, not running it on the primary's",
+					"phase", phase, "job", jobID, "year", qs.Year)
+				continue
+			} else if seasonSvc != nil {
+				slog.Info("Queued phase sync: Running job", "phase", phase, "job", jobID, "year", qs.Year)
+				if err := orchestrator.runSyncAndWaitWithService(ctx, jobID, batch, seasonSvc); err != nil {
+					slog.Error("Queued phase sync: job failed", "phase", phase, "job", jobID, "error", err)
+				}
+				continue
+			}
+
 			// Set year and debug on the service before running
 			if svc := orchestrator.GetService(jobID); svc != nil {
 				// Set year so service queries correct year's data
@@ -1954,7 +1967,8 @@ func handleTestConnection(e *core.RequestEvent, scheduler *Scheduler) error {
 	if orchestrator.baseClient == nil {
 		return e.JSON(http.StatusInternalServerError, map[string]any{
 			"error": "CampMinder client not initialized",
-			"hint":  "Check that CAMPMINDER_API_KEY, CAMPMINDER_CLIENT_ID, and CAMPMINDER_SEASON_ID are set",
+			"hint": "Check that CAMPMINDER_API_KEY and CAMPMINDER_CLIENT_ID are set, and that CAMPMINDER_SEASON_ID, " +
+				"an optional override, is a valid year if it is set at all",
 		})
 	}
 
@@ -2006,6 +2020,18 @@ func handleMultiWorkbookExport(e *core.RequestEvent, scheduler *Scheduler) error
 		return e.JSON(http.StatusBadRequest, map[string]any{
 			"error": fmt.Sprintf("Invalid years parameter: %v", err),
 		})
+	}
+
+	// The season staff are viewing (?year=, absent = the primary), sent by Manage > Sync's card.
+	// With no explicit years, a prior synced season exports that season's workbook alone, so the
+	// button never exports the primary while staff are working N-1; a year outside the synced
+	// pair is refused, as on every other staff route.
+	viewed, viewedPrimary, seasonErr := viewedSeason(e.Request.URL.Query().Get("year"))
+	if seasonErr != nil {
+		return answerSeasonError(e, seasonErr)
+	}
+	if len(years) == 0 && viewed != viewedPrimary {
+		years = []int{viewed}
 	}
 
 	// Parse optional includeGlobals parameter
@@ -2674,6 +2700,23 @@ func handleHouseholdDemographicsSync(e *core.RequestEvent, scheduler *Scheduler)
 // is untouched; only the execution list is filtered.
 func phaseExecutionJobs(phase Phase) []string { return inPhaseWithTrigger(phase, TriggerPhaseRun) }
 
+// phaseSeasonInstance is the instance a Run Phase job runs when staff asked for the prior synced
+// season (N-1): that season's own instance, so a client-backed job (which ignores SetYear) reads
+// CampMinder for N-1 rather than the primary, and the registry stays the primary's. svc is nil
+// when the registered instance runs as before: the primary, a global job, or a year outside the
+// synced pair (a historical phase run, unchanged). skip is true for an N-1 job that has no season
+// instance; it is not run on the primary's.
+func phaseSeasonInstance(o *Orchestrator, job string, year int, debug bool) (svc Service, skip bool) {
+	primary, err := ParseSeasonYear()
+	if err != nil || year == primary || !syncedSeasonsInclude(year) || GetPhaseForJob(job) == PhaseGlobal {
+		return nil, false
+	}
+	if svc = o.seasonInstance(job, year, debug); svc == nil {
+		return nil, true
+	}
+	return svc, false
+}
+
 // handleGetPhases returns list of available sync phases with metadata
 func handleGetPhases(e *core.RequestEvent) error {
 	phases := GetAllPhases()
@@ -2850,6 +2893,19 @@ func handleRunPhase(e *core.RequestEvent, scheduler *Scheduler) error {
 				slog.Error("Phase sync canceled", "phase", phase, "error", ctx.Err())
 				return
 			default:
+			}
+
+			// The prior synced season runs its own instance (see phaseSeasonInstance).
+			if seasonSvc, skip := phaseSeasonInstance(orchestrator, jobID, year, debug); skip {
+				slog.Error("Phase job: no instance for its season, not running it on the primary's",
+					"phase", phase, "job", jobID, "year", year)
+				continue
+			} else if seasonSvc != nil {
+				slog.Info("Running phase job", "phase", phase, "job", jobID, "year", year)
+				if err := orchestrator.runSyncAndWaitWithService(ctx, jobID, batch, seasonSvc); err != nil {
+					slog.Error("Phase job failed", "phase", phase, "job", jobID, "error", err)
+				}
+				continue
 			}
 
 			// Set year and debug on the service before running

@@ -271,3 +271,95 @@ func TestProcessRequestsRouteProcessesTheViewedSeason(t *testing.T) {
 		t.Errorf("?year=2024 got %d, want 400", resp.Code)
 	}
 }
+
+// ── Scan findings on #3211: Run Phase for the prior season ─────────────────────────────────
+
+// TestRunPhaseForThePriorSeasonRunsThatSeason is Manage > Sync's Run Phase while viewing 2026.
+// Client-backed jobs ignore SetYear, so running the registered instances would fetch the
+// primary (2027) from CampMinder and file it under 2026. Each job must run 2026's own instance,
+// and the registry must stay the primary's.
+func TestRunPhaseForThePriorSeasonRunsThatSeason(t *testing.T) {
+	t.Setenv("CAMPMINDER_SEASON_ID", "")
+	withNow(t, afterRollover)
+	client := newTestCampMinderClient(t, 2027)
+
+	runInBubble(t, func(t *testing.T) {
+		o, rec := newRecordingOrchestrator(t, nil, client, "attendees", "bunk_requests")
+		scheduler := &Scheduler{orchestrator: o}
+		registeredAttendees := o.GetService("attendees")
+		registeredRequests := o.GetService("bunk_requests")
+
+		for _, target := range []string{"/?year=2026&phase=source", "/?year=2026&phase=process"} {
+			resp := callHandler(t, nil, target, func(e *core.RequestEvent) error {
+				return handleRunPhase(e, scheduler)
+			})
+			if resp.Code != http.StatusOK {
+				t.Fatalf("%s got %d: %s", target, resp.Code, resp.Body.String())
+			}
+			time.Sleep(time.Minute)
+		}
+
+		for _, job := range []string{"attendees", "bunk_requests"} {
+			if !rec.Ran(job, 2026) {
+				t.Errorf("%s must run for 2026 on a 2026 Run Phase, got %v", job, rec.Runs())
+			}
+			if rec.count(job, 2027) != 0 {
+				t.Errorf("%s ran for the primary (2027) on a 2026 Run Phase", job)
+			}
+		}
+		if o.GetService("attendees") != registeredAttendees || o.GetService("bunk_requests") != registeredRequests {
+			t.Error("a 2026 Run Phase swapped a registered instance")
+		}
+	})
+}
+
+// TestRunPhaseForThePrimaryStillRunsTheRegisteredInstances pins the unchanged half.
+func TestRunPhaseForThePrimaryStillRunsTheRegisteredInstances(t *testing.T) {
+	t.Setenv("CAMPMINDER_SEASON_ID", "")
+	withNow(t, afterRollover)
+	client := newTestCampMinderClient(t, 2027)
+
+	runInBubble(t, func(t *testing.T) {
+		o, rec := newRecordingOrchestrator(t, nil, client, "attendees")
+		scheduler := &Scheduler{orchestrator: o}
+		resp := callHandler(t, nil, "/?year=2027&phase=source", func(e *core.RequestEvent) error {
+			return handleRunPhase(e, scheduler)
+		})
+		if resp.Code != http.StatusOK {
+			t.Fatalf("got %d: %s", resp.Code, resp.Body.String())
+		}
+		time.Sleep(time.Minute)
+		if rec.count("attendees", 2027) != 1 || rec.count("attendees", 2026) != 0 {
+			t.Errorf("a 2027 Run Phase must run the primary once, got %v", rec.Runs())
+		}
+	})
+}
+
+// TestQueuedRunPhaseForThePriorSeasonRunsThatSeason: the same press while another job runs is
+// queued, and the dequeued phase must still run 2026's own instances.
+func TestQueuedRunPhaseForThePriorSeasonRunsThatSeason(t *testing.T) {
+	t.Setenv("CAMPMINDER_SEASON_ID", "")
+	withNow(t, afterRollover)
+	client := newTestCampMinderClient(t, 2027)
+
+	runInBubble(t, func(t *testing.T) {
+		o, rec := newRecordingOrchestrator(t, nil, client, "attendees", "bunks")
+		scheduler := &Scheduler{orchestrator: o}
+		if err := o.MarkSyncRunning("bunks"); err != nil {
+			t.Fatal(err)
+		}
+		resp := callHandler(t, nil, "/?year=2026&phase=source", func(e *core.RequestEvent) error {
+			return handleRunPhase(e, scheduler)
+		})
+		if resp.Code != http.StatusAccepted {
+			t.Fatalf("expected the busy orchestrator to queue the phase, got %d: %s", resp.Code, resp.Body.String())
+		}
+		o.FinalizeSyncStatus("bunks", Stats{}, nil)
+
+		processQueuedSyncs(o)
+
+		if !rec.Ran("attendees", 2026) || rec.count("attendees", 2027) != 0 {
+			t.Errorf("the dequeued 2026 phase must run 2026's attendees, got %v", rec.Runs())
+		}
+	})
+}

@@ -2144,7 +2144,7 @@ func (o *Orchestrator) runSeasonPass(
 // so the swap never changes a running job. The swap is skipped, and retried by the next
 // scheduled run, while a queue that configured registered instances is in flight: a historical
 // replay (which sets dry_run/debug on the registered instances of the jobs it has no season
-// instance for -- globals, the windowed jobs -- and runs them later in the queue) or a manual
+// instance for -- the globals, and the exporter -- and runs them later in the queue) or a manual
 // full run (dailySyncRunning, which sets dry_run/debug on the registered instances). RunDailySync calls
 // this before setting dailySyncRunning, so its own run is not one of them.
 func (o *Orchestrator) ensurePrimaryClient() {
@@ -2925,8 +2925,12 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 	// through runSyncAndWaitWithService's override, the way the scheduled N-1 pass does
 	// (runSeasonPass). It never touches the registry: the registered instances stay the
 	// primary's, so an hourly run, a card sync or the nightly primary pass that starts during
-	// the replay still syncs the primary. A job the factory builds no instance for (the globals,
-	// the primary-only windowed jobs) runs its registered instance, as it always has.
+	// the replay still syncs the primary. A job the factory builds no instance for (the globals;
+	// the exporter, which replayOverrides leaves out) runs its registered instance, as it always
+	// has. The PrimaryOnly windowed jobs DO have instances here -- the single-season
+	// financial_transactions and a one-season aid_postings -- so a replay, including a manual run
+	// of N-1, runs those for its own season, as a replay always has; only the scheduled N-1 pass
+	// skips them (secondarySeasonQueue).
 	var overrides map[string]Service
 	if opts.Year > 0 {
 		if o.BaseClient() == nil {
@@ -3400,7 +3404,8 @@ func (o *Orchestrator) InitializeSyncServices() error {
 			missingVars = append(missingVars, "CAMPMINDER_CLIENT_ID")
 		}
 		if cfg.SeasonID == 0 {
-			missingVars = append(missingVars, "CAMPMINDER_SEASON_ID")
+			// Only an invalid override leaves the season unresolved; unset is fine (the rule).
+			missingVars = append(missingVars, "CAMPMINDER_SEASON_ID (invalid override)")
 		}
 		return fmt.Errorf("missing required CampMinder configuration: %v", missingVars)
 	}
