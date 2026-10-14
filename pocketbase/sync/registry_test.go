@@ -60,7 +60,8 @@ func registeredServiceNames(t *testing.T) map[string]bool {
 	t.Helper()
 
 	src := readSourceFile(t, "orchestrator.go")
-	re := regexp.MustCompile(`\.RegisterService\(\s*"([a-z0-9_]+)"`)
+	// `.add(` is serviceSet's builder (servicesForYear), which keeps its job ids literal too.
+	re := regexp.MustCompile(`\.(?:RegisterService|add)\(\s*"([a-z0-9_]+)"`)
 	matches := re.FindAllStringSubmatch(src, -1)
 	// 60 RegisterService calls exist as of this writing: 33 unique names, most registered
 	// twice because RunSyncWithOptions' historical-year path re-registers a subset of the
@@ -1657,6 +1658,7 @@ func TestRecordBatchChangeMapsFamilyCampVariantsToSharedCollections(t *testing.T
 }
 
 func TestPrimaryOnlyJobsAreTheWindowedOnes(t *testing.T) {
+	t.Parallel()
 	want := map[string]bool{"financial_transactions": true, "aid_postings": true}
 	for _, m := range syncJobMeta {
 		if m.PrimaryOnly != want[m.ID] {

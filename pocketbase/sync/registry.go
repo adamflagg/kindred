@@ -141,11 +141,13 @@ func orderQueue(ids []string) []string {
 // cadenceQueue is the runnable, correctly-ordered queue for one cron.
 func cadenceQueue(c Cadence) []string { return orderQueue(available(jobsWithCadence(c))) }
 
-// secondarySeasonQueue is cadenceQueue minus PrimaryOnly jobs: what the N-1 pass runs.
+// secondarySeasonQueue is cadenceQueue minus PrimaryOnly jobs and global jobs: what the N-1
+// pass runs. A global job (financial_lookups is the daily one) has no season, so the primary
+// pass's run already covers it (spec §5: globals run once).
 func secondarySeasonQueue(c Cadence) []string {
 	primaryOnly := make(map[string]bool)
 	for _, m := range syncJobMeta {
-		if m.PrimaryOnly {
+		if m.PrimaryOnly || m.Phase == PhaseGlobal {
 			primaryOnly[m.ID] = true
 		}
 	}

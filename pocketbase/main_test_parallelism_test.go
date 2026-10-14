@@ -100,6 +100,7 @@ var serialGroups = []struct {
 		tests: []string{
 			"TestJotformSyncWithoutAKeyFailsLoudly",
 			"TestJotformJobRunsDailyWhenAKeyIsConfigured",
+			"TestSecondarySeasonDailyQueue",
 		},
 	},
 	{
@@ -355,6 +356,20 @@ var serialGroups = []struct {
 			"TestWeeklySyncJobsGatesExportOnGoogleDisabled",
 			"TestWeeklySyncJobsCount",
 			"TestWeeklySyncServices",
+		},
+	},
+	{
+		pkg:    "sync",
+		reason: "t.Setenv: CAMPMINDER_PRIMARY_KEY (campminder.NewClient) builds the boot client a season's services clone",
+		tests:  []string{"TestServicesForYearClonesTheClientForTheSeason"},
+	},
+	{
+		// The season rule reads CAMPMINDER_SEASON_ID and the package-level clock nowFn; these
+		// pin the clock to a date past the Oct 15 rollover (withNow) and clear the override.
+		pkg:    "sync",
+		reason: "t.Setenv (CAMPMINDER_SEASON_ID, API_URL) and swaps the season clock nowFn",
+		tests: []string{
+			"TestRequestProcessorSendsItsOwnYearNotThePrimary",
 		},
 	},
 	{

@@ -2385,6 +2385,181 @@ func (o *Orchestrator) SetJobSpacing(duration time.Duration) {
 	o.jobSpacing = duration
 }
 
+// serviceSet collects services by job id while a factory builds them. The add calls keep every
+// job id a string literal, which registry_test.go's registeredServiceNames parses.
+type serviceSet map[string]Service
+
+func (s serviceSet) add(id string, svc Service) { s[id] = svc }
+
+// servicesForYear returns a fresh instance of every year-scoped job, configured for `year`:
+// client-backed services read CampMinder through a client cloned to `year`, and the others get
+// their Year field set. Nothing is registered: the caller decides whether to hand the instances
+// to runSyncAndWaitWithService one by one (the N-1 pass, which must never swap the registry) or
+// to re-register them (a historical replay).
+//
+// Globals (person_tag_defs, custom_field_defs, divisions, the lookups) are absent on purpose:
+// they have no season, so a season's pass must not re-run them.
+//
+// financial_transactions is the single-season variant here, matching what a replay of one year
+// has always fetched. The N-1 pass never runs it (PrimaryOnly); the primary pass runs the
+// rolling N-1..N+1 instance registered at boot.
+//
+// With no base client (tests that never set one up) the client-backed services get a nil
+// client; runSeasonPass refuses to run a pass in that state.
+func (o *Orchestrator) servicesForYear(year int, debug bool) map[string]Service {
+	var yearClient *campminder.Client
+	if base := o.BaseClient(); base != nil {
+		yearClient = base.CloneWithYear(year)
+	}
+	s := serviceSet{}
+
+	// Note: "persons" is a combined sync that populates persons and households
+	s.add("session_groups", NewSessionGroupsSync(o.app, yearClient))
+	s.add("sessions", NewSessionsSync(o.app, yearClient))
+	s.add("attendees", NewAttendeesSync(o.app, yearClient))
+	s.add("persons", NewPersonsSync(o.app, yearClient))
+	s.add("bunks", NewBunksSync(o.app, yearClient))
+	s.add("bunk_plans", NewBunkPlansSync(o.app, yearClient))
+	s.add("bunk_assignments", NewBunkAssignmentsSync(o.app, yearClient))
+	reconcile := NewReconcileLifecycleSync(o.app)
+	reconcile.Year = year
+	s.add("reconcile_request_lifecycle", reconcile)
+	s.add("bunk_requests", NewBunkRequestsSync(o.app, yearClient))
+	processor := NewRequestProcessor(o.app)
+	processor.CollectTraces = true // Always collect traces for scheduled/automated runs
+	processor.Trigger = "scheduled"
+	processor.Year = year
+	s.add("process_requests", processor)
+	s.add("staff", NewStaffSync(o.app, yearClient))
+	s.add("financial_transactions", NewFinancialTransactionsSync(o.app, yearClient))
+
+	// Family camp derived tables (computed from custom values)
+	familyCampDerived := NewFamilyCampDerivedSync(o.app)
+	familyCampDerived.Year = year
+	s.add("family_camp_derived", familyCampDerived)
+
+	// Lodging assignments (derived from the cabin custom fields)
+	lodgingAssignments := NewLodgingAssignmentsSync(o.app)
+	lodgingAssignments.Year = year
+	s.add("lodging_assignments", lodgingAssignments)
+
+	// Staff skills (derived from person_custom_values Skills- fields)
+	staffSkills := NewStaffSkillsSync(o.app)
+	staffSkills.Year = year
+	s.add("staff_skills", staffSkills)
+
+	// Financial aid applications (derived from person_custom_values FA- fields)
+	faApplications := NewFinancialAidApplicationsSync(o.app)
+	faApplications.Year = year
+	faApplications.IntakeTrigger = TriggerFinancialAidIntake
+	s.add("financial_aid_applications", faApplications)
+
+	// Campership ledger for this season only
+	aidPostings := NewAidPostingsSync(o.app)
+	aidPostings.Year = year
+	aidPostings.LedgerTickTrigger = TriggerFinancialAidLedgerTicks
+	s.add("aid_postings", aidPostings)
+
+	// Household demographics (computed from HH- fields + household custom values)
+	householdDemographics := NewHouseholdDemographicsSync(o.app)
+	householdDemographics.Year = year
+	s.add("household_demographics", householdDemographics)
+
+	// Camper dietary (derived from Family Medical-* fields)
+	camperDietary := NewCamperDietarySync(o.app)
+	camperDietary.Year = year
+	s.add("camper_dietary", camperDietary)
+
+	// Camper transportation (derived from BUS-* fields)
+	camperTransportation := NewCamperTransportationSync(o.app)
+	camperTransportation.Year = year
+	s.add("camper_transportation", camperTransportation)
+
+	// Quest registrations (derived from Quest-*/Q-* fields)
+	questRegistrations := NewQuestRegistrationsSync(o.app)
+	questRegistrations.Year = year
+	s.add("quest_registrations", questRegistrations)
+
+	// Staff applications (derived from App-* fields)
+	staffApplications := NewStaffApplicationsSync(o.app)
+	staffApplications.Year = year
+	s.add("staff_applications", staffApplications)
+
+	// Staff vehicle info (derived from SVI-* fields)
+	staffVehicleInfo := NewStaffVehicleInfoSync(o.app)
+	staffVehicleInfo.Year = year
+	s.add("staff_vehicle_info", staffVehicleInfo)
+
+	// Geographic normalization (normalizes persons.school/city/congregation)
+	normalizeGeographic := NewNormalizeGeographicSync(o.app)
+	normalizeGeographic.Year = year
+	s.add("normalize_geographic", normalizeGeographic)
+
+	// Enrollment snapshots (captures daily enrollment counts per session)
+	enrollmentSnapshots := NewEnrollmentSnapshotsSync(o.app)
+	enrollmentSnapshots.Year = year
+	s.add("enrollment_snapshots", enrollmentSnapshots)
+
+	// Stranded assignment cleanup: sweeps scenario drafts stranded by bunk-plan changes,
+	// for this season's drafts.
+	strandedAssignmentCleanup := NewStrandedAssignmentCleanupSync(o.app)
+	strandedAssignmentCleanup.Year = year
+	s.add("stranded_assignment_cleanup", strandedAssignmentCleanup)
+
+	// Adult-weekend Jotform pull: forms are per season, so it reads the season's own forms.
+	jotform := NewJotformSubmissionsSync(o.app)
+	jotform.Year = year
+	jotform.Debug = debug
+	s.add("jotform_submissions", jotform)
+
+	// The season's workbook. It reuses the registered exporter's Sheets writer and workbook
+	// manager; when Google Sheets is not configured nothing is registered and there is no
+	// export to scope.
+	if registered, ok := o.GetService("multi_workbook_export").(*MultiWorkbookExport); ok {
+		// year is non-zero, so the constructor never resolves a season and cannot fail.
+		if exp, err := NewMultiWorkbookExport(o.app, registered.sheetsWriter, registered.workbookManager, year); err == nil {
+			s.add("multi_workbook_export", exp)
+		}
+	}
+
+	// Custom value services read their season through the client's GetSeasonID(), so they need
+	// the season's client. The full passes cover every session.
+	personCustomValues := NewPersonCustomFieldValuesSync(o.app, yearClient)
+	personCustomValues.SetDebug(debug)
+	personCustomValues.SetSession("all")
+	s.add("person_custom_values", personCustomValues)
+
+	householdCustomValues := NewHouseholdCustomFieldValuesSync(o.app, yearClient)
+	householdCustomValues.SetDebug(debug)
+	householdCustomValues.SetSession("all")
+	s.add("household_custom_values", householdCustomValues)
+
+	// The scoped family-camp variants of the two services above need the season's client too,
+	// or they keep running against the boot-time client (kindred#2608). ScopedJobs -- not a
+	// hand-rolled loop over syncJobMeta -- is what keeps this list correct if a third scoped
+	// variant of either service is ever added. Session is left at its NewXxx default
+	// (DefaultSession) rather than set to "all" explicitly: with Scope == ScopeFamilyCamp,
+	// getPersonIDsToSync/getHouseholdIDsToSync only consult Session when it names one specific
+	// weekend, so DefaultSession already spans every family-camp weekend in the year, same as
+	// the boot-time singleton the unattended cron runs.
+	for _, id := range ScopedJobs(ScopeFamilyCamp) {
+		switch JobBase(id) {
+		case serviceNamePersonCustomValues:
+			scopedPerson := NewPersonCustomFieldValuesSync(o.app, yearClient)
+			scopedPerson.SetScope(ScopeFamilyCamp)
+			scopedPerson.SetDebug(debug)
+			s[id] = scopedPerson
+		case serviceNameHouseholdCustomValues:
+			scopedHousehold := NewHouseholdCustomFieldValuesSync(o.app, yearClient)
+			scopedHousehold.SetScope(ScopeFamilyCamp)
+			scopedHousehold.SetDebug(debug)
+			s[id] = scopedHousehold
+		}
+	}
+
+	return s
+}
+
 // RunSyncWithOptions runs syncs with custom options including year override
 func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) error {
 	// Set the current sync year
@@ -2498,164 +2673,41 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		}()
 	}
 
-	// If year override is specified, we need to re-register services with a cloned client
+	// A historical replay re-registers the year-scoped services for its year (globals are not
+	// in servicesForYear, so person_tag_defs, custom_field_defs and divisions never run in a
+	// replay) and restores the originals when it ends. The scheduled N-1 pass never does this:
+	// it hands each job its own instance instead (runSeasonPass).
 	if opts.Year > 0 {
-		if o.baseClient == nil {
+		if o.BaseClient() == nil {
 			slog.Error("Cannot run historical sync - baseClient is nil")
 			return fmt.Errorf("baseClient not initialized")
 		}
 
-		// Create a client with the specified year
-		yearClient := o.baseClient.CloneWithYear(opts.Year)
-
-		// Temporarily re-register services with year-specific client
 		// Store original services
 		originalServices := make(map[string]Service)
 		o.mu.Lock()
-		for name, svc := range o.services {
-			originalServices[name] = svc
-		}
+		maps.Copy(originalServices, o.services)
 		o.mu.Unlock()
 
-		// Re-register with year client
-		// Note: person_tag_defs, custom_field_defs, and divisions are NOT re-registered
-		// because they are global (not year-specific) and shouldn't run in historical syncs
-		// Note: "persons" is a combined sync that populates persons and households
-		o.RegisterService("session_groups", NewSessionGroupsSync(o.app, yearClient))
-		o.RegisterService("sessions", NewSessionsSync(o.app, yearClient))
-		// Note: divisions is global (no year field) - not re-registered for historical sync
-		o.RegisterService("attendees", NewAttendeesSync(o.app, yearClient))
-		o.RegisterService("persons", NewPersonsSync(o.app, yearClient)) // Combined: persons + households
-		o.RegisterService("bunks", NewBunksSync(o.app, yearClient))
-		o.RegisterService("bunk_plans", NewBunkPlansSync(o.app, yearClient))
-		o.RegisterService("bunk_assignments", NewBunkAssignmentsSync(o.app, yearClient))
-		yearReconcileSync := NewReconcileLifecycleSync(o.app)
-		yearReconcileSync.Year = opts.Year
-		o.RegisterService("reconcile_request_lifecycle", yearReconcileSync)
-		o.RegisterService("bunk_requests", NewBunkRequestsSync(o.app, yearClient))
-		yearProcessor := NewRequestProcessor(o.app)
-		yearProcessor.CollectTraces = true // Always collect traces for scheduled/automated runs
-		yearProcessor.Trigger = "scheduled"
-		o.RegisterService("process_requests", yearProcessor)
-		o.RegisterService("staff", NewStaffSync(o.app, yearClient))
-
-		o.RegisterService("financial_transactions", NewFinancialTransactionsSync(o.app, yearClient))
-
-		// Family camp derived tables (computed from custom values)
-		familyCampDerivedSync := NewFamilyCampDerivedSync(o.app)
-		familyCampDerivedSync.Year = opts.Year
-		o.RegisterService("family_camp_derived", familyCampDerivedSync)
-
-		// Lodging assignments (derived from the cabin custom fields)
-		lodgingAssignmentsSync := NewLodgingAssignmentsSync(o.app)
-		lodgingAssignmentsSync.Year = opts.Year
-		o.RegisterService("lodging_assignments", lodgingAssignmentsSync)
-
-		// Staff skills (derived from person_custom_values Skills- fields)
-		staffSkillsSync := NewStaffSkillsSync(o.app)
-		staffSkillsSync.Year = opts.Year
-		o.RegisterService("staff_skills", staffSkillsSync)
-
-		// Financial aid applications (derived from person_custom_values FA- fields)
-		faApplicationsSync := NewFinancialAidApplicationsSync(o.app)
-		faApplicationsSync.Year = opts.Year
-		faApplicationsSync.IntakeTrigger = TriggerFinancialAidIntake
-		o.RegisterService("financial_aid_applications", faApplicationsSync)
-
-		// Campership ledger for the replayed season only
-		aidPostingsSync := NewAidPostingsSync(o.app)
-		aidPostingsSync.Year = opts.Year
-		aidPostingsSync.LedgerTickTrigger = TriggerFinancialAidLedgerTicks
-		o.RegisterService("aid_postings", aidPostingsSync)
-
-		// Household demographics (computed from HH- fields + household custom values)
-		householdDemographicsSync := NewHouseholdDemographicsSync(o.app)
-		householdDemographicsSync.Year = opts.Year
-		o.RegisterService("household_demographics", householdDemographicsSync)
-
-		// Camper dietary (derived from Family Medical-* fields)
-		camperDietarySync := NewCamperDietarySync(o.app)
-		camperDietarySync.Year = opts.Year
-		o.RegisterService("camper_dietary", camperDietarySync)
-
-		// Camper transportation (derived from BUS-* fields)
-		camperTransportationSync := NewCamperTransportationSync(o.app)
-		camperTransportationSync.Year = opts.Year
-		o.RegisterService("camper_transportation", camperTransportationSync)
-
-		// Quest registrations (derived from Quest-*/Q-* fields)
-		questRegistrationsSync := NewQuestRegistrationsSync(o.app)
-		questRegistrationsSync.Year = opts.Year
-		o.RegisterService("quest_registrations", questRegistrationsSync)
-
-		// Staff applications (derived from App-* fields)
-		staffApplicationsSync := NewStaffApplicationsSync(o.app)
-		staffApplicationsSync.Year = opts.Year
-		o.RegisterService("staff_applications", staffApplicationsSync)
-
-		// Staff vehicle info (derived from SVI-* fields)
-		staffVehicleInfoSync := NewStaffVehicleInfoSync(o.app)
-		staffVehicleInfoSync.Year = opts.Year
-		o.RegisterService("staff_vehicle_info", staffVehicleInfoSync)
-
-		// Geographic normalization (normalizes persons.school/city/congregation)
-		normalizeGeographicSync := NewNormalizeGeographicSync(o.app)
-		normalizeGeographicSync.Year = opts.Year
-		o.RegisterService("normalize_geographic", normalizeGeographicSync)
-
-		// Enrollment snapshots (captures daily enrollment counts per session)
-		enrollmentSnapshotsSync := NewEnrollmentSnapshotsSync(o.app)
-		enrollmentSnapshotsSync.Year = opts.Year
-		o.RegisterService("enrollment_snapshots", enrollmentSnapshotsSync)
-
-		// Stranded assignment cleanup: sweeps scenario drafts stranded by bunk-plan changes.
-		// Year-scoped so a historical sync reconciles the correct year's drafts.
-		strandedAssignmentCleanupSync := NewStrandedAssignmentCleanupSync(o.app)
-		strandedAssignmentCleanupSync.Year = opts.Year
-		o.RegisterService("stranded_assignment_cleanup", strandedAssignmentCleanupSync)
-
-		// Custom value services for historical sync support
-		// These use GetSeasonID() to determine the year, so they need year-specific client
-		personCustomValuesSync := NewPersonCustomFieldValuesSync(o.app, yearClient)
-		personCustomValuesSync.SetDebug(opts.Debug)
-		personCustomValuesSync.SetSession("all") // Historical syncs all sessions
-		o.RegisterService("person_custom_values", personCustomValuesSync)
-
-		householdCustomValuesSync := NewHouseholdCustomFieldValuesSync(o.app, yearClient)
-		householdCustomValuesSync.SetDebug(opts.Debug)
-		householdCustomValuesSync.SetSession("all") // Historical syncs all sessions
-		o.RegisterService("household_custom_values", householdCustomValuesSync)
-
-		// The scoped family-camp variants of the two services above must be re-registered too,
-		// or a historical replay of one of them silently keeps running against the boot-time
-		// current-season client instead of yearClient (kindred#2608). ScopedJobs -- not a
-		// hand-rolled loop over syncJobMeta -- is what keeps this list correct if a third
-		// scoped variant of either service is ever added. Session is left at its NewXxx
-		// default (DefaultSession) rather than set to "all" explicitly: with Scope ==
-		// ScopeFamilyCamp, getPersonIDsToSync/getHouseholdIDsToSync only consult Session when
-		// it names one specific weekend, so DefaultSession already spans every family-camp
-		// weekend in the year, same as the boot-time singleton the unattended cron runs.
-		for _, id := range ScopedJobs(ScopeFamilyCamp) {
-			switch JobBase(id) {
-			case serviceNamePersonCustomValues:
-				scopedPersonSync := NewPersonCustomFieldValuesSync(o.app, yearClient)
-				scopedPersonSync.SetScope(ScopeFamilyCamp)
-				scopedPersonSync.SetDebug(opts.Debug)
-				o.RegisterService(id, scopedPersonSync)
-			case serviceNameHouseholdCustomValues:
-				scopedHouseholdSync := NewHouseholdCustomFieldValuesSync(o.app, yearClient)
-				scopedHouseholdSync.SetScope(ScopeFamilyCamp)
-				scopedHouseholdSync.SetDebug(opts.Debug)
-				o.RegisterService(id, scopedHouseholdSync)
+		for id, svc := range o.servicesForYear(opts.Year, opts.Debug) {
+			// The export singleton stays: runSyncAndWait already gives it the replay's year
+			// (TestHistoricalRunSetsTheExportsYear), and the restore below would only hide that.
+			if id == "multi_workbook_export" {
+				continue
 			}
+			o.RegisterService(id, svc)
 		}
 
-		// Restore original services after sync completes
+		// Restore original services after sync completes, and drop any the replay added that
+		// were not registered before it (jotform_submissions in a deployment without it).
 		defer func() {
 			o.mu.Lock()
-			for name, svc := range originalServices {
-				o.services[name] = svc
+			for name := range o.services {
+				if _, had := originalServices[name]; !had {
+					delete(o.services, name)
+				}
 			}
+			maps.Copy(o.services, originalServices)
 			o.mu.Unlock()
 		}()
 
