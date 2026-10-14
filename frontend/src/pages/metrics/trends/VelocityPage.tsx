@@ -45,6 +45,12 @@ import {
   buildLegendLabels,
 } from '../../../components/velocity'
 import type { WeeklyDataPoint } from '../../../types/velocity'
+import { DefinitionNotes, DefRef } from '../../../components/camperships/kit/DefinitionNotes'
+import {
+  PRIORITY_DAY_NOTE,
+  PRIORITY_DAY_NOTES,
+  isPriorityDayOffset,
+} from '../../../utils/priorityDay'
 import { PHASE_COLORS } from './phaseColors'
 import {
   PRIOR_YEAR_COLORS,
@@ -199,6 +205,10 @@ export default function VelocityPage() {
   // Headers name the comparison year (#3209 row 20)
   const priorLabel = summaryCards?.priorYear != null ? String(summaryCards.priorYear) : null
   const todayDayOffset = data.today_day_offset ?? null
+  // On the priority date the prior year is read through the next day (decision 45): say so.
+  const priorityDayMark = isPriorityDayOffset(data.current_day_offset) ? (
+    <DefRef n={1} title={PRIORITY_DAY_NOTE} />
+  ) : null
   const todayLine = (x: number) => (
     <ReferenceLine
       x={x}
@@ -436,6 +446,7 @@ export default function VelocityPage() {
           <div className="card-lodge p-3">
             <p className="text-muted-foreground text-xs font-medium">
               {summaryCards.priorYear} at Wk {summaryCards.currentWeekNumber}
+              {priorityDayMark}
             </p>
             <p className="text-foreground text-xl font-bold">
               {summaryCards.priorAtWeek?.toLocaleString() ?? '-'}
@@ -464,12 +475,17 @@ export default function VelocityPage() {
           <div className="card-lodge p-3">
             <p className="text-muted-foreground text-xs font-medium">
               {summaryCards.priorYear} Cancelled at Wk {summaryCards.currentWeekNumber}
+              {priorityDayMark}
             </p>
             <p className="text-foreground text-xl font-bold">
               {summaryCards.priorCancelledAtWeek?.toLocaleString() ?? '-'}
             </p>
           </div>
         </div>
+      )}
+
+      {summaryCards && hasPriorYear && priorityDayMark && (
+        <DefinitionNotes notes={PRIORITY_DAY_NOTES} />
       )}
 
       {/* Enrollment Velocity Chart */}

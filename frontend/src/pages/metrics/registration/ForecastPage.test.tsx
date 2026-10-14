@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import type { SessionForecast, ForecastResponse } from '../../../types/forecast'
+import type { SessionForecast, ForecastResponse, WeekOption } from '../../../types/forecast'
 
 // Mock fetch for API call
 const mockFetch = vi.fn()
@@ -34,8 +34,9 @@ vi.mock('../../../hooks/useApiWithAuth', () => ({
 
 // Mock useWeekOptions — returns empty array by default (no Today option) so the
 // useEffect inside ForecastPage doesn't change dayOffset during tests
+const mockWeekOptions: { data: WeekOption[] } = { data: [] }
 vi.mock('../../../hooks/useWeekOptions', () => ({
-  useWeekOptions: () => ({ data: [] }),
+  useWeekOptions: () => mockWeekOptions,
 }))
 
 function createTestQueryClient() {
@@ -647,5 +648,46 @@ describe('ForecastPage like-with-like (#3209 rows 23, 24, 26)', () => {
     await waitFor(() => expect(screen.getByText('777')).toBeInTheDocument())
     expect(screen.getByText('555')).toBeInTheDocument()
     expect(screen.getByText('-697')).toBeInTheDocument()
+  })
+})
+
+describe('ForecastPage priority-day note (decision 45)', () => {
+  const NOTE =
+    'Counts the opening day and the next day: in 2023 and 2025 CampMinder dated most opening-day sign-ups the following day.'
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockWeekOptions.data = []
+    mockUseMetricsSession.mockReturnValue(defaultMetricsSession())
+  })
+
+  it('notes the two-day priority day when the snapshot is the priority date', async () => {
+    setupMockFetch(mockResponse([session()], {}, { prior_basis: 'same_point', day_offset: 0 }))
+    renderWithProviders(<ForecastPage />)
+    await waitFor(() => expect(screen.getByText(NOTE)).toBeInTheDocument())
+    expect(screen.getByText('Prior Yr').querySelector('sup')).toHaveTextContent('1')
+  })
+
+  it('notes it live on the priority date (Today is day 0)', async () => {
+    mockWeekOptions.data = [
+      { week_number: 1, day_offset: 0, label: 'Week 1 (Priority · Today)', is_today: true },
+    ]
+    setupMockFetch(mockResponse([session()], {}, { prior_basis: 'same_point', day_offset: null }))
+    renderWithProviders(<ForecastPage />)
+    await waitFor(() => expect(screen.getByText(NOTE)).toBeInTheDocument())
+  })
+
+  it('shows no note on a later day', async () => {
+    setupMockFetch(mockResponse([session()], {}, { prior_basis: 'same_point', day_offset: 3 }))
+    renderWithProviders(<ForecastPage />)
+    await waitFor(() => expect(screen.getByText('vs same point')).toBeInTheDocument())
+    expect(screen.queryByText(NOTE)).not.toBeInTheDocument()
+  })
+
+  it('shows no note against prior finals', async () => {
+    setupMockFetch(mockResponse([session()], {}, { prior_basis: 'final', day_offset: 0 }))
+    renderWithProviders(<ForecastPage />)
+    await waitFor(() => expect(screen.getByText('vs final')).toBeInTheDocument())
+    expect(screen.queryByText(NOTE)).not.toBeInTheDocument()
   })
 })

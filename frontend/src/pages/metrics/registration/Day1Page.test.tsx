@@ -140,4 +140,40 @@ describe('Day1Page', () => {
       duration: '1-week',
     })
   })
+
+  describe('first two days (decision 45)', () => {
+    it('labels each hero card "First 2 days"', () => {
+      setSession('main,embedded,ag,quest')
+      mockUseDay1.mockReturnValue({ data: makeData(0), isLoading: false, error: null })
+
+      renderPage()
+
+      expect(screen.getByText('First 2 days')).toBeInTheDocument()
+      expect(screen.queryByText('First 24h')).not.toBeInTheDocument()
+    })
+
+    it('subtitles the page with the two-day window and a note mark', () => {
+      setSession('main,embedded,ag,quest')
+      mockUseDay1.mockReturnValue({ data: makeData(0), isLoading: false, error: null })
+
+      renderPage()
+
+      const subtitle = screen.getByText(
+        /First two days of enrollment at each registration phase opening/
+      )
+      expect(subtitle.querySelector('sup')).toHaveTextContent('1')
+    })
+
+    it('explains the next day in a numbered note', () => {
+      setSession('main,embedded,ag,quest')
+      mockUseDay1.mockReturnValue({ data: makeData(0), isLoading: false, error: null })
+
+      renderPage()
+
+      const note = screen.getByText(
+        'Counts the opening day and the next day: in 2023 and 2025 CampMinder dated most opening-day sign-ups the following day.'
+      )
+      expect(note.closest('li')).toHaveTextContent(/^1\./)
+    })
+  })
 })

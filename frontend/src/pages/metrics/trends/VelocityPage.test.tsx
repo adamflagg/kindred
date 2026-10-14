@@ -408,3 +408,31 @@ describe('VelocityPage compares with one year at the same point (#3209)', () => 
     expect(screen.getByTestId('legend')).toHaveTextContent('2026 (100 final)')
   })
 })
+
+describe('VelocityPage priority-day note (decision 45)', () => {
+  const NOTE =
+    'Counts the opening day and the next day: in 2023 and 2025 CampMinder dated most opening-day sign-ups the following day.'
+
+  afterEach(() => {
+    mockControls.selectedPriorYears = []
+    mockChart.comparisonYear = null
+    mockState.data = mockVelocityData
+  })
+
+  it('notes the two-day priority day when the same point is the priority date', () => {
+    useComparison([2025], 2025)
+    mockState.data = { ...comparedData, today_day_offset: 0, current_day_offset: 0 }
+    render(<VelocityPage />)
+    expect(screen.getByText(NOTE)).toBeInTheDocument()
+    const label = screen.getByText(
+      (_, el) => el?.tagName === 'P' && el.textContent === '2025 at Wk 11'
+    )
+    expect(label.querySelector('sup')).toHaveTextContent('1')
+  })
+
+  it('shows no note on any later day', () => {
+    useComparison([2025], 2025)
+    render(<VelocityPage />)
+    expect(screen.queryByText(NOTE)).not.toBeInTheDocument()
+  })
+})
