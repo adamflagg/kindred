@@ -48,6 +48,7 @@ from .extractors import (
     extract_school,
     extract_synagogue,
     extract_years_at_camp,
+    is_new_camper,
 )
 
 if TYPE_CHECKING:
@@ -468,7 +469,9 @@ class RegistrationService:
 
     def _compute_new_vs_returning(self, person_ids: set[int], persons: dict[int, Any], total: int) -> NewVsReturning:
         """Compute new vs returning breakdown."""
-        new_count = sum(1 for pid in person_ids if persons.get(pid) and getattr(persons[pid], "years_at_camp", 0) == 1)
+        new_count = sum(
+            1 for pid in person_ids if persons.get(pid) and is_new_camper(getattr(persons[pid], "years_at_camp", None))
+        )
         returning_count = total - new_count
 
         return NewVsReturning(

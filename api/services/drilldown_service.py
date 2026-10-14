@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 from api.schemas.metrics import DrilldownAttendee, DrilldownSession
 from api.services.cancellation_service import CANCELLED_STATUSES
-from api.services.extractors import filter_aged_out_attendees
+from api.services.extractors import filter_aged_out_attendees, is_new_camper, is_returning_camper
 from api.services.waitlist_service import DECLINED_STATUSES
 from api.utils.location_label import person_city_state_for_display
 from api.utils.session_metrics import (
@@ -521,12 +521,12 @@ class DrilldownService:
 
             elif breakdown_type == "returning_status":
                 if person:
-                    years = getattr(person, "years_at_camp", 0)
+                    years = getattr(person, "years_at_camp", None)
                     if breakdown_value == "new":
-                        if years == 1:
+                        if is_new_camper(years):
                             filtered.append(a)
                     elif breakdown_value == "returning":
-                        if years != 1:
+                        if is_returning_camper(years):
                             filtered.append(a)
 
             elif breakdown_type == "session_length":
@@ -791,7 +791,12 @@ class DrilldownService:
             years_at_camp = getattr(person, "years_at_camp", None)
             if returned_person_ids is not None:
                 is_returning = person_id in returned_person_ids
+            elif getattr(a, "status", "enrolled") == "enrolled":
+                # The Registration card's rule, so the R badge matches the card.
+                is_returning = is_returning_camper(years_at_camp)
             else:
+                # Non-enrolled rows keep > 1 until the owner rules on what "returning"
+                # means for a camper who is not enrolled (many carry 0 years).
                 is_returning = years_at_camp is not None and years_at_camp > 1
 
             # City/state for display -- normalized_city, when present, IS the

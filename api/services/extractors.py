@@ -69,6 +69,25 @@ def extract_years_at_camp(person: Any) -> int:
     return years if years is not None else 0
 
 
+def is_new_camper(years_at_camp: int | None) -> bool:
+    """New = CampMinder records the camper in their first year at camp.
+
+    The one rule for ENROLLED campers, as the Registration card and the staff
+    guide define it: only years_at_camp == 1 is new.
+    """
+    return years_at_camp == 1
+
+
+def is_returning_camper(years_at_camp: int | None) -> bool:
+    """Returning = every enrolled camper who is not new, including 0 or no years recorded.
+
+    Enrolled rows only. Waitlisted, cancelled and other non-enrolled rows keep
+    `years_at_camp > 1` in the drill-downs: about half of them carry 0 years,
+    and whether those count as returning is an open owner decision.
+    """
+    return not is_new_camper(years_at_camp)
+
+
 def exclude_aged_out_persons(
     person_ids: set[int],
     persons: dict[int, Any],
