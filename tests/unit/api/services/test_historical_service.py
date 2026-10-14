@@ -1061,16 +1061,14 @@ class TestHistoricalSessionResolver:
                 2018: {
                     1: make_mock_session(1, "Session 1", "main", start_date="2018-06-20", end_date="2018-08-10"),
                     2: make_mock_session(2, "SCIT", "scit", start_date="2018-06-22", end_date="2018-08-01"),
-                    3: make_mock_session(
-                        3, "Tawonga Teen Interns", "tli", start_date="2018-08-20", end_date="2019-05-20"
-                    ),
+                    3: make_mock_session(3, "Teen Interns", "tli", start_date="2018-08-20", end_date="2019-05-20"),
                     4: make_mock_session(4, "Teen L.A. Trip", "tli", start_date="2018-02-10", end_date="2018-02-14"),
                 }
             },
             {
                 2018: [
                     make_mock_attendee(10, 2, "SCIT", "scit"),
-                    make_mock_attendee(11, 3, "Tawonga Teen Interns", "tli"),
+                    make_mock_attendee(11, 3, "Teen Interns", "tli"),
                     make_mock_attendee(12, 4, "Teen L.A. Trip", "tli"),
                 ]
             },
