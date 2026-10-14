@@ -15,7 +15,7 @@ Tests verify the enrollment velocity curve computation:
 - Cancellation velocity curves (metric='cancellation')
 """
 
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, Mock
 
@@ -5219,6 +5219,58 @@ class TestVelocitySamePointComparison:
         assert result.prior_year_cancelled_to_date[0].cancelled_at_current_week == 2
         by_sid = {s.session_cm_id: s for s in result.prior_year_session_summaries}
         assert by_sid[1001].enrolled_at_current_week == 2
+
+    @staticmethod
+    def _wire_priority_day(repo: Any, current_offset: int) -> None:
+        # 2026 season starts 2025-11-01, 2025's 2024-11-01. The current curve ends on
+        # `current_offset`; the prior year has a value on that day and on the NEXT day.
+        cur = date(2025, 11, 1) + timedelta(days=current_offset)
+        _wire_years(
+            repo,
+            sessions={y: {1001: _sess(1001, "Session 1", y)} for y in (2026, 2025)},
+            snapshots={
+                2026: [create_mock_snapshot(cur.isoformat(), 1001, 2026, enrolled=3)],
+                2025: [
+                    create_mock_snapshot(
+                        (date(2024, 11, 1) + timedelta(days=d)).isoformat(),
+                        1001,
+                        2025,
+                        enrolled=enrolled,
+                        cancelled=cancelled,
+                    )
+                    for d, enrolled, cancelled in (
+                        (current_offset, 10, 1),
+                        (current_offset + 1, 60, 4),
+                    )
+                ],
+            },
+        )
+
+    @pytest.mark.asyncio
+    async def test_priority_day_reads_the_prior_next_day_batch(self, service, mock_repository):
+        """Decision 45: prior registrations are dated the next day, so offset 0 reads offset 1."""
+        self._wire_priority_day(mock_repository, 0)
+        result = await service.get_velocity(year=2026, compare_years=[2025], today=date(2025, 11, 1))
+
+        assert result.current_day_offset == 0
+        assert result.prior_years[0].at_current_point == 60
+        by_sid = {s.session_cm_id: s for s in result.prior_year_session_summaries}
+        assert by_sid[1001].enrolled_at_current_week == 60
+        assert result.prior_year_cancelled_to_date[0].cancelled_at_current_week == 4
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("offset", [1, 2, 3, 4, 5, 6])
+    async def test_offsets_one_to_six_read_their_own_day(self, service, mock_repository, offset):
+        self._wire_priority_day(mock_repository, offset)
+        result = await service.get_velocity(
+            year=2026, compare_years=[2025], today=date(2025, 11, 1) + timedelta(days=offset)
+        )
+
+        assert result.current_day_offset == offset
+        assert result.prior_years[0].at_current_point == 10
+        by_sid = {s.session_cm_id: s for s in result.prior_year_session_summaries}
+        assert by_sid[1001].enrolled_at_current_week == 10
+        assert result.prior_year_cancelled_to_date[0].cancelled_at_current_week == 1
 
     def test_session_summary_falls_back_to_week_without_daily(self, service):
         """A prior session with weekly data only is read at the week, never left blank."""

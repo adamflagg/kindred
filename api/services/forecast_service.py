@@ -11,7 +11,13 @@ from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Literal
 
 from api.schemas.forecast import ForecastPriorTotals, ForecastResponse, SessionForecast, WeekOption
-from api.services.camp_calendar import REGISTRATION_TIERS, SEASON_WEEKS, format_week_date_range, get_camp_today
+from api.services.camp_calendar import (
+    REGISTRATION_TIERS,
+    SEASON_WEEKS,
+    format_week_date_range,
+    get_camp_today,
+    same_point_offset,
+)
 from api.services.reconstruction import (
     parse_date_only,
     reconstruct_enrollment_at_offset,
@@ -272,6 +278,11 @@ class ForecastService:
                 self.repository.fetch_budget_config(year),
             )
 
+        # Decision 45: prior registrations are dated the NEXT day, so the priority day (offset 0)
+        # reads the prior years through their second day too. Current-year side and buckets stay.
+        if prior_offset is not None:
+            prior_offset = same_point_offset(prior_offset)
+
         # Fetch prior year comparison data
         prior_counts, two_year_counts = await self._fetch_prior_year_counts(
             year, session_types, prior_offset, duration, week0_window
@@ -289,6 +300,10 @@ class ForecastService:
 
         # Build AG parent map for session_cm_id filtering
         ag_parent_map = build_ag_parent_map(sessions)
+
+        # AG priors resolve per parent, not per row (decision 43)
+        ag_priors = self._resolve_ag_priors(prior_counts, sessions)
+        ag_two_year_priors = self._resolve_ag_priors(two_year_counts, sessions)
 
         # Build per-session forecasts (AG sessions as separate rows)
         session_forecasts: list[SessionForecast] = []
@@ -344,8 +359,8 @@ class ForecastService:
 
             session_name = getattr(session, "name", "")
             if session_type == "ag":
-                prior_year_count = self._lookup_ag_prior(prior_counts, session, sessions)
-                two_year_prior_count = self._lookup_ag_prior(two_year_counts, session, sessions)
+                prior_year_count = ag_priors.get(sid)
+                two_year_prior_count = ag_two_year_priors.get(sid)
             else:
                 canonical_name = resolve_session_alias(session_name)
                 prior_year_count = prior_counts.get(canonical_name)
@@ -735,29 +750,44 @@ class ForecastService:
             keys.append(parent_key)
         return keys
 
-    def _lookup_ag_prior(self, counts: dict[str, int], session: Any, sessions: dict[int, Any]) -> int | None:
-        """Prior count for a current-year AG row.
+    def _resolve_ag_priors(self, counts: dict[str, int], sessions: dict[int, Any]) -> dict[int, int | None]:
+        """Prior count for every current-year AG row, resolved per PARENT (decision 43).
 
         A lone AG row under its parent takes the SUM of the prior year's AG cabins
-        under the matching parent. With several AG rows under one parent each
-        matches by cm_id, then exact name (never the parent), so the prior is not
-        double counted into the Grand Total.
+        under the matching parent. With several AG rows under one parent each keeps
+        its own cm_id, then exact-name, match. The remainder (the parent-level sum
+        minus the matched cabins) goes to the FIRST unmatched sibling in row order, so
+        the rows add up to the section prior; further unmatched siblings stay None
+        ("new"). Nothing is attributed when every sibling matched or the remainder is
+        not positive, so a retired cabin is never double counted.
         """
-        parent_id = getattr(session, "parent_id", None)
-        siblings = sum(
-            1
-            for s in sessions.values()
-            if getattr(s, "session_type", "") == "ag" and getattr(s, "parent_id", None) == parent_id
-        )
-        if siblings == 1:
-            parent_key = self._ag_parent_key(session, sessions)
-            if parent_key and parent_key in counts:
-                return counts[parent_key]
-        cm_id = getattr(session, "cm_id", None)
-        if cm_id is not None and f"ag-cm:{cm_id}" in counts:
-            return counts[f"ag-cm:{cm_id}"]
-        canonical = resolve_session_alias(getattr(session, "name", ""))
-        return counts.get(f"ag-name:{canonical}") if canonical else None
+        by_parent: dict[Any, list[int]] = {}
+        for sid, session in sessions.items():
+            if getattr(session, "session_type", "") == "ag":
+                by_parent.setdefault(getattr(session, "parent_id", None), []).append(sid)
+
+        def own_match(session: Any) -> int | None:
+            cm_id = getattr(session, "cm_id", None)
+            if cm_id is not None and f"ag-cm:{cm_id}" in counts:
+                return counts[f"ag-cm:{cm_id}"]
+            canonical = resolve_session_alias(getattr(session, "name", ""))
+            return counts.get(f"ag-name:{canonical}") if canonical else None
+
+        resolved: dict[int, int | None] = {}
+        for sibling_ids in by_parent.values():
+            parent_key = self._ag_parent_key(sessions[sibling_ids[0]], sessions)
+            parent_sum = counts.get(parent_key) if parent_key else None
+            if len(sibling_ids) == 1 and parent_sum is not None:
+                resolved[sibling_ids[0]] = parent_sum
+                continue
+            matched = {sid: own_match(sessions[sid]) for sid in sibling_ids}
+            resolved.update(matched)
+            unmatched = [sid for sid in sibling_ids if matched[sid] is None]
+            if parent_sum is not None and unmatched:
+                remainder = parent_sum - sum(v for v in matched.values() if v is not None)
+                if remainder > 0:
+                    resolved[unmatched[0]] = remainder
+        return resolved
 
     def _compute_grand_total(
         self,

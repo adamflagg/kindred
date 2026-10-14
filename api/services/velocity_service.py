@@ -24,7 +24,12 @@ from api.schemas.velocity import (
     VelocityResponse,
     WeeklyDataPoint,
 )
-from api.services.camp_calendar import REGISTRATION_TIERS, SEASON_WEEKS, format_week_date_range
+from api.services.camp_calendar import (
+    REGISTRATION_TIERS,
+    SEASON_WEEKS,
+    format_week_date_range,
+    same_point_offset,
+)
 from api.services.extractors import extract_gender
 from api.services.reconstruction import (
     ENROLLMENT_STATUSES,
@@ -713,8 +718,12 @@ class VelocityService:
                         prior_ag_map,
                         session_cm_id=prior_cm_id,
                     )
+                # Decision 45: prior registrations are dated the NEXT day, so on the priority day (offset 0)
+                # the prior year is read through its second day too. Only the prior side moves.
                 at_current_point = _value_at_day_offset(
-                    prior_result.combined.daily, current_day_offset, attrgetter("enrolled")
+                    prior_result.combined.daily,
+                    None if current_day_offset is None else same_point_offset(current_day_offset),
+                    attrgetter("enrolled"),
                 )
                 if at_current_point is None and current_max_wn is not None:
                     at_current_point = _value_at_week(prior_result.combined.weekly, current_max_wn)
@@ -2318,7 +2327,9 @@ class VelocityService:
 
         # Cancellation curves carry the cumulative cancelled count in `enrolled`.
         read_daily = attrgetter("enrolled") if metric == "cancellation" else attrgetter("cancelled")
-        cancelled_at_current_week = _value_at_day_offset(combined.daily, current_day_offset, read_daily)
+        # Decision 45: the prior year's priority day spans two dates (next-day batch dating).
+        prior_offset = None if current_day_offset is None else same_point_offset(current_day_offset)
+        cancelled_at_current_week = _value_at_day_offset(combined.daily, prior_offset, read_daily)
         if cancelled_at_current_week is None and current_max_wn is not None and combined.weekly:
             if metric == "cancellation":
                 cancelled_at_current_week = _value_at_week(combined.weekly, current_max_wn)
@@ -2359,9 +2370,10 @@ class VelocityService:
             final_enrolled = curve.weekly[-1].enrolled
 
             sid = curve.session_cm_id
+            # Decision 45: the prior year's priority day spans two dates (next-day batch dating).
             enrolled_at_current_week = _value_at_day_offset(
                 prior_result.by_session_daily.get(sid, []) if sid is not None else [],
-                current_day_offset,
+                None if current_day_offset is None else same_point_offset(current_day_offset),
                 attrgetter("enrolled"),
             )
             if enrolled_at_current_week is None and current_max_wn is not None:
