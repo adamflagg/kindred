@@ -5,12 +5,14 @@ from zoneinfo import ZoneInfo
 
 from api.services.camp_calendar import (
     CAMP_TZ,
+    PRIORITY_DAY_DAYS,
     camp_day_offset,
     camp_week_offset,
     day1_window,
     get_camp_date,
     get_camp_today,
     primary_season_year,
+    same_point_offset,
 )
 
 
@@ -134,6 +136,27 @@ class TestDay1Window:
         start, end = day1_window(date(2025, 11, 12))
         start_utc = start.astimezone(ZoneInfo("UTC"))
         assert start_utc.hour == 17  # 9am PST = 5pm UTC
+
+
+class TestSamePointOffset:
+    """Decision 45: the priority day is the priority date plus the next day.
+
+    CampMinder dated most opening-day sign-ups the following day in 2023 and 2025,
+    so a prior year read "at day 0" must include its day 1.
+    """
+
+    def test_priority_day_is_two_days(self):
+        assert PRIORITY_DAY_DAYS == 2
+
+    def test_priority_date_reads_through_the_next_day(self):
+        assert same_point_offset(0) == 1
+
+    def test_later_offsets_are_unchanged(self):
+        assert same_point_offset(1) == 1
+        assert same_point_offset(6) == 6
+
+    def test_pre_registration_offsets_are_unchanged(self):
+        assert same_point_offset(-3) == -3
 
 
 class TestPrimarySeasonYear:

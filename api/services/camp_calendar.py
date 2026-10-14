@@ -102,6 +102,23 @@ def format_week_date_range(anchor: date, week_num: int) -> str:
     return f"{start_fmt}\u2013{end_fmt}"
 
 
+# Decision 45 (owner, 2026-10-14): the priority day is the priority date plus the
+# next day. In 2023 and 2025 CampMinder dated most opening-day sign-ups the
+# following day (a next-day batch), so a single-date match undercounts the day.
+PRIORITY_DAY_DAYS = 2
+
+
+def same_point_offset(day_offset: int) -> int:
+    """Registration-day offset at which to read a PRIOR year for a "same point" compare.
+
+    On the priority date itself (offset 0) the prior year is read through the next
+    day, so its next-day-dated sign-ups count (decision 45). Every other offset,
+    including negative pre-registration offsets, is unchanged. Only the prior side
+    is clamped: the current year has no rows dated tomorrow.
+    """
+    return PRIORITY_DAY_DAYS - 1 if day_offset == 0 else day_offset
+
+
 def day1_window(tier_date: date) -> tuple[datetime, datetime]:
     """Return the 9am-to-9am PT window for a registration tier opening day.
 
