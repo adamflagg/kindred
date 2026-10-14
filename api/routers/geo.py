@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, Query
 from starlette.responses import Response
 
 from api.constants.geo import GeoCategory
-from api.utils.validators import check_duration_session_exclusive
+from api.utils.validators import check_duration_session_exclusive, parse_summer_session_types
 from bunking.auth_middleware import AuthUser
 from bunking.rbac.dependencies import require_permission
 from bunking.rbac.permissions import Permission
@@ -64,7 +64,7 @@ async def get_gaps(
     check_duration_session_exclusive(duration, session_cm_id)
 
     service = _get_service()
-    types_list = session_types.split(",") if session_types else None
+    types_list = parse_summer_session_types(session_types)
     return await service.get_gaps(category, year, active_only, types_list, session_cm_id, duration=duration)
 
 
@@ -91,7 +91,7 @@ async def search_canonicals(
     check_duration_session_exclusive(duration, session_cm_id)
 
     service = _get_service()
-    types_list = session_types.split(",") if session_types else None
+    types_list = parse_summer_session_types(session_types)
     return await service.search_canonicals(
         category,
         q,
@@ -126,7 +126,7 @@ async def get_sources(
     check_duration_session_exclusive(duration, session_cm_id)
 
     service = _get_service()
-    types_list = session_types.split(",") if session_types else None
+    types_list = parse_summer_session_types(session_types)
     return await service.get_sources(
         category,
         canonical_name,
