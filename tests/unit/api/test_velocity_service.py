@@ -5169,6 +5169,25 @@ class TestVelocitySamePointComparison:
         assert result.today_day_offset == 82  # Jan 22 is 82 days after 2025-11-01
 
     @pytest.mark.asyncio
+    async def test_default_today_is_the_camp_date_not_the_utc_date(self, service, mock_repository, monkeypatch):
+        """Ruling 10: 16:00 UTC on Jan 22 is 08:00 PT, before the 9am camp-day start, so it is still camp day Jan 21."""
+        from datetime import UTC
+
+        from api.services import camp_calendar
+
+        class _FrozenDatetime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return datetime(2026, 1, 22, 16, 0, tzinfo=UTC)
+
+        monkeypatch.setattr(camp_calendar, "datetime", _FrozenDatetime)
+        self._wire_partial_week(mock_repository)
+
+        result = await service.get_velocity(year=2026, compare_years=[2025])
+
+        assert result.today_day_offset == 81  # Jan 21 camp day; the UTC date (Jan 22) would read 82
+
+    @pytest.mark.asyncio
     async def test_today_day_offset_none_outside_live_season(self, service, mock_repository):
         from datetime import date
 

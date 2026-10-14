@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta
 from operator import attrgetter
 from typing import TYPE_CHECKING, Any
 
@@ -28,6 +28,7 @@ from api.services.camp_calendar import (
     REGISTRATION_TIERS,
     SEASON_WEEKS,
     format_week_date_range,
+    get_camp_today,
     same_point_offset,
 )
 from api.services.extractors import extract_gender
@@ -198,7 +199,7 @@ def _partial_week_info(week_start_str: str, *, today: date | None = None) -> tup
     registration falls in the calendar year before its season year (2027 opens
     in November 2026), so a year check hid the partial week all autumn.
     """
-    ref = today or datetime.now(tz=UTC).date()
+    ref = today or get_camp_today()
     ws = datetime.strptime(week_start_str, "%Y-%m-%d").date()
     week_end = ws + timedelta(days=7)
     if ws <= ref < week_end:
@@ -606,7 +607,8 @@ class VelocityService:
         reference_name = getattr(picked, "name", None)
         ag_parent_map = build_ag_parent_map(sessions)
 
-        ref_today = today or datetime.now(tz=UTC).date()
+        # Ruling 10: "today" is the camp date (9am PT boundary), as Forecast reads it, not the UTC date.
+        ref_today = today or get_camp_today()
         ctx = SeasonContext(year=year, season_start=season_start_dt, season_end=season_end_dt, today=ref_today)
 
         # Pre-fetch snapshots once for enrollment metric (avoids duplicate fetch
