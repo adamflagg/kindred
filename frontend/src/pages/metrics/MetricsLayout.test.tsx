@@ -317,6 +317,11 @@ describe('MetricsLayout', () => {
       expect(screen.getByText(/Priority registration opens .*Nov 11\./)).toBeInTheDocument()
     })
 
+    it('does not ask for the priority date while the season has rows', () => {
+      renderWithRouter('/analytics/registration/overview')
+      expect(mockPriorityDate).not.toHaveBeenCalledWith(2026)
+    })
+
     it('"view 2025" sets ?year=2025, keeps the other params, and never saves the season', () => {
       mockSeasonRows.mockReturnValue({ hasRows: false, isLoading: false })
       renderWithRouter('/analytics/registration/overview?session=1001&view=quests')

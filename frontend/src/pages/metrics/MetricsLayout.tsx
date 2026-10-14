@@ -51,7 +51,8 @@ function SeasonGatedOutlet() {
   const { currentYear } = useCurrentYear()
   const { hasRows } = useSeasonHasRows(currentYear)
   const freshness = useAnalyticsFreshness(currentYear)
-  const priorityDate = usePriorityRegDate(currentYear)
+  // Asked for only while the season is empty: year 0 leaves the query off.
+  const priorityDate = usePriorityRegDate(hasRows === false ? currentYear : 0)
   const viewSeason = useViewSeason()
 
   if (hasRows === undefined) {
