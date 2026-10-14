@@ -3060,13 +3060,12 @@ func (o *Orchestrator) InitializeSyncServices() error {
 		SeasonID: 0, // Will be parsed below
 	}
 
-	// Parse season ID
-	if seasonStr := os.Getenv("CAMPMINDER_SEASON_ID"); seasonStr != "" {
-		if seasonID, err := strconv.Atoi(seasonStr); err == nil {
-			cfg.SeasonID = seasonID
-		} else {
-			slog.Error("Failed to parse CAMPMINDER_SEASON_ID", "value", seasonStr, "error", err)
-		}
+	// The season is the rule's primary (or the CAMPMINDER_SEASON_ID override); only an
+	// invalid override is a configuration problem.
+	if err := seasonConfigProblem(); err != nil {
+		slog.Error("Failed to resolve the CampMinder season", "error", err)
+	} else if seasonID, err := ParseSeasonYear(); err == nil {
+		cfg.SeasonID = seasonID
 	}
 
 	// Validate configuration with detailed errors

@@ -973,7 +973,7 @@ func TestRunSyncAndWaitSetsYearFromOrigin(t *testing.T) {
 //
 // Registered in serialGroups: CAMPMINDER_SEASON_ID is t.Setenv'd unresolvable.
 func TestRunSyncAndWaitLeavesYearUnsetRatherThanAbortingTheBatch(t *testing.T) {
-	t.Setenv("CAMPMINDER_SEASON_ID", "") // ParseSeasonYear() now fails closed
+	t.Setenv("CAMPMINDER_SEASON_ID", "abc") // an invalid override: ParseSeasonYear() still fails closed
 	o := NewOrchestrator(nil)
 
 	yearSpy := &yearSetterSpy{name: "export_spy"}
@@ -1257,8 +1257,8 @@ func TestStandaloneRunFailsClosedOnUnresolvableSeason(t *testing.T) {
 	exp := newExportWithFakeWriter(t) // sets CAMPMINDER_SEASON_ID=2025 momentarily; exp.year=2025
 	o.RegisterService("multi_workbook_export", exp)
 
-	exp.SetYear(2019)                    // leftover historical year from a prior queued run
-	t.Setenv("CAMPMINDER_SEASON_ID", "") // now unresolvable
+	exp.SetYear(2019)                       // leftover historical year from a prior queued run
+	t.Setenv("CAMPMINDER_SEASON_ID", "abc") // now unresolvable (an unset var resolves by the rule)
 
 	err := o.RunSingleSync(context.Background(), "multi_workbook_export")
 	if err == nil {

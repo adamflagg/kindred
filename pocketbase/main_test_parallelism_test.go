@@ -53,7 +53,12 @@ var serialGroups = []struct {
 		reason: "t.Setenv: exercises CAMPMINDER_SEASON_ID parsing itself",
 		tests: []string{
 			"TestParseSeasonYear_Valid",
-			"TestParseSeasonYear_Missing",
+			"TestPrimarySeasonRule",
+			"TestPrimarySeasonOverrideWins",
+			"TestPrimarySeasonOverrideInvalidStillErrors",
+			"TestSyncedSeasons",
+			"TestParseSeasonYearUsesTheRule",
+			"TestMissingSeasonEnvIsNotAMissingVar",
 			"TestParseSeasonYear_NonNumeric",
 			"TestParseSeasonYear_BelowRange",
 			"TestParseSeasonYear_AboveRange",

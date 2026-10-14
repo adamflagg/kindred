@@ -1341,7 +1341,9 @@ func stalePersonAssignment(
 // CAMPMINDER_SEASON_ID) into their shell would otherwise get a spurious red
 // here on correct code (kindred#2289 review).
 func TestActiveSeasonYearFailsClosedWhenUnset(t *testing.T) {
-	t.Setenv("CAMPMINDER_SEASON_ID", "")
+	// An unset variable now resolves through the Oct 15 rule; an invalid override is what
+	// is unresolvable.
+	t.Setenv("CAMPMINDER_SEASON_ID", "abc")
 	s := NewLodgingAssignmentsSync(nil)
 	if got := s.activeSeasonYear(); got != 0 {
 		t.Errorf("activeSeasonYear() = %d, want 0 (fail closed)", got)
