@@ -2,8 +2,102 @@
  * Tests for CurrentYearContext - verifying backend year integration
  * and the isYearReady flag that prevents premature query firing.
  */
-import { describe, it, expect } from 'vitest'
-import { calculateAvailableYears as realCalculateAvailableYears } from './CurrentYearContext'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { renderHook, waitFor, act } from '@testing-library/react'
+import { MemoryRouter } from 'react-router'
+import type { ReactNode } from 'react'
+import {
+  calculateAvailableYears as realCalculateAvailableYears,
+  CurrentYearProvider,
+  resolveSavedYear,
+} from './CurrentYearContext'
+import { useCurrentYear } from '../hooks/useCurrentYear'
+
+let mockConfiguredYear: number | undefined = 2027
+vi.mock('../hooks/useSyncStatusAPI', () => ({
+  useSyncStatusAPI: () => ({ data: { _configured_year: mockConfiguredYear } }),
+}))
+
+function mockSyncStatus({ _configured_year }: { _configured_year: number }) {
+  mockConfiguredYear = _configured_year
+}
+
+const wrapper = ({ children }: { children: ReactNode }) => (
+  <MemoryRouter>
+    <CurrentYearProvider>{children}</CurrentYearProvider>
+  </MemoryRouter>
+)
+// A fresh router per mount: the ?year= the first render wrote is gone, as on a reload.
+const wrapperWithoutUrlYear = wrapper
+
+const calculateAvailableYears = realCalculateAvailableYears
+
+describe('resolveSavedYear', () => {
+  const avail = calculateAvailableYears(2027)
+  it('moves a browser on the old primary to the new one, once', () => {
+    expect(resolveSavedYear(JSON.stringify({ year: 2026, primary: 2026 }), 2027, avail)).toEqual({
+      year: 2027,
+      migrate: true,
+    })
+  })
+  it('keeps a deliberate pick of the prior season made after the rollover', () => {
+    expect(resolveSavedYear(JSON.stringify({ year: 2026, primary: 2027 }), 2027, avail)).toEqual({
+      year: 2026,
+      migrate: false,
+    })
+  })
+  it('keeps a deliberate older year across the rollover', () => {
+    expect(resolveSavedYear(JSON.stringify({ year: 2024, primary: 2026 }), 2027, avail)).toEqual({
+      year: 2024,
+      migrate: false,
+    })
+  })
+  it('treats a legacy plain number equal to primary-1 as the old primary', () => {
+    expect(resolveSavedYear('2026', 2027, avail)).toEqual({ year: 2027, migrate: true })
+  })
+  it('keeps a legacy plain older year', () => {
+    expect(resolveSavedYear('2024', 2027, avail)).toEqual({ year: 2024, migrate: false })
+  })
+  it('keeps a legacy plain number equal to the primary', () => {
+    expect(resolveSavedYear('2027', 2027, avail)).toEqual({ year: 2027, migrate: true })
+  })
+  it('returns null when nothing usable is saved', () => {
+    expect(resolveSavedYear(null, 2027, avail).year).toBeNull()
+    expect(resolveSavedYear('garbage', 2027, avail).year).toBeNull()
+  })
+})
+
+describe('saved year in the provider', () => {
+  // The global test setup stubs localStorage with bare vi.fn()s; back them with a real map here.
+  beforeEach(() => {
+    const store = new Map<string, string>()
+    vi.mocked(localStorage.getItem).mockImplementation((k: string) => store.get(k) ?? null)
+    vi.mocked(localStorage.setItem).mockImplementation(
+      (k: string, v: string) => void store.set(k, v)
+    )
+  })
+
+  it('an explicit pick of the prior season survives a reload', async () => {
+    mockSyncStatus({ _configured_year: 2027 })
+    const { result, unmount } = renderHook(() => useCurrentYear(), { wrapper })
+    await waitFor(() => expect(result.current.isYearReady).toBe(true))
+    act(() => result.current.setCurrentYear(2026))
+    unmount()
+    const again = renderHook(() => useCurrentYear(), { wrapper: wrapperWithoutUrlYear })
+    await waitFor(() => expect(again.result.current.currentYear).toBe(2026))
+  })
+
+  it('a legacy saved 2026 moves to 2027 once the primary is 2027', async () => {
+    localStorage.setItem('bunking-current-year', '2026')
+    mockSyncStatus({ _configured_year: 2027 })
+    const { result } = renderHook(() => useCurrentYear(), { wrapper })
+    await waitFor(() => expect(result.current.currentYear).toBe(2027))
+    expect(JSON.parse(localStorage.getItem('bunking-current-year')!)).toEqual({
+      year: 2027,
+      primary: 2027,
+    })
+  })
+})
 
 // Test the year calculation logic without needing full React context
 describe('Year calculation logic', () => {
