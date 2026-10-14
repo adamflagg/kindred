@@ -23,7 +23,6 @@ being non-empty, so an empty map always produces an identity result.
 from dataclasses import dataclass, field
 
 from bunking.models_v2 import DirectBunkAssignment, DirectSolverInput
-from campminder.client import get_current_season
 
 
 @dataclass(frozen=True)
@@ -55,7 +54,7 @@ def reduce_to_working_set(inp: DirectSolverInput) -> WorkingSetReduction:
     working_bunks = [b for b in inp.bunks if b.campminder_id not in frozen_bunk_cms]
     working_persons = [p for p in inp.persons if p.campminder_person_id not in frozen_person_cms]
 
-    year = get_current_season()
+    year = inp.year
     frozen_assignments: list[DirectBunkAssignment] = []
     for bunk_cm, occupants in inp.locked_bunks.items():
         # Resolve the session for this bunk from the bunk object itself.

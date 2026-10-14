@@ -80,7 +80,7 @@ def _run_post_solve_with_fixed_assignments(
     and calls `satisfied_request_ids_by_person` itself, so we only need to
     hand it the assignment list.
     """
-    input_data = DirectSolverInput(persons=persons, bunks=bunks, requests=requests)
+    input_data = DirectSolverInput(year=2026, persons=persons, bunks=bunks, requests=requests)
     solver = DirectBunkingSolver(input_data, config_service=MagicMock())
 
     # _validate_requests() is called in __init__ and populates possible_requests
@@ -351,7 +351,7 @@ def test_parent_nbw_yield_excluded_from_mp_bug_signal() -> None:
     # Place them TOGETHER so the NBW is UNsatisfied.
     assignments = {1: 100, 2: 100}
 
-    input_data = DirectSolverInput(persons=persons, bunks=bunks, requests=requests)
+    input_data = DirectSolverInput(year=2026, persons=persons, bunks=bunks, requests=requests)
     solver = DirectBunkingSolver(input_data, config_service=MagicMock())
     # Simulate Stream C having yielded n1 (the carve-out records it pre-solve).
     solver.parent_nbw_yields = [
@@ -384,7 +384,7 @@ def test_non_yielded_unmet_mp_still_signals() -> None:
     requests = [_req("n1", 1, 2, source_field="bunk_request_form", request_type="not_bunk_with")]
     assignments = {1: 100, 2: 100}  # together -> NBW unsatisfied
 
-    input_data = DirectSolverInput(persons=persons, bunks=bunks, requests=requests)
+    input_data = DirectSolverInput(year=2026, persons=persons, bunks=bunks, requests=requests)
     solver = DirectBunkingSolver(input_data, config_service=MagicMock())
     assert solver.parent_nbw_yields == []  # no yield recorded
 

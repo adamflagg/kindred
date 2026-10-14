@@ -107,6 +107,7 @@ def test_solver_excludes_locked_entities_from_model() -> None:
         _bunk(3002, name="G-2"),
     ]
     inp = DirectSolverInput(
+        year=2026,
         persons=persons,
         requests=[],
         bunks=bunks,
@@ -141,6 +142,7 @@ def test_output_contains_frozen_plus_working() -> None:
         _bunk(3002, name="G-2"),
     ]
     inp = DirectSolverInput(
+        year=2026,
         persons=persons,
         requests=[],
         bunks=bunks,
@@ -182,6 +184,7 @@ def test_run_stats_score_full_board_including_locked_requests() -> None:
         status="resolved",
     )
     inp = DirectSolverInput(
+        year=2026,
         persons=persons,
         requests=[r1],
         bunks=bunks,

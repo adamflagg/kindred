@@ -446,6 +446,7 @@ async def pre_validate_solver(
             requests_data,
             assignments_data,
             bunk_plans_data,
+            year=request.year,
         )
 
         config_service = ConfigLoader.get_instance()

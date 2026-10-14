@@ -402,7 +402,7 @@ class TestSingleBunkPathStats:
             )
             for i in range(num_persons)
         ]
-        return DirectSolverInput(persons=persons, requests=[], bunks=[bunk])
+        return DirectSolverInput(year=2026, persons=persons, requests=[], bunks=[bunk])
 
     def test_single_bunk_solve_populates_stats(self) -> None:
         solver = DirectBunkingSolver(input_data=self._make_input(3), config_service=MagicMock())
@@ -533,7 +533,7 @@ class TestSingleBunkStatsKeyParity:
             )
             for i in range(num_persons)
         ]
-        return DirectSolverInput(persons=persons, requests=[], bunks=[bunk])
+        return DirectSolverInput(year=2026, persons=persons, requests=[], bunks=[bunk])
 
     def test_single_bunk_stats_emits_full_key_set(self) -> None:
         solver = DirectBunkingSolver(input_data=self._make_input(3), config_service=MagicMock())
@@ -612,7 +612,7 @@ class TestSingleBunkRequestValidation:
             )
             for i in range(num_persons)
         ]
-        return DirectSolverInput(persons=persons, requests=requests or [], bunks=[bunk])
+        return DirectSolverInput(year=2026, persons=persons, requests=requests or [], bunks=[bunk])
 
     def test_single_bunk_stats_includes_request_validation_key(self) -> None:
         """The `request_validation` key must be present on single-bunk stats.
@@ -720,7 +720,7 @@ class TestParentParamountStats:
             )
             for i in range(num_persons)
         ]
-        return DirectSolverInput(persons=persons, requests=[], bunks=[bunk])
+        return DirectSolverInput(year=2026, persons=persons, requests=[], bunks=[bunk])
 
     def test_stats_includes_mp_set_entirely_impossible_count_zero_when_clean(self) -> None:
         """When no camper has an all-impossible MP set, the count is 0 and
@@ -779,7 +779,7 @@ class TestSingleBunkSatisfiedRequestsCentralization:
             )
             for i in range(num_persons)
         ]
-        return DirectSolverInput(persons=persons, requests=requests or [], bunks=[bunk])
+        return DirectSolverInput(year=2026, persons=persons, requests=requests or [], bunks=[bunk])
 
     def test_single_bunk_satisfied_uses_real_request_ids(self) -> None:
         """`satisfied_requests[person_cm_id]` values must be real PB record IDs,
@@ -1154,7 +1154,7 @@ class TestImpossibleRequestBreakdownByReason:
                     session_cm_id=1000002,
                 ),
             ]
-        return DirectSolverInput(persons=persons, requests=requests, bunks=bunks)
+        return DirectSolverInput(year=2026, persons=persons, requests=requests, bunks=bunks)
 
     def test_summary_includes_breakdown_dict(self) -> None:
         persons = [
@@ -1553,7 +1553,7 @@ class TestMaterialOnlyStatsAggregates:
             )
             for i in range(num_persons)
         ]
-        return DirectSolverInput(persons=persons, requests=requests, bunks=bunks)
+        return DirectSolverInput(year=2026, persons=persons, requests=requests, bunks=bunks)
 
     def test_total_requests_excludes_socialize_with(self) -> None:
         """total_requests counts only COUNTED (material + staff) requests.
@@ -1801,7 +1801,7 @@ class TestRequestValidationSummaryMaterialOnly:
                 year=2026,
             ),
         ]
-        return DirectSolverInput(persons=persons, requests=requests, bunks=bunks)
+        return DirectSolverInput(year=2026, persons=persons, requests=requests, bunks=bunks)
 
     def test_total_requests_excludes_immaterial(self) -> None:
         """total_requests == 2 (2 bunk_with material), not 3."""
@@ -1896,7 +1896,7 @@ class TestRequestValidationSummaryMultiReasonDedup:
                 year=2026,
             ),
         ]
-        return DirectSolverInput(persons=persons, requests=requests, bunks=[bunk])
+        return DirectSolverInput(year=2026, persons=persons, requests=requests, bunks=[bunk])
 
     def _multi_reason_report(self) -> ImpossibilityReport:
         requester = {"cm_id": 1, "name": "Emma Johnson", "grade": 8, "gender": "F"}

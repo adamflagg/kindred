@@ -72,7 +72,7 @@ def _run(
     assignments: dict[int, tuple[int, int]],  # cm_id -> (bunk_cm_id, session_cm_id)
 ) -> int:
     """Run only the post-solve diagnostic and return unsatisfied_no_possible."""
-    input_data = DirectSolverInput(persons=persons, bunks=bunks, requests=requests)
+    input_data = DirectSolverInput(year=2026, persons=persons, bunks=bunks, requests=requests)
     solver = DirectBunkingSolver(input_data, config_service=MagicMock())
     assignment_list = [
         DirectBunkAssignment(person_cm_id=pid, bunk_cm_id=bid, session_cm_id=sid, year=2026)

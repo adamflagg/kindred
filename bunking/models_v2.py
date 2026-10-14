@@ -108,6 +108,8 @@ class HistoricalBunkingRecord(BaseModel):
 class DirectSolverInput(BaseModel):
     """All data needed for solver in direct format."""
 
+    # The season this input was built for; assignments the solver emits carry it.
+    year: int
     persons: list[DirectPerson]
     requests: list[DirectBunkRequest]
     bunks: list[DirectBunk]

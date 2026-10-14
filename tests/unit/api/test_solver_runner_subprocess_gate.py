@@ -28,7 +28,7 @@ def _mock_result() -> MagicMock:
 
 
 def _base_patches(mock_runs: dict[str, dict[str, Any]], *, subprocess_on: bool) -> dict[str, Any]:
-    solver_input = DirectSolverInput(persons=[], requests=[], bunks=[])
+    solver_input = DirectSolverInput(year=2026, persons=[], requests=[], bunks=[])
     settings = MagicMock(
         pocketbase_admin_email="admin@camp.local",
         pocketbase_admin_password="pass",

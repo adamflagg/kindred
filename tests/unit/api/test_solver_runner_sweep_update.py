@@ -22,7 +22,7 @@ from bunking.models_v2 import DirectSolverInput
 
 @pytest.fixture
 def mock_solver_input() -> DirectSolverInput:
-    return DirectSolverInput(persons=[], requests=[], bunks=[])
+    return DirectSolverInput(year=2026, persons=[], requests=[], bunks=[])
 
 
 def _patches() -> dict[str, _patch[Any]]:

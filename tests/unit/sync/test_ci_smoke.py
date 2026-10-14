@@ -86,7 +86,7 @@ class TestCriticalPaths:
         from bunking.models_v2 import DirectSolverInput
 
         # Create minimal input
-        solver_input = DirectSolverInput(persons=[], requests=[], bunks=[], existing_assignments=[])
+        solver_input = DirectSolverInput(year=2026, persons=[], requests=[], bunks=[], existing_assignments=[])
 
         # Mock config loader
         mock_config = Mock()

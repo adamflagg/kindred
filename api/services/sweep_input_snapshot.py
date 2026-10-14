@@ -37,6 +37,7 @@ async def snapshot_session_input(
         requests_data,
         assignments_data,
         bunk_plans_data,
+        year=year,
         historical_bunking=historical_bunking,
     )
 

@@ -98,7 +98,7 @@ def make_input(
     bunks: list[DirectBunk],
     requests: list[DirectBunkRequest],
 ) -> DirectSolverInput:
-    return DirectSolverInput(persons=persons, bunks=bunks, requests=requests)
+    return DirectSolverInput(year=2026, persons=persons, bunks=bunks, requests=requests)
 
 
 @pytest.fixture
