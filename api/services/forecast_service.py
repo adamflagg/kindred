@@ -291,9 +291,13 @@ class ForecastService:
             participants_vs_budget = enrolled - participant_goal if participant_goal is not None else None
 
             session_name = getattr(session, "name", "")
-            canonical_name = resolve_session_alias(session_name)
-            prior_year_count = prior_counts.get(canonical_name)
-            two_year_prior_count = two_year_counts.get(canonical_name)
+            if session_type == "ag":
+                prior_year_count = self._lookup_ag_prior(prior_counts, session, sessions)
+                two_year_prior_count = self._lookup_ag_prior(two_year_counts, session, sessions)
+            else:
+                canonical_name = resolve_session_alias(session_name)
+                prior_year_count = prior_counts.get(canonical_name)
+                two_year_prior_count = two_year_counts.get(canonical_name)
             participants_vs_prior_year = enrolled - prior_year_count if prior_year_count is not None else None
 
             session_forecasts.append(
@@ -481,13 +485,12 @@ class ForecastService:
                     ag_parent_map=None,
                 )
 
-                # Convert cm_id → canonical name
+                # Convert cm_id → prior-count keys (canonical name; AG also cm_id/parent)
                 for cm_id, count in reconstructed.items():
                     session_obj = prior_sessions.get(cm_id)
                     if session_obj:
-                        canonical = resolve_session_alias(getattr(session_obj, "name", ""))
-                        if canonical:
-                            target_counts[canonical] = target_counts.get(canonical, 0) + count
+                        for key in self._prior_count_keys(cm_id, session_obj, prior_sessions):
+                            target_counts[key] = target_counts.get(key, 0) + count
             except Exception:
                 logger.warning(
                     "Failed to reconstruct %d-year-prior data, skipping",
@@ -503,9 +506,9 @@ class ForecastService:
         attendees: list[Any],
     ) -> dict[str, int]:
         """Count enrolled attendees by session name (each session uses its own name)."""
-        cm_id_to_name: dict[int, str] = {}
-        for sid, session in sessions.items():
-            cm_id_to_name[sid] = resolve_session_alias(getattr(session, "name", ""))
+        cm_id_to_keys: dict[int, list[str]] = {
+            sid: self._prior_count_keys(sid, session, sessions) for sid, session in sessions.items()
+        }
 
         counts: dict[str, int] = {}
         for a in attendees:
@@ -513,10 +516,65 @@ class ForecastService:
             if not session:
                 continue
             att_cm_id: int | None = getattr(session, "cm_id", None)
-            name = cm_id_to_name.get(att_cm_id, "") if att_cm_id is not None else ""
-            if name:
-                counts[name] = counts.get(name, 0) + 1
+            keys = cm_id_to_keys.get(att_cm_id, []) if att_cm_id is not None else []
+            for key in keys:
+                counts[key] = counts.get(key, 0) + 1
         return counts
+
+    @staticmethod
+    def _ag_parent_key(session: Any, sessions: dict[int, Any]) -> str | None:
+        """Prior-count key for an AG session's PARENT (None when the parent is unknown).
+
+        AG cabin names carry a grade band that changes most years, so AG rows are
+        matched across years by the alias-canonical name of their parent session.
+        """
+        parent_id = getattr(session, "parent_id", None)
+        parent = sessions.get(int(parent_id)) if parent_id else None
+        if parent is None:
+            return None
+        parent_name = resolve_session_alias(getattr(parent, "name", ""))
+        return f"ag-parent:{parent_name}" if parent_name else None
+
+    def _prior_count_keys(self, cm_id: int, session: Any, sessions: dict[int, Any]) -> list[str]:
+        """Keys under which a prior-year session's enrolled count is accumulated.
+
+        Non-AG: the alias-canonical name (unchanged). AG: cm_id, exact (canonical)
+        name, and the parent key, so the current row can pick the right match.
+        """
+        canonical = resolve_session_alias(getattr(session, "name", ""))
+        if getattr(session, "session_type", "") != "ag":
+            return [canonical] if canonical else []
+        keys = [f"ag-cm:{cm_id}"]
+        if canonical:
+            keys.append(f"ag-name:{canonical}")
+        parent_key = self._ag_parent_key(session, sessions)
+        if parent_key:
+            keys.append(parent_key)
+        return keys
+
+    def _lookup_ag_prior(self, counts: dict[str, int], session: Any, sessions: dict[int, Any]) -> int | None:
+        """Prior count for a current-year AG row.
+
+        A lone AG row under its parent takes the SUM of the prior year's AG cabins
+        under the matching parent. With several AG rows under one parent each
+        matches by cm_id, then exact name (never the parent), so the prior is not
+        double counted into the Grand Total.
+        """
+        parent_id = getattr(session, "parent_id", None)
+        siblings = sum(
+            1
+            for s in sessions.values()
+            if getattr(s, "session_type", "") == "ag" and getattr(s, "parent_id", None) == parent_id
+        )
+        if siblings == 1:
+            parent_key = self._ag_parent_key(session, sessions)
+            if parent_key and parent_key in counts:
+                return counts[parent_key]
+        cm_id = getattr(session, "cm_id", None)
+        if cm_id is not None and f"ag-cm:{cm_id}" in counts:
+            return counts[f"ag-cm:{cm_id}"]
+        canonical = resolve_session_alias(getattr(session, "name", ""))
+        return counts.get(f"ag-name:{canonical}") if canonical else None
 
     def _compute_grand_total(self, session_forecasts: list[SessionForecast]) -> SessionForecast:
         """Compute grand total across all sessions."""

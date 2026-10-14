@@ -1631,3 +1631,220 @@ class TestWeek0InForecast:
         result = await service.calculate_forecast(year=2026, day_offset=-1)
         assert result.week_number == 0
         assert result.grand_total.enrolled == 1
+
+
+# ============================================================================
+# AG prior-year matching: by PARENT, not by the (grade-band-bearing) cabin name
+# ============================================================================
+
+
+def _ag_sessions(year: int, parent_id: int, parent_name: str, ag: dict[int, str]) -> dict[int, object]:
+    out: dict[int, object] = {
+        parent_id: create_mock_session(parent_id, parent_name, year=year, session_type="main"),
+    }
+    for cm_id, name in ag.items():
+        out[cm_id] = create_mock_session(cm_id, name, year=year, session_type="ag", parent_id=parent_id)
+    return out
+
+
+def _wire_years(mock_repository, sessions_by_year, attendees_by_year):
+    async def fetch_sessions(year, session_types=None):
+        return sessions_by_year.get(year, {})
+
+    async def fetch_attendees(year, status_filter=None, **kwargs):
+        if status_filter == "waitlisted":
+            return []
+        return attendees_by_year.get(year, [])
+
+    mock_repository.fetch_sessions.side_effect = fetch_sessions
+    mock_repository.fetch_attendees.side_effect = fetch_attendees
+
+
+class TestForecastAGPriorByParent:
+    @pytest.mark.asyncio
+    async def test_single_ag_row_sums_prior_parent_cabins_across_grade_band_rename(self, service, mock_repository):
+        s2026 = _ag_sessions(2026, 1002, "Session 2", {2002: "All-Gender Cabin-Session 2 (7th & 8th grades)"})
+        s2025 = _ag_sessions(
+            2025,
+            9002,
+            "Session 2",
+            {
+                9101: "All-Gender Cabin-Session 2 (9th & 10th grades)",
+                9102: "All-Gender Cabin-Session 2 (7th - 9th grades)",
+            },
+        )
+        s2024 = _ag_sessions(2024, 8002, "Session 2", {8101: "All-Gender Cabin-Session 2 (8th grade)"})
+        _wire_years(
+            mock_repository,
+            {2026: s2026, 2025: s2025, 2024: s2024},
+            {
+                2026: [create_mock_attendee(1, 2002, year=2026)],
+                2025: [
+                    *[create_mock_attendee(100 + i, 9101, year=2025) for i in range(12)],
+                    *[create_mock_attendee(200 + i, 9102, year=2025) for i in range(8)],
+                    *[create_mock_attendee(300 + i, 9002, year=2025) for i in range(5)],
+                ],
+                2024: [create_mock_attendee(400 + i, 8101, year=2024) for i in range(7)],
+            },
+        )
+
+        result = await service.calculate_forecast(year=2026)
+
+        ag = next(s for s in result.sessions if s.session_cm_id == 2002)
+        assert ag.prior_year_count == 20
+        assert ag.two_year_prior_count == 7
+        main = next(s for s in result.sessions if s.session_cm_id == 1002)
+        assert main.prior_year_count == 5  # non-AG row unchanged
+
+    @pytest.mark.asyncio
+    async def test_several_ag_rows_match_by_cm_id_or_exact_name_never_parent(self, service, mock_repository):
+        s2026 = _ag_sessions(
+            2026,
+            1002,
+            "Session 2",
+            {2002: "All-Gender Cabin-Session 2 (7th & 8th grades)", 2003: "All-Gender Cabin-Session 2 (9th grade)"},
+        )
+        s2025 = _ag_sessions(
+            2025,
+            9002,
+            "Session 2",
+            {
+                9101: "All-Gender Cabin-Session 2 (7th & 8th grades)",  # exact name of 2002
+                9102: "All-Gender Cabin-Session 2 (10th grade)",  # matches nothing
+            },
+        )
+        _wire_years(
+            mock_repository,
+            {2026: s2026, 2025: s2025},
+            {
+                2026: [],
+                2025: [
+                    *[create_mock_attendee(100 + i, 9101, year=2025) for i in range(12)],
+                    *[create_mock_attendee(200 + i, 9102, year=2025) for i in range(8)],
+                ],
+            },
+        )
+
+        result = await service.calculate_forecast(year=2026)
+
+        by_id = {s.session_cm_id: s for s in result.sessions}
+        assert by_id[2002].prior_year_count == 12
+        assert by_id[2003].prior_year_count is None  # no parent fallback, so 8 is not double counted
+
+    @pytest.mark.asyncio
+    async def test_several_ag_rows_match_prior_by_cm_id(self, service, mock_repository):
+        s2026 = _ag_sessions(2026, 1002, "Session 2", {2002: "AG one", 2003: "AG two"})
+        s2025 = _ag_sessions(2025, 9002, "Session 2", {2002: "Renamed A", 9102: "Renamed B"})
+        _wire_years(
+            mock_repository,
+            {2026: s2026, 2025: s2025},
+            {2026: [], 2025: [create_mock_attendee(100 + i, 2002, year=2025) for i in range(4)]},
+        )
+
+        result = await service.calculate_forecast(year=2026)
+
+        by_id = {s.session_cm_id: s for s in result.sessions}
+        assert by_id[2002].prior_year_count == 4
+        assert by_id[2003].prior_year_count is None
+
+    @pytest.mark.asyncio
+    async def test_ag_prior_without_main_in_prior_sessions_does_not_crash(self, service, mock_repository):
+        s2026 = _ag_sessions(2026, 1002, "Session 2", {2002: "AG"})
+        s2025 = {9101: create_mock_session(9101, "AG old", year=2025, session_type="ag", parent_id=9002)}
+        _wire_years(
+            mock_repository,
+            {2026: s2026, 2025: s2025},
+            {2026: [], 2025: [create_mock_attendee(1, 9101, year=2025)]},
+        )
+
+        result = await service.calculate_forecast(year=2026)
+
+        ag = next(s for s in result.sessions if s.session_cm_id == 2002)
+        assert ag.prior_year_count is None
+
+    @pytest.mark.asyncio
+    async def test_reconstructed_path_matches_ag_by_parent(self, service, mock_repository):
+        from types import SimpleNamespace
+
+        s2026 = _ag_sessions(2026, 1002, "Session 2", {2002: "AG (7th & 8th grades)"})
+        s2025 = _ag_sessions(2025, 9002, "Session 2", {9101: "AG (9th & 10th grades)", 9102: "AG (7th - 9th grades)"})
+
+        async def fetch_sessions(year, session_types=None):
+            return {2026: s2026, 2025: s2025}.get(year, {})
+
+        async def reg_dates(year):
+            return {2026: {"priority_reg_date": "2025-10-15"}, 2025: {"priority_reg_date": "2024-10-10"}}.get(year, {})
+
+        def att(i, year, sid, name, day):
+            return SimpleNamespace(
+                person_id=i,
+                year=year,
+                status="enrolled",
+                status_id=2,
+                enrollment_date=day,
+                effective_date=day,
+                expand={
+                    "session": SimpleNamespace(
+                        cm_id=sid,
+                        name=name,
+                        session_type="ag",
+                        parent_id=9002,
+                        start_date=f"{year}-06-15",
+                        end_date=f"{year}-07-15",
+                    ),
+                    "person": SimpleNamespace(gender="M", cm_id=i),
+                },
+            )
+
+        prior = [
+            *[att(i, 2025, 9101, "AG (9th & 10th grades)", "2024-10-15") for i in range(12)],
+            *[att(100 + i, 2025, 9102, "AG (7th - 9th grades)", "2024-10-15") for i in range(8)],
+        ]
+
+        async def with_dates(year, expand_person=False):
+            return prior if year == 2025 else []
+
+        mock_repository.fetch_sessions.side_effect = fetch_sessions
+        mock_repository.fetch_registration_dates.side_effect = reg_dates
+        mock_repository.fetch_attendees_with_dates.side_effect = with_dates
+
+        result = await service.calculate_forecast(year=2026, day_offset=123)
+
+        ag = next(s for s in result.sessions if s.session_cm_id == 2002)
+        assert ag.prior_year_count == 20
+
+    @pytest.mark.asyncio
+    async def test_summer_rows_unchanged_by_family_adult_and_bmitzvah(self, service, mock_repository):
+        def build(extra: bool):
+            s2026 = _ag_sessions(2026, 1002, "Session 2", {2002: "AG (7th & 8th grades)"})
+            s2025 = _ag_sessions(2025, 9002, "Session 2", {9101: "AG (9th grades)"})
+            att26 = [create_mock_attendee(1, 1002, year=2026), create_mock_attendee(2, 2002, year=2026)]
+            att25 = [create_mock_attendee(100 + i, 9101, year=2025) for i in range(3)]
+            if extra:
+                for year, sess in ((2026, s2026), (2025, s2025)):
+                    base = 7000 if year == 2026 else 7500
+                    for k, t in enumerate(("family", "adult", "bmitzvah", "hebrew")):
+                        sess[base + k] = create_mock_session(
+                            base + k, f"Session 2 {t}", year=year, session_type=t, parent_id=None
+                        )
+                att26 += [create_mock_attendee(900 + k, 7000 + k, year=2026) for k in range(4)]
+                att25 += [create_mock_attendee(950 + k, 7500 + k, year=2025) for k in range(4)]
+            return {2026: s2026, 2025: s2025}, {2026: att26, 2025: att25}
+
+        results = []
+        for extra in (False, True):
+            sessions_by_year, attendees_by_year = build(extra)
+            _wire_years(mock_repository, sessions_by_year, attendees_by_year)
+
+            async def fetch_sessions(year, session_types=None, _s=sessions_by_year):
+                allowed = set(session_types or [])
+                return {k: v for k, v in _s.get(year, {}).items() if v.session_type in allowed}
+
+            mock_repository.fetch_sessions.side_effect = fetch_sessions
+            r = await service.calculate_forecast(year=2026)
+            results.append(
+                [(s.session_cm_id, s.enrolled, s.prior_year_count) for s in r.sessions]
+                + [(r.grand_total.enrolled, r.grand_total.prior_year_count)]
+            )
+
+        assert results[0] == results[1]
