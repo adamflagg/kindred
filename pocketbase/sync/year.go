@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"time"
+	_ "time/tzdata" // the season rule needs America/Los_Angeles on a minimal image
 )
 
 // syncYearMin and syncYearMax bound every year the sync layer accepts, whether it arrives
@@ -25,20 +27,81 @@ func ValidSyncYear(year int) bool {
 	return year >= syncYearMin && year <= syncYearMax
 }
 
-// ParseSeasonYear reads and validates the CAMPMINDER_SEASON_ID env var.
-// Returns an error if the value is missing, non-numeric, or outside 2017–2050.
-func ParseSeasonYear() (int, error) {
+// The season rolls over at the start of Oct 15 in camp's timezone (owner ruling, 2026-10-14:
+// "oct 15 works"; "oct 15 gates all"). A constant, not configuration: if camp's calendar ever
+// moves, it is a one-line PR (the project prefers code constants to rarely-tuned knobs).
+const (
+	seasonRolloverMonth = time.October
+	seasonRolloverDay   = 15
+)
+
+var seasonLocation = func() *time.Location {
+	loc, err := time.LoadLocation("America/Los_Angeles")
+	if err != nil {
+		panic("season rule: America/Los_Angeles unavailable (is time/tzdata imported?): " + err.Error())
+	}
+	return loc
+}()
+
+// nowFn is the rule's clock; tests replace it.
+var nowFn = time.Now
+
+// overrideSeason reads CAMPMINDER_SEASON_ID. ok=false when unset; err when set but invalid.
+func overrideSeason() (year int, ok bool, err error) {
 	yearStr := os.Getenv("CAMPMINDER_SEASON_ID")
 	if yearStr == "" {
-		return 0, fmt.Errorf("CAMPMINDER_SEASON_ID not set")
+		return 0, false, nil
 	}
-	year, err := strconv.Atoi(yearStr)
+	year, err = strconv.Atoi(yearStr)
 	if err != nil {
-		return 0, fmt.Errorf("CAMPMINDER_SEASON_ID invalid: %q: %w", yearStr, err)
+		return 0, true, fmt.Errorf("CAMPMINDER_SEASON_ID invalid: %q: %w", yearStr, err)
 	}
 	if !ValidSyncYear(year) {
-		return 0, fmt.Errorf("CAMPMINDER_SEASON_ID out of range (%d-%d): %d",
-			syncYearMin, syncYearMax, year)
+		return 0, true, fmt.Errorf("CAMPMINDER_SEASON_ID out of range (%d-%d): %d", syncYearMin, syncYearMax, year)
 	}
-	return year, nil
+	return year, true, nil
+}
+
+// PrimarySeason is the season the app treats as current: CAMPMINDER_SEASON_ID when set (an
+// optional override), otherwise next year from Oct 15 in Pacific time, and this year before it.
+func PrimarySeason(now time.Time) (int, error) {
+	if y, ok, err := overrideSeason(); ok {
+		return y, err
+	}
+	t := now.In(seasonLocation)
+	rollover := time.Date(t.Year(), seasonRolloverMonth, seasonRolloverDay, 0, 0, 0, 0, seasonLocation)
+	if !t.Before(rollover) {
+		return t.Year() + 1, nil
+	}
+	return t.Year(), nil
+}
+
+// SyncedSeasons is every season the scheduled runs cover, primary first: [N, N-1].
+func SyncedSeasons(now time.Time) ([]int, error) {
+	p, err := PrimarySeason(now)
+	if err != nil {
+		return nil, err
+	}
+	return []int{p, p - 1}, nil
+}
+
+// SeasonSource says where the primary came from, for Manage > Sync.
+func SeasonSource() string {
+	if _, ok, _ := overrideSeason(); ok {
+		return "override"
+	}
+	return "rule"
+}
+
+// ParseSeasonYear returns the primary season. Kept by name so its callers need no change; it
+// no longer requires CAMPMINDER_SEASON_ID.
+func ParseSeasonYear() (int, error) {
+	return PrimarySeason(nowFn())
+}
+
+// seasonConfigProblem reports a season configuration error: only an invalid
+// CAMPMINDER_SEASON_ID override; an unset variable is fine now that the rule supplies one.
+func seasonConfigProblem() error {
+	_, err := ParseSeasonYear()
+	return err
 }

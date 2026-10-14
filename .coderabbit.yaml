@@ -139,7 +139,7 @@ reviews:
         - `testing/synctest` for time-dependent tests
         Logging contract: the `logging` package installs the default slog handler via `slog.SetDefault` at init — direct `slog.Info(...)` / `slog.Error(...)` / etc. calls are the correct pattern. There is no `logging.Info` wrapper. Do NOT flag direct `slog.*` calls as "bypasses logging contract" — that's a false positive.
         Do NOT suggest `encoding/json/v2` — it was `GOEXPERIMENT=jsonv2`-gated through Go 1.26, and moving to it is an owner decision that has not been made. The codebase deliberately uses `encoding/json`.
-        Domain invariant: cross-table relationships use CampMinder IDs (`cm_id`, `person_id`), never PocketBase record IDs. All CampMinder-derived tables include a required `year` field; year filtering must use `CAMPMINDER_SEASON_ID` from env.
+        Domain invariant: cross-table relationships use CampMinder IDs (`cm_id`, `person_id`), never PocketBase record IDs. All CampMinder-derived tables include a required `year` field. The season comes from the rule in `pocketbase/sync/year.go` (it rolls over every Oct 15 Pacific; sync covers that season N and N−1), and `CAMPMINDER_SEASON_ID` is only an optional override.
 
     - path: "pocketbase/pb_migrations/*.js"
       instructions: |
@@ -174,7 +174,7 @@ reviews:
         Camp-data Python (sync pipeline, satisfaction policy, social graph, RBAC, geo, config).
         Domain invariants — same as the Go sync path:
         - Cross-table relationships use CampMinder IDs (`cm_id`, `person_id`), never PocketBase record IDs.
-        - All CampMinder-derived data carries a required `year` field; year filtering uses `CAMPMINDER_SEASON_ID` from env (frontend year dropdown is display-only).
+        - All CampMinder-derived data carries a required `year` field. The season comes from the rule in `pocketbase/sync/year.go` (it rolls over every Oct 15 Pacific; sync covers that season N and N−1), and `CAMPMINDER_SEASON_ID` is only an optional override (frontend year dropdown is display-only).
         - Sync order is fixed: sessions → attendees → persons → bunks → plans → assignments → requests. Don't suggest reordering.
         - Active-attendee filter is `status_id = 2`.
         - Family-camp data syncs alongside summer data — summer views filter `session_type` against `VALID_SUMMER_SESSION_TYPES`.

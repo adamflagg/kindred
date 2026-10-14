@@ -119,7 +119,7 @@ def _two_bunk_input() -> DirectSolverInput:
         )
         for i in range(10)
     ]
-    return DirectSolverInput(persons=persons, requests=[], bunks=bunks)
+    return DirectSolverInput(year=2026, persons=persons, requests=[], bunks=bunks)
 
 
 def test_multibunk_solve_populates_tier2_stats(mock_config: MagicMock) -> None:

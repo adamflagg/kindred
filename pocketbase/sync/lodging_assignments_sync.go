@@ -35,9 +35,10 @@ type LodgingAssignmentsSync struct {
 	Year   int  // 0 = current year from env
 	DryRun bool // compute but do not write
 	Debug  bool
-	// ActiveSeasonYear injects the value activeSeasonYear() returns, bypassing
-	// CAMPMINDER_SEASON_ID entirely. 0 (the zero value) means "resolve from
-	// the environment via ParseSeasonYear() at Sync time", matching Year's
+	// ActiveSeasonYear injects the primary season activeSeasonYear() returns
+	// (the sweep covers it and the season before it), bypassing the season
+	// rule entirely. 0 (the zero value) means "resolve the primary via
+	// ParseSeasonYear() at Sync time", matching Year's
 	// existing convention. Set directly by tests exercising the #2028 orphan
 	// sweep so they need not reach for t.Setenv, which cannot be combined with
 	// t.Parallel() (#2289).
@@ -229,10 +230,11 @@ func (s *LodgingAssignmentsSync) Sync(ctx context.Context) error {
 	// the ingest above never revisits an existing row once its Candidates go
 	// empty; this is the only pass that does.
 	//
-	// GATED to the season this deployment is actively configured for
-	// (CAMPMINDER_SEASON_ID), never merely to whatever `year` this particular
-	// call carries. handleLodgingAssignmentsSync's ?year= query param and the
-	// orchestrator's historical re-registration (opts.Year) both drive this
+	// GATED to the seasons this deployment syncs -- the primary and the one
+	// before it (SyncedSeasons; the prior season's attendees are synced nightly
+	// too, and from Oct 15 the adult weekends run in it) -- never merely to
+	// whatever `year` this particular call carries. handleLodgingAssignmentsSync's ?year= query param and the
+	// orchestrator's historical replay (opts.Year) both drive this
 	// Sync() with an arbitrary year, and s.householdSessionIndex /
 	// s.personSessionIndex above are built from the LOCAL attendees table for
 	// THAT year, not from CampMinder. Before this guard, a stale or partial
@@ -245,9 +247,9 @@ func (s *LodgingAssignmentsSync) Sync(ctx context.Context) error {
 	// uses before its own orphan pass (e.g. FamilyCampDerivedSync.
 	// deleteOrphanedAdults, NormalizeGeographicSync, StaffSkillsSync) -- so the
 	// check travels with the delete even if this call site is ever moved.
-	if active := s.activeSeasonYear(); year != active {
-		slog.Info("lodging_assignments_sync: skipping orphan sweep -- year is not the actively configured season",
-			"year", year, "configured_season", active)
+	if synced := s.sweepSeasons(); !slices.Contains(synced, year) {
+		slog.Info("lodging_assignments_sync: skipping orphan sweep -- year is not a synced season",
+			"year", year, "synced_seasons", synced)
 	} else {
 		s.SyncSuccessful = true
 		if delErr := s.deleteLodgingOrphans(year, now); delErr != nil {
@@ -1164,11 +1166,11 @@ func (s *LodgingAssignmentsSync) partySize(in *ingestContext, sessionID string) 
 	return enrolled + adultCount
 }
 
-// activeSeasonYear resolves the year this deployment is actively maintaining
-// right now, independent of s.Year. deleteLodgingOrphans must run for THAT
-// year alone; any other caller (an explicit ?year= sync, a historical
-// re-registration) is asking this ingest to compute placements for a year it
-// is not currently responsible for, and must get create/update only.
+// activeSeasonYear resolves the primary season this deployment is maintaining
+// right now, independent of s.Year. deleteLodgingOrphans runs for it and the
+// season before it (sweepSeasons); any other year (an explicit ?year= sync, a
+// historical replay) is one this ingest is not currently responsible
+// for, and gets create/update only.
 //
 // s.ActiveSeasonYear, when set, is returned directly -- the injection point
 // tests use instead of t.Setenv (#2289). When it is unset (the zero value),
@@ -1186,6 +1188,22 @@ func (s *LodgingAssignmentsSync) activeSeasonYear() int {
 		return 0
 	}
 	return active
+}
+
+// sweepSeasons is every season the #2028 orphan sweep may run for: the synced
+// seasons, primary first ([N, N-1], SyncedSeasons). Both are synced every night,
+// so their local attendees snapshot is as fresh as the primary's; N-2 and older
+// are not, and stay create/update only.
+//
+// The pair is derived from activeSeasonYear() (the primary; s.ActiveSeasonYear
+// injects it in tests) exactly as SyncedSeasons derives it. A primary that
+// cannot be resolved gives nil, which matches no year: the sweep fails closed.
+func (s *LodgingAssignmentsSync) sweepSeasons() []int {
+	primary := s.activeSeasonYear()
+	if primary == 0 {
+		return nil
+	}
+	return []int{primary, primary - 1}
 }
 
 // deleteLodgingOrphans removes lodging_assignments rows for a party no longer

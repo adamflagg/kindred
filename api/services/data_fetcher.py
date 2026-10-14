@@ -324,6 +324,8 @@ def prepare_direct_solver_input(
     requests: list[Any],
     assignments: list[Any],
     bunk_plans: list[Any],
+    *,
+    year: int,
     historical_bunking: list[HistoricalBunkingRecord] | None = None,
 ) -> DirectSolverInput:
     """Prepare data for direct solver without transformation.
@@ -334,6 +336,7 @@ def prepare_direct_solver_input(
         requests: List of bunk request records
         assignments: List of existing assignment records
         bunk_plans: List of bunk plan records
+        year: The season the records were fetched for; the solver stamps its assignments with it
         historical_bunking: Optional list of prior year bunk assignments for level progression
     """
     # Create DirectPerson objects from attendees
@@ -469,6 +472,7 @@ def prepare_direct_solver_input(
             )
 
     return DirectSolverInput(
+        year=year,
         persons=persons,
         requests=direct_requests,
         bunks=direct_bunks,

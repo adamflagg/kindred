@@ -276,8 +276,11 @@ export function useJotformSubmissionAction(onDone?: (outcome: JotformActionOutco
  *
  * "That run" is told apart by its end time: the pull is over once the job is
  * not running and reports an end other than the one it had when staff pressed.
+ *
+ * `year` is the season the tab shows: after the Oct 15 rollover the October
+ * adult weekends are the prior season, and Pull now must pull its forms.
  */
-export function useJotformPull() {
+export function useJotformPull(year?: number) {
   const runSync = useRunIndividualSync()
   const queryClient = useQueryClient()
   // The job's end_time when this pull started; null when no pull is being
@@ -316,13 +319,13 @@ export function useJotformPull() {
   const baseline = job?.end_time ?? ''
   const pull = useCallback(async () => {
     try {
-      await mutateAsync(JOTFORM_SYNC_ID)
+      await mutateAsync({ syncType: JOTFORM_SYNC_ID, year })
     } catch {
       // Refused (already running, say): useRunIndividualSync has toasted why.
       return
     }
     setSince(baseline)
-  }, [mutateAsync, baseline])
+  }, [mutateAsync, baseline, year])
 
   return { pull, isPulling: runSync.isPending || watching }
 }

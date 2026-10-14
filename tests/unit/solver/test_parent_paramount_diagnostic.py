@@ -122,6 +122,7 @@ class TestMustSatisfyDiagnosticSplit:
         """Type A: cross-session bunk_with → no possible request → 'no_possible' category, info severity."""
         # Camper 1001 in session 100 wants to bunk with 1002 in session 200 → impossible.
         input_data = DirectSolverInput(
+            year=2026,
             persons=[_person(1001, 100), _person(1002, 200)],
             requests=[_request("r1", 1001, 1002, 100)],
             bunks=[_bunk(2001, 100), _bunk(2002, 200)],
@@ -150,6 +151,7 @@ class TestMustSatisfyDiagnosticSplit:
         """Type B: possible material-parent request unsatisfied → 'material_parent_unmet', error severity."""
         # Both campers in session 100 — request is possible. After solve they're in different bunks.
         input_data = DirectSolverInput(
+            year=2026,
             persons=[_person(1001, 100), _person(1002, 100)],
             requests=[_request("r1", 1001, 1002, 100, source_field="bunk_request_form")],
             bunks=[_bunk(2001, 100), _bunk(2002, 100)],
@@ -178,6 +180,7 @@ class TestMustSatisfyDiagnosticSplit:
         # The request is "satisfied" when targets are in DIFFERENT bunks; we put them in the SAME
         # bunk so the request is unsatisfied.
         input_data = DirectSolverInput(
+            year=2026,
             persons=[_person(1001, 100), _person(1002, 100)],
             requests=[
                 _request(
@@ -214,6 +217,7 @@ class TestMustSatisfyDiagnosticSplit:
         #   - not_bunk_with 1003 (staff, source_field='staff_not_bunk_with')
         # Place 1001 separate from 1002 (bunk_with unmet) and same as 1003 (not_bunk_with unmet).
         input_data = DirectSolverInput(
+            year=2026,
             persons=[_person(1001, 100), _person(1002, 100), _person(1003, 100)],
             requests=[
                 _request("r1", 1001, 1002, 100, source_field="bunk_request_form"),
@@ -252,6 +256,7 @@ class TestMustSatisfyDiagnosticSplit:
         """Camper with ≥1 satisfied request stays out of all three categories."""
         # 1001 wants 1002 (satisfied — same bunk) AND 1003 (unsatisfied — different bunk).
         input_data = DirectSolverInput(
+            year=2026,
             persons=[_person(1001, 100), _person(1002, 100), _person(1003, 100)],
             requests=[
                 _request("r1", 1001, 1002, 100, source_field="bunk_request_form"),
@@ -277,6 +282,7 @@ class TestMustSatisfyDiagnosticSplit:
     def test_camper_with_no_requests_not_flagged(self, mock_config):
         """A camper with no requests at all is not flagged in any category."""
         input_data = DirectSolverInput(
+            year=2026,
             persons=[_person(1001, 100)],
             requests=[],
             bunks=[_bunk(2001, 100)],
@@ -307,6 +313,7 @@ class TestMustSatisfyDiagnosticSplit:
         # 1001 has only pending requests. 1002 has only declined requests.
         # Neither should appear in any diagnostic category.
         input_data = DirectSolverInput(
+            year=2026,
             persons=[_person(1001, 100), _person(1002, 100), _person(1003, 100)],
             requests=[
                 _request("rA", 1001, 1003, 100, source_field="bunk_request_form", status="pending"),
@@ -347,6 +354,7 @@ class TestMustSatisfyDiagnosticSplit:
         #   - resolved bunk_with → 1002 (unsatisfied, different bunks)
         #   - pending bunk_with → 1003 (would-be-satisfied if counted, but pending so ignored)
         input_data = DirectSolverInput(
+            year=2026,
             persons=[_person(1001, 100), _person(1002, 100), _person(1003, 100)],
             requests=[
                 _request("r-resolved", 1001, 1002, 100, source_field="bunk_request_form", status="resolved"),
@@ -382,6 +390,7 @@ class TestMustSatisfyDiagnosticSplit:
         # 1001 → type A (impossible), 1002 → type B (material unmet),
         # 1003 → type C (staff unmet), 1004 → satisfied.
         input_data = DirectSolverInput(
+            year=2026,
             persons=[
                 _person(1001, 100),
                 _person(1002, 100),
@@ -442,6 +451,7 @@ class TestMustSatisfyDiagnosticSplit:
         # possible_requests[1001]. Only the resolved one should drive the count
         # shown in the violation message.
         input_data = DirectSolverInput(
+            year=2026,
             persons=[_person(1001, 100), _person(1002, 100), _person(1003, 100)],
             requests=[
                 _request("r-resolved", 1001, 1002, 100, source_field="bunk_request_form", status="resolved"),
@@ -481,6 +491,7 @@ class TestMustSatisfyDiagnosticSplit:
         # an entirely unknown string. The structural type (request_type) is still
         # bunk_with so it lands in possible_requests; classification falls back.
         input_data = DirectSolverInput(
+            year=2026,
             persons=[_person(1001, 100), _person(1002, 100)],
             requests=[
                 _request(
@@ -519,6 +530,7 @@ def _make_material_parent_unmet_solver() -> tuple[DirectBunkingSolver, list[Dire
     is unsatisfied.  This is the canonical Type-B scenario used by TestHardMSODiagnostic.
     """
     input_data = DirectSolverInput(
+        year=2026,
         persons=[_person(1001, 100), _person(1002, 100)],
         requests=[_request("r1", 1001, 1002, 100, source_field="bunk_request_form")],
         bunks=[_bunk(2001, 100), _bunk(2002, 100)],

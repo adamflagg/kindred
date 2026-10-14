@@ -83,7 +83,7 @@ def test_prepare_direct_solver_input_propagates_is_first_requested() -> None:
     bunk_plans = [_mock_bunk_plan(session_id=999, bunk_cm_id=1)]
     assignments: list[Mock] = []
 
-    result = prepare_direct_solver_input(attendees, bunks, requests, assignments, bunk_plans)
+    result = prepare_direct_solver_input(attendees, bunks, requests, assignments, bunk_plans, year=2026)
 
     assert len(result.requests) == 2
     by_id = {r.id: r for r in result.requests}

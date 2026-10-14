@@ -3,6 +3,7 @@ import { pb } from '../lib/pocketbase'
 import { queryKeys } from '../utils/queryKeys'
 import toast from 'react-hot-toast'
 import { extractErrorMessage, SYNC_STARTED_TOAST_OPTIONS } from './createSyncMutation'
+import { seasonToSync } from '../utils/syncSeason'
 
 // Map of sync types to their display names
 // Note: "persons" is a combined sync that populates persons and households tables
@@ -53,17 +54,25 @@ export const SYNC_TYPE_NAMES: Record<string, string> = {
 // Convert sync type ID to API endpoint (snake_case -> kebab-case)
 const toEndpoint = (syncType: string): string => syncType.replace(/_/g, '-')
 
+export interface IndividualSyncOptions {
+  syncType: string
+  /** The season on screen. Sent only when it is not the primary (see seasonToSync). */
+  year?: number | undefined
+}
+
 export function useRunIndividualSync() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async (syncType: string) => {
+    mutationFn: async ({ syncType, year }: IndividualSyncOptions) => {
       // Validate sync type exists
       if (!SYNC_TYPE_NAMES[syncType]) {
         throw new Error(`Unknown sync type: ${syncType}`)
       }
 
-      const response = await pb.send(`/api/custom/sync/${toEndpoint(syncType)}`, {
+      const season = seasonToSync(queryClient, year)
+      const query = season === undefined ? '' : `?year=${String(season)}`
+      const response = await pb.send(`/api/custom/sync/${toEndpoint(syncType)}${query}`, {
         method: 'POST',
       })
 
@@ -71,7 +80,7 @@ export function useRunIndividualSync() {
     },
     // Note: No onMutate toast - the API responds within ~100ms with status: "started"
     // which triggers the onSuccess toast. Having both is redundant.
-    onSuccess: (data, syncType) => {
+    onSuccess: (data, { syncType }) => {
       const displayName = SYNC_TYPE_NAMES[syncType] ?? syncType
 
       // The Go API runs syncs in background goroutines and returns immediately
@@ -141,7 +150,7 @@ export function useRunIndividualSync() {
       // Invalidate sync status to show it's running
       void queryClient.invalidateQueries({ queryKey: queryKeys.syncStatus() })
     },
-    onError: (error, syncType) => {
+    onError: (error, { syncType }) => {
       const displayName = SYNC_TYPE_NAMES[syncType] ?? syncType
       let errorMessage = extractErrorMessage(error)
 

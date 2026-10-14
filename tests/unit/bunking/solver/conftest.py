@@ -273,6 +273,7 @@ def build_solver_context(
 
     # Create solver input
     solver_input = DirectSolverInput(
+        year=2026,
         persons=persons,
         bunks=bunks_sorted,
         requests=requests,
@@ -308,6 +309,7 @@ def build_direct_solver_input(
     bunks: list[DirectBunk],
     requests: list[DirectBunkRequest] | None = None,
     allow_overflow: bool = False,
+    year: int = 2026,
 ) -> DirectSolverInput:
     """Build a DirectSolverInput for tests that exercise the full solver
     (DirectBunkingSolver.solve) rather than a single constraint module."""
@@ -318,6 +320,7 @@ def build_direct_solver_input(
         existing_assignments=[],
         historical_bunking=[],
         allow_overflow=allow_overflow,
+        year=year,
     )
 
 

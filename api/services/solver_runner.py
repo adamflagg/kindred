@@ -177,6 +177,7 @@ async def run_solver_task_v2(
                 requests_data,
                 assignments_data,
                 bunk_plans_data,
+                year=year,
                 historical_bunking=historical_bunking,
             )
 

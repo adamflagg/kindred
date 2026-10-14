@@ -38,6 +38,62 @@ func normalizeSession(session string) string {
 	return session
 }
 
+// errSeasonNotSynced marks a staff-triggered sync's `?year=` as refusable (400): not a year,
+// or a season the scheduled runs do not cover.
+var errSeasonNotSynced = errors.New("invalid year parameter")
+
+// viewedSeason resolves the optional `?year=` a staff-triggered sync carries: the season staff
+// are viewing. After the Oct 15 rollover they keep working the prior season (the October adult
+// weekends, Jotform, Refresh Housing, request uploads), and a sync started from there must sync
+// that season, never silently the primary (plan Review Focus 1).
+//
+// Absent means the primary, exactly as before the parameter existed. Present must be one of
+// SyncedSeasons [N, N-1]: an older season has no live data to refresh, and quietly running the
+// primary instead is the failure this exists to remove. The caller keeps its existing path when
+// the season it gets back equals the primary, and runs the season's own instances otherwise.
+func viewedSeason(param string) (season, primary int, err error) {
+	seasons, err := SyncedSeasons(nowFn())
+	if err != nil {
+		return 0, 0, err
+	}
+	primary = seasons[0]
+	if param == "" {
+		return primary, primary, nil
+	}
+	y, convErr := strconv.Atoi(param)
+	if convErr != nil || !slices.Contains(seasons, y) {
+		return 0, primary, fmt.Errorf("%w %q: a staff-triggered sync covers the synced seasons %d and %d",
+			errSeasonNotSynced, param, seasons[0], seasons[1])
+	}
+	return y, primary, nil
+}
+
+// answerSeasonError answers a viewedSeason error: 400 for a year the route refuses, 500 when the
+// season itself cannot be resolved (an invalid CAMPMINDER_SEASON_ID override).
+func answerSeasonError(e *core.RequestEvent, err error) error {
+	status := http.StatusInternalServerError
+	if errors.Is(err, errSeasonNotSynced) {
+		status = http.StatusBadRequest
+	}
+	return e.JSON(status, map[string]any{"error": err.Error()})
+}
+
+// syncedSeasonsInclude reports whether year is one the scheduled runs cover. A season that
+// cannot be resolved covers nothing.
+func syncedSeasonsInclude(year int) bool {
+	seasons, err := SyncedSeasons(nowFn())
+	return err == nil && slices.Contains(seasons, year)
+}
+
+// seasonYear is the Year a request-built run carries: 0 for the primary, which keeps every
+// primary path exactly as it was (the year resolves when the run is filed), else the season.
+func seasonYear(season, primary int) int {
+	if season == primary {
+		return 0
+	}
+	return season
+}
+
 // DefaultService is the default value for service parameter meaning "all services"
 const DefaultService = "all"
 
@@ -224,106 +280,7 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 	// - ?trace=true (enable very verbose trace logging in Python processor)
 	e.Router.POST("/api/custom/sync/process-requests",
 		requirePermission("bunking.manage", func(e *core.RequestEvent) error {
-			// Parse optional session parameter (accepts "all" or a numeric cm_id)
-			session := normalizeSession(e.Request.URL.Query().Get("session"))
-
-			// Parse optional source_field parameter (comma-separated)
-			sourceFields, invalidSourceField, validSourceFields := parseSourceFieldParameter(
-				e.Request.URL.Query().Get("source_field"),
-			)
-			if !validSourceFields {
-				return e.JSON(http.StatusBadRequest, map[string]any{
-					"error": fmt.Sprintf(
-						"Invalid source_field: %s. Valid options: "+
-							"bunk_request_form, staff_not_bunk_with, bunking_notes, internal_notes, socialize_with",
-						invalidSourceField),
-				})
-			}
-
-			// Parse optional limit parameter
-			limitParam := e.Request.URL.Query().Get("limit")
-			limit := 0 // Default: no limit
-			if limitParam != "" {
-				if l, err := strconv.Atoi(limitParam); err == nil && l > 0 {
-					limit = l
-				} else {
-					return e.JSON(http.StatusBadRequest, map[string]any{
-						"error": "Invalid limit parameter. Must be a positive integer.",
-					})
-				}
-			}
-
-			// Parse optional force parameter
-			forceParam := e.Request.URL.Query().Get("force")
-			force := forceParam == boolTrueStr || forceParam == "1"
-
-			// Parse optional debug parameter
-			debugParam := e.Request.URL.Query().Get("debug")
-			debug := debugParam == boolTrueStr || debugParam == "1"
-
-			// Parse optional trace parameter
-			traceParam := e.Request.URL.Query().Get("trace")
-			trace := traceParam == boolTrueStr || traceParam == "1"
-
-			// Parse optional collect_traces parameter
-			collectTracesParam := e.Request.URL.Query().Get("collect_traces")
-			collectTraces := collectTracesParam == boolTrueStr || collectTracesParam == "1"
-
-			// Create processor with all options
-			processor := NewRequestProcessor(app)
-			processor.Session = session
-			processor.Limit = limit
-			processor.Force = force
-			processor.SourceFields = sourceFields
-			processor.Debug = debug
-			processor.Trace = trace
-			processor.CollectTraces = collectTraces
-
-			// Mark as running in orchestrator for frontend status tracking
-			orchestrator := scheduler.GetOrchestrator()
-			if err := orchestrator.MarkSyncRunning("process_requests"); err != nil {
-				return e.JSON(http.StatusConflict, map[string]any{
-					"error":    err.Error(),
-					"status":   "running",
-					"syncType": "process_requests",
-				})
-			}
-
-			// Run in background with panic recovery
-			go func() {
-				ctx, cancel := context.WithTimeout(context.Background(), getProcessRequestsTimeout())
-				defer cancel()
-
-				defer func() {
-					if r := recover(); r != nil {
-						slog.Error("process_requests panicked", "panic", r)
-						orchestrator.FinalizeSyncStatus("process_requests", Stats{}, fmt.Errorf("panic: %v", r))
-					}
-				}()
-
-				slog.Info("Starting process_requests sync",
-					"session", session,
-					"source_fields", sourceFields,
-					"limit", limit,
-					"force", force,
-					"debug", debug,
-					"trace", trace,
-					"collect_traces", collectTraces,
-				)
-				syncErr := processor.Sync(ctx)
-				orchestrator.FinalizeSyncStatus("process_requests", processor.GetStats(), syncErr)
-			}()
-
-			return e.JSON(http.StatusOK, map[string]any{
-				"status":        "started",
-				"message":       "Process requests sync started",
-				"session":       session,
-				"source_fields": sourceFields,
-				"limit":         limit,
-				"force":         force,
-				"debug":         debug,
-				"trace":         trace,
-			})
+			return handleProcessRequests(e, scheduler)
 		}))
 
 	// Get available years from database
@@ -560,10 +517,132 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 	return nil
 }
 
+// handleProcessRequests is POST /api/custom/sync/process-requests: it processes
+// original_bunk_requests into bunk_requests through FastAPI, in the background.
+func handleProcessRequests(e *core.RequestEvent, scheduler *Scheduler) error {
+	// The season staff are viewing (?year=, absent = the primary).
+	season, primary, seasonErr := viewedSeason(e.Request.URL.Query().Get("year"))
+	if seasonErr != nil {
+		return answerSeasonError(e, seasonErr)
+	}
+
+	// Parse optional session parameter (accepts "all" or a numeric cm_id)
+	session := normalizeSession(e.Request.URL.Query().Get("session"))
+
+	// Parse optional source_field parameter (comma-separated)
+	sourceFields, invalidSourceField, validSourceFields := parseSourceFieldParameter(
+		e.Request.URL.Query().Get("source_field"),
+	)
+	if !validSourceFields {
+		return e.JSON(http.StatusBadRequest, map[string]any{
+			"error": fmt.Sprintf(
+				"Invalid source_field: %s. Valid options: "+
+					"bunk_request_form, staff_not_bunk_with, bunking_notes, internal_notes, socialize_with",
+				invalidSourceField),
+		})
+	}
+
+	// Parse optional limit parameter
+	limitParam := e.Request.URL.Query().Get("limit")
+	limit := 0 // Default: no limit
+	if limitParam != "" {
+		if l, err := strconv.Atoi(limitParam); err == nil && l > 0 {
+			limit = l
+		} else {
+			return e.JSON(http.StatusBadRequest, map[string]any{
+				"error": "Invalid limit parameter. Must be a positive integer.",
+			})
+		}
+	}
+
+	// Parse optional force parameter
+	forceParam := e.Request.URL.Query().Get("force")
+	force := forceParam == boolTrueStr || forceParam == "1"
+
+	// Parse optional debug parameter
+	debugParam := e.Request.URL.Query().Get("debug")
+	debug := debugParam == boolTrueStr || debugParam == "1"
+
+	// Parse optional trace parameter
+	traceParam := e.Request.URL.Query().Get("trace")
+	trace := traceParam == boolTrueStr || traceParam == "1"
+
+	// Parse optional collect_traces parameter
+	collectTracesParam := e.Request.URL.Query().Get("collect_traces")
+	collectTraces := collectTracesParam == boolTrueStr || collectTracesParam == "1"
+
+	// Create processor with all options
+	processor := NewRequestProcessor(scheduler.app)
+	processor.Session = session
+	processor.Limit = limit
+	processor.Force = force
+	processor.SourceFields = sourceFields
+	processor.Debug = debug
+	processor.Trace = trace
+	processor.CollectTraces = collectTraces
+	processor.Year = seasonYear(season, primary)
+
+	// Mark as running in orchestrator for frontend status tracking, filed under its season
+	orchestrator := scheduler.GetOrchestrator()
+	if err := orchestrator.markSyncRunningForYear("process_requests", processor.Year); err != nil {
+		return e.JSON(http.StatusConflict, map[string]any{
+			"error":    err.Error(),
+			"status":   "running",
+			"syncType": "process_requests",
+		})
+	}
+
+	// Run in background with panic recovery
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), getProcessRequestsTimeout())
+		defer cancel()
+
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("process_requests panicked", "panic", r)
+				orchestrator.FinalizeSyncStatus("process_requests", Stats{}, fmt.Errorf("panic: %v", r))
+			}
+		}()
+
+		slog.Info("Starting process_requests sync",
+			"session", session,
+			"source_fields", sourceFields,
+			"limit", limit,
+			"force", force,
+			"debug", debug,
+			"trace", trace,
+			"collect_traces", collectTraces,
+		)
+		syncErr := processor.Sync(ctx)
+		orchestrator.FinalizeSyncStatus("process_requests", processor.GetStats(), syncErr)
+	}()
+
+	return e.JSON(http.StatusOK, map[string]any{
+		"status":        "started",
+		"message":       "Process requests sync started",
+		"session":       session,
+		"source_fields": sourceFields,
+		"limit":         limit,
+		"force":         force,
+		"debug":         debug,
+		"trace":         trace,
+	})
+}
+
 // handleIndividualSync handles running a single sync job
 // Returns 202 Accepted if enqueued, 200 OK if started immediately
 func handleIndividualSync(e *core.RequestEvent, scheduler *Scheduler, syncType string) error {
 	orchestrator := scheduler.GetOrchestrator()
+
+	// The season staff are viewing (absent = the primary). A global job has no season, so it
+	// always takes the primary's path whatever the page was showing.
+	year, primary, err := viewedSeason(e.Request.URL.Query().Get("year"))
+	if err != nil {
+		return answerSeasonError(e, err)
+	}
+	if GetPhaseForJob(syncType) == PhaseGlobal {
+		year = primary
+	}
 
 	// Check if already running
 	if orchestrator.IsRunning(syncType) {
@@ -578,20 +657,15 @@ func handleIndividualSync(e *core.RequestEvent, scheduler *Scheduler, syncType s
 	debugParam := e.Request.URL.Query().Get("debug")
 	debug := debugParam == boolTrueStr || debugParam == "1"
 
-	// If debug is enabled, set it on the service (if it supports Debuggable interface)
-	if debug {
+	// If debug is enabled, set it on the service (if it supports Debuggable interface). A
+	// season other than the primary runs its own instance, which gets debug when it is built.
+	if debug && year == primary {
 		if service := orchestrator.GetService(syncType); service != nil {
 			if debuggable, ok := service.(Debuggable); ok {
 				debuggable.SetDebug(true)
 				slog.Info("Debug logging enabled for sync", "syncType", syncType)
 			}
 		}
-	}
-
-	// Get current year from environment
-	currentYear, err := ParseSeasonYear()
-	if err != nil {
-		return e.JSON(http.StatusInternalServerError, map[string]any{"error": err.Error()})
 	}
 
 	// Get user info for queue tracking
@@ -608,7 +682,8 @@ func handleIndividualSync(e *core.RequestEvent, scheduler *Scheduler, syncType s
 		orchestrator.IsHistoricalSyncRunning() || orchestrator.IsCustomValuesSyncRunning() ||
 		orchestrator.IsAnyJobRunning() {
 		// Queue the individual sync with debug flag
-		qs, err := orchestrator.EnqueueIndividualSync(currentYear, syncType, nil, debug, requestedBy)
+		// The queue item carries the season, and processQueuedSyncs runs that season's instance.
+		qs, err := orchestrator.EnqueueIndividualSync(year, syncType, nil, debug, requestedBy)
 		if err != nil {
 			return e.JSON(http.StatusConflict, map[string]any{
 				"error": err.Error(),
@@ -626,19 +701,36 @@ func handleIndividualSync(e *core.RequestEvent, scheduler *Scheduler, syncType s
 		})
 	}
 
+	// A season other than the primary runs its own instance, built before the response so a job
+	// with no season's instance is refused rather than run on the primary's.
+	var seasonSvc Service
+	if year != primary {
+		if seasonSvc = orchestrator.seasonInstance(syncType, year, debug); seasonSvc == nil {
+			return e.JSON(http.StatusBadRequest, map[string]any{
+				"error": fmt.Sprintf("%s cannot be run for %d, only for the current season %d", syncType, year, primary),
+			})
+		}
+	}
+
 	// Run in background
 	go func() {
 		// Create context inside goroutine so it doesn't get canceled immediately
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 		defer cancel()
 
-		if err := orchestrator.RunSingleSync(ctx, syncType); err != nil {
+		var runErr error
+		if seasonSvc != nil {
+			runErr = orchestrator.runForSeason(ctx, syncType, year, seasonSvc)
+		} else {
+			runErr = orchestrator.RunSingleSync(ctx, syncType)
+		}
+		if runErr != nil {
 			// Log error (could also store in DB)
-			e.App.Logger().Error("Individual sync failed", "syncType", syncType, "error", err)
+			e.App.Logger().Error("Individual sync failed", "syncType", syncType, "year", year, "error", runErr)
 		}
 
 		// Reset debug flag after sync completes
-		if debug {
+		if debug && seasonSvc == nil {
 			if service := orchestrator.GetService(syncType); service != nil {
 				if debuggable, ok := service.(Debuggable); ok {
 					debuggable.SetDebug(false)
@@ -719,6 +811,33 @@ func refreshFamilyCampOverrides(app core.App, client *campminder.Client, session
 	}
 }
 
+// refreshFamilyCampSeasonOverrides is the Refresh Housing chain for a season other than the
+// primary: every one of the six jobs runs the season's own instance (svcs, a yearServices set),
+// and the two custom-values jobs are narrowed to the weekend on screen exactly as
+// refreshFamilyCampOverrides narrows the primary's. Unlike the primary's chain, no job may fall
+// back to the registered instance -- that instance is the primary's -- so a job missing from
+// svcs is an error and nothing runs.
+func refreshFamilyCampSeasonOverrides(svcs map[string]Service, session string) (map[string]Service, error) {
+	weekendScoped := map[string]bool{
+		scopedID(serviceNamePersonCustomValues, ScopeFamilyCamp):    true,
+		scopedID(serviceNameHouseholdCustomValues, ScopeFamilyCamp): true,
+	}
+	out := make(map[string]Service, len(weekendScoped)+4)
+	for _, job := range GetRefreshFamilyCampJobs() {
+		svc := svcs[job]
+		if svc == nil {
+			return nil, fmt.Errorf("no season instance for %s", job)
+		}
+		if weekendScoped[job] && session != "" && session != DefaultSession {
+			if sessioned, ok := svc.(interface{ SetSession(string) }); ok {
+				sessioned.SetSession(session)
+			}
+		}
+		out[job] = svc
+	}
+	return out, nil
+}
+
 // refreshFamilyCampTimeout bounds one Refresh Housing press. See handleRefreshFamilyCamp.
 const refreshFamilyCampTimeout = 45 * time.Minute
 
@@ -770,14 +889,15 @@ func handleRefreshFamilyCamp(e *core.RequestEvent, scheduler *Scheduler) error {
 	//
 	// Deliberately reuses GetFamilyCampSessionCMIDs rather than re-deriving the rule, so the
 	// scoped path cannot drift from the unscoped one about what the scope MEANS.
+	//
+	// The weekend is resolved in the season staff are viewing (?year=, absent = the primary):
+	// CampMinder reuses session ids across years, so after the Oct 15 rollover a prior-season
+	// weekend checked against the primary is refused, or worse, passes as a different weekend.
+	year, primary, yearErr := viewedSeason(e.Request.URL.Query().Get("year"))
+	if yearErr != nil {
+		return answerSeasonError(e, yearErr)
+	}
 	if session != "" && session != DefaultSession {
-		year, yearErr := ParseSeasonYear()
-		if yearErr != nil {
-			return e.JSON(http.StatusInternalServerError, map[string]any{
-				"error": "Could not resolve the current season: " + yearErr.Error(),
-			})
-		}
-
 		familyCMIDs, famErr := NewSessionResolver(e.App).GetFamilyCampSessionCMIDs(year)
 		if famErr != nil {
 			return e.JSON(http.StatusInternalServerError, map[string]any{
@@ -822,16 +942,31 @@ func handleRefreshFamilyCamp(e *core.RequestEvent, scheduler *Scheduler) error {
 	// sequentially.
 	// Built BEFORE the goroutine: these instances belong to this request, and constructing
 	// them here keeps the handler the only thing that decides what this press covers.
-	overrides := refreshFamilyCampOverrides(e.App, orchestrator.BaseClient(), session)
+	//
+	// A season other than the primary runs ALL six jobs on that season's own instances, filed
+	// under that season: the four year-wide jobs would otherwise sync the primary, and the
+	// press would read as a success while the board on screen stayed as it was.
+	batch := newBatch(triggerManual).forSession(session)
+	var overrides map[string]Service
+	if year == primary {
+		overrides = refreshFamilyCampOverrides(e.App, orchestrator.BaseClient(), session)
+	} else {
+		var buildErr error
+		overrides, buildErr = refreshFamilyCampSeasonOverrides(orchestrator.yearServices(year, false), session)
+		if buildErr != nil {
+			return e.JSON(http.StatusInternalServerError, map[string]any{
+				"error": fmt.Sprintf("Could not build the %d refresh: %v", year, buildErr),
+			})
+		}
+		batch = batch.forYear(year)
+	}
 
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), refreshFamilyCampTimeout)
 		defer cancel()
 
-		if err := orchestrator.RunSyncSequenceWithServices(
-			ctx, GetRefreshFamilyCampJobs(), overrides, session,
-		); err != nil {
-			e.App.Logger().Error("Refresh family camp failed", "error", err, "session", session)
+		if err := orchestrator.runSyncSequence(ctx, GetRefreshFamilyCampJobs(), overrides, batch); err != nil {
+			e.App.Logger().Error("Refresh family camp failed", "error", err, "session", session, "year", year)
 		}
 	}()
 
@@ -931,18 +1066,13 @@ func findMissingColumns(headers, required []string) []string {
 	return missing
 }
 
-// determineUploadYear determines the year for CSV storage from env and query param
+// determineUploadYear is the season an uploaded bunk-request CSV belongs to: the ?year= staff
+// were viewing, absent = the primary. A year that is present but not a synced season is an error
+// (errSeasonNotSynced, a 400): it used to fall back to the primary silently, filing one season's
+// requests under another.
 func determineUploadYear(yearParam string) (int, error) {
-	uploadYear, err := ParseSeasonYear()
-	if err != nil {
-		return 0, fmt.Errorf("year resolution failed: %w", err)
-	}
-	if yearParam != "" {
-		if y, err := strconv.Atoi(yearParam); err == nil && ValidSyncYear(y) {
-			uploadYear = y
-		}
-	}
-	return uploadYear, nil
+	year, _, err := viewedSeason(yearParam)
+	return year, err
 }
 
 // saveCSVWithBackup saves CSV data with automatic backup of existing file
@@ -1008,6 +1138,10 @@ func handleBunkRequestsUpload(e *core.RequestEvent, scheduler *Scheduler) error 
 	// Determine upload year and save file
 	uploadYear, err := determineUploadYear(e.Request.URL.Query().Get("year"))
 	if err != nil {
+		return answerSeasonError(e, err)
+	}
+	primary, err := ParseSeasonYear()
+	if err != nil {
 		return e.JSON(http.StatusInternalServerError, map[string]any{"error": err.Error()})
 	}
 	csvDir := filepath.Join(scheduler.app.DataDir(), "bunk_requests")
@@ -1048,8 +1182,17 @@ func handleBunkRequestsUpload(e *core.RequestEvent, scheduler *Scheduler) error 
 				defer cancel()
 
 				// Run bunk_requests sync first and wait for completion. A CSV upload is an
-				// operator action, so this is a manual batch of one.
-				syncErr := orchestrator.runSyncAndWait(ctx, "bunk_requests", newBatch(triggerManual))
+				// operator action, so this is a manual batch of one. A prior season's upload
+				// imports with that season's own instance, which reads <year>_latest.csv;
+				// the registered one would import the primary's file.
+				var syncErr error
+				if uploadYear == primary {
+					syncErr = orchestrator.runSyncAndWait(ctx, "bunk_requests", newBatch(triggerManual))
+				} else if svc := orchestrator.seasonInstance("bunk_requests", uploadYear, false); svc == nil {
+					syncErr = fmt.Errorf("no %d instance for bunk_requests", uploadYear)
+				} else {
+					syncErr = orchestrator.runForSeason(ctx, "bunk_requests", uploadYear, svc)
+				}
 				if syncErr != nil {
 					slog.Warn("Error running bunk_requests sync", "error", syncErr)
 					return // Don't run process_requests if sync failed
@@ -1058,7 +1201,8 @@ func handleBunkRequestsUpload(e *core.RequestEvent, scheduler *Scheduler) error 
 				// Chain process_requests after bunk_requests completes
 				if runProcessRequests {
 					slog.Info("Chaining process_requests after bunk_requests sync")
-					if markErr := orchestrator.MarkSyncRunning("process_requests"); markErr != nil {
+					markErr := orchestrator.markSyncRunningForYear("process_requests", seasonYear(uploadYear, primary))
+					if markErr != nil {
 						slog.Warn("Could not mark process_requests running (may already be running)", "error", markErr)
 					} else {
 						// Fresh context — don't share the upload's shorter timeout
@@ -1072,6 +1216,8 @@ func handleBunkRequestsUpload(e *core.RequestEvent, scheduler *Scheduler) error 
 						// Always collect pipeline traces for CSV uploads
 						processor.CollectTraces = true
 						processor.Trigger = "upload"
+						// The upload's season, not the primary (0 keeps "the primary").
+						processor.Year = seasonYear(uploadYear, primary)
 
 						// Panic recovery — matches /process-requests endpoint pattern
 						defer func() {
@@ -1142,6 +1288,44 @@ func resolveServiceStatuses(orchestrator *Orchestrator, syncTypes []string) map[
 	return statuses
 }
 
+// resolveServiceStatusesForSeason is resolveServiceStatuses for one synced season's Manage >
+// Sync cards (?year=): each job's live run or last completion of THAT season
+// (GetStatusForSeason), falling back to that season's rows in sync_runs. primary is the primary
+// season.
+func resolveServiceStatusesForSeason(orchestrator *Orchestrator, syncTypes []string, year, primary int) map[string]any {
+	recorded := orchestrator.LastRecordedRunsForSeason(year)
+
+	statuses := make(map[string]any, len(syncTypes))
+	for _, syncType := range syncTypes {
+		live := orchestrator.GetStatusForSeason(syncType, year, primary)
+		switch {
+		case live != nil:
+			statuses[syncType] = live
+		case recorded[syncType] != nil:
+			statuses[syncType] = recorded[syncType]
+		default:
+			statuses[syncType] = map[string]string{
+				"status": "idle",
+			}
+		}
+	}
+	return statuses
+}
+
+// statusYearParam reads the sync-status endpoint's optional ?year=. Absent (0) is the
+// any-season payload every surface but Manage > Sync reads, unchanged; a named year must be
+// one of the synced seasons, [primary, primary-1].
+func statusYearParam(raw string, primary int) (int, error) {
+	if raw == "" {
+		return 0, nil
+	}
+	year, err := strconv.Atoi(raw)
+	if err != nil || (year != primary && year != primary-1) {
+		return 0, fmt.Errorf("year must be one of the synced seasons, %d or %d", primary, primary-1)
+	}
+	return year, nil
+}
+
 // statusSyncTypes returns every job the sync-status payload reports on.
 //
 // Derived from the registry, because the failure mode of a hand-written list here is severe
@@ -1175,9 +1359,44 @@ func resolveServiceStatuses(orchestrator *Orchestrator, syncTypes []string) map[
 // but is listed mid-Transform here.
 func statusSyncTypes() []string { return allJobIDs() }
 
-// handleSyncStatus returns the status of all sync jobs
+// statusPrimarySeason is the primary season the sync status payload reports, falling back to
+// the calendar year when the season can't be resolved.
+func statusPrimarySeason() int {
+	now := nowFn()
+	primary, err := PrimarySeason(now)
+	if err != nil {
+		primary = now.Year()
+	}
+	return primary
+}
+
+// seasonStatusFields is the season part of the sync status payload. `_configured_year` keeps its
+// meaning (the primary season) and its fallback to the calendar year when the season can't be
+// resolved.
+func seasonStatusFields() map[string]any {
+	primary := statusPrimarySeason()
+	return map[string]any{
+		"_configured_year": primary,
+		"_synced_years":    []int{primary, primary - 1},
+		"_season_source":   SeasonSource(),
+	}
+}
+
+// handleSyncStatus returns the status of all sync jobs.
+//
+// Optional ?year= names a synced season, and the per-job entries are then that season's own
+// (Manage > Sync passes the season it is viewing): the scheduled runs sync two seasons, and the
+// prior season's nightly run would otherwise stand in for the primary's on every card. Without
+// it the payload is exactly what it was -- each job's latest run of any season -- because the
+// other surfaces watch a prior season's Refresh Housing or CSV processing finish through it.
 func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 	orchestrator := scheduler.GetOrchestrator()
+
+	primary := statusPrimarySeason()
+	viewedYear, err := statusYearParam(e.Request.URL.Query().Get("year"), primary)
+	if err != nil {
+		return e.JSON(http.StatusBadRequest, map[string]any{"error": err.Error()})
+	}
 
 	// Get status of all known sync types. The payload is a JSON object keyed by job
 	// name, so this order is documentation rather than protocol -- it is kept aligned
@@ -1186,7 +1405,12 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 	// tables from a single API call - there are no separate households or person_tags syncs
 	syncTypes := statusSyncTypes()
 
-	statuses := resolveServiceStatuses(orchestrator, syncTypes)
+	var statuses map[string]any
+	if viewedYear == 0 {
+		statuses = resolveServiceStatuses(orchestrator, syncTypes)
+	} else {
+		statuses = resolveServiceStatusesForSeason(orchestrator, syncTypes, viewedYear, primary)
+	}
 
 	// Add daily sync status
 	statuses["_daily_sync_running"] = orchestrator.IsDailySyncRunning()
@@ -1200,12 +1424,11 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 		statuses["_historical_sync_year"] = orchestrator.GetHistoricalSyncYear()
 	}
 
-	// Add configured year from environment (CAMPMINDER_SEASON_ID)
-	configuredYear, err := ParseSeasonYear()
-	if err != nil {
-		configuredYear = time.Now().Year()
+	// Season fields: the primary season (`_configured_year`), the seasons the scheduled runs
+	// cover, and whether the env override or the Oct 15 rule picked the primary.
+	for k, v := range seasonStatusFields() {
+		statuses[k] = v
 	}
-	statuses["_configured_year"] = configuredYear
 
 	// Add bunk requests CSV upload metadata if a CSV has ever been uploaded.
 	// Read failures are logged but not surfaced — the absence of this field is
@@ -1319,7 +1542,11 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 	// 400: resolving it to a run of nothing would answer 200 for a sync that never happens, and
 	// passing it through (what this endpoint did until Stage 3) starts a real run of a job with
 	// no route, or of a service that does not exist at all.
-	services := ResolveUnifiedSyncServices(service, includeCustomValues, year == currentYear)
+	//
+	// A season the scheduled runs cover (the primary or N-1) runs every job its nightly pass
+	// runs, Jotform and request processing included; only a year outside the synced pair is a
+	// historical replay that skips the SyncedSeasonsOnly jobs (spec §5, audit Fix E).
+	services := ResolveUnifiedSyncServices(service, includeCustomValues, syncedSeasonsInclude(year))
 	if services == nil {
 		return e.JSON(http.StatusBadRequest, map[string]any{
 			"error": fmt.Sprintf("Unknown sync service: %s", service),
@@ -1376,7 +1603,7 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 
 	// IMPORTANT: Orchestrator uses Year=0 to indicate current year mode
 	// This enables bunk_requests and process_requests inclusion
-	// Year > 0 triggers historical mode (re-registers services with year-specific client)
+	// Year > 0 triggers historical mode (each job runs a year-scoped instance; the registry is untouched)
 	optsYear := year
 	if year == currentYear {
 		optsYear = 0 // Current year mode
@@ -1514,6 +1741,19 @@ func processQueuedSyncs(orchestrator *Orchestrator) {
 				break
 			}
 
+			// The prior synced season runs its own instance (see phaseSeasonInstance).
+			if seasonSvc, skip := phaseSeasonInstance(orchestrator, jobID, qs.Year, qs.Debug); skip {
+				slog.Error("Queued phase sync: no instance for its season, not running it on the primary's",
+					"phase", phase, "job", jobID, "year", qs.Year)
+				continue
+			} else if seasonSvc != nil {
+				slog.Info("Queued phase sync: Running job", "phase", phase, "job", jobID, "year", qs.Year)
+				if err := orchestrator.runSyncAndWaitWithService(ctx, jobID, batch, seasonSvc); err != nil {
+					slog.Error("Queued phase sync: job failed", "phase", phase, "job", jobID, "error", err)
+				}
+				continue
+			}
+
 			// Set year and debug on the service before running
 			if svc := orchestrator.GetService(jobID); svc != nil {
 				// Set year so service queries correct year's data
@@ -1550,6 +1790,26 @@ func processQueuedSyncs(orchestrator *Orchestrator) {
 	case "individual":
 		// Run single job
 		slog.Info("Queued individual sync: Running job", "job", qs.Service, "year", qs.Year, "debug", qs.Debug)
+
+		// A season other than the primary (staff were viewing N-1 when they queued it) runs that
+		// season's own instance, exactly as handleIndividualSync's immediate path does. The
+		// primary is resolved now, not at enqueue time: an item queued as the primary just before
+		// the Oct 15 rollover is the prior season by the time it runs, and is run as one.
+		if primary, perr := ParseSeasonYear(); perr == nil && qs.Year != 0 && qs.Year != primary &&
+			GetPhaseForJob(qs.Service) != PhaseGlobal {
+			svc := orchestrator.seasonInstance(qs.Service, qs.Year, qs.Debug)
+			if svc == nil {
+				slog.Error("Queued individual sync: no instance for its season, not running it on the primary's",
+					"id", qs.ID, "job", qs.Service, "year", qs.Year)
+			} else if err := orchestrator.runForSeason(ctx, qs.Service, qs.Year, svc); err != nil {
+				slog.Error("Queued individual sync failed",
+					"id", qs.ID, "job", qs.Service, "year", qs.Year, "error", err)
+			} else {
+				slog.Info("Queued individual sync completed",
+					"id", qs.ID, "job", qs.Service, "year", qs.Year)
+			}
+			break
+		}
 
 		// Set year and debug on the service before running
 		if svc := orchestrator.GetService(qs.Service); svc != nil {
@@ -1769,7 +2029,8 @@ func handleTestConnection(e *core.RequestEvent, scheduler *Scheduler) error {
 	if orchestrator.baseClient == nil {
 		return e.JSON(http.StatusInternalServerError, map[string]any{
 			"error": "CampMinder client not initialized",
-			"hint":  "Check that CAMPMINDER_API_KEY, CAMPMINDER_CLIENT_ID, and CAMPMINDER_SEASON_ID are set",
+			"hint": "Check that CAMPMINDER_API_KEY and CAMPMINDER_CLIENT_ID are set, and that CAMPMINDER_SEASON_ID, " +
+				"an optional override, is a valid year if it is set at all",
 		})
 	}
 
@@ -1821,6 +2082,18 @@ func handleMultiWorkbookExport(e *core.RequestEvent, scheduler *Scheduler) error
 		return e.JSON(http.StatusBadRequest, map[string]any{
 			"error": fmt.Sprintf("Invalid years parameter: %v", err),
 		})
+	}
+
+	// The season staff are viewing (?year=, absent = the primary), sent by Manage > Sync's card.
+	// With no explicit years, a prior synced season exports that season's workbook alone, so the
+	// button never exports the primary while staff are working N-1; a year outside the synced
+	// pair is refused, as on every other staff route.
+	viewed, viewedPrimary, seasonErr := viewedSeason(e.Request.URL.Query().Get("year"))
+	if seasonErr != nil {
+		return answerSeasonError(e, seasonErr)
+	}
+	if len(years) == 0 && viewed != viewedPrimary {
+		years = []int{viewed}
 	}
 
 	// Parse optional includeGlobals parameter
@@ -1964,14 +2237,20 @@ func handlePersonCustomFieldValuesSync(e *core.RequestEvent, scheduler *Schedule
 	// ran, silently narrowing whichever request was actually in flight (#2105).
 	// RunSingleSyncWithService also reserves the run atomically, so the check-then-mutate gap
 	// the old pattern had between GetService and MarkSyncRunning can't reopen.
-	service := NewPersonCustomFieldValuesSync(e.App, orchestrator.BaseClient())
-	service.SetSession(session)
-	service.SetDebug(debug)
+	service, origin, answered, answerErr := onDemandCustomValuesRun(e, orchestrator, syncType, session, debug,
+		func() Service {
+			svc := NewPersonCustomFieldValuesSync(e.App, orchestrator.BaseClient())
+			svc.SetSession(session)
+			svc.SetDebug(debug)
+			return svc
+		})
+	if answered {
+		return answerErr
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Minute)
 	defer cancel()
 
-	origin := newBatch(triggerManual)
 	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service, origin); err != nil {
 		return e.JSON(http.StatusConflict, map[string]any{
 			"error":    err.Error(),
@@ -1992,6 +2271,34 @@ func handlePersonCustomFieldValuesSync(e *core.RequestEvent, scheduler *Schedule
 		"session":  session,
 		"debug":    debug,
 	})
+}
+
+// onDemandCustomValuesRun picks the instance and origin for an on-demand custom-values run in the
+// season staff are viewing (?year=, absent = the primary). The primary runs the instance
+// primaryInstance builds, exactly as before; a prior season runs its own instance, which reads
+// CampMinder through a client for that season, narrowed to the same session and filed under that
+// season. answered is true when the request was refused and already answered; the handler then
+// returns err (the response write's own error) and starts nothing.
+func onDemandCustomValuesRun(
+	e *core.RequestEvent, orchestrator *Orchestrator, syncType, session string, debug bool,
+	primaryInstance func() Service,
+) (svc Service, origin runOrigin, answered bool, err error) {
+	year, primary, seasonErr := viewedSeason(e.Request.URL.Query().Get("year"))
+	if seasonErr != nil {
+		return nil, runOrigin{}, true, answerSeasonError(e, seasonErr)
+	}
+	if year == primary {
+		return primaryInstance(), newBatch(triggerManual), false, nil
+	}
+	if svc = orchestrator.seasonInstance(syncType, year, debug); svc == nil {
+		return nil, runOrigin{}, true, e.JSON(http.StatusInternalServerError, map[string]any{
+			"error": fmt.Sprintf("no %d instance for %s", year, syncType),
+		})
+	}
+	if sessioned, ok := svc.(interface{ SetSession(string) }); ok {
+		sessioned.SetSession(session)
+	}
+	return svc, newBatch(triggerManual).forYear(year), false, nil
 }
 
 // handleHouseholdCustomFieldValuesSync handles the on-demand household custom field values sync
@@ -2024,14 +2331,20 @@ func handleHouseholdCustomFieldValuesSync(e *core.RequestEvent, scheduler *Sched
 	// ran, silently narrowing whichever request was actually in flight (#2105).
 	// RunSingleSyncWithService also reserves the run atomically, so the check-then-mutate gap
 	// the old pattern had between GetService and MarkSyncRunning can't reopen.
-	service := NewHouseholdCustomFieldValuesSync(e.App, orchestrator.BaseClient())
-	service.SetSession(session)
-	service.SetDebug(debug)
+	service, origin, answered, answerErr := onDemandCustomValuesRun(e, orchestrator, syncType, session, debug,
+		func() Service {
+			svc := NewHouseholdCustomFieldValuesSync(e.App, orchestrator.BaseClient())
+			svc.SetSession(session)
+			svc.SetDebug(debug)
+			return svc
+		})
+	if answered {
+		return answerErr
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Minute)
 	defer cancel()
 
-	origin := newBatch(triggerManual)
 	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service, origin); err != nil {
 		return e.JSON(http.StatusConflict, map[string]any{
 			"error":    err.Error(),
@@ -2449,6 +2762,23 @@ func handleHouseholdDemographicsSync(e *core.RequestEvent, scheduler *Scheduler)
 // is untouched; only the execution list is filtered.
 func phaseExecutionJobs(phase Phase) []string { return inPhaseWithTrigger(phase, TriggerPhaseRun) }
 
+// phaseSeasonInstance is the instance a Run Phase job runs when staff asked for the prior synced
+// season (N-1): that season's own instance, so a client-backed job (which ignores SetYear) reads
+// CampMinder for N-1 rather than the primary, and the registry stays the primary's. svc is nil
+// when the registered instance runs as before: the primary, a global job, or a year outside the
+// synced pair (a historical phase run, unchanged). skip is true for an N-1 job that has no season
+// instance; it is not run on the primary's.
+func phaseSeasonInstance(o *Orchestrator, job string, year int, debug bool) (svc Service, skip bool) {
+	primary, err := ParseSeasonYear()
+	if err != nil || year == primary || !syncedSeasonsInclude(year) || GetPhaseForJob(job) == PhaseGlobal {
+		return nil, false
+	}
+	if svc = o.seasonInstance(job, year, debug); svc == nil {
+		return nil, true
+	}
+	return svc, false
+}
+
 // handleGetPhases returns list of available sync phases with metadata
 func handleGetPhases(e *core.RequestEvent) error {
 	phases := GetAllPhases()
@@ -2625,6 +2955,19 @@ func handleRunPhase(e *core.RequestEvent, scheduler *Scheduler) error {
 				slog.Error("Phase sync canceled", "phase", phase, "error", ctx.Err())
 				return
 			default:
+			}
+
+			// The prior synced season runs its own instance (see phaseSeasonInstance).
+			if seasonSvc, skip := phaseSeasonInstance(orchestrator, jobID, year, debug); skip {
+				slog.Error("Phase job: no instance for its season, not running it on the primary's",
+					"phase", phase, "job", jobID, "year", year)
+				continue
+			} else if seasonSvc != nil {
+				slog.Info("Running phase job", "phase", phase, "job", jobID, "year", year)
+				if err := orchestrator.runSyncAndWaitWithService(ctx, jobID, batch, seasonSvc); err != nil {
+					slog.Error("Phase job failed", "phase", phase, "job", jobID, "error", err)
+				}
+				continue
 			}
 
 			// Set year and debug on the service before running

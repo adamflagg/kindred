@@ -193,15 +193,6 @@ Deployment uses GitHub Actions CD workflow. See CLAUDE.md "Release Workflow" sec
 
 ## Configuration & Setup
 
-### Prepare for New Year
-```bash
-uv run python scripts/prepare_for_new_year.py YEAR
-
-Example:
-  python scripts/prepare_for_new_year.py 2026
-```
-Updates configuration for new camp year.
-
 ### Configure OAuth2
 ```bash
 uv run python scripts/configure_pocketbase_oauth.py
@@ -354,7 +345,7 @@ uv run python scripts/sync/rebuild_database_auto.py
 Key environment variables used by scripts:
 - `CAMPMINDER_API_KEY` - CampMinder API authentication
 - `CAMPMINDER_CLIENT_ID` - CampMinder client identifier  
-- `CAMPMINDER_SEASON_ID` - Current camp season
+- `CAMPMINDER_SEASON_ID` - Optional override of the primary season (it otherwise rolls over on Oct 15 Pacific)
 - `POCKETBASE_URL` - PocketBase API endpoint
 - `POCKETBASE_ADMIN_EMAIL` - Admin credentials
 - `POCKETBASE_ADMIN_PASSWORD` - Admin credentials

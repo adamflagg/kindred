@@ -46,6 +46,26 @@ def get_camp_date(utc_dt: datetime) -> date:
     return pacific.date()
 
 
+# The camp season rolls over at this Pacific date: from Oct 15 00:00 Pacific the primary season is
+# the next calendar year. MIRRORS seasonRolloverMonth/Day in pocketbase/sync/year.go, which owns
+# the rule; Python reads it from PocketBase's sync status and uses this only as a last resort.
+SEASON_ROLLOVER_MONTH = 10
+SEASON_ROLLOVER_DAY = 15
+
+
+def primary_season_year(utc_dt: datetime) -> int:
+    """The camp season `utc_dt` falls in: the calendar year (Pacific) until Oct 15, the next after.
+
+    Naive datetimes are treated as UTC.
+    """
+    if utc_dt.tzinfo is None:
+        utc_dt = utc_dt.replace(tzinfo=UTC)
+    pacific = utc_dt.astimezone(CAMP_TZ)
+    if (pacific.month, pacific.day) >= (SEASON_ROLLOVER_MONTH, SEASON_ROLLOVER_DAY):
+        return pacific.year + 1
+    return pacific.year
+
+
 def get_camp_today() -> date:
     """Return the current camp date."""
     return get_camp_date(datetime.now(tz=UTC))

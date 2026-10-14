@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -41,6 +42,7 @@ from api.services.lodging_cache_warm import (
     reads_depending_on,
     refresh_lodging_cache_forever,
     sync_invalidates_lodging_cache,
+    synced_season_years,
     warm_lodging_year,
 )
 from api.services.lodging_repository import LodgingRepository
@@ -319,6 +321,67 @@ class TestCurrentSeasonYear:
         monkeypatch.setenv("CAMPMINDER_SEASON_ID", "2025")
 
         assert await current_season_year(pb) == 2025
+
+    @pytest.mark.asyncio
+    async def test_the_last_resort_follows_the_october_15_rollover(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """No status and no override: the season rule, not the calendar year.
+        On Oct 20 2026 the primary is 2027, so the warm covers [2027, 2026]
+        (CodeRabbit on #3211)."""
+        pb = MagicMock()
+        pb.send.side_effect = RuntimeError("unreachable")
+        monkeypatch.delenv("CAMPMINDER_SEASON_ID", raising=False)
+        monkeypatch.setattr(lodging_warm, "_utcnow", lambda: datetime(2026, 10, 20, 10, 0, tzinfo=UTC))
+
+        assert await current_season_year(pb) == 2027
+        assert await synced_season_years(pb) == [2027, 2026]
+
+
+class TestSyncedSeasonYears:
+    @pytest.mark.asyncio
+    async def test_reads_the_status(self) -> None:
+        pb = MagicMock()
+        pb.send.return_value = {"_configured_year": 2027, "_synced_years": [2027, 2026]}
+
+        assert await synced_season_years(pb) == [2027, 2026]
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_primary_and_prior(self) -> None:
+        pb = MagicMock()
+        pb.send.return_value = {"_configured_year": 2027}
+
+        assert await synced_season_years(pb) == [2027, 2026]
+
+    @pytest.mark.asyncio
+    async def test_the_warm_covers_the_prior_season_board(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        pb = MagicMock()
+        pb.send.return_value = {"_configured_year": 2027, "_synced_years": [2027, 2026]}
+        monkeypatch.setattr(lodging_warm, "default_pb", pb)
+        warmed: list[int] = []
+
+        async def fake_warm(year: int, **_: Any) -> None:
+            warmed.append(year)
+
+        monkeypatch.setattr(lodging_warm, "warm_lodging_year", fake_warm)
+        await lodging_warm._warm_current_season()
+
+        assert warmed == [2027, 2026]
+
+    @pytest.mark.asyncio
+    async def test_the_refresher_default_covers_both_seasons(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        pb = MagicMock()
+        pb.send.return_value = {"_configured_year": 2027, "_synced_years": [2027, 2026]}
+        monkeypatch.setattr(lodging_warm, "default_pb", pb)
+        warmed: list[int] = []
+
+        async def fake_warm(year: int) -> None:
+            warmed.append(year)
+
+        async def stop(_: float) -> None:
+            raise asyncio.CancelledError
+
+        with pytest.raises(asyncio.CancelledError):
+            await refresh_lodging_cache_forever(interval=1.0, warm=fake_warm, sleep=stop)
+        assert warmed == [2027, 2026]
 
 
 class TestTheRefresher:

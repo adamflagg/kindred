@@ -3,7 +3,7 @@ import {
   getSyncTypesByPhase,
   GLOBAL_SYNC_TYPES,
   hasManualTrigger,
-  isCurrentYearOnly,
+  isSyncedSeasonsOnly,
   YEAR_SYNC_TYPES,
 } from './syncTypes'
 import { getBackendSyncJobIds, getBackendSyncPostRouteSegments } from '../../test/backendSyncJobIds'
@@ -12,13 +12,13 @@ describe('syncTypes', () => {
   const currentYear = 2026
 
   it('includes stranded_assignment_cleanup in transform phase', () => {
-    const transformJobs = getSyncTypesByPhase('transform', currentYear, currentYear)
+    const transformJobs = getSyncTypesByPhase('transform', currentYear, [currentYear])
     const ids = transformJobs.map((t) => t.id)
     expect(ids).toContain('stranded_assignment_cleanup')
   })
 
   it('stranded_assignment_cleanup is last in the transform phase group', () => {
-    const transformJobs = getSyncTypesByPhase('transform', currentYear, currentYear)
+    const transformJobs = getSyncTypesByPhase('transform', currentYear, [currentYear])
     const ids = transformJobs.map((t) => t.id)
     const enrollmentIdx = ids.indexOf('enrollment_snapshots')
     const cleanupIdx = ids.indexOf('stranded_assignment_cleanup')
@@ -35,10 +35,10 @@ describe('syncTypes', () => {
     }
   })
 
-  it('stranded_assignment_cleanup is not currentYearOnly', () => {
+  it('stranded_assignment_cleanup is not syncedSeasonsOnly', () => {
     const entry = YEAR_SYNC_TYPES.find((t) => t.id === 'stranded_assignment_cleanup')
     expect(entry).toBeDefined()
-    expect('currentYearOnly' in entry!).toBe(false)
+    expect('syncedSeasonsOnly' in entry!).toBe(false)
   })
 })
 
@@ -80,17 +80,19 @@ describe('manualTrigger tracks the backend route table (kindred#2593)', () => {
   })
 })
 
-// kindred#2593: `currentYearOnly` gates both the card grid and the Full-mode service dropdown,
+// kindred#2593: `syncedSeasonsOnly` gates both the card grid and the Full-mode service dropdown,
 // and SyncTab's year-change reset used to name the flagged ids by hand -- a list that was
 // already two short of the flag when this PR added three more entries carrying it. The
 // predicate is the single reading of the flag; this pins it to the data.
-describe('isCurrentYearOnly (kindred#2593)', () => {
+describe('isSyncedSeasonsOnly (kindred#2593)', () => {
   it('reports exactly the entries that carry the flag', () => {
-    const flagged: string[] = YEAR_SYNC_TYPES.filter((t) => 'currentYearOnly' in t).map((t) => t.id)
+    const flagged: string[] = YEAR_SYNC_TYPES.filter((t) => 'syncedSeasonsOnly' in t).map(
+      (t) => t.id
+    )
     expect(flagged.length).toBeGreaterThan(0)
 
     for (const syncType of YEAR_SYNC_TYPES) {
-      expect(isCurrentYearOnly(syncType)).toBe(flagged.includes(syncType.id))
+      expect(isSyncedSeasonsOnly(syncType)).toBe(flagged.includes(syncType.id))
     }
   })
 })

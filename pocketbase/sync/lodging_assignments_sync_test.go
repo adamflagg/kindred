@@ -2,8 +2,10 @@ package sync
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/pocketbase/pocketbase/core"
 )
@@ -1341,7 +1343,9 @@ func stalePersonAssignment(
 // CAMPMINDER_SEASON_ID) into their shell would otherwise get a spurious red
 // here on correct code (kindred#2289 review).
 func TestActiveSeasonYearFailsClosedWhenUnset(t *testing.T) {
-	t.Setenv("CAMPMINDER_SEASON_ID", "")
+	// An unset variable now resolves through the Oct 15 rule; an invalid override is what
+	// is unresolvable.
+	t.Setenv("CAMPMINDER_SEASON_ID", "abc")
 	s := NewLodgingAssignmentsSync(nil)
 	if got := s.activeSeasonYear(); got != 0 {
 		t.Errorf("activeSeasonYear() = %d, want 0 (fail closed)", got)
@@ -1605,8 +1609,9 @@ func TestLodgingAssignmentsSyncSkipsOrphanSweepForHistoricalYear(t *testing.T) {
 	addAttendee(t, app, liam, sess, 5002, 2, historicalYear)
 
 	s := NewLodgingAssignmentsSync(app)
-	s.Year = historicalYear   // the orchestrator's historical path / API ?year=2024
-	s.ActiveSeasonYear = 2025 // ...while the deployment's active season stays 2025
+	s.Year = historicalYear // the orchestrator's historical path / API ?year=2024
+	// ...while the primary is 2026: the synced seasons are 2026 and 2025, so 2024 is N-2.
+	s.ActiveSeasonYear = 2026
 	if err := s.Sync(context.Background()); err != nil {
 		t.Fatalf("Sync: %v", err)
 	}
@@ -1633,7 +1638,9 @@ func TestLodgingAssignmentsSyncSkipsOrphanSweepForHistoricalYear(t *testing.T) {
 //
 // Serial, not t.Parallel(): t.Setenv panics under Parallel.
 func TestLodgingAssignmentsSyncSkipsOrphanSweepWhenSeasonUnresolvable(t *testing.T) {
-	t.Setenv("CAMPMINDER_SEASON_ID", "")
+	// An unset variable now resolves through the Oct 15 rule; an invalid override is what is
+	// unresolvable.
+	t.Setenv("CAMPMINDER_SEASON_ID", "abc")
 	app := newSyncTestApp(t)
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		testSessionStart, testSessionEnd, 2025)
@@ -1709,6 +1716,75 @@ func TestLodgingAssignmentsSyncDeletesOrphansViaEnvFallback(t *testing.T) {
 	}
 	if got := s.GetStats().Deleted; got != 1 {
 		t.Errorf("Stats.Deleted = %d, want 1", got)
+	}
+}
+
+// orphanSweepFixture is TestLodgingAssignmentsSyncDeletesOrphanedHouseholdMirrorRow's setup for
+// any season: one cancelled household still holding a cabin value and a mirror row, and one
+// still-enrolled household so the per-session reliability guard passes. It returns the stale
+// row's id.
+func orphanSweepFixture(t *testing.T, app core.App, year int) string {
+	t.Helper()
+	start := fmt.Sprintf("%d-10-22 07:00:00.000Z", year)
+	end := fmt.Sprintf("%d-10-25 07:00:00.000Z", year)
+	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family", start, end, year)
+	unit := addUnit(t, app, "ridge-a", year)
+	addAlias(t, app, "Ridge A", []string{unit}, 0, 0)
+	cabinDef := addFieldDef(t, app, cmIDFamilyCampCabin, fieldNameFamilyCampCabin)
+
+	hh := addHousehold(t, app, 9001, year)
+	emma := addPerson(t, app, 5001, 9001, year, hh)
+	addAttendee(t, app, emma, sess, 5001, 32, year) // cancelled
+	addHouseholdValue(t, app, hh, cabinDef, "Ridge A", testLastUpdated, year)
+	staleRow := staleHouseholdAssignment(t, app, sess, cmIDFamilyCamp1, 9001, year, unit, false)
+
+	hh2 := addHousehold(t, app, 9002, year)
+	liam := addPerson(t, app, 5002, 9002, year, hh2)
+	addAttendee(t, app, liam, sess, 5002, 2, year)
+	return staleRow
+}
+
+// TestOrphanSweepRunsForThePriorSyncedSeason is audit Fix D: from Oct 15 the adult weekends run
+// in N-1, and the N-1 pass syncs that season's attendees nightly, so the #2028 sweep must run
+// for it. Gated to the primary alone, a household cancelled from a 2026 weekend after Oct 15
+// would keep its cabin on the board.
+func TestOrphanSweepRunsForThePriorSyncedSeason(t *testing.T) {
+	t.Setenv("CAMPMINDER_SEASON_ID", "")
+	withNow(t, time.Date(2026, time.October, 20, 10, 0, 0, 0, time.UTC)) // primary 2027
+	app := newSyncTestApp(t)
+	staleRow := orphanSweepFixture(t, app, 2026)
+
+	s := NewLodgingAssignmentsSync(app)
+	s.Year = 2026 // N-1; ActiveSeasonYear left 0, so the season rule decides
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	if _, err := app.FindRecordById("lodging_assignments", staleRow); err == nil {
+		t.Error("the cancelled 2026 household's mirror row survived the N-1 sync")
+	}
+	if got := s.GetStats().Deleted; got != 1 {
+		t.Errorf("Stats.Deleted = %d, want 1", got)
+	}
+}
+
+// TestOrphanSweepStillSkipsAnOlderSeason pins the other side of Fix D: N-2 is not synced, so
+// its local attendees snapshot can be stale, and the sweep must leave its rows alone.
+func TestOrphanSweepStillSkipsAnOlderSeason(t *testing.T) {
+	t.Setenv("CAMPMINDER_SEASON_ID", "")
+	withNow(t, time.Date(2026, time.October, 20, 10, 0, 0, 0, time.UTC)) // primary 2027
+	app := newSyncTestApp(t)
+	staleRow := orphanSweepFixture(t, app, 2025)
+
+	s := NewLodgingAssignmentsSync(app)
+	s.Year = 2025 // N-2
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	if _, err := app.FindRecordById("lodging_assignments", staleRow); err != nil {
+		t.Errorf("the sweep deleted an N-2 placement: %v", err)
+	}
+	if got := s.GetStats().Deleted; got != 0 {
+		t.Errorf("Stats.Deleted = %d, want 0", got)
 	}
 }
 

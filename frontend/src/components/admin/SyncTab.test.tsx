@@ -48,36 +48,48 @@ let camperTransportationStatus: unknown = idleStatus
 // aid⚠ badge. Reset in afterEach.
 let aidPostingsStatus: unknown = idleStatus
 
+// Season fields published next to `_configured_year` (`_synced_years`, `_season_source`);
+// absent by default, like an older backend. Reset in the season-line describe's afterEach.
+let seasonStatusFields: Record<string, unknown> = {}
+
+// The season SyncTab asks the status for, one entry per render (useSyncCompletionToasts'
+// argument). Reset in the per-season status describe's afterEach.
+let toastsViewedYears: Array<number | undefined> = []
+
 vi.mock('../../hooks/useSyncCompletionToasts', () => ({
-  useSyncCompletionToasts: () => ({
-    family_camp_derived: idleStatus,
-    lodging_assignments: idleStatus,
-    staff_skills: idleStatus,
-    financial_aid_applications: idleStatus,
-    get aid_postings() {
-      return aidPostingsStatus
-    },
-    household_demographics: idleStatus,
-    camper_dietary: idleStatus,
-    quest_registrations: idleStatus,
-    staff_applications: idleStatus,
-    staff_vehicle_info: idleStatus,
-    get stranded_assignment_cleanup() {
-      return strandedAssignmentCleanupStatus
-    },
-    get persons() {
-      return personsStatus
-    },
-    get staff_lookups() {
-      return staffLookupsStatus
-    },
-    get staff() {
-      return staffStatus
-    },
-    get camper_transportation() {
-      return camperTransportationStatus
-    },
-  }),
+  useSyncCompletionToasts: (viewedYear?: number) => {
+    toastsViewedYears.push(viewedYear)
+    return {
+      ...seasonStatusFields,
+      family_camp_derived: idleStatus,
+      lodging_assignments: idleStatus,
+      staff_skills: idleStatus,
+      financial_aid_applications: idleStatus,
+      get aid_postings() {
+        return aidPostingsStatus
+      },
+      household_demographics: idleStatus,
+      camper_dietary: idleStatus,
+      quest_registrations: idleStatus,
+      staff_applications: idleStatus,
+      staff_vehicle_info: idleStatus,
+      get stranded_assignment_cleanup() {
+        return strandedAssignmentCleanupStatus
+      },
+      get persons() {
+        return personsStatus
+      },
+      get staff_lookups() {
+        return staffLookupsStatus
+      },
+      get staff() {
+        return staffStatus
+      },
+      get camper_transportation() {
+        return camperTransportationStatus
+      },
+    }
+  },
 }))
 
 const notPending = { mutate: vi.fn(), isPending: false }
@@ -595,13 +607,14 @@ describe('SyncTab service dropdown offers only triggerable jobs (kindred#2593)',
 })
 
 // kindred#2593: the year-change reset named bunk_requests/process_requests literally, while
-// five YEAR_SYNC_TYPES entries now carry currentYearOnly. A selection that survives the switch
+// five YEAR_SYNC_TYPES entries now carry syncedSeasonsOnly. A selection that survives the switch
 // is not merely stale: the option disappears from the <select> while `syncService` still holds
 // it, so Run Sync POSTs a current-year-only service against a historical year.
 describe('SyncTab clears a current-year-only service on year change (kindred#2593)', () => {
+  // 2025 is outside the synced seasons [2027, 2026]; 2026 is the prior synced season and keeps its cards.
   function selectHistoricalYear() {
-    const yearSelect = screen.getByRole('option', { name: '2026' }).closest('select')
-    fireEvent.change(yearSelect as HTMLSelectElement, { target: { value: '2026' } })
+    const yearSelect = screen.getByRole('option', { name: '2025' }).closest('select')
+    fireEvent.change(yearSelect as HTMLSelectElement, { target: { value: '2025' } })
   }
 
   it('submits All Services when the selected service was current-year-only', () => {
@@ -613,7 +626,7 @@ describe('SyncTab clears a current-year-only service on year change (kindred#259
     fireEvent.click(screen.getByRole('button', { name: /run sync/i }))
 
     expect(unifiedSyncMutate).toHaveBeenCalledWith(
-      expect.objectContaining({ year: 2026, service: 'all' })
+      expect.objectContaining({ year: 2025, service: 'all' })
     )
   })
 
@@ -626,7 +639,7 @@ describe('SyncTab clears a current-year-only service on year change (kindred#259
     fireEvent.click(screen.getByRole('button', { name: /run sync/i }))
 
     expect(unifiedSyncMutate).toHaveBeenCalledWith(
-      expect.objectContaining({ year: 2026, service: 'persons' })
+      expect.objectContaining({ year: 2025, service: 'persons' })
     )
   })
 })
@@ -716,7 +729,7 @@ describe('SyncTab phase header counts membership, button counts what it starts (
 // until the backend's `_configured_year` loads (CurrentYearContext.tsx). SyncTab used to snapshot
 // that into local state with `useState(currentYear)`, so once currentYear later resolved to the
 // real year the component's own syncYear stayed frozen at 0 forever -- 0 !== the real year, so
-// every currentYearOnly type (all four Process-phase cards) vanished from the page, and any card
+// every syncedSeasonsOnly type (all four Process-phase cards) vanished from the page, and any card
 // whose Run button calls `<hook>.mutate(syncYear)` would have submitted a sync for year 0.
 // Navigating to the tab from elsewhere never hit this because currentYear is already resolved by
 // the time SyncTab mounts.
@@ -759,13 +772,18 @@ describe('SyncTab still hides current-year-only types when a user manually picks
     currentYearMock = 2027
   })
 
-  it('hides the Process phase after selecting a historical year from the selector', () => {
+  it('hides the Process phase after selecting a year outside the synced seasons', () => {
     renderSyncTab()
 
     expect(screen.getByText('Process')).toBeInTheDocument()
 
     const yearSelect = screen.getByRole('option', { name: '2026' }).closest('select')
     fireEvent.change(yearSelect as HTMLSelectElement, { target: { value: '2026' } })
+
+    // 2026 is the prior synced season at currentYear 2027, so it keeps its cards; 2025 is not.
+    expect(screen.getByText('Process')).toBeInTheDocument()
+
+    fireEvent.change(yearSelect as HTMLSelectElement, { target: { value: '2025' } })
 
     expect(screen.queryByText('Process')).not.toBeInTheDocument()
   })
@@ -783,5 +801,141 @@ describe('SyncTab still hides current-year-only types when a user manually picks
     rerenderSyncTab()
 
     expect(screen.getByText('Process')).toBeInTheDocument()
+  })
+})
+
+describe('SyncTab season line and prior-season cards', () => {
+  afterEach(() => {
+    seasonStatusFields = {}
+    currentYearMock = 2027
+  })
+
+  it('shows the season and that it rolls over each Oct 15', async () => {
+    seasonStatusFields = {
+      _configured_year: 2027,
+      _synced_years: [2027, 2026],
+      _season_source: 'rule',
+    }
+    renderSyncTab()
+    expect(await screen.findByText(/Season 2027 · rolls over each Oct 15/)).toBeInTheDocument()
+    // Shares a row with Refresh Cache rather than taking one of its own.
+    const line = screen.getByText(/Season 2027 · rolls over each Oct 15/)
+    const button = screen.getByRole('button', { name: /Refresh Cache/ })
+    const row = line.parentElement as HTMLElement
+    expect(row).toContainElement(button)
+    expect(row.className).toContain('justify-between')
+    // Season text leads the row (left), Refresh Cache group ends it (right).
+    expect(row.firstElementChild).toBe(line)
+    expect(row.lastElementChild).toContainElement(button)
+  })
+
+  it('says when the season is pinned by the env var', async () => {
+    currentYearMock = 2026
+    seasonStatusFields = {
+      _configured_year: 2026,
+      _synced_years: [2026, 2025],
+      _season_source: 'override',
+    }
+    renderSyncTab()
+    expect(
+      await screen.findByText(/Season 2026 · pinned by CAMPMINDER_SEASON_ID/)
+    ).toBeInTheDocument()
+  })
+
+  it('renders no season line when the backend does not report a source', () => {
+    renderSyncTab()
+    expect(screen.queryByText(/Season 2027/)).not.toBeInTheDocument()
+  })
+
+  it('shows syncedSeasonsOnly cards for the prior season too', async () => {
+    seasonStatusFields = {
+      _configured_year: 2027,
+      _synced_years: [2027, 2026],
+      _season_source: 'rule',
+    }
+    renderSyncTab()
+    const yearSelect = screen.getByRole('option', { name: '2026' }).closest('select')
+    fireEvent.change(yearSelect as HTMLSelectElement, { target: { value: '2026' } })
+    expect(await screen.findByText('Jotform Submissions', { selector: 'div' })).toBeInTheDocument()
+  })
+})
+
+// Plan Review Focus 1: a card run while the tab shows the prior season syncs that season. The
+// hooks decide whether `year` reaches the URL (only when it is not the primary); the tab's job
+// is to hand them the year it is showing.
+describe('SyncTab card runs carry the season being viewed', () => {
+  afterEach(() => {
+    notPending.mutate.mockClear()
+    seasonStatusFields = {}
+  })
+
+  function showPriorSeason() {
+    seasonStatusFields = { _configured_year: 2027, _synced_years: [2027, 2026] }
+    renderSyncTab()
+    const yearSelect = screen.getByRole('option', { name: '2026' }).closest('select')
+    fireEvent.change(yearSelect as HTMLSelectElement, { target: { value: '2026' } })
+  }
+
+  it('runs an individual sync for the season on screen', () => {
+    showPriorSeason()
+    fireEvent.click(getCardRunButton('Jotform Submissions'))
+    expect(notPending.mutate).toHaveBeenCalledWith({ syncType: 'jotform_submissions', year: 2026 })
+  })
+
+  it('runs an on-demand custom-values sync for the season on screen', () => {
+    showPriorSeason()
+    fireEvent.click(getCardRunButton('Person CV'))
+    expect(notPending.mutate).toHaveBeenCalledWith({
+      syncType: 'person_custom_values',
+      session: 'all',
+      debug: false,
+      year: 2026,
+    })
+  })
+})
+
+// Scan fix (#3211): the scheduled runs sync two seasons, and each Manage > Sync card shows its
+// job's last run. The tab asks the status for the season it is viewing, so the prior season's
+// nightly run no longer stands in for the primary's on every card.
+describe('SyncTab asks for the status of the season it is viewing', () => {
+  afterEach(() => {
+    toastsViewedYears = []
+    seasonStatusFields = {}
+    currentYearMock = 2027
+  })
+
+  it('passes the viewed year, and follows the year selector', () => {
+    seasonStatusFields = { _configured_year: 2027, _synced_years: [2027, 2026] }
+    renderSyncTab()
+    expect(toastsViewedYears.at(-1)).toBe(2027)
+
+    const yearSelect = screen.getByRole('option', { name: '2026' }).closest('select')
+    fireEvent.change(yearSelect as HTMLSelectElement, { target: { value: '2026' } })
+    expect(toastsViewedYears.at(-1)).toBe(2026)
+  })
+})
+
+// Scan fix (#3211): staff remembered on the prior season (ruling 7) must still be able to pick
+// the primary in the tab's own year selector. Its options run from the primary down, as the
+// global picker's do, not from the year being viewed.
+describe('SyncTab year selector reaches the current season', () => {
+  afterEach(() => {
+    seasonStatusFields = {}
+    currentYearMock = 2027
+  })
+
+  it('lists the primary when the tab opens on the prior season', () => {
+    currentYearMock = 2026 // remembered on 2026
+    seasonStatusFields = { _configured_year: 2027, _synced_years: [2027, 2026] }
+    renderSyncTab()
+
+    const yearSelect = screen.getByRole('option', { name: '2026' }).closest('select')
+    const options = Array.from((yearSelect as HTMLSelectElement).options).map((o) => o.value)
+    expect(options[0]).toBe('2027')
+    expect(options.filter((v) => v === '2026')).toHaveLength(1)
+    expect((yearSelect as HTMLSelectElement).value).toBe('2026')
+
+    fireEvent.change(yearSelect as HTMLSelectElement, { target: { value: '2027' } })
+    expect((yearSelect as HTMLSelectElement).value).toBe('2027')
   })
 })

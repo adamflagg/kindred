@@ -406,7 +406,7 @@ async def validate_bunking(
                 request.session_cm_id, ctx.year, pb, scenario=request.scenario
             )
             solver_input = prepare_direct_solver_input(
-                v2_attendees, v2_bunks, v2_requests, v2_assignments, v2_bunk_plans
+                v2_attendees, v2_bunks, v2_requests, v2_assignments, v2_bunk_plans, year=ctx.year
             )
             impossibility_report = validate_impossibility(solver_input, ConfigLoader.get_instance())
             impossible_request_ids = {item.request_id for item in impossibility_report.flat}

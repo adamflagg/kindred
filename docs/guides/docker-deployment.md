@@ -61,7 +61,8 @@ Edit `.env` with your values:
 CAMPMINDER_API_KEY=your_api_key_here
 CAMPMINDER_PRIMARY_KEY=your_primary_key_here
 CAMPMINDER_CLIENT_ID=337
-CAMPMINDER_SEASON_ID=2025
+# Optional override; unset, the season rolls over on Oct 15 Pacific
+# CAMPMINDER_SEASON_ID=2026
 
 # AI Provider Configuration
 AI_PROVIDER=openai

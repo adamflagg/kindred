@@ -43,7 +43,7 @@ import {
   CURRENT_YEAR_SYNC_TYPES,
   getYearSyncTypes,
   hasManualTrigger,
-  isCurrentYearOnly,
+  isSyncedSeasonsOnly,
   Globe,
   SYNC_PHASES,
   getSyncTypesByPhase,
@@ -68,7 +68,7 @@ export function SyncTab() {
   // Unified sync state (replaces separate daily/historical). currentYear is 0 until the
   // backend's _configured_year loads (CurrentYearContext.tsx) -- on a hard refresh SyncTab
   // mounts before that resolves. Snapshotting it into useState would freeze syncYear at 0
-  // forever once currentYear later updates, hiding every currentYearOnly card and submitting
+  // forever once currentYear later updates, hiding every syncedSeasonsOnly card and submitting
   // year-0 syncs from the per-card Run buttons. Track only the user's explicit override and
   // derive the effective year from the live currentYear otherwise, so it tracks context updates
   // after mount the same way it does before mount.
@@ -86,7 +86,8 @@ export function SyncTab() {
   const [collapsedPhases, setCollapsedPhases] = useState<Set<SyncPhase>>(new Set())
 
   // Use the completion toasts hook - it wraps useSyncStatusAPI and fires toasts on completion
-  const syncStatus = useSyncCompletionToasts()
+  // Asked for the season on screen, so each season's cards show their own last runs.
+  const syncStatus = useSyncCompletionToasts(syncYear)
   const isLoading = !syncStatus
   const runIndividualSync = useRunIndividualSync()
   const runOnDemandSync = useRunOnDemandSync()
@@ -177,10 +178,20 @@ export function SyncTab() {
       .filter((job): job is (typeof allSyncTypes)[number] & { year: number } => job !== null)
   }, [syncStatus, currentYear])
 
-  // Compute available sync types based on year (excludes currentYearOnly types for historical years)
+  // The primary season. currentYear is the season being viewed, which may be the prior one.
+  const primaryYear = syncStatus?._configured_year ?? currentYear
+  // Seasons the scheduled runs cover (primary and the one before it). An older backend omits
+  // the field, so fall back to the same pair from the configured year.
+  const reportedSyncedYears = syncStatus?._synced_years
+  const syncedYears = useMemo(
+    () => reportedSyncedYears ?? [primaryYear, primaryYear - 1],
+    [reportedSyncedYears, primaryYear]
+  )
+
+  // Compute available sync types based on year (excludes syncedSeasonsOnly types for years outside the synced seasons)
   const availableSyncTypes = useMemo(
-    () => getYearSyncTypes(syncYear, currentYear),
-    [syncYear, currentYear]
+    () => getYearSyncTypes(syncYear, syncedYears),
+    [syncYear, syncedYears]
   )
 
   // The Full-mode service dropdown is a manual trigger like any other: picking an entry and
@@ -210,14 +221,14 @@ export function SyncTab() {
     setSyncYearOverride(year === currentYear ? null : year)
     // Reset a current-year-only selection when switching to a historical year. Derived from the
     // flag rather than a hand-written list of ids: the literal pair this used to name was
-    // already two short of the five entries carrying currentYearOnly, and a stale selection is
+    // already two short of the five entries carrying syncedSeasonsOnly, and a stale selection is
     // not merely cosmetic -- the option vanishes from the <select> while syncService still holds
     // it, so Run Sync submits a current-year-only service against a historical year.
     // Looked up in the unfiltered list, not `availableSyncTypes`: that memo is still keyed to
     // the year being navigated away from, and the question here is only "is the selected
     // service current-year-only", which does not depend on the year at all.
     const selected = CURRENT_YEAR_SYNC_TYPES.find((t) => t.id === syncService)
-    if (year !== currentYear && selected && isCurrentYearOnly(selected)) {
+    if (!syncedYears.includes(year) && selected && isSyncedSeasonsOnly(selected)) {
       setSyncService('all')
     }
   }
@@ -264,7 +275,7 @@ export function SyncTab() {
     const handleRun = () => {
       switch (syncType.id) {
         case 'process_requests':
-          runIndividualSync.mutate(syncType.id)
+          runIndividualSync.mutate({ syncType: syncType.id, year: syncYear })
           break
         case 'family_camp_derived':
           familyCampDerivedSync.mutate(syncYear)
@@ -305,10 +316,11 @@ export function SyncTab() {
             syncType: syncType.id,
             session: 'all',
             debug: false,
+            year: syncYear,
           })
           break
         default:
-          runIndividualSync.mutate(syncType.id)
+          runIndividualSync.mutate({ syncType: syncType.id, year: syncYear })
       }
     }
 
@@ -502,10 +514,11 @@ export function SyncTab() {
                 className="bg-background focus:ring-primary/20 min-w-[100px] cursor-pointer rounded-lg border-none px-3 py-2 text-sm font-medium focus:ring-2 focus:outline-none"
                 disabled={unifiedSync.isPending || runPhaseSync.isPending}
               >
-                <option value={currentYear}>{currentYear}</option>
+                {/* From the primary down, as the global picker lists them: staff viewing the
+                    prior season can still pick the primary here. */}
                 {Array.from(
-                  { length: currentYear - EARLIEST_AVAILABLE_YEAR },
-                  (_, i) => currentYear - 1 - i
+                  { length: primaryYear - EARLIEST_AVAILABLE_YEAR + 1 },
+                  (_, i) => primaryYear - i
                 ).map((year) => (
                   <option key={year} value={year}>
                     {year}
@@ -659,7 +672,16 @@ export function SyncTab() {
         </div>
 
         {/* Unified Sync Pipeline - combines queue + currently processing */}
-        <div className="flex items-center gap-3">
+        {/* Season line left, Refresh Cache right, one row; the pipeline fills the middle */}
+        <div className="flex items-center justify-between gap-3">
+          {syncStatus._season_source && (
+            <p className="text-muted-foreground text-sm whitespace-nowrap">
+              Season {syncStatus._configured_year ?? currentYear} ·{' '}
+              {syncStatus._season_source === 'override'
+                ? 'pinned by CAMPMINDER_SEASON_ID'
+                : 'rolls over each Oct 15'}
+            </p>
+          )}
           {(hasQueuedItems || runningJobs.length > 0) && (
             <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto py-1">
               {/* Currently Processing - forest green theme */}
@@ -800,8 +822,7 @@ export function SyncTab() {
             </div>
           )}
 
-          {/* Refresh Cache - right-aligned */}
-          <div className="ml-auto flex-shrink-0">
+          <div className="ml-auto flex flex-shrink-0 items-center gap-3">
             <button
               onClick={() => {
                 clearCache()
@@ -821,7 +842,7 @@ export function SyncTab() {
 
       {/* Phase-based Sync Types Sections */}
       {SYNC_PHASES.map((phase) => {
-        const types = getSyncTypesByPhase(phase.id, syncYear, currentYear)
+        const types = getSyncTypesByPhase(phase.id, syncYear, syncedYears)
         if (types.length === 0) return null
 
         const PhaseIcon = phase.icon
@@ -987,7 +1008,8 @@ export function SyncTab() {
 
                   {/* Run button */}
                   <button
-                    onClick={() => runIndividualSync.mutate(syncType.id)}
+                    // Global definitions have no season, so no year.
+                    onClick={() => runIndividualSync.mutate({ syncType: syncType.id })}
                     disabled={isRunning || isPending || runIndividualSync.isPending}
                     className="bg-muted/50 dark:bg-muted hover:bg-muted text-muted-foreground hover:text-foreground mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-medium transition-colors disabled:opacity-50 sm:text-sm"
                   >
@@ -1011,7 +1033,7 @@ export function SyncTab() {
         isOpen={showProcessOptions}
         onClose={() => setShowProcessOptions(false)}
         onSubmit={(options: ProcessRequestOptionsState) => {
-          processRequests.mutate(options)
+          processRequests.mutate({ ...options, year: syncYear })
           setShowProcessOptions(false)
         }}
         isProcessing={processRequests.isPending}

@@ -31,6 +31,14 @@ type RequestProcessor struct {
 	Trace         bool     // Enable trace logging (very verbose) in Python processor
 	CollectTraces bool     // Enable pipeline trace collection for debug tool
 	Trigger       string   // run source: "upload" | "scheduled" | "manual" (empty = manual)
+	// Year is the season to process; 0 means the primary, resolved at Sync time. The N-1 pass
+	// and a historical replay set it, so they process their own season rather than the primary.
+	Year int
+}
+
+// SetYear implements YearSetter.
+func (p *RequestProcessor) SetYear(year int) {
+	p.Year = year
 }
 
 // NewRequestProcessor creates a new processor
@@ -65,10 +73,13 @@ func (p *RequestProcessor) Sync(ctx context.Context) error {
 		"trace", p.Trace,
 	)
 
-	// Get and validate year from environment
-	yearInt, err := ParseSeasonYear()
-	if err != nil {
-		return fmt.Errorf("year resolution failed: %w", err)
+	// The processor's own season when it has one, else the primary.
+	yearInt := p.Year
+	if yearInt == 0 {
+		var err error
+		if yearInt, err = ParseSeasonYear(); err != nil {
+			return fmt.Errorf("year resolution failed: %w", err)
+		}
 	}
 
 	apiURL := getAPIURL()

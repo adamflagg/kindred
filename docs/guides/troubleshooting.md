@@ -63,7 +63,7 @@ print(auth.get_token())
 
 #### No Data Synced
 ```bash
-# Check season_id in .env
+# Check for a season override in .env (unset is normal: the season rolls over on Oct 15 Pacific)
 grep CAMPMINDER_SEASON_ID .env
 
 # Run with verbose output

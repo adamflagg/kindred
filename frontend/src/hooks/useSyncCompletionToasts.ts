@@ -95,13 +95,32 @@ type PreviousStatuses = Record<string, string>
 /**
  * Hook that monitors sync status polling and fires toasts when syncs complete.
  * Detects transitions from 'running' -> 'success' or 'running' -> 'failed'.
+ *
+ * `viewedYear` is the season Manage > Sync shows. When it is a synced season the per-job
+ * statuses are that season's own (`?year=`), so the prior season's nightly run never stands in
+ * for the primary's on a card; any other year reads the payload as it always has.
  */
-export function useSyncCompletionToasts(): SyncStatusResponse | null | undefined {
-  const { data: syncStatus } = useSyncStatusAPI()
+export function useSyncCompletionToasts(
+  viewedYear?: number
+): SyncStatusResponse | null | undefined {
+  const { data: seasons } = useSyncStatusAPI()
+  const year =
+    viewedYear !== undefined && seasons?._synced_years?.includes(viewedYear)
+      ? viewedYear
+      : undefined
+  const { data: syncStatus, isPlaceholderData } = useSyncStatusAPI({ year })
   const previousStatuses = useRef<PreviousStatuses>({})
+  const previousYear = useRef(year)
 
   useEffect(() => {
-    if (!syncStatus) return
+    // While a newly viewed season loads, the payload is still the previous season's
+    // (placeholder data): not this season's statuses, so not its baseline either.
+    if (!syncStatus || isPlaceholderData) return
+    // A different season's statuses are not transitions of the ones before: start over.
+    if (previousYear.current !== year) {
+      previousYear.current = year
+      previousStatuses.current = {}
+    }
 
     // Check each sync type for status transitions
     const syncTypes = Object.keys(SYNC_DISPLAY_NAMES)
@@ -191,7 +210,7 @@ export function useSyncCompletionToasts(): SyncStatusResponse | null | undefined
       // Update previous status
       previousStatuses.current[syncType] = currentStatus
     }
-  }, [syncStatus])
+  }, [syncStatus, isPlaceholderData, year])
 
   return syncStatus
 }

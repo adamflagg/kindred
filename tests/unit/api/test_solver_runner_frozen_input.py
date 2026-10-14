@@ -20,6 +20,7 @@ from bunking.models_v2 import (
 
 def _frozen_with_state() -> DirectSolverInput:
     return DirectSolverInput(
+        year=2026,
         persons=[],
         requests=[],
         bunks=[],

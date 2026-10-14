@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -2456,4 +2457,38 @@ func TestHandleRefreshFamilyCampRejectsWhenUnrestrictedGroupmateRunning(t *testi
 			}
 		})
 	}
+}
+
+// TestSeasonStatusFields pins the three season keys Manage > Sync reads: the primary season
+// (`_configured_year`, meaning unchanged), the seasons the scheduled runs cover, and where the
+// primary came from (the rule, or the CAMPMINDER_SEASON_ID override).
+func TestSeasonStatusFields(t *testing.T) {
+	t.Run("rule: Oct 20 2026 is season 2027", func(t *testing.T) {
+		t.Setenv("CAMPMINDER_SEASON_ID", "")
+		withNow(t, time.Date(2026, time.October, 20, 10, 0, 0, 0, time.UTC))
+		got := seasonStatusFields()
+		if got["_configured_year"] != 2027 {
+			t.Errorf("_configured_year = %v, want 2027", got["_configured_year"])
+		}
+		if !reflect.DeepEqual(got["_synced_years"], []int{2027, 2026}) {
+			t.Errorf("_synced_years = %v, want [2027 2026]", got["_synced_years"])
+		}
+		if got["_season_source"] != "rule" {
+			t.Errorf("_season_source = %v, want rule", got["_season_source"])
+		}
+	})
+	t.Run("override wins", func(t *testing.T) {
+		t.Setenv("CAMPMINDER_SEASON_ID", "2026")
+		withNow(t, time.Date(2026, time.October, 20, 10, 0, 0, 0, time.UTC))
+		got := seasonStatusFields()
+		if got["_configured_year"] != 2026 {
+			t.Errorf("_configured_year = %v, want 2026", got["_configured_year"])
+		}
+		if !reflect.DeepEqual(got["_synced_years"], []int{2026, 2025}) {
+			t.Errorf("_synced_years = %v, want [2026 2025]", got["_synced_years"])
+		}
+		if got["_season_source"] != "override" {
+			t.Errorf("_season_source = %v, want override", got["_season_source"])
+		}
+	})
 }

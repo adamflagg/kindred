@@ -275,3 +275,39 @@ func TestIsValidSessionWithCMIDs(t *testing.T) {
 		})
 	}
 }
+
+// TestRequestProcessorSendsItsOwnYearNotThePrimary pins audit Fix C: a processor scoped to a
+// season asks FastAPI to process that season. Before, Sync always sent the primary, so the
+// nightly N-1 pass would have processed the primary twice and the prior season never.
+// An unscoped processor (Year 0) still sends the primary.
+func TestRequestProcessorSendsItsOwnYearNotThePrimary(t *testing.T) {
+	t.Setenv("CAMPMINDER_SEASON_ID", "")
+	withNow(t, time.Date(2026, time.October, 20, 10, 0, 0, 0, time.UTC)) // primary 2027
+
+	var gotYears []int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req apiProcessorRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Errorf("decode request: %v", err)
+		}
+		gotYears = append(gotYears, req.Year)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"success": true}`))
+	}))
+	defer server.Close()
+	t.Setenv("API_URL", server.URL)
+
+	scoped := NewRequestProcessor(nil)
+	scoped.SetYear(2026)
+	if err := scoped.Sync(context.Background()); err != nil {
+		t.Fatalf("scoped Sync: %v", err)
+	}
+	unscoped := NewRequestProcessor(nil)
+	if err := unscoped.Sync(context.Background()); err != nil {
+		t.Fatalf("unscoped Sync: %v", err)
+	}
+
+	if len(gotYears) != 2 || gotYears[0] != 2026 || gotYears[1] != 2027 {
+		t.Fatalf("processor years sent = %v, want [2026 2027] (its own year, then the primary)", gotYears)
+	}
+}

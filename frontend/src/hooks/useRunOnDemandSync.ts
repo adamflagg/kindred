@@ -4,6 +4,7 @@ import { queryKeys } from '../utils/queryKeys'
 import toast from 'react-hot-toast'
 import { extractErrorMessage, SYNC_STARTED_TOAST_OPTIONS } from './createSyncMutation'
 import { SYNC_TYPE_NAMES } from './useRunIndividualSync'
+import { seasonToSync } from '../utils/syncSeason'
 
 // Convert sync type ID to API endpoint (snake_case -> kebab-case)
 const toEndpoint = (syncType: string): string => syncType.replace(/_/g, '-')
@@ -12,6 +13,7 @@ export interface OnDemandSyncOptions {
   syncType: string
   session?: string // "all", "1", "2", "2a", etc.
   debug?: boolean // Enable debug logging
+  year?: number | undefined // The season on screen; sent only when it is not the primary (seasonToSync)
 }
 
 /**
@@ -22,7 +24,7 @@ export function useRunOnDemandSync() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async ({ syncType, session = 'all', debug = false }: OnDemandSyncOptions) => {
+    mutationFn: async ({ syncType, session = 'all', debug = false, year }: OnDemandSyncOptions) => {
       // Validate sync type exists
       if (!SYNC_TYPE_NAMES[syncType]) {
         throw new Error(`Unknown sync type: ${syncType}`)
@@ -36,6 +38,10 @@ export function useRunOnDemandSync() {
       }
       if (debug) {
         params.set('debug', 'true')
+      }
+      const season = seasonToSync(queryClient, year)
+      if (season !== undefined) {
+        params.set('year', String(season))
       }
 
       const url = params.toString() ? `${endpoint}?${params.toString()}` : endpoint

@@ -147,3 +147,21 @@ describe('BunkRequestsUpload label parameterisation (kindred#2478 §4)', () => {
     expect(copy).not.toContain('Upload Requests')
   })
 })
+
+// Plan Review Focus 1 (audit Fix B): after the Oct 15 rollover staff may upload the prior
+// season's requests. The server files the CSV, imports it and processes it in the year sent here,
+// so the upload must name the season on screen, not leave the server to assume the primary.
+describe('BunkRequestsUpload season', () => {
+  it('uploads into the season being viewed', async () => {
+    const { syncService } = await import('../services/sync')
+    renderUpload()
+    await uploadOnce()
+    await waitFor(() => {
+      expect(syncService.uploadBunkRequestsCSV).toHaveBeenCalledWith(
+        expect.any(File),
+        expect.any(Function),
+        2026
+      )
+    })
+  })
+})

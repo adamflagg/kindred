@@ -119,6 +119,9 @@ export const queryKeys = {
 
   // Sync Status (Tier 2 - frequently updated)
   syncStatus: () => ['sync-status'] as const,
+  // One synced season's per-job statuses (Manage > Sync, `?year=`). Under the syncStatus()
+  // prefix, so every invalidation of the payload reaches it too.
+  syncStatusForYear: (year: number) => ['sync-status', year] as const,
   syncStatusForService: (service: string) => ['sync-status', service] as const,
   // Sync Phases (Tier 1 - changes only when someone edits syncJobMeta in code, i.e. on
   // deploy) -- inherits the app default staleTime rather than sync-status's polling cadence.

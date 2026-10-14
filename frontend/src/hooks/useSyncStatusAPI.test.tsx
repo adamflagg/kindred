@@ -9,6 +9,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React, { type ReactNode } from 'react'
 import { useSyncStatusAPI } from './useSyncStatusAPI'
 import { getBackendSyncJobIds } from '../test/backendSyncJobIds'
+import { queryKeys } from '../utils/queryKeys'
 
 // authChangeListeners simulates pb.authStore.onChange — tests can call them
 // to drive the auto-refetch behavior on auth-state transitions.
@@ -242,5 +243,48 @@ describe('SyncStatusResponse backend coverage (kindred#2593)', () => {
 
     const backendIds = getBackendSyncJobIds().slice().sort()
     expect(jobFieldIds.slice().sort()).toEqual(backendIds)
+  })
+})
+
+// Scan fix (#3211): Manage > Sync asks for one synced season's per-job statuses. The year
+// reaches the request and the cache key, so the two seasons never share an entry.
+describe('useSyncStatusAPI per-season status (?year=)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    ;(useAuth as Mock).mockReturnValue({ isLoading: false, user: { id: 'u1' } })
+  })
+
+  function wrapperFor(qc: QueryClient) {
+    return ({ children }: { children: ReactNode }) =>
+      React.createElement(QueryClientProvider, { client: qc }, children)
+  }
+
+  it('requests the named season and keys the cache by it', async () => {
+    ;(pb.send as Mock).mockResolvedValue({ _configured_year: 2027 })
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
+    const { result } = renderHook(() => useSyncStatusAPI({ year: 2026 }), {
+      wrapper: wrapperFor(qc),
+    })
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true)
+    })
+
+    expect(pb.send).toHaveBeenCalledWith('/api/custom/sync/status?year=2026', { method: 'GET' })
+    expect(qc.getQueryData(queryKeys.syncStatusForYear(2026))).toEqual({ _configured_year: 2027 })
+    expect(qc.getQueryData(queryKeys.syncStatus())).toBeUndefined()
+  })
+
+  it('without a year requests the payload it always has', async () => {
+    ;(pb.send as Mock).mockResolvedValue({})
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
+    const { result } = renderHook(() => useSyncStatusAPI(), { wrapper: wrapperFor(qc) })
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true)
+    })
+
+    expect(pb.send).toHaveBeenCalledWith('/api/custom/sync/status', { method: 'GET' })
+    expect(qc.getQueryData(queryKeys.syncStatus())).toEqual({})
   })
 })

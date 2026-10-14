@@ -499,3 +499,56 @@ func TestHandleMultiWorkbookExportYearsValidationBoundsBySeasonNotWallClock(t *t
 		t.Fatal("timed out waiting for the background export to finish")
 	}
 }
+
+// TestHandleMultiWorkbookExportExportsTheViewedPriorSeason (scan findings on #3211): Manage >
+// Sync's Sheets Export card sends the viewed season as ?year=. While staff view the prior synced
+// season it must export that season's workbook (and no globals, like any single-season export),
+// not the primary's; a season outside the synced pair is refused like every other staff route.
+func TestHandleMultiWorkbookExportExportsTheViewedPriorSeason(t *testing.T) {
+	const primary, prior = 2027, 2026
+	t.Setenv("CAMPMINDER_SEASON_ID", strconv.Itoa(primary))
+	t.Setenv("GOOGLE_SHEETS_ENABLED", "true")
+
+	writer := NewMockSheetsWriter()
+	manager := newSignalingWorkbookManager()
+	export, err := NewMultiWorkbookExport(newExportSchemaApp(t), writer, manager, primary)
+	if err != nil {
+		t.Fatalf("NewMultiWorkbookExport: %v", err)
+	}
+	scheduler := NewScheduler(nil)
+	scheduler.GetOrchestrator().RegisterService("multi_workbook_export", export)
+
+	post := func(target string) *httptest.ResponseRecorder {
+		re := &core.RequestEvent{}
+		re.Request = httptest.NewRequest(http.MethodPost, target, http.NoBody)
+		rec := httptest.NewRecorder()
+		re.Response = rec
+		if err := handleMultiWorkbookExport(re, scheduler); err != nil {
+			t.Fatalf("handler returned error: %v", err)
+		}
+		return rec
+	}
+
+	if rec := post("/?year=2024"); rec.Code != http.StatusBadRequest {
+		t.Errorf("?year=2024 (outside the synced pair) got %d, want 400", rec.Code)
+	}
+
+	rec := post("/?year=" + strconv.Itoa(prior))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	select {
+	case <-manager.done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("timed out waiting for the background export to finish")
+	}
+	if _, got := manager.YearWorkbookIDs[prior]; !got {
+		t.Errorf("expected the viewed season's (%d) workbook, got %v", prior, manager.YearWorkbookIDs)
+	}
+	if _, got := manager.YearWorkbookIDs[primary]; got {
+		t.Errorf("must not export the primary (%d) while staff view %d, got %v", primary, prior, manager.YearWorkbookIDs)
+	}
+	if fakeWriterGlobalsWritten(export) {
+		t.Error("a single prior-season export must not write globals")
+	}
+}

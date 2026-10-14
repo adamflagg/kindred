@@ -83,7 +83,7 @@ function sameMap(a: Record<string, string>, b: Record<string, string>): boolean 
 
 export function JotformFormCard({ row, year }: { row: JotformFormRowData; year: number }) {
   const save = useSaveJotformForm(year)
-  const pull = useJotformPull()
+  const pull = useJotformPull(year)
   const [editedRef, setEditedRef] = useState<string | undefined>(undefined)
   const [editedEnabled, setEditedEnabled] = useState<boolean | undefined>(undefined)
   const [editedMap, setEditedMap] = useState<Record<string, string>>({})

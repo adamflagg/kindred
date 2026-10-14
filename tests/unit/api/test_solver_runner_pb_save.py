@@ -20,6 +20,7 @@ class TestSolverRunnerPocketBaseSave:
     def mock_solver_input(self):
         """Create a minimal DirectSolverInput."""
         return DirectSolverInput(
+            year=2026,
             persons=[],
             requests=[],
             bunks=[],
@@ -690,7 +691,7 @@ class TestFailedRunPersistsDetails:
 
     @pytest.fixture
     def mock_solver_input(self):
-        return DirectSolverInput(persons=[], requests=[], bunks=[])
+        return DirectSolverInput(year=2026, persons=[], requests=[], bunks=[])
 
     def _setup_for_failure(self):
         mock_runs: dict[str, dict[str, object]] = {}

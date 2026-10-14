@@ -95,6 +95,7 @@ def test_staff_not_bunk_with_inside_locked_cabin_is_feasible() -> None:
     the registry — the same key used by test_staff_separation_wiring.py.
     """
     inp = DirectSolverInput(
+        year=2026,
         persons=[_person(i) for i in (1, 2, 3, 4)],
         requests=[
             DirectBunkRequest(
@@ -138,6 +139,7 @@ def test_material_bunk_with_into_locked_cabin_is_feasible_and_reported() -> None
     test_parent_paramount_diagnostic.py.
     """
     inp = DirectSolverInput(
+        year=2026,
         persons=[_person(i) for i in (1, 2, 3)],
         requests=[
             DirectBunkRequest(

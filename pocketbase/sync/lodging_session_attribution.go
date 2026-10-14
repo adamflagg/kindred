@@ -359,7 +359,7 @@ func AttributeSession(candidates []SessionWindow, lastUpdated time.Time) Attribu
 // 2026-08-21 (kindred#2482), so no earlier season has any history, and the
 // owner ruled the rule applies "for 2026 onward". Gating on the year rather
 // than on "history exists" is what keeps a prior season untouched when the
-// ingest is driven for it explicitly (?year=, a historical re-registration):
+// ingest is driven for it explicitly (?year=, a historical replay):
 // with no history the current value alone would still place its last weekend,
 // and 21 of 2025's household values were last edited in December.
 const historyAttributionFirstSeason = 2026

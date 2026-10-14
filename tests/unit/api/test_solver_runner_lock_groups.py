@@ -16,6 +16,7 @@ class TestSolverRunnerLockGroups:
     def mock_solver_input(self):
         """Create a minimal DirectSolverInput."""
         return DirectSolverInput(
+            year=2026,
             persons=[],
             requests=[],
             bunks=[],

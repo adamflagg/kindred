@@ -467,7 +467,7 @@ func TestReconcileLifecycleSync_RejectsMissingYearEnv(t *testing.T) {
 	defer app.Cleanup()
 
 	setupReconcileCollections(t, app)
-	t.Setenv("CAMPMINDER_SEASON_ID", "")
+	t.Setenv("CAMPMINDER_SEASON_ID", "abc") // unset now resolves by the rule; an invalid override is the failure
 
 	s := NewReconcileLifecycleSync(app) // Year remains 0
 	if err := s.Sync(context.Background()); err == nil {

@@ -283,6 +283,27 @@ async def test_a_sync_writing_persons_clears_it_and_schedules_a_warm() -> None:
 
 
 @pytest.mark.asyncio
+async def test_a_sync_writing_persons_and_attendees_clears_the_prior_season_too() -> None:
+    """The prior season (N-1) stays workable after the Oct 15 rollover and the daily sync writes it too, so the sync's
+    clear must drop every cached year, not just the primary (`LodgingYearCache.invalidate_all`)."""
+    from api.routers.metrics import invalidate_server_caches
+
+    pb = _recording_pb()
+    await aid_sync_inputs(pb, YEAR)
+    await aid_sync_inputs(pb, YEAR - 1)
+    assert aid_inputs_cache.get("load", YEAR) is not None
+    assert aid_inputs_cache.get("load", YEAR - 1) is not None
+    with (
+        patch("api.routers.metrics.schedule_lodging_warm"),
+        patch("api.routers.metrics.schedule_aid_warm"),
+    ):
+        invalidate_server_caches("persons")
+        invalidate_server_caches("attendees")
+    assert aid_inputs_cache.get("load", YEAR) is None
+    assert aid_inputs_cache.get("load", YEAR - 1) is None
+
+
+@pytest.mark.asyncio
 async def test_the_fa_mirror_sync_clears_it() -> None:
     from api.routers.metrics import invalidate_server_caches
 

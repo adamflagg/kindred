@@ -8,7 +8,7 @@ sub-project 4a's commit_aid_writes (spec 14.4): each write and its
 aid_change_log row in one batch, every row under the run's operation_id, actor
 "system:intake". It is idempotent: a build on unchanged data writes nothing.
 Every read names the build year, so a season N+1 build never sees season N
-(#2844 runs both from mid-November).
+(both seasons stay open after the Oct 15 rollover: the primary N and the prior N-1).
 
 Settled: intake's writes ARE logged (spec 14.4). Intake is neither a staff
 write nor the CampMinder sync that spec 14.4 exempts -- it is Kindred's own

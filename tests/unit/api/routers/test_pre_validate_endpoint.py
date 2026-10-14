@@ -36,7 +36,7 @@ def _admin_user() -> AuthUser:
 
 def _empty_solver_input() -> DirectSolverInput:
     """Minimal DirectSolverInput with no persons, bunks, or requests."""
-    return DirectSolverInput(persons=[], requests=[], bunks=[])
+    return DirectSolverInput(year=2026, persons=[], requests=[], bunks=[])
 
 
 @dataclass
@@ -221,7 +221,7 @@ def test_capacity_breakdown_uses_actual_bunk_capacities(client: TestClient) -> N
         # AG/Mixed: 1 bunk with 6 beds (not 1 * 12 = 12)
         DirectBunk(id="b4", campminder_id=4, name="Cabin D", capacity=6, gender="Mixed", session_cm_id=1000001),
     ]
-    solver_input = DirectSolverInput(persons=[], requests=[], bunks=bunks)
+    solver_input = DirectSolverInput(year=2026, persons=[], requests=[], bunks=bunks)
 
     with (
         patch("api.routers.solver.pb", _mock_pb()),
@@ -521,6 +521,7 @@ def test_total_requests_excludes_immaterial_rows(client: TestClient) -> None:
         ),
     ]
     solver_input = DirectSolverInput(
+        year=2026,
         persons=[],
         requests=counted_requests + immaterial_requests,
         bunks=[],

@@ -16,7 +16,7 @@ from bunking.models_v2 import DirectSolverInput, DirectSolverOutput
 
 
 def _minimal_input() -> DirectSolverInput:
-    return DirectSolverInput(persons=[], requests=[], bunks=[])
+    return DirectSolverInput(year=2026, persons=[], requests=[], bunks=[])
 
 
 def _mock_result(assignments: list[Any], diagnosis: str | None = None) -> MagicMock:

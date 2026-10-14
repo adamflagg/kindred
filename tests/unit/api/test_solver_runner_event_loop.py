@@ -66,7 +66,7 @@ async def test_solver_solve_does_not_block_event_loop() -> None:
     # otherwise compress the observable window.
     min_expected_ticks_during_solve = 3
 
-    solver_input = DirectSolverInput(persons=[], requests=[], bunks=[])
+    solver_input = DirectSolverInput(year=2026, persons=[], requests=[], bunks=[])
     mock_runs: dict[str, dict[str, object]] = {"test_run": {}}
 
     solve_start = 0.0

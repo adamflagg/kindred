@@ -500,8 +500,8 @@ func lodgingRegistryBootDecision(seasonErr error, registryPresent, hasRows bool)
 		return nil
 	}
 	return fmt.Errorf(
-		"lodging registry file present but no season is resolvable "+
-			"(set CAMPMINDER_SEASON_ID): %w", seasonErr,
+		"lodging registry file present but the season could not be resolved "+
+			"(an invalid CAMPMINDER_SEASON_ID override?): %w", seasonErr,
 	)
 }
 

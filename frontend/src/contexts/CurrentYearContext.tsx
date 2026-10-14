@@ -23,20 +23,56 @@ export function calculateAvailableYears(baseYear: number): number[] {
   return Array.from({ length }, (_, i) => baseYear - i)
 }
 
-function getStoredYear(availableYears: number[]): number | null {
-  const stored = localStorage.getItem(STORAGE_KEY)
-  if (stored) {
-    const year = parseInt(stored, 10)
-    if (!isNaN(year) && availableYears.includes(year)) {
-      return year
+/** What the browser remembers: the year AND the primary it was saved under, so the Oct 15
+ *  rollover can tell "still on the old primary" from "deliberately picked the prior season". */
+// eslint-disable-next-line react-refresh/only-export-components
+export function serializeSavedYear(year: number, primary: number): string {
+  return JSON.stringify({ year, primary })
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function resolveSavedYear(
+  raw: string | null,
+  primary: number,
+  available: number[]
+): { year: number | null; migrate: boolean } {
+  if (!raw) return { year: null, migrate: false }
+  let saved: { year: number; primary: number | null } | null = null
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (typeof parsed === 'number') saved = { year: parsed, primary: null }
+    else if (parsed && typeof parsed === 'object' && 'year' in parsed && 'primary' in parsed) {
+      const p = parsed
+      if (typeof p.year === 'number' && typeof p.primary === 'number')
+        saved = { year: p.year, primary: p.primary }
     }
+  } catch {
+    saved = null
   }
-  return null
+  if (!saved) return { year: null, migrate: false }
+  // Legacy plain number: no record of the primary it was saved under.
+  if (saved.primary === null) {
+    if (saved.year === primary - 1 || saved.year === primary)
+      return { year: primary, migrate: true }
+    return available.includes(saved.year)
+      ? { year: saved.year, migrate: false }
+      : { year: null, migrate: false }
+  }
+  // Saved on an older primary, and it WAS that primary: the one-time move.
+  if (saved.primary < primary && saved.year === saved.primary)
+    return { year: primary, migrate: true }
+  return available.includes(saved.year)
+    ? { year: saved.year, migrate: false }
+    : { year: null, migrate: false }
+}
+
+function getStoredYear(availableYears: number[], primary: number): number | null {
+  return resolveSavedYear(localStorage.getItem(STORAGE_KEY), primary, availableYears).year
 }
 
 function getDefaultYear(availableYears: number[], baseYear: number): number {
   // First try localStorage
-  const stored = getStoredYear(availableYears)
+  const stored = getStoredYear(availableYears, baseYear)
   if (stored) return stored
 
   // Default to base year
@@ -86,9 +122,9 @@ export function CurrentYearProvider({ children }: { children: ReactNode }) {
     // Only persist to localStorage after backend config is known
     // This prevents overwriting the user's preference before we know the valid years
     if (!yearFromUrl && isYearReady && currentYear > 0) {
-      localStorage.setItem(STORAGE_KEY, currentYear.toString())
+      localStorage.setItem(STORAGE_KEY, serializeSavedYear(currentYear, configuredYear))
     }
-  }, [currentYear, yearFromUrl, isYearReady])
+  }, [currentYear, yearFromUrl, isYearReady, configuredYear])
 
   const setCurrentYear = useCallback(
     (year: number) => {
@@ -115,14 +151,14 @@ export function CurrentYearProvider({ children }: { children: ReactNode }) {
       )
 
       // Also save to localStorage as the new preference
-      localStorage.setItem(STORAGE_KEY, year.toString())
+      localStorage.setItem(STORAGE_KEY, serializeSavedYear(year, configuredYear))
 
       // Clear transitioning state after a short delay
       setTimeout(() => {
         setIsTransitioning(false)
       }, 500)
     },
-    [currentYear, setSearchParams, AVAILABLE_YEARS]
+    [currentYear, setSearchParams, AVAILABLE_YEARS, configuredYear]
   )
 
   return (

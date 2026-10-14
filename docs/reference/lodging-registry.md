@@ -93,7 +93,7 @@ file.
 `1500000140`): a row is identified by `(code, year)`, and `code` is the
 cross-year thread linking a building across seasons. `SeedRegistry` takes the
 season as a parameter — `pocketbase/main.go` resolves it from
-`CAMPMINDER_SEASON_ID` on every boot — but it does **not** seed whatever
+the primary season (`sync.PrimarySeason`) on every boot — but it does **not** seed whatever
 season is running. Before doing anything else it checks whether
 `lodging_areas` or `lodging_units` has a row for **any** year at all. If
 either does, it logs that it is skipping and returns untouched, regardless of
@@ -107,13 +107,17 @@ source of truth for a season that already exists.
 
 This is deliberate, and load-bearing. Before this gate existed, the loader's
 `(code, year)` create-if-absent key meant the first restart after
-`scripts/prepare_for_new_year.py` flipped `CAMPMINDER_SEASON_ID` silently
+the yearly season change (formerly `scripts/prepare_for_new_year.py` flipping
+`CAMPMINDER_SEASON_ID`; the season now rolls over by itself on Oct 15 Pacific) silently
 rebuilt the _entire_ registry for the new season out of the stale bootstrap
 file — unconfirmed, every amenity correction, coordinate, rename and
 deactivation gone — and then the roll-forward panel (the first path below)
 found every code already present and reported nothing to carry forward,
 permanently disabling the one control meant to carry a season into the next.
 See `docs/superpowers/specs/2026-08-04-lodging-year-scoping-design.md` §4.2.
+
+`prepare_for_new_year.py` is retired. The roll-forward is the yearly step to take after the season
+rolls over on Oct 15, and it must happen before the new season's first Family Camp lodging work.
 
 Two paths exist for a season that already has rows:
 

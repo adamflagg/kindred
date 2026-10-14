@@ -80,7 +80,7 @@ def test_empty_locked_bunks_is_identity():
     """reduce_to_working_set with no locked_bunks returns all persons/bunks unchanged."""
     p1, p2 = _person(1), _person(2)
     b1, b2 = _bunk(3001), _bunk(3002)
-    inp = DirectSolverInput(persons=[p1, p2], bunks=[b1, b2], requests=[])
+    inp = DirectSolverInput(year=2026, persons=[p1, p2], bunks=[b1, b2], requests=[])
     result = reduce_to_working_set(inp)
     assert isinstance(result, WorkingSetReduction)
     assert result.reduced_input is inp  # no-copy identity guarantee
@@ -99,6 +99,7 @@ def test_partitions_frozen_and_working():
     p1, p2, p3 = _person(1), _person(2), _person(3)
     b1, b2 = _bunk(3001), _bunk(3002)
     inp = DirectSolverInput(
+        year=2026,
         persons=[p1, p2, p3],
         bunks=[b1, b2],
         requests=[],
@@ -127,6 +128,7 @@ def test_intra_working_requests_kept():
     b1 = _bunk(3001)
     req = _request("r1", requester=1, requestee=2, request_type="bunk_with")
     inp = DirectSolverInput(
+        year=2026,
         persons=[p1, p2],
         bunks=[b1],
         requests=[req],
@@ -144,6 +146,7 @@ def test_free_to_locked_bunk_with_dropped():
     b1, b2 = _bunk(3001), _bunk(3002)
     req = _request("r1", requester=1, requestee=2, request_type="bunk_with")
     inp = DirectSolverInput(
+        year=2026,
         persons=[p1, p2],
         bunks=[b1, b2],
         requests=[req],
@@ -160,6 +163,7 @@ def test_locked_to_free_bunk_with_dropped():
     b1, b2 = _bunk(3001), _bunk(3002)
     req = _request("r1", requester=1, requestee=2, request_type="bunk_with")
     inp = DirectSolverInput(
+        year=2026,
         persons=[p1, p2],
         bunks=[b1, b2],
         requests=[req],
@@ -175,6 +179,7 @@ def test_both_locked_bunk_with_dropped():
     b1, b2 = _bunk(3001), _bunk(3002)
     req = _request("r1", requester=1, requestee=2, request_type="bunk_with")
     inp = DirectSolverInput(
+        year=2026,
         persons=[p1, p2],
         bunks=[b1, b2],
         requests=[req],
@@ -191,6 +196,7 @@ def test_not_bunk_with_to_locked_dropped():
     b1, b2 = _bunk(3001), _bunk(3002)
     req = _request("r1", requester=1, requestee=2, request_type="not_bunk_with")
     inp = DirectSolverInput(
+        year=2026,
         persons=[p1, p2],
         bunks=[b1, b2],
         requests=[req],
@@ -205,6 +211,7 @@ def test_locked_bunk_missing_from_inp_raises():
     p1 = _person(1)
     b1 = _bunk(3001)
     inp = DirectSolverInput(
+        year=2026,
         persons=[p1],
         bunks=[b1],
         requests=[],
@@ -212,3 +219,18 @@ def test_locked_bunk_missing_from_inp_raises():
     )
     with pytest.raises(ValueError):
         reduce_to_working_set(inp)
+
+
+def test_frozen_assignments_carry_the_input_year(monkeypatch):
+    """Locked-bunk frozen assignments take inp.year, not a global season."""
+    monkeypatch.setenv("CAMPMINDER_SEASON_ID", "2026")  # a stale global must not leak in
+    inp = DirectSolverInput(
+        persons=[_person(1), _person(2)],
+        bunks=[_bunk(3001), _bunk(3002)],
+        requests=[],
+        locked_bunks={3001: [1]},
+        year=2027,
+    )
+    result = reduce_to_working_set(inp)
+    assert result.frozen_assignments
+    assert {fa.year for fa in result.frozen_assignments} == {2027}

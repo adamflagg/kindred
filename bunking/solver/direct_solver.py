@@ -26,7 +26,6 @@ from bunking.satisfaction import weight_for
 from bunking.satisfaction.batch import satisfied_request_ids_by_person
 from bunking.satisfaction.bucket import RequestBucket, is_counted_request
 from bunking.sync.bunk_request_processor.core.models import RequestType
-from campminder.client import get_current_season
 
 from .callbacks import BestBoundCallback, SolverProgressCallback
 from .constants import DEFAULT_BUNK_CAPACITY
@@ -853,8 +852,7 @@ class DirectBunkingSolver:
             )
             return self._single_bunk_infeasible_output(diagnosis)
 
-        # Get configured year from CampMinder settings
-        year = get_current_season()
+        year = self.input.year
 
         # Create assignments - every gender-compatible camper goes to the single bunk
         assignments = []
@@ -1345,7 +1343,7 @@ class DirectBunkingSolver:
                             person_cm_id=person_cm_id,
                             session_cm_id=person.session_cm_id,
                             bunk_cm_id=bunk.campminder_id,
-                            year=get_current_season(),
+                            year=self.input.year,
                         )
                     )
                     break

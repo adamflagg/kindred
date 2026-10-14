@@ -9,6 +9,7 @@ from bunking.models_v2 import DirectBunk, DirectPerson, DirectSolverInput
 def minimal_solver_input():
     """Minimal DirectSolverInput with no lock groups."""
     return DirectSolverInput(
+        year=2026,
         persons=[
             DirectPerson(
                 campminder_person_id=1001,
@@ -44,6 +45,7 @@ class TestLockGroupsDataField:
     def test_lock_groups_data_can_be_set(self):
         """lock_groups_data can be populated with group ID -> person CM ID mapping."""
         input_data = DirectSolverInput(
+            year=2026,
             persons=[],
             requests=[],
             bunks=[],
@@ -58,6 +60,7 @@ class TestGroupLocksProperty:
     def test_group_locks_returns_lock_groups_data_when_populated(self):
         """group_locks should return lock_groups_data when it has entries."""
         input_data = DirectSolverInput(
+            year=2026,
             persons=[],
             requests=[],
             bunks=[],

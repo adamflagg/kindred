@@ -1342,14 +1342,14 @@ async def test_the_reads_say_whether_the_season_is_done() -> None:
     await _approved_v1(store)
 
     async def configured_year() -> int:
-        return 2032
+        return 2033
 
     service = FinancialAidRulesService(store, clock=lambda: AT, configured_year=configured_year)
     draft, approved = await service.draft_view(2031), await service.approved_view(2031)
-    assert (draft.season_done, draft.configured_year) == (True, 2032)
-    assert (approved.season_done, approved.configured_year) == (True, 2032)
+    assert (draft.season_done, draft.configured_year) == (True, 2033)
+    assert (approved.season_done, approved.configured_year) == (True, 2033)
     receipt = await service.approved_view(2031, version=1)  # a receipt's link: the `version` early return
-    assert (receipt.season_done, receipt.configured_year) == (True, 2032)
+    assert (receipt.season_done, receipt.configured_year) == (True, 2033)
     plain = await _service(store).approved_view(2031)
     assert (plain.season_done, plain.configured_year) == (False, None)
 
