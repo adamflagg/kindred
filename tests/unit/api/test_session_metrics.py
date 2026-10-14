@@ -15,6 +15,8 @@ These tests are written FIRST before implementation (TDD).
 from types import SimpleNamespace
 from unittest.mock import MagicMock, Mock
 
+import pytest
+
 from api.utils.session_metrics import (
     BUNK_SESSION_TYPES,
     DISPLAY_SESSION_TYPES,
@@ -1294,3 +1296,211 @@ class TestTeenSummersAtCamp:
 
         assert summer_years[306] == 1  # 2025 SCIT unverifiable as summer -> excluded
         assert first_year[306] == 2024
+
+
+# ============================================================================
+# One session resolver (#3208): cm_id -> alias group -> exact name, AG fold,
+# teen summer window. Session names mirror the real 2025 -> 2026 renames.
+# ============================================================================
+
+
+def _year_2025() -> dict[int, MagicMock]:
+    """2025 summer sessions plus off-summer programs that must never leak into scope."""
+    s = [
+        create_mock_session(1235403, "Taste of Camp", 2025, "main", "2025-06-08", "2025-06-13"),
+        create_mock_session(1235404, "Session 2", 2025, "main", "2025-06-15", "2025-07-04"),
+        create_mock_session(1235406, "Session 4", 2025, "main", "2025-07-27", "2025-08-08"),
+        create_mock_session(1356534, "Session 2b", 2025, "embedded", "2025-06-29", "2025-07-04", parent_id=1235404),
+        create_mock_session(
+            1366767,
+            "All-Gender Cabin-Session 4 (4th - 6th grades)",
+            2025,
+            "ag",
+            "2025-07-27",
+            "2025-08-08",
+            parent_id=1235406,
+        ),
+        create_mock_session(1236362, "Taste of Quest", 2025, "quest", "2025-06-29", "2025-07-04"),
+        create_mock_session(1274420, "Teen Leadership Institute", 2025, "tli", "2025-07-11", "2025-08-03"),
+        create_mock_session(1365241, "Family Camp 5 CIT", 2025, "scit", "2025-09-12", "2025-09-15"),
+        create_mock_session(1236361, "Counselor In-Training", 2025, "scit", "2025-06-08", "2025-07-04"),
+        # Never summer, in either direction (#2435 / #2455):
+        create_mock_session(7001, "Family Camp 1", 2025, "family", "2025-05-15", "2025-05-18"),
+        create_mock_session(7002, "Session 4", 2025, "adult", "2025-09-01", "2025-09-03"),
+        create_mock_session(7003, "B*Mitzvah Retreat", 2025, "bmitzvah", "2025-03-01", "2025-03-03"),
+        create_mock_session(7004, "Hebrew School", 2025, "hebrew", "2025-01-10", "2025-05-30"),
+    ]
+    return {x.cm_id: x for x in s}
+
+
+class TestMatchSessionInYear:
+    def test_cm_id_present_in_year_matches_itself(self) -> None:
+        from api.utils.session_metrics import match_session_in_year
+
+        assert match_session_in_year(_year_2025(), 1235404, "Session 2") == 1235404
+
+    def test_cm_id_wins_over_name(self) -> None:
+        from api.utils.session_metrics import match_session_in_year
+
+        # Same cm_id, renamed later: the cm_id still identifies it.
+        assert match_session_in_year(_year_2025(), 1235406, "Session Four") == 1235406
+
+    def test_renamed_session_matches_via_alias_group(self) -> None:
+        from api.utils.session_metrics import match_session_in_year
+
+        # 2026 "Taste of Camp 1" (new cm_id) is 2025 "Taste of Camp".
+        assert match_session_in_year(_year_2025(), 1378702, "Taste of Camp 1") == 1235403
+        # 2026 "Taste of Camp 2" (new cm_id) is 2025 "Session 2b".
+        assert match_session_in_year(_year_2025(), 1378703, "Taste of Camp 2") == 1356534
+
+    def test_alias_group_works_in_reverse(self) -> None:
+        from api.utils.session_metrics import match_session_in_year
+
+        y2026 = {
+            1378702: create_mock_session(1378702, "Taste of Camp 1", 2026, "main", "2026-06-07", "2026-06-12"),
+        }
+        assert match_session_in_year(y2026, 1235403, "Taste of Camp") == 1378702
+
+    def test_exact_name_fallback(self) -> None:
+        from api.utils.session_metrics import match_session_in_year
+
+        assert match_session_in_year(_year_2025(), 999, "Taste of Quest") == 1236362
+
+    def test_no_match_returns_none(self) -> None:
+        from api.utils.session_metrics import match_session_in_year
+
+        assert match_session_in_year(_year_2025(), 999, "Brand New Session") is None
+        assert match_session_in_year(_year_2025(), 999, None) is None
+
+    def test_never_matches_a_non_summer_program(self) -> None:
+        from api.utils.session_metrics import match_session_in_year
+
+        sessions = _year_2025()
+        # cm_id of a Family Camp / B*Mitzvah / Hebrew session never resolves.
+        for cm_id in (7001, 7003, 7004):
+            assert match_session_in_year(sessions, cm_id, None) is None
+        # An adult program sharing a summer session's name is never the match.
+        only_adult = {7002: sessions[7002]}
+        assert match_session_in_year(only_adult, 999, "Session 4") is None
+
+    def test_ag_is_never_a_match_target(self) -> None:
+        from api.utils.session_metrics import match_session_in_year
+
+        assert match_session_in_year(_year_2025(), 1366767, None) is None
+
+
+class TestResolveScopeIds:
+    def test_single_session_folds_in_its_ag_cabins(self) -> None:
+        from api.utils.session_metrics import resolve_scope_ids
+
+        ids = resolve_scope_ids(_year_2025(), ["main", "embedded", "ag", "quest"], session_cm_id=1235406)
+        assert ids == {1235406, 1366767}
+
+    def test_renamed_session_resolves_in_another_year(self) -> None:
+        from api.utils.session_metrics import resolve_scope_ids
+
+        ids = resolve_scope_ids(
+            _year_2025(), ["main", "embedded", "ag", "quest"], session_cm_id=1378702, reference_name="Taste of Camp 1"
+        )
+        assert ids == {1235403}
+
+    def test_unmatched_session_scope_is_empty_not_the_whole_year(self) -> None:
+        from api.utils.session_metrics import resolve_scope_ids
+
+        ids = resolve_scope_ids(
+            _year_2025(), ["main", "embedded", "ag", "quest"], session_cm_id=999, reference_name="Nope"
+        )
+        assert ids == set()
+
+    def test_teen_scope_applies_summer_window(self) -> None:
+        from api.utils.session_metrics import resolve_scope_ids
+
+        ids = resolve_scope_ids(_year_2025(), ["scit", "tli"])
+        assert ids == {1274420, 1236361}  # fall Family Camp CIT excluded
+
+    def test_all_summer_default_excludes_every_non_summer_program(self) -> None:
+        from api.utils.session_metrics import resolve_scope_ids
+
+        ids = resolve_scope_ids(_year_2025(), None)
+        assert ids.isdisjoint({7001, 7002, 7003, 7004, 1365241})
+        assert {1235403, 1235404, 1235406, 1356534, 1366767, 1236362, 1274420, 1236361} == ids
+
+    def test_non_display_types_resolve_to_nothing(self) -> None:
+        from api.utils.session_metrics import resolve_scope_ids
+
+        assert resolve_scope_ids(_year_2025(), ["family"]) == set()
+        assert resolve_scope_ids(_year_2025(), ["adult", "bmitzvah", "hebrew"]) == set()
+        # Mixed: the summer part survives, the family part never enters.
+        assert resolve_scope_ids(_year_2025(), ["main", "family"]) == {1235403, 1235404, 1235406}
+
+    def test_duration_intersects_and_keeps_ag(self) -> None:
+        from api.utils.session_metrics import resolve_scope_ids
+
+        ids = resolve_scope_ids(_year_2025(), ["main", "embedded", "ag", "quest"], duration="1-week")
+        assert ids == {1235403, 1356534, 1236362}
+
+    def test_summer_scope_unchanged_by_family_camp_and_tbm_rows(self) -> None:
+        """Pin (#2435/#2455): adding Family Camp, adult and B*Mitzvah/Hebrew rows moves nothing."""
+        from api.utils.session_metrics import resolve_scope_ids
+
+        with_all = _year_2025()
+        summer_only = {k: v for k, v in with_all.items() if k not in {7001, 7002, 7003, 7004}}
+        for types in (None, ["main", "embedded", "ag", "quest"], ["scit", "tli"], ["main", "embedded", "ag"]):
+            assert resolve_scope_ids(with_all, types) == resolve_scope_ids(summer_only, types)
+        assert resolve_scope_ids(with_all, ["main", "embedded", "ag"], session_cm_id=1235406) == resolve_scope_ids(
+            summer_only, ["main", "embedded", "ag"], session_cm_id=1235406
+        )
+
+
+class TestSummerWindowsFromSessions:
+    """Row 8: a teen-only history must take each year's window from that year's sessions."""
+
+    def test_teen_only_history_counts_in_window_years_with_supplied_windows(self) -> None:
+        from api.utils.session_metrics import compute_summer_metrics
+
+        tli_2025 = create_mock_session(1274420, "Teen Leadership Institute", 2025, "tli", "2025-07-11", "2025-08-03")
+        tli_2026 = create_mock_session(1274420, "Teen Leadership Institute", 2026, "tli", "2026-07-10", "2026-08-02")
+        history = [
+            create_mock_attendee(401, 1274420, session=tli_2025, year=2025),
+            create_mock_attendee(401, 1274420, session=tli_2026, year=2026),
+        ]
+        windows = {2025: ("2025-06-08", "2025-08-08"), 2026: ("2026-06-07", "2026-08-07")}
+        summer_years, first_year = compute_summer_metrics(history, {401}, summer_windows=windows)
+        assert summer_years[401] == 2
+        assert first_year[401] == 2025
+
+    def test_supplied_windows_still_exclude_offseason_teen_sessions(self) -> None:
+        from api.utils.session_metrics import compute_summer_metrics
+
+        fc_cit = create_mock_session(1365241, "Family Camp 5 CIT", 2024, "scit", "2024-09-12", "2024-09-15")
+        tli_2025 = create_mock_session(1274420, "Teen Leadership Institute", 2025, "tli", "2025-07-11", "2025-08-03")
+        history = [
+            create_mock_attendee(402, 1365241, session=fc_cit, year=2024),
+            create_mock_attendee(402, 1274420, session=tli_2025, year=2025),
+        ]
+        windows = {2024: ("2024-06-09", "2024-08-09"), 2025: ("2025-06-08", "2025-08-08")}
+        summer_years, _ = compute_summer_metrics(history, {402}, summer_windows=windows)
+        assert summer_years[402] == 1
+
+
+class TestFetchSummerWindows:
+    @pytest.mark.asyncio
+    async def test_builds_each_years_window_from_its_main_sessions(self) -> None:
+        from unittest.mock import AsyncMock
+
+        from api.utils.session_metrics import fetch_summer_windows
+
+        repo = AsyncMock()
+
+        async def fetch_sessions(year: int, session_types: list[str] | None = None) -> dict[int, MagicMock]:
+            assert session_types == ["main"]
+            if year == 2025:
+                return {
+                    1: create_mock_session(1, "Taste of Camp", 2025, "main", "2025-06-08", "2025-06-13"),
+                    2: create_mock_session(2, "Session 4", 2025, "main", "2025-07-27", "2025-08-08"),
+                }
+            return {}
+
+        repo.fetch_sessions.side_effect = fetch_sessions
+        windows = await fetch_summer_windows(repo, [2025, 2020])
+        assert windows == {2025: ("2025-06-08", "2025-08-08"), 2020: None}
