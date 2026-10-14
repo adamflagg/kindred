@@ -90,10 +90,15 @@ vi.mock('../../../hooks/useMetricsSession', () => ({
   }),
 }))
 
+const mockControls = {
+  splitByGender: false,
+  selectedPriorYears: [] as number[],
+}
+
 vi.mock('../../../hooks/useVelocityControls', () => ({
   useVelocityControls: () => ({
-    splitByGender: false,
-    selectedPriorYears: [],
+    splitByGender: mockControls.splitByGender,
+    selectedPriorYears: mockControls.selectedPriorYears,
     toggleGender: vi.fn(),
     togglePriorYear: vi.fn(),
     availablePriorYears: [],
@@ -202,5 +207,21 @@ describe('VelocityPage chart remount on year change (#752)', () => {
 
     // Reset for other tests
     mockCurrentYear.currentYear = 2026
+  })
+})
+
+describe('VelocityPage cards when the prior year has no matching session', () => {
+  it('labels the cards with the ticked prior year and shows dashes, never "null"', () => {
+    mockControls.selectedPriorYears = [2025]
+    try {
+      render(<VelocityPage />)
+      expect(screen.getByText('2025 at Wk 1')).toBeInTheDocument()
+      expect(screen.getByText('vs 2025')).toBeInTheDocument()
+      expect(screen.getByText('2025 Final')).toBeInTheDocument()
+      expect(screen.getByText('2025 Cancelled at Wk 1')).toBeInTheDocument()
+      expect(document.body.textContent).not.toMatch(/null/)
+    } finally {
+      mockControls.selectedPriorYears = []
+    }
   })
 })

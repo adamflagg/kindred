@@ -135,7 +135,9 @@ export default function VelocityPage() {
 
     let priorAtWeek: number | null = null
     let priorFinal: number | null = null
-    let priorYear: number | null = null
+    // The backend omits a prior year that has no matching session; the label still names
+    // the year the user ticked, and the values stay '-'.
+    let priorYear: number | null = controls.selectedPriorYears[0] ?? null
 
     if (data.prior_years.length > 0) {
       const py = data.prior_years[0]
@@ -165,7 +167,7 @@ export default function VelocityPage() {
       priorCancelledAtWeek: priorCancelled?.cancelled_at_current_week ?? null,
       priorCancelledFinal: priorCancelled?.cancelled_final ?? null,
     }
-  }, [data])
+  }, [data, controls.selectedPriorYears])
 
   if (isLoading) {
     return (
