@@ -1,0 +1,44 @@
+import { describe, it, expect } from 'vitest'
+import { matchSessionInYear } from './resolveSessionForYear'
+import { getAliasGroup } from './sessionAliases'
+import type { MetricsSession } from '../hooks/useMetricsSessions'
+
+const s = (cm_id: number, name: string): MetricsSession => ({
+  cm_id,
+  name,
+  session_type: 'embedded',
+  start_date: '2026-06-15',
+  end_date: '2026-06-20',
+})
+
+const y2026 = [s(1378702, 'Taste of Camp 1'), s(1378703, 'Taste of Camp 2'), s(11, 'Session 3')]
+const y2025 = [s(1235403, 'Taste of Camp'), s(1356534, 'Session 2b'), s(12, 'Session 3')]
+
+describe('getAliasGroup', () => {
+  it('returns canonical first, then alternates', () => {
+    expect(getAliasGroup('Taste of Camp')).toEqual(['Taste of Camp 1', 'Taste of Camp'])
+    expect(getAliasGroup('Taste of Camp 2')).toEqual(['Taste of Camp 2', 'Session 2b'])
+    expect(getAliasGroup('Session 3')).toEqual(['Session 3'])
+  })
+})
+
+describe('matchSessionInYear', () => {
+  it('uses the cm_id when the year has it', () => {
+    expect(matchSessionInYear(y2026, 11, 'Whatever')).toBe(11)
+  })
+  it('maps an old name forward through the alias group', () => {
+    expect(matchSessionInYear(y2026, 1235403, 'Taste of Camp')).toBe(1378702)
+    expect(matchSessionInYear(y2026, 1356534, 'Session 2b')).toBe(1378703)
+  })
+  it('maps a canonical name backward', () => {
+    expect(matchSessionInYear(y2025, 1378702, 'Taste of Camp 1')).toBe(1235403)
+    expect(matchSessionInYear(y2025, 1378703, 'Taste of Camp 2')).toBe(1356534)
+  })
+  it('falls back to an exact name', () => {
+    expect(matchSessionInYear(y2026, 12, 'Session 3')).toBe(11)
+  })
+  it('returns null with no match or no name', () => {
+    expect(matchSessionInYear(y2026, 999, 'Nope')).toBeNull()
+    expect(matchSessionInYear(y2026, 999, null)).toBeNull()
+  })
+})

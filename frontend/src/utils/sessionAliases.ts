@@ -19,3 +19,16 @@ export const SESSION_NAME_ALIASES: Record<string, string> = {
 export function resolveSessionAlias(name: string): string {
   return SESSION_NAME_ALIASES[name] ?? name
 }
+
+/**
+ * Every name (canonical first, then old names) that refers to the same session.
+ * Mirrors `get_alias_group` in api/utils/session_aliases.py; the alias map is
+ * held equal to the server's by tests/unit/api/test_session_aliases_parity.py.
+ */
+export function getAliasGroup(name: string): string[] {
+  const canonical = resolveSessionAlias(name)
+  const alternates = Object.entries(SESSION_NAME_ALIASES)
+    .filter(([, c]) => c === canonical)
+    .map(([old]) => old)
+  return [canonical, ...alternates]
+}

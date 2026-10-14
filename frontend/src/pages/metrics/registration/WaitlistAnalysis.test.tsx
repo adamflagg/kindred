@@ -62,6 +62,11 @@ vi.mock('../../../hooks/useMetrics', async (importOriginal) => {
   }
 })
 
+// The compare hook maps the picked session through each year's session list
+vi.mock('../../../hooks/useMetricsSessions', () => ({
+  useMetricsSessions: vi.fn(() => ({ data: [] })),
+}))
+
 vi.mock('../../../hooks/useCurrentYear', () => ({
   useCurrentYear: vi.fn(() => ({ currentYear: 2026 })),
   CurrentYearContext: { Provider: ({ children }: { children: React.ReactNode }) => children },
