@@ -67,9 +67,10 @@ func ParseDateValue(value any) string {
 	return ParseDate(dateStr)
 }
 
-// campMinderZone is the zone of CampMinder's API timestamps. The API appends "Z", but the
-// wall clock is US Mountain time (campership design §6.2), so reading the "Z" literally
-// stores every timestamp 6-7 hours early.
+// campMinderZone is the zone of the CampMinder financial-transactions API's timestamps. That
+// API appends "Z", but the wall clock is US Mountain time (campership design §6.2), so reading
+// the "Z" literally stores its timestamps 6-7 hours early. This is NOT true of CampMinder in
+// general: the attendees API's PostDate/LastUpdatedUTC were measured as true UTC (2026-10-14).
 const campMinderZone = "America/Denver"
 
 // campMinderMSTFallback is the fallback when campMinderZone cannot be loaded: fixed
@@ -99,8 +100,12 @@ func loadCampMinderLocation(load func(string) (*time.Location, error)) *time.Loc
 // campMinderLocation is loaded once at package init.
 var campMinderLocation = loadCampMinderLocation(time.LoadLocation)
 
-// ParseCampMinderInstant converts a CampMinder API timestamp to PocketBase's UTC format
-// "2006-01-02 15:04:05Z".
+// ParseCampMinderInstant converts a CampMinder financial-transactions API timestamp to
+// PocketBase's UTC format "2006-01-02 15:04:05Z".
+//
+// Only the financial-transactions API sends Mountain-time instants. The attendees API's
+// PostDate and LastUpdatedUTC were measured as true UTC instants (2026-10-14), so they must
+// stay on ParseDate; do not switch them to this function.
 //
 // Not named ParseCampMinderTimestamp: sync/lodging_session_attribution.go already declares
 // a function of that name, with a different signature, for a different column

@@ -421,7 +421,7 @@ Transaction details from CampMinder `/financials/transactionreporting/transactio
 
 **Unique**: `(cm_id, amount, year)` - debit/credit pairs share an id; the same id may recur in another season.
 
-`post_date` and `reversal_date` are converted from CampMinder's Mountain wall clock to UTC (with daylight saving); the other dates are calendar dates.
+`post_date` and `reversal_date` are converted from the financial-transactions API's Mountain wall clock (the attendees API's times are true UTC) to UTC (with daylight saving); the other dates are calendar dates.
 
 ---
 
