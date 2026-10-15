@@ -1,10 +1,10 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import { useSearchParams } from 'react-router'
 
 /**
  * Ticked prior years live in the link as `?priors=` (ruling 6, #3209), so the selection
  * survives reload and carries across Velocity ↔ Cancellations. Absent → the latest prior
- * year; present and empty → none. Deliberately not Registration's `compare=`.
+ * year, written into the link once the years load; present and empty → none. Deliberately not Registration's `compare=`.
  */
 const PRIORS_PARAM = 'priors'
 
@@ -32,6 +32,23 @@ export function useVelocityControls(availableYears: number[], currentYear: numbe
     () => parsePriors(priorsRaw, priorYearOptions),
     [priorsRaw, priorYearOptions]
   )
+
+  // Write the implicit default into the link once the year list has loaded, so a copied link
+  // keeps its comparison year after a newer season exists. Never while options are still empty:
+  // that would write `priors=` (none ticked) over the default.
+  const defaultPrior = priorYearOptions[0]
+  useEffect(() => {
+    if (priorsRaw !== null || defaultPrior == null) return
+    setSearchParams(
+      (prev) => {
+        if (prev.has(PRIORS_PARAM)) return prev
+        const newParams = new URLSearchParams(prev)
+        newParams.set(PRIORS_PARAM, String(defaultPrior))
+        return newParams
+      },
+      { replace: true }
+    )
+  }, [priorsRaw, defaultPrior, setSearchParams])
 
   // Read-modify-write against the latest params, so consecutive updates compose.
   const updatePriors = useCallback(

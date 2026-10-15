@@ -37,6 +37,32 @@ describe('useVelocityControls', () => {
     expect(result.current.splitByGender).toBe(false)
   })
 
+  // CodeRabbit on #3215: the implicit default must reach the link, or a copied link silently
+  // switches comparison year once a newer season exists (Decision 6: "kept in the link").
+  it('writes the default latest prior year into the link when priors is absent', () => {
+    const { result } = renderControls('/?session=5')
+    const params = new URLSearchParams(result.current.search)
+    expect(params.get('priors')).toBe('2025')
+    expect(params.get('session')).toBe('5')
+  })
+
+  it('does not write an empty priors while the year list is still loading', () => {
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(MemoryRouter, { initialEntries: ['/'] }, children)
+    const { result, rerender } = renderHook(
+      ({ years }: { years: number[] }) => {
+        const controls = useVelocityControls(years, currentYear)
+        const location = useLocation()
+        return { ...controls, search: location.search }
+      },
+      { wrapper, initialProps: { years: [] as number[] } }
+    )
+    expect(new URLSearchParams(result.current.search).has('priors')).toBe(false)
+    rerender({ years: availableYears })
+    expect(new URLSearchParams(result.current.search).get('priors')).toBe('2025')
+    expect(result.current.selectedPriorYears).toEqual([2025])
+  })
+
   it('ticks nothing when priors is present and empty', () => {
     const { result } = renderControls(NONE)
     expect(result.current.selectedPriorYears).toEqual([])
