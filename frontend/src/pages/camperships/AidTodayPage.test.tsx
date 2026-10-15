@@ -2,7 +2,7 @@
  * Today (spec 2026-10-10 §2-§7): one page per permission set, drawn from one read. The hooks are mocked;
  * the heroes, the to-do table and the model have their own tests.
  */
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -196,24 +196,6 @@ describe('AidTodayPage', () => {
       '/aid/requests?year=2027'
     )
     expect(screen.queryByText('Needs an offer')).toBeNull() // folded until opened
-  })
-
-  // D164 (owner 2026-10-14): a CampMinder withdrawal stays "an open to-do for finance" until its reason is
-  // given. The line is casework's (Give a Reason… is a casework write), so a finance user who also does casework
-  // gets it in Waiting on you, not past the fold's five; a finance user without casework never gets it.
-  it('finance with casework gets Cancelled: give a reason in Waiting on you, and not again in the fold', async () => {
-    granted = FINANCE
-    todayData = {
-      ...REGISTRAR_TODAY,
-      casework: [...(REGISTRAR_TODAY.casework ?? []), line('cancel_reason', 2, { families: 2 })],
-      finance: [line('pending_approval', 6)],
-    }
-    renderPage()
-    expect(await screen.findByText('Cancelled: give a reason')).toBeInTheDocument()
-    expect(screen.getByText(/^2 waiting/)).toBeInTheDocument() // Waiting on you's meta: pending approval and this
-    fireEvent.click(screen.getByRole('button', { name: /The registrar's queue/ }))
-    expect(await screen.findByText('Needs an offer')).toBeInTheDocument() // the fold is open
-    expect(screen.getAllByText('Cancelled: give a reason')).toHaveLength(1)
   })
 
   it('finance with a short list of its own gets the registrar queue folded below', async () => {

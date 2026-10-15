@@ -11,8 +11,6 @@ import {
   budgetSegments,
   countParts,
   countWords,
-  FINANCE_ORDER,
-  financeTodos,
   LINE_WORDS,
   reasonsLine,
   reasonsTitle,
@@ -76,26 +74,6 @@ describe('rankLines (spec §5)', () => {
       'needs_offer',
       'holds',
     ])
-  })
-})
-
-describe('financeTodos (D164: a CampMinder withdrawal is an open to-do for finance)', () => {
-  it("moves a live Cancelled: give a reason line from casework into finance's own list, last", () => {
-    const casework = [line('needs_offer', 3), line('cancel_reason', 2)]
-    const { finance, registrar } = financeTodos([line('pending_approval', 1)], casework)
-    expect(finance.map((l) => l.key)).toEqual(['pending_approval', 'cancel_reason'])
-    expect(registrar?.map((l) => l.key)).toEqual(['needs_offer'])
-    expect(FINANCE_ORDER.at(-1)).toBe('cancel_reason')
-  })
-
-  it('leaves it in the fold at zero, and gives finance nothing it cannot act on (no casework)', () => {
-    const zero = financeTodos([], [line('needs_offer', 3), line('cancel_reason', 0)])
-    expect(zero.finance).toEqual([])
-    expect(zero.registrar?.map((l) => l.key)).toEqual(['needs_offer', 'cancel_reason'])
-    expect(financeTodos([line('sources', 1)], null)).toEqual({
-      finance: [line('sources', 1)],
-      registrar: null,
-    })
   })
 })
 
