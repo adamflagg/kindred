@@ -117,6 +117,45 @@ def get_enrollment_date(att: Any) -> str | None:
     return None
 
 
+def registered_day(att: Any) -> date | None:
+    """The day a record counts as registered: effective_date, else enrollment_date."""
+    day = get_enrollment_date(att)
+    return date.fromisoformat(day) if day else None
+
+
+def cancelled_day(att: Any) -> date | None:
+    """The day a cancelled or withdrawn record left: its enrollment_date (PostDate). None otherwise."""
+    if (getattr(att, "status_id", 0) or 0) not in CANCELLATION_STATUSES:
+        return None
+    raw = getattr(att, "enrollment_date", "") or ""
+    return date.fromisoformat(parse_date_only(raw)) if raw else None
+
+
+def _in_window(day: date | None, lower_bound: date | None, cutoff: date) -> bool:
+    return day is not None and (lower_bound is None or lower_bound <= day) and day <= cutoff
+
+
+def attendees_at_cutoff(attendees: list[Any], cutoff: date) -> tuple[list[Any], list[Any]]:
+    """The records as they stood at the end of ``cutoff``: (enrolled, cancelled).
+
+    Decision 7: enrolled at day N = registered by N and not cancelled by N, over the statuses the
+    rebuild counts (enrolled, cancelled, withdrawn), the same rule ``_reconstruct_core`` counts per
+    session for Velocity and Forecast, applied to records so every Overview breakdown can use it.
+    ``cancelled`` holds the cancelled and withdrawn records that had left by ``cutoff``.
+    No lower bound: this is the live "registered by day N" read, not Week-0 week mode.
+    """
+    enrolled: list[Any] = []
+    cancelled: list[Any] = []
+    for att in attendees:
+        if (getattr(att, "status_id", 0) or 0) not in ENROLLMENT_STATUSES:
+            continue
+        if _in_window(cancelled_day(att), None, cutoff):
+            cancelled.append(att)
+        elif _in_window(registered_day(att), None, cutoff):
+            enrolled.append(att)
+    return enrolled, cancelled
+
+
 def _reconstruct_core(
     attendees: list[Any],
     sessions: dict[int, Any],
@@ -175,28 +214,20 @@ def _reconstruct_core(
             session_has_gender.add(effective_sid)
 
         # Enrollment event: use effective_date (original registration date)
-        enroll_date_str = get_enrollment_date(att)
-        if enroll_date_str:
-            dt = datetime.strptime(enroll_date_str, "%Y-%m-%d")
-            if (lower_bound is None or lower_bound <= dt.date()) and dt.date() <= cutoff_date:
-                session_enrollments[effective_sid] += 1
-                if gender == "M":
-                    session_boys_enrolled[effective_sid] += 1
-                elif gender == "F":
-                    session_girls_enrolled[effective_sid] += 1
+        if _in_window(registered_day(att), lower_bound, cutoff_date):
+            session_enrollments[effective_sid] += 1
+            if gender == "M":
+                session_boys_enrolled[effective_sid] += 1
+            elif gender == "F":
+                session_girls_enrolled[effective_sid] += 1
 
         # Cancellation event: for cancelled/withdrawn, use enrollment_date (PostDate = cancel date)
-        if status_id in CANCELLATION_STATUSES:
-            cancel_date_raw = getattr(att, "enrollment_date", "") or ""
-            if cancel_date_raw:
-                cancel_date_str = parse_date_only(cancel_date_raw)
-                cancel_dt = datetime.strptime(cancel_date_str, "%Y-%m-%d")
-                if (lower_bound is None or lower_bound <= cancel_dt.date()) and cancel_dt.date() <= cutoff_date:
-                    session_cancellations[effective_sid] += 1
-                    if gender == "M":
-                        session_boys_cancelled[effective_sid] += 1
-                    elif gender == "F":
-                        session_girls_cancelled[effective_sid] += 1
+        if _in_window(cancelled_day(att), lower_bound, cutoff_date):
+            session_cancellations[effective_sid] += 1
+            if gender == "M":
+                session_boys_cancelled[effective_sid] += 1
+            elif gender == "F":
+                session_girls_cancelled[effective_sid] += 1
 
     # Build result — gender availability tracked per-session
     result: dict[int, dict[str, int | None]] = {}

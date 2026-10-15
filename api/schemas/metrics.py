@@ -4,6 +4,8 @@ Pydantic schemas for metrics API endpoints.
 Defines response models for retention, registration, and trends metrics.
 """
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -344,7 +346,9 @@ class RegistrationMetricsResponse(BaseModel):
 
     year: int = Field(description="Year for metrics")
     total_enrolled: int = Field(description="Total enrolled campers")
-    total_waitlisted: int = Field(description="Total waitlisted campers")
+    total_waitlisted: int | None = Field(
+        description="Total waitlisted campers. None on a same-point read: a past waitlist cannot be rebuilt"
+    )
     total_cancelled: int = Field(description="Total cancelled registrations")
 
     by_gender: list[GenderBreakdown] = Field(description="Enrollment by gender")
@@ -375,6 +379,33 @@ class RegistrationMetricsResponse(BaseModel):
     )
     by_first_summer_year: list[FirstSummerYearBreakdown] = Field(
         default_factory=list, description="Enrollment by first summer year (cohort analysis)"
+    )
+    # Decision 7: a comparison year asked for with same_point_of
+    prior_basis: Literal["same_point", "final"] | None = Field(
+        default=None,
+        description=(
+            "Set when same_point_of was asked: 'same_point' when this year was read at the registration day "
+            "that season has reached (registered by then and not cancelled by then), 'final' when it was read "
+            "as it stands now (that season is over, or a season has no registration anchor)"
+        ),
+    )
+    day_offset: int | None = Field(
+        default=None,
+        description="Same-point reads: the registration day (days from its anchor) the same_point_of season is on",
+    )
+    prior_day_offset: int | None = Field(
+        default=None,
+        description=(
+            "Same-point reads: the registration day this year was read at. One more than day_offset on a "
+            "priority, early or open date, where the prior year is read through the next day (decision 45)"
+        ),
+    )
+    as_of_date: str | None = Field(
+        default=None,
+        description=(
+            "Same-point reads: the last day (YYYY-MM-DD) this year was read through. On a phase date it is the "
+            "day after the matching day (decision 45)"
+        ),
     )
 
 

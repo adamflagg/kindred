@@ -8,11 +8,12 @@ retention rates, and historical trends.
 import os
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from api.constants.sync_job_writes import sync_writes_any
 from api.services.aid_season_cache import sync_changes_aid_season
 from api.services.aid_sync_inputs import AID_SYNC_INPUT_TABLES, schedule_aid_warm
+from api.services.camp_calendar import get_camp_today
 from api.services.cancellation_service import CancellationService
 from api.services.day1_service import Day1Service
 from api.services.drilldown_service import DrilldownService
@@ -149,6 +150,16 @@ async def get_registration_metrics(
     duration: Literal["1-week", "2-week", "3-week", "4-week+"] | None = Query(
         None, description="Filter by session duration category (1-week, 2-week, 3-week, 4-week+)"
     ),
+    same_point_of: int | None = Query(
+        None,
+        ge=2000,
+        le=2100,
+        description=(
+            "Read this year as a comparison for that season (decision 7): while it is live, at the same "
+            "registration day (registered by then, not cancelled by then); after it, as this year stands now. "
+            "The response's prior_basis says which. Enrolled status only"
+        ),
+    ),
     user: AuthUser = Depends(get_current_user),
 ) -> RegistrationMetricsResponse:
     """Get registration breakdown metrics for a specific year.
@@ -162,22 +173,37 @@ async def get_registration_metrics(
     """
     check_duration_session_exclusive(duration, session_cm_id)
 
+    status_filter = [s.strip() for s in (statuses or "enrolled").split(",")]
+    if same_point_of is not None and status_filter != ["enrolled"]:
+        raise HTTPException(status_code=422, detail="same_point_of reads enrolled campers only")
+    # A same-point read moves every camp day, so the day is part of its cache key
+    camp_today = get_camp_today() if same_point_of is not None else None
+
     cache_params = {
         "year": year,
         "session_types": session_types,
         "statuses": statuses,
         "session_cm_id": session_cm_id,
         "duration": duration,
+        "same_point_of": same_point_of,
+        "camp_today": camp_today,
     }
     cached: RegistrationMetricsResponse | None = metrics_cache.get("registration", **cache_params)
     if cached is not None:
         return cached
 
     type_filter = parse_summer_session_types(session_types)
-    status_filter = [s.strip() for s in (statuses or "enrolled").split(",")]
     repository = _create_repository()
     service = RegistrationService(repository)
-    result = await service.calculate_registration(year, type_filter, status_filter, session_cm_id, duration=duration)
+    result = await service.calculate_registration(
+        year,
+        type_filter,
+        status_filter,
+        session_cm_id,
+        duration=duration,
+        same_point_of=same_point_of,
+        today=camp_today,
+    )
     metrics_cache.set("registration", result, **cache_params)
     return result
 

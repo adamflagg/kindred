@@ -44,7 +44,9 @@ import {
 } from '../../../utils/metricsTransforms'
 import { GENDER_COLORS, GENDER_SEGMENTS } from '../../../components/metrics/genderColors'
 import { Loader2 } from 'lucide-react'
-import { DefinitionNotes } from '../../../components/camperships/kit/DefinitionNotes'
+import { DefinitionNotes, DefRef } from '../../../components/camperships/kit/DefinitionNotes'
+import { PRIORITY_DAY_PENDING } from '../../../utils/priorityDay'
+import { describeCompareBasis } from './overviewCompareBasis'
 import { AverageSummersLine } from '../../../components/metrics/AverageSummersLine'
 import { TENURE_NOTES } from '../../../components/metrics/tenureNotes'
 import { OVERVIEW_NOTES } from '../cancelledNotes'
@@ -249,6 +251,17 @@ export default function RegistrationOverview() {
           percentage: y.percentage,
         }))
 
+  // Decision 7: the compare year is read at the same point while this season is live, at its final
+  // after. On the priority date itself the card deltas wait a day (ruling 9).
+  const compareBasis = describeCompareBasis(compareYear, compData)
+  const pending = compareBasis?.pending ?? false
+  const vsCompare = (value: number | null | undefined) =>
+    pending || value == null ? undefined : value
+  const pendingTrend = pending
+    ? { trend: 'neutral' as const, trendValue: PRIORITY_DAY_PENDING }
+    : {}
+  const waitlistComparable = compareBasis?.waitlistComparable ?? true
+
   // Sort sessions for table (chart uses sorted version from transformSessionData)
   const sortedBySession = sortSessionDataByCampThenQuest(
     data.by_session,
@@ -259,6 +272,17 @@ export default function RegistrationOverview() {
   return (
     <MetricsBusy busy={busy} what={String(busyYear)}>
       <div className="space-y-6">
+        {compareBasis && (
+          <p className="text-muted-foreground -mb-3 text-sm">
+            <span className="text-foreground font-medium">{compareBasis.label}</span>
+            {': '}
+            <span>{compareBasis.text}</span>
+            {compareBasis.notes.map((note) => (
+              <DefRef key={note.n} n={note.n} />
+            ))}
+          </p>
+        )}
+
         {/* Summary Cards */}
         <div
           className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5"
@@ -267,7 +291,8 @@ export default function RegistrationOverview() {
           <MetricCard
             title="Total Enrolled"
             value={data.total_enrolled}
-            compareValue={compData?.total_enrolled}
+            compareValue={vsCompare(compData?.total_enrolled)}
+            {...pendingTrend}
             compareYear={compareYear ?? undefined}
             subtitle={
               selectedSessionCmId ? 'In selected session' : `Active enrollments for ${currentYear}`
@@ -282,8 +307,9 @@ export default function RegistrationOverview() {
           />
           <MetricCard
             title="Total Waitlisted"
-            value={data.total_waitlisted}
-            compareValue={compData?.total_waitlisted}
+            value={data.total_waitlisted ?? '—'}
+            compareValue={waitlistComparable ? vsCompare(compData?.total_waitlisted) : undefined}
+            {...(waitlistComparable ? pendingTrend : {})}
             compareYear={compareYear ?? undefined}
             sentiment="muted"
             subtitle="On waitlist"
@@ -300,7 +326,8 @@ export default function RegistrationOverview() {
             title="Total Cancelled"
             note={1}
             value={data.total_cancelled}
-            compareValue={compData?.total_cancelled}
+            compareValue={vsCompare(compData?.total_cancelled)}
+            {...pendingTrend}
             compareYear={compareYear ?? undefined}
             sentiment="inverse"
             subtitle="Cancellations"
@@ -316,7 +343,8 @@ export default function RegistrationOverview() {
           <MetricCard
             title="New Campers"
             value={data.new_vs_returning.new_count}
-            compareValue={compData?.new_vs_returning.new_count}
+            compareValue={vsCompare(compData?.new_vs_returning.new_count)}
+            {...pendingTrend}
             compareYear={compareYear ?? undefined}
             sentiment="neutral"
             subtitle={`${formatPercent(data.new_vs_returning.new_percentage)} of enrolled`}
@@ -331,7 +359,8 @@ export default function RegistrationOverview() {
           <MetricCard
             title="Returning Campers"
             value={data.new_vs_returning.returning_count}
-            compareValue={compData?.new_vs_returning.returning_count}
+            compareValue={vsCompare(compData?.new_vs_returning.returning_count)}
+            {...pendingTrend}
             compareYear={compareYear ?? undefined}
             subtitle={`${formatPercent(data.new_vs_returning.returning_percentage)} of enrolled`}
             onClick={() =>
@@ -801,11 +830,11 @@ export default function RegistrationOverview() {
         </div>
 
         <DefinitionNotes
-          notes={
-            data.average_summers_at_camp != null
-              ? [...OVERVIEW_NOTES, ...TENURE_NOTES]
-              : OVERVIEW_NOTES
-          }
+          notes={[
+            ...OVERVIEW_NOTES,
+            ...(data.average_summers_at_camp != null ? TENURE_NOTES : []),
+            ...(compareBasis?.notes ?? []),
+          ]}
         />
 
         {/* Drill-down Modal */}

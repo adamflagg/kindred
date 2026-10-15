@@ -306,6 +306,22 @@ class MetricsRepository:
         value = getattr(items[0], "detected_at", None) if items else None
         return str(value) if value else None
 
+    async def fetch_snapshots_start(self) -> str | None:
+        """``snapshot_datetime`` of the first nightly enrollment snapshot of any year, or None (K13)."""
+        try:
+            page = await asyncio.to_thread(
+                self.pb.collection(ENROLLMENT_SNAPSHOTS).get_list,
+                1,
+                1,
+                {"sort": "snapshot_datetime", "filter": "snapshot_datetime != ''", "fields": "snapshot_datetime"},
+            )
+        except Exception as e:
+            logger.warning(f"Could not fetch snapshots start: {e}")
+            return None
+        items = getattr(page, "items", None) or []
+        value = getattr(items[0], "snapshot_datetime", None) if items else None
+        return str(value) if value else None
+
     async def fetch_enrollment_snapshots(self, year: int, session_cm_id: int | None = None) -> list[Any]:
         """Fetch enrollment snapshots for a year, optionally filtered by session."""
         filter_str = f"year = {year}"

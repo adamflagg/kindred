@@ -222,7 +222,8 @@ export interface RetentionMetrics {
 export interface RegistrationMetrics {
   year: number
   total_enrolled: number
-  total_waitlisted: number
+  /** null on a same-point read: a past waitlist cannot be rebuilt. */
+  total_waitlisted: number | null
   total_cancelled: number
   by_gender: GenderBreakdown[]
   by_grade: GradeBreakdown[]
@@ -241,6 +242,15 @@ export interface RegistrationMetrics {
   /** Mean CampMinder Years At Camp of the charted campers; null when there are none. */
   average_summers_at_camp?: number | null
   by_first_summer_year?: FirstSummerYearBreakdown[]
+  // A comparison year read with same_point_of (decision 7)
+  /** 'same_point' while the primary season is live, 'final' after; absent on a plain read. */
+  prior_basis?: 'same_point' | 'final' | null
+  /** The primary season's registration day (days from its anchor). */
+  day_offset?: number | null
+  /** The day this year was read at: day_offset + 1 on an opening day (decision 45). */
+  prior_day_offset?: number | null
+  /** The last day (YYYY-MM-DD) this year was read through. */
+  as_of_date?: string | null
 }
 
 // Historical trends types

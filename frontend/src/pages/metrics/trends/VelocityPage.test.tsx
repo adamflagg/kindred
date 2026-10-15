@@ -550,3 +550,85 @@ describe('VelocityPage number format', () => {
     )
   })
 })
+
+// ---------------------------------------------------------------------------
+// K13 (#3207): label the two bases, driven per point from data_source
+// ---------------------------------------------------------------------------
+
+describe('VelocityPage labels stored and rebuilt lines (K13)', () => {
+  function day(date: string, data_source: 'snapshot' | 'reconstructed' | 'mixed') {
+    return {
+      date,
+      day_offset: 0,
+      gross_enrolled: 0,
+      enrolled: 0,
+      cancelled: 0,
+      daily_new: 0,
+      daily_cancelled: 0,
+      daily_new_boys: null,
+      daily_new_girls: null,
+      daily_cancelled_boys: null,
+      daily_cancelled_girls: null,
+      gross_enrolled_boys: null,
+      gross_enrolled_girls: null,
+      enrolled_boys: null,
+      enrolled_girls: null,
+      data_source,
+    }
+  }
+
+  const twoBases: VelocityResponse = {
+    ...comparedData,
+    snapshots_start: '2026-03-02',
+    combined: {
+      ...comparedData.combined,
+      daily: [day('2026-03-01', 'reconstructed'), day('2026-03-02', 'snapshot')],
+    },
+    prior_years: comparedData.prior_years.map((py) => ({
+      ...py,
+      daily: [
+        day(`${py.year - 1}-11-12`, 'reconstructed'),
+        day(`${py.year}-08-20`, 'reconstructed'),
+      ],
+    })),
+  }
+
+  afterEach(() => {
+    mockControls.selectedPriorYears = []
+    mockChart.comparisonYear = null
+    mockState.data = mockVelocityData
+  })
+
+  it('notes which line is stored and that 2025 and earlier are rebuilt', () => {
+    useComparison([2024, 2025], 2025)
+    mockState.data = twoBases
+    render(<VelocityPage />)
+    expect(
+      screen.getByText(/2026 is the count Kindred stored each night from Mar 2, 2026/)
+    ).toBeInTheDocument()
+    expect(screen.getByText(/2025 and earlier seasons are rebuilt/)).toBeInTheDocument()
+  })
+
+  it('marks the legend lines and the same-point cards with the note number, never hover text', () => {
+    useComparison([2025], 2025)
+    mockState.data = twoBases
+    const { container } = render(<VelocityPage />)
+    expect(screen.getByTestId('legend')).toHaveTextContent('2026 (100 at Wk 1)¹')
+    expect(screen.getByTestId('legend')).toHaveTextContent('2025 (130 final)¹')
+    const label = screen.getByText(
+      (_, el) => el?.tagName === 'P' && el.textContent === '2025 at Wk 11'
+    )
+    expect(label.querySelector('sup')).toHaveTextContent('1')
+    expect(container.querySelectorAll('sup[title]')).toHaveLength(0)
+  })
+
+  it('shows no note when every line is rebuilt', () => {
+    useComparison([2025], 2025)
+    mockState.data = {
+      ...twoBases,
+      combined: { ...twoBases.combined, daily: [day('2026-03-01', 'reconstructed')] },
+    }
+    render(<VelocityPage />)
+    expect(screen.queryByText(/stored each night/)).not.toBeInTheDocument()
+  })
+})

@@ -402,6 +402,22 @@ class TestVelocityReconstructionFallback:
     """Test velocity reconstruction when no snapshots exist."""
 
     @pytest.mark.asyncio
+    async def test_rebuilt_points_warning_says_what_the_rebuild_counts(self, service, mock_repository, sample_sessions):
+        """K13 (#3207): the warning describes the rebuild, not a cancellation-timing caveat."""
+        mock_repository.fetch_sessions.return_value = {1001: sample_sessions[1001]}
+        mock_repository.fetch_enrollment_snapshots.return_value = []
+        mock_repository.fetch_attendees_with_dates.return_value = [
+            create_mock_attendee_with_date(101, 1001, "2026-01-03"),
+        ]
+
+        result = await service.get_velocity(year=2026)
+
+        rebuilt = [w for w in result.warnings if "rebuilt" in w]
+        assert len(rebuilt) == 1
+        assert "registered by that day and not cancelled by it" in rebuilt[0]
+        assert not any("cancellation timing may be approximate" in w for w in result.warnings)
+
+    @pytest.mark.asyncio
     async def test_velocity_reconstruction_fallback(self, service, mock_repository, sample_sessions):
         """When no snapshots exist, should fall back to reconstruction
         from attendee enrollment dates, bucketed by week."""
@@ -3800,7 +3816,7 @@ class TestReconstructionWarning:
         result = await service.get_velocity(year=2026)
 
         assert len(result.warnings) >= 1
-        assert any("Reconstruction" in w for w in result.warnings)
+        assert any("rebuilt from registration dates" in w for w in result.warnings)  # K13 wording
 
     @pytest.mark.asyncio
     async def test_snapshot_only_no_reconstruction_warning(self, service, mock_repository, sample_sessions):
@@ -3812,7 +3828,7 @@ class TestReconstructionWarning:
 
         result = await service.get_velocity(year=2026)
 
-        assert not any("Reconstruction" in w for w in result.warnings)
+        assert not any("rebuilt from registration dates" in w for w in result.warnings)
 
 
 # ============================================================================
@@ -5472,6 +5488,33 @@ class TestVelocityCancellationCoverage:
 
         result = await service.get_velocity(year=2026, metric="cancellation", today=date(2026, 1, 20))
         assert result.status_history_start is None
+
+
+class TestVelocitySnapshotsStart:
+    """K13 (#3207): the page labels which lines are stored and which rebuilt. It needs the first
+    nightly snapshot of any year to say "and earlier": every season before it is rebuilt."""
+
+    @pytest.mark.asyncio
+    async def test_reports_the_first_snapshot_date(self, service, mock_repository, sample_sessions):
+        mock_repository.fetch_sessions.return_value = {1001: sample_sessions[1001]}
+        mock_repository.fetch_enrollment_snapshots.return_value = []
+        mock_repository.fetch_attendees_with_dates.return_value = []
+        mock_repository.fetch_snapshots_start = AsyncMock(return_value="2026-03-02 00:00:00.000Z")
+
+        result = await service.get_velocity(year=2026)
+
+        assert result.snapshots_start == "2026-03-02"
+
+    @pytest.mark.asyncio
+    async def test_snapshots_start_tolerates_failure(self, service, mock_repository, sample_sessions):
+        mock_repository.fetch_sessions.return_value = {1001: sample_sessions[1001]}
+        mock_repository.fetch_enrollment_snapshots.return_value = []
+        mock_repository.fetch_attendees_with_dates.return_value = []
+        mock_repository.fetch_snapshots_start = AsyncMock(side_effect=RuntimeError("boom"))
+
+        result = await service.get_velocity(year=2026)
+
+        assert result.snapshots_start is None
 
 
 class TestVelocityCancellationBeforeHistoryStart:

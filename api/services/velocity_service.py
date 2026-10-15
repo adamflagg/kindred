@@ -805,11 +805,12 @@ class VelocityService:
                         )
                     prior_year_by_gender.extend(prior_gender_curves)
 
-        # Add warning when reconstruction is used (pre-effective_date data has approximate timing)
-        if any(p.data_source == "reconstructed" for p in combined.weekly):
+        # K13 (#3207): some points are rebuilt rather than read from the nightly snapshot. The page
+        # labels which lines are which from each point's data_source; this says what a rebuild counts.
+        if any(p.data_source in ("reconstructed", "mixed") for p in combined.weekly):
             warnings.append(
-                "Reconstruction used for some weeks: cancellation timing may be approximate "
-                "for records synced before effective_date was stored."
+                "Some points are rebuilt from registration dates (campers registered by that day and not "
+                "cancelled by it), not read from the count stored each night."
             )
 
         # Fetch phase markers (pass reg_dates to avoid double fetch)
@@ -868,7 +869,17 @@ class VelocityService:
             current_day_offset=current_day_offset,
             today_day_offset=today_day_offset,
             status_history_start=status_history_start,
+            snapshots_start=await self._snapshots_start() if metric != "cancellation" else None,
         )
+
+    async def _snapshots_start(self) -> str | None:
+        """ISO date of the first nightly snapshot of any year; None when unknown (K13)."""
+        try:
+            raw = await self.repo.fetch_snapshots_start()
+        except Exception:
+            logger.warning("Could not read the snapshots start", exc_info=True)
+            return None
+        return parse_date_only(raw) if isinstance(raw, str) and raw else None
 
     async def _status_history_start(self) -> str | None:
         """ISO date of the earliest status-history row of any year; None when unknown."""
