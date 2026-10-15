@@ -1123,6 +1123,32 @@ describe('the Statistics kit alignment (ux3 statistics)', () => {
     expect(cols).toEqual(['25%', '75%'])
   })
 
+  it('keeps an unsized first column its minWidth by growing the table past a narrow card, which scrolls', () => {
+    const { container } = renderTable({
+      fixed: true,
+      columns: [
+        { key: 'a', header: 'A', minWidth: 68 },
+        { key: 'b', header: 'B', width: 300 },
+        { key: 'c', header: 'C', width: 200 },
+      ],
+      rows: [{ key: 'r', kind: 'body', cells: [textValue('x'), countValue(1), countValue(2)] }],
+    })
+    const table = container.querySelector('table') as HTMLElement
+    expect(table.style.minWidth).toBe('568px')
+  })
+
+  it('sets no table minWidth when no column declares one', () => {
+    const { container } = renderTable({
+      fixed: true,
+      columns: [
+        { key: 'a', header: 'A' },
+        { key: 'b', header: 'B', width: 300 },
+      ],
+      rows: [{ key: 'r', kind: 'body', cells: [textValue('x'), countValue(1)] }],
+    })
+    expect((container.querySelector('table') as HTMLElement).style.minWidth).toBe('')
+  })
+
   it('leaves the first column to take the rest when it declares no width', () => {
     const { container } = renderTable({
       fixed: true,

@@ -94,7 +94,9 @@ export function tierColumns(stats: ApiAidStatistics, noteOf: NoteOf): ReportColu
     ...(decided ? { tone: 'decided-ink' as const } : {}),
   })
   return [
-    { key: 'tier', header: 'Tier' },
+    // no width: it takes the rest of the card. The minimum (the longest label, "No tier", measured 68px)
+    // keeps it on screen when the others overflow a narrow card, which then scrolls sideways.
+    { key: 'tier', header: 'Tier', minWidth: 68 },
     { key: 'from', header: 'Income from', width: widthOf(98, 88) },
     { key: 'to', header: 'Income to', width: widthOf(92, 76) },
     {

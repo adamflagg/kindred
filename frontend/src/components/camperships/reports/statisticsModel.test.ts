@@ -161,6 +161,25 @@ describe('the tier table', () => {
     expect(fixedWidthTotal(stats)).toBeLessThanOrEqual(FIXED_WIDTH_BUDGET)
   })
 
+  // Owner ruling (2026-10-14): below 1440 the table scrolls inside its card, but Tier must always show.
+  // An auto column collapses to 0 when the fixed ones overflow, so Tier carries a minimum width the
+  // table keeps (ReportTable's minWidth), at least the 68px the longest label ("No tier") measured.
+  it.each([
+    ['posted basis', STATISTICS],
+    ['decided basis', STATISTICS_DECIDED],
+  ])('gives Tier a minimum width of at least its measured need on the %s', (_basis, stats) => {
+    const tier = tierColumns(stats, noNotes).find((c) => c.key === 'tier')
+    expect(tier?.minWidth).toBeGreaterThanOrEqual(TIER_COLUMN_MIN)
+  })
+
+  it.each([
+    ['posted basis', STATISTICS],
+    ['decided basis', STATISTICS_DECIDED],
+  ])('still fits the card at 1440px with Tier at its minimum on the %s', (_basis, stats) => {
+    const tier = tierColumns(stats, noNotes).find((c) => c.key === 'tier')
+    expect(fixedWidthTotal(stats) + (tier?.minWidth ?? 0)).toBeLessThanOrEqual(CARD_INNER_AT_1440)
+  })
+
   it('leaves the posted basis widths exactly as they were (Include not yet offered off changes nothing)', () => {
     expect(fixedWidthTotal(STATISTICS)).toBe(1146)
   })

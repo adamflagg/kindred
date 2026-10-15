@@ -303,6 +303,12 @@ export function ReportTable({
   const widthSum = drawn.every((c) => c.width !== undefined)
     ? drawn.reduce((sum, c) => sum + (c.width ?? 0), 0)
     : 0
+  // A column's `minWidth` keeps the unsized one from collapsing when the declared ones overflow the card:
+  // the table stays at least that wide and the card scrolls it sideways.
+  const tableMinWidth =
+    fixed && drawn.some((c) => c.minWidth !== undefined)
+      ? drawn.reduce((sum, c) => sum + (c.width ?? c.minWidth ?? 0), 0)
+      : undefined
 
   const { copy, download, copied, failed } = useReportExport({
     heading,
@@ -458,6 +464,9 @@ export function ReportTable({
           <table
             aria-label={heading.title}
             className={`w-full border-separate border-spacing-0 text-sm ${fixed ? 'table-fixed' : ''}`}
+            style={
+              tableMinWidth === undefined ? undefined : { minWidth: `${String(tableMinWidth)}px` }
+            }
           >
             {fixed && (
               // table-fixed reads its widths from the first header row, which in a grouped header holds

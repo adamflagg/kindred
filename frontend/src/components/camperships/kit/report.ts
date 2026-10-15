@@ -143,6 +143,11 @@ export interface ReportColumn {
   /** The column's definition note number (`useAidDefinitions().numberOf`), shown as ¹. */
   readonly note?: number | null | undefined
   readonly width?: number | undefined
+  /**
+   * A fixed table's unsized column that must never collapse: the table is kept at least as wide as the
+   * declared widths plus this, and scrolls inside its card instead (Statistics' Tier, owner 2026-10-14).
+   */
+  readonly minWidth?: number | undefined
   /** Body cells in bold (Statistics' Total awarded column, the mock's `<b>`); Copy and the CSV are unchanged. */
   readonly strong?: true | undefined
   /** `left`: a column of words (a pool, a round, a group), left-aligned as the mocks draw it; figures align right. */
