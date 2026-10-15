@@ -19,6 +19,7 @@ import { Link, useSearchParams } from 'react-router'
 
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useJotformForms, useJotformQueue } from '../../../hooks/useJotformAdmin'
+import { sessionName } from '../../../utils/sessionName'
 import { isFamilyAdultSessionType } from '../../../utils/sessionTypePredicates'
 import { QueryGuard } from '../../QueryGuard'
 import { JotformFormCard } from './JotformFormCard'
@@ -105,7 +106,11 @@ export function JotformPanel() {
                         aria-current={isActive ? 'page' : undefined}
                         className={isActive ? TAB_PILL_ACTIVE : TAB_PILL_IDLE}
                       >
-                        {entry.session_name}
+                        {/* An Adult Reg tab reads short ("FC4 Adults"); the form card below
+                            keeps CampMinder's full name as its heading. */}
+                        {isFamilyAdultSessionType(entry.session_type)
+                          ? sessionName(entry.session_name, entry.session_type, 'tiny')
+                          : entry.session_name}
                       </Link>
                     )
                   })}

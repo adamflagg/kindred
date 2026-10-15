@@ -470,7 +470,14 @@ describe('JotformPanel — Adult Reg sessions (kindred#3213 re-ruling 2026-10-14
       within(tabs)
         .getAllByRole('link')
         .map((link) => link.textContent)
-    ).toEqual(["Women's Weekend", 'Adult Reg: Family Camp 1'])
+    ).toEqual(["Women's Weekend", 'FC1 Adults'])
+  })
+
+  it("keeps the full CampMinder name as the selected tab's heading", () => {
+    renderPanel('?session=1000010')
+    expect(
+      screen.getByRole('heading', { name: 'Adult Reg: Family Camp 1', level: 3 })
+    ).toBeInTheDocument()
   })
 
   it("reviews an Adult Reg session's filings in place, with no Requests-tab link", async () => {
