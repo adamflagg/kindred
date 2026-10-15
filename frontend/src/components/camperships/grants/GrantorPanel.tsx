@@ -10,7 +10,7 @@ import { CS_BTN2, CS_LINK, CS_PANEL_HEAD, CS_PANEL_RULE, CS_PMETA } from '../kit
 import { formatShortDate } from '../kit/dates'
 import { ReasonEditor } from '../money/ReasonEditor'
 import { inStaffWords } from '../money/refusal'
-import { isRetired, retireBlocked, termsWords } from './grantorModel'
+import { isRetired, termsWords } from './grantorModel'
 import { GrantorForm } from './GrantorForm'
 
 /** The opened row's two panels (the Requests grid's arrangement 3: the facts left, the editor right). */
@@ -47,7 +47,6 @@ export function GrantorPanel({
     onDone(words)
   }
   const terms = termsWords(grantor)
-  const blocked = retireBlocked(grantor)
   // §24, rev1 (money-funders.html): Edit… takes the whole opened row, not its right third.
   if (mode === 'edit') {
     return (
@@ -103,15 +102,11 @@ export function GrantorPanel({
                 <button type="button" className={CS_BTN2} onClick={() => setMode('edit')}>
                   Edit…
                 </button>
-                <button
-                  type="button"
-                  className={CS_BTN2}
-                  disabled={blocked !== null}
-                  onClick={() => setMode('retire')}
-                >
+                {/* Owner ruling 2026-10-14: its own CampMinder descriptions don't hold a retire off; only an
+                    open grant does, which the read doesn't count, so the server's 409 sentence answers that. */}
+                <button type="button" className={CS_BTN2} onClick={() => setMode('retire')}>
                   Retire…
                 </button>
-                {blocked !== null && <span className={CS_PMETA}>{blocked}</span>}
               </>
             )}
           </div>
@@ -123,7 +118,7 @@ export function GrantorPanel({
             submitLabel="Retire"
             placeholder="required, logged"
             requiredWords="A reason is required."
-            hint="Hidden from pickers from now; kept for history. Allowed only while no description maps to it and no open grant names it."
+            hint="Hidden from pickers from now; its descriptions stay mapped, for history. Allowed only while no open grant names it."
             onCancel={close}
             onSubmit={async (reason) => {
               await inStaffWords(retire.mutateAsync({ key: grantor.key, reason }))

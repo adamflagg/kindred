@@ -799,13 +799,18 @@ describe('finance (view, rules, grantors)', () => {
       await waitFor(() => expect(writes()).toHaveLength(1))
     })
 
-    it('keeps Retire… off while a description maps to the funder, and says why', async () => {
+    // Owner ruling 2026-10-14: "You don't retire the individual fund. You retire the funder." A funder's own
+    // CampMinder descriptions no longer hold Retire… off (this replaces the 2026-10-01 test that pinned the block);
+    // only an open grant does, and the server says so.
+    it('offers Retire… on a funder its descriptions map to, and says they stay with it', async () => {
       renderTab('/aid/money/funders?funder=grantor_a')
       const panelA = await screen.findByTestId('grantor-panel')
-      expect(within(panelA).getByRole('button', { name: 'Retire…' })).toBeDisabled()
+      expect(within(panelA).queryByText(/Map (it|them) to another funder first/)).toBeNull()
+      await userEvent.click(within(panelA).getByRole('button', { name: 'Retire…' }))
+      expect(within(panelA).getByText(`Retire ${GRANTOR_A.name}`)).toBeInTheDocument()
       expect(
         within(panelA).getByText(
-          '1 CampMinder description still maps to it. Map it to another funder first.'
+          'Hidden from pickers from now; its descriptions stay mapped, for history. Allowed only while no open grant names it.'
         )
       ).toBeInTheDocument()
     })
