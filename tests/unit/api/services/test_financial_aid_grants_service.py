@@ -191,7 +191,7 @@ async def test_save_grantor_of_an_unknown_key_is_not_found() -> None:
         await service.save_grantor("nobody", _save(), ACTOR)
 
 
-# --- retiring a grantor (owner ruling 2026-10-01) ----------------------------------------
+# --- retiring a grantor (owner rulings 2026-10-01 and 2026-10-14) ----------------------------------------
 
 RETIRED_AT = "2031-02-01 18:30:00.000Z"
 NOW = datetime(2031, 2, 1, 18, 30, tzinfo=UTC)
@@ -232,7 +232,10 @@ async def test_retiring_an_unused_grantor_stamps_retired_at_and_logs_the_reason(
 
 
 @pytest.mark.asyncio
-async def test_a_grantor_a_description_still_maps_to_is_not_retired() -> None:
+async def test_a_grantor_its_own_descriptions_still_map_to_is_retired_and_keeps_them() -> None:
+    # Owner ruling 2026-10-14 (supersedes the description half of 2026-10-01): "You don't retire the individual
+    # fund. You retire the funder." A description has one funder (aid_sources.grantor_key), so it stays mapped and
+    # history still names the retired funder; only the grantor's retired_at is written.
     repo = _repo(
         grantor=_grantor(),
         sources=[
@@ -242,14 +245,14 @@ async def test_a_grantor_a_description_still_maps_to_is_not_retired() -> None:
         ],
     )
     service, spy = _clocked(repo)
-    with pytest.raises(GrantorInUseError) as caught:
-        await service.retire_grantor("regional_fund", _retire(), ACTOR)
-    assert (caught.value.descriptions, caught.value.grants) == (2, 0)
-    assert str(caught.value) == (
-        "Regional Fund can't be retired yet: 2 CampMinder descriptions still map to it. "
-        "Map them to another grantor first."
+    out = await service.retire_grantor("regional_fund", _retire(), ACTOR)
+    assert out.retired_at == RETIRED_AT
+    assert [d.description_key for d in out.descriptions] == ["regional grant - north", "regional grant - south"]
+    (write,) = spy.writes
+    assert (write.collection, write.data) == (
+        "aid_grantors",
+        {"retired_at": RETIRED_AT, "note": "Folded into the regional fund"},
     )
-    assert not spy.called
 
 
 @pytest.mark.asyncio
@@ -267,16 +270,16 @@ async def test_a_grantor_an_open_grant_names_is_not_retired() -> None:
 
 
 @pytest.mark.asyncio
-async def test_a_grantor_in_use_both_ways_says_both() -> None:
+async def test_a_grantor_with_descriptions_and_open_grants_is_refused_for_the_grants_alone() -> None:
     commitments = [SimpleNamespace(id=f"com00000000000{i}", grantor_key="regional_fund") for i in (1, 2)]
     repo = _repo(grantor=_grantor(), sources=[_source("regional grant", "regional_fund")], open_commitments=commitments)
     service, spy = _clocked(repo)
     with pytest.raises(GrantorInUseError) as caught:
         await service.retire_grantor("regional_fund", _retire(), ACTOR)
+    assert (caught.value.descriptions, caught.value.grants) == (0, 2)
     assert str(caught.value) == (
-        "Regional Fund can't be retired yet: 1 CampMinder description still maps to it, "
-        "and 2 open grants still name it. Map the description to another grantor and move or withdraw "
-        "the grants first."
+        "Regional Fund can't be retired yet: 2 open grants still name it. "
+        "Move them to another grantor or withdraw them first."
     )
     assert not spy.called
 

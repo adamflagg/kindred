@@ -119,28 +119,19 @@ def _count(n: int, one: str, many: str) -> str:
 
 
 class GrantorInUseError(FinancialAidValidationError):
-    """A grantor something still points at can't be retired (409): the counts say what to fix first."""
+    """A grantor an open grant still names can't be retired (409): the count says what to fix first.
 
-    def __init__(self, name: str, *, descriptions: int, grants: int) -> None:
-        self.descriptions = descriptions
+    `descriptions` stays in the 409 detail so its shape doesn't change, but is always 0: since the owner's
+    2026-10-14 ruling a mapped CampMinder description no longer blocks a retire."""
+
+    def __init__(self, name: str, *, grants: int) -> None:
+        self.descriptions = 0
         self.grants = grants
-        mapped = (
-            _count(descriptions, "CampMinder description still maps", "CampMinder descriptions still map") + " to it"
-        )
         named = _count(grants, "open grant still names", "open grants still name") + " it"
-        them = "it" if descriptions == 1 else "them"
-        grant_them = "it" if grants == 1 else "them"
-        if descriptions and grants:
-            what = f"{mapped}, and {named}"
-            fix = (
-                f"Map the {'description' if descriptions == 1 else 'descriptions'} to another grantor and move or "
-                f"withdraw the {'grant' if grants == 1 else 'grants'} first."
-            )
-        elif descriptions:
-            what, fix = mapped, f"Map {them} to another grantor first."
-        else:
-            what, fix = named, f"Move {grant_them} to another grantor or withdraw {grant_them} first."
-        super().__init__(f"{name} can't be retired yet: {what}. {fix}")
+        them = "it" if grants == 1 else "them"
+        super().__init__(
+            f"{name} can't be retired yet: {named}. Move {them} to another grantor or withdraw {them} first."
+        )
 
 
 def grantor_retired_at(record: Any) -> str:
@@ -149,7 +140,8 @@ def grantor_retired_at(record: Any) -> str:
 
 
 def refuse_retired_grantor(record: Any) -> None:
-    """A retired grantor takes no new description or grant: either would undo what retiring it checked."""
+    """A retired grantor takes no new description or grant: pickers never offer one, and a new grant would undo
+    what retiring it checked. Unretire it first."""
     if grantor_retired_at(record):
         raise FinancialAidValidationError(f"{record.name} is retired; unretire it first")
 
@@ -463,14 +455,17 @@ class GrantsService:
         return _grantor_out(key, after, descriptions, retired_at)
 
     async def retire_grantor(self, key: str, body: GrantorRetireIn, actor: str) -> GrantorOut:
-        """Owner ruling 2026-10-01: only once no description maps to the grantor and no open grant names it
-        (GrantorInUseError says how many of each). Retiring a retired grantor is refused (GrantorStateError)
-        before any write, so the helper never sees a no-op.
+        """Only once no open grant names the grantor (GrantorInUseError says how many). Owner ruling 2026-10-01
+        also required that no CampMinder description map to it; the owner superseded that half on 2026-10-14
+        ("You don't retire the individual fund. You retire the funder."). A description has exactly one funder
+        (aid_sources.grantor_key), so its descriptions stay mapped to it and history and reports still name it.
+        Retiring a retired grantor is refused (GrantorStateError) before any write, so the helper never sees a
+        no-op.
 
-        Known limit: the in-use counts are read before the write batch, and aid_sources/aid_grants carry no
-        revision to guard on, so a remap or new grant racing a retire can leave a retired grantor still named.
-        Nothing is lost (history still resolves it) and unretire repairs it; with a handful of staff the window
-        is tiny, so it is accepted rather than adding revision fields."""
+        Known limit: the open-grant count is read before the write batch, and aid_grants carries no revision to
+        guard on, so a new grant racing a retire can leave a retired grantor still named. Nothing is lost
+        (history still resolves it) and unretire repairs it; with a handful of staff the window is tiny, so it is
+        accepted rather than adding revision fields."""
         current = await self.repo.get_grantor(key)
         if current is None:
             raise FinancialAidNotFoundError(f"grantor {key!r} not found")
@@ -479,12 +474,12 @@ class GrantsService:
         sources, open_grants = await asyncio.gather(
             self.repo.fetch_sources(), self.repo.fetch_open_commitments_naming(key)
         )
-        mapped = sum(1 for s in sources if str(getattr(s, "grantor_key", "") or "") == key)
-        if mapped or open_grants:
-            raise GrantorInUseError(str(current.name), descriptions=mapped, grants=len(open_grants))
+        if open_grants:
+            raise GrantorInUseError(str(current.name), grants=len(open_grants))
         retired_at = self._clock().astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S.000Z")
         await self._set_retired_at(current, key, retired_at, "retire", body.reason, actor)
-        return _grantor_out(key, _grantor_snapshot(current), [], retired_at)
+        descriptions = _descriptions_by_grantor(sources).get(key, [])
+        return _grantor_out(key, _grantor_snapshot(current), descriptions, retired_at)
 
     async def unretire_grantor(self, key: str, body: GrantorRetireIn, actor: str) -> GrantorOut:
         """Puts a retired grantor back in the pickers (development trues up the directory after the seed, and a
