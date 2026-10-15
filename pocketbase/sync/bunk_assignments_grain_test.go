@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"slices"
@@ -1105,5 +1106,116 @@ func TestProcessResultGroup_PlanWithNoSessionsStillTracksItsAssignments(t *testi
 		t.Errorf("ProcessedKeys = %v, want it to contain %q -- the run SAW this person in this bunk, so "+
 			"its stored row must be kept from the orphan sweep (kindred#2394, kindred#2465)",
 			s.ProcessedKeys, wantKey)
+	}
+}
+
+// TestProcessAssignment_AttendeeWithoutPersonsRowIsRejectedNotAnError pins the
+// season-rollover symptom: the N-1 hourly bunk_assignments run failed every
+// hour with "1 database operations failed". validPersonCMIDs is built from
+// attendees, but the person relation is resolved against persons, and a prior
+// season's persons are only refreshed by the daily pass -- so an active
+// attendee with no persons row for that year passed validation and then died
+// in PopulateRelations, counted as Stats.Errors (an infrastructure failure).
+// A missing upstream row is data the sync was never handed, not a SQLite
+// operation that did not complete: it is Rejected (warn-only), as in
+// kindred#2292, and the run still reports every other assignment.
+func TestProcessAssignment_AttendeeWithoutPersonsRowIsRejectedNotAnError(t *testing.T) {
+	t.Parallel()
+
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+	setupBunkAssignmentGrainCollections(t, app)
+
+	const year = 2025
+	const personCMID = 9000002 // an active attendee, but no persons row for this year
+	const planCMID = 8002
+	const sessionCMID = 5201
+	const bunkCMID = 6201
+
+	saveRec(t, app, "camp_sessions", map[string]any{"cm_id": sessionCMID, "year": year})
+	saveRec(t, app, "bunks", map[string]any{"cm_id": bunkCMID, "year": year})
+
+	s := &BunkAssignmentsSync{BaseSyncService: BaseSyncService{
+		App: app, Client: newParallelTestCampMinderClient(t, year), ProcessedKeys: make(map[string]bool),
+	}}
+	s.validPersonCMIDs = map[int]bool{personCMID: true}
+	s.validSessionCMIDs = map[int]bool{sessionCMID: true}
+	s.validBunkCMIDs = map[int]bool{bunkCMID: true}
+
+	existing, _, err := s.preloadExistingAssignments(year)
+	if err != nil {
+		t.Fatalf("preloadExistingAssignments: %v", err)
+	}
+
+	err = s.processAssignment(map[string]any{
+		"PersonID":   float64(personCMID),
+		"BunkID":     float64(bunkCMID),
+		"BunkPlanID": float64(planCMID),
+		"SessionID":  float64(sessionCMID),
+		"ID":         float64(700001),
+	}, existing)
+	if !errors.Is(err, errRejectedRecord) {
+		t.Fatalf("processAssignment error = %v, want one wrapping errRejectedRecord", err)
+	}
+	if rows := bunkAssignmentsForYear(t, app, year); len(rows) != 0 {
+		t.Errorf("bunk_assignments rows = %d, want 0", len(rows))
+	}
+}
+
+// TestProcessAssignment_PersonLookupDatabaseErrorIsNotARejection pins the line
+// between the two ways the person lookup can come back empty. A missing row is
+// upstream data (Rejected, warn-only); a lookup that FAILED is an infrastructure
+// error and must stay a Stats.Errors failure, or a locked or broken database
+// during the persons read would report a green run.
+func TestProcessAssignment_PersonLookupDatabaseErrorIsNotARejection(t *testing.T) {
+	t.Parallel()
+
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+	setupBunkAssignmentGrainCollections(t, app)
+
+	const year = 2025
+	const personCMID = 9000003
+	const sessionCMID = 5301
+	const bunkCMID = 6301
+
+	s := &BunkAssignmentsSync{BaseSyncService: BaseSyncService{
+		App: app, Client: newParallelTestCampMinderClient(t, year), ProcessedKeys: make(map[string]bool),
+	}}
+	s.validPersonCMIDs = map[int]bool{personCMID: true}
+	s.validSessionCMIDs = map[int]bool{sessionCMID: true}
+	s.validBunkCMIDs = map[int]bool{bunkCMID: true}
+
+	existing, _, err := s.preloadExistingAssignments(year)
+	if err != nil {
+		t.Fatalf("preloadExistingAssignments: %v", err)
+	}
+
+	// Break the persons read itself: the query now fails instead of finding nothing.
+	if _, err = app.DB().NewQuery("PRAGMA foreign_keys = OFF").Execute(); err != nil {
+		t.Fatalf("pragma: %v", err)
+	}
+	if _, err = app.DB().NewQuery("DROP TABLE persons").Execute(); err != nil {
+		t.Fatalf("drop persons: %v", err)
+	}
+
+	err = s.processAssignment(map[string]any{
+		"PersonID":   float64(personCMID),
+		"BunkID":     float64(bunkCMID),
+		"BunkPlanID": float64(8003),
+		"SessionID":  float64(sessionCMID),
+		"ID":         float64(700002),
+	}, existing)
+	if err == nil {
+		t.Fatal("processAssignment returned nil, want an infrastructure error")
+	}
+	if errors.Is(err, errRejectedRecord) {
+		t.Errorf("a failed persons lookup was classed as a rejection: %v", err)
 	}
 }

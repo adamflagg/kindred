@@ -837,8 +837,32 @@ func (s *BunkAssignmentsSync) processAssignment(
 
 	// Populate all relations - person, session, and bunk are all required
 	// Without these, the assignment record is useless and causes data integrity issues
+	//
+	// The person is resolved first and apart from the other two. validPersonCMIDs
+	// comes from attendees, but this relation resolves against persons, and the two
+	// are refreshed by different jobs -- a prior season's persons only on the daily
+	// pass, so an active attendee can have no persons row for that year for a while
+	// (or for good, if CampMinder never returned them). That is upstream data this
+	// sync was not handed, not a SQLite operation that failed, so it is Rejected
+	// (warn-only, kindred#2292) rather than Stats.Errors, which would fail the whole
+	// run every hour. Session and bunk need no such split: they are validated
+	// against the very tables they resolve in.
+	//
+	// The lookup is done here rather than through LookupRelation because that helper
+	// returns (_, false) for a failed query as well as for an empty result. Only the
+	// empty result is a rejection; a failed read is infrastructure and stays an error.
+	personRows, err := s.App.FindRecordsByFilter(
+		"persons", fmt.Sprintf("cm_id = %d && year = %d", personCMID, year), "", 1, 0)
+	if err != nil {
+		return fmt.Errorf("look up persons row for person cm_id %d in %d: %w", personCMID, year, err)
+	}
+	if len(personRows) == 0 {
+		return fmt.Errorf("%w: no persons row for person cm_id %d in %d (session %d, bunk %d)",
+			errRejectedRecord, personCMID, year, sessionCMID, bunkCMID)
+	}
+	recordData["person"] = personRows[0].Id
+
 	relations := []RelationConfig{
-		{FieldName: "person", Collection: "persons", CMID: personCMID, Required: true},
 		{FieldName: "session", Collection: "camp_sessions", CMID: sessionCMID, Required: true},
 		{FieldName: "bunk", Collection: "bunks", CMID: bunkCMID, Required: true},
 	}
