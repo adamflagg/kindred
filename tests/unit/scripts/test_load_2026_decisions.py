@@ -18,6 +18,7 @@ import pytest
 from openpyxl import Workbook
 
 from api.services.financial_aid_reconciliation import CampLine
+from api.services.financial_aid_to_place import LinkRow
 from bunking.financial_aid.calculator import GrantInput
 from bunking.financial_aid.change_log import AidWrite
 from bunking.financial_aid.decisions import DecisionEvent, fold_rounds, price_request, season_budget
@@ -96,6 +97,7 @@ def _plan(
     rules: AidRules = RULES,
     trackers: dict[int, str] | None = None,
     overrides: Sequence[loader.LoadOverride] = (),
+    links: Sequence[LinkRow] = (),
 ) -> loader.LoadPlan:
     return plan_load(
         awards,
@@ -106,7 +108,15 @@ def _plan(
         rules_version=3,
         trackers=trackers or {},
         overrides=overrides,
+        links=links,
     )
+
+
+def _link(household: int, family_key: str = "fam-1000001", *, excluded: bool = False) -> LinkRow:
+    return LinkRow(household_cm_id=household, family_key=family_key, excluded=excluded, at=None)
+
+
+LINKED = 1000006  # a second CampMinder household id of family 1000001's (an auto link)
 
 
 def _posts(plan: loader.LoadPlan, rid: str = EMMA) -> dict[int, Decimal]:
@@ -280,6 +290,71 @@ def test_the_family_camp_request_is_found_by_household_and_session() -> None:
     )
     plan = _plan([award], [family], [_line("1350", person=0, session=1000201)])
     assert _posts(plan, FAMILY) == {1: Decimal(1350)}
+
+
+# --- linked households (aid_household_links, D26) ---------------------------------------------------------------------
+
+
+def _siblings() -> tuple[list[LoadRequest], list[SheetAward]]:
+    requests = [_request(), _request(LIAM, person=1000003)]
+    awards = [_award(), _award(row=3, person_cm_id=1000003, request=req(person_cm_id=1000003))]
+    return requests, awards
+
+
+def _under_linked() -> list[CampLine]:
+    # CampMinder posted both campers' awards under the family's other household id.
+    return [
+        _line("2911", household=LINKED),
+        _line("2911", txn=1000901, household=LINKED, person=1000003),
+    ]
+
+
+def test_lines_under_a_linked_household_land_on_the_familys_requests_in_that_session() -> None:
+    requests, awards = _siblings()
+    plan = _plan(awards, requests, _under_linked(), links=[_link(1000001), _link(LINKED)])
+    assert sum([*_posts(plan, EMMA).values(), *_posts(plan, LIAM).values()], Decimal(0)) == Decimal(5822)
+    assert (plan.campminder_on_loaded, plan.campminder_unloaded) == (Decimal(5822), Decimal(0))
+    assert "campminder_without_load" not in _kinds(plan)
+
+
+def test_without_a_link_lines_under_another_household_stay_off_the_requests() -> None:
+    requests, awards = _siblings()
+    plan = _plan(awards, requests, _under_linked())
+    assert (_posts(plan, EMMA), _posts(plan, LIAM)) == ({1: Decimal(0)}, {1: Decimal(0)})
+    assert [
+        (r.kind, r.household_cm_id, r.campminder_amount) for r in plan.report if r.kind != "campminder_differs"
+    ] == [("campminder_without_load", LINKED, Decimal(5822))]
+
+
+def test_an_excluded_link_does_not_join_the_households() -> None:
+    requests, awards = _siblings()
+    plan = _plan(awards, requests, _under_linked(), links=[_link(1000001), _link(LINKED, excluded=True)])
+    assert (_posts(plan, EMMA), _posts(plan, LIAM)) == ({1: Decimal(0)}, {1: Decimal(0)})
+    assert plan.campminder_unloaded == Decimal(5822)
+
+
+def test_a_households_own_request_in_the_session_keeps_its_line_when_a_linked_household_has_one_too() -> None:
+    linked = _request(LIAM, household=LINKED, person=1000003)
+    awards = [_award(), _award(row=3, person_cm_id=1000003, household_cm_id=LINKED, request=req(person_cm_id=1000003))]
+    plan = _plan(awards, [_request(), linked], [_line("3000"), _line("3000", txn=1000901, household=LINKED, person=1000003)],
+                 links=[_link(1000001), _link(LINKED)])  # fmt: skip
+    assert (_posts(plan, EMMA), _posts(plan, LIAM)) == ({1: Decimal(3000)}, {1: Decimal(3000)})
+    assert plan.report == []
+
+
+def test_a_household_line_with_one_session_at_home_is_not_widened_by_a_linked_households_sessions() -> None:
+    linked = _request(LIAM, household=LINKED, person=1000003, session=1000104)
+    plan = _plan([_award()], [_request(), linked], [_line("3000", person=0, session=0)],
+                 links=[_link(1000001), _link(LINKED)])  # fmt: skip
+    assert _posts(plan) == {1: Decimal(3000)}
+    assert "campminder_unplaced" not in _kinds(plan)
+
+
+def test_a_household_line_with_no_request_at_home_takes_the_linked_households_one_session() -> None:
+    plan = _plan([_award()], lines=[_line("3000", household=LINKED, person=0, session=0)],
+                 links=[_link(1000001), _link(LINKED)])  # fmt: skip
+    assert _posts(plan) == {1: Decimal(3000)}
+    assert plan.report == []
 
 
 # --- named decision types and extra money ------------------------------------------------------------------------------
@@ -797,9 +872,17 @@ def test_the_workbook_gives_one_award_per_included_row_and_the_sheets_own_totals
 
 
 class _Store:
-    def __init__(self, existing: list[DecisionEvent] | None = None) -> None:
+    def __init__(
+        self,
+        existing: list[DecisionEvent] | None = None,
+        *,
+        lines: list[CampLine] | None = None,
+        links: list[LinkRow] | None = None,
+    ) -> None:
         self.events = existing or []
         self.commits: list[list[AidWrite]] = []
+        self.lines = lines if lines is not None else [_line("3400")]
+        self.household_links = links or []
 
     async def rules(self, year: int) -> tuple[AidRules, int] | None:
         return RULES, 3
@@ -811,7 +894,10 @@ class _Store:
         return self.events
 
     async def camp_lines(self, year: int) -> list[CampLine]:
-        return [_line("3400")]
+        return self.lines
+
+    async def links(self, year: int) -> list[LinkRow]:
+        return self.household_links
 
     async def commit(self, writes: Sequence[AidWrite]) -> None:
         self.commits.append(list(writes))
@@ -850,6 +936,14 @@ def test_a_dry_run_prints_aggregates_writes_the_report_and_writes_nothing(
     report = (tmp_path / "r.csv").read_text()
     assert "campminder_differs" in report
     assert "no_campminder_id" in report
+
+
+def test_the_run_reads_the_seasons_household_links(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    store = _Store(lines=[_line("3400", household=LINKED)], links=[_link(1000001), _link(LINKED)])
+    assert _run(tmp_path, store, monkeypatch=monkeypatch) == 0
+    report = (tmp_path / "r.csv").read_text()
+    assert "campminder_without_load" not in report
+    assert "campminder_differs" in report  # CampMinder's 3,400 reached the request
 
 
 def test_write_refuses_without_a_pocketbase_url(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
