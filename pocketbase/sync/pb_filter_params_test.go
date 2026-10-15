@@ -21,6 +21,8 @@ var filterInjectionPayloads = []string{
 // TestLookupCMIDByPBIDTreatsQuotesAsData covers the `id = {:id}` shape, the
 // commonest of the converted sites.
 func TestLookupCMIDByPBIDTreatsQuotesAsData(t *testing.T) {
+	t.Parallel()
+
 	app := newSyncTestApp(t)
 	realID := saveRecord(t, app, "camp_sessions", map[string]any{"cm_id": 4101, "year": 2026})
 	b := &BaseSyncService{App: app}
@@ -38,6 +40,8 @@ func TestLookupCMIDByPBIDTreatsQuotesAsData(t *testing.T) {
 // TestSessionCMIDsOfTypeTreatsQuotesAsData covers a free-text value beside a
 // numeric one.
 func TestSessionCMIDsOfTypeTreatsQuotesAsData(t *testing.T) {
+	t.Parallel()
+
 	app := newSyncTestApp(t)
 	saveRecord(t, app, "camp_sessions", map[string]any{"cm_id": 4201, "year": 2026, "session_type": sessionTypeMain})
 	r := NewSessionResolver(app)
@@ -61,6 +65,8 @@ func TestSessionCMIDsOfTypeTreatsQuotesAsData(t *testing.T) {
 // TestLoadSessionWindowsTreatsQuotesAsData covers the OR-of-values shape built
 // by concatenation.
 func TestLoadSessionWindowsTreatsQuotesAsData(t *testing.T) {
+	t.Parallel()
+
 	app := newSyncTestApp(t)
 	saveRecord(t, app, "camp_sessions", map[string]any{
 		"cm_id": 4301, "year": 2026, "session_type": sessionTypeMain,
@@ -85,6 +91,8 @@ func TestLoadSessionWindowsTreatsQuotesAsData(t *testing.T) {
 
 // TestGetWorkbookForSessionTreatsQuotesAsData covers a select-field value.
 func TestGetWorkbookForSessionTreatsQuotesAsData(t *testing.T) {
+	t.Parallel()
+
 	app := newWorkbookTestApp(t)
 	m := NewWorkbookManager(app, nil)
 	ctx := context.Background()
@@ -110,6 +118,8 @@ func TestGetWorkbookForSessionTreatsQuotesAsData(t *testing.T) {
 // TestEqualsAnyFilterTreatsQuotesAsData covers the batched `a = x || a = y`
 // shape, and pins that a real id among hostile ones still matches.
 func TestEqualsAnyFilterTreatsQuotesAsData(t *testing.T) {
+	t.Parallel()
+
 	app := newSyncTestApp(t)
 	realID := saveRecord(t, app, "camp_sessions", map[string]any{"cm_id": 4401, "year": 2026})
 	saveRecord(t, app, "camp_sessions", map[string]any{"cm_id": 4402, "year": 2026})
