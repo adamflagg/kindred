@@ -140,6 +140,50 @@ describe('the tier table', () => {
     expect(tierColumns(STATISTICS, noNotes).map((c) => c.key)).not.toContain('decided')
   })
 
+  // The fixed column widths must leave the Tier column room inside the card. Measured on main at a 1440px
+  // viewport (real 2026 data): the card's inner width is 1214px, and Tier (auto width, "No tier" is the
+  // longest label) needs 68px, which is what Include not yet offered off leaves it. So the other columns'
+  // fixed widths may total at most 1214 - 68 = 1146px on either basis. With Decided on they summed to
+  // 1224px, the table overflowed the card by 10px and Tier collapsed to 0px (its labels sat under
+  // "Income from"). The approved mock narrows the columns on the decided basis for this reason.
+  const CARD_INNER_AT_1440 = 1214
+  const TIER_COLUMN_MIN = 68
+  const FIXED_WIDTH_BUDGET = CARD_INNER_AT_1440 - TIER_COLUMN_MIN
+  const fixedWidthTotal = (stats: Parameters<typeof tierColumns>[0]) =>
+    tierColumns(stats, noNotes)
+      .filter((c) => !c.exportOnly)
+      .reduce((total, c) => total + (c.width ?? 0), 0)
+
+  it.each([
+    ['posted basis', STATISTICS],
+    ['decided basis', STATISTICS_DECIDED],
+  ])('keeps the tier table inside its card at 1440px on the %s', (_basis, stats) => {
+    expect(fixedWidthTotal(stats)).toBeLessThanOrEqual(FIXED_WIDTH_BUDGET)
+  })
+
+  // Owner ruling (2026-10-14): below 1440 the table scrolls inside its card, but Tier must always show.
+  // An auto column collapses to 0 when the fixed ones overflow, so Tier carries a minimum width the
+  // table keeps (ReportTable's minWidth), at least the 68px the longest label ("No tier") measured.
+  it.each([
+    ['posted basis', STATISTICS],
+    ['decided basis', STATISTICS_DECIDED],
+  ])('gives Tier a minimum width of at least its measured need on the %s', (_basis, stats) => {
+    const tier = tierColumns(stats, noNotes).find((c) => c.key === 'tier')
+    expect(tier?.minWidth).toBeGreaterThanOrEqual(TIER_COLUMN_MIN)
+  })
+
+  it.each([
+    ['posted basis', STATISTICS],
+    ['decided basis', STATISTICS_DECIDED],
+  ])('still fits the card at 1440px with Tier at its minimum on the %s', (_basis, stats) => {
+    const tier = tierColumns(stats, noNotes).find((c) => c.key === 'tier')
+    expect(fixedWidthTotal(stats) + (tier?.minWidth ?? 0)).toBeLessThanOrEqual(CARD_INNER_AT_1440)
+  })
+
+  it('leaves the posted basis widths exactly as they were (Include not yet offered off changes nothing)', () => {
+    expect(fixedWidthTotal(STATISTICS)).toBe(1146)
+  })
+
   // Approved final mock: with Include not yet offered on, the two % headers turn amber instead of growing
   // words that would wrap the row; each title says "(posted + decided)" in full (owner B4a (b)).
   it('turns both % headers amber on the decided basis, their titles naming the decided numerator', () => {

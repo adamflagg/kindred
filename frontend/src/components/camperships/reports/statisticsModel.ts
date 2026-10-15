@@ -84,6 +84,9 @@ export const isDecided = (stats: ApiAidStatistics) => stats.basis === 'posted_an
  */
 export function tierColumns(stats: ApiAidStatistics, noteOf: NoteOf): ReportColumn[] {
   const decided = isDecided(stats)
+  // The mock narrows the columns on the decided basis (one line in both modes): [posted, decided] px.
+  // Together with Decided's own 78 they fit the card at 1440 and leave Tier its room.
+  const widthOf = (posted: number, whenDecided: number) => (decided ? whenDecided : posted)
   // With Include not yet offered on, the two % headers turn amber instead of growing words that would
   // wrap the row; each title says "(posted + decided)" in full (owner B4a (b); final mock).
   const percent = (what: string, tail: string) => ({
@@ -91,13 +94,15 @@ export function tierColumns(stats: ApiAidStatistics, noteOf: NoteOf): ReportColu
     ...(decided ? { tone: 'decided-ink' as const } : {}),
   })
   return [
-    { key: 'tier', header: 'Tier' },
-    { key: 'from', header: 'Income from', width: 98 },
-    { key: 'to', header: 'Income to', width: 92 },
+    // no width: it takes the rest of the card. The minimum (the longest label, "No tier", measured 68px)
+    // keeps it on screen when the others overflow a narrow card, which then scrolls sideways.
+    { key: 'tier', header: 'Tier', minWidth: 68 },
+    { key: 'from', header: 'Income from', width: widthOf(98, 88) },
+    { key: 'to', header: 'Income to', width: widthOf(92, 76) },
     {
       key: 'fee',
       header: 'Eligible fee %',
-      width: 106,
+      width: widthOf(106, 92),
       title: 'The fee share this tier pays under the chosen award table; "varies" across tables',
     },
     {
@@ -105,12 +110,12 @@ export function tierColumns(stats: ApiAidStatistics, noteOf: NoteOf): ReportColu
       header: 'Apps',
       note: noteOf('apps'),
       divider: 'before' as const,
-      width: 66,
+      width: widthOf(66, 56),
     },
     {
       key: 'asked',
       header: 'Asked',
-      width: 92,
+      width: widthOf(92, 86),
       title:
         "Every app's ask, cancelled and closed ones included, at most its session's cost (an appeal counts on top of the earlier awards, as Development's need)",
     },
@@ -121,9 +126,9 @@ export function tierColumns(stats: ApiAidStatistics, noteOf: NoteOf): ReportColu
       exportOnly: true,
       title: "Every app's ask exactly as typed, before the session-cost cap",
     },
-    { key: 'asks', header: 'Asks', width: 58, title: 'One per round asked' },
-    { key: 'averageAsk', header: 'Avg ask', width: 78 },
-    { key: 'awarded', header: 'Awarded', note: noteOf('awarded'), width: 94 },
+    { key: 'asks', header: 'Asks', width: widthOf(58, 50), title: 'One per round asked' },
+    { key: 'averageAsk', header: 'Avg ask', width: widthOf(78, 70) },
+    { key: 'awarded', header: 'Awarded', note: noteOf('awarded'), width: widthOf(94, 84) },
     ...(decided
       ? [
           {
@@ -136,28 +141,33 @@ export function tierColumns(stats: ApiAidStatistics, noteOf: NoteOf): ReportColu
           },
         ]
       : []),
-    { key: 'averageAward', header: 'Avg award', note: noteOf('average_award'), width: 90 },
-    { key: 'awards', header: 'Awards', note: noteOf('awarded'), width: 72 },
+    {
+      key: 'averageAward',
+      header: 'Avg award',
+      note: noteOf('average_award'),
+      width: widthOf(90, 84),
+    },
+    { key: 'awards', header: 'Awards', note: noteOf('awarded'), width: widthOf(72, 66) },
     {
       key: 'liveAsked',
       header: 'In-budget ask',
       note: noteOf('pct_of_ask'),
       divider: 'before' as const,
-      width: 106,
+      width: widthOf(106, 104),
       title: "Asked (live, in budget): each round's ask as it stands today, on live requests",
     },
     {
       key: 'pct',
       header: '% of ask',
       note: noteOf('pct_of_ask'),
-      width: 84,
+      width: widthOf(84, 78),
       ...percent('% of ask', decided ? ': amber while Include not yet offered is on' : ''),
     },
     {
       key: 'pctGrants',
       header: '% incl. grants',
       note: noteOf('pct_of_ask'),
-      width: 110,
+      width: widthOf(110, 104),
       ...percent(
         '% of ask incl. grants',
         `${decided ? ': amber while Include not yet offered is on' : ''}. Round 1 and All rounds only: a grant belongs to the request, not a round.`
