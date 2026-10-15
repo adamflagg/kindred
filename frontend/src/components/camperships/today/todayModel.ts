@@ -50,7 +50,28 @@ export const REGISTRAR_ORDER: readonly TodayKey[] = [
   'late_full_coverage',
   'to_place',
 ]
-export const FINANCE_ORDER: readonly TodayKey[] = ['pending_approval', 'rules_sections', 'sources']
+export const FINANCE_ORDER: readonly TodayKey[] = [
+  'pending_approval',
+  'rules_sections',
+  'sources',
+  'cancel_reason',
+]
+
+/**
+ * D164 (owner 2026-10-14): a CampMinder withdrawal with no reason stays "an open to-do for finance". Its line is
+ * casework's (Give a Reason… is a casework write, so the server sends it only to a user who can answer it), and the
+ * finance page's registrar fold shows only its first five lines, so a live one moves into finance's own list, and
+ * out of the fold, where it would be counted twice. At zero it stays in the fold, as every casework line does.
+ */
+export function financeTodos(
+  finance: readonly ApiAidTodayLine[],
+  casework: readonly ApiAidTodayLine[] | null
+): { finance: ApiAidTodayLine[]; registrar: ApiAidTodayLine[] | null } {
+  const ask = casework?.find((l) => l.key === 'cancel_reason' && l.items > 0)
+  if (casework === null || ask === undefined)
+    return { finance: [...finance], registrar: casework && [...casework] }
+  return { finance: [...finance, ask], registrar: casework.filter((l) => l !== ask) }
+}
 export const DEVELOPMENT_ORDER: readonly TodayKey[] = [
   'no_contact',
   'no_eligibility',

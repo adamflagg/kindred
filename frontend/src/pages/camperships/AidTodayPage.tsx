@@ -47,6 +47,7 @@ import {
   reportingGroupRows,
   reportingGroupTotal,
   showRegistrarQueue,
+  financeTodos,
   upkeepItems,
 } from '../../components/camperships/today/todayModel'
 import { TodayTodos } from '../../components/camperships/today/TodayTodos'
@@ -243,7 +244,9 @@ function FinanceBody({
   budget: ReturnType<typeof useAidBudget>
   view: AidView
 }) {
-  const finance = today.finance ?? []
+  // D164: finance's own list carries a live Cancelled: give a reason line from casework (financeTodos).
+  const lists = financeTodos(today.finance ?? [], today.casework ?? null)
+  const finance = lists.finance
   const { top, rest } = rankLines(finance, FINANCE_ORDER)
   const waiting = top.length + live(rest).length
 
@@ -273,7 +276,7 @@ function FinanceBody({
       live(finance.filter((l) => l.key === key))
     ),
   ]
-  const registrar = showRegistrarQueue(today.finance) ? (today.casework ?? null) : null
+  const registrar = showRegistrarQueue(today.finance) ? lists.registrar : null
   const queue = registrar === null ? null : rankLines(registrar, REGISTRAR_ORDER).top
   // The meta counts every live casework line, not just the five the fold shows.
   const queueLive = registrar === null ? [] : live(registrar)
