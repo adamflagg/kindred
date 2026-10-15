@@ -33,7 +33,7 @@ from api.schemas.financial_aid_grants import (
 from api.schemas.financial_aid_intake import IssueOut
 from api.schemas.financial_aid_surfaces import TodayFlagsOut, TodayKey
 from api.services.camp_calendar import CAMP_TZ
-from api.services.financial_aid_decisions_service import FinancialAidDecisionsService
+from api.services.financial_aid_decisions_service import FIRST_TICKED_SEASON, FinancialAidDecisionsService
 from api.services.financial_aid_grants_register import RegisterRow
 from api.services.financial_aid_intake_service import never_true_fields, never_true_labels
 from api.services.financial_aid_ledger_service import NamedSource
@@ -1718,6 +1718,30 @@ def test_r20_a_season_with_some_dated_posts_keeps_the_undated_in_the_current_wee
     assert today.posted_this_week.value == 1500.0
     assert today.posted_by_week
     assert today.posted_by_week[-1].posted == 1500.0
+
+
+def test_r20_a_season_before_the_first_ticked_season_is_always_undated_even_with_one_dated_hand_tick() -> None:
+    """2026's loader writes no effective_on, so its posts are undated; one dated Posted tick by hand must not flip the
+    season to dated and pour the whole loaded Posted into the current week."""
+    rows = [
+        _row("a", 1, _posted(1, 100.0, date(2031, 4, 15))),
+        _row("b", 2, _undated(1, 500.0), _undated(2, 250.0)),
+    ]
+    today = build_today(_inputs(rows, year=FIRST_TICKED_SEASON - 1), casework=False, finance=True)
+    assert today.posts_undated is True
+    assert today.posted_by_week == []
+    figure = today.posted_this_week
+    assert figure is not None
+    assert figure.blank is True
+    assert (figure.value, figure.previous) == (0, 0)
+
+
+def test_r20_the_first_ticked_season_with_some_dated_posts_is_dated() -> None:
+    rows = [_row("a", 1, _posted(1, 100.0, date(2031, 4, 15))), _row("b", 2, _undated(1, 500.0))]
+    today = build_today(_inputs(rows, year=FIRST_TICKED_SEASON), casework=False, finance=True)
+    assert today.posts_undated is False
+    assert today.posted_this_week is not None
+    assert today.posted_this_week.value == 600.0
 
 
 def test_r20_a_season_with_no_post_at_all_is_not_undated() -> None:

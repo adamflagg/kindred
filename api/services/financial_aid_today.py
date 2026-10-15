@@ -35,6 +35,7 @@ from api.schemas.financial_aid_surfaces import (
 from api.services.aid_season_cache import AidSeasonCache
 from api.services.camp_calendar import CAMP_TZ
 from api.services.financial_aid_decisions_service import (
+    FIRST_TICKED_SEASON,
     DecisionsStore,
     FinancialAidDecisionsService,
     Names,
@@ -688,8 +689,12 @@ POSTS_UNDATED_TITLE: Final = (
 
 def posts_undated(inputs: TodayInputs) -> bool:
     """Owner ruling 20: the season has posted rounds (as the budget counts them) and not one carries a post date, as
-    the 2026 reproduced load writes them. With some dated, an undated post still counts in the current week."""
+    the 2026 reproduced load writes them. With some dated, an undated post still counts in the current week.
+    A season before FIRST_TICKED_SEASON is always undated: its loader writes no post dates, so a hand tick carrying one
+    must not flip the season to dated and count the whole loaded Posted in the current week."""
     days = [posted_on for posted_on, _ in _posted_parts(inputs.rows)]
+    if inputs.year < FIRST_TICKED_SEASON:
+        return bool(days)
     return bool(days) and all(day is None for day in days)
 
 
