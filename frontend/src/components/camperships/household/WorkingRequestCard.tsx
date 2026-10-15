@@ -23,6 +23,7 @@ import { ReasonForm } from './ReasonForm'
 import { RequestCard } from './RequestCard'
 import {
   RoundChecklist,
+  RoundUndoForm,
   RoundDecisionForm,
   RoundNextAction,
   type DecisionKind,
@@ -80,6 +81,8 @@ export function WorkingRequestCard({
   const [open, setOpen] = useState<Open>(null)
   // Finance's Approve… / Refuse…: its form is a full-width row under the Round 3 line (#g6-decide).
   const [deciding, setDeciding] = useState<DecisionKind | null>(null)
+  // Undo Posted's form is the same kind of row, under the round whose box was unticked.
+  const [undoingRound, setUndoingRound] = useState<number | null>(null)
   const editorRef = useRef<CardEditorHandle>(null)
   const requestId = request.row.request_id
   const leaveOwn = useCallback((go: () => void) => {
@@ -290,7 +293,16 @@ export function WorkingRequestCard({
       costAction={costAction}
       editor={editor}
       checklist={(line) => (
-        <RoundChecklist request={request} line={line} year={year} editing={editing} />
+        <RoundChecklist
+          request={request}
+          line={line}
+          year={year}
+          editing={editing}
+          undo={{
+            open: undoingRound === line.round,
+            set: (on) => setUndoingRound(on ? line.round : null),
+          }}
+        />
       )}
       nextAction={(line) => (
         <RoundNextAction
@@ -303,11 +315,18 @@ export function WorkingRequestCard({
         />
       )}
       lineDetail={(line) =>
-        deciding !== null &&
-        canApprove &&
-        !editing &&
-        !cancelled(request.row) &&
-        line.status === 'pending_approval' ? (
+        undoingRound === line.round && line.posted ? (
+          <RoundUndoForm
+            request={request}
+            line={line}
+            year={year}
+            onDone={() => setUndoingRound(null)}
+          />
+        ) : deciding !== null &&
+          canApprove &&
+          !editing &&
+          !cancelled(request.row) &&
+          line.status === 'pending_approval' ? (
           <RoundDecisionForm
             request={request}
             line={line}

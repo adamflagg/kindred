@@ -81,6 +81,57 @@ const messageOf = (error: unknown) => (error instanceof Error ? error.message : 
 const UNDO_HINT = 'For a box checked by mistake.'
 
 /**
+ * A refusal in a decision-panel cell. The cells are `whitespace-nowrap`, so a long server sentence
+ * would push the whole table past its card (35px at 1100): it wraps here, at a capped width.
+ */
+const REFUSAL_NOTE = `${AMBER_NOTE} max-w-xs whitespace-normal`
+
+/** Which round's Undo Posted is open, held by the page that draws its form (as `DecisionControl`). */
+export interface UndoControl {
+  readonly open: boolean
+  readonly set: (open: boolean) => void
+}
+
+/**
+ * The reason Undo Posted needs. The page draws it as a full-width row under the round's line: the
+ * Checklist cell sizes to its content, so a form in it opened 187px wide at every width.
+ */
+export function RoundUndoForm({
+  request,
+  line,
+  year,
+  onDone,
+}: {
+  request: ApiAidHouseholdRequest
+  line: RoundLine
+  year: number
+  onDone: () => void
+}) {
+  const undo = useAidUndoPosted()
+  const round = asRound(line.round)
+  if (round === null) return null
+  return (
+    <ReasonForm
+      head={`Undoing Posted · Round ${String(line.round)}`}
+      hint={
+        <>
+          <span className="block">{UNDO_HINT}</span>
+          <span className="block">{UNDO_WARNING}</span>
+        </>
+      }
+      label="Why undo Posted"
+      submitLabel="Undo Posted"
+      onSubmit={(reason) =>
+        undo
+          .mutateAsync({ year, body: { request_id: request.row.request_id, round, reason } })
+          .then(onDone)
+      }
+      onCancel={onDone}
+    />
+  )
+}
+
+/**
  * A round's checklist on the household page (§5.2, §6.3; D47, D51; Decision 22). Posted is ticked by
  * "Mark Posted" (the next action); here its box unticks, with the reason the undo needs. Accepted
  * ticks a posted round or a C1 round (`cm_pending`, as the grid's `acceptedTarget` offers it), never
@@ -91,16 +142,23 @@ export function RoundChecklist({
   line,
   year,
   editing = false,
+  undo: undoControl,
 }: {
   request: ApiAidHouseholdRequest
   line: RoundLine
   year: number
   /** This card has a money editor open: the round's writes wait for it (the tick would lock its figure). */
   editing?: boolean | undefined
+  /**
+   * The page owns whether Undo Posted is open and draws its form (`RoundUndoForm`) as a full-width
+   * row under the round's line. Without it the form opens in place, here.
+   */
+  undo?: UndoControl | undefined
 }) {
-  const undo = useAidUndoPosted()
   const accept = useAidTickAccepted()
-  const [undoing, setUndoing] = useState(false)
+  const [localUndoing, setLocalUndoing] = useState(false)
+  const undoing = undoControl ? undoControl.open : localUndoing
+  const setUndoing = undoControl ? undoControl.set : setLocalUndoing
   const [error, setError] = useState<string | null>(null)
   const round = asRound(line.round)
   const requestId = request.row.request_id
@@ -143,26 +201,10 @@ export function RoundChecklist({
         />
         {noAcceptOnReversed && <span className={MUTED}>Reversed: nothing to accept</span>}
       </div>
-      {undoing && (
-        <ReasonForm
-          head={`Undoing Posted · Round ${String(line.round)}`}
-          hint={
-            <>
-              <span className="block">{UNDO_HINT}</span>
-              <span className="block">{UNDO_WARNING}</span>
-            </>
-          }
-          label="Why undo Posted"
-          submitLabel="Undo Posted"
-          onSubmit={(reason) =>
-            undo
-              .mutateAsync({ year, body: { request_id: requestId, round, reason } })
-              .then(() => setUndoing(false))
-          }
-          onCancel={() => setUndoing(false)}
-        />
+      {undoing && !undoControl && (
+        <RoundUndoForm request={request} line={line} year={year} onDone={() => setUndoing(false)} />
       )}
-      {error !== null && <span className={AMBER_NOTE}>{error}</span>}
+      {error !== null && <span className={REFUSAL_NOTE}>{error}</span>}
     </div>
   )
 }
@@ -309,7 +351,7 @@ export function RoundNextAction({
         >
           {`Mark Posted · locks ${formatMoney(amount)}`}
         </button>
-        {error !== null && <span className={AMBER_NOTE}>{error}</span>}
+        {error !== null && <span className={REFUSAL_NOTE}>{error}</span>}
         {offer !== null && (
           <button
             type="button"
