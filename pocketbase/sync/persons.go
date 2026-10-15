@@ -1835,6 +1835,11 @@ func (s *PersonsSync) updatePersonHouseholdRelations(
 // feed failed, and this sweep would delete it. Hence the one guard this function
 // does take.
 func (s *PersonsSync) deleteHouseholdOrphans(year int, processedIDs map[int]bool) error {
+	// This sweep is persons' own, outside BaseSyncService, so it honors the all-seasons
+	// re-sync's keep-orphans switch itself (all_seasons_resync.go).
+	if s.keptOrphans("household") {
+		return nil
+	}
 	if s.skipSweepForStaffFetchFailure("households",
 		"households reachable only through staff are missing from the computed set", year) {
 		return nil

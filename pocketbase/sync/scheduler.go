@@ -91,6 +91,16 @@ func (s *Scheduler) Start() error {
 		return fmt.Errorf("adding custom values schedule: %w", err)
 	}
 
+	// Weekly all-seasons re-sync of sessions, attendees and persons for every season older than
+	// N-1 (all_seasons_resync.go). Saturday 05:00, clear of the nightly and of Sunday's passes.
+	_, err = s.cron.AddFunc(allSeasonsResyncSchedule, func() {
+		slog.Info("Starting scheduled all-seasons re-sync")
+		s.runAllSeasonsResync()
+	})
+	if err != nil {
+		return fmt.Errorf("adding all-seasons re-sync schedule: %w", err)
+	}
+
 	// Start the cron scheduler
 	s.cron.Start()
 	s.running = true
@@ -185,6 +195,16 @@ func (s *Scheduler) runCustomValuesSync() {
 		}
 	}
 	slog.Info("Custom values sync sequence completed")
+}
+
+// runAllSeasonsResync runs the weekly all-seasons re-sync. The bound is generous: the pass is a
+// few minutes of CampMinder calls, but it may wait for a nightly that overran first.
+func (s *Scheduler) runAllSeasonsResync() {
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Hour)
+	defer cancel()
+	if err := s.orchestrator.RunAllSeasonsResync(ctx); err != nil {
+		slog.Error("All-seasons re-sync failed", "error", err)
+	}
 }
 
 // TriggerCustomValuesSync manually triggers the custom values sync

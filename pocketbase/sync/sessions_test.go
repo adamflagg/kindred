@@ -1166,3 +1166,31 @@ func TestIsAGSession(t *testing.T) {
 		})
 	}
 }
+
+// TestClassify2021FamilyCampWeekendsWithNoGroupAreFamily pins epic #3207 PR 16's typing case:
+// 2021's held Family Camp weekends are named "2021 Family Camp N…" and carry no CampMinder
+// session group Kindred holds (their stored session_group is empty), so classifySessionType
+// reaches the name rules. Those type them `family`, as #2114 made an unmapped group do. The
+// stored rows still read `other` because 2021 was last synced before that rule landed and
+// nothing re-synced it; the weekly all-seasons pass is what rewrites them.
+func TestClassify2021FamilyCampWeekendsWithNoGroupAreFamily(t *testing.T) {
+	t.Parallel()
+	s := &SessionsSync{}
+	names := []string{
+		"2021 Family Camp 1: Spring Weekend",
+		"2021 Family Camp 2",
+		"2021 Family Camp 3: Labor Day Weekend",
+		"2021 Family Camp 4: Autumn Weekend",
+		"2021 Family Camp 5",
+		"2021 Family Camp 6",
+	}
+	infos := make([]sessionInfo, 0, len(names))
+	for i, name := range names {
+		infos = append(infos, sessionInfo{cmID: 700 + i, name: name})
+	}
+	for _, info := range infos {
+		if got := s.classifySessionType(info, 0, infos); got != sessionTypeFamily {
+			t.Errorf("classifySessionType(%q, no group) = %q, want %q", info.name, got, sessionTypeFamily)
+		}
+	}
+}

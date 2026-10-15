@@ -386,6 +386,18 @@ global job, so an N−1 failure never costs the primary.
 | Sunday 02:00, `0 2 * * 0`                  | the global tables + workbook export   | `multi_workbook_export` only (when Google Sheets is configured)            |
 | Sunday 04:00, `0 4 * * 0`                  | full person/household custom values   | none: the scoped daily `*_family_camp` passes keep N−1 current             |
 
+**Seasons older than N−1** get one more cron: **Saturday 05:00 (`0 5 * * 6`), the all-seasons re-sync**
+(`sync/all_seasons_resync.go`). For each season from N−2 back to 2017, newest first, it re-runs
+`session_groups → sessions → attendees → persons` (persons writes households) through `runSeasonPass`,
+with that season's own instances. It runs nothing derived. It deletes only stale `attendees` rows, for
+example the enrollment of a person CampMinder merged into another, which would otherwise count twice.
+Every other job in the pass keeps its orphans (`setKeepOrphans`), because those deletes cascade into
+history an older season never rebuilds. A `camp_sessions` row takes that season's `bunk_assignments`,
+`bunk_plans` and lodging rows with it, a `persons` row its `bunk_assignments` and aid applications, and a
+household its `family_camp_registrations` and `household_demographics`. Before each season it waits while
+any other queue runs (the nightly, the weekly globals, a staff full run or a replay). Its runs are filed
+as `historical`, under their own year.
+
 `financial_transactions` and `aid_postings` run once, from the primary pass, over their own
 N−1..N+1 window. A staff-triggered run (`?year=`) runs the season being viewed when it is N or
 N−1, and returns 400 for any other year (`viewedSeason`, `sync/api.go`); the unified

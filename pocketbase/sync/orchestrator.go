@@ -833,6 +833,7 @@ type Orchestrator struct {
 	weeklySyncQueue         []string           // Services queued for weekly sync
 	customValuesSyncRunning bool               // Track if custom values sync sequence is in progress
 	customValuesSyncQueue   []string           // Services queued for custom values sync
+	allSeasonsResyncRunning bool               // The weekly all-seasons re-sync (all_seasons_resync.go)
 	pendingUnifiedSyncs     []QueuedSync       // Queue of pending unified sync requests (FIFO)
 	activeSyncCancel        context.CancelFunc // Cancel function for the currently running sync
 	currentRunIndex         int                // 0-based index of currently running job in active queue
@@ -2135,6 +2136,15 @@ func (o *Orchestrator) RunDailySync(ctx context.Context) error {
 func (o *Orchestrator) runSeasonPass(
 	ctx context.Context, year int, jobs []string, trigger string, onJob func(i int),
 ) error {
+	return o.runSeasonPassWith(ctx, year, jobs, trigger, onJob, nil)
+}
+
+// runSeasonPassWith is runSeasonPass with prepare, when non-nil, called on each job's season
+// instance before it runs (the all-seasons re-sync uses it to switch sweeps off).
+func (o *Orchestrator) runSeasonPassWith(
+	ctx context.Context, year int, jobs []string, trigger string, onJob func(i int),
+	prepare func(job string, svc Service),
+) error {
 	if o.BaseClient() == nil {
 		// Unreachable in production: the scheduler registers no cron if InitializeSyncServices
 		// fails to build the client. Without one, client-backed jobs would get a nil client.
@@ -2173,6 +2183,9 @@ func (o *Orchestrator) runSeasonPass(
 			slog.Error("Season pass: no year-scoped instance, skipping rather than running the primary's",
 				"year", year, "service", job)
 			continue
+		}
+		if prepare != nil {
+			prepare(job, svc)
 		}
 		slog.Info("Season pass: starting service", "year", year, "service", job,
 			"current", i+1, "total", len(jobs))

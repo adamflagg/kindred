@@ -92,6 +92,11 @@ type BaseSyncService struct {
 	// field directly (e.g. session_groups.go); a service that does not declare one stays
 	// correctly unsupported and gets the honest 400.
 	DryRun bool
+	// keepOrphans, when true, turns every sweep this type owns into a no-op for the run: the
+	// weekly all-seasons re-sync sets it on the jobs whose deletes would cascade into history an
+	// older season never rebuilds (all_seasons_resync.go). Set through setKeepOrphans, never
+	// from a request.
+	keepOrphans bool
 }
 
 // NewBaseSyncService creates a new base sync service
@@ -305,6 +310,10 @@ func (b *BaseSyncService) deleteOrphans(
 	filter string,
 	guard *OrphanSweepGuard,
 ) error {
+	if b.keptOrphans(entityName) {
+		return nil
+	}
+
 	// Only delete orphans if the sync was successful
 	if !b.SyncSuccessful {
 		slog.Info("Skipping orphan deletion due to sync failure", "entity", entityName)
@@ -507,6 +516,10 @@ func (b *BaseSyncService) DeleteOrphansFromPreloaded(
 	preloadedRecords map[any]*core.Record,
 	entityName string,
 ) error {
+	if b.keptOrphans(entityName) {
+		return nil
+	}
+
 	if !b.SyncSuccessful {
 		slog.Info("Skipping orphan deletion due to sync failure", "entity", entityName)
 		return nil

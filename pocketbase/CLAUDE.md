@@ -77,7 +77,7 @@ Fields use British spelling: `cancelled_count`, `cancelled_at`. Allowed via `ext
 
 All CampMinder data tables include a required `year` field. **Cross-table relationships use CampMinder IDs, never PocketBase IDs.** Unique indexes include `year` (e.g., `person_id, year, session`).
 
-Sync covers the primary season and the one before it (N, N−1). The primary rolls over every Oct 15 Pacific (`sync/year.go`); `CAMPMINDER_SEASON_ID` is an optional override, and an empty value counts as unset. The frontend year selector sets the season being viewed and never moves the primary. A staff-triggered sync runs for the viewed season when it is N or N−1, and any other year is refused with 400 (`viewedSeason` in `sync/api.go`).
+Sync covers the primary season and the one before it (N, N−1). The primary rolls over every Oct 15 Pacific (`sync/year.go`); `CAMPMINDER_SEASON_ID` is an optional override, and an empty value counts as unset. The frontend year selector sets the season being viewed and never moves the primary. A staff-triggered sync runs for the viewed season when it is N or N−1, and any other year is refused with 400 (`viewedSeason` in `sync/api.go`). Older seasons (N−2 back to 2017) get a weekly re-sync of sessions, attendees and persons, Saturday 05:00, that deletes only stale attendees rows (`sync/all_seasons_resync.go`).
 
 ## Build & test
 
