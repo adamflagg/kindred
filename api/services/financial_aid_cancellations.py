@@ -22,12 +22,14 @@ an offer"; owner ruling 2026-09-30): its unposted rounds count nowhere, so it le
 and Held, and the ledger never ticks it. Its posted rounds stay in Posted until CampMinder's reversal
 posts (D54).
 
-The reason is one of D141's nine, and it is OPTIONAL (owner ruling B, 2026-10-04, retiring D101's
-"Cancelled: give a reason" to-do, its queue and its Today line): nothing asks for a missing one. Staff
-can still record it (the Cancel dialog, a To reverse row, the household page's cancelled request card).
-The reports read a cancellation with none as "no reason recorded", on its own line. Only live
-requests (active, unmatched) take a cancellation: a withdrawn or duplicate request already counts
-nowhere.
+The reason is one of D141's nine, and every cancellation needs one (D164, owner 2026-10-14, amending
+D163's "never chased"). A cancellation made in the dashboard can't be saved without it. One CampMinder
+synced can't be stopped at the source, so it carries "Cancelled: give a reason" until staff give it
+(Give a Reason… on the household page's cancelled request card): a to-do, never a hold or a Note (main
+spec §10.5 as amended), with its own Requests view and Today line, whether or not aid was posted, from
+the first season cancel reasons exist (2027, clean spec §5.6). The reports keep a cancellation with
+none on its own "no reason recorded" line (2026's, and anything still unanswered). Only live requests
+(active, unmatched) take a cancellation: a withdrawn or duplicate request already counts nowhere.
 """
 
 from __future__ import annotations
@@ -73,6 +75,12 @@ CANCEL_REASON_LABELS: Final[Mapping[CancelReason, str]] = {
     "another_reason": "another reason",
     "not_known": "not known",
 }
+TODO_CANCEL_REASON: Final = "cancel_reason_missing"
+TODO_CANCEL_REASON_TEXT: Final = "Cancelled: give a reason"
+# Clean spec §5.6: "Cancel reasons exist from 2027". An earlier season's cancellations still count
+# (not live, To reverse); they carry no to-do, since no reason was ever recorded for them (D164 keeps
+# them on the reports' "no reason recorded" line).
+FIRST_REASONED_SEASON: Final = 2027
 
 
 def parse_reason(value: Any) -> CancelReason | None:
@@ -189,8 +197,14 @@ def cancelled_days(
 class Cancellation:
     by: Literal["campminder", "kindred"]
     on: date | None
-    reason: CancelReason | None  # None: none recorded; optional (owner ruling B, 2026-10-04)
+    reason: CancelReason | None  # None: "Cancelled: give a reason" (D164), from FIRST_REASONED_SEASON
     note: str
+
+
+def needs_reason(cancellation: Cancellation | None, year: int) -> bool:
+    """D164: a cancelled request with no reason carries "Cancelled: give a reason" until one is given, from the
+    first season cancel reasons exist (clean spec §5.6)."""
+    return cancellation is not None and cancellation.reason is None and year >= FIRST_REASONED_SEASON
 
 
 def _by_person_and_household(

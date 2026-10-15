@@ -40,6 +40,7 @@ export const STAGES = {
     duplicates: 0,
     session_not_settled: 2,
     to_reverse: 1,
+    cancel_reason: 3,
   },
   families: 389,
   live: 370,

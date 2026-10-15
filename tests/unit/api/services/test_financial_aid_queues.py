@@ -161,9 +161,9 @@ def test_a_confirmed_request_with_a_payer_share_short_is_still_not_reconciled() 
     assert row_queues(row) == ["not_reconciled"]
 
 
-def test_cancelled_with_aid_live_and_no_reason_is_to_reverse_only() -> None:
-    """Owner ruling B (2026-10-04): the cancel reason is optional, so a missing one puts the row in no view. Even a row
-    still carrying the retired to-do (a stale client fixture) joins no "cancel_reason" view."""
+def test_cancelled_with_aid_live_is_to_reverse_and_asks_for_a_reason() -> None:
+    """D164 (owner 2026-10-14): a cancellation with no reason stays a to-do until one is given, so the row carrying
+    "Cancelled: give a reason" is in that view as well as To reverse."""
     row = _row(
         _round(1, "posted", posted=1500.0, posted_on=date(2031, 3, 9)),
         request_status="active",
@@ -171,21 +171,31 @@ def test_cancelled_with_aid_live_and_no_reason_is_to_reverse_only() -> None:
         to_reverse=True,
         todos=[TodoOut(code="cancel_reason_missing", message="Cancelled: give a reason")],
     )
-    assert row_queues(row) == ["to_reverse"]
+    assert row_queues(row) == ["to_reverse", "cancel_reason"]
 
 
-def test_the_retired_cancel_reason_view_is_gone_from_the_queues() -> None:
-    """Owner ruling B (2026-10-04) retired the view; with the client's mapping gone (#3002), QueueOut drops it."""
-    assert "cancel_reason" not in get_args(QueueOut)
-    assert "cancel_reason" not in QUEUES
-
-
-def test_a_cancelled_row_with_no_reason_and_nothing_to_reverse_is_in_no_view() -> None:
+def test_a_cancelled_row_asking_for_a_reason_with_nothing_to_reverse_is_in_that_view_alone() -> None:
     row = _row(
         request_status="active",
-        cancellation=CancellationOut(by="kindred", on=date(2031, 5, 2), reason=None, note=""),
+        cancellation=CancellationOut(by="campminder", on=date(2031, 5, 2), reason=None, note=""),
+        todos=[TodoOut(code="cancel_reason_missing", message="Cancelled: give a reason")],
+    )
+    assert row_queues(row) == ["cancel_reason"]
+
+
+def test_a_cancelled_row_carrying_no_to_do_is_in_no_view() -> None:
+    """The to-do decides membership (the row's grid builder scopes it to 2027 on, clean spec §5.6), so a 2026
+    cancellation with no reason, which carries none, is in no view."""
+    row = _row(
+        request_status="active",
+        cancellation=CancellationOut(by="campminder", on=date(2026, 5, 2), reason=None, note=""),
     )
     assert row_queues(row) == []
+
+
+def test_the_cancel_reason_view_is_the_last_queue() -> None:
+    assert QUEUES[-1] == "cancel_reason"
+    assert "cancel_reason" in get_args(QueueOut)
 
 
 def test_an_unmatched_session_is_session_not_settled() -> None:

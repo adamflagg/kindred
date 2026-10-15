@@ -2116,8 +2116,8 @@ export type CancellationMetricsResponse = {
  * CancellationOut
  *
  * A cancelled request (D101): by CampMinder (the enrollment; `on` is its cancellation day) or in
- * Kindred (the registrar; `on` is the day it was recorded). reason None = none recorded
- * (optional, owner ruling B 2026-10-04).
+ * Kindred (the registrar; `on` is the day it was recorded). reason None = none given yet (D164: from 2027 the row
+ * carries "Cancelled: give a reason" until it is).
  */
 export type CancellationOut = {
   /**
@@ -6169,6 +6169,7 @@ export type GridRowOut = {
     | 'to_reverse'
     | 'session_not_settled'
     | 'duplicates'
+    | 'cancel_reason'
   > | null
   /**
    * Payer Count
@@ -17919,7 +17920,7 @@ export type ToPlaceWriteOut = {
 /**
  * TodayFlagsOut
  *
- * The registrar hero's chips (owner ruling 17): the four strip flags, which can sit on top of any stage, each the
+ * The registrar hero's chips (owner ruling 17): the strip flags, which can sit on top of any stage, each the
  * strip's own count (every row whose `queues` name it, as Requests lists it).
  */
 export type TodayFlagsOut = {
@@ -17939,6 +17940,10 @@ export type TodayFlagsOut = {
    * To Reverse
    */
   to_reverse: number
+  /**
+   * Cancel Reason
+   */
+  cancel_reason: number
 }
 
 /**
@@ -17962,6 +17967,7 @@ export type TodayLineOut = {
     | 'to_reverse'
     | 'session_not_settled'
     | 'duplicates'
+    | 'cancel_reason'
     | 'to_place'
     | 'grants'
     | 'late_full_coverage'
@@ -18231,8 +18237,7 @@ export type TodayWeekResponse = {
 /**
  * TodoOut
  *
- * A to-do on the row: neither a hold nor a Note. None is emitted now: owner ruling B (2026-10-04) retired the only
- * one, D101's "Cancelled: give a reason" (the cancel reason is optional).
+ * A to-do on the row: neither a hold nor a Note ("Cancelled: give a reason", D101 as amended by D164).
  */
 export type TodoOut = {
   /**

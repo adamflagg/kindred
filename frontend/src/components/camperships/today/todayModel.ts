@@ -46,6 +46,7 @@ export const REGISTRAR_ORDER: readonly TodayKey[] = [
   'to_reverse',
   'session_not_settled',
   'duplicates',
+  'cancel_reason',
   'late_full_coverage',
   'to_place',
 ]
@@ -90,6 +91,7 @@ export const LINE_WORDS: Readonly<Record<TodayWordKey, string>> = {
   to_reverse: 'To reverse',
   session_not_settled: 'Session not settled',
   duplicates: 'Duplicates',
+  cancel_reason: 'Cancelled: give a reason',
   to_place: 'To place',
   grants: 'Grants needing attention',
   late_full_coverage: 'A late full-coverage grant',
@@ -142,6 +144,7 @@ const CLOCK_WORDS: Readonly<Partial<Record<TodayKey, (d: string) => string>>> = 
   holds: (d) => `on hold ${d}`,
   not_reconciled: (d) => `posted ${d} ago`,
   grants: (d) => `${d} old`,
+  cancel_reason: (d) => `cancelled ${d} ago`,
 }
 export function clockWords(key: TodayKey | string, days: number): string {
   const d = `${String(days)} ${days === 1 ? 'day' : 'days'}`

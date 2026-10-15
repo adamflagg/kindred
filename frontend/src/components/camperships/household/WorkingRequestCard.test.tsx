@@ -220,6 +220,23 @@ describe('WorkingRequestCard (§6.3, casework)', () => {
     expect(screen.queryByRole('button', { name: 'Cancel Request…' })).toBeNull()
   })
 
+  // D164 (owner 2026-10-14): the reason is required, as Reopen's is. Give a Reason… won't save with none,
+  // and "not known" is one pick with no note.
+  it('Give a Reason… needs a reason, and takes "not known" with no note (D164)', async () => {
+    renderCards([ROW_RILEY])
+    await userEvent.click(screen.getByRole('button', { name: 'Give a Reason…' }))
+    expect(screen.getByText('Giving a reason')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Save the Reason' }))
+    expect(cancel).not.toHaveBeenCalled()
+    expect(screen.getByText('Pick a cancel reason')).toBeInTheDocument()
+    await chooseAid('Cancel reason', 'not known')
+    await userEvent.click(screen.getByRole('button', { name: 'Save the Reason' }))
+    expect(cancel).toHaveBeenCalledWith({
+      requestId: ROW_RILEY.request_id,
+      body: { cancelled: true, reason: 'not_known', note: '' },
+    })
+  })
+
   it('offers a CampMinder cancellation only its reason, no money edit (B35)', () => {
     renderCards([ROW_RILEY])
     const offered = screen

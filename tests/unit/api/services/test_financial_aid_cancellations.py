@@ -11,6 +11,8 @@ import pytest
 from api.services.financial_aid_cancellations import (
     CANCEL_REASON_LABELS,
     CANCEL_REASONS,
+    TODO_CANCEL_REASON,
+    TODO_CANCEL_REASON_TEXT,
     CancelEvent,
     Cancellation,
     CancelState,
@@ -19,6 +21,7 @@ from api.services.financial_aid_cancellations import (
     enrollment_cancelled,
     first_cancelled_on,
     fold_cancellations,
+    needs_reason,
     parse_reason,
 )
 from api.services.financial_aid_grants_register import registrations_cancelled
@@ -228,13 +231,20 @@ def test_a_reason_outside_d141s_list_is_refused() -> None:
         parse_reason("moved")
 
 
-def test_the_cancel_reason_is_optional_and_nothing_asks_for_one() -> None:
-    """Owner ruling B (2026-10-04): the reason is optional. The module no longer names a "give a reason" to-do."""
-    import api.services.financial_aid_cancellations as cancellations
-
-    assert not hasattr(cancellations, "TODO_CANCEL_REASON")
-    assert not hasattr(cancellations, "needs_reason")
-    assert Cancellation("campminder", MAY2, None, "").reason is None
+def test_the_to_do_asks_from_2027_and_only_while_no_reason_is_given() -> None:
+    """D164 (owner 2026-10-14, amending D163): every cancellation needs a reason, so one with none stays a to-do
+    until it is given. Clean spec §5.6: cancel reasons exist from 2027; 2026's cancellations ask for none, and the
+    reports keep their "reason not recorded" line."""
+    missing = Cancellation("campminder", MAY2, None, "")
+    assert (needs_reason(missing, 2027), needs_reason(missing, 2028), needs_reason(missing, 2026)) == (
+        True,
+        True,
+        False,
+    )
+    assert needs_reason(Cancellation("kindred", MAY2, "medical", ""), 2027) is False
+    assert needs_reason(Cancellation("campminder", MAY2, "not_known", ""), 2027) is False  # "Not known" answers it
+    assert needs_reason(None, 2027) is False
+    assert (TODO_CANCEL_REASON, TODO_CANCEL_REASON_TEXT) == ("cancel_reason_missing", "Cancelled: give a reason")
 
 
 def test_a_past_read_dates_a_cancellation_by_its_earliest_cancelled_registration() -> None:

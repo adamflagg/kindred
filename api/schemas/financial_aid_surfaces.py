@@ -70,6 +70,7 @@ TodayKey = Literal[
     "to_reverse",
     "session_not_settled",
     "duplicates",
+    "cancel_reason",
     "to_place",
     "grants",
     "late_full_coverage",
@@ -153,13 +154,14 @@ class TodayLineOut(BaseModel):
 
 
 class TodayFlagsOut(BaseModel):
-    """The registrar hero's chips (owner ruling 17): the four strip flags, which can sit on top of any stage, each the
+    """The registrar hero's chips (owner ruling 17): the strip flags, which can sit on top of any stage, each the
     strip's own count (every row whose `queues` name it, as Requests lists it)."""
 
     not_reconciled: int
     duplicates: int
     session_not_settled: int
     to_reverse: int
+    cancel_reason: int
 
 
 class TodayStagesOut(BaseModel):

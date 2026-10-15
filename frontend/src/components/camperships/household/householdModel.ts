@@ -448,7 +448,8 @@ export function cancellationWords(c: ApiAidCancellation): string {
   const where = c.by === 'kindred' ? 'Cancelled in the dashboard' : 'Cancelled in CampMinder'
   const on = c.on ? ` ${formatShortDate(c.on)}` : ''
   const reason =
-    // B35 / ruling B: a reason is optional, so none reads as a fact, not a nag.
+    // D164 (owner 2026-10-14) makes the reason required; a CampMinder withdrawal still arrives with none, and
+    // the card asks with Give a Reason… beside it, so the words stay a plain fact (2026's "not recorded").
     c.reason === null ? 'none recorded' : (CANCEL_WORDS.get(c.reason) ?? c.reason)
   return [`${where}${on}`, reason, c.note].filter(nonEmpty).join(' · ')
 }

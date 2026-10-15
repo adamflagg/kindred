@@ -7,6 +7,7 @@ import { REQUEST_VIEWS } from '../requests/views'
 import { BUDGET, REGISTRAR_TODAY, STAGES, line } from './todayFixtures'
 import {
   bandSentence,
+  clockWords,
   budgetSegments,
   countParts,
   countWords,
@@ -96,7 +97,7 @@ describe('showRegistrarQueue (controller ruling V4, 2026-10-11: the mock draws i
   })
 })
 
-describe('registrar hero (ruling 17: five stages on the bar, four flags as chips)', () => {
+describe('registrar hero (ruling 17: five stages on the bar, the strip flags as chips)', () => {
   const VIEW = { year: 2027, asOf: { kind: 'live' } } as const
   const stripStage = (href: string | undefined) => {
     const url = new URL(href ?? '', 'http://x')
@@ -142,6 +143,7 @@ describe('registrar hero (ruling 17: five stages on the bar, four flags as chips
       ['not_reconciled', 'Not reconciled', 8],
       ['session_not_settled', 'Session unclear', 2],
       ['to_reverse', 'To reverse', 1],
+      ['cancel_reason', 'Cancelled: give a reason', 3],
     ])
     for (const c of chips) expect(stripStage(c.href)).toBe(c.key)
   })
@@ -484,6 +486,15 @@ describe('reasonsLine (audit R13: one sentence, capitalised once)', () => {
 describe('LINE_WORDS (controller ruling V8)', () => {
   it('names the reporting-group upkeep line by what it counts, descriptions', () => {
     expect(LINE_WORDS.needs_group).toBe('Descriptions with no reporting group')
+  })
+
+  it('words the cancel-reason line as its Requests view does, and its clock as the cancellation (D164)', () => {
+    expect(LINE_WORDS.cancel_reason).toBe('Cancelled: give a reason')
+    expect(LINE_WORDS.cancel_reason).toBe(
+      REQUEST_VIEWS.find((v) => v.key === 'cancel_reason')?.label
+    )
+    expect(clockWords('cancel_reason', 12)).toBe('cancelled 12 days ago')
+    expect(REGISTRAR_ORDER.indexOf('cancel_reason')).toBe(REGISTRAR_ORDER.indexOf('duplicates') + 1)
   })
 })
 

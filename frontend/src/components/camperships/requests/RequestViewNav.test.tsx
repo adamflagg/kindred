@@ -21,6 +21,11 @@ const COUNTS: ReadonlyMap<RequestViewKey, ViewCount> = new Map<RequestViewKey, V
   ['to_reverse', count(4)],
   ['appeals', count(6)],
 ])
+/** Every badge above zero, Cancelled: give a reason (D164) included; COUNTS keeps it at none for the +N fold tests. */
+const EVERY_BADGE: ReadonlyMap<RequestViewKey, ViewCount> = new Map([
+  ...COUNTS,
+  ['cancel_reason', count(2)],
+])
 const LENS_COUNTS: ReadonlyMap<RequestLens, ViewCount> = new Map<RequestLens, ViewCount>([
   ['all', count(186)],
   ['appeals', count(24)],
@@ -75,13 +80,22 @@ describe('RequestViewNav: the views strip (T4; mock v=f, ls=b, po=b, rv=todo)', 
     expect(link('Needs an offer')).toHaveAttribute('href', '/s/needs-offer')
   })
 
-  it('puts the exception badges on the right: Holds, Duplicates, Session unclear, To reverse (no cancel-reason badge: owner ruling B)', () => {
-    strip()
+  // D164 (owner 2026-10-14): a CampMinder cancellation with no reason stays a to-do until one is given.
+  it('draws Cancelled: give a reason last, red, opening its view, once something asks for a reason', () => {
+    strip({ counts: EVERY_BADGE })
+    expect(names(screen.getByTestId('strip-exceptions')).at(-1)).toBe('Cancelled: give a reason 2')
+    expect(link('Cancelled: give a reason')).toHaveAttribute('href', '/s/cancel-reason')
+    expect(link('Cancelled: give a reason').className).toContain('bg-red-50')
+  })
+
+  it('puts the exception badges on the right: Holds, Duplicates, Session unclear, To reverse, Cancelled: give a reason (D164)', () => {
+    strip({ counts: EVERY_BADGE })
     expect(names(screen.getByTestId('strip-exceptions'))).toEqual([
       'On hold 2',
       'Duplicates 3',
       'Session unclear 1',
       'To reverse 4',
+      'Cancelled: give a reason 2',
     ])
     expect(link('To reverse')).toHaveAttribute('href', '/s/to-reverse')
   })
@@ -141,7 +155,7 @@ describe('RequestViewNav: the views strip (T4; mock v=f, ls=b, po=b, rv=todo)', 
     screen.queryByRole('link', { name: new RegExp(`^${labelOf(key)} `) })
 
   it.each(EXCEPTION_BADGES)('hides the %s badge at 0, leaving the others', (key) => {
-    strip({ counts: new Map([...COUNTS, [key, count(0)]]) })
+    strip({ counts: new Map([...EVERY_BADGE, [key, count(0)]]) })
     expect(badgeLink(key)).toBeNull()
     expect(names(screen.getByTestId('strip-exceptions'))).toHaveLength(EXCEPTION_BADGES.length - 1)
   })

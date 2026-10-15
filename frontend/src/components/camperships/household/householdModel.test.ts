@@ -325,7 +325,7 @@ describe('words', () => {
       cancellationWords({ by: 'kindred', on: '2027-05-02', reason: 'aid_not_enough', note: '' })
     ).toBe('Cancelled in the dashboard May 2 · declined: aid not enough / financial constraints')
     expect(cancellationWords({ by: 'campminder', on: '2027-06-02', reason: null, note: '' })).toBe(
-      // B35 / ruling B: a reason is optional, so "yet" would read as a nag.
+      // D164: a CampMinder withdrawal arrives with none; the card's Give a Reason… does the asking.
       'Cancelled in CampMinder Jun 2 · none recorded'
     )
   })

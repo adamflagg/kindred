@@ -63,6 +63,7 @@ CASEWORK_LINES: Final[tuple[TodayKey, ...]] = (
     "to_reverse",
     "session_not_settled",
     "duplicates",
+    "cancel_reason",
     "to_place",
     "grants",
     "late_full_coverage",
@@ -235,6 +236,11 @@ def _posted_clock(row: GridRowOut) -> tuple[date | None, RoundOut | None]:
     return _clocked(posted, lambda r: r.posted_on)
 
 
+def _cancelled_clock(row: GridRowOut) -> tuple[date | None, RoundOut | None]:
+    """Cancelled: give a reason's clock (D164): the cancellation's own day, so the longest-unanswered comes first."""
+    return (row.cancellation.on if row.cancellation is not None else None), _newest_round(row)
+
+
 def _hold_clock(since: Mapping[str, date]) -> Clock:
     """Holds' clock (ruling V12): the day staff placed the row's manual hold; a check hold is undated."""
 
@@ -381,6 +387,7 @@ def _casework(inputs: TodayInputs) -> list[TodayLineOut]:
     offer_oldest = (inputs.today - min(asked)).days if asked else None
     waiting_oldest = (inputs.today - min(since)).days if since else None
     unreconciled = _in(rows, "not_reconciled")
+    asks_reason = _in(rows, "cancel_reason")
     gaps = [gap for row in unreconciled for gap in _disagreements(row)]
     needs_camper = inputs.grants.needs_camper
     waiting_grants = inputs.grants.waiting
@@ -427,6 +434,12 @@ def _casework(inputs: TodayInputs) -> list[TodayLineOut]:
         "to_reverse": _line("to_reverse", _in(rows, "to_reverse")),
         "session_not_settled": _line("session_not_settled", _in(rows, "session_not_settled")),
         "duplicates": _line("duplicates", _in(rows, "duplicates")),
+        # D164 (owner 2026-10-14): a CampMinder withdrawal stays an open to-do until someone gives its reason.
+        "cancel_reason": _line(
+            "cancel_reason",
+            asks_reason,
+            next_up=_next_up(asks_reason, inputs.today, _cancelled_clock),
+        ),
         "grants": TodayLineOut(
             key="grants",
             families=len(grant_households),
@@ -613,6 +626,7 @@ STRIP_STAGES: Final[tuple[QueueOut, ...]] = (
     "duplicates",
     "session_not_settled",
     "to_reverse",
+    "cancel_reason",
 )
 # Ruling 17: the bar is five stages. Needs an offer, Pending approval and Waiting on the family are strip stages whose
 # queues the segments mirror for requests moving through the normal stages; On hold reads the Stage column (latest round
@@ -665,6 +679,7 @@ def _stages(inputs: TodayInputs) -> TodayStagesOut:
             duplicates=flags["duplicates"],
             session_not_settled=flags["session_not_settled"],
             to_reverse=flags["to_reverse"],
+            cancel_reason=flags["cancel_reason"],
         ),
         families=len(households),
         live=sum(segments.values()),
