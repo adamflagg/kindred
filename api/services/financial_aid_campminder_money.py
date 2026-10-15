@@ -103,8 +103,8 @@ def aid_on_no_request(
     when it lands on:
       - a family x session with no request of any status (a family with no application, a sibling's session the
         household asked nothing for), unless the family holds a request intake matched to no session whose camper is
-        the line's, or either is the household: the loader posts such a request at the sheet's session, so that money
-        is on it;
+        the line's, or either camper is unknown (0): the loader posts such a request at the sheet's session when an
+        override loads a sheet row onto it, and this read, having no sheet, takes any such request to hold that money;
       - nothing it can be told, on a family (its household and the households linked to it) with no request at all.
         It has no session, so it counts in TOTAL only.
     Money no one request can take on a family that did ask is not counted: the loader leaves the sheet's decision
