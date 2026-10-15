@@ -8,6 +8,7 @@ import type { ReactNode } from 'react'
 
 import { formatLongDate } from './dates'
 import { formatMoney, moneyCsv } from './money'
+import { formatCount as formatAppCount, formatPercent } from '../../../utils/numberFormat'
 import type { CellValue } from './table'
 
 interface ReportValueBase {
@@ -73,12 +74,12 @@ export const textValue = (value: string, csv?: string): ReportValue =>
 
 /** "42.5%" as the server rounded it (one decimal, §9.7); "—" when there is no denominator. */
 export function formatPct(value: number | null): string {
-  return value === null ? '—' : `${value.toFixed(1)}%`
+  return formatPercent(value)
 }
 
 /** "1,293"; "—" when there is nothing to count (null), "0" for a real zero (D74). */
 export function formatCount(value: number | null): string {
-  return value === null ? '—' : value.toLocaleString('en-US')
+  return formatAppCount(value)
 }
 
 /** What the screen and Copy show. */

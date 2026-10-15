@@ -130,7 +130,7 @@ describe('MetricCard onClick functionality', () => {
         sentiment: 'inverse' as const,
         value: 10,
         compareValue: 15,
-        pattern: /-5/,
+        pattern: /\u22125/,
         expectedClass: 'text-emerald-600',
         desc: 'inverse down=green',
       },
@@ -146,7 +146,7 @@ describe('MetricCard onClick functionality', () => {
         sentiment: 'neutral' as const,
         value: 30,
         compareValue: 40,
-        pattern: /-10/,
+        pattern: /\u221210/,
         expectedClass: 'text-blue-600',
         desc: 'neutral down=blue',
       },
@@ -169,7 +169,7 @@ describe('MetricCard onClick functionality', () => {
     // in grey. 'muted' is its own value: 'neutral' stays blue for New Campers.
     it.each([
       { value: 74, compareValue: 61, pattern: /\+13 vs 2025/, desc: 'muted up' },
-      { value: 50, compareValue: 61, pattern: /-11 vs 2025/, desc: 'muted down' },
+      { value: 50, compareValue: 61, pattern: /\u221211 vs 2025/, desc: 'muted down' },
       { value: 61, compareValue: 61, pattern: /0 vs 2025/, desc: 'muted unchanged' },
     ])('$desc is grey, never green, red or blue', ({ value, compareValue, pattern }) => {
       render(
@@ -222,6 +222,46 @@ describe('MetricCard onClick functionality', () => {
       const card = screen.getByText('Total Enrolled').closest('div')
       fireEvent.click(card!)
       expect(handleClick).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('number formatting (decision 43, #3207)', () => {
+    it('shows a numeric value with thousands separators', () => {
+      render(<MetricCard title="Total Enrolled" value={1134} />)
+      expect(screen.getByText('1,134')).toBeInTheDocument()
+    })
+
+    it('writes a fall with the true minus sign and separators', () => {
+      render(
+        <MetricCard title="Total Enrolled" value={1134} compareValue={2390} compareYear={2025} />
+      )
+      expect(screen.getByText('\u22121,256 vs 2025')).toBeInTheDocument()
+    })
+
+    it('writes a rise with a plus and separators', () => {
+      render(
+        <MetricCard title="Total Enrolled" value={2390} compareValue={1134} compareYear={2025} />
+      )
+      expect(screen.getByText('+1,256 vs 2025')).toBeInTheDocument()
+    })
+
+    it('passes a pre-formatted string value through', () => {
+      render(<MetricCard title="Retention" value="67.9%" />)
+      expect(screen.getByText('67.9%')).toBeInTheDocument()
+    })
+  })
+
+  describe('numbered note (decision 11)', () => {
+    it('marks the title with its note number, with no hover text', () => {
+      render(<MetricCard title="Total Cancelled" value={172} note={1} />)
+      const mark = screen.getByText('1', { selector: 'sup' })
+      expect(mark).toBeInTheDocument()
+      expect(mark).not.toHaveAttribute('title')
+    })
+
+    it('shows no mark without a note', () => {
+      const { container } = render(<MetricCard title="Total Cancelled" value={172} />)
+      expect(container.querySelector('sup')).toBeNull()
     })
   })
 })

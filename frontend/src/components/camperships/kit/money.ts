@@ -11,7 +11,10 @@
  * - CSV writes plain signed numbers with an ASCII hyphen, whatever the screen shows (§11).
  */
 
-export const MINUS = '−'
+import { MINUS } from '../../../utils/numberFormat'
+
+/** The true minus sign (U+2212), from the app-wide number formatting. */
+export { MINUS }
 
 /** Whole cents, so float noise in the JSON (1800.0000001) never decides a comparison. */
 export function toCents(value: number): number {

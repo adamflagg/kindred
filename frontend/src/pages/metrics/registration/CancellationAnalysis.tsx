@@ -42,6 +42,9 @@ import {
 import type { CancellationSessionBreakdown } from '../../../types/metrics'
 import { sessionName } from '../../../utils/sessionName'
 import { MetricsQueryGuard } from '../../../components/metrics/MetricsQueryGuard'
+import { DefinitionNotes, DefRef } from '../../../components/camperships/kit/DefinitionNotes'
+import { formatCount, formatPercent } from '../../../utils/numberFormat'
+import { CANCELLATIONS_NOTES } from '../cancelledNotes'
 
 const CANCEL_SEGMENTS: StackedSegment[] = [
   { key: 'was_enrolled', label: 'Was Enrolled', color: 'hsl(200, 70%, 50%)' },
@@ -178,6 +181,7 @@ export default function CancellationAnalysis() {
             >
               <MetricCard
                 title="Total Cancelled"
+                note={1}
                 value={data.total_cancelled}
                 className="border-red-200 dark:border-red-800"
                 compareValue={compData?.total_cancelled}
@@ -308,9 +312,10 @@ export default function CancellationAnalysis() {
                     <div className="text-muted-foreground mb-1 flex items-center gap-1.5 text-xs font-medium">
                       <ArrowLeftRight className="h-3.5 w-3.5" />
                       Session Swaps
+                      <DefRef n={2} />
                     </div>
-                    <div className="text-foreground text-2xl font-bold">
-                      {data.session_swap_count}
+                    <div className="text-foreground text-2xl font-bold tabular-nums">
+                      {formatCount(data.session_swap_count)}
                     </div>
                     <p className="text-muted-foreground mt-1 text-xs">
                       Cancelled one session, enrolled in another
@@ -322,9 +327,10 @@ export default function CancellationAnalysis() {
                     <div className="text-muted-foreground mb-1 flex items-center gap-1.5 text-xs font-medium">
                       <UserMinus className="h-3.5 w-3.5" />
                       True Departures
+                      <DefRef n={2} />
                     </div>
-                    <div className="text-foreground text-2xl font-bold">
-                      {data.true_departure_count}
+                    <div className="text-foreground text-2xl font-bold tabular-nums">
+                      {formatCount(data.true_departure_count)}
                     </div>
                     <p className="text-muted-foreground mt-1 text-xs">Left camp entirely</p>
                   </div>
@@ -336,7 +342,7 @@ export default function CancellationAnalysis() {
                       Avg Time to Cancel
                     </div>
                     <div className="text-foreground text-2xl font-bold">
-                      {Math.round(data.avg_days_to_cancellation)} days
+                      {formatCount(Math.round(data.avg_days_to_cancellation))} days
                     </div>
                     <p className="text-muted-foreground mt-1 text-xs">
                       From registration to cancellation
@@ -350,7 +356,7 @@ export default function CancellationAnalysis() {
                       Median Time to Cancel
                     </div>
                     <div className="text-foreground text-2xl font-bold">
-                      {Math.round(data.median_days_to_cancellation)} days
+                      {formatCount(Math.round(data.median_days_to_cancellation))} days
                     </div>
                     <p className="text-muted-foreground mt-1 text-xs">
                       Middle value, less affected by outliers
@@ -383,7 +389,7 @@ export default function CancellationAnalysis() {
                               />
                             </div>
                             <span className="text-foreground w-16 text-right text-xs font-medium">
-                              {bucket.count} ({bucket.percentage}%)
+                              {formatCount(bucket.count)} ({formatPercent(bucket.percentage)})
                             </span>
                           </div>
                         ))}
@@ -407,7 +413,7 @@ export default function CancellationAnalysis() {
                             />
                           </div>
                           <span className="text-foreground w-16 text-right text-xs font-medium">
-                            {item.count} ({item.percentage}%)
+                            {formatCount(item.count)} ({formatPercent(item.percentage)})
                           </span>
                         </div>
                       ))}
@@ -741,6 +747,7 @@ export default function CancellationAnalysis() {
               </div>
             )}
 
+            <DefinitionNotes notes={CANCELLATIONS_NOTES} />
             <DrilldownModal />
           </div>
         )

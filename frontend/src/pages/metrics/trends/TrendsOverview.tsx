@@ -28,6 +28,14 @@ import { getYearColor, YEAR_PALETTE } from '../../../utils/yearColors'
 import { trendDirection } from '../../../utils/trendDirection'
 import { firstSummerYearLabel } from '../../../utils/metricsTransforms'
 import type { YearEnrollment } from '../../../types/metrics'
+import { DefinitionNotes, DefRef } from '../../../components/camperships/kit/DefinitionNotes'
+import {
+  formatCount,
+  formatPercent,
+  formatSignedCount,
+  formatSignedPercent,
+} from '../../../utils/numberFormat'
+import { TRENDS_NOTES } from '../cancelledNotes'
 
 interface GroupedChartItem {
   name: string
@@ -220,10 +228,10 @@ export default function TrendsOverview() {
 
   const percentChange =
     earliestYear && earliestYear.total_enrolled > 0
-      ? ((totalChange / earliestYear.total_enrolled) * 100).toFixed(1)
-      : '0'
+      ? (totalChange / earliestYear.total_enrolled) * 100
+      : 0
 
-  const avgGrowth = data.years.length > 1 ? (totalChange / (data.years.length - 1)).toFixed(0) : '0'
+  const avgGrowth = data.years.length > 1 ? Math.round(totalChange / (data.years.length - 1)) : 0
 
   const summerYearsFormatter = (key: string | number) => {
     const val = String(key)
@@ -244,19 +252,19 @@ export default function TrendsOverview() {
         />
         <MetricCard
           title="Latest Enrollment"
-          value={latestYear?.total_enrolled.toLocaleString() ?? 0}
+          value={latestYear?.total_enrolled ?? 0}
           subtitle={`${latestYear?.year ?? ''} total campers`}
         />
         <MetricCard
           title="Total Change"
-          value={totalChange > 0 ? `+${totalChange}` : totalChange.toString()}
-          subtitle={`${percentChange}% over ${data.years.length} years`}
+          value={formatSignedCount(totalChange)}
+          subtitle={`${formatSignedPercent(percentChange)} over ${data.years.length} years`}
           trend={trendDirection(totalChange)}
-          trendValue={`${percentChange}%`}
+          trendValue={formatSignedPercent(percentChange)}
         />
         <MetricCard
           title="Avg. Annual Growth"
-          value={Number(avgGrowth) > 0 ? `+${avgGrowth}` : avgGrowth}
+          value={formatSignedCount(avgGrowth)}
           subtitle="Campers per year"
           trend={trendDirection(avgGrowth)}
         />
@@ -324,8 +332,12 @@ export default function TrendsOverview() {
                 <th className="text-muted-foreground px-4 py-3 text-right font-medium">Female</th>
                 <th className="text-muted-foreground px-4 py-3 text-right font-medium">
                   Cancelled
+                  <DefRef n={1} />
                 </th>
-                <th className="text-muted-foreground px-4 py-3 text-right font-medium">Cancel %</th>
+                <th className="text-muted-foreground px-4 py-3 text-right font-medium">
+                  Cancel %
+                  <DefRef n={2} />
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -339,32 +351,32 @@ export default function TrendsOverview() {
                   >
                     <td className="text-foreground px-4 py-3 font-medium">{year.year}</td>
                     <td className="text-foreground px-4 py-3 text-right">
-                      {year.total_enrolled.toLocaleString()}
+                      {formatCount(year.total_enrolled)}
                     </td>
                     <td className="text-foreground px-4 py-3 text-right">
-                      {year.new_vs_returning.new_count.toLocaleString()}
+                      {formatCount(year.new_vs_returning.new_count)}
                     </td>
                     <td className="text-foreground px-4 py-3 text-right">
-                      {year.new_vs_returning.returning_count.toLocaleString()}
+                      {formatCount(year.new_vs_returning.returning_count)}
                     </td>
                     <td className="text-muted-foreground px-4 py-3 text-right">
-                      {year.new_vs_returning.new_percentage.toFixed(1)}%
+                      {formatPercent(year.new_vs_returning.new_percentage)}
                     </td>
                     <td className="text-foreground px-4 py-3 text-right">
-                      {maleCount.toLocaleString()}
+                      {formatCount(maleCount)}
                     </td>
                     <td className="text-foreground px-4 py-3 text-right">
-                      {femaleCount.toLocaleString()}
+                      {formatCount(femaleCount)}
                     </td>
                     <td className="text-foreground px-4 py-3 text-right">
                       {year.has_cancellation_data === false
                         ? '—'
-                        : (year.total_cancelled ?? 0).toLocaleString()}
+                        : formatCount(year.total_cancelled ?? 0)}
                     </td>
                     <td className="text-muted-foreground px-4 py-3 text-right">
                       {year.has_cancellation_data === false
                         ? '—'
-                        : `${(year.cancellation_rate ?? 0).toFixed(1)}%`}
+                        : formatPercent(year.cancellation_rate ?? 0)}
                     </td>
                   </tr>
                 )
@@ -584,6 +596,7 @@ export default function TrendsOverview() {
             />
           )
         })()}
+      <DefinitionNotes notes={TRENDS_NOTES} boldTerm />
     </div>
   )
 }

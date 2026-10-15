@@ -46,6 +46,7 @@ import { Loader2, AlertCircle } from 'lucide-react'
 import { DefinitionNotes } from '../../../components/camperships/kit/DefinitionNotes'
 import { AverageSummersLine } from '../../../components/metrics/AverageSummersLine'
 import { TENURE_NOTES } from '../../../components/metrics/tenureNotes'
+import { OVERVIEW_NOTES } from '../cancelledNotes'
 import type { DrilldownFilter, SessionLengthBySessionBreakdown } from '../../../types/metrics'
 import type { SessionDateLookup, SessionTypeLookup } from '../../../utils/sessionUtils'
 
@@ -295,6 +296,7 @@ export default function RegistrationOverview() {
         />
         <MetricCard
           title="Total Cancelled"
+          note={1}
           value={data.total_cancelled}
           compareValue={compData?.total_cancelled}
           compareYear={compareYear ?? undefined}
@@ -796,6 +798,7 @@ export default function RegistrationOverview() {
         </div>
       </div>
 
+      <DefinitionNotes notes={OVERVIEW_NOTES} />
       {data.average_summers_at_camp != null && <DefinitionNotes notes={TENURE_NOTES} />}
 
       {/* Drill-down Modal */}
