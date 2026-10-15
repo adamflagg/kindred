@@ -1,5 +1,6 @@
 import type { SessionBreakdown } from '../../types/metrics'
 import { resolveSessionAlias } from '../../utils/sessionAliases'
+import { rollUpTliSessions } from '../../utils/tliRollup'
 import { TEEN_PROGRAM_TYPES } from '../../utils/sessionTypePredicates'
 
 /** One row of the Overview's Session Details table. */
@@ -36,13 +37,19 @@ function teenType(session: SessionBreakdown): string | null {
  * or to the type's only current row, so one TLI row is compared with every prior TLI route. A
  * lone current row of a type therefore takes the whole prior type. Prior teen rows of a type
  * the current year does not run stay retired rows.
+ *
+ * In compare mode both years' TLI rows first roll into one "Teen Leadership Institute" line
+ * (owner, 2026-10-14; `rollUpTliSessions`), so TLI matches by that name and the type matching
+ * above now only reaches SCIT. With Compare off the rows stay as CampMinder has them.
  */
 export function buildSessionDetailRows(
-  current: readonly SessionBreakdown[],
-  prior: readonly SessionBreakdown[] | null | undefined,
+  currentRows: readonly SessionBreakdown[],
+  priorRows: readonly SessionBreakdown[] | null | undefined,
   isComparing: boolean
 ): SessionDetailRow[] {
-  const comparing = isComparing && prior != null
+  const comparing = isComparing && priorRows != null
+  const current = comparing ? rollUpTliSessions(currentRows) : currentRows
+  const prior = comparing && priorRows ? rollUpTliSessions(priorRows) : []
   const priorByName = new Map<string, SessionBreakdown>()
   if (comparing) {
     for (const p of prior) {

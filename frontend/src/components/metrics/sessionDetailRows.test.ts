@@ -141,7 +141,7 @@ describe('buildSessionDetailRows', () => {
 
       expect(rows).toHaveLength(2)
       expect(rows[1]).toMatchObject({
-        sessionName: 'TLI',
+        sessionName: 'Teen Leadership Institute',
         priorEnrolled: 67,
         delta: -17,
         retired: false,
@@ -150,23 +150,23 @@ describe('buildSessionDetailRows', () => {
     })
 
     it('names the prior session when one prior row of the type matched under another name', () => {
-      const rows = buildSessionDetailRows([tli('TLI', 50)], [tli('TLI Route 1', 23)], true)
+      const rows = buildSessionDetailRows([scit('CIT', 50)], [scit('CIT Track 1', 23)], true)
 
       expect(rows).toEqual([
-        expect.objectContaining({ priorName: 'TLI Route 1', priorEnrolled: 23, delta: 27 }),
+        expect.objectContaining({ priorName: 'CIT Track 1', priorEnrolled: 23, delta: 27 }),
       ])
     })
 
     it('folds the other prior rows of the type into a lone current row that matched by name', () => {
       const rows = buildSessionDetailRows(
-        [tli('TLI', 50)],
-        [tli('TLI', 23), tli('TLI Route 2', 44)],
+        [scit('CIT', 50)],
+        [scit('CIT', 23), scit('CIT Track 2', 44)],
         true
       )
 
       expect(rows).toEqual([
         expect.objectContaining({
-          sessionName: 'TLI',
+          sessionName: 'CIT',
           priorName: null,
           priorEnrolled: 67,
           delta: -17,
@@ -203,11 +203,11 @@ describe('buildSessionDetailRows', () => {
     it('still retires prior teen rows when the current year has none of that type', () => {
       const rows = buildSessionDetailRows(
         [s('Session A', 10, { session_type: 'main' })],
-        [tli('TLI Route 1', 23)],
+        [scit('CIT Track 1', 23)],
         true
       )
 
-      expect(rows[1]).toMatchObject({ sessionName: 'TLI Route 1', retired: true, delta: -23 })
+      expect(rows[1]).toMatchObject({ sessionName: 'CIT Track 1', retired: true, delta: -23 })
     })
 
     it('does not match non-teen sessions by type', () => {
@@ -234,6 +234,64 @@ describe('buildSessionDetailRows', () => {
       const rows = buildSessionDetailRows(current, prior, true)
 
       expect(rows.reduce((sum, r) => sum + (r.delta ?? 0), 0)).toBe(60 - 79)
+    })
+  })
+  describe('TLI rolls into one line in compare mode (owner, 2026-10-14)', () => {
+    const tli = (name: string, count: number, capacity: number | null = 40) =>
+      s(name, count, { session_type: 'tli', capacity })
+    const main = (name: string, count: number) => s(name, count, { session_type: 'main' })
+    const routesYear = [
+      main('Session A', 8),
+      tli('TLI: Route North', 23),
+      tli('TLI: Route South', 44),
+      tli('Teen Leadership Institute', 0, null),
+    ]
+
+    it('compares a one-row year with a two-route year as one line, with no retired TLI row', () => {
+      const rows = buildSessionDetailRows(
+        [main('Session A', 10), tli('Teen Leadership Institute', 45)],
+        routesYear,
+        true
+      )
+
+      expect(
+        rows.map((r) => [r.sessionName, r.enrolled, r.priorEnrolled, r.delta, r.retired])
+      ).toEqual([
+        ['Session A', 10, 8, 2, false],
+        ['Teen Leadership Institute', 45, 67, -22, false],
+      ])
+    })
+
+    it('rolls up the current year too, so a two-route year has no dashed TLI row', () => {
+      const rows = buildSessionDetailRows(routesYear, [main('Session A', 9), tli('TLI', 43)], true)
+
+      expect(rows.map((r) => [r.sessionName, r.enrolled, r.priorEnrolled, r.delta])).toEqual([
+        ['Session A', 8, 9, -1],
+        ['Teen Leadership Institute', 67, 43, 24],
+      ])
+      expect(rows[1]).toMatchObject({ capacity: 80, priorName: null })
+    })
+
+    it('lists the routes separately with Compare off, as CampMinder has them', () => {
+      const rows = buildSessionDetailRows(routesYear, null, false)
+
+      expect(rows.map((r) => r.sessionName)).toEqual([
+        'Session A',
+        'TLI: Route North',
+        'TLI: Route South',
+        'Teen Leadership Institute',
+      ])
+    })
+
+    it('does not roll up SCIT', () => {
+      const scit = (name: string, count: number) => s(name, count, { session_type: 'scit' })
+      const rows = buildSessionDetailRows(
+        [scit('CIT', 20), scit('SIT', 15)],
+        [scit('CIT', 18), scit('SIT', 12)],
+        true
+      )
+
+      expect(rows.map((r) => r.sessionName)).toEqual(['CIT', 'SIT'])
     })
   })
 })

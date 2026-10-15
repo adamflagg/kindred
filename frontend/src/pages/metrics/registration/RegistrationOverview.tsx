@@ -36,6 +36,7 @@ import {
   transformGenderData,
   transformGradeData,
   transformSessionData,
+  transformSessionComparisonData,
   transformSummerYearsData,
   transformFirstSummerYearData,
   transformNewVsReturningData,
@@ -523,8 +524,12 @@ export default function RegistrationOverview() {
                 title="Session Enrollment Comparison"
                 primaryYear={currentYear}
                 compareYear={compareYear}
-                primaryData={sessionChartData}
-                compareData={transformSessionData(
+                primaryData={transformSessionComparisonData(
+                  data.by_session,
+                  sessionDateLookup,
+                  sessionTypeLookup
+                )}
+                compareData={transformSessionComparisonData(
                   compData.by_session,
                   sessionDateLookup,
                   sessionTypeLookup
