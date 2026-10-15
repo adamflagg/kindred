@@ -54,6 +54,7 @@ Three sections via `MetricsLayout.tsx` with sticky two-level navigation. Above e
 | Registration | `attendees` + `persons` + `bunk_plans` |
 | Velocity | `enrollment_snapshots` (fast path) or reconstructed from `attendees.enrollment_date` |
 | Waitlist/Cancellations | `attendee_status_history` + `attendees` |
+| Trends (yearly Cancelled, Cancel %) | `attendees` final status `cancelled`, the same count as Overview (decision 10, #3207); never status history, which starts in 2026 |
 | Forecast | `attendees` + `bunk_plans` + `config` (budget goals, session fees) |
 
 ## Metrics-Specific Patterns
@@ -64,6 +65,8 @@ Three sections via `MetricsLayout.tsx` with sticky two-level navigation. Above e
 - **Aged-out logic**: Grade >= 10 excluded from retention base (no eligible session to return to)
 - **Demographics**: Use normalized fields when available (`normalized_school`, `normalized_city`, `normalized_congregation`), fall back to raw fields
 - **AG sessions**: Linked to parent via `parent_id`; metrics for AG fold into parent main session
+- **Session swaps** (`api/utils/session_swap.py`): a cancelled camper with any enrolled record in the season, no time window (decision 46). Swaps + true departures split the cancelled exactly as still-enrolled / not-enrolled do, on the caller's scope
+- **Number formatting** (frontend): every displayed number goes through `utils/numberFormat.ts` (separators, one-decimal percent, U+2212 minus; decision 43). Definitions are numbered notes via the kit's `DefinitionNotes`/`DefRef`, never hover text (decision 11)
 
 ## Week 0 (Pre-Registration Enrollment)
 
