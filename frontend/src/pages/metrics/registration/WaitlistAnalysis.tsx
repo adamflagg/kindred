@@ -21,6 +21,8 @@ import {
   type StackedBarDataItem,
   type StackedSegment,
 } from '../../../components/metrics/CssStackedHorizontalBarChart'
+import { SESSION_LABEL_WIDTH } from '../../../components/metrics/cssChartUtils'
+import { sessionName } from '../../../utils/sessionName'
 import { transformGenderData } from '../../../utils/metricsTransforms'
 import { SESSION_NAME_ALIASES, resolveSessionAlias } from '../../../utils/sessionAliases'
 import { ComparisonSummaryTable } from '../../../components/metrics/ComparisonSummaryTable'
@@ -48,7 +50,18 @@ const WAITLIST_GRADE_SEGMENTS: StackedSegment[] = [
   { key: 'has_enrollment', label: 'Has Other Sessions', color: 'hsl(160, 100%, 35%)' },
 ]
 
-function transformWaitlistSessionData(
+/**
+ * The fixed 340px clips rows past 13 into overflow-hidden (All Summer has more), as Cancellations'
+ * 300px did past 11. Past that, size it the same way: calculateBarSizing's dense path of 20px
+ * rows, 1px gaps and a 28px axis.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function waitlistSessionChartHeight(rows: number): number {
+  return rows > 13 ? rows * 21 + 28 : 340
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function transformWaitlistSessionData(
   bySession: WaitlistSessionBreakdown[],
   sessionDateLookup: Record<string, string>,
   sessionTypeLookup: Record<string, string>
@@ -57,7 +70,11 @@ function transformWaitlistSessionData(
   const enrolledSessions = new Map<number, string>()
   for (const item of sorted) {
     for (const enrolled of item.enrolled_in) {
-      enrolledSessions.set(enrolled.session_cm_id, enrolled.session_name)
+      // The shared short form (board 6), not CampMinder's raw name.
+      enrolledSessions.set(
+        enrolled.session_cm_id,
+        sessionName(enrolled.session_name, sessionTypeLookup[enrolled.session_name], 'short')
+      )
     }
   }
   const enrolledList = Array.from(enrolledSessions.entries())
@@ -71,7 +88,7 @@ function transformWaitlistSessionData(
   ]
   const data: StackedBarDataItem[] = sorted.map((item) => {
     const point: StackedBarDataItem = {
-      name: item.session_name,
+      name: sessionName(item.session_name, sessionTypeLookup[item.session_name], 'short'),
       total: item.no_enrollment + item.has_enrollment,
       no_enrollment: item.no_enrollment,
     }
@@ -166,6 +183,7 @@ export default function WaitlistAnalysis() {
                 className="border-amber-200 dark:border-amber-800"
                 compareValue={compData?.total_waitlisted}
                 compareYear={compareYear ?? undefined}
+                sentiment="muted"
                 onClick={() =>
                   setFilter({
                     type: 'waitlist_total',
@@ -301,14 +319,15 @@ export default function WaitlistAnalysis() {
                     title={
                       isComparing ? `${currentYear} Waitlist by Session` : 'Waitlist by Session'
                     }
-                    labelWidth={140}
-                    height={340}
+                    labelWidth={SESSION_LABEL_WIDTH}
+                    height={waitlistSessionChartHeight(primarySession.data.length)}
                     onBarClick={(item) =>
                       setFilter({
                         type: 'waitlist_total',
+                        // Bars carry the short name; find the row by position, not by name.
                         value: String(
-                          primarySession.sorted.find((s) => s.session_name === item.name)
-                            ?.session_cm_id ?? ''
+                          primarySession.sorted[primarySession.data.indexOf(item)]?.session_cm_id ??
+                            ''
                         ),
                         label: item.name,
                       })
@@ -319,8 +338,8 @@ export default function WaitlistAnalysis() {
                       data={compSession.data}
                       segments={compSession.segments}
                       title={`${compareYear} Waitlist by Session`}
-                      labelWidth={140}
-                      height={340}
+                      labelWidth={SESSION_LABEL_WIDTH}
+                      height={waitlistSessionChartHeight(compSession.data.length)}
                     />
                   )}
                 </div>

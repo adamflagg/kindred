@@ -8,6 +8,7 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import WaitlistAnalysis from './WaitlistAnalysis'
+import { SESSION_LABEL_WIDTH } from '../../../components/metrics/cssChartUtils'
 
 // Mock data matching the WaitlistMetrics interface
 const mockWaitlistData = {
@@ -204,6 +205,36 @@ describe('WaitlistAnalysis', () => {
       // Session names appear in both the stacked chart legend and the table
       expect(screen.getAllByText('Session 1').length).toBeGreaterThanOrEqual(1)
       expect(screen.getAllByText('Session 2').length).toBeGreaterThanOrEqual(1)
+    })
+
+    it('gives Waitlist by Session the shared label width, so a long quest name is not cut', () => {
+      mockUseWaitlistMetrics.mockReturnValue({
+        data: {
+          ...mockWaitlistData,
+          by_session: [
+            ...mockWaitlistData.by_session,
+            {
+              session_cm_id: 1003,
+              session_name: 'Northwest Canada Quest',
+              waitlisted: 1,
+              no_enrollment: 1,
+              has_enrollment: 0,
+              accepted: 0,
+              declined: 0,
+              enrolled_in: [],
+            },
+          ],
+        },
+        isLoading: false,
+        error: null,
+      })
+      renderWithClient()
+
+      const labels = screen
+        .getAllByText('Northwest Canada Quest')
+        .filter((el) => el.classList.contains('truncate'))
+      expect(labels.length).toBeGreaterThanOrEqual(1)
+      labels.forEach((el) => expect(el.style.width).toBe(`${SESSION_LABEL_WIDTH}px`))
     })
 
     it('renders grade breakdown', () => {

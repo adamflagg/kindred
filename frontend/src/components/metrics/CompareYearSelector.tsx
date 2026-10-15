@@ -4,6 +4,8 @@
  * Two states:
  * - Inactive (compareYear=null): Shows "Compare to..." button
  * - Active (compareYear set): Shows "{primaryYear} vs {compareYear}" dropdown + X clear button
+ * - Disabled (PR 4, pick 4B): the button, disabled, with the reason written inside it
+ *   ("Compare: not on Day 1"), whatever the URL's comparison says.
  */
 
 import { useState } from 'react'
@@ -15,7 +17,12 @@ interface CompareYearSelectorProps {
   onCompareYearChange: (year: number) => void
   onClear?: () => void
   availableYears: number[]
+  /** Set when Compare does nothing here; the reason is written inside the disabled button. */
+  disabledReason?: string | null
 }
+
+const BUTTON_CLASS =
+  'text-muted-foreground hover:text-foreground hover:bg-muted/50 disabled:hover:text-muted-foreground flex items-center gap-1.5 rounded-lg border border-dashed border-current/20 px-3 py-1.5 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent'
 
 export function CompareYearSelector({
   primaryYear,
@@ -23,8 +30,18 @@ export function CompareYearSelector({
   onCompareYearChange,
   onClear,
   availableYears,
+  disabledReason,
 }: CompareYearSelectorProps) {
   const [isOpen, setIsOpen] = useState(false)
+
+  if (disabledReason) {
+    return (
+      <button type="button" disabled className={BUTTON_CLASS}>
+        <GitCompareArrows className="h-3.5 w-3.5" />
+        Compare: {disabledReason}
+      </button>
+    )
+  }
 
   // Filter out the primary year from comparison options
   const comparisonYears = availableYears.filter((y) => y !== primaryYear)
@@ -32,10 +49,7 @@ export function CompareYearSelector({
   // Inactive state — show "Compare to..." button
   if (compareYear === null && !isOpen) {
     return (
-      <button
-        onClick={() => setIsOpen(true)}
-        className="text-muted-foreground hover:text-foreground hover:bg-muted/50 flex items-center gap-1.5 rounded-lg border border-dashed border-current/20 px-3 py-1.5 text-sm transition-colors"
-      >
+      <button onClick={() => setIsOpen(true)} className={BUTTON_CLASS}>
         <GitCompareArrows className="h-3.5 w-3.5" />
         Compare to...
       </button>

@@ -2,8 +2,11 @@
  * MetricsTypeTabs - Primary navigation for metrics module
  * Pattern: SessionTabs.tsx - rounded pills with icons, route-based
  *
- * Includes a unified session selector on the right side that applies
- * across most metrics tabs (hidden on Bunk Analysis tab which uses unfiltered data).
+ * Includes a unified session selector on the right side that applies across most metrics tabs.
+ *
+ * PR 4 pick 4B: each section's control shows on every one of its pages; where it does nothing it
+ * is disabled with the reason written inside (metricsControls.ts). On an empty season (board 9 A)
+ * every working control reads "no {year} enrollments yet", and the picker stays live.
  */
 import { Link, useLocation } from 'react-router'
 import { BarChart3, Users, TrendingUp, type LucideIcon } from 'lucide-react'
@@ -11,13 +14,49 @@ import { MetricsSessionSelector } from './MetricsSessionSelector'
 import { CompareYearSelector } from './CompareYearSelector'
 import { useMetricsSession } from '../../hooks/useMetricsSession'
 import { useCurrentYear } from '../../hooks/useCurrentYear'
-import { RETENTION_SUB_NAV } from '../../pages/metrics/metricsNav'
+import { useSeasonHasRows } from '../../hooks/useSeasonHasRows'
+import { metricsControls, type ControlState } from './metricsControls'
 
 interface MetricTypeTab {
   id: string
   label: string
   icon: LucideIcon
   path: string
+}
+
+/** A checkbox control; disabled, it writes its reason inside its own label ("Expanded analysis: not on Velocity"). */
+function CheckControl({
+  label,
+  state,
+  checked,
+  onChange,
+  tour,
+}: {
+  label: string
+  state: ControlState
+  checked: boolean
+  onChange: (checked: boolean) => void
+  tour: string
+}) {
+  if (!state.shown) return null
+  const off = state.reason !== null
+  return (
+    <label
+      className={`flex items-center gap-1.5 text-sm ${off ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+      data-tour={tour}
+    >
+      <input
+        type="checkbox"
+        checked={checked && !off}
+        disabled={off}
+        onChange={(e) => onChange(e.target.checked)}
+        className="accent-primary h-3.5 w-3.5 rounded"
+      />
+      <span className="text-muted-foreground whitespace-nowrap">
+        {off ? `${label}: ${state.reason}` : label}
+      </span>
+    </label>
+  )
 }
 
 const METRIC_TYPES: MetricTypeTab[] = [
@@ -61,6 +100,12 @@ export default function MetricsTypeTabs() {
 
   const activeTab = getActiveTab()
 
+  const { hasRows } = useSeasonHasRows(currentYear)
+  const controls = metricsControls(location.pathname, {
+    scopeHasTeens,
+    emptyYear: hasRows === false ? currentYear : null,
+  })
+
   return (
     <nav className="border-border/50 border-b py-2">
       <div className="flex items-center justify-between">
@@ -86,57 +131,36 @@ export default function MetricsTypeTabs() {
           })}
         </div>
 
-        {/* Right side controls — hidden on tabs that use unfiltered data */}
-        {!RETENTION_SUB_NAV.filter((item) => item.id === 'bunks' || item.id === 'staff').some(
-          (item) => item.path === location.pathname
-        ) && (
-          <div className="flex items-center gap-3" data-tour="metrics-session-selector">
-            {activeTab === 'registration' &&
-              !location.pathname.endsWith('/forecast') &&
-              !location.pathname.endsWith('/availability') && (
-                <div data-tour="metrics-compare-year">
-                  <CompareYearSelector
-                    primaryYear={currentYear}
-                    compareYear={compareYear}
-                    onCompareYearChange={setCompareYear}
-                    onClear={() => setCompareYear(null)}
-                    availableYears={availableYears}
-                  />
-                </div>
-              )}
-            {activeTab === 'trends' && !location.pathname.includes('/velocity') && (
-              <label
-                className="flex cursor-pointer items-center gap-1.5 text-sm"
-                data-tour="metrics-expanded-analysis"
-              >
-                <input
-                  type="checkbox"
-                  checked={expandedRetention}
-                  onChange={(e) => setExpandedRetention(e.target.checked)}
-                  className="accent-primary h-3.5 w-3.5 rounded"
-                />
-                <span className="text-muted-foreground whitespace-nowrap">Expanded analysis</span>
-              </label>
-            )}
-            {activeTab === 'retention' && scopeHasTeens && (
-              <label
-                className="flex cursor-pointer items-center gap-1.5 text-sm"
-                data-tour="metrics-teen-pipeline"
-              >
-                <input
-                  type="checkbox"
-                  checked={includeTeenPipeline}
-                  onChange={(e) => setIncludeTeenPipeline(e.target.checked)}
-                  className="accent-primary h-3.5 w-3.5 rounded"
-                />
-                <span className="text-muted-foreground whitespace-nowrap">
-                  Include camp → teen transition
-                </span>
-              </label>
-            )}
-            <MetricsSessionSelector />
-          </div>
-        )}
+        {/* Right side controls */}
+        <div className="flex items-center gap-3" data-tour="metrics-session-selector">
+          {controls.compare.shown && (
+            <div data-tour="metrics-compare-year">
+              <CompareYearSelector
+                primaryYear={currentYear}
+                compareYear={compareYear}
+                onCompareYearChange={setCompareYear}
+                onClear={() => setCompareYear(null)}
+                availableYears={availableYears}
+                disabledReason={controls.compare.reason}
+              />
+            </div>
+          )}
+          <CheckControl
+            label="Expanded analysis"
+            state={controls.expanded}
+            checked={expandedRetention}
+            onChange={setExpandedRetention}
+            tour="metrics-expanded-analysis"
+          />
+          <CheckControl
+            label="Include camp → teen transition"
+            state={controls.teen}
+            checked={includeTeenPipeline}
+            onChange={setIncludeTeenPipeline}
+            tour="metrics-teen-pipeline"
+          />
+          <MetricsSessionSelector notUsedHere={!controls.pickerUsed} />
+        </div>
       </div>
     </nav>
   )

@@ -164,6 +164,30 @@ describe('MetricCard onClick functionality', () => {
       const trendSpan = screen.getByText(pattern).closest('span')
       expect(trendSpan).toHaveClass(expectedClass)
     })
+
+    // Decision 16 (2026-10-14): a waitlist change is neither good nor bad news, so it reads
+    // in grey. 'muted' is its own value: 'neutral' stays blue for New Campers.
+    it.each([
+      { value: 74, compareValue: 61, pattern: /\+13 vs 2025/, desc: 'muted up' },
+      { value: 50, compareValue: 61, pattern: /-11 vs 2025/, desc: 'muted down' },
+      { value: 61, compareValue: 61, pattern: /0 vs 2025/, desc: 'muted unchanged' },
+    ])('$desc is grey, never green, red or blue', ({ value, compareValue, pattern }) => {
+      render(
+        <MetricCard
+          title="Total Waitlisted"
+          value={value}
+          compareValue={compareValue}
+          compareYear={2025}
+          sentiment="muted"
+        />
+      )
+
+      const trendSpan = screen.getByText(pattern).closest('span')
+      expect(trendSpan).toHaveClass('text-muted-foreground')
+      expect(trendSpan?.className).not.toMatch(/emerald|red-|blue-/)
+      // The arrow still says which way it moved.
+      expect(trendSpan?.querySelector('svg')).not.toBeNull()
+    })
   })
 
   describe('existing functionality preserved', () => {

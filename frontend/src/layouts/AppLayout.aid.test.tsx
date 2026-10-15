@@ -69,6 +69,9 @@ vi.mock('../hooks/useCanViewAs', () => ({ useCanViewAs: () => false }))
 vi.mock('../components/camperships/shell/AidFreshness', () => ({
   AidFreshness: () => <div data-testid="aid-freshness" />,
 }))
+vi.mock('../components/metrics/AnalyticsFreshness', () => ({
+  AnalyticsFreshness: () => <div data-testid="analytics-freshness" />,
+}))
 vi.mock('../components/camperships/shell/AidSecondaryBarRight', () => ({
   AidSecondaryBarRight: () => <div data-testid="aid-bar-right" />,
 }))
@@ -259,5 +262,24 @@ describe('the program menu', () => {
 
     expect(screen.getByRole('link', { name: 'Campers' })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Today' })).toBeNull()
+  })
+})
+
+describe('AppLayout on an Analytics page (PR 4, pick 3A)', () => {
+  it('puts the enrollment freshness chip beside Season', () => {
+    renderAt('/analytics/registration/overview')
+
+    expect(screen.getByTestId('year-selector')).toBeInTheDocument()
+    expect(screen.getByTestId('analytics-freshness')).toBeInTheDocument()
+    expect(screen.queryByTestId('aid-freshness')).toBeNull()
+  })
+
+  it('keeps it off the other programs', () => {
+    granted = [VIEW]
+    renderAt('/aid/requests')
+    expect(screen.queryByTestId('analytics-freshness')).toBeNull()
+
+    renderAt('/summer/sessions')
+    expect(screen.queryByTestId('analytics-freshness')).toBeNull()
   })
 })

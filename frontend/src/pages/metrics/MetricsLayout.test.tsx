@@ -2,10 +2,10 @@
  * Tests for MetricsLayout component
  * Shared layout with sticky nav that wraps metric routes
  */
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { createElement } from 'react'
-import { MemoryRouter, Routes, Route } from 'react-router'
-import { describe, it, expect, vi } from 'vitest'
+import { MemoryRouter, Routes, Route, useLocation } from 'react-router'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import MetricsLayout from './MetricsLayout'
 import { CurrentYearContext, type CurrentYearContextType } from '../../hooks/useCurrentYear'
@@ -33,6 +33,42 @@ vi.mock('../../hooks/useMetricsSessions', () => ({
   })),
 }))
 
+// The empty-season gate (PR 4, board 9 A). Default: the season has rows, so pages render.
+interface SeasonRowsResult {
+  hasRows: boolean | undefined
+  isLoading: boolean
+}
+const mockSeasonRows = vi.fn((_year: number): SeasonRowsResult => ({
+  hasRows: true,
+  isLoading: false,
+}))
+vi.mock('../../hooks/useSeasonHasRows', () => ({
+  useSeasonHasRows: (year: number) => mockSeasonRows(year),
+}))
+const mockFreshness = vi.fn((_year: number): { kind: string } => ({ kind: 'none' }))
+vi.mock('../../hooks/useAnalyticsFreshness', () => ({
+  useAnalyticsFreshness: (year: number) => mockFreshness(year),
+}))
+const mockPriorityDate = vi.fn((_year: number): string | undefined => undefined)
+vi.mock('../../hooks/useRegistrationDates', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../hooks/useRegistrationDates')>()),
+  usePriorityRegDate: (year: number) => mockPriorityDate(year),
+}))
+
+const mockSetCurrentYear = vi.fn()
+let lastSearch = ''
+function LocationProbe() {
+  lastSearch = useLocation().search
+  return null
+}
+
+beforeEach(() => {
+  mockSeasonRows.mockReset().mockReturnValue({ hasRows: true, isLoading: false })
+  mockFreshness.mockReset().mockReturnValue({ kind: 'none' })
+  mockPriorityDate.mockReset().mockReturnValue(undefined)
+  mockSetCurrentYear.mockReset()
+})
+
 const TestChild = ({ text }: { text: string }) => <div data-testid="child">{text}</div>
 
 const renderWithRouter = (initialPath: string, childText = 'Child Content') => {
@@ -42,7 +78,7 @@ const renderWithRouter = (initialPath: string, childText = 'Child Content') => {
 
   const mockYearContext: CurrentYearContextType = {
     currentYear: 2026,
-    setCurrentYear: vi.fn(),
+    setCurrentYear: mockSetCurrentYear,
     availableYears: [2026, 2025, 2024],
     isTransitioning: false,
     isYearReady: true,
@@ -57,6 +93,7 @@ const renderWithRouter = (initialPath: string, childText = 'Child Content') => {
       { value: authCtx },
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={[initialPath]}>
+          <LocationProbe />
           <CurrentYearContext value={mockYearContext}>
             <Routes>
               <Route path="/analytics/*" element={<MetricsLayout />}>
@@ -152,14 +189,50 @@ describe('MetricsLayout', () => {
     renderWithRouter('/analytics/registration/overview')
 
     expect(screen.getByRole('heading', { name: 'Registration' })).toBeInTheDocument()
-    expect(screen.getByText(/analyze registration data/i)).toBeInTheDocument()
   })
 
   it('renders page header with title for retention', () => {
     renderWithRouter('/analytics/retention')
 
     expect(screen.getByRole('heading', { name: 'Retention' })).toBeInTheDocument()
-    expect(screen.getByText(/prior year.*current year.*returning/i)).toBeInTheDocument()
+  })
+
+  describe('scope line (PR 4, pick 1A: replaces the subtitle)', () => {
+    const line = () => screen.getByTestId('metrics-scope-line')
+
+    it('says what Registration Overview counts, under the current filter', () => {
+      renderWithRouter('/analytics/registration/overview')
+      expect(line()).toHaveTextContent(
+        "2026 · At Camp — Quests and Teens not counted · counted in campers · Summer only: Family Camp, B*Mitzvah and winter programs aren't in Analytics"
+      )
+      expect(screen.queryByText(/analyze registration data/i)).not.toBeInTheDocument()
+    })
+
+    it('follows the session filter', () => {
+      renderWithRouter('/analytics/registration/overview?view=all')
+      expect(line()).toHaveTextContent(/^2026 · All Summer · counted in campers · Summer only/)
+    })
+
+    it('reads last season into this one on Retention', () => {
+      renderWithRouter('/analytics/retention')
+      expect(line()).toHaveTextContent(
+        /^2025 → 2026 · At Camp — Quests and Teens not counted · counted in last year's campers/
+      )
+      expect(screen.queryByText(/prior year.*current year.*returning/i)).not.toBeInTheDocument()
+    })
+
+    it('says the filter does not apply on Bunk Analysis', () => {
+      renderWithRouter('/analytics/retention/bunks')
+      expect(line()).toHaveTextContent(
+        /^2025 → 2026 · every 2025 cabin — the session filter doesn't apply here/
+      )
+    })
+
+    it('stays on an empty season', () => {
+      mockSeasonRows.mockReturnValue({ hasRows: false, isLoading: false })
+      renderWithRouter('/analytics/registration/overview')
+      expect(line()).toHaveTextContent(/^2026 · At Camp/)
+    })
   })
 
   it('renders sticky nav container', () => {
@@ -194,6 +267,70 @@ describe('MetricsLayout', () => {
       // Test that it's present on registration
       renderWithRouter('/analytics/registration/overview')
       expect(screen.getByText('At Camp')).toBeInTheDocument()
+    })
+  })
+
+  describe('empty season (PR 4, board 9 A)', () => {
+    it('asks about the viewed season', () => {
+      renderWithRouter('/analytics/registration/overview')
+      expect(mockSeasonRows).toHaveBeenCalledWith(2026)
+    })
+
+    it('replaces every page body with the empty state, keeping header, tabs, sub-nav and picker', () => {
+      mockSeasonRows.mockReturnValue({ hasRows: false, isLoading: false })
+      renderWithRouter('/analytics/registration/overview', 'Registration Content')
+      expect(screen.queryByTestId('child')).not.toBeInTheDocument()
+      expect(screen.getByText(/No enrollments yet for 2026/)).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'view 2025' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Registration' })).toBeInTheDocument()
+      expect(screen.getByRole('link', { name: /geographic/i })).toBeInTheDocument()
+      expect(screen.getByText('At Camp')).toBeInTheDocument()
+    })
+
+    it('does the same on Retention and Trends pages', () => {
+      mockSeasonRows.mockReturnValue({ hasRows: false, isLoading: false })
+      renderWithRouter('/analytics/retention/bunks')
+      expect(screen.queryByTestId('child')).not.toBeInTheDocument()
+      expect(screen.getByText(/No enrollments yet for 2026/)).toBeInTheDocument()
+    })
+
+    it('shows no page and no empty state while the count loads, so no zeros flash', () => {
+      mockSeasonRows.mockReturnValue({ hasRows: undefined, isLoading: true })
+      renderWithRouter('/analytics/registration/overview')
+      expect(screen.queryByTestId('child')).not.toBeInTheDocument()
+      expect(screen.queryByText(/No enrollments yet/)).not.toBeInTheDocument()
+      expect(screen.getByTestId('season-rows-loading')).toBeInTheDocument()
+    })
+
+    it('says the season has not synced when its enrollment sync never ran', () => {
+      mockSeasonRows.mockReturnValue({ hasRows: false, isLoading: false })
+      mockFreshness.mockReturnValue({ kind: 'never' })
+      renderWithRouter('/analytics/registration/overview')
+      expect(screen.getByText(/2026 hasn.t synced from CampMinder yet/)).toBeInTheDocument()
+    })
+
+    it('names the configured priority date', () => {
+      mockSeasonRows.mockReturnValue({ hasRows: false, isLoading: false })
+      mockPriorityDate.mockReturnValue('2099-11-11')
+      renderWithRouter('/analytics/registration/overview')
+      expect(mockPriorityDate).toHaveBeenCalledWith(2026)
+      expect(screen.getByText(/Priority registration opens .*Nov 11\./)).toBeInTheDocument()
+    })
+
+    it('does not ask for the priority date while the season has rows', () => {
+      renderWithRouter('/analytics/registration/overview')
+      expect(mockPriorityDate).not.toHaveBeenCalledWith(2026)
+    })
+
+    it('"view 2025" sets ?year=2025, keeps the other params, and never saves the season', () => {
+      mockSeasonRows.mockReturnValue({ hasRows: false, isLoading: false })
+      renderWithRouter('/analytics/registration/overview?session=1001&view=quests')
+      fireEvent.click(screen.getByRole('button', { name: 'view 2025' }))
+      const s = new URLSearchParams(lastSearch)
+      expect(s.get('year')).toBe('2025')
+      expect(s.get('session')).toBe('1001')
+      expect(s.get('view')).toBe('quests')
+      expect(mockSetCurrentYear).not.toHaveBeenCalled()
     })
   })
 })

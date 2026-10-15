@@ -26,6 +26,17 @@ interface PickerBase<V extends string | number> {
   readonly className?: string
   /** What the button reads while `value` matches no option (an "Add a …" picker that holds nothing). */
   readonly placeholder?: string
+  /** Replaces the kit face, for a module keeping its own button (Analytics' session picker). */
+  readonly buttonClassName?: string
+  /** Replaces the kit popover's classes (Analytics' taller, ~10-row list). */
+  readonly listClassName?: string
+}
+
+interface SinglePicker<V extends string | number> extends PickerBase<V> {
+  readonly value: V
+  readonly onChange: (value: V) => void
+  /** The button's own words where the picked label would not read right (as AidPickerMulti). */
+  readonly faceText?: string
 }
 
 const CHECK = 'text-primary absolute left-[7px]'
@@ -99,9 +110,12 @@ export function AidPicker<V extends string | number>({
   disabled,
   className,
   placeholder,
-}: PickerBase<V> & { readonly value: V; readonly onChange: (value: V) => void }) {
+  buttonClassName,
+  listClassName,
+  faceText,
+}: SinglePicker<V>) {
   const picked = options.find((o) => o.value === value)
-  const shown = picked?.label ?? placeholder ?? String(value)
+  const shown = faceText ?? picked?.label ?? placeholder ?? String(value)
   return (
     <Listbox value={value} onChange={onChange} disabled={disabled ?? false}>
       <div className={wrapOf(fill, className)}>
@@ -109,9 +123,9 @@ export function AidPicker<V extends string | number>({
           shown={shown}
           title={picked?.title ?? shown}
           label={label}
-          className={faceOf(size, fill)}
+          className={buttonClassName ?? faceOf(size, fill)}
         />
-        <ListboxOptions transition className={CS_PICKER_OPTIONS}>
+        <ListboxOptions transition className={listClassName ?? CS_PICKER_OPTIONS}>
           <OptionList
             options={options}
             render={(option) => (
@@ -132,6 +146,11 @@ export function AidPicker<V extends string | number>({
                       </span>
                     )}
                     {option.label}
+                    {option.count !== undefined && (
+                      <span className="text-muted-foreground ml-auto pl-6 text-[11px] font-normal tabular-nums">
+                        {option.count}
+                      </span>
+                    )}
                   </>
                 )}
               </ListboxOption>

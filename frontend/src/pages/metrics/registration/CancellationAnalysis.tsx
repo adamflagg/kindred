@@ -30,6 +30,7 @@ import {
   type StackedBarDataItem,
   type StackedSegment,
 } from '../../../components/metrics/CssStackedHorizontalBarChart'
+import { SESSION_LABEL_WIDTH } from '../../../components/metrics/cssChartUtils'
 import { transformGenderData } from '../../../utils/metricsTransforms'
 import { SESSION_NAME_ALIASES, resolveSessionAlias } from '../../../utils/sessionAliases'
 import { ComparisonSummaryTable } from '../../../components/metrics/ComparisonSummaryTable'
@@ -39,6 +40,7 @@ import {
   sortSessionDataByCampThenQuest,
 } from '../../../utils/sessionUtils'
 import type { CancellationSessionBreakdown } from '../../../types/metrics'
+import { sessionName } from '../../../utils/sessionName'
 import { MetricsQueryGuard } from '../../../components/metrics/MetricsQueryGuard'
 
 const CANCEL_SEGMENTS: StackedSegment[] = [
@@ -49,7 +51,17 @@ const CANCEL_SEGMENTS: StackedSegment[] = [
   { key: 'unknown', label: 'Unknown', color: 'hsl(0, 0%, 75%)' },
 ]
 
-function transformCancelSessionData(
+/**
+ * The chart's fixed 300px clips rows past 11 into overflow-hidden (All Summer has more). Past
+ * that, size it for calculateBarSizing's dense path: 20px rows, 1px gaps, a 28px axis.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function cancelSessionChartHeight(rows: number): number {
+  return rows > 11 ? rows * 21 + 28 : 300
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function transformCancelSessionData(
   bySession: CancellationSessionBreakdown[],
   sessionDateLookup: Record<string, string>,
   sessionTypeLookup: Record<string, string>
@@ -62,7 +74,8 @@ function transformCancelSessionData(
       (item.was_applied ?? 0) +
       (item.other_prior_status ?? 0)
     return {
-      name: item.session_name,
+      // The shared short form (board 6), not CampMinder's raw name.
+      name: sessionName(item.session_name, sessionTypeLookup[item.session_name], 'short'),
       total: item.total_cancelled,
       was_enrolled: item.was_enrolled,
       was_waitlisted: item.was_waitlisted,
@@ -416,10 +429,11 @@ export default function CancellationAnalysis() {
                         ? `${currentYear} Cancellations by Session`
                         : 'Cancellations by Session'
                     }
+                    labelWidth={SESSION_LABEL_WIDTH}
+                    height={cancelSessionChartHeight(primarySession.data.length)}
                     onBarClick={(item) => {
-                      const session = primarySession.sorted.find(
-                        (s) => s.session_name === item.name
-                      )
+                      // Bars carry the short name; find the row by position, not by name.
+                      const session = primarySession.sorted[primarySession.data.indexOf(item)]
                       if (session) {
                         setFilter({
                           type: 'cancellation_total',
@@ -434,6 +448,10 @@ export default function CancellationAnalysis() {
                       data={compSessionData.data}
                       segments={CANCEL_SEGMENTS}
                       title={`${compareYear} Cancellations by Session`}
+                      labelWidth={SESSION_LABEL_WIDTH}
+                      height={cancelSessionChartHeight(
+                        Math.max(primarySession.data.length, compSessionData.data.length)
+                      )}
                     />
                   )}
                 </div>

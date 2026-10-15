@@ -17,6 +17,14 @@ import {
   useRef,
 } from 'react'
 
+/**
+ * Label column (px) for every horizontal by-session chart: Enrollment, Waitlist and Cancellations
+ * by Session. Wide enough that no real session label is cut (board 6, owner 2026-10-14: no
+ * two-line labels, no tooltip). The longest, "Women of the Wild Quest", renders at about 163px;
+ * the measurements are in sessionChartLabels.test.ts.
+ */
+export const SESSION_LABEL_WIDTH = 176
+
 /** Height for straight x-axis labels (px). */
 export const X_AXIS_HEIGHT_STRAIGHT = 34
 /** Height for rotated x-axis labels (px). Matches the VerticalXAxis rotated container. */

@@ -120,4 +120,38 @@ describe('CompareYearSelector', () => {
       expect(optionValues).toContain('2023')
     })
   })
+
+  describe('disabled with the reason inside (PR 4, pick 4B)', () => {
+    it('renders a disabled button that says why', () => {
+      render(
+        <CompareYearSelector
+          primaryYear={2025}
+          compareYear={null}
+          onCompareYearChange={vi.fn()}
+          onClear={vi.fn()}
+          availableYears={availableYears}
+          disabledReason="not on Day 1"
+        />
+      )
+      const button = screen.getByRole('button', { name: 'Compare: not on Day 1' })
+      expect(button).toBeDisabled()
+    })
+
+    it('stays disabled even while a comparison is set in the URL', () => {
+      render(
+        <CompareYearSelector
+          primaryYear={2025}
+          compareYear={2024}
+          onCompareYearChange={vi.fn()}
+          onClear={vi.fn()}
+          availableYears={availableYears}
+          disabledReason="no 2025 enrollments yet"
+        />
+      )
+      expect(
+        screen.getByRole('button', { name: 'Compare: no 2025 enrollments yet' })
+      ).toBeDisabled()
+      expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+    })
+  })
 })

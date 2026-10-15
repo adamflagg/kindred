@@ -5,6 +5,8 @@ export interface AidPickerOption<V extends string | number> {
   readonly group?: string
   /** A pickable heading (bold) or a choice under one (indented), where a group heading is not itself a choice. */
   readonly level?: 'heading' | 'indent'
+  /** On a heading: how many choices sit under it (Analytics' session picker, "At Camp 7"). */
+  readonly count?: number
   readonly disabled?: boolean
   /** The full words behind a short label: the button's title when picked, and the option's hover title. */
   readonly title?: string
