@@ -12,13 +12,13 @@ them were removed on purpose.
 
 The same decisions were written down once before, in
 `docs/superpowers/specs/2026-07-31-family-camp-lodging-board-map-design.md` §3
-"Decisions locked". That path is **gitignored** (`.gitignore:190`), so it exists
-in nobody's clone — while at least nine comments in the shipped code still cite
-it by section number (`unitBadges.ts:5` "spec §3.7", `FamilyCard.tsx:10` "spec
-§3.8", `FamilyDetailsPanel.tsx:2` "spec §3.9", `SharePreferenceChip.tsx:2`
-"spec §4.3", `boardLayout.ts:767` and `:825` "spec §7.3", `FamilyCard.tsx:80`
-and `LodgingUnitCard.tsx:1043` "spec §11", `boardLayout.test.ts:706`,
-`FamilyCard.test.tsx:740`). Anyone following those citations today reads
+"Decisions locked". That path is **gitignored** (`docs/superpowers/` in `.gitignore`), so it exists
+in nobody's clone — while comments in the shipped code still cite it by section
+number (`unitBadges.ts` "spec §3.7", `FamilyDetailsPanel.tsx` "spec §3.9",
+`SharePreferenceChip.tsx` "spec §4.3", `boardLayout.ts` and `boardLayout.test.ts`
+"spec §7.3", `FamilyCard.test.tsx` "spec §5"). The `FamilyCard.tsx` and
+`LodgingUnitCard.tsx` citations ("spec §3.8", "spec §11") have since been
+repointed. Anyone following the rest today reads
 nothing.
 
 This file is tracked. Repoint one of those citations here each time you touch

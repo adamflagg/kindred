@@ -106,15 +106,17 @@ attempt to encode occupancy as tree shape:
 4. **Nothing downstream consumes it.** Bathroom privacy is computed from
    `bathroom_group` (`api/services/lodging_rules.py`), a different grouping that
    handles partial merges correctly on its own. `effective_bathroom`
-   (`api/services/lodging_rules.py:75`) takes the merged set as
+   (`api/services/lodging_rules.py`) takes the merged set as
    `merged_codes: frozenset[str]` — set-based from the start, so the bathroom
    upgrade is unchanged by kindred#1931's collapse; it was never reading a
    `lodging_merges` row to begin with. Capacity sums actual member units.
-   `parent_unit` — the tree the completeness rule walked — appears nowhere in
-   `api/` or `bunking/` at all. `is_container` is read there, but only to keep
-   buildings out of bookable lists
-   (`api/services/lodging_roster_service.py:561`); nothing reads the
-   parent/child relationship that made a merge "complete".
+   `parent_unit` — the tree the completeness rule walked — is read in `api/`
+   today, but never as an occupancy rule: the board's draw walk
+   (`lodging_roster_service.py`: a leaf always draws, a container draws only
+   when combined), `display_name`'s collapse rule and the payload's
+   `parent_code` all use it, and `is_container` decides which nodes are bookable
+   rather than pure grouping. Nothing reads the parent/child relationship to
+   decide whether a merge is "complete".
 
 Container units remain useful for what they genuinely model — physical
 structure, and the `bathroom_group` upgrade where merging a whole group turns a
@@ -198,8 +200,8 @@ rule: it blocks legitimate work and teaches staff to ignore warnings.
   `family_available_override = false`, because `is_family_available` — and
   through it every count on the stats bar, and the board's forest open-tint —
   was derived from that one field. Every consumer now reads the occupancy
-  source directly (`LodgingUnitSummary.write_in`, and `writeInOccupant` on the
-  client), so the field answers one question again. `is_family_available`
+  source directly (`LodgingUnitSummary.write_ins`, and `hasWriteIn` /
+  `writeInEntries` on the client), so the field answers one question again. `is_family_available`
   remains the DERIVED answer and still folds both facts in — but kindred#2503
   is why the second half of that sentence no longer holds. Availability is
   `free > 0`, not "no write-in at all", and a number DOES move: a combined
@@ -217,24 +219,37 @@ rule: it blocks legitimate work and teaches staff to ignore warnings.
   about the BUILDING for one weekend; a placement is a fact about a PLAN.
   They used to live on different axes for that reason, but the two questions
   "is anyone in this building" and "has a family been placed here" answer the
-  same underlying fact from two directions, and the ruling settles them as
-  **mutually exclusive states**: a unit cannot be both held and occupied.
+  same underlying fact from two directions, and the original ruling settled
+  them as **mutually exclusive states**: a unit cannot be both held and
+  occupied. (That is what the amendment that follows reverses.)
 
-  Concretely: a write-in covering a unit **blocks placement outright**
-  (`resolveDrop` in `dragPlacement.ts`, plus the matching `useDroppable`
-  `disabled` flag in `LodgingUnitCard.tsx`, refuse a drop onto a written-into
-  unit rather than merely dimming it), and a unit already holding a placed
-  party offers no "Write in" action (`availabilityAction` in `unitBadges.ts`
-  takes the slot's own occupancy and returns `null` for the `hold` branch). The
-  `clear` action — removing an existing write-in — is never blocked by
-  occupancy, since clearing only ever reduces the conflict.
+  ⚠️ **Amended by owner ruling, 2026-08-18 (kindred#2432): the "mutually
+  exclusive" half was struck.** The ruling: *"we should be able to add families
+  to any write in space, or add a write in to a family space — regardless of
+  which came first."* A write-in NAMES AN OCCUPANT; it does not CLOSE THE SPACE.
+  The case that forced it is a paper registration, which has no CampMinder
+  record, sharing a cabin with one placed family. Today:
 
-  Both gates read the fact through `writeInOccupant` (`writeIn.ts`), never
-  through `family_available_override`. They were written against that column
-  when it still doubled as the occupancy store; naming the fact once is what
-  let kindred#2382 re-point it in one place, and it is also what makes them
-  respect the unit tree — a write-in names one unit but closes a SPACE, so a
-  building's write-in blocks a drop into its rooms and vice versa.
+  - `resolveDrop` (`dragPlacement.ts`) carries **no** write-in refusal, and a
+    comment there says not to restore one. A drop is refused only for a
+    non-combined container, an unresolvable party or unit, or a party already
+    sitting only in that room; the `useDroppable` `disabled` flag in
+    `LodgingUnitCard.tsx` follows `isValidTarget`, not the write-in.
+  - The strip no longer offers "Write in" (`availabilityAction` in
+    `unitBadges.ts`). A write-in is created in the Assign modal
+    (`AssignFamilyModal`'s `onWriteIn`: a typed name that matches no registered
+    family becomes one) and removed with the X on its own `WriteInCard`.
+    `availabilityAction` returns `null` for a space that has one.
+  - What the shared space cost is a headcount, not a gate: `freeBeds`
+    subtracts a write-in's recorded `party_size`, and withholds the free-bed
+    claim when none was recorded (kindred#2503).
+
+  The reads still go through `hasWriteIn` / `writeInEntries` (`writeIn.ts`),
+  never through `family_available_override`: they take the server-resolved
+  cover rather than the raw column, because a write-in names one unit but
+  covers a whole SPACE, so a building's write-in appears in its rooms' card and
+  vice versa. Naming the fact once is what let kindred#2382 re-point it in one
+  place. The `LodgingUnitSummary` payload carries the occupancy as `write_ins`.
 - The unique indexes on `lodging_assignments` are
   `(session, year, household_cm_id)` and the person-grain equivalent, each
   partial on `> 0` so the two grains do not collide. (Migration `1500000132`

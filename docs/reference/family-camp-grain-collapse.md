@@ -10,6 +10,18 @@ several decisions here only make sense once you know a value's grain and its for
 Measured against the production snapshot at `pocketbase/pb_data/data.db`, tree `ffd5ee87`.
 2026 was mid-registration when measured, so 2026 counts are floors.
 
+**Line numbers (`file.go:NNN`) throughout are as of that tree and have drifted** —
+`family_camp_derived.go` alone has grown by several hundred lines since (`processAdults` is
+now near `:1075`, `processRegistrations` near `:1568`, `processMedical` near `:2247`, the
+orphan sweeps near `:3186`-`:3287`). Find a site by its symbol, not its line.
+
+**Status, 2026-10-15: this is the audit as it stood at that tree, not a live work-list.** The
+issues it tracks (`#2255`, `#2260`, `#2270`, `#2275`, `#2292`) have since closed. In
+particular `processAdults` no longer merges in load order: kindred#2520 added
+`customValueEntry.personCMID` and sorts by it, so the winner is repeatable across a resync
+(`loadPersonCustomValues` still pages by `id`, only for safe paging). Where a section below says
+a site "sorts by `id`" or is "unfixed", re-check the code before relying on it.
+
 ---
 
 ## 1. Read these three traps before measuring anything
@@ -325,7 +337,7 @@ which of the two it is before anything is written.
   defensible validity notion exists for them. **A6 is live, unblocked, and squarely inside the
   re-grain (kindred#2275) rather than gated by a column decision.** What #1945 left open is the
   per-attribute *merge policy*, which is #2275's subject. Note the columns' state: zero readers
-  in `api/`, `bunking/` or `frontend/` — `PartyAdult` (`api/schemas/lodging.py:296-303`) exposes
+  in `api/`, `bunking/` or `frontend/` — `PartyAdult` (`api/schemas/lodging.py`) exposes
   only `adult_number`, `display_name` and `relationship`.
 - **Which years to replay** is a real decision, not a detail. Only 2026 has been through a
   current run. **Owner ruling 2026-08-13: 2026 only for now, re-evaluate later** — and the
@@ -339,9 +351,9 @@ which of the two it is before anything is written.
 
   | Read | Table | Year scope | Renders, 2017-2025 |
   |---|---|---|---|
-  | `fetch_household_adults_by_year` (`lodging_repository.py:420-453`) | `family_camp_adults` | **all years, no bound** | **8,955** adult names, **5,214** relationship labels |
-  | `fetch_household_registration_years` (`:455-476`) | `family_camp_registrations` | **all years** | **3,459** rows whose mere *existence* puts a year on a family's timeline |
-  | `fetch_cabin_assignments_by_household_cm_id(year)` (`:597-650`) | `.cabin_assignment` | per traced year | 1,786 cabin strings — the only one this bullet named |
+  | `fetch_household_adults_by_year` (`lodging_repository.py`) | `family_camp_adults` | **all years, no bound** | **8,955** adult names, **5,214** relationship labels |
+  | ~~`fetch_household_registration_years`~~ → `fetch_household_registration_cabins` | `family_camp_registrations` | **all years** | As measured: **3,459** rows whose mere *existence* put a year on a family's timeline. **No longer true (kindred#2516):** the read now returns only the per-year cabin string, and a registration row alone never adds a year; only a cabin on a household with no attendee row (paper registrations) rescues one |
+  | `fetch_cabin_assignments_by_household_cm_id(year)` | `.cabin_assignment` | per traced year | 1,786 cabin strings — the only one this bullet named. (Today the journey does not call it; the roster's last-year-cabin read does, at `year - 1`. The journey also reads `fetch_household_family_attendees` and `fetch_household_live_assignments`.) |
 
   **Two hazards had to be cleared before any replay wider than 2026. Both are CLEARED as of
   2026-08-13** — they were the whole content of the first family-camp grain PR, and the

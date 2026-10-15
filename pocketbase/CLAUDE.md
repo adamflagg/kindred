@@ -77,7 +77,7 @@ Fields use British spelling: `cancelled_count`, `cancelled_at`. Allowed via `ext
 
 All CampMinder data tables include a required `year` field. **Cross-table relationships use CampMinder IDs, never PocketBase IDs.** Unique indexes include `year` (e.g., `person_id, year, session`).
 
-Sync covers the primary season and the one before it (N, N−1). The primary rolls over every Oct 15 Pacific (`sync/year.go`); `CAMPMINDER_SEASON_ID` is an optional override. Frontend year dropdown is display-only.
+Sync covers the primary season and the one before it (N, N−1). The primary rolls over every Oct 15 Pacific (`sync/year.go`); `CAMPMINDER_SEASON_ID` is an optional override, and an empty value counts as unset. The frontend year selector sets the season being viewed and never moves the primary. A staff-triggered sync runs for the viewed season when it is N or N−1, and any other year is refused with 400 (`viewedSeason` in `sync/api.go`).
 
 ## Build & test
 
@@ -87,31 +87,36 @@ cd pocketbase && go test ./...
 cd pocketbase && go test ./sync/...     # one package
 ```
 
-**Add `-race` only when you mean it.** The race detector costs about **4.5x** here — measured
-back-to-back on one machine, `sync` goes 60.8s → 298.2s and `lodging` 35.1s → 136.6s — because
-there is exactly one `t.Parallel()` in the tree, so every test in a package runs serially.
-Schema-heavy tests are worse than the average: the `TestLodgingAssignmentsSync*` slice is
-~10x on its own. `sync` (297s) and `lodging` (143s) are
-effectively the whole bill; the other nine packages total ~15s. Reach for `-race` when you
-touch `sync/orchestrator.go`, `sync/api.go`, `sync/scheduler.go`, or anything else that spawns
-a goroutine, and leave it off for the ordinary edit-test loop.
+**Add `-race` only when you mean it.** The race detector costs about **4.5x** per test. Before
+#2288 (kindred#2281) the tree had exactly one `t.Parallel()`, so every test in a package ran
+serially and `-race` took `sync` from 60.8s to 298.2s and `lodging` from 35.1s to 136.6s. #2288
+parallelised `sync/` and `lodging/`, which cut the wall-clock, but `-race` still recompiles the
+whole tree. Reach for it when you touch `sync/orchestrator.go`, `sync/api.go`,
+`sync/scheduler.go`, or anything else that spawns a goroutine, and leave it off for the ordinary
+edit-test loop.
 
-CI does run `-race` over everything, split across a four-way matrix so no single shard is the
-critical path. One file is excluded: `main_anonymous_access_test.go` carries
+**A new top-level test in `sync/` or `lodging/` must call `t.Parallel()`.**
+`main_test_parallelism_test.go` fails the suite otherwise. A test that cannot run in parallel
+(it calls `t.Setenv`, or swaps a package-level variable) goes in that file's `serialGroups`,
+under its reason.
+
+CI does run `-race` over everything, split across a three-way matrix (`tests-go` in
+`.github/workflows/ci.yml`). One file is excluded: `main_anonymous_access_test.go` carries
 `//go:build !race` (applying every JS migration under the race detector cost ~200s, and its
 probes are serial), and the tests-migrations job runs it in a non-race step instead.
 
 To reproduce one shard locally:
 
 ```bash
-python3 scripts/ci/go_test_shard.py --shard 0 --total 4 -- -race   # from the repo root
+python3 scripts/ci/go_test_shard.py --shard 0 --total 3 -- -race   # from the repo root
 ```
 
 The sharder reads its inventory live from `go test -list` and fails a shard if any test it
 selected produced no result, so a `-run` regex can't silently drop coverage. It runs `go test
 -json` and reads the structured per-test events, so that check does not depend on `-v`; the
-readable transcript is rebuilt from the stream. kindred#2281
-tracks adding `t.Parallel()`, which would make the shards unnecessary.
+readable transcript is rebuilt from the stream. The shards stay even with the suites parallel:
+each one pays a ~100s `-race` compile floor, and the measurements behind three are in the
+`tests-go` job's comment.
 
 Pre-push runs: `go build` and `pb-js-lint` (ESLint on `pb_hooks/`/`pb_migrations/` JS).
 

@@ -62,12 +62,12 @@ BunkRequest → saved to PocketBase bunk_requests table
 1. User selects CSV file in the `BunkRequestsUpload` component
 2. `uploadBunkRequestsCSV(file, fetchWithAuth, year?)` sends multipart POST to:
    ```text
-   /api/custom/sync/upload-bunk-requests?run_sync=true&run_process_requests=true&year=2025
+   /api/custom/sync/bunk_requests_upload?run_sync=true&run_process_requests=true&year=2026
    ```
 3. Query params control chaining:
    - `run_sync=true` triggers Go CSV sync after upload
    - `run_process_requests=true` chains Python processing after sync completes
-   - `year` overrides the default year (the primary season; `CAMPMINDER_SEASON_ID` overrides it)
+   - `year` picks the season: the primary when omitted, else one of the two synced seasons (N or N−1). Any other year returns 400
 
 ---
 
@@ -77,7 +77,7 @@ BunkRequest → saved to PocketBase bunk_requests table
 
 ### 2a. Upload Handler
 
-**Function:** `handleBunkRequestsUpload` (`api.go:714-826`)
+**Function:** `handleBunkRequestsUpload` (`api.go:1104-1248`)
 
 ```text
 Multipart POST received
@@ -97,8 +97,8 @@ Multipart POST received
     │   └─ "First Name" (required)
     │
     ├─ determineUploadYear()
-    │   ├─ Default: the primary season (CAMPMINDER_SEASON_ID overrides)
-    │   └─ Override: ?year= query param (2017-2050 range)
+    │   ├─ Default: the primary season (`viewedSeason`)
+    │   └─ Override: ?year= must be a synced season (N or N−1), else 400
     │
     ├─ saveCSVWithBackup()
     │   ├─ Save to pb_data/bunk_requests/{year}_latest.csv
@@ -108,26 +108,27 @@ Multipart POST received
     │
     └─ IF run_sync=true:
         └─ goroutine:
-            ├─ orchestrator.runSyncAndWait(ctx, "bunk_requests")
+            ├─ primary: orchestrator.runSyncAndWait(ctx, "bunk_requests", …)
+            │  N−1: runForSeason with that season's own instance (reads <year>_latest.csv)
             └─ IF run_process_requests=true AND sync succeeded:
-                └─ NewRequestProcessor(app).Sync(ctx) → calls Python API
+                └─ NewRequestProcessor(app).Sync(ctx), Year = the upload's season → calls Python API
 ```
 
 ### 2b. CSV Column Mapping
 
-**5 CSV columns → 5 internal fields** (`bunk_requests.go:25-32`):
+**5 CSV columns → 5 internal fields** (`csvFieldMap`, `bunk_requests.go:39-45`). Two wire values were renamed in #1142 (migration `1500000106`) so they no longer collide with the `RequestType` names `bunk_with` / `not_bunk_with`:
 
 | CSV Column Header | Internal Field | AI Required? |
 |---|---|---|
-| `Share Bunk With` | `bunk_with` | Yes |
-| `Do Not Share Bunk With` | `not_bunk_with` | Yes |
+| `Share Bunk With` | `bunk_request_form` | Yes |
+| `Do Not Share Bunk With` | `staff_not_bunk_with` | Yes |
 | `Internal Bunk Notes` | `internal_notes` | Yes |
 | `BunkingNotes Notes` | `bunking_notes` | Yes |
 | `RetParent-Socializewithbest` | `socialize_with` | No (dropdown) |
 
 ### 2c. Per-Row Processing and Delta Detection
 
-**Function:** `processRow` (`bunk_requests.go:187-284`)
+**Function:** `processRow` (`bunk_requests.go:243-375`)
 
 ```text
 For each CSV row:
@@ -160,7 +161,7 @@ For each CSV row:
                 └─ CREATE new record:
                     ├─ requester: PocketBase person ID (relation)
                     ├─ year: upload year
-                    ├─ field: "bunk_with" | "not_bunk_with" | etc.
+                    ├─ field: "bunk_request_form" | "staff_not_bunk_with" | etc.
                     ├─ content: raw CSV text
                     ├─ content_hash: MD5 hex
                     └─ processed: "" (empty — awaiting processing)
@@ -172,7 +173,7 @@ For each CSV row:
 |---|---|---|
 | `requester` | relation (persons) | PocketBase person ID |
 | `year` | int | Camp year |
-| `field` | select | One of: bunk_with, not_bunk_with, bunking_notes, internal_notes, socialize_with |
+| `field` | select | One of: bunk_request_form, staff_not_bunk_with, bunking_notes, internal_notes, socialize_with |
 | `content` | text | Raw text extracted from CSV cell |
 | `content_hash` | text | MD5 hex digest for delta detection |
 | `processed` | datetime | Empty = needs processing; timestamp = already processed |
@@ -191,7 +192,7 @@ Go process_requests.go
                 → RequestOrchestrator.process_requests()
 ```
 
-**Go wrapper** (`process_requests.go`): Calls Python with 35-minute timeout. Passes year, session, source_fields, limit, force, clear_existing, debug, trace.
+**Go wrapper** (`process_requests.go`): Calls Python with a 120-minute timeout (`PROCESS_REQUESTS_TIMEOUT_MINUTES` overrides it). Passes year, session, source_fields, limit, force, clear_existing, debug, trace.
 
 ### 3a. Loading from Database
 
@@ -407,7 +408,7 @@ If no fast path resolved the name, try strategies in order. First confident matc
 Five-step cascade:
 
 1. **Nickname variations** (Bob→Robert, Kate→Katherine): confidence ~0.85. Sources: built-in groups, camp overrides (`config/nicknames_override.json`), `nicknames` PyPI library.
-2. **Jaro-Winkler first name similarity** (Charlie→Charlotte, Zoey→Zoe): confidence ~0.85. Threshold configurable via PB config `jaro_winkler_threshold` (default 0.85). Also checks `preferred_name`. Falls back to full `all_persons` pool when candidates are empty, catching last-name misspellings (Obsfeld→Obstfeld). Full-pool matches tagged `match_type: "jaro_winkler_full_pool"`.
+2. **Jaro-Winkler first name similarity** (Charlie→Charlotte, Zoey→Zoe): confidence ~0.85. Threshold configurable via PB config `jaro_winkler_threshold` (default 0.85). Also checks `preferred_name`. Falls back to full `all_persons` pool when candidates are empty, catching last-name misspellings (Jonhson→Johnson). Full-pool matches tagged `match_type: "jaro_winkler_full_pool"`.
 3. **Spelling variations** (Alexis↔Alexus, Stephine↔Stephanie): confidence ~0.85
 4. **Normalized search** (substring matching in full/preferred names): confidence ~0.80
 5. **Parent surname match**: confidence ~0.70
@@ -453,30 +454,31 @@ For cases still ambiguous after the pipeline, if NetworkX analyzer is configured
 - Smart resolve if connection strength margin ≥ 0.1 between candidates
 - Otherwise rank candidates by social score (top 5 passed to Phase 3)
 
-### Confidence Scoring
+### Disposition Rules
 
-**File:** `confidence/confidence_scorer.py`
+**File:** `disposition/disposition_rules.py` (`determine_disposition`), called from `services/request_builder.py`
 
-After Phase 2 resolution, the confidence scorer re-scores each resolved result using a weighted formula. The resolution pipeline's raw confidence (0.95, 0.85, etc.) is replaced by the scorer's output.
+The weighted confidence formula (`confidence/confidence_scorer.py`, `0.70 × name_score + …`) was **deleted in #823** and replaced by explicit, priority-ordered rules. A resolved match keeps the confidence its resolution strategy produced; the rules decide its status. Unresolved names (no person, or a negative hash ID) are PENDING and never reach them, except that a staff note dated 3+ years before the season declines whatever its resolution (`stale_dated_note`, #1801).
 
-**BUNK_WITH formula:**
-```text
-score = 0.70 × name_score + 0.15 × ai_score + 0.10 × context_score + 0.05 × reciprocal_score
-```
+Reciprocity and household co-requests are batch signals, detected across the whole batch before the requests are built (`processing/batch_signals.py`, `detect_batch_signals`), and passed in as inputs.
 
-| Signal | Source | Values |
+**BUNK_WITH** (first match wins):
+
+| Rule | Status | Reason |
 |---|---|---|
-| `name_score` | `match_certainty` from `resolution_result.confidence > 0.9` | "exact"=1.0, "partial"=0.7, "ambiguous"=0.4, "none"=0.0. **Known bug:** uses `> 0.9` (strictly greater), so resolution confidence of exactly 0.90 (no-session-info exact match, parent surname match) classifies as "partial" instead of "exact". See "Known Issues". |
-| `ai_score` | Phase 1 AI parse confidence | Typically 0.85 |
-| `context_score` | Attendee enrollment lookup | found_in_current_year=0.8, previous_year_only=0.4, base=0.5. Social bonuses: in_ego_network +0.1, social_distance≤2 +0.1 |
-| `reciprocal_score` | Reciprocal pair detection | Hardcoded 0.0 in formula (not implemented). Reciprocal boost (+0.1) applied separately by `reciprocal_detector.py` after request building. |
+| Requester not attending (every request type) | DECLINED | `requester_not_attending` |
+| Target not attending | DECLINED | `target_not_attending` |
+| Target has no bunking session | DECLINED | `target_not_enrolled` |
+| Target waitlisted | PENDING | `target_waitlisted` |
+| Different session | DECLINED | `session_mismatch` |
+| Exact match | RESOLVED | `exact_match` |
+| Reciprocal, confidence ≥ 0.70 (`RECIPROCAL_MIN_CONFIDENCE`) | RESOLVED | `reciprocal_match` |
+| Not reciprocal, confidence ≥ the auto-resolve threshold (`CONFIDENCE_THRESHOLDS["resolved"]` in `core/constants.py`) | RESOLVED | `high_confidence_match` |
+| Anything else | PENDING | `needs_review` |
 
-**NOT_BUNK_WITH formula:**
-```text
-score = 0.75 × name_score + 0.20 × ai_score + 0.05 × context_score
-```
+**NOT_BUNK_WITH** is more permissive (`NOT_BUNK_WITH_THRESHOLD = 0.80`): a target not attending or not enrolled declines, a waitlisted target is PENDING, and at confidence ≥ 0.80 a cross-session target resolves as `cross_session_satisfied` and a same-session one as `auto_resolved`. Below 0.80 it waits for review.
 
-**AGE_PREFERENCE:** Two resolution paths with different confidence levels:
+**AGE_PREFERENCE:** Two resolution paths with different confidence levels. A directional preference resolves (`directional_preference`); an undirected one stays PENDING (`undirected_preference`).
 
 | Source | Direction | Confidence | Method |
 |---|---|---|---|
@@ -486,31 +488,7 @@ score = 0.75 × name_score + 0.20 × ai_score + 0.05 × context_score
 
 Directional mapping: AI extracts OLDER/YOUNGER from reasoning (e.g., "wants to be with older kids"). When the AI recognizes an age preference but cannot determine direction, `age_preference` is None and the request goes to staff review at 0.50 confidence.
 
-**Worked examples:**
-```text
-Same-session exact match (correct):  0.70 × 1.0 + 0.15 × 0.85 + 0.10 × 0.8 = 0.9075 → RESOLVED
-No-session-info exact match (bug):   0.70 × 0.7 + 0.15 × 0.85 + 0.10 × 0.8 = 0.6975 → PENDING (should be 0.9075)
-  (resolution returns 0.90, but 0.90 is NOT > 0.9, so name_score = 0.7 "partial" instead of 1.0 "exact")
-With reciprocal boost:               0.6975 + 0.10 = 0.7975 → still PENDING (threshold is 0.85)
-Cross-session BUNK_WITH:             Score irrelevant — ConflictDetector auto-DECLINES
-Cross-session NOT_BUNK_WITH:         Score irrelevant — ConflictDetector auto-RESOLVES (satisfied)
-```
-
-**Score breakdown in traces (`confidence_factors`):**
-
-After each scoring call, `ConfidenceScorer.last_score_factors` contains the full breakdown. The Phase 2 service captures these factors immediately into `resolution_result.metadata["confidence_factors"]` (to avoid stale reads in batch loops). The orchestrator then reads them into both the Phase 2 trace (`Phase2FinalResult.confidence_factors`) and the request builder (`resolution_info["confidence_factors"]`):
-
-```json
-{
-  "formula": "bunk_with",
-  "name_score": 1.0,
-  "ai_score": 0.85,
-  "context_score": 0.8,
-  "reciprocal_score": 0.0,
-  "weights": {"name_match": 0.70, "ai_parsing": 0.15, "context": 0.10, "reciprocal_bonus": 0.05},
-  "weighted_total": 0.9075
-}
-```
+**Traces:** the Phase 2 trace still carries `Phase2FinalResult.confidence_factors` (`debug/trace_models.py`), filled from the winning candidate's score breakdown in the orchestrator, not from a formula.
 
 ---
 
@@ -783,12 +761,12 @@ Input: original_bunk_requests rows
 
 ## Key Constants and Thresholds
 
-**Source:** `shared/constants.py`, `core/constants.py`, PocketBase `config` table
+**Source:** `shared/constants.py`, `core/constants.py`, `disposition/disposition_rules.py`, PocketBase `config` table
 
 | Constant | Default | Purpose |
 |---|---|---|
 | Auto-resolve threshold | 0.85 | Confidence ≥ this → RESOLVED status |
-| Reciprocal boost | +0.10 | Added when A→B and B→A both exist |
+| Reciprocal floor | 0.70 | A reciprocal BUNK_WITH (A→B and B→A both exist) at or above this → RESOLVED (`RECIPROCAL_MIN_CONFIDENCE`; the old +0.10 boost went with #823) |
 | Historical verification boost | +0.10 | Added when prior-year bunk verified (capped 0.95) |
 | Exact match same-session | 0.95 | Highest local resolution confidence |
 | Fuzzy nickname base | 0.85 | Nickname variation match |
@@ -839,9 +817,10 @@ Input: original_bunk_requests rows
 | `bunk_request_processor/services/request_builder.py` | Build final BunkRequest with status/priority/metadata |
 | `bunk_request_processor/services/request_deduplication.py` | Remove duplicate requests |
 | `bunk_request_processor/services/staff_name_detector.py` | Detect staff/parent names to exclude |
-| `bunk_request_processor/processing/reciprocal_detector.py` | Detect A→B + B→A pairs for confidence boost |
+| `bunk_request_processor/processing/batch_signals.py` | Detect A→B + B→A reciprocal pairs and household co-requests (inputs to the disposition rules) |
+| `bunk_request_processor/disposition/disposition_rules.py` | RESOLVED / PENDING / DECLINED for a resolved match |
 | `bunk_request_processor/processing/deduplicator.py` | Cross-field bunk request deduplication |
-| `bunk_request_processor/confidence/confidence_scorer.py` | Weighted confidence scoring with social signals |
+| `bunk_request_processor/confidence/social_graph_signals.py` | Social-graph signals for candidate ranking |
 | `bunk_request_processor/conflict/conflict_detector.py` | Detect and resolve conflicting requests |
 | `bunk_request_processor/data/repositories/session_repository.py` | Session type classification, `VALID_BUNKING_SESSION_TYPES` |
 
@@ -895,13 +874,13 @@ The Pipeline Debug page (`/summer/debug/pipeline`) provides:
 
 ### P0: Critical
 
-**PB Go-side timeout shorter than API processing time.** The Go sync caller (`process_requests.go`) uses a 35-minute timeout. The v3.11 full-force run took ~2.3 hours. PocketBase logs `context deadline exceeded` and thinks the run failed, but the FastAPI API continues processing as an orphan and completes successfully. Data is written but the Go caller doesn't know.
+**PB Go-side timeout shorter than API processing time.** The Go sync caller (`process_requests.go`) used a 35-minute timeout (now 120 minutes by default, `PROCESS_REQUESTS_TIMEOUT_MINUTES`). The v3.11 full-force run took ~2.3 hours. PocketBase logs `context deadline exceeded` and thinks the run failed, but the FastAPI API continues processing as an orphan and completes successfully. Data is written but the Go caller doesn't know.
 
 ### P1: High
 
 **~~OpenAI transient failures silently drop requests.~~** Fixed in PR #794. `BatchProcessor` now retries all transient errors (timeout, 500, rate limit, connection) with exponential backoff at the batch level (up to 5 retries). `openai_provider.parse_request()` re-raises transient errors for callers to retry. Individual item failures within a batch are tagged and the batch continues. Phase 1 adds up to 3 retry rounds (30s/60s/60s) with reconciliation logging showing transient vs permanent failures.
 
-**Confidence threshold `> 0.9` should be `>= 0.9`.** `confidence_scorer.py:198` uses strictly greater than. ExactMatchStrategy returns 0.90 for no-session-info and parent-surname matches. These get classified as "partial" (name_score=0.7) instead of "exact" (name_score=1.0), producing confidence 0.6975 instead of 0.9075. **39 exact matches stuck pending** in v3.11, plus 8 reciprocal-boosted at 0.7975 (still below 0.85 threshold).
+**~~Confidence threshold `> 0.9` should be `>= 0.9`.~~** Obsolete: #823 deleted `confidence_scorer.py` and an exact match now resolves by rule (`exact_match`). As found: `confidence_scorer.py:198` uses strictly greater than. ExactMatchStrategy returns 0.90 for no-session-info and parent-surname matches. These get classified as "partial" (name_score=0.7) instead of "exact" (name_score=1.0), producing confidence 0.6975 instead of 0.9075. **39 exact matches stuck pending** in v3.11, plus 8 reciprocal-boosted at 0.7975 (still below 0.85 threshold).
 
 **PocketBase 400 on large IN clause.** Bulk person lookup with ~240 IDs exceeds PocketBase's URL/filter length limit. Need to chunk bulk lookups into smaller batches.
 
@@ -930,7 +909,7 @@ The Pipeline Debug page (`/summer/debug/pipeline`) provides:
 
 **32 records escape force-clear.** Force mode cleared 802 processed flags but 32 already-processed records were skipped. These have a different field pattern that escapes the clear filter.
 
-**Reciprocal formula slot dead.** `reciprocal_score = 0.0` hardcoded in `confidence_scorer.py:321` with 0.05 weight. The actual reciprocal boost (+0.1) is applied separately by `reciprocal_detector.apply_reciprocal_boost()`. The formula slot should be removed or unified with the detector.
+**~~Reciprocal formula slot dead.~~** Obsolete: #823 deleted the formula; reciprocity is now a disposition input (`batch_signals.py`). As found: `reciprocal_score = 0.0` hardcoded in `confidence_scorer.py:321` with 0.05 weight. The actual reciprocal boost (+0.1) is applied separately by `reciprocal_detector.apply_reciprocal_boost()`. The formula slot should be removed or unified with the detector.
 
 **Log level audit needed.** Multiple INFO-level messages should be DEBUG: "Processing batch request X/Y", "AI parsed RequestType.AGE_PREFERENCE from bunk_with field", "Created unresolved request for...", "Invalid RequestType.BUNK_WITH request without target name", session graph build stats, cache building details, individual name resolution matches.
 

@@ -15,7 +15,7 @@ If you were invoked with this prompt and no language/section specified, do **not
 
 > The modernization backlog has these sections:
 > - §1 Python (3.14)
-> - §2 Go (1.26) — uses §a/§b/§c structure
+> - §2 Go (audit closed at 1.26; `go.mod` is now 1.27, so the next audit floor is 1.27) — uses §a/§b/§c structure
 > - §3 Frontend (React 19, TypeScript 6.0, Node 22, Tailwind 4) — uses §a/§b/§c structure
 > - §4 Infrastructure + Caddy (hardening checklist, different artifact)
 >

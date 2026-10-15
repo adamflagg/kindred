@@ -6,28 +6,20 @@ Minimal documentation for Kindred. **CLAUDE.md is the primary reference.**
 
 ```text
 docs/
-├── architecture/
-│   └── data-model.md           # Database schema reference
+├── architecture/   # sync-layer, bunk-request-pipeline, session-types, metrics-module,
+│                   # data-model, solver-internals, request-classification,
+│                   # lodging-occupancy, campminder-date-fields
 ├── guides/
-│   ├── staff/                  # For camp staff/helpers
-│   │   ├── lock-groups.md
-│   │   ├── request-management.md
-│   │   ├── scenario-management.md
-│   │   ├── user-interface.md
-│   │   └── visual-indicators.md
-│   ├── csv-preparation.md      # External CSV format
-│   ├── docker-deployment.md    # Production deployment
-│   ├── solver-configuration.md # Solver settings reference
-│   └── troubleshooting.md      # Common issues
+│   ├── staff/      # Older in-app staff notes; the staff guide is maintained separately
+│   ├── csv-preparation.md, dev-database-seeding.md, docker-deployment.md,
+│   └── solver-configuration.md, troubleshooting.md
 ├── api/
 │   ├── solver-api.md           # REST API reference
 │   └── external/campminder/    # CampMinder API docs
-├── reference/
-│   ├── cli-commands.md         # Command reference
-│   ├── configuration.md        # Env vars and config
-│   ├── issue-triage.md         # Open issue groups & attack order
-│   └── modernization-backlog.md # Language/tooling features not yet adopted
-├── features/
+├── reference/      # cli-commands, configuration, tables, git-workflow, lodging-*, weekend-*,
+│                   # family-camp-*, pocketbase-migrations, go-sync-patterns, and more;
+│                   # issue-triage.md is gitignored and exists only in a local checkout
+└── features/
     ├── request-types-specification.md  # Business rules
     └── bunk_request_business_rules.md  # (needs update)
 ```

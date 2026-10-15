@@ -9,17 +9,18 @@ Frontend Pages → React Query hooks → FastAPI Router → Domain Services → 
 ```
 
 **Backend** (`api/`):
-- **Router**: `routers/metrics.py` — single router at `/api/metrics` with 10 endpoints
-- **Services**: One per metric domain, receive `MetricsRepository` via constructor injection
-- **Repository**: `services/metrics_repository.py` — all PocketBase access, returns dicts keyed by `cm_id`
-- **Schemas**: `schemas/metrics.py`, `schemas/velocity.py` — Pydantic response models
+- **Router**: `routers/metrics.py` — single router at `/api/metrics` with 11 metric endpoints, plus `POST /cache/invalidate` and `GET /cache/stats`
+- **Services**: One per metric domain, receive a repository via constructor injection
+- **Repository**: `services/metrics_sql_repository.py` (`MetricsSQLRepository`, direct SQLite reads of PocketBase's database) by default; `services/metrics_repository.py` (`MetricsRepository`, the PocketBase HTTP API) when `METRICS_SQL_ENABLED` is not `true` (`_create_repository` in `routers/metrics.py`). Both return objects keyed by `cm_id`
+- **Schemas**: `schemas/metrics.py`, `schemas/velocity.py`, `schemas/forecast.py`, `schemas/day1.py` — Pydantic response models
 
 | Service | Endpoint | Purpose |
 |---------|----------|---------|
 | `retention_service.py` | `/retention` | Two-year comparison, all demographic breakdowns |
 | `registration_service.py` | `/registration` | Single-year enrollment by gender, grade, session, demographics |
 | `velocity_service.py` | `/velocity` | Week-over-week enrollment curves with prior year overlay |
-| `forecast_service.py` | `/forecast` | Budget goals, capacity, revenue projections |
+| `forecast_service.py` | `/forecast`, `/forecast/week-options` | Budget goals, capacity, revenue projections |
+| `day1_service.py` | `/registration/day1` | Enrollments on the first two days of each registration tier opening (the opening day and the day after) |
 | `cancellation_service.py` | `/cancellations` | Prior status + re-enrollment analysis |
 | `waitlist_service.py` | `/waitlist` | Four-category waitlist analysis |
 | `historical_service.py` | `/historical` | Multi-year trends (default 5 years) |
@@ -27,23 +28,23 @@ Frontend Pages → React Query hooks → FastAPI Router → Domain Services → 
 | `drilldown_service.py` | `/drilldown` | Chart click-through to attendee lists |
 | `session_availability_service.py` | (separate router) | Per-session capacity vs enrollment |
 
-**Shared utilities**: `breakdown_calculator.py` (generic retention/registration aggregation), `extractors.py` (demographic field extraction), `session_context.py` / `session_utils.py` (session type filtering)
+**Shared utilities**: `breakdown_calculator.py` (generic retention/registration aggregation), `extractors.py` (demographic field extraction), `session_context.py` / `session_utils.py` (session type filtering), and `api/utils/session_metrics.py`, the one session resolver every metric uses (#3210): session-type constants, the summer teen window, AG parent folding, and `match_session_in_year` / `resolve_scope_ids` for a session renamed between years
 
 ## Frontend (`frontend/src/pages/metrics/`)
 
-Three sections via `MetricsLayout.tsx` with sticky two-level navigation:
+Three sections via `MetricsLayout.tsx` with sticky two-level navigation. Above every page the layout shows a scope line saying what the page counts (`scopeLine.ts`) and a freshness chip (`AnalyticsFreshness`, `useAnalyticsFreshness`). A season with no enrollment rows yet (`useSeasonHasRows`) shows one line instead of the page (`SeasonEmptyState`, e.g. "No enrollments yet for 2027 — view 2026"), #3219:
 
 | Section | Pages |
 |---------|-------|
-| **Registration** | RegistrationOverview, GeoAnalysis, WaitlistAnalysis, SessionAvailability, ForecastPage, CancellationAnalysis |
+| **Registration** | RegistrationOverview, GeoAnalysis, WaitlistAnalysis, SessionAvailability, ForecastPage, CancellationAnalysis, Day1Page |
 | **Retention** | RetentionOverview, SessionFlowPage (Sankey), BunkRetentionPage (heatmap), StaffCabinAnalysisPage |
 | **Trends** | TrendsOverview (multi-year), VelocityPage, CancellationVelocityPage |
 
-**State management**: `MetricsSessionContext` uses URL search params (`session`, `view`, `compare`) for session filtering across all tabs. View modes: `sessions` (default, camp types), `quests`, `all`.
+**State management**: `MetricsSessionContext` uses URL search params (`session`, `view`, `compare`, `duration`, `teen`, `teen_pipeline`) for session filtering across all tabs. View modes: `sessions` (default, camp types), `quests`, `all`.
 
-**Hooks**: `hooks/useMetrics.ts` — one hook per endpoint (`useRetentionMetrics`, `useRegistrationMetrics`, `useVelocity`, etc.). All use React Query with `keepPreviousData` for smooth filter transitions.
+**Hooks**: `hooks/useMetrics.ts` — one hook per endpoint (`useRetentionMetrics`, `useRegistrationMetrics`, `useHistoricalTrends`, etc.); velocity has its own (`useVelocity.ts`, `useVelocityChartData.ts`). All use React Query with `keepPreviousData` for smooth filter transitions.
 
-**Components**: `components/metrics/` — `MetricCard`, `BreakdownChart`, `RetentionRateBarChart`, `RetentionRateLineChart`, `DrilldownModal`, `ComparisonSummaryTable`, etc.
+**Components**: `components/metrics/` — `MetricCard`, `BreakdownChart`, `RetentionRateLineChart`, `DrillDownModal`, `ComparisonSummaryTable`, `SessionDetailsTable`, `MetricsQueryGuard`, `AnalyticsFreshness`, `SeasonEmptyState`, etc.
 
 ## Key Data Dependencies
 
@@ -58,8 +59,8 @@ Three sections via `MetricsLayout.tsx` with sticky two-level navigation:
 ## Metrics-Specific Patterns
 
 - **Parallel fetches**: Services use `asyncio.gather()` for all independent repository calls; repository uses `asyncio.to_thread()` for synchronous PocketBase SDK
-- **Batched queries**: Large person ID sets split into `BATCH_SIZE = 100` to avoid oversized PocketBase filter strings
-- **Session type constants**: `DISPLAY_SESSION_TYPES` (main, embedded, ag, quest), `BUNK_SESSION_TYPES` (main, embedded, ag — cabin heatmaps only), `SUMMER_PROGRAM_SESSION_TYPES` (counts toward years at camp)
+- **Batched queries**: Large person ID sets split into batches: `BATCH_SIZE = 100` in `MetricsRepository` (PocketBase filter length), `500` in `MetricsSQLRepository` (SQLite parameter limit)
+- **Session type constants** (`api/utils/session_metrics.py`): `DISPLAY_SESSION_TYPES` (main, embedded, ag, quest, scit, tli — teens gated to the summer window), `BUNK_SESSION_TYPES` (main, embedded, ag — cabin heatmaps only), `SUMMER_PROGRAM_SESSION_TYPES` (main, embedded, ag, quest — counts toward years at camp). Family Camp (`family`, `family_adult`) is never in summer metrics
 - **Aged-out logic**: Grade >= 10 excluded from retention base (no eligible session to return to)
 - **Demographics**: Use normalized fields when available (`normalized_school`, `normalized_city`, `normalized_congregation`), fall back to raw fields
 - **AG sessions**: Linked to parent via `parent_id`; metrics for AG fold into parent main session
@@ -72,7 +73,7 @@ Week 0 captures enrollments that occur before the registration anchor date (prio
 - **Week 0 window**: Fixed 7-day period from `anchor - 7 days` to `anchor - 1 day`. All pre-anchor enrollments are bucketed here regardless of how far back they occurred.
 - **`day_offset=-1`**: Sentinel value in the forecast API that maps to `week_number=0` via Python floor division: `(-1 // 7) + 1 = 0`.
 - **Conditional display**: Week 0 only appears in the forecast dropdown and velocity curves when `has_pre_anchor_enrollments()` returns true for that year.
-- **Repository method**: `has_pre_anchor_enrollments(year, anchor_date)` checks attendees using the same date priority as `_get_enrollment_date()` — `effective_date` first, `enrollment_date` only when `effective_date` is empty.
+- **Repository method**: `has_pre_anchor_enrollments(year, anchor_date)` checks attendees using the same date priority as `get_enrollment_date()` (`reconstruction.py`) — `effective_date` first, `enrollment_date` only when `effective_date` is empty.
 - **Reconstruction**: `_reconstruct_core` uses a lower bound of `anchor - 7 days` for negative offsets. `reconstruct_daily_multi` and `_build_daily_points` accept a `week0` flag to emit 7 days of negative-offset data.
 
 **Key functions:**

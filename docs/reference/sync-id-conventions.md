@@ -103,8 +103,9 @@ Some tables have multi-field uniqueness. The composite key format is `{field1}:{
 // Attendees: unique by person + session
 key := fmt.Sprintf("%d:%d", personCMID, sessionCMID)
 
-// Bunk assignments: unique by person + bunk + session
-key := fmt.Sprintf("%d:%d:%d", personCMID, bunkCMID, sessionCMID)
+// Bunk assignments: tracked by person + session + bunk
+// (the collection itself is unique on year + person + session)
+key := fmt.Sprintf("%d:%d:%d", personCMID, sessionCMID, bunkCMID)
 ```
 
 For year isolation, the base utilities automatically append `|{year}`:

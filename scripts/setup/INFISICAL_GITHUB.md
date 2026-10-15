@@ -1,5 +1,10 @@
 # Infisical + GitHub Actions Integration
 
+> **Status (checked 2026-10-15):** no workflow in `.github/workflows/` uses Infisical today; CI and
+> CD read GitHub Secrets directly. The workflow snippets below (`deploy.yml`, `build.yml`,
+> `deploy.sh`) are illustrative, not files in this repo. Locally, `scripts/env-provider.sh`
+> (sourced by `scripts/start_dev.sh`) tries the Infisical CLI first, then Doppler, then `.env`.
+
 ## Overview
 
 Infisical syncs secrets to GitHub Actions in two ways:
@@ -170,11 +175,10 @@ jobs:
 - `OIDC_ISSUER`
 - `OIDC_CLIENT_ID`
 - `OIDC_CLIENT_SECRET`
-- `SESSION_SECRET`
 
 ### Configuration (can vary by environment)
 - `AI_PROVIDER` (openai)
-- `AI_MODEL` (gpt-4.1-nano for prod, maybe gpt-4-turbo for dev)
+- `AI_MODEL` (`gpt-5-nano`)
 - `AUTH_MODE` (production for prod, bypass for dev)
-- `CAMPMINDER_SEASON_ID` (2025)
+- `CAMPMINDER_SEASON_ID` (optional; leave unset so the season rolls over every Oct 15 Pacific, or set it to pin one)
 - `LOG_LEVEL` (INFO for prod, DEBUG for dev)

@@ -84,6 +84,8 @@ Four across is the shortest, keeps every program visible, and takes a fifth prog
 
 **Shipped now:** the glow card on today's three cards, at the mockup's size — fixed 295px cards, 20px gaps, the call to action pinned to each card's bottom edge so the links line up — with the page reading its cards from a list (`PROGRAM_CARDS`).
 
+**Status, 2026-10-15: shipped (#2923).** `Program` includes `'aid'`, `PROGRAM_BUTTONS` and `PROGRAM_CARDS` carry a Camperships entry (berry tone, `HandHeart`, features *Application review*, *Award rounds against the budget*, *Outside grants register* — "Grantor ledger" was dropped), `programUrls.ts` and `AppLayout.tsx` know `/aid`, `canOpenProgram` (`config/programAccess.ts`) gates every list, and the landing grid is `lg:grid-cols-[repeat(2,295px)]` / `xl:grid-cols-[repeat(4,295px)]` when four cards show. The plan below is kept as the record of what was proposed.
+
 **When Camperships launches at `/aid`,** it arrives as the first program gated by permission: it opens with `financial_aid.view` **or** `financial_aid.summary`, and every place that lists programs shows only the ones the user can open (Camperships design rulings D5 and D65). The landing card is one `PROGRAM_CARDS` entry, plus the plumbing the Camperships build already plans:
 
 - `contexts/ProgramContext.tsx` — add the program to the `Program` union and the stored-selection guard.

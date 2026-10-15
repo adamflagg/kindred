@@ -1,280 +1,128 @@
 # Solver Configuration Guide
 
-This guide covers the solver configuration system that allows administrators and bunking teams to fine-tune the constraint solver behavior through the web interface.
+This guide covers how the solver is configured: the few knobs that are tunable at runtime through the admin interface, and the constants that are deliberately hardcoded.
 
 ## Overview
 
-The solver configuration system provides a comprehensive interface for adjusting how the OR-Tools constraint solver makes bunking decisions. Configuration values control priorities, constraints, and optimization objectives.
+Solver behavior comes from two places:
 
-## Configuration Categories
+- **Runtime config**: rows in the PocketBase `config` table, read through `ConfigLoader` (`bunking/config/loader.py`). Every valid key is declared in `CONFIG_SCHEMA` (`bunking/config/schema.py`); an unknown key is rejected and a required key missing from the database is an error, because there are no hardcoded fallbacks for them.
+- **Hardcoded constants**: `bunking/solver/constants.py`. These started life as config keys, but none was ever tuned at runtime, so each was collapsed into a constant (the `solver-config-it` cleanup). Changing one is a code change and a PR.
 
-### 1. Priority Settings
-Control how different types of bunk requests are prioritized:
-- **Age Preference Priority** (`priority.age_preference.default`): Base priority for age preference requests (1-10)
-- **"Must Be With" Boost** (`priority.keyword_boost.must_be_with`): Extra priority for emphatic requests (1-10)
-- **#1 Request Boost** (`priority.keyword_boost.hashtag_one`): Priority boost for top priority requests (1-10)
+Do not add a knob to expose a number nobody will tune. The cleanup deleted most of the original surface on purpose.
 
-### 2. Constraint Settings
-Define hard and soft constraints for cabin assignments:
+## Runtime Configuration Keys
 
-#### Grade and Age Constraints
-- **Maximum Grade Spread** (`constraint.grade_spread.max`): Max number of grades in a cabin (e.g., 2 = only 6th and 7th grade)
-- **Maximum Age Spread** (`constraint.age_spread.months`): Max age difference in months
-- **Grade Ratio Limit** (`constraint.grade_ratio.max_percentage`): Max percentage of cabin from single grade
-- **Grade Ratio Penalty** (`constraint.grade_ratio.penalty`): Penalty weight for violations
+Authoritative list: `CONFIG_SCHEMA`. As of this writing the solver-facing keys are:
 
-#### Request Satisfaction (Parent-Paramount, Hard)
-Every camper with at least one possible Material-Parent (MP) request must have one honored. This is enforced as a hard CP-SAT constraint (#1379) — not tunable. The prior soft `constraint.must_satisfy_one.penalty` knob was removed in Stage 4.
+### Request weighting (objective)
+- **Source multipliers**: `objective.source_multipliers.share_bunk_with`, `.do_not_share_with`, `.bunking_notes`, `.internal_notes`, `.socialize_preference` (float, 0.0-10.0). Each request's source selects one of these through the request registry (`docs/architecture/request-classification.md`); a source with no key (admin-UI `manual`) uses 1.0.
+- **First-pick boost**: `objective.enable_first_boost` (0 or 1). When on, the request flagged `is_first_requested` takes slot 0 of the diminishing-returns stack and gets the first-pick boost.
+- **Mutual boost**: `objective.mutual_request_boost` (float, 1.0-10.0). Multiplier on `bunk_with` requests filed in both directions; 1.0 turns it off. It stacks with the source multiplier.
 
-#### Level Progression
-- **No Regression** (`constraint.level_progression.no_regression`): Prevent moving to lower level bunks
-- **Prefer Progression** (`constraint.level_progression.prefer_progression`): Encourage moving to higher levels
+### Cabin shape
+- **Age spread bonus**: `constraint.age_spread.preferred_bonus` (int). Bonus for cabins within the preferred age spread. The 24-month cap itself is hard and hardcoded.
+- **Level progression**: `constraint.level_progression.no_regression` (0 or 1) and `constraint.level_progression.no_regression_penalty` (int). Discourage moving a returning camper to a lower-level cabin.
+- **Minimum occupancy**: `constraint.cabin_minimum_occupancy.penalty` (int). Penalty for a cabin below the preferred occupancy.
 
-#### Cabin Capacity
-- **Default Capacity** (`constraint.cabin_capacity.default`): Standard cabin size (8-14)
-- **Maximum Capacity** (`constraint.cabin_capacity.max`): Max with override (8-16)
-- **Mode** (`constraint.cabin_capacity.mode`): "hard" or "soft" constraint
-- **Penalty** (`constraint.cabin_capacity.penalty`): Penalty for exceeding in soft mode
+### Applying results
+- `solver.auto_apply_enabled` (0 or 1) and `solver.auto_apply_timeout` (seconds, 0 is immediate). Auto-apply still only lands in a scenario's draft assignments; production is read-only for the solver.
 
-#### Flow Constraints
-- **Age/Grade Flow** (`constraint.age_grade_flow.weight`): Encourage age progression across cabin numbers
-- **Grade Cohesion** (`constraint.grade_cohesion.weight`): Keep same grades in adjacent bunks
+### Name resolution (not solver)
+`smart_local_resolution.*` keys tune name resolution in the request pipeline, not the solver. They appear in the same admin screen under the Processing category.
 
-### 3. Objective Settings
-Control the optimization objectives:
+## Hardcoded Constants
 
-#### Source Multipliers
-Adjust relative importance of different request sources:
-- **Parent Requests** (`objective.source_multipliers.share_bunk_with`): Weight for parent bunk requests (0.1-5.0)
-- **Safety Concerns** (`objective.source_multipliers.do_not_share_with`): Weight for separation requests (0.1-5.0)
-- **Bunking Notes** (`objective.source_multipliers.bunking_notes`): Weight for bunking notes (0.1-5.0)
-- **Internal Notes** (`objective.source_multipliers.internal_notes`): Weight for staff notes (0.1-5.0)
-- **Socialize Preference** (`objective.source_multipliers.socialize_preference`): Weight for socialization preferences (0.1-5.0)
+These live in `bunking/solver/constants.py` (read the file for the current values and the history of each):
 
-#### Diminishing Returns
-Prevent gaming the system with multiple requests:
-- **Enable Diminishing Returns** (`objective.enable_diminishing_returns`): Reduce weight for multiple requests
-- **First Request Multiplier** (`objective.first_request_multiplier`): Weight for first request (1-20)
-- **Second Request Multiplier** (`objective.second_request_multiplier`): Weight for second request (1-20)
-- **Third+ Request Multiplier** (`objective.third_plus_request_multiplier`): Weight for additional requests (1-20)
+| Constant | Meaning |
+|----------|---------|
+| `DEFAULT_BUNK_CAPACITY` (12), `MAX_BUNK_CAPACITY` (14) | Standard cabin size. With overflow allowed, unlocked bunks can reach `DEFAULT + 1` (13) |
+| `MIN_BUNK_OCCUPANCY` (8), `PREFERRED_BUNK_OCCUPANCY` (10) | Occupancy thresholds for the minimum-occupancy soft constraint |
+| `MAX_UNIQUE_GRADES_PER_BUNK` (2) | Grade spread: hard |
+| `MAX_AGE_SPREAD_MONTHS` (24), `PREFERRED_AGE_SPREAD_MONTHS` (18), `EDGE_AGE_OVERFLOW_PENALTY` | Age spread cap (hard for middle cabins; edge cabins get a soft escape hatch) and the preferred target |
+| `MAX_SINGLE_GRADE_PERCENTAGE` (67), `GRADE_RATIO_PENALTY` | Grade ratio limit and penalty |
+| `AGE_GRADE_FLOW_WEIGHT` | Encourages age progression across cabin numbers |
 
-### 4. Solver Settings
-Technical solver configuration:
-
-#### Debug Settings
-- **Debug Enabled** (`solver.debug.enabled`): Enable detailed logging
-- **Log Level** (`solver.debug.log_level`): "INFO", "DEBUG", or "WARNING"
-
-#### Solver Behavior
-- **Auto-Apply Results** (`solver.auto_apply_enabled`): Automatically apply results without confirmation
-- **Auto-Apply Delay** (`solver.auto_apply_timeout`): Seconds to wait before applying (0-30)
-- **Execution Mode** (`solver.execution_mode`): "unified" (all sessions) or "per_session" (independent)
+The parent-paramount constraint (every camper with a possible Material-Parent request gets one honored) and staff/manual separation requests are hard constraints, not tunable. See `docs/architecture/solver-internals.md`.
 
 ## Accessing Configuration
 
-### Admin Panel (/admin)
-The Admin panel provides full access to all configuration values:
-1. Navigate to Admin tab → Solver Configuration section
-2. All 48 configuration values are displayed by category
-3. Click any value to edit inline
-4. Changes save automatically
-5. Use "Reset to Defaults" to restore all values
+### Manage > Config (`/manage/config/<category>`)
+Admin only. The page reads the `config` and `config_sections` collections straight from PocketBase and groups values by the `business_category` in each row's metadata: Solver, Processing, History and General.
+1. Pick a category tab (the bare `/manage/config` redirects to `/manage/config/solver`)
+2. Search or scroll the section cards
+3. Edit a value and save it (writes the `config` row's `value`)
+4. "Reset to Defaults" writes each row's `metadata.default_value` back
 
-### Settings Page (/settings)
-The Settings page provides a user-friendly interface for bunking team:
-1. Navigate to Settings in the main menu
-2. Configurations are organized into logical sections
-3. Use sliders for priorities and multipliers
-4. Toggle switches for boolean settings
-5. Tooltips explain each setting
-6. Individual save buttons for each change
-7. "Reset to Defaults" available at the top
+There is no separate Settings page for the bunking team.
 
-## Configuration Synchronization
+## Configuration Storage
 
-The configuration system maintains consistency across multiple layers:
+All runtime values live in the `config` collection (migration `1500000011_config.js`):
+- `category`, `subcategory`, `config_key`: the dotted key split into parts, unique together
+- `value`: the stored value
+- `metadata`: data type, default value, valid range and `business_category` for the GUI
+- `description`: human-readable text
 
-### Database Storage
-All configurations are stored in the `solver_config` PocketBase collection with:
-- `config_key`: Unique identifier (e.g., "priority.age_preference.default")
-- `config_value`: String representation of the value
-- `description`: Human-readable description
-- `category`: One of: priority, constraint, objective, solver
-- `data_type`: integer, float, boolean, or string
-- `min_value`/`max_value`: Valid ranges for numeric values
+Create and update need admin or the `registration.manage` permission; any signed-in user can read.
 
-### Configuration Initialization
-Configuration initialization is now handled natively by PocketBase during startup:
-- All required configs are created automatically when PocketBase starts
-- Only missing configs are created - existing values are never overwritten
-- Default values and metadata are defined in `pocketbase/config/config_init.go`
-
-### Configuration Sources
-1. **DEFAULT_CONFIG** in `config_service.py`: Source of truth for runtime access
-2. **Config initialization** in `pocketbase/config/config_init.go`: Creates missing configs on startup
-3. **Database**: Runtime storage with user modifications
-4. **API**: Serves current values to frontend
-
-## API Endpoints
-
-### GET /solver-settings
-Retrieve all solver configuration values grouped by category.
-
-**Response:**
-```json
-{
-  "priority": [
-    {
-      "id": "abc123",
-      "key": "priority.age_preference.default",
-      "value": "10",
-      "description": "Default priority for age preference requests",
-      "data_type": "integer",
-      "min_value": 1,
-      "max_value": 10,
-      "updated": "2025-07-12T05:14:18"
-    }
-  ],
-  "constraint": [...],
-  "objective": [...],
-  "solver": [...]
-}
-```
-
-### PUT /solver-settings/{key}
-Update a specific configuration value.
-
-**Request:**
-```json
-{
-  "value": "8"
-}
-```
-
-**Response:**
-```json
-{
-  "id": "abc123",
-  "key": "priority.age_preference.default",
-  "value": "8",
-  "description": "Default priority for age preference requests",
-  "category": "priority",
-  "data_type": "integer",
-  "min_value": 1,
-  "max_value": 10,
-  "updated": "2025-07-12T05:22:24"
-}
-```
-
-### POST /solver-settings/reset
-Reset all configuration values to defaults.
-
-**Response:**
-```json
-{
-  "message": "Successfully reset 15 configuration values to defaults",
-  "updated_count": 15
-}
-```
+### Where each fact lives
+1. **`CONFIG_SCHEMA`** (`bunking/config/schema.py`): which keys are valid, their type and range. Reading an unlisted key fails.
+2. **Seed migration** (`pocketbase/pb_migrations/`): creates the row with its default and metadata. A key that is in the schema but not seeded will fail a required read at startup.
+3. **Database**: the live value, including admin edits.
+4. **Code reads** (`ConfigLoader.get_int`, `get_float`, `get_bool`): the solver, evaluators and validator.
 
 ## Best Practices
 
 ### For Administrators
-1. **Test Changes**: Use scenario planning to test configuration changes before production
-2. **Document Changes**: Keep notes on why configurations were changed
-3. **Monitor Results**: Check solver run metrics after changes
-4. **Incremental Adjustments**: Make small changes and observe effects
-
-### For Bunking Teams
-1. **Understand Priorities**: Higher values (8-10) mean requests are much more likely to be satisfied
-2. **Balance Constraints**: Too many hard constraints can make problems unsolvable
-3. **Use Multipliers Carefully**: Source multipliers affect all requests from that source
-4. **Review Defaults**: Default values are based on camp best practices
+1. **Test changes in a scenario**: run the solver on a scenario before relying on a new value
+2. **Document changes**: note why a value was changed
+3. **Compare scores**: `GET /api/scenarios/score` gives the objective score of a scenario or production, so two settings can be compared
+4. **Change one thing at a time**
 
 ### Configuration Guidelines
-1. **Priority Values (1-10)**:
-   - 1-3: Low priority, often ignored
-   - 4-6: Normal priority, balanced consideration
-   - 7-9: High priority, usually satisfied
-   - 10: Maximum priority, almost always satisfied
-
-2. **Penalty Weights (0-10000)**:
-   - 0: Constraint disabled
-   - 1-100: Minor preference
-   - 100-1000: Strong preference
-   - 1000-10000: Near-hard constraint
-
-3. **Multipliers (0.1-5.0)**:
-   - 0.1-0.5: Much less important
-   - 0.6-0.9: Somewhat less important
-   - 1.0: Normal importance
-   - 1.1-2.0: More important
-   - 2.1-5.0: Much more important
+1. **Multipliers (0-10)**: 1.0 is neutral; below 1.0 makes a source count for less, above 1.0 for more. The weights multiply with the first-pick and mutual boosts, so small changes compound.
+2. **Penalty weights**: larger means closer to a hard constraint. A penalty large enough to dominate the objective behaves like one and can make a session hard to solve.
 
 ## Troubleshooting
 
-### Common Issues
+### "Configuration not updating"
+- Check the value is within the key's range
+- Check the data type matches
+- Confirm you are an admin
 
-#### "Configuration not updating"
-- Check if value is within min/max range
-- Verify data type matches (integer vs float)
-- Ensure you have admin permissions
-
-#### "Solver ignoring configuration"
-- Some configs only apply in specific modes
-- Check if related constraints are enabled
-- Review solver debug logs for details
-
-#### "Reset not working"
-- Reset only affects values different from defaults
-- Check DEFAULT_CONFIG for actual default values
-- Sync script may need to run after changes
-
-### Migration Issues
-
-If PocketBase migrations fail to update enum values:
-1. Stop the development server
-2. Run the fix script:
-   ```bash
-   ./scripts/fix_objective_category_enum.py
-   ```
-3. Restart the server
-4. Run the sync script
+### "Solver ignoring configuration"
+- Confirm the key is in `CONFIG_SCHEMA` and read by the code path you expect (`grep` for it)
+- Check whether the behavior is a hardcoded constant, not a config key
+- Review the solver run log under `logs/solver/`
 
 ## Development
 
-### Adding New Configuration
+### Adding or removing a config key
 
-1. Add to `DEFAULT_CONFIG` in `config_service.py` for runtime access:
-   ```python
-   "category.subcategory.name": default_value,
-   ```
+Walk all four surfaces together; the `solver-config-it` skill does exactly this per domain:
 
-2. Add to Go config initialization in `pocketbase/config/config_init.go`:
-   - Add to `DefaultConfig` map with default value
-   - Add to `ConfigMetadataMap` with metadata (description, category, data_type, min/max values)
+1. Declare it in `CONFIG_SCHEMA` (`bunking/config/schema.py`)
+2. Seed it with a PocketBase migration (`docs/reference/pocketbase-migrations.md`); to remove a key, a migration drops the row
+3. Make sure the GUI shows it (Manage > Config picks up rows by `business_category`)
+4. Read it in code with `ConfigLoader.get_*`
 
-3. Update frontend `VALID_CONFIG_KEYS` in `AdminConfig.tsx`
-
-4. Add to appropriate section in `Settings.tsx` if user-facing
-
-5. Rebuild PocketBase to include new configuration
+If a number is never going to be tuned, prefer a constant in `bunking/solver/constants.py` over a key.
 
 ### Testing Configuration Changes
-
-1. Unit tests in `test_config_service.py`
-2. Integration tests with solver runs
-3. Scenario planning for real-world testing
-4. Performance impact analysis
+1. Unit tests for the loader and schema live under `tests/unit/config/`
+2. Run a solve on a scenario and compare scores
+3. Performance impact: `docs/reference/objective-sensitivity.md`
 
 ## Security Considerations
 
-- Configuration changes require admin authentication
-- All changes are logged for audit trail
+- Configuration changes require admin authentication (or `registration.manage`)
+- Changes go through PocketBase's `config` rules (admin or `registration.manage`)
 - No sensitive data in configuration values
-- API endpoints should be protected in production
-- Regular backups of configuration state
 
 ## Related Documentation
 
 - [Solver API](../api/solver-api.md) - Complete API reference
+- [Solver internals](../architecture/solver-internals.md) - Hard constraints, impossibility, observability
+- [Request classification](../architecture/request-classification.md) - How a request's source picks its multiplier

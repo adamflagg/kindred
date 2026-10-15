@@ -278,7 +278,7 @@ Before committing any migration:
 - [ ] **Fresh DB test** - delete pb_data/ and verify schema creates correctly
 - [ ] **Seed script updated** — if adding/removing a collection, verify `scripts/setup/seed_from_prod.py` handles it (auto-discovered, but check skip lists)
 
-**Enum update workaround**: If migration applies but enum values unchanged, use `scripts/fix_request_type_enum.py` to update schema JSON directly.
+**Enum update workaround**: If migration applies but enum values unchanged, re-check that the `values` array is a direct property of the field (no `options: {}` wrapper), then write a new, higher-numbered migration that sets `collection.fields.getByName(...).values` and calls `app.save()`, as `1500000243_camp_sessions_family_adult_type.js` does. (`scripts/fix_request_type_enum.py`, which this line used to name, no longer exists.)
 
 **Schema iteration**: Use index-based `for` loops, NOT `for...of` (causes "object is not iterable").
 
@@ -291,9 +291,9 @@ Skill artifacts:
 - Verification harness: `scripts/dev/verify-consolidation.sh` (orchestrator), `scripts/dev/migration-schema-diff.sh` (canonical schema dump + diff)
 - Spec: `docs/superpowers/specs/2026-05-08-migration-consolidation-design.md`
 
-Cleanup mechanism: PB v0.23 has a built-in `migrate history-sync` subcommand (`RemoveMissingAppliedMigrations` in `core/migrations_runner.go`) that DELETEs every `_migrations` row whose file is no longer on disk. `pocketbase/main.go` registers an `OnServe` hook that calls this on every server boot, so prod's `_migrations` self-heals after each consolidation merge. Idempotent — no-op on clean DBs.
+Cleanup mechanism: PB v0.23 has a built-in `migrate history-sync` subcommand (`RemoveMissingAppliedMigrations` in PocketBase's own `core/migrations_runner.go`, not in this repo) that DELETEs every `_migrations` row whose file is no longer on disk. `pocketbase/main.go` registers an `OnServe` hook that calls this on every server boot, so prod's `_migrations` self-heals after each consolidation merge. Idempotent — no-op on clean DBs.
 
-Numbering: gaps may appear in `pb_migrations/` numbering after consolidation. Per CLAUDE.md "PocketBase Migration Numbering Rule", new migrations must use a number greater than the highest existing filename on `origin/main` — never fill consolidation gaps.
+Numbering: gaps may appear in `pb_migrations/` numbering after consolidation. Per `pocketbase/CLAUDE.md` § "Numbering rule", new migrations must use a number greater than the highest existing filename on `origin/main` — never fill consolidation gaps.
 
 ## Renumbering a migration you have already applied locally
 

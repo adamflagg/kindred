@@ -2,6 +2,9 @@
 
 Copy-paste this into a new Claude Code conversation to refresh `docs/reference/issue-triage.md`.
 
+> `issue-triage.md` is a **local working document**: it is gitignored (untracked since #1223), so it
+> exists only in a checkout that has it. Run this prompt from the main folder, not a fresh worktree.
+
 ---
 
 ```text

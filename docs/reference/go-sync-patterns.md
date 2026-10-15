@@ -403,10 +403,13 @@ using the wrong helper for a collection silently reads or writes across years.
   `custom_field_definitions` — use `PreloadRecordsGlobal()` and `ProcessSimpleRecordGlobal()`
   for these.
 
-Year flows from the season env var and must be set on every year-scoped record:
+Year flows from the service's client and must be set on every year-scoped record. The client
+is scoped to one season: the boot client to the primary (`PrimarySeason` in `sync/year.go`, or
+the `CAMPMINDER_SEASON_ID` override), and an N−1 or replay instance to its own year via
+`CloneWithYear` in `servicesForYear`:
 
 ```go
-year := s.Client.GetSeasonID()  // From CAMPMINDER_SEASON_ID
+year := s.Client.GetSeasonID()  // The season this instance syncs, not an env var read
 recordData["year"] = year       // MUST be set on every record
 ```
 

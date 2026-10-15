@@ -74,7 +74,7 @@ To reconstruct "how many were enrolled at day X":
 1. For each attendee with status in {enrolled, cancelled, withdrawn}:
    - **Enrollment event**: `effective_date` (when they first registered)
    - **Cancellation event** (cancelled/withdrawn only): `enrollment_date` (when they left)
-2. Count events within [season_start, season_start + day_offset]
+2. Count events within [season_start, season_start + day_offset] (for a negative day offset, Week 0, the window starts 7 days before season start)
 3. Net enrolled = gross enrollments - cancellations
 
-See: `api/services/reconstruction.py`
+See: `api/services/reconstruction.py` (constants `ENROLLMENT_STATUSES = {2, 32, 256}`, `CANCELLATION_STATUSES = {32, 256}`)
