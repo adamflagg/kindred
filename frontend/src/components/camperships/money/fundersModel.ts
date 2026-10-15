@@ -114,13 +114,15 @@ export function buildFunders({
   readonly show: FundersShow
   readonly showRetired: boolean
 }): { rows: FunderRow[]; counts: FunderCounts } {
-  const visible = grantors
-    .filter((g) => showRetired || !isRetired(g))
-    .sort((a, b) => a.name.localeCompare(b.name))
-  const byKey = new Map(visible.map((g) => [g.key, g] as const))
+  const sorted = [...grantors].sort((a, b) => a.name.localeCompare(b.name))
+  const visible = sorted.filter((g) => showRetired || !isRetired(g))
+  // A description belongs to its funder retired or not: only an empty or unknown key is "No funder yet".
+  const byKey = new Map(sorted.map((g) => [g.key, g] as const))
   const camp = sources.filter((s) => s.funder_type === 'camp')
   const under = new Map<string, ApiAidSourceRow[]>()
   const none: ApiAidSourceRow[] = []
+  // A retired funder's descriptions hide with it, so they stay out of every funder-count below.
+  const hiddenWithFunder = (g: ApiAidGrantor) => !showRetired && isRetired(g)
   for (const s of sources) {
     if (s.funder_type === 'camp') continue
     const grantor = byKey.get(s.grantor_key)
@@ -130,7 +132,12 @@ export function buildFunders({
 
   const counts: FunderCounts = {
     funders: visible.length + (camp.length > 0 ? 1 : 0),
-    descriptions: sources.length,
+    descriptions:
+      sources.length -
+      sources.filter((s) => {
+        const g = byKey.get(s.grantor_key)
+        return s.funder_type !== 'camp' && g !== undefined && hiddenWithFunder(g)
+      }).length,
     noFunder: none.length,
   }
 
@@ -168,7 +175,13 @@ export function buildFunders({
 
   if (show !== 'no-funder') {
     group('camp', camp)
-    for (const g of visible) {
+    // Needs a group keeps a hidden retired funder whose description still needs one, so it stays findable.
+    const listed = sorted.filter(
+      (g) =>
+        !hiddenWithFunder(g) ||
+        (show === 'needs-group' && (under.get(g.key) ?? []).some((s) => s.needs_group === true))
+    )
+    for (const g of listed) {
       const list = under.get(g.key) ?? []
       const shown = keep(list)
       // A chip that filters descriptions leaves out a funder with none of them.

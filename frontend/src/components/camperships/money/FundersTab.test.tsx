@@ -1030,7 +1030,8 @@ describe("a description's funder (grantors, no rules)", () => {
         ),
       },
     ]
-    renderTab()
+    // The description is a retired funder's, so it shows with it: Show retired on.
+    renderTab('/aid/money/funders?retired=all')
     await openRow('Grantor A grant')
     await userEvent.click(within(panel('edit')).getByRole('button', { name: 'Change the Funder…' }))
     const field = await screen.findByTestId('grantor-field')
