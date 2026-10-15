@@ -49,7 +49,7 @@ export function buildSessionDetailRows(
 ): SessionDetailRow[] {
   const comparing = isComparing && priorRows != null
   const current = comparing ? rollUpTliSessions(currentRows) : currentRows
-  const prior = comparing && priorRows ? rollUpTliSessions(priorRows) : []
+  const prior = comparing ? rollUpTliSessions(priorRows) : []
   const priorByName = new Map<string, SessionBreakdown>()
   if (comparing) {
     for (const p of prior) {
