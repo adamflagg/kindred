@@ -3,7 +3,7 @@
  * BEFORE CamperCard gains the slot prop. Never run with -u. Fictional data.
  */
 import { fireEvent, render, screen } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import CamperCard from './CamperCard'
 import { mockCamper } from '../test/mockData'
@@ -59,6 +59,15 @@ beforeEach(() => {
 })
 
 describe('CamperCard — pixel identity without note slots', () => {
+  // The card shows an age computed from today, so the snapshot pins the clock.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-10T12:00:00Z'))
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('renders exactly what main renders', () => {
     const { container } = render(<CamperCard camper={EMMA} />)
     expect(normalizeIds(container.innerHTML)).toMatchSnapshot()

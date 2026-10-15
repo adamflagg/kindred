@@ -2909,6 +2909,15 @@ describe('CamperDetailsPanel', () => {
 })
 
 describe('CamperDetailsPanel — pixel identity without a note slot (board notes)', () => {
+  // The panel shows an age computed from today, so the snapshot pins the clock.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-10T12:00:00Z'))
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('renders exactly what main renders, body host included', async () => {
     setupDeclinedRequestMocks()
     const { baseElement } = render(<CamperDetailsPanel camperId="100" onClose={vi.fn()} />)
