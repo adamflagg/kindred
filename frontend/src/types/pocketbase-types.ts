@@ -1086,6 +1086,7 @@ export const CampSessionsSessionTypeOptions = {
   embedded: 'embedded',
   ag: 'ag',
   family: 'family',
+  family_adult: 'family_adult',
   quest: 'quest',
   scit: 'scit',
   bmitzvah: 'bmitzvah',

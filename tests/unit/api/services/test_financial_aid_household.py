@@ -10,7 +10,7 @@ from api.services.financial_aid_household import (
     build_request_specs,
     choose_household_answers,
 )
-from api.services.financial_aid_intake_types import AttendeeRow, Flag
+from api.services.financial_aid_intake_types import AttendeeRow, Flag, SessionRow
 from bunking.financial_aid.rules.schema import IncomeFigure
 from tests.unit.api.services.financial_aid_fakes import SESSIONS, fa_row
 
@@ -285,3 +285,18 @@ def test_a_waitlisted_adult_gets_a_request_that_stays_unmatched_until_enrolled()
 def test_a_cancelled_adult_gets_no_request() -> None:
     rows = [fa_row(1000031, 1000003, interest=True, registration_ask=600.0)]
     assert build_request_specs(1000003, rows, SESSIONS, [AttendeeRow(1000031, 1000003, 1000401, 32)]) == ()
+
+
+def test_an_adult_reg_only_household_family_camp_request_resolves_to_the_weekend() -> None:
+    # kindred#3213 (owner ruling 2026-10-14): the household's only enrollment is Adult Reg.
+    sessions = (*SESSIONS, SessionRow(1000212, "Adult Reg: Family Camp 6", "family_adult", parent_cm_id=1000202))
+    attendees = [AttendeeRow(1000051, 1000005, 1000212, 2)]
+    (spec,) = build_request_specs(
+        1000005, [fa_row(1000051, 1000005, fc="Family Camp 6", fc_ask=700.0)], sessions, attendees
+    )
+    assert (spec.program_key, spec.resolution.session_cm_id, spec.resolution.method) == (
+        "family_camp",
+        1000202,
+        "enrollment",
+    )
+    assert spec.enrolled_session_ids == frozenset({1000212, 1000202})  # the enrollment and the weekend it counts as

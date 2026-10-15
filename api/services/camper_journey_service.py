@@ -63,6 +63,9 @@ logger = get_logger(__name__)
 
 
 FAMILY = "family"
+# An Adult Reg session (kindred#3213): adult-only guests of the Family Camp weekend its
+# parent_id names. Counted as that weekend; its cabin attribution is later work.
+FAMILY_ADULT = "family_adult"
 ADULT = "adult"
 AG = "ag"
 QUEST = "quest"
@@ -326,7 +329,14 @@ async def build_journey_feed(
                 keys.add((_int(a, "year"), _int(session, "cm_id")))
         return keys
 
-    own_family = weekend_keys(FAMILY)
+    # An Adult Reg enrollment is its weekend's: keyed on the parent so a weekend the
+    # household also attended counts once (a parentless one keys on itself).
+    adult_reg = {
+        (_int(a, "year"), _int(_session(a), "parent_id") or _int(_session(a), "cm_id"))
+        for a in all_attendees
+        if _session_type(_session(a)) == FAMILY_ADULT and _int(_session(a), "cm_id") > 0
+    }
+    own_family = weekend_keys(FAMILY) | adult_reg
     adult_count = len(weekend_keys(ADULT))
     parent_family = _parent_family_weekends(family_years, own_family, view_year) if viewer_is_adult else []
     family_count = len(own_family | {p.key for p in parent_family})
@@ -413,6 +423,11 @@ async def build_journey_feed(
     )
 
 
+def _is_family_camp(session_type: str) -> bool:
+    """A family weekend or its Adult Reg session -- one side of the year-fallback's split."""
+    return session_type in (FAMILY, FAMILY_ADULT)
+
+
 def _journey_row(
     att: Any,
     year_assignments: list[Any],
@@ -440,7 +455,7 @@ def _journey_row(
     # 3. else no label.
     if match is None and len(year_assignments) == 1:
         candidate = year_assignments[0]
-        if (_session_type(_session(candidate)) == FAMILY) == (session_type == FAMILY):
+        if _is_family_camp(_session_type(_session(candidate))) == _is_family_camp(session_type):
             match = candidate
     bunk = _bunk(match) if match is not None else None
     bunk_name: str | None = _str(bunk, "name") if bunk is not None else None
@@ -453,6 +468,11 @@ def _journey_row(
         household_year = family_housing.get(year)
         family = _family_season_housing(household_year, cm_id or 0) if household_year is not None else None
         bunk_name, recorded = _labelled(family)
+
+    # Adult Reg guests (kindred#3213): no cabin until their attribution is built
+    # with the 2027 Family Camp lodging work -- never a borrowed bunk.
+    if session_type == FAMILY_ADULT:
+        bunk_name, recorded = None, None
 
     # Adult programs: the cabin the server attributed to THIS weekend, or
     # nothing -- never a bunk, so the year-fallback cannot pin a lone summer

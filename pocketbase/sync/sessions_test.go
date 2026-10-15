@@ -660,6 +660,25 @@ func TestGetSessionTypeFromName(t *testing.T) {
 		{name: "mens weekend no apostrophe", input: "Mens Weekend", expected: sessionTypeAdult},
 		{name: "mens weekend curly apostrophe", input: "Men’s Weekend", expected: sessionTypeAdult},
 		{name: "spring service weekend", input: "Spring Service Weekend ($54 fee)", expected: sessionTypeAdult},
+		// kindred#3213: from 2027 CampMinder files an "Adult Reg: …" session beside each
+		// Family Camp weekend, where adults beyond a family's first two (and adults
+		// with no children) register. They are adult-only Family Camp attendees, so
+		// the name rule must run BEFORE the "family camp \d" regex below, or a
+		// session returned without its group id would read as a second weekend.
+		{
+			name:     "adult reg family camp",
+			input:    "Adult Reg: Family Camp 4 (Labor Day Weekend)",
+			expected: sessionTypeFamilyAdult,
+		},
+		{name: "adult reg bare family camp", input: "Adult Reg: Family Camp 6", expected: sessionTypeFamilyAdult},
+		{
+			name:     "adult reg prospective weekend",
+			input:    "Adult Reg: Prospective Families Weekend",
+			expected: sessionTypeFamilyAdult,
+		},
+		{name: "adult reg any case and padding", input: "  ADULT REG:Family Camp 2", expected: sessionTypeFamilyAdult},
+		{name: "family camp weekend stays family", input: "Family Camp 4: Labor Day Weekend", expected: sessionTypeFamily},
+		{name: "adult reg mid-name is not the prefix", input: "Family Camp 3 Adult Reg: notes", expected: sessionTypeFamily},
 		// Other/unknown sessions
 		{
 			name:     "session 1 is other (not matched)",
@@ -763,6 +782,38 @@ func TestGetSessionTypeFromGroupID(t *testing.T) {
 			groupCMID:   groupAdult,
 			sessionName: "Adults Unplugged",
 			expected:    "adult",
+		},
+		// kindred#3213: the 2027 "Adult Reg: …" sessions sit in the Adult Programs
+		// group, but they are adult-only Family Camp attendees, not an adult weekend.
+		{
+			name:        "adult group adult reg family camp is family_adult",
+			groupCMID:   groupAdult,
+			sessionName: "Adult Reg: Family Camp 1 (Memorial Day Weekend)",
+			expected:    sessionTypeFamilyAdult,
+		},
+		{
+			name:        "adult group adult reg prospective weekend is family_adult",
+			groupCMID:   groupAdult,
+			sessionName: "Adult Reg: Prospective Families Weekend",
+			expected:    sessionTypeFamilyAdult,
+		},
+		{
+			name:        "adult group adult reg any case is family_adult",
+			groupCMID:   groupAdult,
+			sessionName: " adult reg: Family Camp 3",
+			expected:    sessionTypeFamilyAdult,
+		},
+		{
+			name:        "adult group womens weekend stays adult",
+			groupCMID:   groupAdult,
+			sessionName: "Women's Weekend",
+			expected:    sessionTypeAdult,
+		},
+		{
+			name:        "adult group service weekend stays adult",
+			groupCMID:   groupAdult,
+			sessionName: "Winter Service Weekend",
+			expected:    sessionTypeAdult,
 		},
 		// Family School group (12165)
 		{

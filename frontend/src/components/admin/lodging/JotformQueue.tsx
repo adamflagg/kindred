@@ -560,15 +560,21 @@ function writeInDetail(item: JotformQueueEntry, scenario: string): string {
  * Laid out for a wide screen: the filings that need a decision beside the
  * short suggested-links, staff-links and ignored lists, then repeat filers as
  * a grid.
+ *
+ * `showWriteIns={false}` drops the Write-ins card for a session with no board
+ * to write in on -- an Adult Reg session (kindred#3213), whose card could only
+ * ever be empty.
  */
 export function JotformQueue({
   year,
   sessionCmId,
   scenario,
+  showWriteIns = true,
 }: {
   year: number
   sessionCmId: number
   scenario: string
+  showWriteIns?: boolean
 }) {
   const queue = useJotformWeekendQueue(year, sessionCmId, scenario)
   // The "Also …" line speaks for the weekend and scenario the action was taken
@@ -664,13 +670,15 @@ export function JotformQueue({
                   rows={staffLinks}
                   onDone={onDone}
                 />
-                <ResolvedList
-                  testId="jotform-write-ins"
-                  title="Write-ins"
-                  rows={writeIns}
-                  detail={(item) => writeInDetail(item, scenario)}
-                  onDone={onDone}
-                />
+                {showWriteIns && (
+                  <ResolvedList
+                    testId="jotform-write-ins"
+                    title="Write-ins"
+                    rows={writeIns}
+                    detail={(item) => writeInDetail(item, scenario)}
+                    onDone={onDone}
+                  />
+                )}
                 <ResolvedList
                   testId="jotform-cancelled"
                   title="Cancelled registrations"

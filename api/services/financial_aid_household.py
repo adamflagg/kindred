@@ -51,6 +51,7 @@ from api.services.financial_aid_intake_types import (
     SessionRow,
 )
 from api.services.financial_aid_session_resolver import (
+    counted_enrollments,
     normalize_option_text,
     resolve_adult_session,
     resolve_session,
@@ -247,7 +248,10 @@ def build_request_specs(
                         tuple(_ask_flags(ask)),
                     )
                 )
-    household_enrolled = sessions_of(lambda a: a.household_cm_id == household_cm_id, enrolled_only)
+    # Counted as family camp counts them: an Adult Reg enrollment also enrolls its weekend.
+    household_enrolled = counted_enrollments(
+        PROGRAM_FAMILY_CAMP, sessions, sessions_of(lambda a: a.household_cm_id == household_cm_id, enrolled_only)
+    )
     for option_key, entries in sorted(family.items()):
         asks = sorted({ask for _, _, ask in entries if ask > 0})
         ask = asks[-1] if asks else 0.0

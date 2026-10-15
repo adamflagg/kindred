@@ -16,10 +16,12 @@ func TestProgramFamilyForSessionType(t *testing.T) {
 		"hebrew":   programFamilyBMitzvah,
 		"family":   programFamilyFamilyCamp,
 		"adult":    programFamilyAdultWeekend,
-		"school":   programFamilyFamilySchool,
-		"other":    programFamilyOther,
-		"":         programFamilyOther,
-		"unheard":  programFamilyOther,
+		// kindred#3213: aid on an Adult Reg session is Family Camp aid.
+		"family_adult": programFamilyFamilyCamp,
+		"school":       programFamilyFamilySchool,
+		"other":        programFamilyOther,
+		"":             programFamilyOther,
+		"unheard":      programFamilyOther,
 	}
 	for in, want := range cases {
 		if got := programFamilyForSessionType(in); got != want {

@@ -38,6 +38,7 @@ const KIND_ORDER: ReadonlyArray<readonly string[]> = [
   ['hebrew'],
   ['school'],
   ['family'],
+  ['family_adult'], // Adult Reg sessions (kindred#3213), right after the weekends they belong to
   ['adult'],
 ]
 const SUMMER_TYPE_RANK: Readonly<Record<string, number>> = { main: 0, embedded: 1, ag: 2 }
@@ -49,6 +50,7 @@ const UNNUMBERED = 1_000_000
  */
 const NUMBER_IN_NAME: Readonly<Record<string, RegExp>> = {
   family: /family camp\s+(\d+)/i,
+  family_adult: /family camp\s+(\d+)/i,
   bmitzvah: /\byear\s+(\d+)/i,
   hebrew: /\bhebrew\s+(\d+)/i,
 }

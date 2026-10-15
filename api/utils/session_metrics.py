@@ -89,9 +89,10 @@ SUMMER_TEEN_TYPES = ("scit", "tli")
 # (kindred#2776 moved the journey merge server-side). The client's
 # `CAMPER_JOURNEY_TYPES` (`frontend/src/utils/sessionTypePredicates.ts`) is the
 # same set, still read by the Siblings panel; a test holds the two equal. Family
-# joined in #2113 -- hiding it hid ~45% of enrolled attendance -- and adult
-# programs in 2026-09. bmitzvah/hebrew/school/teen/other stay out.
-CAMPER_JOURNEY_SESSION_TYPES = ("main", "embedded", "ag", "quest", "scit", "tli", "family", "adult")
+# joined in #2113 -- hiding it hid ~45% of enrolled attendance -- adult
+# programs in 2026-09, and family_adult (Adult Reg, kindred#3213) with the 2027
+# season. bmitzvah/hebrew/school/teen/other stay out.
+CAMPER_JOURNEY_SESSION_TYPES = ("main", "embedded", "ag", "quest", "scit", "tli", "family", "family_adult", "adult")
 
 # Display labels for the merged teen rows (one row per teen session_type),
 # shared by the forecast and availability services.

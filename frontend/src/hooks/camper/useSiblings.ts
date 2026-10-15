@@ -14,6 +14,7 @@ import {
   buildCamperJourneySessionTypeFilter,
   buildKidProgramSessionTypeFilter,
   isAdultSessionType,
+  isFamilyAdultSessionType,
   isFamilySessionType,
   isQuestSessionType,
   isTeenProgramType,
@@ -138,8 +139,8 @@ export function useSiblings(
               .filter((s): s is CampSessionsResponse => s !== undefined)
               .map((s) => ({ name: s.name, session_type: s.session_type }))
 
-            // Try to get bunk assignment. Family camp and adult programs have
-            // no cabin here: CampMinder's bunk for a family session is the
+            // Try to get bunk assignment. Family camp, adult programs and Adult
+            // Reg sessions (kindred#3213) have no cabin here: CampMinder's bunk for a family session is the
             // day group, which must never render as a cabin (kindred#2466).
             // Nor do TLI/SCIT and Quest (owner ruling 2026-09-22 late, Q9):
             // a teen program's bunk is a program group ("SCIT A", "TLI") and
@@ -149,6 +150,7 @@ export function useSiblings(
               session &&
               !isFamilySessionType(session.session_type) &&
               !isAdultSessionType(session.session_type) &&
+              !isFamilyAdultSessionType(session.session_type) &&
               !isTeenProgramType(session.session_type) &&
               !isQuestSessionType(session.session_type)
             ) {

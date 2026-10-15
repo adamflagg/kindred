@@ -146,6 +146,13 @@ describe('JotformQueue — write-ins', () => {
       submissionId: '6600000000000000014',
     })
   })
+  it('drops the Write-ins card where a session has no board to write in on', () => {
+    // An Adult Reg session (kindred#3213) reviews its filings on the Manage
+    // Jotform tab, with no weekend board, so the card could only ever be empty.
+    render(<JotformQueue year={2026} sessionCmId={1000002} scenario="" showWriteIns={false} />)
+    expect(screen.queryByTestId('jotform-write-ins')).not.toBeInTheDocument()
+    expect(screen.getByTestId('jotform-cancelled')).toBeInTheDocument()
+  })
 })
 
 describe('JotformQueue — cancelled registrations', () => {

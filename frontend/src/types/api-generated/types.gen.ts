@@ -7940,7 +7940,8 @@ export type JotformDuplicateGroup = {
 /**
  * JotformFormRow
  *
- * One active-season adult weekend and its form setting (absent = not set up).
+ * One active-season Jotform session -- an adult weekend or an Adult Reg
+ * session (kindred#3213) -- and its form setting (absent = not set up).
  */
 export type JotformFormRow = {
   /**
@@ -7951,6 +7952,10 @@ export type JotformFormRow = {
    * Session Name
    */
   session_name: string
+  /**
+   * Session Type
+   */
+  session_type?: string
   /**
    * Form Id
    */

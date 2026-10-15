@@ -28,10 +28,14 @@ class JotformRoleMeta(BaseModel):
 
 
 class JotformFormRow(BaseModel):
-    """One active-season adult weekend and its form setting (absent = not set up)."""
+    """One active-season Jotform session -- an adult weekend or an Adult Reg
+    session (kindred#3213) -- and its form setting (absent = not set up)."""
 
     session_cm_id: int
     session_name: str
+    # `adult` or `family_adult`: an Adult Reg session has no weekend board, so
+    # the tab reviews its filings in place rather than on a Requests tab.
+    session_type: str = ""
     form_id: str = ""
     # The title in Jotform, read by the pull: shown so a wrong year's form is noticed.
     form_title: str = ""

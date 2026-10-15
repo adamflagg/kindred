@@ -36,11 +36,15 @@ import {
   CAMPER_DETAIL_TYPES,
   KID_PROGRAM_TYPES,
   isAdultSessionType,
+  isFamilyAdultSessionType,
+  isAdultOnlySessionType,
   buildCamperJourneySessionTypeFilter,
   buildCamperDetailSessionTypeFilter,
   buildKidProgramSessionTypeFilter,
 } from '../sessionTypePredicates'
 import type { Session } from '../../types/app-types'
+import { CampSessionsSessionTypeSchema } from '../../schemas/session'
+import { CampSessionsSessionTypeOptions } from '../../types/pocketbase-types'
 
 // ============================================================================
 // Helpers
@@ -73,6 +77,7 @@ const ALL_TYPES = [
   'tli',
   'teen',
   'family',
+  'family_adult',
   'scit',
   'bmitzvah',
   'adult',
@@ -126,6 +131,18 @@ describe('typed set exports', () => {
     expect([...SESSION_TYPE_LITERALS].sort()).toEqual([...ALL_TYPES].sort())
     // 'taste' is NOT a session_type value — it's a name-match pattern
     expect(SESSION_TYPE_LITERALS).not.toContain('taste')
+  })
+
+  it('the literals, the zod enum and the generated PocketBase options name the same types', () => {
+    expect([...CampSessionsSessionTypeSchema.options].sort()).toEqual([...ALL_TYPES].sort())
+    expect(Object.values(CampSessionsSessionTypeOptions).sort()).toEqual([...ALL_TYPES].sort())
+  })
+
+  // kindred#3213: an Adult Reg person's record must load (camper detail), and an
+  // adult on one is a parent, never a sibling in a child's panel.
+  it('CAMPER_DETAIL_TYPES includes family_adult; KID_PROGRAM_TYPES does not', () => {
+    expect(CAMPER_DETAIL_TYPES).toContain('family_adult')
+    expect(KID_PROGRAM_TYPES).not.toContain('family_adult')
   })
 
   it('QUEST_SESSION_TYPES contains only quest', () => {
@@ -440,6 +457,30 @@ describe('isFamilySessionType (string predicate)', () => {
   })
 })
 
+// kindred#3213: an "Adult Reg" session — adult-only guests of a Family Camp weekend.
+describe('isFamilyAdultSessionType (string predicate)', () => {
+  it('returns true for "family_adult"', () =>
+    expect(isFamilyAdultSessionType('family_adult')).toBe(true))
+  it('returns false for "family" and "adult"', () => {
+    expect(isFamilyAdultSessionType('family')).toBe(false)
+    expect(isFamilyAdultSessionType('adult')).toBe(false)
+  })
+})
+
+// A program that enrolls the adult directly: an adult weekend or an Adult Reg
+// session. Drives the camper record's adult branch (no grade, no school, Household).
+describe('isAdultOnlySessionType (string predicate)', () => {
+  it('returns true for "adult" and "family_adult"', () => {
+    expect(isAdultOnlySessionType('adult')).toBe(true)
+    expect(isAdultOnlySessionType('family_adult')).toBe(true)
+  })
+  it('returns false for "family", "main" and null', () => {
+    expect(isAdultOnlySessionType('family')).toBe(false)
+    expect(isAdultOnlySessionType('main')).toBe(false)
+    expect(isAdultOnlySessionType(null)).toBe(false)
+  })
+})
+
 // ============================================================================
 // Exhaustiveness check
 // Tests that every literal in SESSION_TYPE_LITERALS maps to at least one predicate.
@@ -457,6 +498,7 @@ describe('exhaustiveness: every known literal is covered by at least one predica
       isQuestSession(s) ||
       isTeenProgram(s) ||
       s.session_type === 'family' ||
+      isFamilyAdultSessionType(s.session_type) ||
       s.session_type === 'teen' ||
       s.session_type === 'bmitzvah' ||
       s.session_type === 'adult' ||
@@ -527,6 +569,7 @@ describe('camper journey/detail session-type sets', () => {
       'scit',
       'tli',
       'family',
+      'family_adult', // kindred#3213: Adult Reg, adult-only Family Camp guests
       'adult',
     ])
   })
@@ -545,6 +588,7 @@ describe('camper journey/detail session-type sets', () => {
       'scit',
       'tli',
       'family',
+      'family_adult', // kindred#3213: Adult Reg, adult-only Family Camp guests
       'adult',
     ])
   })

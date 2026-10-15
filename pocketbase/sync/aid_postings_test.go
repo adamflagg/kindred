@@ -546,6 +546,39 @@ func TestAidPostingsSyncHouseholdLinks(t *testing.T) {
 	}
 }
 
+// kindred#3213: an Adult Reg (family_adult) attendee is an adult guest like an
+// adult-weekend one -- indexed under their own household, never their childhood
+// home -- and their aid is Family Camp aid.
+func TestAidPostingsSyncTreatsAnAdultRegAttendeeAsAnAdultGuest(t *testing.T) {
+	t.Parallel()
+	f := newAidFixture(t)
+	f.session(11, "Session 2", "main", 2026)
+	f.session(51, "Adult Reg: Family Camp 4", "family_adult", 2026)
+	for _, h := range []int{300, 400} {
+		f.household(h, 2026)
+	}
+	f.person(1005, 2026, 300, 400) // Adult Reg guest whose childhood home is 400
+	f.attend(1005, 51, 2, 2026)
+	f.person(1006, 2026, 400) // someone in the parents' household, enrolled in summer
+	f.attend(1006, 11, 2, 2026)
+	f.txn(9002, 2026, -300, aidCategoryFinancialAssistance, aidTestCampAid, 300, 0, 0, false) // the guest
+	f.txn(9004, 2026, -200, aidCategoryFinancialAssistance, aidTestCampAid, 400, 0, 0, false) // the parents
+
+	f.run("", 2026)
+
+	if links := f.rows(colAidHouseholdLinks, 2026); len(links) != 0 {
+		t.Errorf("an Adult Reg guest must not link their own household to their childhood home: %d links", len(links))
+	}
+	if p := f.posting(9002); p.GetInt("attributed_person_cm_id") != 1005 ||
+		p.GetString("program_family") != programFamilyFamilyCamp {
+		t.Errorf("the Adult Reg guest's posting must land on them as Family Camp aid: %v", p.FieldsData())
+	}
+	if p := f.posting(9004); p.GetInt("attributed_person_cm_id") != 1006 {
+		t.Errorf("a posting on the parents' household must reach the sibling camper, "+
+			"not the Adult Reg guest whose childhood home is the same household: %v", p.FieldsData())
+	}
+}
+
 func TestAidPostingsSyncAppliesAnOverride(t *testing.T) {
 	t.Parallel()
 	f := newAidFixture(t)

@@ -57,6 +57,14 @@ describe('currentYearCabin', () => {
     expect(result.bunkNameRecorded).toBeUndefined()
   })
 
+  // kindred#3213: an Adult Reg guest's cabin attribution is later work, with the
+  // 2027 Family Camp lodging build. Until then no cabin — never the raw bunk.
+  it('never shows a cabin for a current-year Adult Reg row', () => {
+    const result = currentYearCabin('family_adult', 2027, 1201, 'Day Group B', cabins())
+    expect(result.bunkName).toBeUndefined()
+    expect(result.bunkNameRecorded).toBeUndefined()
+  })
+
   it('keeps the raw bunk name for every other session type unchanged', () => {
     const teenCabins = cabinsByWeekend([])
     const result = currentYearCabin('main', 2026, 500, 'Cabin 5', cabins({ teen: teenCabins }))

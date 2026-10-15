@@ -15,7 +15,7 @@ import { Permission } from '../constants/permissions'
 import { personLocation } from '../utils/addressUtils'
 import { getSessionShortName } from '../utils/sessionDisplay'
 import { earliestSessionStart } from '../utils/displayAge'
-import { isSummerCampSession, isAdultSessionType } from '../utils/sessionTypePredicates'
+import { isSummerCampSession, isAdultOnlySessionType } from '../utils/sessionTypePredicates'
 import { useSessionSatisfaction } from '../hooks/useSessionSatisfaction'
 import type { PersonsResponse } from '../types/pocketbase-types'
 
@@ -341,14 +341,14 @@ export default function CamperDetail() {
   // Select primary camper: prefer enrolled, fall back to first attendee
   const camper = enrolledCampers[0] ?? allAttendees[0] ?? null
 
-  // Adult branch: every current-year
-  // enrollment is an adult program, so the camper-only parts do not apply.
+  // Adult branch: every current-year enrollment is an adult program or an
+  // Adult Reg session (kindred#3213), so the camper-only parts do not apply.
   // Derived here — before useSiblings and the loading guards below — because
   // Task 13's Household/Siblings branch needs it at the same point.
   const currentEnrollments = enrolledCampers.length > 0 ? enrolledCampers : allAttendees
   const isAdultProgram =
     currentEnrollments.length > 0 &&
-    currentEnrollments.every((c) => isAdultSessionType(c.expand?.session?.session_type))
+    currentEnrollments.every((c) => isAdultOnlySessionType(c.expand?.session?.session_type))
 
   // Fetch camper's history using extracted hook (pass all attendees for status-aware filtering)
   const {

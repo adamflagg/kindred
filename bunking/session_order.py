@@ -51,6 +51,7 @@ KIND_ORDER: Final[tuple[tuple[str, ...], ...]] = (
     ("hebrew",),
     ("school",),
     ("family",),
+    ("family_adult",),  # Adult Reg sessions (kindred#3213), right after the weekends they belong to
     ("adult",),
 )
 _SUMMER_TYPE_RANK: Final = {"main": 0, "embedded": 1, "ag": 2}
@@ -59,6 +60,7 @@ _NO_DATE: Final = "9999-99-99"
 # for B*Mitzvah and Hebrew, which the owner gave no rule: Year 1 before Year 2, Hebrew 1 before Hebrew 2).
 _NUMBER_IN_NAME: Final = {
     "family": re.compile(r"family camp\s+(\d+)", re.IGNORECASE),
+    "family_adult": re.compile(r"family camp\s+(\d+)", re.IGNORECASE),
     "bmitzvah": re.compile(r"\byear\s+(\d+)", re.IGNORECASE),
     "hebrew": re.compile(r"\bhebrew\s+(\d+)", re.IGNORECASE),
 }

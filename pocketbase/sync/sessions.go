@@ -24,6 +24,9 @@ const (
 	sessionTypeSCIT     = "scit"
 	sessionTypeOther    = "other"
 	sessionTypeQuest    = "quest"
+	// sessionTypeFamilyAdult is an "Adult Reg" session (kindred#3213): adult-only
+	// attendees of a Family Camp weekend. parent_id holds that weekend's cm_id.
+	sessionTypeFamilyAdult = "family_adult"
 )
 
 // Session group cm_ids - these are stable across all years in CampMinder
@@ -180,6 +183,13 @@ func (s *SessionsSync) Sync(ctx context.Context) error {
 	// Second pass: reclassify overlapping sessions
 	// Sessions sharing start_date or end_date are reclassified so the longest stays "main"
 	correctedTypes, overrideParentIDs := s.reclassifyOverlappingSessions(sessions, initialTypes)
+
+	// Adult Reg sessions point at their Family Camp weekend (kindred#3213). The pairing
+	// rides overrideParentIDs, the channel the embedded pass uses, so parent_id is
+	// written and compared like any other field.
+	for cmID, parentID := range pairFamilyAdultParents(allSessionInfos, correctedTypes) {
+		overrideParentIDs[cmID] = parentID
+	}
 
 	// Update mainSessions map with corrected types for AG parent matching
 	// (AG sessions need to find their parent among sessions that stayed "main")
@@ -549,6 +559,89 @@ func sortSessionsByPriority(sessions []*sessionOverlapInfo) {
 	}
 }
 
+// adultRegPrefix opens the name of every "Adult Reg" session (kindred#3213).
+const adultRegPrefix = "adult reg:"
+
+// familyCampNumberPattern reads the weekend number out of "Family Camp N".
+var familyCampNumberPattern = regexp.MustCompile(`\bfamily camp (\d+)\b`)
+
+// isAdultRegName reports whether a session name is an "Adult Reg: …" session.
+// Only the prefix counts: "Adult Reg" anywhere else in a name is not the rule.
+func isAdultRegName(sessionName string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(sessionName)), adultRegPrefix)
+}
+
+// pairFamilyAdultParents gives each family_adult session the cm_id of its Family
+// Camp weekend, to be written as parent_id (kindred#3213). Three rules, in order,
+// each needing exactly one candidate among the same sync's `family` sessions:
+//
+//  1. the "Family Camp N" number in the name after "Adult Reg:";
+//  2. that remainder equal to a weekend's whole name ("Prospective Families Weekend");
+//  3. the same start and end dates.
+//
+// The name comes first on purpose. CampMinder's 2027 setup gives one Adult Reg
+// session the following weekend's dates, so dates alone would attach it to the
+// wrong weekend. A session no rule pairs keeps no parent and is logged, because a
+// wrong parent is worse than none.
+func pairFamilyAdultParents(infos []sessionInfo, types map[int]string) map[int]int {
+	var weekends []sessionInfo
+	for _, info := range infos {
+		if types[info.cmID] == sessionTypeFamily {
+			weekends = append(weekends, info)
+		}
+	}
+
+	// onlyMatch returns the single weekend satisfying match, or 0.
+	onlyMatch := func(match func(sessionInfo) bool) int {
+		found := 0
+		for _, weekend := range weekends {
+			if !match(weekend) {
+				continue
+			}
+			if found != 0 {
+				return 0
+			}
+			found = weekend.cmID
+		}
+		return found
+	}
+
+	parents := make(map[int]int)
+	for _, info := range infos {
+		if types[info.cmID] != sessionTypeFamilyAdult {
+			continue
+		}
+		// The weekend's name as the Adult Reg session spells it, prefix removed.
+		rest := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(strings.TrimSpace(info.name)), adultRegPrefix))
+
+		parent := 0
+		if m := familyCampNumberPattern.FindStringSubmatch(rest); m != nil {
+			parent = onlyMatch(func(w sessionInfo) bool {
+				wm := familyCampNumberPattern.FindStringSubmatch(strings.ToLower(w.name))
+				return len(wm) > 1 && wm[1] == m[1]
+			})
+		}
+		if parent == 0 {
+			parent = onlyMatch(func(w sessionInfo) bool {
+				return strings.ToLower(strings.TrimSpace(w.name)) == rest
+			})
+		}
+		if parent == 0 && info.startDate != "" && info.endDate != "" {
+			parent = onlyMatch(func(w sessionInfo) bool {
+				return w.startDate == info.startDate && w.endDate == info.endDate
+			})
+		}
+
+		if parent == 0 {
+			slog.Warn("Adult Reg session has no unique Family Camp weekend to pair with; leaving parent_id empty",
+				"cm_id", info.cmID)
+			continue
+		}
+		parents[info.cmID] = parent
+	}
+	return parents
+}
+
 // mensWeekendPattern matches "men's weekend" / "mens weekend" but not "women's weekend".
 var mensWeekendPattern = regexp.MustCompile(`\bmen'?s weekend\b`)
 
@@ -584,6 +677,13 @@ func (s *SessionsSync) getSessionTypeFromName(sessionName string) string {
 	}
 	if strings.Contains(nameLower, "teen leadership institute") {
 		return sessionTypeTLI
+	}
+
+	// Adult Reg sessions (kindred#3213) name their Family Camp weekend, so this must
+	// run before the "family camp \d" rule or they would read as a second weekend.
+	// Same rule as the Adult Programs group arm in getSessionTypeFromGroupID.
+	if isAdultRegName(sessionName) {
+		return sessionTypeFamilyAdult
 	}
 
 	// Family camps
@@ -732,7 +832,14 @@ func (s *SessionsSync) getSessionTypeFromGroupID(groupCMID int, sessionName stri
 		return "bmitzvah"
 
 	case groupAdult:
-		return "adult"
+		// From 2027 CampMinder files an "Adult Reg: …" session beside each Family Camp
+		// weekend in this group (kindred#3213). Adults beyond a family's first two, and
+		// adults with no children, register there: they are adult-only Family Camp
+		// attendees, not an adult weekend. They do take Jotform intake (re-ruling 2026-10-14).
+		if isAdultRegName(sessionName) {
+			return sessionTypeFamilyAdult
+		}
+		return sessionTypeAdult
 
 	case groupFamilySchool:
 		return "school"

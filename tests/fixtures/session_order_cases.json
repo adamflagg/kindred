@@ -239,10 +239,35 @@
       "start_date": "2027-10-09",
       "end_date": "2027-12-04",
       "parent_cm_id": 0
+    },
+    {
+      "cm_id": 931,
+      "name": "Adult Reg: Family Camp 7 (Weekend)",
+      "session_type": "family_adult",
+      "start_date": "2027-10-01",
+      "end_date": "2027-10-03",
+      "parent_cm_id": 915
+    },
+    {
+      "cm_id": 932,
+      "name": "Adult Reg: Family Camp 2",
+      "session_type": "family_adult",
+      "start_date": "2027-06-01",
+      "end_date": "2027-06-03",
+      "parent_cm_id": 916
+    },
+    {
+      "cm_id": 933,
+      "name": "Adult Reg: Prospective Weekend",
+      "session_type": "family_adult",
+      "start_date": "2027-09-24",
+      "end_date": "2027-09-26",
+      "parent_cm_id": 0
     }
   ],
   "order": [
     904, 907, 909, 905, 920, 908, 903, 906, 925, 910, 911, 912, 913, 914, 901,
-    928, 927, 926, 921, 930, 929, 923, 922, 916, 915, 902, 918, 917, 919, 924
+    928, 927, 926, 921, 930, 929, 923, 922, 916, 915, 902, 918, 917, 932, 931,
+    933, 919, 924
   ]
 }

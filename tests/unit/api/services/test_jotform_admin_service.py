@@ -34,7 +34,7 @@ def background_warm() -> Iterator[MagicMock]:
 def _repo(**overrides: Any) -> MagicMock:
     repo = MagicMock()
     defaults: dict[str, Any] = {
-        "fetch_adult_sessions": [WW, MW],
+        "fetch_jotform_sessions": [WW, MW],
         "fetch_forms": [],
         "fetch_submissions": [],
         "fetch_answers": [],
@@ -119,6 +119,18 @@ class TestForms:
         }
         repo.fetch_answers.assert_not_awaited()
         assert (mw.form_id, mw.enabled, mw.form_title, mw.questions) == ("", False, "", [])
+
+    @pytest.mark.asyncio
+    async def test_each_row_carries_its_session_type(self) -> None:
+        # kindred#3213 re-ruling: an Adult Reg session takes Jotform intake but
+        # has no weekend board, so the tab reviews its filings in place. The
+        # row's type is what tells the tab which it is.
+        adult_reg = SimpleNamespace(cm_id=1000010, name="Adult Reg: Family Camp 1", session_type="family_adult")
+        forms = await JotformAdminService(_repo(fetch_jotform_sessions=[WW, adult_reg])).build_forms(YEAR)
+        assert [(r.session_name, r.session_type) for r in forms.rows] == [
+            ("Women's Weekend", "adult"),
+            ("Adult Reg: Family Camp 1", "family_adult"),
+        ]
 
     @pytest.mark.asyncio
     async def test_unreadable_meta_is_dropped_not_a_500(self) -> None:

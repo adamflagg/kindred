@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from typing import Final
 
 from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.rules.schema import (
@@ -44,6 +45,10 @@ def resolved_table[V: (R1Percent, TotalPercent)](tables: Mapping[str, TierTable[
     return resolved
 
 
+# Session types that, when no program claims them, take their parent session's program (camp_sessions.parent_id).
+PARENT_PROGRAM_TYPES: Final = frozenset({"ag", "family_adult"})
+
+
 def resolve_program(
     rules: AidRules,
     session_cm_id: int | None,
@@ -57,7 +62,9 @@ def resolve_program(
     session out of a type-wide mapping. An AG session (type "ag") that no program
     claims takes its parent session's program when `ag_parent` (the parent's id and
     type) is given (spec §8; plan review M7): the Rules card hides AG sessions under
-    their parent, so a new one is never left in no program.
+    their parent, so a new one is never left in no program. An Adult Reg session
+    (type "family_adult", kindred#3213) does the same with its Family Camp weekend:
+    its guests are adult-only Family Camp attendees, priced as Family Camp.
     """
     if session_cm_id is not None:
         for key, program in rules.programs.items():
@@ -67,7 +74,7 @@ def resolve_program(
         for key, program in rules.programs.items():
             if session_type in program.session_types:
                 return key
-    if session_type == "ag" and ag_parent is not None and ag_parent[0] > 0:
+    if session_type in PARENT_PROGRAM_TYPES and ag_parent is not None and ag_parent[0] > 0:
         return resolve_program(rules, ag_parent[0], ag_parent[1])
     return None
 

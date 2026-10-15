@@ -303,6 +303,9 @@ func (r *SessionResolver) sessionCMIDsOfType(year int, sessionType string) ([]in
 // weekly sweep alone would leave the board up to a week behind. The household twin below stays
 // family-camp only: adult weekends carry no household-grain lodging data, and an adult
 // guest's household answers are written by other household members about other weekends.
+//
+// Adult Reg (family_adult) attendees joined with kindred#3213, and stay out of the household
+// twin too: they are not linked into households yet.
 func (r *SessionResolver) GetWeekendPersonIDsAnyStatus(year int) ([]int, error) {
 	sessionCMIDs, err := r.GetFamilyCampSessionCMIDs(year)
 	if err != nil {
@@ -313,6 +316,13 @@ func (r *SessionResolver) GetWeekendPersonIDsAnyStatus(year int) ([]int, error) 
 		return nil, err
 	}
 	sessionCMIDs = append(sessionCMIDs, adultCMIDs...)
+	// Adult Reg attendees (kindred#3213) are adult-only Family Camp guests whose cabin is
+	// a person custom value like any weekend guest's.
+	familyAdultCMIDs, err := r.sessionCMIDsOfType(year, sessionTypeFamilyAdult)
+	if err != nil {
+		return nil, err
+	}
+	sessionCMIDs = append(sessionCMIDs, familyAdultCMIDs...)
 
 	idSet := make(map[int]bool)
 	for _, cmID := range sessionCMIDs {

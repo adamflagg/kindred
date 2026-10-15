@@ -37,7 +37,7 @@ def background_warm() -> Iterator[MagicMock]:
 def _repo(**overrides: Any) -> MagicMock:
     repo = MagicMock()
     defaults: dict[str, Any] = {
-        "fetch_adult_sessions": [WW, MW],
+        "fetch_jotform_sessions": [WW, MW],
         "fetch_forms": [FORM],
         "fetch_submissions": [],
         "fetch_answers": [],

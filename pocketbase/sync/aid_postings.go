@@ -542,15 +542,17 @@ func (s *AidPostingsSync) buildAttributionContext(year int) (*aidAttributionCont
 		if prev, seen := statuses[key]; !seen || prev != aidActiveStatusID {
 			statuses[key] = status
 		}
+		// An Adult Reg (family_adult) attendee is an adult guest too (kindred#3213).
+		adultGuest := sessionType[session] == sessionTypeAdult || sessionType[session] == sessionTypeFamilyAdult
 		if status == aidActiveStatusID {
 			hasActive[person] = true
-			if sessionType[session] != sessionTypeAdult {
+			if !adultGuest {
 				hasActiveNonAdult[person] = true
 			}
 		}
 		// An adult guest's childhood household is their parents' home, not a
 		// second home of the guest's own family (Review Focus 2).
-		if sessionType[session] != sessionTypeAdult && !grouped[person] {
+		if !adultGuest && !grouped[person] {
 			grouped[person] = true
 			linkGroups = append(linkGroups, personHouseholds[person])
 		}

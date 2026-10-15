@@ -13,6 +13,7 @@
  */
 import {
   isAdultSessionType,
+  isFamilyAdultSessionType,
   isFamilySessionType,
   isQuestSessionType,
   isTeenProgramType,
@@ -92,7 +93,9 @@ export function currentYearCabin(
   rawBunkName: string | null | undefined,
   cabins: ServerCabins
 ): CurrentYearCabin {
-  if (isQuestSessionType(sessionType)) return {}
+  // Quest's bunk is a trip name. An Adult Reg guest's cabin attribution is later
+  // work (kindred#3213): until it exists, no cabin rather than a raw bunk.
+  if (isQuestSessionType(sessionType) || isFamilyAdultSessionType(sessionType)) return {}
   const serverNamed = isTeenProgramType(sessionType)
     ? cabins.teen
     : isAdultSessionType(sessionType)

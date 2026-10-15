@@ -22,7 +22,7 @@ def _pb(rows: list[Any] | None = None) -> MagicMock:
 @pytest.mark.parametrize(
     "read",
     [
-        pytest.param(lambda r: r.fetch_adult_sessions(2026), id="fetch_adult_sessions"),
+        pytest.param(lambda r: r.fetch_jotform_sessions(2026), id="fetch_jotform_sessions"),
         pytest.param(lambda r: r.fetch_forms(2026), id="fetch_forms"),
         pytest.param(lambda r: r.fetch_submissions(2026), id="fetch_submissions"),
         pytest.param(lambda r: r.fetch_answers(2026), id="fetch_answers"),
@@ -50,6 +50,35 @@ async def test_enrolled_guests_are_active_adult_attendees_of_the_year() -> None:
     assert "status_id = 2" in params["filter"]
     assert "session.session_type = 'adult'" in params["filter"]
     assert params["expand"] == "person,session"
+
+
+def _type_clauses(filter_: str) -> set[str]:
+    """The `session_type` values a filter admits, read off its `= '<type>'` clauses."""
+    import re
+
+    return set(re.findall(r"session_type = '([a-z_]+)'", filter_))
+
+
+@pytest.mark.asyncio
+async def test_jotform_sessions_are_the_adult_weekends_and_the_adult_reg_sessions() -> None:
+    # kindred#3213 re-ruling (2026-10-14): Adult Reg sessions take Jotform
+    # intake too. A regular Family Camp weekend does not.
+    pb = _pb()
+    await JotformRepository(pb).fetch_jotform_sessions(2027)
+    params = pb.collection.return_value.get_full_list.call_args.kwargs["query_params"]
+    assert params["filter"].startswith("year = 2027 && (")
+    assert _type_clauses(params["filter"]) == {"adult", "family_adult"}
+    assert params["sort"].startswith("start_date,")
+
+
+@pytest.mark.asyncio
+async def test_enrolled_guests_include_adult_reg_guests_but_not_family_camp() -> None:
+    # A filing on an Adult Reg form is matched, suggested and staff-linked
+    # against that session's enrolled guests, as an adult weekend's is.
+    pb = _pb()
+    await JotformRepository(pb).fetch_enrolled_guests(2027)
+    params = pb.collection.return_value.get_full_list.call_args.kwargs["query_params"]
+    assert _type_clauses(params["filter"]) == {"adult", "family_adult"}
 
 
 @pytest.mark.asyncio

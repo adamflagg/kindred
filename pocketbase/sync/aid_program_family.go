@@ -41,8 +41,10 @@ var sessionTypeProgramFamily = map[string]string{
 	"bmitzvah":          programFamilyBMitzvah,
 	"hebrew":            programFamilyBMitzvah,
 	sessionTypeFamily:   programFamilyFamilyCamp,
-	sessionTypeAdult:    programFamilyAdultWeekend,
-	"school":            programFamilyFamilySchool,
+	// An Adult Reg session's attendees are adult-only Family Camp guests (kindred#3213).
+	sessionTypeFamilyAdult: programFamilyFamilyCamp,
+	sessionTypeAdult:       programFamilyAdultWeekend,
+	"school":               programFamilyFamilySchool,
 }
 
 func programFamilyForSessionType(sessionType string) string {

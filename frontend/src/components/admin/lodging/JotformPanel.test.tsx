@@ -44,6 +44,30 @@ vi.mock('../../../hooks/useJotformAdmin', () => ({
   useJotformPull: () => pull,
 }))
 
+// The queue is its own component, pinned in `JotformQueue*.test.tsx`; here a
+// stub records where the tab renders it and for which session.
+vi.mock('./JotformQueue', () => ({
+  JotformQueue: ({
+    year,
+    sessionCmId,
+    scenario,
+    showWriteIns,
+  }: {
+    year: number
+    sessionCmId: number
+    scenario: string
+    showWriteIns?: boolean
+  }) => (
+    <div
+      data-testid="jotform-inline-queue"
+      data-year={year}
+      data-session={sessionCmId}
+      data-scenario={scenario}
+      data-write-ins={String(showWriteIns ?? true)}
+    />
+  ),
+}))
+
 const QUESTIONS = [
   { question_id: '3', text: 'First Name', type: 'control_textbox' },
   { question_id: '4', text: 'Last Name', type: 'control_textbox' },
@@ -414,6 +438,75 @@ describe('JotformPanel — the queue lives on the weekend (kindred#2828 ruling 2
       '/weekend/1000003/requests'
     )
     expect(screen.getByTestId('jotform-requests-link')).toHaveTextContent('No filings need a guest')
+  })
+})
+
+describe('JotformPanel — Adult Reg sessions (kindred#3213 re-ruling 2026-10-14)', () => {
+  // An Adult Reg session takes Jotform intake, but its guests have no weekend
+  // board (the Family Camp lodging work brings them there in the spring), so
+  // its filings are reviewed on this tab rather than behind a dead link.
+  beforeEach(() => {
+    yearState.currentYear = 2027
+    forms.data = {
+      year: 2027,
+      rows: [
+        {
+          session_cm_id: 1000002,
+          session_name: "Women's Weekend",
+          session_type: 'adult',
+          questions: [],
+        },
+        {
+          session_cm_id: 1000010,
+          session_name: 'Adult Reg: Family Camp 1',
+          session_type: 'family_adult',
+          questions: [],
+        },
+      ],
+    }
+  })
+
+  it('lists an Adult Reg session as a tab beside the adult weekends', () => {
+    renderPanel()
+    const tabs = screen.getByRole('navigation', { name: 'Adult weekends' })
+    expect(
+      within(tabs)
+        .getAllByRole('link')
+        .map((link) => link.textContent)
+    ).toEqual(["Women's Weekend", 'FC1 Adults'])
+  })
+
+  it("keeps the full CampMinder name as the selected tab's heading", () => {
+    renderPanel('?session=1000010')
+    expect(
+      screen.getByRole('heading', { name: 'Adult Reg: Family Camp 1', level: 3 })
+    ).toBeInTheDocument()
+  })
+
+  it("reviews an Adult Reg session's filings in place, with no Requests-tab link", async () => {
+    renderPanel('?session=1000010')
+    expect(screen.getByTestId('jotform-form-1000010')).toBeInTheDocument()
+    const queue = await screen.findByTestId('jotform-inline-queue')
+    expect(queue).toHaveAttribute('data-session', '1000010')
+    expect(queue).toHaveAttribute('data-year', '2027')
+    expect(queue).toHaveAttribute('data-scenario', '')
+    expect(screen.queryByTestId('jotform-requests-link')).not.toBeInTheDocument()
+  })
+
+  it("drops the always-empty Write-ins card from an Adult Reg session's queue", async () => {
+    // No weekend board, so nothing can be written in to link a filing to.
+    renderPanel('?session=1000010')
+    const queue = await screen.findByTestId('jotform-inline-queue')
+    expect(queue).toHaveAttribute('data-write-ins', 'false')
+  })
+
+  it("keeps an adult weekend's filings on its Requests tab", () => {
+    renderPanel('?session=1000002')
+    expect(screen.getByRole('link', { name: /Requests tab/ })).toHaveAttribute(
+      'href',
+      '/weekend/1000002/requests'
+    )
+    expect(screen.queryByTestId('jotform-inline-queue')).not.toBeInTheDocument()
   })
 })
 

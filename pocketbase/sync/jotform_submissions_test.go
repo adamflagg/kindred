@@ -257,6 +257,45 @@ func TestJotformPullStoresEveryAnswerAndMatches(t *testing.T) {
 	}
 }
 
+// kindred#3213 re-ruling (2026-10-14): an Adult Reg session (`family_adult`)
+// takes Jotform intake as an adult weekend does. The pull never reads a
+// session's type -- it pulls every enabled form and matches against that
+// session's own registrations -- so this pins that an Adult Reg form is
+// stored and auto-matched exactly like an adult weekend's.
+func TestJotformPullMatchesAnAdultRegSessionLikeAnAdultWeekend(t *testing.T) {
+	t.Parallel()
+	app := newJotformTestApp(t)
+	seedWeekend(t, app)
+	session, err := app.FindFirstRecordByFilter("camp_sessions", "cm_id = {:id}", map[string]any{"id": jfSession})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session.Set("name", "Adult Reg: Family Camp 1")
+	session.Set("session_type", sessionTypeFamilyAdult)
+	if err = app.Save(session); err != nil {
+		t.Fatal(err)
+	}
+	fake := &fakeJotform{subs: map[string][]jotform.Submission{"261700000000001": {
+		submission("6600000000000000001", "2027-03-03 09:00:00", "Olivia", "Chen", ""),
+		submission("6600000000000000002", "2027-03-04 09:00:00", "Riley", "Sam", ""),
+	}}}
+
+	s, err := runJotform(t, app, fake)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Stats.Created != 2 {
+		t.Errorf("Created = %d, want 2", s.Stats.Created)
+	}
+	if got := subRecord(t, app, "6600000000000000001"); got.GetString("match_status") != matchStatusAuto ||
+		got.GetInt("person_cm_id") != 1000004 || got.GetInt("session_cm_id") != jfSession {
+		t.Errorf("an Adult Reg guest's filing must auto-match: %v", got.PublicExport())
+	}
+	if got := subRecord(t, app, "6600000000000000002"); got.GetString("match_status") != matchStatusUnmatched {
+		t.Errorf("a filer not registered for the session goes to staff: %v", got.PublicExport())
+	}
+}
+
 func TestJotformPullIsIdempotent(t *testing.T) {
 	t.Parallel()
 	app := newJotformTestApp(t)
