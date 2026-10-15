@@ -6,8 +6,9 @@ FastAPI HTTP layer over `bunking/`. Thin shell — routers parse input, call int
 
 | Dir | Purpose |
 |-----|---------|
-| `routers/` | One file per logical area (solver, scenarios, social_graph, satisfaction, requests, metrics, validation, geo, debug, internal) |
+| `routers/` | One file per logical area (solver, scenarios, social_graph, satisfaction, requests, metrics, validation, geo, debug, internal, lodging, lodging_friend_groups, financial_aid, jotform, campers, session_availability, subject_notes, admin_audit_log) |
 | `schemas/` | Pydantic request/response models |
+| `services/` | Service and repository layer the routers call (metrics, lodging, Camperships/`financial_aid_*`, solver runs, `camp_calendar.py` for season logic) |
 | `utils/` | Small router helpers |
 | `main.py` | App setup + global exception handler |
 
@@ -29,7 +30,7 @@ Routers should be thin. If a router accumulates logic, extract to `bunking/` and
 
 ## Routing
 
-Caddy uses an **inverse routing pattern**: specific PocketBase paths (`/api/collections/*`, `/api/files/*`, `/api/realtime`, `/api/custom/*`, `/api/batch`, `/api/oauth2-redirect`) go to PocketBase; everything else under `/api/*` goes to FastAPI. New FastAPI endpoints automatically work — no Caddy enumeration needed.
+Caddy uses an **inverse routing pattern**: specific PocketBase paths (`/api/collections/*`, `/api/files/*`, `/api/realtime`, `/api/custom/*`, `/api/settings`, `/api/logs/*`, `/api/backups/*`, `/api/batch`, `/api/oauth2-redirect`) go to PocketBase; `/api/internal/*` is answered 403 at the edge (service-to-service only); everything else under `/api/*` goes to FastAPI. New FastAPI endpoints automatically work — no Caddy enumeration needed.
 
 Config: `docker/Caddyfile` (prod), `frontend/Caddyfile` (dev).
 
@@ -39,4 +40,4 @@ Config: `docker/Caddyfile` (prod), `frontend/Caddyfile` (dev).
 
 ## Conventions
 
-Same Python conventions as `bunking/` — Python 3.14+, mypy strict, line length 120, `bunking.logging_config` (tag this surface as `[api]`). Tests: `tests/integration/` for router tests, `tests/unit/` for schema tests.
+Same Python conventions as `bunking/` — Python 3.14+, mypy strict, line length 120, `bunking.logging_config` (tag this surface as `[api]`). Tests: router, service and schema tests live under `tests/unit/api/` (`routers/`, `services/`, `utils/`); `tests/integration/` holds the PocketBase/sync/solver suites that need a running server.

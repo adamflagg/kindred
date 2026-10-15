@@ -34,9 +34,9 @@ React + TypeScript + Vite. Dev server on `:3000` (HMR); prod served via Caddy at
 
 **Read this before adding any ARIA attribute, `sr-only` text, or keyboard handler. This project has opted out of accessibility work, on purpose.**
 
-The user base is **three people**, on laptops and desktop monitors, with a mouse and keyboard. There are no assistive-technology users and none planned. Mobile is rare and read-only — pulling up a camper detail or roster page. There is no legal requirement here. A default WCAG posture costs real work and buys this codebase nothing, which is how five days once went to an a11y sweep nobody asked for.
+The user base is **about ten staff** (a few per area), on laptops and desktop monitors, with a mouse and keyboard. There are no assistive-technology users and none planned. Mobile is rare and read-only — pulling up a camper detail or roster page. There is no legal requirement here. A default WCAG posture costs real work and buys this codebase nothing, which is how five days once went to an a11y sweep nobody asked for.
 
-**DO add `aria-label` / `role` when it is the only handle a test can query a control by.** This is a *test-infrastructure* decision, not an accessibility one, and it is why the four `jsx-a11y` rules in `eslint.config.js` are still on: the suite addresses the UI through the accessibility tree (~1,721 `*ByRole` and ~309 `*ByLabelText` calls across ~141 test files), so a malformed role breaks the query layer far from the edit. An icon-only button needs a name — give it one.
+**DO add `aria-label` / `role` when it is the only handle a test can query a control by.** This is a *test-infrastructure* decision, not an accessibility one, and it is why the four `jsx-a11y` rules in `eslint.config.js` are still on: the suite addresses the UI through the accessibility tree (~5,800 `*ByRole` and ~960 `*ByLabelText` calls across ~315 test files), so a malformed role breaks the query layer far from the edit. An icon-only button needs a name — give it one.
 
 **DO NOT add:**
 
@@ -75,7 +75,7 @@ Use the centralized keys from `src/utils/queryKeys.ts`. Inlining string keys cau
 
 ## Caching — the tiers are opt-ins, and the default is a real choice
 
-`utils/queryClient.ts` holds the app defaults (30 min stale, 60 min gc, no refetch on focus). `syncDataOptions` and `userDataOptions` in `queryKeys.ts` are the two named tiers; **inheriting the defaults is a third, legitimate option and is what the bunking board's primary read path does** (`hooks/session/useSessionData.ts` overrides nothing). Roughly 20 call sites use `userDataOptions` and are not thereby wrong — pick deliberately rather than reaching for a tier because one exists.
+`utils/queryClient.ts` holds the app defaults (30 min stale, 60 min gc, no refetch on focus). `syncDataOptions` and `userDataOptions` in `queryKeys.ts` are the two named tiers; **inheriting the defaults is a third, legitimate option and is what the bunking board's primary read path does** (`hooks/session/useSessionData.ts` overrides nothing). About 30 files use `userDataOptions` and are not thereby wrong — pick deliberately rather than reaching for a tier because one exists.
 
 Two rules that are not negotiable:
 
@@ -119,7 +119,7 @@ plain localhost one; use the link the command prints.
 
 ## Worktree-specific notes
 
-In a fresh worktree, hit the **Vite dev port printed by `new.sh`** (the port offset is hashed from the feature name — `localhost:3010`, `3080`, etc. depending on the worktree), not the Caddy port. Caddy serves the stale built bundle from `pocketbase/pb_public/`.
+In a fresh worktree, hit the **Vite dev port printed by `new.sh`** (the port offset is hashed from the feature name — Vite lands in 3110–3199, e.g. `localhost:3142`), not the Caddy port. Caddy serves the stale built bundle from `pocketbase/pb_public/`.
 
 ## Private config
 

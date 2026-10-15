@@ -66,15 +66,17 @@ constraint is not added for them.
 
 ### Pair-feasibility scope
 
-`_pair_has_shared_bunk` in `direct_solver.py` checks **gender + session**.
+The pair-level predicates (`GenderImpossibility.check_pair` in
+`constraints/gender.py`, `SessionBoundaryImpossibility`,
+`GradeCompatibilityImpossibility`) check **gender, session and grade gap**.
 That's the minimal viable feasibility check; group locks, AG-eligibility
 quirks, and pre-fixed assignment conflicts are NOT yet checked. If a future
-failure mode emerges from one of those, extend `_pair_has_shared_bunk`
-rather than adding a parallel reason.
+failure mode emerges from one of those, add a predicate to the registry
+rather than a parallel code path.
 
 ### Out of scope
 
-- Promoting other soft constraints (`grade_spread`, `cabin_min_occupancy`)
+- Promoting other soft constraints (`grade_spread`, `cabin_occupancy`)
   to hard. Those are tunable trade-offs by design. `age_spread` is the
   exception — its 24-month cap is a hard ceiling with an edge-bunk escape
   hatch via `must_satisfy_one`.
@@ -86,7 +88,7 @@ rather than adding a parallel reason.
 |---|---|
 | Hard constraint emission | `bunking/solver/constraints/parent_paramount.py` |
 | Safety gate (impossibility filter) | `bunking/solver/direct_solver.py:_validate_requests` |
-| Pair feasibility | `bunking/solver/direct_solver.py:_pair_has_shared_bunk` |
+| Pair feasibility | `bunking/solver/constraints/gender.py:GenderImpossibility`, `session_boundary.py`, `grade_spread.py:GradeCompatibilityImpossibility` |
 | Post-solve diagnostic (ERROR severity under hard MSO) | `bunking/solver/direct_solver.py:_check_must_satisfy_one_violations` |
 | Source-field bucket classifier | `bunking/satisfaction/bucket.py:is_material_parent_request` |
 
@@ -96,13 +98,13 @@ rather than adding a parallel reason.
 
 A single `bunking/solver/impossibility.py` module owns classification. Each
 hard constraint module registers a `HardConstraintImpossibility` predicate
-exposing up to three optional layers:
+exposing up to two optional layers (there is no cluster layer; the base
+class defines only these two):
 
 | Layer | Signature | Catches |
 |---|---|---|
-| **request** | `check_request(req, ctx)` | Malformed payload, missing target |
+| **request** | `check_request(req, ctx)` | Malformed payload, missing target, self-contradiction |
 | **pair** | `check_pair(req, ctx)` | Gender mismatch, session boundary, grade gap |
-| **cluster** | `check_cluster(component_cms, ctx)` | Over-spread chain, oversized connected component |
 
 `validate_impossibility(input_data, config) → ImpossibilityReport` runs all
 registered predicates and returns a structured report. Both
@@ -125,9 +127,9 @@ hard constraint without one fails CI.
 | `TargetNotInSolverImpossibility` | request | Requestee absent from `person_idx_map` |
 | `AgePreferenceImpossibility` | request | `age_preference` at the same-gender grade bound in the wrong direction (oldest-prefers-older, youngest-prefers-younger). Per camp policy: at-bound preferences in the wrong direction are moot. Bounds derived from the actual same-gender camper pool in the session. |
 | `SessionBoundaryImpossibility` | pair | `bunk_with` across sessions |
-| `GenderImpossibility` | pair | `bunk_with` where the requester and target have no gender-compatible same-session bunk. `not_bunk_with` with no shared bunk is trivially satisfied and stays `possible`. |
-| `GradeCompatibilityImpossibility` | pair + cluster | Reciprocal `bunk_with` across a grade gap larger than any single bunk can absorb |
-| `BunkCapacityImpossibility` | cluster | Reciprocal `bunk_with` chains exceeding max bunk capacity |
+| `GenderImpossibility` (code `pair_no_shared_bunk`) | pair | `bunk_with` where the requester and target have no gender-compatible same-session bunk. `not_bunk_with` with no shared bunk is trivially satisfied and stays `possible`. |
+| `GradeCompatibilityImpossibility` | pair | `bunk_with` across a grade gap larger than any single bunk can absorb (AG sessions exempt) |
+| `SelfConflictImpossibility` | request | The same requester holds both a `bunk_with` and a `not_bunk_with` toward the same target |
 
 ### Derived rollups
 
@@ -154,7 +156,7 @@ instead.
 | Solver-internal gate | `bunking/solver/direct_solver.py:_validate_requests` |
 | Pre-check endpoint | `api/routers/solver.py:pre_validate_solver` |
 | Registry discipline test | `tests/unit/solver/impossibility/test_registry.py` |
-| Frontend rendering | `frontend/src/components/PreValidationResultsModal.tsx`, `frontend/src/pages/summer/SolverDebugPage/SolverDebugImpossibilityModal.tsx` |
+| Frontend rendering | `frontend/src/components/PreValidationResultsModal.tsx`, `frontend/src/components/SolverDebugImpossibilityModal.tsx` |
 
 ---
 
@@ -173,7 +175,7 @@ no separate sat var is created.
 
 ### Golden alignment test
 
-`tests/unit/solver/test_sat_var_predicate_alignment.py` asserts agreement
+`tests/integration/solver/test_satvar_predicate_alignment.py` asserts agreement
 between the solve-time sat var and the post-solve `satisfaction/predicate.py`
 classifier for every entry in `request_satisfied_vars`. Scoped to
 `bunk_with`/`not_bunk_with` — `age_preference` is excluded because its
@@ -203,8 +205,10 @@ satisfied:
    at a time. Each camper whose re-addition flips feasibility → infeasibility
    is part of the minimal correction set.
 
-The result is recorded in `solver_runs.stats.parent_paramount_iis` and
-logged at ERROR level.
+The result is recorded on the run as `parent_paramount_iis`, name-resolved
+into `localization` (both set in `api/services/solve_executor.py`, stored by
+`api/services/solver_runner.py`, and `localization` is returned by
+`GET /api/solver/run/{run_id}`), and logged at ERROR level.
 
 **Cost.** Each probe typically returns INFEASIBLE in presolve (<0.1s); 95
 candidates ≈ 10s. Bounded by `max_candidates=200` to keep pathological
@@ -221,7 +225,7 @@ not for formal model verification.
 Stream 6's pre-check framework (above) catches the bulk of cases before the
 solver runs at all. IIS localization is the fallback for the residual
 subset where pre-check predicates miss something — usually a grade
-compatibility issue in a reciprocal pair, or a cluster-shape problem the
+compatibility issue in a reciprocal pair, or a chain-shaped problem the
 per-pair predicates can't see.
 
 ### Code references
@@ -231,7 +235,7 @@ per-pair predicates can't see.
 | Localization implementation | `bunking/solver/feasibility.py:localize_hard_mso_infeasibility` |
 | Per-camper toggle | `bunking/solver/constraints/parent_paramount.py` (honors `ctx.mp_skip_cms`) |
 | Context field | `bunking/solver/constraints/base.py:SolverContext.mp_skip_cms` |
-| Invocation | `api/services/solver_runner.py` (after `find_infeasibility_cause` flags `parent_paramount`) |
+| Invocation | `api/services/solve_executor.py:solve_and_diagnose` (after `find_infeasibility_cause` flags `parent_paramount`) |
 | Tests | `tests/unit/solver/test_hard_mso_localization.py` |
 
 ---
@@ -303,13 +307,13 @@ size accounting; Tier 2 is plateau-diagnostic signal for distinguishing
 
 | Metric | Source | Why useful |
 |---|---|---|
-| `model_num_booleans` / `model_num_integer_variables` / `model_num_variables` | CP-SAT response proto | Raw model size |
+| `num_booleans` / `num_integer_variables` / `model_num_variables` / `model_num_constraints` | CP-SAT response proto (`observability.py`) | Raw model size |
 | Reified linear constraint count | `model.Proto().constraints[i].enforcement_literal` non-empty | Direct measure of model complexity |
 | Soft constraint count (by module) | `len(ctx.soft_constraint_violations)` grouped by key prefix | Per-bucket attribution of soft-constraint pressure (`must_satisfy_*`, `grade_ratio_*`, `level_regression_*`, `age_spread_b*`) |
 | `soft_constraint_penalty_by_module` | `solver.Value(var) * weight` summed per bucket | Weighted penalty actually paid, not just count of fires-honored |
 | Max linear coefficient (big-M proxy) | Scan `model.Proto().constraints[*].linear.coeffs` | Values >100K signal big-M modeling weakness |
 | Request density histogram (per `RequestBucket`) | Precompute from `requests_by_person` | "How many MP requests per camper" distribution; single-MP-request kids are the cohort hardest to satisfy |
-| Impossible-request breakdown (per reason) | `validate_impossibility` rollup | Per-reason counts: `target_not_in_solver`, `cross_session`, `malformed`, `gender`, `grade_compatibility`, `age_pref_no_eligible_grade`, `bunk_capacity` |
+| Impossible-request breakdown (per reason) | `validate_impossibility` rollup | Per-reason counts: `target_not_in_solver`, `cross_session`, `malformed`, `self_conflict`, `pair_no_shared_bunk` (gender), `grade_compatibility`, `age_pref_no_eligible_grade` |
 
 ### Tier 2 — plateau diagnostics
 
@@ -391,7 +395,7 @@ Two model dataclass sets are alive against different surfaces.
 |---|---|
 | `DirectBunkingSolver` (production solver) | **V2** (`bunking/models_v2.py`) — `DirectBunkRequest`, `DirectPerson`, `DirectBunk`, `DirectBunkAssignment`, `DirectSolverInput`, `DirectSolverOutput`, `HistoricalBunkingRecord` |
 | `POST /api/validate-bunking` | **V1** (`bunking/models.py`) via `bunking_validator.BunkingValidator` |
-| `POST /api/scenarios` + 6 sibling routes | **V1** (same model set) |
+| `POST /api/scenarios` + its sibling `/api/scenarios/*` routes | **V1** (same model set) |
 | `RequestType` enum (shared symbol) | V1 — re-used by sync tests, solver constraint tests, frontend test mocks |
 | `HistoricalBunkingRecord` | Defined three ways — V1 dataclass at `bunking_validator.py:53`, V2 pydantic at `models_v2.py:98`, plus V1 module surface |
 
@@ -455,7 +459,7 @@ the latency bites.
 | Objective assembly | `bunking/solver/direct_solver.py:add_objective`, `bunking/solver/objective_evaluator.py` |
 | Score / weight assembly | `bunking/solver/score_evaluator.py` |
 | Impossibility classification | `bunking/solver/impossibility.py` |
-| Infeasibility analyzer | `bunking/solver/feasibility.py:find_infeasibility_cause` |
+| Infeasibility analyzer | `bunking/solver/feasibility.py:find_infeasibility_cause` (the solver method `DirectBunkingSolver.find_infeasibility_cause` delegates to it) |
 | IIS localization | `bunking/solver/feasibility.py:localize_hard_mso_infeasibility` |
 | Observability capture | `bunking/solver/observability.py`, `bunking/solver/callbacks.py` |
 | Satisfaction policy (post-solve) | `bunking/satisfaction/{bucket,aggregate,predicate}.py` |

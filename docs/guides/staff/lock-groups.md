@@ -1,5 +1,7 @@
 # Lock Groups Guide
 
+> **Historical.** This page was written for an early version of Kindred and no longer tracks the interface or the request pipeline (for example, the numeric request priority it describes was replaced by a first-pick flag, and screens and menus have been renamed or rebuilt). Staff documentation is now maintained separately from this repository; for how the system works today, see `docs/architecture/` and `docs/guides/solver-configuration.md`.
+
 Lock groups allow you to keep specific campers together during solver runs. When the solver optimizes cabin assignments, it treats all members of a lock group as a unit that must stay together.
 
 ## Overview

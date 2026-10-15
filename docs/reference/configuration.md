@@ -1,67 +1,66 @@
 # Configuration Reference
 
-Complete reference for all configuration options in Kindred.
+Where Kindred's configuration lives, and the environment variables that matter.
+
+Configuration comes from three places:
+
+1. **Environment variables** (`.env`): secrets, service wiring, deployment. This file's main subject.
+2. **The PocketBase `config` collection**: runtime values staff can edit, such as solver weights. See [Runtime Configuration (Database)](#runtime-configuration-database).
+3. **Code constants**: values nobody tunes at runtime, for example the AI confidence thresholds. See [AI Configuration](#ai-configuration).
+
+[`.env.example`](../../.env.example) is the maintained list of every variable, with comments. Copy it to `.env` and fill it in. When the two disagree, `.env.example` wins.
 
 ## Table of Contents
 - [Environment Variables (.env)](#environment-variables-env)
-- [Python Configuration (camp_config.py)](#python-configuration-camp_configpy)
-- [AI Configuration (config/ai_config.json)](#ai-configuration)
-- [Solver Configuration (Database)](#solver-configuration-database)
+- [Runtime Configuration (Database)](#runtime-configuration-database)
+- [AI Configuration](#ai-configuration)
 - [Docker Configuration](#docker-configuration)
 - [Frontend Configuration](#frontend-configuration)
+- [Configuration Precedence](#configuration-precedence)
+- [Troubleshooting Configuration](#troubleshooting-configuration)
 
 ## Environment Variables (.env)
 
-The `.env` file contains sensitive configuration and API keys. Copy `.env.example` to `.env` and configure.
+The `.env` file holds secrets and deployment settings. Secrets managers work too (Infisical, Doppler); the start scripts detect them through `scripts/env-provider.sh`.
+
+**Applying changes:** `docker compose restart` does not re-read `.env`. After editing it, run `docker compose up -d`, which recreates any container whose environment changed. In local development, restart `./scripts/start_dev.sh`.
 
 ### CampMinder API Configuration
 ```bash
-# Required: CampMinder API credentials
+# Required for sync
 CAMPMINDER_API_KEY=your-api-key-here
+CAMPMINDER_PRIMARY_KEY=your-primary-subscription-key
+CAMPMINDER_SECONDARY_KEY=your-secondary-subscription-key
 CAMPMINDER_CLIENT_ID=your-client-id
 
-# Optional: override the primary season (default: rolls over on Oct 15 Pacific)
+# Optional: pin the primary season (2017-2050). Leave unset.
 # CAMPMINDER_SEASON_ID=2026
-
-# Optional: Override default endpoints
-CAMPMINDER_API_BASE_URL=https://api.campminder.com
-CAMPMINDER_API_TIMEOUT=30
 ```
+
+The season needs no variable. It rolls over by itself at the start of Oct 15 in Pacific time (`pocketbase/sync/year.go`), and sync covers that season and the one before it. `CAMPMINDER_SEASON_ID` pins the season when set; an empty value counts as unset, and an invalid or out-of-range value is an error. `docker-compose.yml` passes the variable through (empty when absent from `.env`), but `docker-compose.local.yml` defaults it to `2026`, so local Docker is pinned unless you override it.
 
 ### PocketBase Configuration
 ```bash
-# Admin credentials (auto-created if not exists)
-POCKETBASE_ADMIN_EMAIL=admin@camp.local
+# Kindred's SERVICE superuser, used by the solver and sync services to authenticate
+POCKETBASE_ADMIN_EMAIL=kindred-service@kindred.invalid
 POCKETBASE_ADMIN_PASSWORD=secure-password-here
 
-# Service configuration
+# Service location (defaults suit local development)
 POCKETBASE_URL=http://127.0.0.1:8090
 POCKETBASE_PORT=8090
-
-# Optional: External access
-POCKETBASE_EXTERNAL_URL=https://bunking.camp.org
 ```
+
+The standard PocketBase image needs the superuser created by hand on first run; `.env.example` shows the command. Use IPv4 (`127.0.0.1`, not `localhost`) for inter-service addresses. `DEV_POCKETBASE_EMAIL` and `DEV_POCKETBASE_PASSWORD` are local-development defaults that appear only in `.env.example`.
 
 ### AI Provider Configuration
 ```bash
-# Provider selection: openai, anthropic, ollama
+# Supported: openai (production), mock (tests)
 AI_PROVIDER=openai
-
-# OpenAI Configuration
-OPENAI_API_KEY=sk-...
-OPENAI_MODEL=gpt-4o-mini  # or gpt-4o, gpt-4-turbo
-OPENAI_MAX_TOKENS=500
-OPENAI_TEMPERATURE=0.0
-
-# Anthropic Configuration  
-ANTHROPIC_API_KEY=sk-ant-...
-ANTHROPIC_MODEL=claude-3-haiku-20240307
-ANTHROPIC_MAX_TOKENS=500
-
-# Ollama Configuration (local)
-OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=llama3.2
+AI_API_KEY=your-ai-api-key
+AI_MODEL=gpt-5-nano
 ```
+
+These three variables are the whole provider surface (`bunking/config/loader.py`). `provider_factory.py` supports `openai` and `mock` only; any other value, including `anthropic` or `ollama`, raises "Unsupported provider". Thresholds and processing behavior are not environment variables; see [AI Configuration](#ai-configuration).
 
 ### Jotform Configuration
 ```bash
@@ -75,34 +74,48 @@ JOTFORM_API_KEY=your-jotform-api-key-here
 # JOTFORM_API_BASE=https://<team>.jotform.com/API
 ```
 
+### Google Sheets Export (Optional)
+```bash
+GOOGLE_SHEETS_ENABLED=false
+GOOGLE_DRIVE_FOLDER_ID=            # Exports folder
+GOOGLE_DRIVE_ROSTER_FOLDER_ID=     # SEPARATE folder for family-facing Family Camp rosters
+GOOGLE_SERVICE_ACCOUNT_KEY_FILE=/config/google_sheets.json
+```
+
+The roster export refuses to run when `GOOGLE_DRIVE_ROSTER_FOLDER_ID` is blank, and never falls back to `GOOGLE_DRIVE_FOLDER_ID`. Roster workbooks carry family contact details, and Drive folder sharing is their privacy control. The setup steps are in `.env.example`.
+
+### Feedback Intake (Optional)
+```bash
+# Fine-grained PAT scoped to the feedback repo
+GITHUB_FEEDBACK_TOKEN=
+GITHUB_FEEDBACK_REPO=
+```
+
 ### Authentication Configuration
 ```bash
-# Auth mode: production, bypass (dev only)
+# production: validate JWTs from the OIDC provider
+# bypass: always DevAdmin (development only; refused inside Docker unless explicitly permitted)
 AUTH_MODE=production
 
-# Admin group for authorization
-ADMIN_GROUP=camp-admins
+# Users in this OIDC group get is_admin=true. Read by PocketBase.
+ADMIN_GROUP_NAME=admin
 
-# Session configuration
-SESSION_SECRET=random-secret-key-here
-SESSION_TIMEOUT=86400  # 24 hours in seconds
-
-# CORS configuration
-CORS_ALLOWED_ORIGINS=http://localhost:5173,https://bunking.camp.org
+# Comma-separated CORS origins for FastAPI (no wildcards in production)
+ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
 ```
+
+`ALLOWED_ORIGINS_REGEX` is the pipe-separated, regex-escaped form Caddy uses for its own CORS matcher. Empty means CORS is off in Caddy. List explicit origins only: Caddy pairs `Allow-Credentials: true` with the reflected origin on a match, so a catch-all pattern would be a CORS vulnerability.
+
+There is no session-secret or session-timeout variable: PocketBase issues and expires the auth tokens.
 
 ### OAuth2/OIDC Configuration
 ```bash
-# OAuth2 provider settings
+OIDC_ISSUER=https://auth.provider.com
 OIDC_CLIENT_ID=your-oauth-client-id
 OIDC_CLIENT_SECRET=your-oauth-secret
-OIDC_AUTH_URL=https://auth.provider.com/application/o/authorize/
-OIDC_TOKEN_URL=https://auth.provider.com/application/o/token/
-OIDC_USER_URL=https://auth.provider.com/application/o/userinfo/
-
-# Optional: Custom scopes
-OIDC_SCOPES=openid,profile,email
 ```
+
+Only the issuer is needed. The init container (`docker/init-entrypoint.sh`) and the dev script (`scripts/setup/configure_pocketbase_oauth.py`) discover the authorize, token and userinfo endpoints from `{OIDC_ISSUER}/.well-known/openid-configuration`, then register them with PocketBase. There are no `OIDC_AUTH_URL`, `OIDC_TOKEN_URL` or `OIDC_USER_URL` settings; those names are only local variables inside those two scripts. The registered scopes are `openid`, `email`, `profile` and `groups` (set in `init-entrypoint.sh`, not configurable). PocketBase also verifies back-channel logout tokens against `OIDC_ISSUER`, and the logout endpoint answers 404 while it is unset.
 
 **PKCE posture:** The OIDC client is registered as **confidential + PKCE**.
 PocketBase v0.23+ supports PKCE on OAuth2 providers via the `pkce: true` field on
@@ -116,21 +129,17 @@ Confidential + PKCE is the recommended posture for server-side apps: the client
 secret is never exposed to the browser, and PKCE adds protection against
 authorization-code interception.
 
-### Network & Proxy Configuration
+### Network & Deployment Configuration
 ```bash
-# Traefik configuration (production)
-TRAEFIK_DOMAIN=bunking.camp.org
-TRAEFIK_CERT_EMAIL=admin@camp.org
-
-# Development proxy
-VITE_PROXY_TARGET=http://127.0.0.1:8080
-
-# Docker deployment
+# Docker deployment (docker-compose.yml)
+IMAGE_TAG=latest
 PROXY_NETWORK=web-proxy
 APPDATA_DIR=/path/to/appdata
+DOMAIN_NAME=yourdomain.com
+SUB_BUNKING=bunking
 
-# IPv4 enforcement (critical!)
-# Always use 127.0.0.1, not localhost, for inter-service communication
+# Timezone for the sync scheduler
+TZ=America/Los_Angeles
 
 # PocketBase admin UI IP allowlist (Caddy /_/* gate)
 # REQUIRED. Space-separated CIDRs. No default — Caddy fails closed (403) and
@@ -147,409 +156,119 @@ APPDATA_DIR=/path/to/appdata
 ADMIN_ALLOWLIST="10.0.0.0/8 192.168.0.0/16"
 ```
 
-### Logging & Monitoring
+`POCKETBASE_HOST` and `API_HOST` rename the backends Caddy proxies to (`docker/Caddyfile`); change them only if you rename containers. The backend ports are fixed there (8090 and 8000). The dev scripts read `FASTAPI_PORT` for the API's port, and `API_PORT` is read by nothing. For development, the Vite proxy reads `CADDY_PORT` and `POCKETBASE_PORT` (see [Frontend Configuration](#frontend-configuration)).
+
+### Logging & Solver Workers
 ```bash
-# Log levels: TRACE, DEBUG, INFO, WARNING, ERROR
+# Log levels: TRACE, DEBUG, INFO (default)
 # TRACE: Very verbose low-level diagnostics (API params, SDK internals)
 # DEBUG: Detailed diagnostics (AI prompts, resolution details)
-# INFO:  Normal operation (default)
+# INFO:  Normal operation
 LOG_LEVEL=INFO
-LOG_FILE=/var/log/bunking/app.log
-LOG_MAX_SIZE=100M
-LOG_MAX_AGE=30  # days
 
-# OpenTelemetry (optional)
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
-OTEL_SERVICE_NAME=camp-bunking
+# Compact format drops the app timestamp and source label (default: true; set false locally)
+LOG_COMPACT=false
+
+# OR-Tools parallel search workers (default 8)
+SOLVER_NUM_WORKERS=8
+
+# HTTP timeout, minutes, for the process-requests pipeline (default 120)
+# PROCESS_REQUESTS_TIMEOUT_MINUTES=120
 ```
 
-## Python Configuration (camp_config.py)
+## Runtime Configuration (Database)
 
-Main Python configuration in `bunking/config/camp_config.py`.
+Runtime configuration is database-driven, not file-driven. Values live in the PocketBase `config` collection (created by `pb_migrations/1500000011_config.js`) and are grouped by `config_sections`. Admins edit them in **Manage > Config** (`/manage/config`, which redirects to `/manage/config/solver`).
 
-### Cabin Structure Configuration
-```python
-@dataclass
-class CabinStructureConfig:
-    max_campers_per_cabin: int = 10
-    min_campers_per_cabin: int = 6
-    
-    # Cabin naming patterns
-    cabin_prefix: str = "Cabin"
-    use_alphabetic_names: bool = False
-    
-    # Special cabins to exclude
-    excluded_cabins: List[str] = field(default_factory=lambda: [
-        "Overflow", "Waitlist", "Staff"
-    ])
-```
+Every valid key is declared in `CONFIG_SCHEMA` (`bunking/config/schema.py`) and read through `ConfigLoader` (`bunking/config/loader.py`). An unlisted key is rejected, and a required key missing from the database is an error: there are no hardcoded fallbacks for them.
 
-### Session Rules Configuration
-```python
-@dataclass
-class SessionRulesConfig:
-    # Session categorization
-    junior_sessions: List[int] = field(default_factory=lambda: [1, 2])
-    senior_sessions: List[int] = field(default_factory=lambda: [3, 4])
-    
-    # Age/grade boundaries
-    min_age: int = 7
-    max_age: int = 17
-    min_grade: int = 2
-    max_grade: int = 11
-    
-    # Special handling
-    family_camp_session_names: List[str] = field(default_factory=lambda: [
-        "Family Camp", "Alumni Weekend"
-    ])
-```
+The solver-facing keys include:
 
-### Solver Configuration
-```python
-@dataclass
-class SolverConfig:
-    # Time limits (seconds)
-    max_solving_time: int = 30
-    initial_solution_limit: int = 5
-    
-    # Optimization weights (0-100)
-    friend_request_weight: int = 80
-    age_balance_weight: int = 60
-    grade_balance_weight: int = 50
-    returning_camper_weight: int = 40
-    
-    # Constraint penalties
-    hard_constraint_penalty: int = 1000
-    soft_constraint_penalty: int = 10
-    
-    # Solver behavior
-    use_parallel_solving: bool = True
-    num_solver_workers: int = 4
-```
+- `objective.source_multipliers.share_bunk_with`, `.do_not_share_with`, `.bunking_notes`, `.internal_notes`, `.socialize_preference`
+- `objective.enable_first_boost`, `objective.mutual_request_boost`
+- `constraint.age_spread.preferred_bonus`
+- `constraint.level_progression.no_regression`, `constraint.level_progression.no_regression_penalty`
+- `constraint.cabin_minimum_occupancy.penalty`
+- `solver.auto_apply_enabled`, `solver.auto_apply_timeout`
 
-### API Configuration
-```python
-@dataclass
-class APIConfig:
-    # Rate limiting
-    requests_per_second: float = 2.0
-    max_retries: int = 3
-    retry_delay: float = 1.0
-    
-    # Pagination
-    default_page_size: int = 100
-    max_page_size: int = 500
-    
-    # Caching
-    cache_ttl: int = 3600  # 1 hour
-    use_request_cache: bool = True
-```
+Keep this list short; the full list, ranges, and the constants that are deliberately hardcoded (cabin capacity, grade and age spread caps) are in [Solver Configuration](../guides/solver-configuration.md) and `CONFIG_SCHEMA`.
 
 ## AI Configuration
 
-Configuration for AI-powered bunk request processing in `config/ai_config.json`.
+There is no `config/ai_config.json`, and the `category='ai'` rows were dropped from the `config` table (`1500000109_drop_ai_configs.js`), because nothing read them. Today:
 
-### Provider Configuration
-```json
-{
-  "providers": {
-    "openai": {
-      "enabled": true,
-      "api_key_env": "OPENAI_API_KEY",
-      "models": {
-        "primary": "gpt-4o-mini",
-        "fallback": "gpt-3.5-turbo"
-      },
-      "parameters": {
-        "temperature": 0.0,
-        "max_tokens": 500,
-        "response_format": {"type": "json_object"}
-      }
-    },
-    "anthropic": {
-      "enabled": false,
-      "api_key_env": "ANTHROPIC_API_KEY",
-      "models": {
-        "primary": "claude-3-haiku-20240307"
-      }
-    }
-  }
-}
-```
+- **Provider, key and model** come from the environment: `AI_PROVIDER`, `AI_API_KEY`, `AI_MODEL` (see above).
+- **Match and review thresholds** are the `CONFIDENCE_THRESHOLDS` constant in `bunking/sync/bunk_request_processor/core/constants.py` (for example `auto_accept` 0.95 and `resolved` 0.85). Changing one is a code change.
+- **Name-resolution tuning** is the `smart_local_resolution.*` keys in the `config` table, shown under the Processing category in Manage > Config.
 
-### Processing Configuration
-```json
-{
-  "processing": {
-    "batch_size": 50,
-    "parallel_requests": 5,
-    "timeout_seconds": 30,
-    "retry_on_error": true,
-    "max_retries": 3
-  }
-}
-```
-
-### Confidence Thresholds
-```json
-{
-  "confidence": {
-    "high_confidence_threshold": 0.9,
-    "medium_confidence_threshold": 0.7,
-    "low_confidence_threshold": 0.5,
-    "require_human_review_below": 0.5
-  }
-}
-```
-
-### Spread Validation
-```json
-{
-  "spread_validation": {
-    "enabled": true,
-    "max_grade_difference": 2,
-    "max_age_difference_months": 24,
-    "convert_to_spread_limited": true,
-    "warn_on_conversion": true
-  }
-}
-```
-
-### Request Type Priorities
-```json
-{
-  "request_priorities": {
-    "must_bunk_with": 100,
-    "must_not_bunk_with": 95,
-    "prefer_bunk_with": 50,
-    "prefer_not_bunk_with": 45,
-    "spread_limited": 30
-  }
-}
-```
-
-## Solver Configuration (Database)
-
-Solver configuration stored in PocketBase `admin_configs` collection.
-
-### Priority Configuration
-```javascript
-{
-  "key": "priority",
-  "value": {
-    "age_preference": {
-      "enabled": true,
-      "weight": 0.7,
-      "description": "Prioritize age-appropriate placements"
-    },
-    "returning_camper": {
-      "enabled": true,
-      "weight": 0.5,
-      "boost": 10
-    },
-    "sibling_placement": {
-      "enabled": true,
-      "weight": 0.8,
-      "same_cabin_preference": false
-    }
-  }
-}
-```
-
-### Constraint Configuration
-```javascript
-{
-  "key": "constraints",
-  "value": {
-    "grade_spread": {
-      "max_difference": 2,
-      "strict": false
-    },
-    "age_spread": {
-      "max_months": 24,
-      "strict": false
-    },
-    "cabin_capacity": {
-      "min_fill_ratio": 0.6,
-      "max_fill_ratio": 1.0
-    }
-  }
-}
-```
-
-### Optimization Weights
-```javascript
-{
-  "key": "optimization",
-  "value": {
-    "objectives": {
-      "maximize_fulfilled_requests": 0.4,
-      "balance_cabin_sizes": 0.2,
-      "minimize_age_variance": 0.2,
-      "group_friends": 0.2
-    },
-    "penalties": {
-      "unfulfilled_must_request": 1000,
-      "unfulfilled_prefer_request": 10,
-      "violated_must_not": 5000
-    }
-  }
-}
-```
+See `docs/architecture/bunk-request-pipeline.md` for how the pipeline uses them.
 
 ## Docker Configuration
 
-### Local Testing (docker-compose.local.yml)
-```yaml
-# Builds from local Dockerfiles, exposes port 8080 directly
-# Usage: docker compose -f docker-compose.local.yml up -d --build
-services:
-  pocketbase:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.pocketbase
-  init:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.init
-  api:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.api
-  caddy:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.caddy
-    ports:
-      - "8080:8080"
+Three compose files:
+
+- `docker-compose.yml`: production. Four containers (pocketbase, init, api, caddy) from `ghcr.io/adamflagg/kindred-*:${IMAGE_TAG:-latest}` images; Caddy carries the Traefik labels and listens on 8080 behind the proxy network.
+- `docker-compose.local.yml`: builds from the local Dockerfiles under `docker/` and publishes Caddy on port 8080. It defaults `AUTH_MODE` to `bypass` and `CAMPMINDER_SEASON_ID` to `2026`.
+- `docker-compose.ci.yml`: an override used with the production file in CI (`SKIP_CAMPMINDER=true`, `AUTH_MODE=bypass`, Caddy published on 8080).
+
+```bash
+# Production
+docker compose up -d
+
+# Local build
+docker compose -f docker-compose.local.yml up -d --build
+
+# CI-style
+docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d
 ```
 
-### Production (docker-compose.yml)
-```yaml
-# 4 containers: caddy, pocketbase, api, init
-# Usage: docker compose up -d
-services:
-  pocketbase:
-    image: ghcr.io/adamflagg/kindred-pocketbase:${IMAGE_TAG:-latest}
-  init:
-    image: ghcr.io/adamflagg/kindred-init:${IMAGE_TAG:-latest}
-  api:
-    image: ghcr.io/adamflagg/kindred-api:${IMAGE_TAG:-latest}
-  caddy:
-    image: ghcr.io/adamflagg/kindred-caddy:${IMAGE_TAG:-latest}
-    labels:
-      traefik.enable: true
-      traefik.http.routers.kindred.rule: Host(`bunking.yourdomain.com`)
-      traefik.http.services.kindred.loadbalancer.server.port: 8080
-```
-
-### Testing (docker-compose.test.yml)
-```yaml
-services:
-  test-runner:
-    build:
-      context: .
-      target: test
-    environment:
-      - CI=true
-      - SKIP_POCKETBASE_TESTS=true
-    command: pytest --cov
-```
+`./scripts/local_docker_test.sh` builds, starts, tests and tears down the local stack. Deployment detail, including file permissions and the season override, is in [Docker Deployment](../guides/docker-deployment.md).
 
 ## Frontend Configuration
 
-### Vite Configuration (vite.config.ts)
-```typescript
-export default defineConfig({
-  server: {
-    proxy: {
-      '/api': {
-        target: process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:8090',
-        changeOrigin: true
-      }
-    }
-  },
-  build: {
-    outDir: 'dist',
-    sourcemap: true,
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          'react-vendor': ['react', 'react-dom'],
-          'ui-vendor': ['@radix-ui', 'lucide-react']
-        }
-      }
-    }
-  }
-})
-```
+### Vite Configuration (frontend/vite.config.ts)
 
-### TypeScript Configuration (tsconfig.json)
-```json
-{
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "ESNext",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "jsx": "react-jsx",
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "paths": {
-      "@/*": ["./src/*"]
-    }
-  }
-}
-```
+- The dev server listens on port 3000 and accepts external hosts (`host: true`).
+- `/api` is proxied to Caddy at `http://127.0.0.1:${CADDY_PORT ?? 8080}`, which routes PocketBase paths to PocketBase and everything else to FastAPI. `/_` (the PocketBase admin UI) is proxied straight to `127.0.0.1:${POCKETBASE_PORT ?? 8090}`.
+- Production builds split vendor code into named chunks (`vendor-react`, `vendor-query`, `vendor-dnd`, `vendor-graph`, `vendor-ui`) through `build.rolldownOptions`.
+- Private overrides go in `frontend/vite.config.local.ts` (gitignored).
+- `USE_DEFAULT_BRANDING=true` swaps in the generic branding instead of `config/branding.local.json`.
+- `VITE_API_URL` and `VITE_POCKETBASE_URL` are no longer used.
+
+### TypeScript Configuration (frontend/tsconfig.json)
+
+Target and lib `ES2024`, bundler module resolution, `jsx: react-jsx`, the `@/*` alias for `./src/*`, and `strict` plus extra strictness flags (`noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `noPropertyAccessFromIndexSignature` and others). It is `noEmit`; Vite builds.
 
 ## Configuration Precedence
 
-1. **Environment variables** - Highest priority
-2. **Configuration files** - JSON/YAML configs
-3. **Database configuration** - Runtime adjustable
-4. **Code defaults** - Fallback values
+Each kind of value has one home, so there is little to override:
+
+1. **Environment variables**: service wiring, secrets, the optional season pin. Set in `.env` and passed through compose.
+2. **Database configuration** (`config` collection): runtime values, editable in Manage > Config.
+3. **Code constants**: everything else, such as `bunking/solver/constants.py` and the AI thresholds.
+
+Where a value has both an environment variable and a default (`LOG_LEVEL`, `CAMPMINDER_SEASON_ID`), the variable wins.
 
 ## Configuration Best Practices
 
-1. **Never commit secrets** - Use `.env` for sensitive data
-2. **Use environment-specific files** - `.env.development`, `.env.production`
-3. **Validate configuration** - Check required values on startup
-4. **Document changes** - Update this reference when adding options
-5. **Use type safety** - TypeScript/Python type hints for configs
-6. **Centralize configuration** - Avoid scattered config values
-7. **Make configs discoverable** - Clear naming, good organization
-8. **Version control configs** - Track non-sensitive configuration
+1. **Never commit secrets**: use `.env`, or the private `kindred-local` repo for private config files.
+2. **Document changes**: update this reference and `.env.example` when you add a variable.
+3. **Do not add a knob nobody will tune**: prefer a constant. A new runtime key needs its schema entry, a seed migration, and a code read (see the solver guide).
+4. **Quote values with spaces** in `.env` (`ADMIN_ALLOWLIST`).
 
 ## Troubleshooting Configuration
 
-### Common Issues
+**A `.env` change did not take effect in Docker.** Run `docker compose up -d`, not `restart`.
 
-**Missing environment variables**
-```bash
-# Check all required variables are set
-./scripts/check_env.sh
-```
+**A config value is missing or rejected.** Check the key is in `CONFIG_SCHEMA` and seeded by a migration, then look at the row in Manage > Config.
 
-**Invalid JSON configuration**
-```bash
-# Validate JSON syntax
-python -m json.tool config/ai_config.json
-```
+**OAuth2 not working.** Check `OIDC_ISSUER`, `OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET` are set, and that `{OIDC_ISSUER}/.well-known/openid-configuration` is reachable from the init container. `scripts/setup/configure_pocketbase_oauth.py` registers the provider in development.
 
-**Database configuration not loading**
-```python
-# Check database configs
-uv run python scripts/check_configs.py
-```
-
-**OAuth2 not working**
-```bash
-# Verify OAuth configuration
-uv run python scripts/test_oauth.py
-```
+More in [Troubleshooting](../guides/troubleshooting.md).
 
 ## Related Documentation
 
 - [CLI Commands](./cli-commands.md) - Command-line tools
+- [Solver Configuration](../guides/solver-configuration.md) - Runtime keys and hardcoded constants
 - [Docker Deployment](../guides/docker-deployment.md) - Production configuration
 - [Troubleshooting](../guides/troubleshooting.md) - Common issues and solutions

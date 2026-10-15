@@ -2,6 +2,8 @@
 
 ## Overview
 
+> Field lists below are a summary. The authoritative schema is `pocketbase/pb_migrations/*.js`; `docs/reference/tables.md` documents each table and `frontend/src/types/pocketbase-types.ts` is generated from it.
+
 The data model represents a unified view of camp operations, bridging CampMinder's source data with local optimization needs. The model follows a person-centric design where all individuals (campers, staff, family) are treated uniformly.
 
 ## Core Design Principles
@@ -50,23 +52,25 @@ bunk_assignments (N) >---- (1) bunks (N) <---- (1) bunk_plans
 **Purpose**: Master record for all individuals
 
 Key Fields:
-- `campminder_id` (string): Unique CampMinder identifier
-- `first_name`, `last_name`: Basic identification
-- `display_name`: Computed friendly name
-- `birthdate`: For age calculations
-- `person_type`: Enum (Camper, Staff, Family Member)
-- `gender`: For bunking constraints
-- `years_at_camp`: Array of attended years
+- `cm_id` (number): CampMinder person ID
+- `year` (number): persons rows are year-scoped, one per person per season
+- `first_name`, `last_name`, `preferred_name`: Basic identification
+- `birthdate`, `age`: For age calculations (`age` is a snapshot, not recomputed)
+- `is_camper`: Camper vs. other person in the household
+- `gender`, `grade`, `school`: For bunking constraints and matching
+- `household_id` and the childhood-household fields: Family linkage
+- `years_at_camp`, `last_year_attended`: Attendance history
 
 ### Sessions
 **Purpose**: Camp session periods
 
 Key Fields:
-- `campminder_id`: Unique session identifier
-- `name`: Display name (e.g., "Session 1 2025")
-- `year`: Calendar year
+- `cm_id`: CampMinder session identifier (CampMinder reuses these across years)
+- `name`: Display name (e.g., "Session 2")
+- `year`: Camp season
 - `start_date`, `end_date`: Session boundaries
-- `session_type`: Type classification
+- `session_type`: Type classification (`main`, `embedded`, `ag`, `family`, `family_adult`, `quest`, `scit`, `bmitzvah`, `tli`, `adult`, `school`, `hebrew`, `teen`, `other`)
+- `parent_id`: Parent session for embedded and AG sessions
 - `is_active`: Whether currently offered
 
 Session Types:
@@ -74,29 +78,30 @@ Session Types:
 - **Main Sessions** (2, 3, 4): Full multi-week summer sessions
 - **Embedded Sessions** (2a, 2b, 3a): Partial turnover periods where some campers stay, others change
 - **All-Gender Sessions**: Parallel sessions using only AG-prefixed bunks
-- **Family Camp**: Excluded from bunking optimization by default
+- **Family Camp / Adult Reg weekends** (`family`, `family_adult`, `adult`): Excluded from bunking optimization; housed through the lodging board (`docs/architecture/session-types.md`)
 
 ### Divisions
 **Purpose**: Age/grade groupings
 
 Key Fields:
-- `campminder_id`: Unique division identifier
+- `cm_id`: CampMinder division identifier
 - `name`: Display name (e.g., "Ofarim")
-- `display_name`: Friendly display name
-- `gender`: Gender-specific divisions
-- `min_grade`, `max_grade`: Grade range
-- `display_order`: UI sorting
+- `gender_id`: Gender-specific divisions
+- `start_grade_id`, `end_grade_id`: Grade range
+- `capacity`, `parent_division`, `staff_only`, `assign_on_enrollment`
+- Global lookup: no `year` field
 
 ### Bunks
 **Purpose**: Physical cabin entities
 
 Key Fields:
-- `campminder_id`: Unique bunk identifier
+- `cm_id`: CampMinder bunk identifier
 - `name`: Bunk name (e.g., "O1")
-- `division`: Reference to division (CampMinder ID)
-- `capacity`: Maximum occupancy
-- `min_capacity`: Minimum for viability
+- `year`: Camp season
+- `gender`: `M`, `F`, `Mixed` or AG
+- `area_id`, `sort_order`
 - `is_active`: Whether available
+- Capacity is not stored on the bunk; the solver applies its configured cabin capacity (12, overflowing to 13)
 
 ## Relationship Entities
 
@@ -104,35 +109,32 @@ Key Fields:
 **Purpose**: Links persons to sessions they're attending
 
 Key Fields:
-- `person` (string): Person's CampMinder ID
-- `session` (string): Session's CampMinder ID
+- `person_id` (number): Person's CampMinder ID (with a `person` relation to `persons`)
+- `session` (relation to `camp_sessions`)
 - `year` (int): Attendance year
-- `division` (string): Assigned division
-- `age` (int): Age during session
-- `grade` (int): Grade during session
-- Unique constraint on (person, session, year)
+- `status_id`: Enrollment status (the solver treats `2` as active enrolled)
+- `enrollment_date`, `effective_date`: Registration timing (`effective_date` is the registration date)
+- Unique index on (`person_id`, `year`, `session`)
 
 ### Bunk Plans
 **Purpose**: Which bunks are available for which sessions
 
 Key Fields:
-- `session` (string): Session's CampMinder ID
-- `bunk` (string): Bunk's CampMinder ID
+- `session`, `bunk` (relations)
+- `cm_id`, `code`, `name`: The CampMinder plan identity
 - `year` (int): Plan year
 - `is_active`: Whether this pairing is active
-- Unique constraint on (session, bunk, year)
+- Unique index on (`year`, `bunk`, `session`, `cm_id`)
 
 ### Bunk Assignments
 **Purpose**: Actual cabin placements
 
 Key Fields:
-- `person` (string): Person's CampMinder ID
-- `bunk` (string): Bunk's CampMinder ID
-- `session` (string): Session's CampMinder ID
+- `person`, `bunk`, `session`, `bunk_plan` (relations)
+- `cm_id`: CampMinder assignment ID
 - `year` (int): Assignment year
-- `assignment_type`: Manual vs solver-generated
-- `created_by`: Audit trail
-- Unique constraint on (person, session, year)
+- Unique index on (`year`, `person`, `session`, `bunk`)
+- `bunk_assignments` mirrors CampMinder and is **read-only for the solver and drag/drop**; planning happens in `bunk_assignments_draft`, keyed by `scenario` (a `saved_scenarios` record) and carrying `assignment_locked`
 
 ## Supporting Entities
 
@@ -140,30 +142,23 @@ Key Fields:
 **Purpose**: Camper pairing preferences
 
 Key Fields:
-- `requester_cm_id`: Who made the request
-- `requested_cm_id`: Who they want to bunk with
-- `year`: Request year
-- `status`: Pending/approved/denied
-- `mutual`: Whether reciprocated
+- `requester_id`, `requestee_id`: CampMinder IDs of who asked and who they named
+- `request_type`: `bunk_with`, `not_bunk_with` or `age_preference`
+- `source_field` / `source_fields`: Which input channel(s) produced it (`docs/architecture/request-classification.md`)
+- `session_id`, `year`
+- `status`: Resolution state, plus confidence and manual-review fields
+- `is_reciprocal`, `is_first_requested`
 
 ### Person Tags
 **Purpose**: Flexible tagging system
 
 Key Fields:
-- `person`: Person's CampMinder ID
-- `tag`: Tag identifier
-- `year`: When tag applies
+- `person_tag_defs`: Global tag definitions
+- `persons.tags`: The tags a person carries, per year
 - Examples: specialty programs, dietary needs
 
-### Historical Bunking
-**Purpose**: Simplified historical attendance
-
-Key Fields:
-- `person_cm_id`: Person identifier
-- `year`: Historical year
-- `session_name`: Which session
-- `division_name`: Their division
-- `bunk_name`: Their bunk (if known)
+### Historical Attendance
+There is no separate history table. The `camper_history` table was dropped (#2369); prior-year attendance and bunking are read directly from year-scoped `attendees`, `persons` and `bunk_assignments` rows.
 
 ## Data Integrity Rules
 
@@ -173,7 +168,7 @@ Key Fields:
 - Orphan detection in sync process
 - **CRITICAL**: All relationships between CampMinder-sourced data MUST use CampMinder IDs
 - PocketBase IDs are internal only - never use for cross-table relationships
-- Example: `bunk_assignments.person` links to `persons.campminder_id`, not `persons.id`
+- Where a table carries both a PocketBase relation and a CampMinder ID column (`attendees.person` / `attendees.person_id`), cross-table logic and joins key on the CampMinder ID; the relation field is for PocketBase `expand` only
 
 ### 2. Temporal Integrity
 - Year fields required on temporal data

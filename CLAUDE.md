@@ -44,14 +44,16 @@ Subdir `CLAUDE.md` files load automatically when you work in that area — they 
 ### Full Documentation
 
 See `/docs`:
-- `architecture/` — sync-layer, bunk-request-pipeline, session-types, metrics-module, data-model, solver-internals
+- `architecture/` — sync-layer, bunk-request-pipeline, session-types, metrics-module, data-model, solver-internals, request-classification, lodging-occupancy, campminder-date-fields
 - `guides/` — solver-configuration, csv-preparation, dev-database-seeding, troubleshooting, docker-deployment
 - `api/` — solver-api
-- `reference/` — cli-commands, configuration, tables, commit-conventions, git-workflow, oauth2-setup, pocketbase-migrations, go-sync-patterns, sync-id-conventions, family-camp-field-provenance, family-camp-grain-collapse, issue-triage, lodging-registry, lodging-board-vs-summer, lodging-inventory-sheet, weekend-card-vocabulary, objective-sensitivity, weekend-go-live-sequence, ui-uplift, camperships-design-language
+- `reference/` — cli-commands, configuration, tables, commit-conventions, git-workflow, oauth2-setup, pocketbase-migrations, go-sync-patterns, sync-id-conventions, family-camp-field-provenance, family-camp-grain-collapse, issue-triage, lodging-registry, lodging-board-vs-summer, lodging-inventory-sheet, weekend-card-vocabulary, objective-sensitivity, weekend-go-live-sequence, ui-uplift, camperships-design-language, issue-triage-prompt, modernization-prompts
 
-`docs/reference/` also holds four large working documents that churn — read them for current
-state, not as stable reference: `solver-roadmap.md`, `solver-config-decisions.md`,
-`modernization-backlog.md`, and `claude-harness-improvements.md` (harness roadmap).
+`docs/reference/` also holds large working documents that churn — read them for current
+state, not as stable reference: `solver-roadmap.md`, `modernization-backlog.md`, and
+`claude-harness-improvements.md` (harness roadmap) are checked in; `issue-triage.md` and
+`solver-config-decisions.md` are gitignored and exist only in a local checkout (`.gitignore`),
+so a fresh clone or a CI runner has neither.
 
 ---
 
@@ -59,7 +61,7 @@ state, not as stable reference: `solver-roadmap.md`, `solver-config-decisions.md
 
 ```bash
 ./scripts/start_dev.sh                                    # Start all services
-curl -X POST "http://localhost:8090/api/custom/sync/run?year=2025&service=all" # Trigger sync
+curl -X POST "http://localhost:8090/api/custom/sync/run?year=2026&service=all" # Trigger sync (year is required; N or N−1 runs every job, any other year is a historical replay)
 uv run pytest tests/                                      # Python tests
 cd pocketbase && go test ./...                            # Go tests
 cd frontend && npx vitest run                             # Frontend tests (one-shot)
@@ -137,7 +139,7 @@ Read the relevant doc before working in these areas:
 - **Versions** — Python 3.14+, Go 1.27 (`pocketbase/go.mod` picks the minor; every build uses its latest patch — `scripts/ci/check-go-version-alignment.sh`), Node 22+, TypeScript 6.0+/ES2022
 - **Use uv** — `uv sync` to install, `uv run <cmd>` to execute
 - **AI model** — GPT-5-nano via `AI_MODEL` env var (reasoning enabled)
-- **Token caching** — CampMinder JWT cached in `~/.campminder_token_cache.json`
+- **Token caching** — the Go sync keeps its CampMinder JWT in memory (`pocketbase/campminder/client.go`); only the legacy Python client (`campminder/client.py`, used by `scripts/sync/sync_sibling_relationships.py`) caches it in `~/.campminder_token_cache.json`
 - **IPv4 in production** — Caddy/Vite configs use `127.0.0.1`; scripts may use localhost
 
 ---

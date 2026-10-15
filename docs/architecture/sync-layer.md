@@ -66,7 +66,7 @@ the deriving (`cadenceQueue`, `inPhaseWithTrigger`, `jobsWithTrigger`, `hasTrigg
 | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `InitializeSyncServices()`               | Register service with `RegisterService()` in dependency order                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `servicesForYear()` / `clientServices()` | Add the job's season instance to `servicesForYear` (every year-scoped job): the nightly N−1 pass, a historical replay and a staff run for N−1 all take their instances from it, and a job missing there is skipped for N−1 (`TestServicesForYearCoversEveryDailyAndWeeklyJob` fails). A client-backed job also goes in `clientServices`, so the Oct 15 rollover re-scopes it without a restart                                                                                                                                                                                                                                                                                                                                                                          |
-| `syncJobMeta`                            | Add ONE row: `{ID, Phase, Description, Cadences, Triggers, SyncedSeasonsOnly, Gate}` (plus `Base`/`Scope` for a scoped variant — see scope.go). `Cadences` puts the job on the crons it should run on (`CadenceDaily`, `CadenceHourly`, `CadenceWeeklyGlobal`, `CadenceWeeklyCustomValues` — a bitset, so a job can carry more than one). `Triggers` says which operator-facing entry points may start it (`TriggerIndividualRoute`, `TriggerPhaseRun`, `TriggerFullRun`). `SyncedSeasonsOnly: true` excludes it from a historical replay. `Gate` is an optional `func() bool` environment check (see `process_requests`' `IS_DOCKER` gate or `multi_workbook_export`'s `google.IsEnabled` for the pattern). Physical position in the slice matters too — see §9 below. |
+| `syncJobMeta`                            | Add ONE row: `{ID, Phase, Description, Cadences, Triggers, SyncedSeasonsOnly, PrimaryOnly, Gate}` (plus `Base`/`Scope` for a scoped variant — see scope.go). `Cadences` puts the job on the crons it should run on (`CadenceDaily`, `CadenceHourly`, `CadenceWeeklyGlobal`, `CadenceWeeklyCustomValues` — a bitset, so a job can carry more than one). `Triggers` says which operator-facing entry points may start it (`TriggerIndividualRoute`, `TriggerPhaseRun`, `TriggerFullRun`). `SyncedSeasonsOnly: true` excludes it from a historical replay. `PrimaryOnly: true` marks a job that covers its own N−1..N+1 window from the primary pass, so the N−1 pass skips it (`financial_transactions`, `aid_postings`). `Gate` is an optional `func() bool` environment check (see `process_requests`' `IS_DOCKER` gate or `multi_workbook_export`'s `google.IsEnabled` for the pattern). Physical position in the slice matters too — see §9 below. |
 
 **Common mistake**: Registering the service but leaving its `syncJobMeta` row with no `Cadences`
 and no `Triggers` set — `TestRegistryIntegrity` (`registry_test.go`) fails immediately ("no
@@ -158,7 +158,7 @@ anything up.
 
 | File                            | Action                                                                             |
 | ------------------------------- | ---------------------------------------------------------------------------------- |
-| `components/admin/syncTypes.ts` | Add to `CURRENT_YEAR_SYNC_TYPES` or `GLOBAL_SYNC_TYPES` with id, name, icon, color |
+| `components/admin/syncTypes.ts` | Add to `YEAR_SYNC_TYPES` or `GLOBAL_SYNC_TYPES` with id, name, icon, color         |
 | `hooks/useRunIndividualSync.ts` | Add to `SYNC_TYPE_NAMES` map for toast display                                     |
 
 ### 6. Frontend Special Handling (if needed)
@@ -183,7 +183,7 @@ For jobs with other custom parameters (session, etc.), similar pattern applies.
 
 | Consideration           | When to use `syncedSeasonsOnly: true`                                                  |
 | ----------------------- | -------------------------------------------------------------------------------------- |
-| Current-year-only jobs  | Jobs like `bunk_requests` and `process_requests` that only make sense for current year |
+| Synced-seasons-only jobs | Jobs like `bunk_requests` and `process_requests` that only make sense for N and N−1  |
 | Normal year-scoped jobs | Most jobs don't need this flag and work for any year                                   |
 
 ### 8. Google Sheets Export (if needed)
@@ -237,7 +237,7 @@ After implementation, verify ALL of these work:
 
 - [ ] `go build .` in pocketbase/ succeeds
 - [ ] `npm run build` in frontend/ succeeds
-- [ ] Job appears in Admin → Sync tab with correct icon/color
+- [ ] Job appears in Manage › Sync tab with correct icon/color
 - [ ] Individual "Run" button triggers the sync
 - [ ] Unified sync (current year) includes the job
 - [ ] Unified sync (historical year) includes the job (unless `syncedSeasonsOnly: true`)
@@ -371,6 +371,28 @@ come from a migration, because the camp's own descriptions name the camp.
 2. **Custom values → Derived**: When `IncludeCustomValues=true` (historical sync), custom values run BEFORE derived tables
 3. **Sequential custom values**: Custom values syncs run sequentially (not parallel) to prevent context deadline issues from concurrent API rate limiting
 
+### Which seasons each scheduled run covers
+
+The primary season N comes from `PrimarySeason` (`sync/year.go`): next year from Oct 15 00:00
+America/Los_Angeles, this year before it, or `CAMPMINDER_SEASON_ID` when set (an empty value is
+unset). `SyncedSeasons` is `[N, N−1]`. Each run does the primary first, then a prior-season pass
+(`runPriorSeasons`) over `secondarySeasonQueue`, which drops every `PrimaryOnly` job and every
+global job, so an N−1 failure never costs the primary.
+
+| Cron (`sync/scheduler.go`, container `TZ`) | Primary (N)                           | N−1                                                                         |
+| ------------------------------------------ | ------------------------------------- | --------------------------------------------------------------------------- |
+| Hourly, `0 * * * *`                        | `bunk_assignments`                    | `bunk_assignments`                                                          |
+| Daily, `0 3 * * *`                         | every daily job                       | every daily job except `financial_transactions`, `aid_postings` and globals |
+| Sunday 02:00, `0 2 * * 0`                  | the global tables + workbook export   | `multi_workbook_export` only (when Google Sheets is configured)            |
+| Sunday 04:00, `0 4 * * 0`                  | full person/household custom values   | none: the scoped daily `*_family_camp` passes keep N−1 current             |
+
+`financial_transactions` and `aid_postings` run once, from the primary pass, over their own
+N−1..N+1 window. A staff-triggered run (`?year=`) runs the season being viewed when it is N or
+N−1, and returns 400 for any other year (`viewedSeason`, `sync/api.go`); the unified
+`/api/custom/sync/run` treats a year outside the pair as a historical replay. The sync status
+payload reports the season as `_configured_year` (the primary), `_synced_years` and
+`_season_source` (`rule` or `override`).
+
 ### Financial transactions: rolling seasons and the one-off backfill
 
 The daily cron's `financial_transactions` re-syncs seasons **N−1, N and N+1** around
@@ -442,5 +464,5 @@ done
 `docker logs --since` accepts this RFC3339 form. The `year=$y([[:space:]]|$)` anchor stops
 `year=201` from matching `year=2017` — `year` is always followed by a space (another `key=value`
 field) or end of line in both log lines (`api.go`'s `slog.Error`/`slog.Info` calls). The route
-accepts seasons up to `max(calendar year, primary season) + 1`, so N+1 is still accepted
-after the season is switched ahead of the calendar in November; later seasons are refused.
+accepts seasons up to `max(calendar year, primary season) + 1` (`transactionBackfillYear`), so N+1
+is still accepted after the primary rolls ahead of the calendar on Oct 15; later seasons are refused.

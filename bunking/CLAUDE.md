@@ -9,7 +9,9 @@ Core Python package: solver, data processing, satisfaction policy, social graphs
 | `solver/` | OR-Tools CP-SAT model — see `bunking/solver/CLAUDE.md` |
 | `sync/bunk_request_processor/` | CSV → AI parse → name resolution → disposition pipeline |
 | `satisfaction/` | Single source of truth for "is request X satisfied?" — RequestBucket policy, predicates, aggregation |
-| `metrics/` | Analytics aggregation |
+| `metrics/` | Empty stub (`__all__ = []`). Analytics live in `api/services/` (`metrics_repository.py`, `metrics_sql_repository.py`, `historical_service.py`, `registration_service.py`, …) |
+| `financial_aid/` | Camperships domain logic — calculator, decisions, rules, scenarios, reports, `change_log.py` |
+| `session_order.py` | The one app-wide order sessions are listed in (summer, then quests, TLI, SCIT, …) |
 | `graph/` | Social graph construction + caching — `SocialGraphBuilder` is the public API |
 | `rbac/` | FastAPI permission dependencies (Go has its own `pocketbase/rbac/`) |
 | `geo_normalizer/` | City/state normalization against `uscities.csv` |

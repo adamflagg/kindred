@@ -2,31 +2,34 @@
 
 ## Overview
 
-The Solver Service is a FastAPI application that provides constraint satisfaction solving for camp cabin assignments. It uses Google OR-Tools CP-SAT solver to optimize bunking arrangements while respecting various constraints and preferences.
+The Solver Service is the `kindred-api` FastAPI application. It provides constraint satisfaction solving for camp cabin assignments using Google OR-Tools CP-SAT, plus the scenario, validation and social-graph endpoints that go with it. It optimizes bunking arrangements while respecting the configured constraints and preferences.
 
-**Base URL**: `http://localhost:8000`  
-**API Documentation**: `http://localhost:8000/docs` (Swagger UI)
+**Base URL**: `http://localhost:8000` directly, or `http://localhost:8080` through Caddy. Every route below except `/health` lives under `/api/`. Caddy sends anything under `/api/*` that is not a PocketBase path to FastAPI (`api/CLAUDE.md`, "Routing").
+**API Documentation**: `http://localhost:8000/docs` (Swagger UI) is the source of truth for the full route list. This page covers the solver, scenario, validation, request-merge, satisfaction and social-graph endpoints. Lodging, Camperships (`/api/aid/*`), metrics, geo, Jotform and debug routers have their own files under `api/routers/`.
 
 ## Authentication
 
-Currently, the solver service does not implement authentication. In production, it should be deployed behind a reverse proxy with appropriate authentication.
+Endpoints verify a PocketBase JWT (`bunking/auth_middleware.py`); the frontend sends it through `fetchWithAuth`. Solver, scenario, validation, satisfaction and request-merge endpoints require the `bunking.manage` permission (`Permission.BUNKING_MANAGE`, `require_permission(...)` in each router) and answer 401/403 otherwise. The social-graph reads only need a signed-in user, except that passing `scenario_id` also requires `bunking.manage`. `/health` is open.
 
 ## Core Concepts
 
 ### Solver Runs
 - Asynchronous solving process identified by `run_id`
 - Can check status and retrieve results later
-- Configurable time limits (1-600 seconds)
+- Configurable time limits (1-600 seconds, default 60)
+- Production is **read-only** for the solver: a run, an apply, and a clear must all name a **scenario**, or they are refused with 422 (kindred#2467, #2473)
 
 ### Scenarios
 - What-if planning for different bunking arrangements
-- Copy from production or start fresh
+- Copy from production, copy from another scenario, or start fresh
 - Support for manual adjustments and locking
+- A weekend (family or adult) session routes the same endpoints to the lodging draft tables instead of `bunk_assignments_draft`
 
 ### Assignments
 - Map persons to bunks for a session
 - Can be solver-generated or manual
 - Support for "locked" assignments that solver respects
+- Every request names a session by its CampMinder id **and a `year`**; CampMinder reuses session ids across years. The year the solver stamps on its output comes from `DirectSolverInput.year`, i.e. the request's `year`, not from the clock.
 
 ## API Endpoints
 
@@ -39,7 +42,7 @@ Check service health status.
 ```json
 {
   "status": "healthy",
-  "service": "kindred-solver"
+  "service": "kindred-api"
 }
 ```
 
@@ -47,41 +50,49 @@ Check service health status.
 
 ### Solver Operations
 
-#### POST /solver/run
-Start a new solver run for a session.
+#### POST /api/solver/run
+Start a new solver run for a session. Refused with 422 when `scenario` is missing or blank, and with 409 when a run for the same session is already pending or running.
 
 **Request Body:**
 ```json
 {
-  "session_id": "string",
+  "session_cm_id": 1000001,
+  "year": 2025,
+  "scenario": "scenario-pb-id",
   "apply_results": false,
-  "time_limit": 30
+  "time_limit": 60
 }
 ```
 
 **Parameters:**
-- `session_id` (required): CampMinder session ID to solve
+- `session_cm_id` (required): CampMinder session ID to solve
+- `year` (required): Camp year
+- `scenario` (required in practice): PocketBase ID of the `saved_scenarios` record the results land in
 - `apply_results` (optional, default=false): Auto-apply results to the run's scenario
-- `time_limit` (optional, default=30): Max seconds to run (1-600)
+- `time_limit` (optional, default=60): Max seconds to run (1-600)
+- `respect_locks` (optional, default=true): Keep locked bunk assignments in place
+- `locked_bunk_cm_ids` (optional): Bunk CM IDs to freeze during a partial re-solve
+- `debug_constraints`, `debug_mode`, `config` (optional): Diagnostic and per-run config overrides
 
 **Response:**
 ```json
 {
   "run_id": "uuid-string",
   "status": "started",
-  "message": "Solver run started"
+  "message": "Solver run started in background"
 }
 ```
 
 **Status Codes:**
 - 200: Solver run started successfully
-- 400: Invalid parameters
+- 409: A run for this session is already in progress (`in_progress_run_id` in the body)
+- 422: Missing scenario or invalid parameters
 - 500: Internal server error
 
 ---
 
-#### GET /solver/run/{run_id}
-Get status and results of a solver run.
+#### GET /api/solver/run/{run_id}
+Get status and results of a solver run. `status` is `pending`, `running`, `completed` or `failed`.
 
 **Path Parameters:**
 - `run_id`: The solver run identifier
@@ -92,36 +103,35 @@ Get status and results of a solver run.
   "id": "uuid-string",
   "status": "pending",
   "results": null,
-  "error_message": null
+  "error_message": null,
+  "overflow_used": 0,
+  "break_glass_used": false,
+  "infeasibility_cause": null,
+  "localization": null,
+  "impossibility_report": null
 }
 ```
 
-**Response (Completed):**
+**Response (Completed):** `results.assignments` maps a person's CampMinder id to a bunk name; `stats` carries the solver statistics plus `assignments_changed` and `new_assignments`; `satisfied_requests` maps a person id to the request ids that were satisfied.
 ```json
 {
   "id": "uuid-string",
   "status": "completed",
   "results": {
-    "assignments": [
-      {
-        "person_id": "string",
-        "bunk_id": "string",
-        "person_name": "string",
-        "bunk_name": "string"
-      }
-    ],
-    "unassigned": ["person_id1", "person_id2"],
-    "summary": {
-      "total_campers": 150,
-      "assigned_campers": 148,
-      "unassigned_campers": 2,
-      "bunks_used": 12,
-      "objective_value": 0.95
-    }
+    "assignments": { "1000001": "B-1", "1000002": "B-1" },
+    "stats": { "assignments_changed": 12, "new_assignments": 3 },
+    "satisfied_requests": { "1000001": ["request-id"] }
   },
-  "error_message": null
+  "error_message": null,
+  "overflow_used": 0,
+  "break_glass_used": false,
+  "infeasibility_cause": null,
+  "localization": null,
+  "impossibility_report": null
 }
 ```
+
+`overflow_used` is the number of bunks placed at the 13-seat overflow cap (0 on a clean 12-seat solve). `break_glass_used` is true when the request layer was relaxed to place everyone. `infeasibility_cause`, `localization` and `impossibility_report` are structured diagnostics, held in memory only; a run read back from PocketBase after a restart returns them as null.
 
 **Response (Failed):**
 ```json
@@ -135,7 +145,7 @@ Get status and results of a solver run.
 
 ---
 
-#### POST /solver/apply/{run_id}
+#### POST /api/solver/apply/{run_id}
 Apply solver results to the run's **scenario** (`bunk_assignments_draft`).
 
 ⚠️ **Production is read-only for the solver.** A run carrying no scenario is refused with a 422 rather
@@ -147,20 +157,56 @@ than applied — see kindred#2467. The solver never writes `bunk_assignments`.
 **Response:**
 ```json
 {
-  "message": "Applied 148 assignments"
+  "message": "Applied 148 assignments to bunk_assignments_draft"
 }
 ```
 
 **Status Codes:**
 - 200: Results applied successfully
 - 404: Run not found
-- 400: Run not completed or already applied
+- 400: Run not completed, or session id missing from the run
+- 422: The run has no scenario
+
+---
+
+#### POST /api/solver/pre-validate
+Check a solver request for impossible requests and capacity problems before running it. Takes the same body as `POST /api/solver/run`. Uses the same impossibility check as `DirectBunkingSolver._validate_requests`, so the two cannot drift.
+
+**Response:** `{valid, errors, warnings, statistics, impossibility_report, session_breakdown, related_sessions}`. `statistics` holds `total_campers`, `total_bunks`, `total_capacity`, `total_requests`, `campers_with_requests`, `campers_without_requests` and `capacity_breakdown`; `impossibility_report` is the serialized `ImpossibilityReport` dataclass.
+
+---
+
+#### POST /api/solver/run-multi-session
+Run the solver for each child session of a parent session. Body: `parent_session_cm_id`, `year`, `scenario` (required, as above), `apply_results`, `time_limit_per_session`, `solve_by_sex` (default true), `respect_locks`.
+
+---
+
+#### POST /api/solver/run-sweep
+Kick off a sequential benchmark sweep across several time budgets (HTTP 202). Body: exactly one of `session_cm_id` (with `year`) or `scenario_id`; `time_budgets` (default `[30, 60, 180, 300]`, each at most 3600 seconds); optional `label`. Returns `{sweep_id, run_ids}`; poll each run with `GET /api/solver/run/{run_id}`.
+
+#### POST /api/solver/run-sweep/{sweep_id}/cancel
+Cancel an in-flight sweep (204; an unknown id is a no-op).
+
+---
+
+#### POST /api/sessions/{session_cm_id}/clear-assignments
+Delete the draft assignments of a session and its related sessions in one scenario. Body: `session_cm_id`, `year`, `scenario` (required, 422 without it).
+
+---
+
+#### GET /api/solver/logs and GET /api/solver/logs/{session_id}
+List the persisted solver run logs under `logs/solver/`, or fetch the logs of one session (optional `run_id` query parameter). Logs older than 30 days are pruned as new ones are written.
+
+---
+
+#### POST /api/solver/run/{run_id}/analyze
+Returns 501: "Analysis functionality is being reimplemented".
 
 ---
 
 ### Scenario Management
 
-#### POST /scenarios
+#### POST /api/scenarios
 Create a new planning scenario.
 
 **Request Body:**
@@ -168,18 +214,19 @@ Create a new planning scenario.
 {
   "name": "Session 1 Alternative",
   "session_cm_id": 1000001,
+  "year": 2025,
   "description": "Testing different cabin arrangements",
-  "copy_from_production": true,
-  "created_by": "user@camp.com"
+  "copy_from_scenario": "optional-scenario-id"
 }
 ```
 
 **Parameters:**
 - `name` (required): Display name for scenario
 - `session_cm_id` (required): CampMinder session ID
+- `year` (required): Camp year
 - `description` (optional): Detailed description
-- `copy_from_production` (optional, default=true): Copy current assignments
-- `created_by` (optional): User identifier for audit
+- `copy_from_scenario` (optional): Scenario to copy from (404 if it no longer exists)
+- `copy_from_production` (optional, deprecated): With neither copy field set, the scenario is seeded from production
 
 **Response:**
 ```json
@@ -187,21 +234,23 @@ Create a new planning scenario.
   "id": "uuid-string",
   "name": "Session 1 Alternative",
   "session_cm_id": 1000001,
+  "year": 2025,
   "description": "Testing different cabin arrangements",
   "is_active": true,
-  "created": "2025-01-27T10:00:00Z",
-  "updated": "2025-01-27T10:00:00Z",
-  "created_by": "user@camp.com"
+  "copy_skipped": null
 }
 ```
 
+`copy_skipped` is set on a weekend copy: the number of rows skipped because their party or unit no longer resolves.
+
 ---
 
-#### GET /scenarios
-List scenarios for a session.
+#### GET /api/scenarios
+List scenarios for a session and its related sessions.
 
 **Query Parameters:**
 - `session_id` (required): CampMinder session ID
+- `year` (required): Camp year
 - `include_inactive` (optional, default=false): Include deleted scenarios
 
 **Response:**
@@ -211,17 +260,16 @@ List scenarios for a session.
     "id": "uuid-string",
     "name": "Session 1 Alternative",
     "session_cm_id": 1000001,
+    "year": 2025,
     "description": "Testing different cabin arrangements",
-    "is_active": true,
-    "created": "2025-01-27T10:00:00Z",
-    "updated": "2025-01-27T10:00:00Z"
+    "is_active": true
   }
 ]
 ```
 
 ---
 
-#### GET /scenarios/{scenario_id}
+#### GET /api/scenarios/{scenario_id}
 Get scenario details with optional assignments.
 
 **Path Parameters:**
@@ -230,35 +278,12 @@ Get scenario details with optional assignments.
 **Query Parameters:**
 - `include_assignments` (optional, default=true): Include assignment details
 
-**Response:**
-```json
-{
-  "scenario": {
-    "id": "uuid-string",
-    "name": "Session 1 Alternative",
-    "session_cm_id": 1000001,
-    "is_active": true
-  },
-  "assignments": [
-    {
-      "id": "uuid-string",
-      "scenario": "scenario-id",
-      "person_cm_id": 12345,
-      "bunk_cm_id": 67890,
-      "locked": false,
-      "created": "2025-01-27T10:00:00Z"
-    }
-  ]
-}
-```
+**Response:** the scenario object (`id`, `name`, `session_cm_id`, `year`, `description`, `is_active`), and with `include_assignments` its draft assignments.
 
 ---
 
-#### PUT /scenarios/{scenario_id}
-Update scenario metadata.
-
-**Path Parameters:**
-- `scenario_id`: Scenario identifier
+#### PUT /api/scenarios/{scenario_id}
+Update scenario metadata (400 if no field is given).
 
 **Request Body:**
 ```json
@@ -273,35 +298,85 @@ Update scenario metadata.
 
 ---
 
-#### DELETE /scenarios/{scenario_id}
-Delete a scenario (soft delete).
+#### DELETE /api/scenarios/{scenario_id}
+Delete a scenario and all of its draft data.
 
-**Path Parameters:**
-- `scenario_id`: Scenario identifier
+**Response:** a `{"message": ...}` confirmation.
 
-**Response:**
+---
+
+#### PUT /api/scenarios/{scenario_id}/assignments
+Update or create a scenario assignment.
+
+**Request Body:**
 ```json
 {
-  "message": "Scenario 'Session 1 Alternative' deleted successfully"
+  "session_cm_id": 1000001,
+  "year": 2025,
+  "person_id": 12345,
+  "bunk_id": 67890,
+  "locked": true,
+  "updated_by": "user@camp.com"
 }
 ```
+
+**Parameters:**
+- `session_cm_id` (required): CampMinder session ID
+- `year` (required): Camp year
+- `person_id` (required): CampMinder person ID
+- `bunk_id` (optional): CampMinder bunk ID (null removes the assignment)
+- `locked` (optional): Lock assignment from solver changes
+- `updated_by` (optional): User identifier for audit
+
+---
+
+#### POST /api/scenarios/{scenario_id}/solve
+Run the solver on a scenario. No request body. Reads the scenario's draft assignments (not production) and produces optimized assignments for it.
+
+**Response:** `{"run_id": ..., "status": "started", "message": ...}`; poll `GET /api/solver/run/{run_id}`.
+
+---
+
+#### POST /api/scenarios/{scenario_id}/clear
+Clear all assignments from a scenario.
+
+**Request Body:**
+```json
+{
+  "year": 2025,
+  "cleared_by": "user@camp.com"
+}
+```
+
+**Parameters:**
+- `year` (required): Camp year, scopes the clear
+- `cleared_by` (optional): User identifier for audit
+
+---
+
+#### GET /api/scenarios/score
+Evaluate the solver objective score of a scenario or of production. Query: `session_id`, `year` (both required), `scenario_id` (omit for production). Returns the same score the optimizer would compute, so scenarios can be compared.
+
+#### POST /api/scenarios/{scenario_id}/analyze
+Returns 501: "Analysis functionality is being reimplemented".
 
 ---
 
 ### Validation Operations
 
-#### POST /validate-bunking
+#### POST /api/validate-bunking
 Validate current bunking assignments for a session, checking for constraint violations, unsatisfied requests, and potential issues.
 
 **Request Body:**
 ```json
 {
-  "session_id": "oooz3l80snb9e5e",
-  "scenario_id": "optional-scenario-id"
+  "session_cm_id": 1000001,
+  "year": 2025,
+  "scenario": "optional-scenario-id"
 }
 ```
 
-**Response:**
+**Response (abridged):**
 ```json
 {
   "statistics": {
@@ -315,13 +390,12 @@ Validate current bunking assignments for a session, checking for constraint viol
     "bunks_at_capacity": 3,
     "bunks_under_capacity": 16,
     "locked_bunks": 2,
-    "campers_with_no_requests": 158,
-
+    "campers_with_no_requests": 158
   },
   "issues": [
     {
       "severity": "warning",
-      "type": "unsatisfied_request",
+      "type": "valid_request_unsatisfied",
       "message": "Bunk request not satisfied: Emma Johnson wants to bunk with Olivia Chen",
       "details": {
         "request_type": "bunk_with",
@@ -333,7 +407,7 @@ Validate current bunking assignments for a session, checking for constraint viol
     },
     {
       "severity": "error",
-      "type": "negative_request_violated",
+      "type": "valid_negative_request_violated",
       "message": "Negative request violated: Liam Garcia is bunked with Samuel Johnson",
       "details": {
         "request_type": "not_bunk_with",
@@ -345,158 +419,73 @@ Validate current bunking assignments for a session, checking for constraint viol
     },
     {
       "severity": "warning",
-      "type": "spread_violation",
+      "type": "grade_spread_warning",
       "message": "Bunk 101 exceeds grade spread limit: 3 grades (max: 2)",
       "details": {
         "bunk_id": "101",
-        "bunk_name": "Cabin A",
-        "current_spread": 3,
-        "max_allowed": 2,
-        "spread_type": "grade"
+        "bunk_name": "Cabin A"
       },
       "affected_ids": ["4261"]
     }
   ],
   "validated_at": "2025-01-28T10:30:00Z",
-  "session_id": "1000002",
-  "scenario_id": null
+  "session_id": "1000001",
+  "scenario": null
 }
 ```
 
+`statistics` carries more than the abridged fields: `session_breakdown`, capacity utilization, per-field request stats (`field_stats`) and the material-parent counters. The full shape is `ValidationStatistics` in `bunking/bunking_validator.py`.
+
 **Validation Checks Performed:**
-- **Capacity Validation**: Checks for over/under capacity bunks
-- **Request Satisfaction**: Analyzes bunk_with and not_bunk_with requests
-- **Friend Group Integrity**: Checks if friend groups are kept together
-- **Age/Grade Spread**: Validates bunks don't exceed configured spread limits
-- **Assignment Coverage**: Identifies unassigned campers
-- **Lock Status**: Reports on locked bunks
+- **Capacity Validation**: over-capacity bunks (`capacity_violation`)
+- **Request Satisfaction**: `bunk_with` and `not_bunk_with` requests (`valid_request_unsatisfied`, `valid_negative_request_violated`)
+- **Age/Grade Spread**: `age_spread_warning`, `grade_spread_warning`, `grade_adjacency_warning`, `grade_ratio_warning`
+- **Flow and level**: `age_flow_inversion`, `level_regression`
+- **Isolation**: `isolation_risk`
+- **Assignment Coverage**: `unassigned_campers`, `stale_assignments`, `no_requests`
 
 **Severity Levels:**
 - `error`: Critical issues that must be resolved (e.g., negative request violations)
 - `warning`: Issues that should be reviewed (e.g., unsatisfied positive requests)
-- `info`: Informational notices (e.g., bunks approaching capacity)
+- `info`: Informational notices
 
 ---
 
-#### PUT /scenarios/{scenario_id}/assignments
-Update or create a scenario assignment.
-
-**Path Parameters:**
-- `scenario_id`: Scenario identifier
-
-**Request Body:**
-```json
-{
-  "person_cm_id": 12345,
-  "bunk_cm_id": 67890,
-  "locked": true,
-  "updated_by": "user@camp.com"
-}
-```
-
-**Parameters:**
-- `person_cm_id` (required): CampMinder person ID
-- `bunk_cm_id` (optional): Bunk ID (null to remove assignment)
-- `locked` (optional): Lock assignment from solver changes
-- `updated_by` (optional): User identifier for audit
-
-**Response:**
-```json
-{
-  "message": "Assignment updated"
-}
-```
+#### GET /api/satisfaction
+Per-camper request satisfaction for a session and scenario. Query: `session` (CampMinder id), `year`, optional `scenario` (omit for production). The scope widens to AG-related sessions automatically.
 
 ---
 
-#### POST /scenarios/{scenario_id}/solve
-Run solver on a scenario.
+### Request Merge and Split
 
-**Path Parameters:**
-- `scenario_id`: Scenario identifier
+#### POST /api/requests/merge
+Merge several `bunk_requests` into one. Body: `request_ids` (at least 2), `keep_target_from` (must be one of them), `final_type`. Returns `merged_request_id`, `merged_request_ids` (the soft-deleted ones), `source_fields`, `confidence_score`.
 
-**Response:**
-```json
-{
-  "run_id": "uuid-string",
-  "status": "started",
-  "message": "Solver run started for scenario 'Session 1 Alternative'"
-}
-```
+#### POST /api/requests/split
+Split a merged request back apart. Body: `request_id`, `split_sources` (at least one). Returns `original_request_id`, `restored_request_ids`, `updated_source_fields`.
 
 ---
-
-#### POST /scenarios/{scenario_id}/clear
-Clear all assignments from a scenario.
-
-**Path Parameters:**
-- `scenario_id`: Scenario identifier
-
-**Request Body:**
-```json
-{
-  "cleared_by": "user@camp.com"
-}
-```
-
-**Parameters:**
-- `cleared_by` (optional): User identifier for audit
-
-**Response:**
-```json
-{
-  "message": "Cleared 145 assignments from scenario"
-}
-```
 
 ## Data Models
 
-### Camper
-```typescript
-{
-  campminder_id: string;
-  first_name: string;
-  last_name: string;
-  age: number;
-  grade: number;
-  years_at_camp: number[];
-  returning: boolean;
-  sessions: string[];
-}
-```
-
-### Bunk
-```typescript
-{
-  campminder_id: string;
-  name: string;
-  capacity: number;
-  min_capacity: number;
-  division: string;
-}
-```
-
-### Constraint
-Various constraint types including:
-- Age cohesion (minimize age spread)
-- Grade cohesion (minimize grade spread)
-- Friend requests (mutual and one-way)
-- Not-together requests
-- Experience distribution
-- Returning camper grouping
+The solver's input and output contract is the `DirectSolver*` dataclasses in `bunking/models_v2.py` (`DirectSolverInput` carries `year`); request and response schemas for each router are in `api/schemas/`. The generated TypeScript mirror is `frontend/src/types/api-generated/`.
 
 ## Error Handling
 
 The API uses standard HTTP status codes:
 
 - **200 OK**: Successful operation
-- **201 Created**: Resource created successfully
+- **202 Accepted**: Sweep started
+- **204 No Content**: Sweep cancelled
 - **400 Bad Request**: Invalid input parameters
+- **401 / 403**: Not signed in, or missing `bunking.manage`
 - **404 Not Found**: Resource not found
-- **422 Unprocessable Entity**: Validation error
+- **409 Conflict**: A solver run for this session is already in progress
+- **422 Unprocessable Entity**: Validation error, or a missing scenario
+- **501 Not Implemented**: The `analyze` endpoints
 - **500 Internal Server Error**: Server error
 
-Error responses include detail:
+Error responses include detail. A 500 is always the generic `{"detail": "Internal server error"}`; the real error is only in the server log.
 ```json
 {
   "detail": "Error message describing what went wrong"
@@ -506,14 +495,14 @@ Error responses include detail:
 ## Performance Considerations
 
 ### Solver Time Limits
-- Default: 30 seconds
-- Maximum: 600 seconds (10 minutes)
+- Default: 60 seconds
+- Maximum: 600 seconds (10 minutes); sweep budgets may go to 3600
 - Larger sessions may need longer time limits
 
 ### Async Processing
 - Solver runs execute in background
-- Poll `/solver/run/{run_id}` for status
-- Results cached for retrieval
+- Poll `/api/solver/run/{run_id}` for status
+- In-memory run state is lost on an API restart; completed runs are read back from PocketBase without the diagnostics
 
 ### Batch Operations
 - Scenario copy operations may be slow for large sessions
@@ -543,289 +532,64 @@ Error responses include detail:
 # 1. Create (or reuse) a scenario. The solver only ever writes a scenario's
 #    draft assignments — production is read-only for the solver (kindred#2467) —
 #    so a run has to name one to have anywhere legal to land.
-POST /scenarios
+POST /api/scenarios
 {
   "name": "Session 1 Draft",
   "session_cm_id": 1000001,
-  "copy_from_production": true
+  "year": 2025
 }
 # Returns: {"id": "scn_abc123", "name": "Session 1 Draft", ...}
 
 # 2. Start solver run against that scenario
-POST /solver/run
+POST /api/solver/run
 {
   "session_cm_id": 1000001,
   "year": 2025,
   "scenario": "scn_abc123",
   "time_limit": 60
 }
-# Returns: {"run_id": "abc123", "status": "started"}
+# Returns: {"run_id": "abc123", "status": "started", ...}
 # A request with no "scenario" (or a blank one) is refused with 422 here,
 # before the solver ever runs.
 
 # 3. Check status
-GET /solver/run/abc123
+GET /api/solver/run/abc123
 # Returns: {"status": "completed", "results": {...}}
 
 # 4. Apply results to the scenario's draft assignments
-POST /solver/apply/abc123
+POST /api/solver/apply/abc123
 # Returns: {"message": "Applied 150 assignments to bunk_assignments_draft"}
 ```
 
 ### Scenario Planning
 ```bash
 # 1. Create scenario
-POST /scenarios
+POST /api/scenarios
 {
   "name": "What if we split Bunk A1?",
   "session_cm_id": 1000001,
-  "copy_from_production": true
+  "year": 2025
 }
 
 # 2. Make manual adjustments
-PUT /scenarios/{id}/assignments
+PUT /api/scenarios/{id}/assignments
 {
-  "person_cm_id": 12345,
-  "bunk_cm_id": 67890,
+  "session_cm_id": 1000001,
+  "year": 2025,
+  "person_id": 12345,
+  "bunk_id": 67890,
   "locked": true
 }
 
 # 3. Run solver with adjustments
-POST /scenarios/{id}/solve
+POST /api/scenarios/{id}/solve
 
 # 4. Review and compare results
-GET /scenarios/{id}?include_assignments=true
+GET /api/scenarios/{id}?include_assignments=true
+GET /api/scenarios/score?session_id=1000001&year=2025&scenario_id={id}
 ```
 
 ---
-
-### Enhanced Request System Endpoints
-
-#### GET /api/solver-config
-Get all solver configuration values.
-
-**Response:**
-```json
-[
-  {
-    "key": "objective.enable_first_boost",
-    "value": 1,
-    "description": "When true, the request flagged as first-pick gets the slot-0 multiplier.",
-    "category": "objective",
-    "friendly_name": "Enable First-Pick Boost"
-  },
-  // ... more config values
-]
-```
-
----
-
-#### GET /api/solver-config/{key}
-Get a specific configuration value.
-
-**Path Parameters:**
-- `key`: Configuration key (e.g., "objective.enable_first_boost")
-
-**Response:**
-```json
-{
-  "key": "objective.enable_first_boost",
-  "value": 1,
-  "description": "When true, the request flagged as first-pick gets the slot-0 multiplier.",
-  "category": "objective"
-}
-```
-
----
-
-#### PUT /api/solver-config/{key}
-Update a configuration value.
-
-**Path Parameters:**
-- `key`: Configuration key
-
-**Request Body:**
-```json
-{
-  "value": 0
-}
-```
-
-**Response:**
-```json
-{
-  "message": "Configuration updated successfully",
-  "key": "objective.enable_first_boost",
-  "old_value": 1,
-  "new_value": 0
-}
-```
-
----
-
-#### POST /api/solver-config/reset
-Reset all configuration values to defaults.
-
-**Response:**
-```json
-{
-  "message": "Configuration reset to defaults",
-  "reset_count": 26
-}
-```
-
----
-
-### Request Conflicts
-
-#### GET /api/conflicts
-Get unresolved conflicts for a session.
-
-**Query Parameters:**
-- `session_cm_id` (required): CampMinder session ID
-- `year` (required): Camp year
-- `type` (optional): Filter by conflict type
-
-**Response:**
-```json
-[
-  {
-    "id": "conf123",
-    "conflict_group_id": "grp456",
-    "requester_person_cm_id": 12345,
-    "conflict_type": "impossible_pair",
-    "conflict_details": {
-      "person_a": 12345,
-      "person_b": 12346,
-      "reason": "A wants B, but B does not want A"
-    },
-    "resolution_status": "pending"
-  }
-]
-```
-
----
-
-#### PUT /api/conflicts/{conflict_id}/resolve
-Resolve a conflict.
-
-**Request Body:**
-```json
-{
-  "resolution_choice": {
-    "action": "honor_negative",
-    "notes": "Family confirmed incompatibility"
-  },
-  "resolved_by": "staff@camp.com"
-}
-```
-
----
-
-### Manual Review
-
-#### GET /api/manual-review
-Get items requiring manual review.
-
-**Query Parameters:**
-- `session_cm_id` (required): CampMinder session ID
-- `year` (required): Camp year
-- `type` (optional): Filter by review type
-- `status` (optional): Filter by status (pending/resolved)
-
-**Response:**
-```json
-[
-  {
-    "id": "rev123",
-    "item_type": "bunk_request",
-    "item_id": "req456",
-    "reason": "Low confidence name match",
-    "data": {
-      "original_text": "Jake M.",
-      "possible_matches": [
-        {"cm_id": 12345, "name": "Jake Miller", "confidence": 0.75},
-        {"cm_id": 12346, "name": "Jake Morrison", "confidence": 0.70}
-      ]
-    },
-    "status": "pending"
-  }
-]
-```
-
----
-
-#### PUT /api/manual-review/{review_id}
-Resolve a manual review item.
-
-**Request Body:**
-```json
-{
-  "decision": "approve",
-  "selected_match_cm_id": 12345,
-  "notes": "Confirmed with family",
-  "reviewed_by": "staff@camp.com"
-}
-```
-
----
-
-### Bunk Request Management
-
-#### GET /api/bunk-requests/bulk-update
-Bulk update multiple bunk requests.
-
-**Request Body:**
-```json
-{
-  "request_ids": ["req1", "req2", "req3"],
-  "updates": {
-    "status": "resolved",
-    "is_first_requested": true
-  }
-}
-```
-
-**Response:**
-```json
-{
-  "message": "Updated 3 requests",
-  "updated_count": 3
-}
-```
-
----
-
-#### POST /api/bunk-requests/validate-names
-Validate and match names in bulk.
-
-**Request Body:**
-```json
-{
-  "session_cm_id": 1000001,
-  "year": 2025,
-  "names": ["Sarah Johnson", "Jake M.", "Emma Wilson"]
-}
-```
-
-**Response:**
-```json
-[
-  {
-    "name": "Sarah Johnson",
-    "matches": [
-      {"cm_id": 12345, "full_name": "Sarah Johnson", "confidence": 1.0}
-    ]
-  },
-  {
-    "name": "Jake M.",
-    "matches": [
-      {"cm_id": 12346, "full_name": "Jake Miller", "confidence": 0.75},
-      {"cm_id": 12347, "full_name": "Jake Morrison", "confidence": 0.70}
-    ]
-  }
-]
-```
 
 ## Social Graph Endpoints
 
@@ -835,15 +599,19 @@ Validate and match names in bulk.
 GET /api/sessions/{session_cm_id}/social-graph
 ```
 
-Retrieve full social graph for a camp session. 
+Retrieve full social graph for a camp session.
 
 **Note**: Self-referential edges (where source equals target) are automatically prevented during graph construction.
 
 #### Query Parameters
-- `year` (optional): Target year (defaults to current)
+- `year` (optional): Target year (defaults to the current calendar year)
 - `include_metrics` (optional): Include graph metrics (default: true)
-- `include_historical` (optional): Include historical edges (default: false)
 - `layout` (optional): Graph layout algorithm - force, circle, or hierarchical (default: force)
+- `edge_types` (optional): Comma-separated edge types to include
+- `scenario_id` (optional): Source bunk assignments from this scenario's drafts instead of production (needs `bunking.manage`)
+- `units` (optional): Comma-separated unit slugs to scope to
+- `bunks` (optional): Comma-separated lowercase bunk codes to scope to
+- `cross_scope` (optional, default false): With a scope active, include edges crossing the scope boundary as ghosted
 
 #### Response (200 OK)
 ```json
@@ -852,10 +620,13 @@ Retrieve full social graph for a camp session.
     {
       "id": 12345,
       "name": "Sarah Johnson",
-      "bunk_id": 100,
+      "grade": 6,
+      "bunk_cm_id": 100,
       "bunk_name": "Bunk A",
-      "degree": 5,
-      "isolated": false
+      "centrality": 0.25,
+      "clustering": 0.6,
+      "community": 1,
+      "satisfaction_status": "satisfied"
     }
   ],
   "edges": [
@@ -863,41 +634,50 @@ Retrieve full social graph for a camp session.
       "source": 12345,
       "target": 12346,
       "weight": 1.0,
-      "type": "bunk_request"
+      "edge_type": "request",
+      "request_type": "bunk_with",
+      "reciprocal": true
     }
   ],
   "metrics": {
     "density": 0.42,
-    "clustering_coefficient": 0.65,
-    "connected_components": 3
+    "average_clustering": 0.65,
+    "number_of_components": 3,
+    "average_degree": 2.1
   },
   "communities": {
-    "community_1": [12345, 12346, 12347],
-    "community_2": [12348, 12349]
+    "1": [12345, 12346, 12347],
+    "2": [12348, 12349]
   },
   "warnings": [
     "3 isolated campers detected",
     "Friend group 'group1' is split across multiple bunks"
   ],
   "layout_positions": {
-    "12345": {"x": 100, "y": 200},
-    "12346": {"x": 150, "y": 220}
-  }
+    "12345": [100, 200],
+    "12346": [150, 220]
+  },
+  "edge_type_counts": {"request": 2},
+  "cross_scope_edges": [],
+  "cross_scope_nodes": []
 }
 ```
+
+Node objects also carry `parent_satisfaction_status`, `staff_satisfaction_status`, `first_year` and `last_year_session`; edges also carry `confidence`, `metadata` and `cross_scope` (`api/schemas/social_graph.py`).
 
 ### Update Camper Position (Incremental)
 ```http
 PATCH /api/sessions/{session_cm_id}/campers/{person_cm_id}/position
 ```
-Update a camper's bunk position with incremental graph updates. Optimized for drag-drop operations to avoid full graph rebuilds.
+Update a camper's bunk position with incremental graph updates. Optimized for drag-drop operations to avoid full graph rebuilds. Requires `bunking.manage`.
 
 #### Path Parameters
 - `session_cm_id`: CampMinder session ID
 - `person_cm_id`: CampMinder person ID
 
 #### Query Parameters
-- `year` (optional): Target year (defaults to current)
+- `year` (optional): Target year (defaults to the current calendar year)
+- `scenario_id` (optional): Use the scenario-scoped graph cache slot
 
 #### Request Body
 ```json
@@ -947,7 +727,9 @@ Analyze social dynamics within a specific bunk.
 
 #### Query Parameters
 - `session_cm_id` (required): Session ID
-- `year` (optional): Target year (defaults to current)
+- `year` (optional): Target year (defaults to the current calendar year)
+- `scenario_id` (optional): Source bunk membership from a scenario's drafts
+- `cross_scope` (optional, default false): Include edges that leave the bunk as ghosted context
 
 #### Response (200 OK)
 ```json
@@ -966,107 +748,9 @@ Analyze social dynamics within a specific bunk.
       "Consider buddy assignment for weakly connected Jake"
     ]
   },
-  "health_score": 0.68
-}
-```
-
-### Person Ego Network
-
-```http
-GET /api/persons/{person_cm_id}/ego-network
-```
-
-Analyze individual's social network.
-
-#### Query Parameters
-- `session_cm_id` (optional): Session filter
-- `radius` (optional): Network radius (default: 2)
-- `include_historical` (optional): Include historical connections
-
-#### Response (200 OK)
-```json
-{
-  "center_node": {
-    "id": 12345,
-    "name": "Sarah Johnson",
-    "bunk_name": "Bunk A"
-  },
-  "nodes": [...],
-  "edges": [...],
-  "radius": 2,
-  "metrics": {
-    "degree": 5,
-    "degree_centrality": 0.25,
-    "clustering_coefficient": 0.6,
-    "friends_count": 5,
-    "network_size": 12
-  },
-
-}
-```
-
-### Solver Run Analysis
-
-```http
-POST /solver/run/{run_id}/analyze
-```
-
-Analyze solver run results for patterns and issues.
-
-#### Response (200 OK)
-```json
-{
-  "run_id": "run_123",
-  "analysis": {
-    "satisfied_requests": 85,
-    "total_requests": 100,
-    "satisfaction_rate": 0.85,
-    "isolated_campers": 3,
-    "constraint_violations": []
-  }
-}
-```
-
-### Scenario Analysis
-
-```http
-POST /scenarios/{scenario_id}/analyze
-```
-
-Analyze scenario assignments for social dynamics.
-
-#### Response (200 OK)
-```json
-{
-  "scenario_id": "scn_456",
-  "analysis": {
-    "bunks_analyzed": 10,
-    "average_cohesion": 0.68,
-    "problematic_bunks": ["Bunk C", "Bunk F"],
-    "overall_health": 0.75
-  }
-}
-```
-
-## Configuration Endpoints
-
-### Get Configuration Categories
-
-```http
-GET /solver-config/categories
-```
-
-Get available configuration categories.
-
-#### Response (200 OK)
-```json
-{
-  "categories": [
-    "constraints",
-    "weights",
-    "limits",
-    "features"
-  ]
+  "health_score": 0.68,
+  "cross_scope_edges": [],
+  "cross_scope_nodes": []
 }
 ```
 

@@ -12,7 +12,7 @@ This guide explains how to properly prepare and format CSV files for importing b
 
 ## Required CSV Format
 
-The bunking requests CSV must be exported from CampMinder with specific fields. The system expects the following columns:
+The bunking requests CSV must be exported from CampMinder with specific fields. The upload is rejected unless `PersonID`, `First Name` and `Last Name` headers are all present (case-insensitive). The request columns below are optional as far as the upload check goes, but a file without them produces no requests. The system expects the following columns:
 
 ### Essential Columns
 
@@ -34,12 +34,17 @@ The bunking requests CSV must be exported from CampMinder with specific fields. 
 4. **BunkingNotes Notes** (Optional)
    - General bunking preferences and notes
    - May contain age preferences, special requests
-   - Merged with internal notes during import
+   - Parsed as its own source (`bunking_notes`)
 
 5. **Internal Bunk Notes** (Optional)
    - Staff-only notes about bunking
    - Not visible to families
    - Used for special circumstances
+   - Parsed as its own source (`internal_notes`)
+
+6. **RetParent-Socializewithbest** (Optional)
+   - The parent's "socialize with" dropdown (an age preference)
+   - Informational: it does not count toward the headline satisfaction number
 
 ### Example CSV Structure
 
@@ -57,10 +62,13 @@ Understanding how CSV fields map to the database helps ensure correct data entry
 | CSV Field | Database Field | Purpose |
 |-----------|----------------|---------|
 | PersonID | requester_id | Identifies the camper making requests (CampMinder ID) |
-| Share Bunk With | Parsed into bunk_requests (bunk_with) | Creates positive bunking requests |
-| Do Not Share Bunk With | Parsed into bunk_requests (not_bunk_with) | Creates negative bunking requests |
-| BunkingNotes Notes | bunking_notes | Stores preferences and context |
-| Internal Bunk Notes | bunking_notes (appended) | Adds staff-only information |
+| Share Bunk With | source `bunk_request_form`, parsed into bunk_requests | Parent form; positive requests (and negatives or age preferences written there) |
+| Do Not Share Bunk With | source `staff_not_bunk_with`, parsed into bunk_requests (not_bunk_with) | Creates negative bunking requests; enforced as a hard separation |
+| BunkingNotes Notes | source `bunking_notes` | Preferences and context, AI-parsed |
+| Internal Bunk Notes | source `internal_notes` | Staff-only information, AI-parsed (kept separate from BunkingNotes) |
+| RetParent-Socializewithbest | source `socialize_with` | Age preference from the dropdown, not AI-parsed |
+
+Each CSV column lands in `original_bunk_requests` under its source; the processor then builds `bunk_requests`. Details: `docs/architecture/bunk-request-pipeline.md` and `docs/architecture/request-classification.md`.
 
 ## Data Entry Best Practices
 
@@ -222,10 +230,10 @@ Before importing your CSV file:
 
 ### 2. File Preparation
 - [ ] Save as UTF-8 encoded CSV
-- [ ] Filename includes date: `api-bunking-6-27-25.csv`
+- [ ] Any filename works; the upload is stored as `<year>_latest.csv` and the previous one is backed up
 - [ ] No extra header rows or footers
 - [ ] No formulas - values only
-- [ ] File size reasonable (<10MB)
+- [ ] File size under the upload's 50MB limit
 
 ### 3. Content Review
 - [ ] Negative requests are justified
@@ -242,50 +250,36 @@ Before importing your CSV file:
 
 ## Import Process
 
-### 1. File Placement
-Place the CSV file in the `drive/` directory:
-```bash
-cp ~/Downloads/api-bunking-6-27-25.csv <project-root>/drive/
-```
+### 1. Upload
+Staff with the bunking-manage permission use the **Upload Requests** button in the summer header (`BunkRequestsUpload`). It posts the file to `/api/custom/sync/bunk_requests_upload` for the selected year, which must be one of the two synced seasons (the current season or the one before it), then runs the CSV sync and request processing. The indicator beside the button shows when the pipeline has finished. There is no `drive/` directory and no import script any more.
 
-### 2. Run Import Script
-Execute the sync script from the project root:
-```bash
-uv run python scripts/sync/sync_bunk_requests.py
-```
+### 2. What the upload does
+- Saves the file as `pb_data/bunk_requests/<year>_latest.csv`, backing up the previous one
+- Syncs each row into `original_bunk_requests`, skipping rows whose text has not changed
+- Parses the text (AI for the free-text columns), matches names to campers, and creates `bunk_requests`
+- Flags low-confidence matches for manual review
 
-The script will:
-- Auto-detect the latest CSV file
-- Parse all requests
-- Match names to campers
-- Create database records
-- Generate review items for low-confidence matches
-
-### 3. Specify File (Optional)
-To use a specific file:
-```bash
-uv run python scripts/sync/sync_bunk_requests.py --csv drive/api-bunking-6-27-25.csv
-```
+### 3. Re-uploading
+Re-upload is safe: unchanged rows are detected and left alone, so only new or edited text is reprocessed.
 
 ### 4. Review Import Results
-The script reports:
+The pipeline indicator and the sync status page report:
 - Total requests processed
 - Successful imports
 - Low-confidence matches needing review
 - Any errors encountered
 
 ### 5. Post-Import Steps
-1. Check the Review dashboard for low-confidence matches
+1. Check the request-review views for low-confidence matches
 2. Resolve any name ambiguities
 3. Address missing camper issues
 4. Verify priority assignments
 
 ## Troubleshooting Import Issues
 
-### "No CSV file found"
-- Ensure file is in `drive/` directory
-- Check file extension is `.csv`
-- Verify file permissions
+### "Missing required columns"
+- The file needs `PersonID`, `First Name` and `Last Name` headers
+- Check that the export is the CampMinder bunking report, not another one
 
 ### "Invalid PersonID"
 - PersonID must be positive integer
@@ -309,7 +303,7 @@ The script reports:
 3. **Document Everything**: Use notes fields for context
 4. **Test Small**: Try importing subset first
 5. **Keep Backups**: Save original exports
-6. **Verify Results**: Always check Review dashboard after import
+6. **Verify Results**: Always check the request-review views after import
 7. **Iterate**: Re-import is safe - system updates existing records
 
 ---

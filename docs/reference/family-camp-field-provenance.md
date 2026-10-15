@@ -231,7 +231,7 @@ Two corrections that have both bitten already:
 > - *"No, we would prefer not to share a camper cabin."*
 >
 > The "Maybe" wording is narrower than the word suggests — it means *only with a family I already
-> know*. `NormalizeShareGate` already encodes this correctly (`lodging_requests.go:214`,
+> know*. `NormalizeShareGate` already encodes this correctly (`lodging_requests.go`, `DeriveShareEligibility`,
 > `gateMaybeMutual` → `share_eligibility = "named"`).
 >
 > **5. Not a form, but recorded here because nothing else says it:** the *"family/adult

@@ -93,7 +93,7 @@ Once services are up:
 Trigger a CampMinder sync:
 
 ```bash
-curl -X POST "http://localhost:8090/api/custom/sync/run?year=2025&service=all"
+curl -X POST "http://localhost:8090/api/custom/sync/run?year=2026&service=all"
 ```
 
 ---
@@ -117,12 +117,13 @@ OIDC_ISSUER=https://your-oidc-provider.com
 OIDC_CLIENT_ID=your-client-id
 OIDC_CLIENT_SECRET=your-secret
 
-# CampMinder sync
-CAMPMINDER_SEASON_ID=2025
+# CampMinder sync: the season rolls over by itself every Oct 15 (Pacific), and sync covers
+# that season and the one before it. Set this only to pin the season.
+# CAMPMINDER_SEASON_ID=2026
 # (CampMinder API credentials as documented in .env.example)
 ```
 
-Operational config (solver weights, AI thresholds, session hierarchy, budget goals) lives in the PocketBase `config` collection and is editable through the **Admin → Config** UI — not through static files.
+Operational config (solver weights, AI thresholds, session hierarchy, budget goals) lives in the PocketBase `config` collection and is editable through the **Manage › Config** UI (`/manage/config`) — not through static files.
 
 ---
 

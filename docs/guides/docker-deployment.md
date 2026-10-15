@@ -130,18 +130,32 @@ Caddyfiles' `header_up X-Real-IP {client_ip}` on every reverse_proxy block that 
 migration 1500000207 applied (PocketBase admin > Settings > trusted proxy headers shows
 `X-Real-IP`).
 
-### 2. Configuration Files
+### 2. Configuration
 
-Configuration files are optional and use sensible defaults:
+Runtime configuration (solver weights, AI thresholds, session hierarchy, budget goals) lives in
+the PocketBase `config` collection and is edited through **Manage › Config**; there are no
+`config/*.json` settings files to copy. AI provider settings are the exception and come from the
+environment (`AI_API_KEY`, `AI_MODEL`, `AI_PROVIDER`). The config directory
+(`${APPDATA_DIR}/kindred/config`, mounted at `/config`) holds only files you place, such as the
+Google service-account key and `lodging_registry.json` (see "File permissions" below).
 
-```bash
-mkdir -p config
-cp config/ai_config.json config/
-cp config/bunking_config.json config/
-```
+### 3. Changing `.env` and the season override
 
-- `config/ai_config.json` - AI processing settings, confidence thresholds
-- `config/bunking_config.json` - Solver weights, cabin assignment rules
+- **`docker compose restart` does not re-read `.env`.** It restarts the existing containers with
+  the environment they were created with. After editing `.env`, run `docker compose up -d`, which
+  recreates any container whose environment changed.
+- **The season needs no variable.** It rolls over by itself every Oct 15 (Pacific,
+  `pocketbase/sync/year.go`), and sync covers that season and the one before it.
+  `CAMPMINDER_SEASON_ID` pins the season when set; `docker-compose.yml` passes it through as an
+  empty string when it is absent from `.env`, and an empty value counts as unset. To pin or unpin,
+  edit `.env` and run `docker compose up -d`.
+- **Do not roll the pocketbase image back to a build older than #3211 with the variable unset.**
+  Those builds require `CAMPMINDER_SEASON_ID`: without it the scheduler fails to start (one
+  `Failed to start sync scheduler` error in the logs), so no scheduled sync runs while
+  the app otherwise looks healthy. Set `CAMPMINDER_SEASON_ID` in `.env` before rolling back that
+  far.
+- **Manage › Registration saves its dates under the season being viewed.** Entering next season's
+  dates while viewing the current one overwrites the current season's dates. Switch the year first.
 
 ## Deployment
 
@@ -162,9 +176,10 @@ docker compose logs -f
 
 After first deployment:
 
-1. Run initial data sync:
+1. Run initial data sync (`year` is required; use the primary season, which
+   `/api/custom/sync/status` reports as `_configured_year`):
 ```bash
-curl -X POST "http://localhost:8080/api/custom/sync/run?year=2025&service=all"
+curl -X POST "http://localhost:8080/api/custom/sync/run?year=2026&service=all"
 ```
 
 2. Access the application:
@@ -219,8 +234,8 @@ docker cp kindred-pocketbase:/pb_data/backups/ ./backups/
 Syncs are managed via Go scheduler in PocketBase. Trigger manually:
 
 ```bash
-# Full daily sync (sessions, persons, bunks, attendees, requests)
-curl -X POST "http://localhost:8080/api/custom/sync/run?year=2025&service=all"
+# Full sync for one season: N or N−1 runs every job; any other year is a historical replay
+curl -X POST "http://localhost:8080/api/custom/sync/run?year=2026&service=all"
 
 # Specific sync
 curl -X POST "http://localhost:8080/api/custom/sync/sessions"
@@ -294,7 +309,8 @@ Two things the umask cannot do:
 - Unit tests
 - Fast feedback (~2-3 minutes)
 
-### CD (runs on version tags)
+### CD (runs on every merge to `main`)
+Also weekly (Monday Trivy scan), by hand, and on PRs that touch `docker/` or the compose files.
 - Builds all 4 Docker images
 - Security scanning with Trivy
 - Integration testing (full multi-container stack)

@@ -41,7 +41,7 @@ cp /path/to/prod/data.db-shm pocketbase/pb_data/data-prod.db-shm
 uv run python scripts/setup/seed_from_prod.py
 ```
 
-Or preview first:
+Or preview first (report only, nothing modified):
 
 ```bash
 uv run python scripts/setup/seed_from_prod.py --dry-run
@@ -70,7 +70,7 @@ uv run python scripts/setup/seed_from_prod.py \
 
 ## What gets copied
 
-All application data tables (~47 tables): `persons`, `attendees`, `bunks`, `bunk_assignments`, `camp_sessions`, `config`, etc.
+Every application data table (any table whose name does not start with `_` or `sqlite_`, and is not `users`), for example `persons`, `attendees`, `bunks`, `bunk_assignments`, `camp_sessions`, `config`, etc.
 
 ## What stays untouched
 
@@ -86,12 +86,18 @@ All application data tables (~47 tables): `persons`, `attendees`, `bunks`, `bunk
 
 ## Schema mismatches
 
-If prod and dev have different tables (from migration drift), the script handles it gracefully:
+If prod and dev differ (from migration drift), **the script fails by default**. A dropped column or table silently seeding as empty hid a real bug (#1338), so drift is a hard error:
 
-- **Extra tables in prod** (removed migrations): skipped with a warning
-- **Extra tables in dev** (new migrations): left empty, skipped with a warning
-- **Common tables**: always copied
+- **Extra tables or columns in prod** (removed migrations): reported as `WARNING`, then the run stops
+- **Extra tables or columns in dev** (new migrations): reported the same way
+- **Common tables**: copied with an explicit column list
+
+Re-run with `--allow-skip` when the drift is intentional. The script then warns and carries on: shared columns are copied and drifted columns or tables are skipped.
+
+```bash
+uv run python scripts/setup/seed_from_prod.py --allow-skip
+```
 
 ## Worktree usage
 
-In a worktree, the dev DB is a small seeded copy. To test with real data, copy `data-prod.db` into the worktree's `pocketbase/pb_data/` directory and run the script there.
+In a worktree, `new.sh` seeds the DB from main. To test with real data, copy `data-prod.db` into the worktree's `pocketbase/pb_data/` directory and run the script there.

@@ -2,6 +2,14 @@
 
 Common issues and solutions for Kindred.
 
+> **Partly obsolete (checked 2026-10-15).** Several sections predate the Go sync layer and the
+> uv toolchain, and name scripts and paths that no longer exist: `scripts/sync/sync_01_*.py`,
+> `scripts/sync/sync_all_layers.py`, `scripts/sync/sync_bunk_requests.py`, `scripts/check/*`,
+> `scripts/fix*`, `scripts/diagnostic_tool_v2.py`, `scripts/restore_from_scenario.py`,
+> `scripts/backup.sh`, `state/` and `logs/*.log`. CampMinder sync runs in PocketBase
+> (`pocketbase/sync/`), triggered from Manage › Sync or `/api/custom/sync/*`, and logs to the
+> container's stdout. The sections below that still name those files are kept as history.
+
 ## Quick Fixes
 
 ### Service Won't Start
@@ -31,11 +39,8 @@ chmod +x pocketbase/pocketbase
 
 #### Module Not Found
 ```bash
-# Ensure venv is activated
-source venv/bin/activate
-
-# Reinstall dependencies
-pip install -r requirements.txt
+# Reinstall dependencies (uv manages the virtualenv)
+uv sync
 ```
 
 ### Sync Issues
@@ -48,12 +53,8 @@ grep CAMPMINDER .env
 # Clear cached token
 rm ~/.campminder_token_cache.json
 
-# Test authentication
-uv run python -c "
-from campminder.auth import CampMinderAuth
-auth = CampMinderAuth()
-print(auth.get_token())
-"
+# Test the Go sync's CampMinder connection (a user token with bunking.manage)
+curl "http://localhost:8090/api/custom/sync/test-connection" -H "Authorization: $TOKEN"
 ```
 
 #### Rate Limit Exceeded
@@ -66,8 +67,12 @@ print(auth.get_token())
 # Check for a season override in .env (unset is normal: the season rolls over on Oct 15 Pacific)
 grep CAMPMINDER_SEASON_ID .env
 
-# Run with verbose output
-LOG_LEVEL=DEBUG uv run python scripts/sync/sync_01_sessions.py
+# See which seasons the sync covers: _configured_year (primary), _synced_years, _season_source
+curl -s "http://localhost:8090/api/custom/sync/status" -H "Authorization: $TOKEN" \
+  | jq '{_configured_year, _synced_years, _season_source}'
+
+# Run with verbose output: set LOG_LEVEL=DEBUG for PocketBase, then trigger the sync
+curl -X POST "http://localhost:8090/api/custom/sync/run?year=2026&service=all" -H "Authorization: $TOKEN"
 ```
 
 ### Database Issues
@@ -75,7 +80,7 @@ LOG_LEVEL=DEBUG uv run python scripts/sync/sync_01_sessions.py
 #### Database is Locked
 ```bash
 # Force WAL checkpoint
-uv run python scripts/force_wal_checkpoint.py
+uv run python scripts/db/force_wal_checkpoint.py
 
 # Check for other processes
 fuser pocketbase/pb_data/data.db
@@ -160,7 +165,7 @@ cat .env
 uv run python -c "from ortools.sat.python import cp_model"
 
 # Reinstall dependencies (includes OR-Tools)
-./venv/bin/pip install -r requirements.txt
+uv sync
 
 # Check solver logs
 tail -f logs/solver.log
@@ -410,7 +415,7 @@ print(f'Total requests: {len(requests)}')
 **Cause**: Admin token expired
 **Solution**: The withAuth wrapper automatically re-authenticates. If persistent:
 ```bash
-# Restart services
+# Restart services (`docker compose up -d` after any .env change: `restart` does not re-read .env)
 docker compose restart
 # or
 ./scripts/start_dev.sh
@@ -461,7 +466,7 @@ migrate((app) => {
 ```bash
 # Weekly
 uv run python scripts/check/validate_year_integrity.py
-uv run python scripts/force_wal_checkpoint.py
+uv run python scripts/db/force_wal_checkpoint.py
 
 # Monthly
 sqlite3 pocketbase/pb_data/data.db "VACUUM;"

@@ -4,7 +4,7 @@ The ordered path to a **no-request, no-solver, otherwise summer-equivalent** wee
 
 > **The critical path is COMPLETE as of 2026-08-04.** Staff can drag families into cabins, hold a cabin back and release one, and the counts no longer treat permanent staff housing as planning inventory. What remains is listed under "What is left" and **none of it gates go-live** — the largest item is an operational rollout, not engineering.
 >
-> This doc is now kept for two things: the record of what is left, and the "Things not to do" section, which is the part that has repeatedly saved work. It is a **working doc — rewrite it to current state rather than appending**. Per-step detail lives in the linked issues; the tree and `docs/reference/issue-triage.md`'s Status cells are authoritative over both.
+> This doc is now kept for two things: the record of what is left, and the "Things not to do" section, which is the part that has repeatedly saved work. It is a **working doc — rewrite it to current state rather than appending**. Per-step detail lives in the linked issues; the tree and `docs/reference/issue-triage.md`'s Status cells (a gitignored, local-only file) are authoritative over both.
 
 **Originally written 2026-08-03, rewritten 2026-08-04** when the path finished. Latency figures quoted in the linked issues are loopback against a local dev DB; production runs behind a reverse proxy and a tunnel, so real-world numbers are likely **worse**.
 
@@ -71,10 +71,10 @@ A finished summer plan reaches CampMinder the same way a weekend plan does: a hu
 
 Do not fund a broad polish sweep. Weekend's query-key discipline, `QueryGuard` coverage, route hardening (`ErrorBoundary` + `Suspense` on both routes), tab accessibility, and especially its handling of the medical narrative's cache (opt-in, `staleTime: 0, gcTime: 0, retry: false` — a control summer has no analogue for) are all sound.
 
-The genuine parity gaps are narrow, and one of the three originally listed here has since been closed:
+The genuine parity gaps were narrow, and all but one of the three originally listed here have since been closed:
 
-- `HouseholdRosterTable` has no search, sort or filter where summer's `CampersView` has four — [#1912](https://github.com/adamflagg/kindred/issues/1912).
-- The four tabs use bare `&&` rather than `<Activity mode=…>`, so every tab switch destroys the map's viewport — [#2004](https://github.com/adamflagg/kindred/issues/2004). `SessionView.tsx` is the exemplar.
+- `HouseholdRosterTable` has no text search or sort where summer's `CampersView` has them. [#1912](https://github.com/adamflagg/kindred/issues/1912) was closed 2026-08-09 under a new title (marking spaces that cannot meet a family's needs); the table today carries a needs filter (`NEED_FILTER_OPTIONS`) and nothing else.
+- ~~The four tabs use bare `&&` rather than `<Activity mode=…>`, so every tab switch destroys the map's viewport~~ — **fixed, [#2004](https://github.com/adamflagg/kindred/issues/2004) closed 2026-08-07.** `WeekendRosterPage.tsx` now wraps each of its five views in `<Activity>`, as `SessionView.tsx` does.
 - ~~`SYNC_DEPENDENT_PREFIXES` lists no lodging prefixes~~ — **fixed in PR #1965.** `queryClient.ts` now carries `weekend-sessions`, `weekend-summary` and `weekend-roster`, with a comment recording that a completed sync previously refreshed nothing it had just written.
 
 Caching and per-render recomputation were fixed in PR #1965 — see `CLAUDE.md` §4 "Family Camp Models Summer" for the rule that came out of it, including the caching row, which has been got wrong once.

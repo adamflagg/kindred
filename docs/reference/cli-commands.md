@@ -42,7 +42,7 @@ curl -s "http://127.0.0.1:8090/api/collections/bunk_assignments/records?filter=y
   -H "Authorization: $TOKEN" | python3 -m json.tool
 
 # Filter by relation field
-curl -s "http://127.0.0.1:8090/api/collections/bunk_assignments/records?filter=person.cm_id%20%3D%2011444220&expand=person,session,bunk" \
+curl -s "http://127.0.0.1:8090/api/collections/bunk_assignments/records?filter=person.cm_id%20%3D%201000001&expand=person,session,bunk" \
   -H "Authorization: $TOKEN"
 ```
 
@@ -52,16 +52,21 @@ curl -s "http://127.0.0.1:8090/api/collections/bunk_assignments/records?filter=p
 
 ### Process Bunk Requests (Modular Pipeline)
 ```bash
-uv run python -m bunking.sync.bunk_request_processor.process_requests [OPTIONS]
+uv run python -m bunking.sync.bunk_request_processor.process_requests --session all [OPTIONS]
 
 Options:
-  --year YEAR      Year to process (default: from config)
-  --session N      Session number (0=all, 1-4=specific)
-  --test-limit N   Process only N requests for testing
-  --dry-run        Run without saving to database
-  --debug          Enable debug logging
+  --year YEAR          Year to process (default: 2025 — pass it explicitly)
+  --session S          Required: 'all' for every bunking session, or a session cm_id
+  --source-field F     Field(s) to process, repeatable (default: all fields)
+  --test-limit N       Process only N requests for testing
+  --clear-existing     Clear existing requests first
+  --force              Clear 'processed' flags first (same logic as the Go API)
+  --dry-run            Run without saving to database
+  --debug / --trace    Debug / very verbose logging
 ```
-Three-phase AI pipeline called by Go orchestrator. Processes AI-assisted fields (bunk_with, not_bunk_with, bunking_notes, internal_notes).
+Three-phase AI pipeline, run directly for debugging. The Go sync does not call this CLI: it calls
+FastAPI's `POST /api/internal/process-requests`, which runs the same pipeline. Processes the
+AI-assisted fields (bunk_with, not_bunk_with, bunking_notes, internal_notes).
 
 ### Sync Sibling Relationships
 ```bash
@@ -71,31 +76,15 @@ Syncs sibling data from CampMinder to establish family relationships.
 
 ### Rebuild Database (Interactive)
 ```bash
-uv run python scripts/sync/rebuild_database.py
+uv run python scripts/db/rebuild_database.py
 ```
 Interactive database rebuild with prompts for each step.
 
 ### Rebuild Database (Automated)
 ```bash
-uv run python scripts/sync/rebuild_database_auto.py [OPTIONS]
-
-Options:
-  --year YEAR      Specific year to rebuild (default: current year)
-  --all-years      Rebuild all years
-  --skip-backup    Skip database backup
+uv run python scripts/sync/rebuild_database_auto.py
 ```
-Automated complete database rebuild from CampMinder data.
-
-### Three-Phase Request Processor
-```bash
-uv run python bunking/sync/bunk_request_processor/process_requests.py [OPTIONS]
-
-Options:
-  --phase PHASE    Run specific phase (parse/validate/store)
-  --session-id ID  Process specific session
-  --force          Force reprocessing
-```
-Advanced three-phase processing pipeline for bunk requests.
+Non-interactive version of the rebuild above; it takes no options.
 
 ## Testing & Quality Assurance
 
@@ -125,7 +114,7 @@ Comprehensive test suite including:
 
 ### Run Specific Python Tests
 ```bash
-uv run python -m pytest scripts/test/TEST_FILE.py [OPTIONS]
+uv run pytest tests/path/to/test_file.py [OPTIONS]
 
 Options:
   -v              Verbose output
@@ -136,15 +125,15 @@ Options:
 
 ### Bunking-Specific Tests
 ```bash
-uv run python scripts/test/run_all_bunking_tests.py
+uv run python tests/unit/sync/run_all_bunking_tests.py
 ```
 Runs all tests related to bunking logic and solver operations.
 
 ### Audit Tests
 ```bash
-uv run python scripts/test/audit_tests.py
+uv run python tests/unit/sync/audit_tests.py
 ```
-Runs data integrity audits and validation checks.
+Analyzes the test suite and categorizes tests by CI suitability.
 
 ## Database Management
 
@@ -172,19 +161,19 @@ Clears migration history (useful for consolidating migrations).
 
 ### Force WAL Checkpoint
 ```bash
-uv run python scripts/force_wal_checkpoint.py
+uv run python scripts/db/force_wal_checkpoint.py
 ```
 Forces SQLite Write-Ahead Log checkpoint (reduces database file size).
 
 ### Generate Schema Snapshot
 ```bash
-uv run python scripts/generate_snapshot_migration.py
+uv run python scripts/db/generate_snapshot_migration.py
 ```
 Creates a PocketBase migration snapshot of current schema.
 
 ## Deployment & Production
 
-Deployment uses GitHub Actions CD workflow. See CLAUDE.md "Release Workflow" section.
+Deployment uses the GitHub Actions CD and Release workflows. See `docs/reference/git-workflow.md` (release process) and `docs/guides/docker-deployment.md`.
 
 ```bash
 # Deploy from host machine (for CI/CD pipelines)
@@ -195,69 +184,37 @@ Deployment uses GitHub Actions CD workflow. See CLAUDE.md "Release Workflow" sec
 
 ### Configure OAuth2
 ```bash
-uv run python scripts/configure_pocketbase_oauth.py
+uv run python scripts/setup/configure_pocketbase_oauth.py
 ```
 Configures PocketBase OAuth2 settings from environment variables.
 
 ### Update Solver Configuration
-```bash
-uv run python scripts/update_solver_fairness_config.py [OPTIONS]
-
-Options:
-  --priority-weight VALUE    Update priority weight
-  --fairness-weight VALUE    Update fairness weight
-  --reset                    Reset to defaults
-```
-
-### Enable Public Read Access
-```bash
-uv run python scripts/setup/enable_public_read_access.py
-```
-Enables public read access for specified collections.
+Solver weights live in the PocketBase `config` collection; edit them in **Manage › Config**
+(see `docs/guides/solver-configuration.md`). There is no CLI for them.
 
 ## Diagnostics & Analysis
 
-### Schema Diagnostics
+### Objective Sensitivity
 ```bash
-uv run python scripts/diagnostic_tool_v2.py [OPTIONS]
-
-Options:
-  --collections    List all collections
-  --fields         Show field details
-  --indexes        Show database indexes
-  --validate       Validate schema integrity
+uv run python scripts/analyze_objective_sensitivity.py
 ```
+See `docs/reference/objective-sensitivity.md`.
 
-### Analyze Attendees
+### Request Statistics
 ```bash
-uv run python scripts/sync/analyze_attendees.py [OPTIONS]
-
-Options:
-  --session-id ID  Analyze specific session
-  --stats          Show statistics
-  --duplicates     Find duplicate records
+uv run python scripts/request_stats.py   # raw CampMinder rows vs processed requests
 ```
-
-### Test API Differences
-```bash
-uv run python scripts/test_person_api_differences.py
-```
-Compares CampMinder API responses for consistency.
-
-### Example Analysis
-```bash
-uv run python scripts/example_analysis.py
-```
-Runs example data analysis for demonstration purposes.
 
 ## Frontend Development
+
+Run these from `frontend/`.
 
 ### Start Development Server
 ```bash
 npm run dev
 ```
 Starts Vite development server with hot module replacement.
-- Default: <http://localhost:5173>
+- Default: <http://localhost:3000> (a worktree gets its own port from `new.sh`)
 - Proxies API requests to PocketBase
 
 ### Build Production Bundle
@@ -274,16 +231,17 @@ Runs TypeScript compiler to check for type errors.
 
 ### Run Tests
 ```bash
-npm run test              # Run tests
-npm run test:watch        # Watch mode
+npm run test              # Watch mode (vitest)
+npm run test:run          # One-shot run
 npm run test:coverage     # With coverage report
 ```
 
 ### Generate TypeScript Types
 ```bash
-npm run generate-types
+npm run generate-types        # PocketBase schema → pocketbase-types.ts
+npm run generate:api-types    # FastAPI OpenAPI → types/api-generated/
+npm run generate:all-types    # both
 ```
-Generates TypeScript types from PocketBase schema.
 
 ## Common Workflows
 
@@ -306,14 +264,14 @@ git push
 
 ### Processing New Bunk Requests
 ```bash
-# Process all sessions with modular pipeline (called by Go orchestrator)
-uv run python -m bunking.sync.bunk_request_processor.process_requests --session 0
+# Usual path: through the Go API (handles auth, files the run under the season)
+curl -X POST "http://127.0.0.1:8090/api/custom/sync/process-requests?year=2026" -H "Authorization: $TOKEN"   # bunking.manage user token
 
-# Or specific session
-uv run python -m bunking.sync.bunk_request_processor.process_requests --session 1
+# Directly, for debugging: all sessions
+uv run python -m bunking.sync.bunk_request_processor.process_requests --year 2026 --session all
 
 # Test with limited requests
-uv run python -m bunking.sync.bunk_request_processor.process_requests --test-limit 10 --debug
+uv run python -m bunking.sync.bunk_request_processor.process_requests --year 2026 --session all --test-limit 10 --debug
 ```
 
 ### Production Deployment
@@ -331,7 +289,7 @@ docker compose logs -f
 ### Database Maintenance
 ```bash
 # Regular maintenance
-uv run python scripts/force_wal_checkpoint.py
+uv run python scripts/db/force_wal_checkpoint.py
 
 # After major changes
 ./scripts/reset_and_migrate.sh
@@ -349,9 +307,9 @@ Key environment variables used by scripts:
 - `POCKETBASE_URL` - PocketBase API endpoint
 - `POCKETBASE_ADMIN_EMAIL` - Admin credentials
 - `POCKETBASE_ADMIN_PASSWORD` - Admin credentials
-- `AI_PROVIDER` - AI provider (openai/anthropic/ollama)
-- `OPENAI_API_KEY` - OpenAI API key (if using)
-- `ANTHROPIC_API_KEY` - Anthropic API key (if using)
+- `AI_PROVIDER` - AI provider (`openai`; `mock` for tests)
+- `AI_API_KEY` - AI provider API key
+- `AI_MODEL` - Model name (e.g. `gpt-5-nano`)
 
 See [Configuration Reference](./configuration.md) for complete list.
 
@@ -367,10 +325,10 @@ Standard exit codes used by scripts:
 
 ## Tips & Best Practices
 
-1. **Always use virtual environment** for Python scripts
+1. **Run Python through `uv run`** (uv manages the virtualenv)
 2. **Run quick checks** before every commit
 3. **Use --debug flag** when troubleshooting
-4. **Check logs** in `logs/` directory for details
+4. **Check logs**: `docker compose logs <service>`, or the dev server's terminal output
 5. **Backup database** before major operations
 6. **Use test limits** when testing new sync logic
 7. **Monitor memory usage** for large operations

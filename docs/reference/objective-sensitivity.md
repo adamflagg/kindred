@@ -7,6 +7,18 @@
 > regenerate with `uv run python scripts/analyze_objective_sensitivity.py`.
 > Test suite at `tests/unit/scripts/test_analyze_objective_sensitivity.py`
 > locks in every magnitude shown here.
+>
+> **Known drift since the snapshot (2026-10-15 audit).** The request-weight
+> table below is still current (`BASE_REQUEST_WEIGHT`, the slot multipliers and
+> the source multipliers all match `bunking/solver/direct_solver.py` and
+> `CONFIG_SCHEMA`). The penalty inventory is not: the `grade_spread_soft` and
+> `age_spread` soft paths were deleted in the Phase 2 config cleanup (grade
+> spread is now hard-only, `MAX_UNIQUE_GRADES_PER_BUNK`; age spread is a hard
+> 24-month cap with an edge-bunk escape hatch at `EDGE_AGE_OVERFLOW_PENALTY`),
+> so those two rows and the ratios built on them are historical. Staff and
+> manual `not_bunk_with` requests are now a hard separation (`staff_separation`)
+> rather than a weighted term. `scripts/analyze_objective_sensitivity.py` and
+> its test still encode the old values; regenerate only after updating them.
 
 ## What this doc is for
 
@@ -38,7 +50,7 @@ the arithmetic explicitly, so:
 ## Per-request weights (current seed values)
 
 How a single satisfied request becomes an objective term. Formula (from
-`direct_solver.py:562-583`):
+`DirectBunkingSolver` in `direct_solver.py` (`_get_csv_field_multiplier` and `add_objective`)):
 
 ```text
 weight = int(BASE_REQUEST_WEIGHT × source_multiplier × mutual_boost × slot_multiplier)
@@ -46,7 +58,7 @@ weight = int(BASE_REQUEST_WEIGHT × source_multiplier × mutual_boost × slot_mu
 ```
 
 `BASE_REQUEST_WEIGHT = 40` and `slot_multipliers = (10, 5, 1)` are hardcoded
-constants in `direct_solver.py:67-72` — they were config rows until migration
+constants in `direct_solver.py` (`BASE_REQUEST_WEIGHT`, `FIRST_/SECOND_/THIRD_PLUS_REQUEST_MULTIPLIER`) — they were config rows until migration
 `1500000100_priority_deletion.js` (PR #1455) deleted them. They can no longer
 be tuned without a code PR.
 

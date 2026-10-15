@@ -232,8 +232,8 @@ Session definitions with dates and type information.
 | `year` | number | Camp year |
 | `start_date` | date | Session start |
 | `end_date` | date | Session end |
-| `session_type` | select | main/embedded/ag/family/quest/scit/etc. |
-| `parent_id` | number | CampMinder ID of parent session (AG only) |
+| `session_type` | select | main/embedded/ag/family/family_adult/quest/scit/bmitzvah/tli/adult/school/hebrew/teen/other (`family_adult` added by 1500000243) |
+| `parent_id` | number | CampMinder ID of parent session (AG, and `family_adult`: the Family Camp weekend an "Adult Reg" session belongs to) |
 | `session_group` | relation | Link to session_groups |
 | `is_day` | bool | Day camp session |
 | `is_residential` | bool | Overnight session |
@@ -285,7 +285,7 @@ Person records with demographics, contacts, and relationships.
 | `gender` | text | M/F/etc. |
 | `grade` | number | CampMinder `CampGradeID - 1`: K = 0, 1st = 1 .. 12th+ = 13, Pre-K / Nursery / Toddler / Infant = -1 .. -4. Also 0 when there is no grade. Board surfaces still display it through `formatGradeOrdinal` (consolidation: #2783); `grade_name` is what tells K, no grade and below-K apart |
 | `grade_name` | text | CampMinder `CampGradeName` ("Pre-K", "K", "1st" .. "12th+"); empty when there is no grade. What the camper record, side panel and weekend panels display, via `formatGradeName`: short ("5th", "K", "Grad") in tight spaces, long ("5th Grade", "Kindergarten", "Graduated") on the full camper record |
-| `age` | number | Age (computed) |
+| `age` | number | CampMinder's age, copied at sync time (a snapshot, not relative to any session's dates) |
 | `school` | text | School name |
 | `years_at_camp` | number | Years attended |
 | `last_year_attended` | number | Last year at camp |
@@ -747,6 +747,10 @@ PocketBase user authentication collection (`_pb_users_auth_`).
 
 Modified by migration to allow authenticated users to list all users (for admin panel).
 
+Besides the standard auth fields it carries `last_login` (moves only on a full Pocket ID sign-in,
+1500000087) and `last_seen` (stamped by the RBAC auth-refresh hook, 1500000223). Staff session
+tokens last 12 hours (1500000241).
+
 **Note**: OAuth2 configuration is handled by the bootstrap script, not migrations.
 
 ### admin_audit_log
@@ -911,9 +915,31 @@ CampMinder API
 
 ---
 
+## Collections Not Detailed Above
+
+These collections exist and are created by the migrations named here; read the migration for
+fields and rules.
+
+| Group | Collections | Migration(s) |
+|-------|-------------|--------------|
+| Family Camp lodging | `lodging_areas`, `lodging_units`, `lodging_unit_aliases`, `lodging_availability`, `lodging_assignments`, `lodging_assignments_draft`, `lodging_assignment_history`, `lodging_field_mappings`, `lodging_ingest_issues`, `lodging_session_status`, `lodging_friend_groups`, `lodging_friend_group_members`, `lodging_slot_merges`, `lodging_write_ins`, `lodging_write_ins_draft`, `lodging_write_in_pushes`, `lodging_value_history` | `1500000116`-`1500000173` (`lodging_*`; `lodging_slot_merges` is `139`, the write-in tables `161` and `173`, `lodging_value_history` `168`); see `docs/reference/lodging-registry.md` |
+| Jotform intake | `jotform_forms`, `jotform_submissions`, `jotform_answers` | `1500000180_jotform_tables.js` |
+| Camperships (financial aid) | `aid_rules`, `aid_sources`, `aid_household_links`, `aid_postings`, `aid_attribution_overrides`, `aid_flag_dispositions`, `aid_applications`, `aid_requests`, `aid_application_corrections`, `aid_session_capacity`, `aid_payer_shares`, `aid_grantors`, `aid_grants`, `aid_decisions`, `aid_hold_events`, `aid_scenario_options`, `aid_scenario_snapshots`, `aid_scenario_trail`, `aid_cancellations`, `aid_grant_placements`, `aid_reported_history`, `aid_report_definitions`, `aid_arrival_curves` | `1500000187`-`1500000243` (`aid_*`); all superuser-only |
+| Per-person and per-household extras | `household_demographics`, `camper_transportation`, `camper_dietary`, `quest_registrations`, `staff_applications`, `staff_skills`, `staff_vehicle_info`, `sheets_workbooks` | `1500000033`-`1500000047` |
+| History and normalization | `attendee_status_history`, `enrollment_snapshots`, `normalized_mappings`, `geo_overrides` | `1500000048`-`1500000065` |
+| RBAC | `roles`, `user_roles`, `permission_descriptions` | `1500000070`, `1500000071`, `1500000222` |
+| Other | `subject_notes` (board notes), `debug_pipeline_runs`, `debug_pipeline_summary`, `debug_pipeline_traces` | `1500000189`, `1500000086` |
+
+`camper_history` was created by `1500000033` and dropped by `1500000157_delete_camper_history.js`. `lodging_merges` and `lodging_merges_draft` were dropped by `1500000134` (a placement now carries its member set as a multi-valued `units` relation).
+
+---
+
 ## Migration Numbering
 
-Migrations are numbered `1500000XXX_table_name.js`:
+Migrations are numbered `1500000XXX_table_name.js`, one number per file, in the order they were
+written (the rule and the v0.23 field syntax: `docs/reference/pocketbase-migrations.md`). The
+first block is by area; everything after 035 is in chronological order and mixes new collections
+with field additions to existing ones:
 
 | Range | Purpose |
 |-------|---------|
@@ -923,5 +949,6 @@ Migrations are numbered `1500000XXX_table_name.js`:
 | 020-027 | Bunking, scenarios, solver |
 | 028-032 | Custom values, staff, financials, users |
 | 033-035 | Computed/derived tables |
+| 036 onward | Chronological: one file per later change (the latest is `1500000243_camp_sessions_family_adult_type.js`) |
 
 See `pocketbase/pb_migrations/` for full migration source code.
