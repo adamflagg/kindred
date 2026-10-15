@@ -518,6 +518,35 @@ describe('the fold lines carry what the table, strip and notes did (spec §5.2 F
     )
   })
 
+  it('shows CampMinder aid on no request as families only, titled, with no link (D170)', () => {
+    const data = structuredClone(BUDGET)
+    data.total.below.campminder_aid_off_requests = { amount: 3783, families: 4 }
+    read = { data, isLoading: false, error: null }
+    renderAt('/aid/season/rounds-budget?open=lines:below')
+    expect(keys('data-below-line')).toEqual([
+      'grants',
+      'grants_off_requests',
+      'campminder_off_requests',
+      'outside_type:outside',
+      'held',
+    ])
+    const row = below('campminder_off_requests')
+    expect(within(row).getByText('CampMinder aid on no request')).toHaveAttribute(
+      'title',
+      expect.stringContaining('not in Committed or Remaining')
+    )
+    expect(within(row).getByText('4 fam')).toBeInTheDocument()
+    expect(within(row).getByText('$3,783')).toBeInTheDocument()
+    expect(within(row).getByText('posted in CampMinder, on no request')).toHaveAttribute(
+      'title',
+      expect.stringContaining('2026 only')
+    )
+    expect(within(row).queryByRole('link')).toBeNull()
+    expect(screen.getByTestId('fold-lines')).toHaveTextContent(
+      '10 held requests · CampMinder aid on no request $3,783'
+    )
+  })
+
   it('titles Shown, not counted, with the outside fund qualified and Held showing "—" for its unknown amount (rounds-7, m3)', () => {
     renderAt('/aid/season/rounds-budget?open=lines:below')
     const table = within(screen.getByTestId('fold-lines')).getAllByRole('table')[0]!

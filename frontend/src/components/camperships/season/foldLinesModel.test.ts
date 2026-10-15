@@ -94,6 +94,32 @@ describe('the Budget heading and the fold lines (spec §5.2 F)', () => {
   })
 })
 
+describe('belowSummary: CampMinder aid on no request (D170)', () => {
+  const withAid = (pool: string | null, amount: number) => {
+    const out = structuredClone(BUDGET)
+    const scope = pool === null ? out.total : out.pools.find((p) => p.pool === pool)
+    if (scope === undefined) throw new Error('no such pool')
+    scope.below.campminder_aid_off_requests = { amount, families: 1 }
+    return out
+  }
+
+  it('names it last on the folded line, as the mock does', () => {
+    expect(belowSummary(withAid(null, 3783), null)).toBe(
+      'outside grants $49,700 · a named outside fund $21,840 · 10 held requests · CampMinder aid on no request $3,783'
+    )
+  })
+
+  it("names a pool's own share on that pool's line", () => {
+    expect(belowSummary(withAid('pool_b', 1067), 'pool_b')).toBe(
+      'outside grants $3,100 · 1 held request · CampMinder aid on no request $1,067'
+    )
+  })
+
+  it('leaves it out where the read sends none', () => {
+    expect(belowSummary(BUDGET, null)).not.toContain('CampMinder')
+  })
+})
+
 describe('belowSummary scope (mutation guard)', () => {
   it('a one-pool summary leaves the no-request outside grants out', () => {
     expect(belowSummary(BUDGET, 'pool_b')).toBe('outside grants $3,100 · 1 held request')

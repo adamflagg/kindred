@@ -92,6 +92,7 @@ class FakeDecisionsStore:
         self.camp_lines: list[CampLine] = []
         self.camp_line_reads: list[bool] = []  # each fetch_camp_lines call's recorded_times, in order
         self.placements: dict[int, Placement] = {}
+        self.links: list[Any] = []  # the season's aid_household_links rows (D26)
         self.splits: dict[int, tuple[SplitPart, ...]] = {}  # lines a person split across requests (SP11-rest)
         self.synced_at: datetime | None = None  # the last successful ledger sync covering YEAR; None = never
         self.cancel_events: list[CancelEvent] = []
@@ -195,6 +196,9 @@ class FakeDecisionsStore:
         """As the repository reads them: only the named campers' rows and the named households'."""
         self.enrollment_reads.append((frozenset(person_cm_ids), frozenset(household_cm_ids)))
         return [e for e in self.enrollments if e.person_cm_id in person_cm_ids or e.household_cm_id in household_cm_ids]
+
+    async def fetch_household_links(self, year: int) -> list[Any]:
+        return list(self.links)
 
     async def fetch_camp_lines(self, year: int, *, recorded_times: bool = False) -> list[CampLine]:
         """As the repository reads them: without the recorded times unless asked for (a past read)."""
@@ -556,6 +560,7 @@ def seed_line(
     recorded: datetime | None = None,
     rewritten: datetime | None = None,
     description_key: str = "",
+    session: int = 0,
 ) -> CampLine:
     """One camp-aid line in the ledger: CampMinder posted it to `person` (0 = the household). Kindred
     recorded it (the aid_postings row's created) when it posted unless `recorded` says otherwise, and
@@ -573,6 +578,7 @@ def seed_line(
         recorded_at=recorded,
         updated_at=rewritten or (max(written) if written else None),
         description_key=description_key,
+        attributed_session_cm_id=session,
     )
     store.camp_lines.append(line)
     return line

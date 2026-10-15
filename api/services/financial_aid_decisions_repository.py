@@ -454,6 +454,10 @@ class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
         )
         return [camp_line(row) for row in rows]
 
+    async def fetch_household_links(self, year: int) -> list[Any]:
+        """The season's aid_household_links rows (D26), as the 2026 loader reads them (family_household_set)."""
+        return await FinancialAidRepository(self.pb).fetch_links(year)
+
     async def fetch_line_placements(self, year: int) -> dict[int, Placement]:
         placements = (line_placement(row) for row in await FinancialAidRepository(self.pb).fetch_overrides(year))
         return {p.transaction_cm_id: p for p in placements if p is not None}

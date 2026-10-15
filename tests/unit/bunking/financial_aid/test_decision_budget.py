@@ -8,7 +8,9 @@ from decimal import Decimal
 from bunking.financial_aid.decisions import PricedRequest, RoundLedger, RoundStatus, RoundView
 from bunking.financial_aid.decisions.budget import (
     NO_POOL,
+    TOTAL,
     Count,
+    OffRequestAid,
     PoolBudget,
     PoolCell,
     RoundCell,
@@ -132,6 +134,33 @@ def test_outside_grants_are_below_the_line_by_pool() -> None:
     assert pool_of(budget, "camp_pool").below.outside_grants == Decimal(500)
     assert budget.total.below.outside_grants == Decimal(500)
     assert budget.outside_grants_off_requests == Decimal(750)
+
+
+def test_campminder_aid_on_no_request_sits_below_the_line_by_pool_and_never_in_remaining() -> None:
+    """D170: CampMinder's camp aid that matches no request is shown in each scope's below-the-line, a pool with none of
+    it at $0 over 0 families, and Remaining stays computed from decisions."""
+    request = priced("req-a", 1, view(1, "posted", locked="1800"))
+    plain = season_budget([request], RULES, outside_grants={})
+    budget = season_budget(
+        [request],
+        RULES,
+        outside_grants={},
+        campminder_off_requests={
+            "camp_pool": OffRequestAid(Decimal(2258), 1),
+            TOTAL: OffRequestAid(Decimal(2366), 2),
+        },
+    )
+    assert pool_of(budget, "camp_pool").below.campminder_aid_off_requests == OffRequestAid(Decimal(2258), 1)
+    assert pool_of(budget, "weekend_pool").below.campminder_aid_off_requests == OffRequestAid(ZERO, 0)
+    assert budget.total.below.campminder_aid_off_requests == OffRequestAid(Decimal(2366), 2)
+    assert budget.total.total.remaining == plain.total.total.remaining
+    assert pool_of(budget, "camp_pool").total.remaining == pool_of(plain, "camp_pool").total.remaining
+
+
+def test_campminder_aid_on_no_request_is_none_where_it_was_not_read() -> None:
+    budget = season_budget([priced("req-a", 1, view(1, "posted", locked="1800"))], RULES, outside_grants={})
+    assert budget.total.below.campminder_aid_off_requests is None
+    assert pool_of(budget, "camp_pool").below.campminder_aid_off_requests is None
 
 
 def test_forward_demand_is_round_2_asks_so_far_and_round_1_unmet_not_yet_appealed() -> None:

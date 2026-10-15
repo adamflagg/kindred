@@ -139,6 +139,22 @@ export type AidLikeOutside = {
 }
 
 /**
+ * AidOnNoRequestOut
+ *
+ * D170: CampMinder's camp aid that matches no request, and the families it is on. Shown, never counted.
+ */
+export type AidOnNoRequestOut = {
+  /**
+   * Amount
+   */
+  amount: number
+  /**
+   * Families
+   */
+  families: number
+}
+
+/**
  * AidPostingLine
  *
  * One aid_postings row. source_key is the posting's own description;
@@ -1304,6 +1320,7 @@ export type BelowTheLineOut = {
    */
   outside_budget_posted: number | null
   outside_grants_requests?: CountOut | null
+  campminder_aid_off_requests?: AidOnNoRequestOut | null
 }
 
 /**

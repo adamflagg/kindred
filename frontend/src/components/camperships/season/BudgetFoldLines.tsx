@@ -139,12 +139,16 @@ function BelowTable({
           {belowTheLine(budget, pool, view).map((line) => (
             <tr key={line.key} data-below-line={line.key}>
               <td className={RG_TD}>
-                {line.key.startsWith('outside_type:')
-                  ? `${line.label} (outside the camp's budget)`
-                  : line.label}
+                <span title={line.title ?? undefined}>
+                  {line.key.startsWith('outside_type:')
+                    ? `${line.label} (outside the camp's budget)`
+                    : line.label}
+                </span>
               </td>
               <td className={RG_TD_NUM}>
-                {line.count === null ? null : line.href === null ? (
+                {line.families !== null ? (
+                  `${String(line.families)} fam`
+                ) : line.count === null ? null : line.href === null ? (
                   countWords(line.count)
                 ) : (
                   <Link to={line.href} className={CS_LINK_CELL}>
@@ -155,7 +159,9 @@ function BelowTable({
               <td className={RG_TD_NUM} title={line.key === 'held' ? HELD_UNKNOWN : undefined}>
                 {line.amount === null ? '—' : formatMoney(line.amount)}
               </td>
-              <td className={RG_TD}>{line.note}</td>
+              <td className={RG_TD}>
+                <span title={line.title ?? undefined}>{line.note}</span>
+              </td>
             </tr>
           ))}
         </tbody>

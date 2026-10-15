@@ -17,6 +17,7 @@ import {
   cellValue,
   confirmedHref,
   confirmedWords,
+  NO_REQUEST_AID_TITLE,
   scopePool,
   stripRounds,
   type BudgetRow,
@@ -486,6 +487,63 @@ describe('a budget link opens every request in its round (end to end; final revi
       'reqmovedon00001',
       'reqoutside00001',
     ])
+  })
+})
+
+/** D170 (2026): CampMinder aid on no request, on the total and on pool_b. */
+function withNoRequestAid() {
+  const out = structuredClone(BUDGET)
+  out.total.below.campminder_aid_off_requests = { amount: 3783, families: 4 }
+  for (const pool of out.pools) {
+    pool.below.campminder_aid_off_requests =
+      pool.pool === 'pool_b' ? { amount: 1067, families: 1 } : { amount: 0, families: 0 }
+  }
+  return out
+}
+
+describe('CampMinder aid on no request (D170)', () => {
+  it('sits after Outside grants on no request, families only, shown and never linked', () => {
+    const lines = belowTheLine(withNoRequestAid(), null, LIVE)
+    expect(lines.map((l) => l.key)).toEqual([
+      'grants',
+      'grants_off_requests',
+      'campminder_off_requests',
+      'outside_type:outside',
+      'held',
+    ])
+    const line = lines[2]
+    expect(line).toMatchObject({
+      label: 'CampMinder aid on no request',
+      amount: 3783,
+      count: null,
+      families: 4,
+      note: 'posted in CampMinder, on no request',
+      href: null,
+      title: NO_REQUEST_AID_TITLE,
+    })
+    expect(NO_REQUEST_AID_TITLE).toContain('not in Committed or Remaining')
+    expect(NO_REQUEST_AID_TITLE).toContain('2026 only')
+  })
+
+  it("shows a pool's own share after its outside grants", () => {
+    const lines = belowTheLine(withNoRequestAid(), 'pool_b', LIVE)
+    expect(lines.map((l) => l.key)).toEqual(['grants', 'campminder_off_requests', 'held'])
+    expect(lines[1]).toMatchObject({ amount: 1067, families: 1 })
+  })
+
+  it('has no line where the read sends none (any season but 2026, a past date)', () => {
+    expect(belowTheLine(BUDGET, null, LIVE).map((l) => l.key)).not.toContain(
+      'campminder_off_requests'
+    )
+    expect(belowTheLine(BUDGET, 'pool_b', LIVE).map((l) => l.key)).not.toContain(
+      'campminder_off_requests'
+    )
+  })
+
+  it('leaves families on the other lines unset', () => {
+    for (const line of belowTheLine(withNoRequestAid(), null, LIVE)) {
+      if (line.key !== 'campminder_off_requests') expect(line.families).toBeNull()
+    }
   })
 })
 

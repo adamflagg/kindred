@@ -397,6 +397,13 @@ class RoundCellOut(_CellBase):
     round: int
 
 
+class AidOnNoRequestOut(BaseModel):
+    """D170: CampMinder's camp aid that matches no request, and the families it is on. Shown, never counted."""
+
+    amount: float
+    families: int
+
+
 class BelowTheLineOut(BaseModel):
     held: CountOut | None
     held_asked: float | None
@@ -405,6 +412,8 @@ class BelowTheLineOut(BaseModel):
     outside_budget_posted: float | None
     # Decision 13: the requests the outside grants offset (masked with outside_grants on a past date).
     outside_grants_requests: CountOut | None = None
+    # D170: 2026's CampMinder aid on no request in this scope; None for any other season and on a past date.
+    campminder_aid_off_requests: AidOnNoRequestOut | None = None
 
 
 class ForwardDemandOut(BaseModel):
