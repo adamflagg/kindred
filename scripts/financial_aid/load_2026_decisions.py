@@ -41,6 +41,14 @@ CampMinder ids to the staff trackers' letters ({"<household id>": "E"}), local a
 --overrides optionally applies the owner's answers on the cases left unloaded (a JSON list of LoadOverride), local
 and gitignored too; without one, every such case stays unloaded and reported.
 
+After a --write, CLEAR THE API'S SEASON CACHE. The loader writes straight to PocketBase, so FastAPI's Camperships season
+cache (api/services/aid_season_cache.py), which only Camperships writes through the API and finished syncs clear, keeps
+serving the old season until it expires. On 2026-10-14 the dashboard still showed the pre-load Remaining after the
+write. The loader cannot clear it itself: its credential is a PocketBase superuser token, which the API refuses
+(auth_middleware), and the unauthenticated /api/internal route is blocked at the edge. So a write ends by printing the
+call to make, as a user with registration.manage: POST /api/metrics/cache/invalidate?sync_type=aid_postings (the call a
+finished aid_postings sync makes; scoped, so the lodging cache is left alone).
+
 Environment: as load_arrival_curve. --write refuses unless POCKETBASE_URL is set; POCKETBASE_URL,
 POCKETBASE_ADMIN_EMAIL and POCKETBASE_ADMIN_PASSWORD reach the superuser client. A dry run reads PocketBase too (the
 season's requests, decisions, ledger and approved rules), read-only. Run it as a module from the repository root.
@@ -98,6 +106,16 @@ from scripts.financial_aid.parity_check import (
 from scripts.utils.auth import authenticate_pocketbase
 
 LOADER: Final = "system:2026-sheet-load"
+CACHE_CLEAR: Final = "/api/metrics/cache/invalidate?sync_type=aid_postings"
+# The last thing a write prints (see the module docstring for why the loader can't make the call itself).
+_CACHE_WARNING: Final = f"""
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! The dashboard is still showing the OLD season: the API's Camperships season cache doesn't see this write.
+!! Clear it now, as a dashboard user with registration.manage (an admin passes), then read the new figures:
+!!     curl -sS -X POST "https://<dashboard host>{CACHE_CLEAR}" -H "Authorization: Bearer <that user's token>"
+!! (the call a finished aid_postings sync makes; it leaves the lodging cache alone). Otherwise the dashboard
+!! catches up only when the cached season expires or the next sync finishes.
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"""
 REASON: Final = "2026's awards, reproduced from the repaired sheet with CampMinder's posted money (D67, 10-07)"
 AID_DECISIONS: Final = "aid_decisions"
 _STAGE: Final = re.compile(r"^\s*([123])\b")
@@ -1189,6 +1207,7 @@ async def _run(args: argparse.Namespace, store: LoadStore) -> int:
     print(
         f"Replaced {len(plan.stale)} rows with {len(plan.creates)} ({AID_CALCULATOR} rows loaded: {len(plan.loaded)})."
     )
+    print(_CACHE_WARNING)
     return 0
 
 

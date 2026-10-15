@@ -982,7 +982,32 @@ def test_write_commits_once_and_a_second_run_finds_it_already_loaded(
     capsys.readouterr()
     assert _run(tmp_path, store, "--write", monkeypatch=monkeypatch) == 0
     assert len(store.commits) == 1
-    assert "already loaded" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "already loaded" in out
+    assert "cache/invalidate" not in out  # nothing written, nothing stale
+
+
+_CACHE_CLEAR = "/api/metrics/cache/invalidate?sync_type=aid_postings"
+
+
+def test_a_write_ends_by_telling_the_operator_to_clear_the_season_cache(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The loader writes straight to PocketBase, so the API's Camperships season cache keeps the old season; the
+    # loader's superuser token can't call the API's clear (the API refuses superuser tokens), so it says so.
+    monkeypatch.setenv("POCKETBASE_URL", "http://pocketbase.invalid:8090")
+    assert _run(tmp_path, _Store(), "--write", monkeypatch=monkeypatch) == 0
+    out = capsys.readouterr().out
+    assert _CACHE_CLEAR in out
+    assert "registration.manage" in out
+    assert out.index("Replaced") < out.index(_CACHE_CLEAR)  # the last thing the operator reads
+
+
+def test_a_run_that_writes_nothing_asks_for_no_cache_clear(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert _run(tmp_path, _Store(), monkeypatch=monkeypatch) == 0  # a dry run
+    assert _CACHE_CLEAR not in capsys.readouterr().out
 
 
 def test_the_command_reads_the_overrides_file(
