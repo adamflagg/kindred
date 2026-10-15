@@ -243,7 +243,13 @@ export function WorkingRequestCard({
   } else if (open?.kind === 'cancel') {
     editor = (
       <CancelForm
-        head={c ? 'Changing the reason' : 'Cancelling the request'}
+        head={
+          c
+            ? c.reason === null
+              ? 'Giving a reason'
+              : 'Changing the reason'
+            : 'Cancelling the request'
+        }
         initial={c ? { reason: c.reason, note: c.note } : null}
         submitLabel={c ? 'Save the Reason' : 'Cancel the Request'}
         onSubmit={(reason, note) =>

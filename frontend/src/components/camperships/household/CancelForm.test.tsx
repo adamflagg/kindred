@@ -42,6 +42,23 @@ describe('CancelForm (D101, D141)', () => {
     expect(aidPicked('Cancel reason')).toBe('medical')
   })
 
+  // D164: a given reason can be changed, never cleared back to none (Change the Reason…).
+  it('will not save a given reason back to none', async () => {
+    const onSubmit = vi.fn(() => Promise.resolve())
+    render(
+      <CancelForm
+        initial={{ reason: 'medical', note: '' }}
+        submitLabel="Save the Reason"
+        onSubmit={onSubmit}
+        onCancel={() => undefined}
+      />
+    )
+    await chooseAid('Cancel reason', 'Pick a reason')
+    await userEvent.click(screen.getByRole('button', { name: 'Save the Reason' }))
+    expect(screen.getByText('Pick a cancel reason')).toBeInTheDocument()
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
   it('keeps the form and shows the refusal when the save fails', async () => {
     render(
       <CancelForm
