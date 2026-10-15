@@ -8,10 +8,10 @@ Holds at most max_size entries; when full it drops the OLDEST-inserted one (not 
 entries the difference does not matter). An expired entry is dropped when next read.
 
 Cleared by: every Camperships write (on_aid_commit, registered on commit_aid_writes at startup: the write's own year,
-or every year for a write to a season-spanning table, SEASON_SPANNING_COLLECTIONS), every
-sync job's completion (invalidate_server_caches, unscoped: see its docstring), and the layer-1 refresher's
-backstop clear. Each clear is followed by a background warm of the configured season. This cache's own TTL is
-the fallback, not the plan.
+or every year for a write to a season-spanning table, SEASON_SPANNING_COLLECTIONS), the completion of every
+sync job that writes something a season reads (invalidate_server_caches, scoped by sync_changes_aid_season), and
+the layer-1 refresher's backstop clear. Each clear is followed by a background warm of every synced season. This
+cache's own TTL is the fallback, not the plan.
 
 Generation-guarded per year: a build that started before a clear is handed to the waiters who already
 joined it but never STORED, so the writer's own refetch always starts a fresh build.
@@ -40,6 +40,19 @@ from collections.abc import Awaitable, Callable, Sequence
 from datetime import date
 from typing import TYPE_CHECKING, Any, TypeVar
 
+from api.constants.collections import (
+    AID_HOUSEHOLD_LINKS,
+    AID_POSTINGS,
+    AID_SOURCES,
+    ATTENDEES,
+    CAMP_SESSIONS,
+    CUSTOM_FIELD_DEFS,
+    FINANCIAL_AID_APPLICATIONS,
+    HOUSEHOLDS,
+    PERSON_CUSTOM_VALUES,
+    PERSONS,
+)
+from api.constants.sync_job_writes import sync_writes_any
 from bunking.logging_config import get_logger
 
 if TYPE_CHECKING:
@@ -53,6 +66,38 @@ logger = get_logger(__name__)
 # one -- so it clears every year. aid_report_definitions feeds no season; it is here because the rule is the schema's,
 # not a guess about readers. Pinned to the generated PocketBase types by test_aid_season_cache.py.
 SEASON_SPANNING_COLLECTIONS: frozenset[str] = frozenset({"aid_grantors", "aid_report_definitions", "aid_sources"})
+
+# What a sync's completion must clear this cache for: the sync-written collections a season build reads -- layer 1's
+# (aid_sync_inputs.AID_SYNC_INPUT_TABLES: the people, households, registrations, sessions, equity answers and the FA
+# mirror) and the ledger the `aid_postings` job writes with its sources and household links -- and the sync_runs rows
+# that date the ledger (fetch_last_ledger_sync reads the last aid_postings and financial_transactions runs, so a
+# finished run of either moves the season's "ledger synced" time even when it wrote nothing else this cache holds).
+# Every other aid_* table is written only through commit_aid_writes, whose listener clears it (on_aid_commit).
+# Derived, not guessed: test_the_season_sync_scope_is_exactly_what_a_season_build_reads records a real build's reads.
+AID_SEASON_SYNC_TABLES: frozenset[str] = frozenset(
+    {
+        PERSONS,
+        HOUSEHOLDS,
+        ATTENDEES,
+        PERSON_CUSTOM_VALUES,
+        CUSTOM_FIELD_DEFS,
+        CAMP_SESSIONS,
+        FINANCIAL_AID_APPLICATIONS,
+        AID_POSTINGS,
+        AID_SOURCES,
+        AID_HOUSEHOLD_LINKS,
+    }
+)
+AID_SEASON_SYNC_RUN_SERVICES: frozenset[str] = frozenset({"aid_postings", "financial_transactions"})
+
+
+def sync_changes_aid_season(sync_type: str | None) -> bool:
+    """Whether a finished `sync_type` changes what a priced season reads, so must clear this cache. The hourly
+    bunk_assignments run -- and from Oct 15 its N-1 pass too -- writes nothing a season reads, and used to throw away
+    both live seasons every hour. Fails safe like every server cache's scope (sync_writes_any): no job named, an empty
+    name, or a job nobody has classified in SYNC_JOB_WRITES clears."""
+    return sync_writes_any(sync_type, AID_SEASON_SYNC_TABLES) or sync_type in AID_SEASON_SYNC_RUN_SERVICES
+
 
 V = TypeVar("V")
 _Key = tuple[int, date]

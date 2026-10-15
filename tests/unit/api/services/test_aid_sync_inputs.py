@@ -21,7 +21,6 @@ import pytest
 import api.constants.collections as collections
 from api.dependencies import AID_INPUTS_BACKSTOP_SECONDS, aid_inputs_cache
 from api.services import aid_sync_inputs as layer1
-from api.services import financial_aid_rules_service as rules_service
 from api.services.aid_sync_inputs import AID_SYNC_INPUT_TABLES, AidSyncInputs, aid_sync_inputs, schedule_aid_warm
 from api.services.financial_aid_intake_repository import ADULT_POC_FIELD_CM_ID, CAMPER_POC_FIELD_CM_ID
 from tests.unit.api.services.aid_parity_fixture import (
@@ -146,11 +145,26 @@ async def test_a_cancelled_first_caller_does_not_cancel_the_shared_fill() -> Non
 
 
 def test_the_cache_is_the_configured_singleton() -> None:
-    """A six-hour backstop TTL, and room for two seasons: the current one and the `year - 1` a report reads. One year
-    measured 26-30 MB on the 2026-10-07 prod snapshot, on a 1.9 GiB box whose API container is capped at 1 GiB."""
+    """A six-hour backstop TTL, and room for three seasons: the two live ones staff work from Oct 15 for months (the
+    primary and the one before it, both synced nightly) and the `year - 1` the older one's last-season columns read.
+    One year measured 26-30 MB on the 2026-10-07 prod snapshot, on a 1.9 GiB box whose API container is capped at
+    1 GiB."""
     assert AID_INPUTS_BACKSTOP_SECONDS == 21_600
     assert aid_inputs_cache.ttl_seconds == AID_INPUTS_BACKSTOP_SECONDS
-    assert aid_inputs_cache._max_size == 2
+    assert aid_inputs_cache._max_size == 3
+
+
+@pytest.mark.asyncio
+async def test_a_last_season_read_never_evicts_either_live_season() -> None:
+    """After the Oct 15 flip staff work 2027's new requests and 2026's late sessions at once. A report on 2026 reads
+    2025 beside it, and that third season must not push out a live one: each would re-read whole on its next click."""
+    pb = _recording_pb()
+    live = {year: await aid_sync_inputs(pb, year) for year in (YEAR + 1, YEAR)}
+    await aid_sync_inputs(pb, YEAR - 1)  # 2026's "last season" columns
+    pb.reset()
+    for year, filled in live.items():
+        assert await aid_sync_inputs(pb, year) is filled
+    assert pb.calls == []
 
 
 # --- the joins --------------------------------------------------------------------------------------------------
@@ -327,9 +341,8 @@ async def test_the_hourly_bunk_assignments_sync_leaves_it_alone() -> None:
     ):
         invalidate_server_caches("bunk_assignments")
     assert aid_inputs_cache.get("load", YEAR) is filled
-    # Every sync clears the priced season (layer 2), so a warm follows to rebuild it; layer 1 stays filled, so that
-    # warm re-reads none of its tables.
-    warm.assert_called_once()
+    # It writes nothing the priced season (layer 2) reads either, so that stays too and there is nothing to re-warm.
+    warm.assert_not_called()
 
 
 # --- the warm -----------------------------------------------------------------------------------------------------
@@ -348,7 +361,7 @@ async def test_a_burst_of_warms_runs_one_at_a_time_and_one_rerun(monkeypatch: py
         await release.wait()
         running -= 1
 
-    monkeypatch.setattr(layer1, "_warm_current_season", fake_warm)
+    monkeypatch.setattr(layer1, "_warm_live_seasons", fake_warm)
     schedule_aid_warm()
     await asyncio.sleep(0)
     for _ in range(5):
@@ -361,15 +374,47 @@ async def test_a_burst_of_warms_runs_one_at_a_time_and_one_rerun(monkeypatch: py
 
 
 @pytest.mark.asyncio
-async def test_the_warm_fills_the_configured_season_and_never_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_the_warm_fills_every_synced_season_and_never_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    """From Oct 15 the sync keeps two seasons current (the new season's requests, the old one's late fall and winter
+    sessions) and staff work both, so the warm fills both, layer 1 and then the priced season, primary first. The
+    seasons are the sync status's `_synced_years`: the source the weekend warm reads too."""
     pb = _recording_pb()
+    pb.send = MagicMock(return_value={"_configured_year": YEAR + 1, "_synced_years": [YEAR + 1, YEAR]})  # type: ignore[attr-defined]
     monkeypatch.setattr(layer1, "default_pb", pb)
-    monkeypatch.setattr(rules_service, "configured_season_year", AsyncMock(return_value=YEAR))
-    await layer1._warm_current_season()
-    assert aid_inputs_cache.get("load", YEAR) is not None
+    seasons: list[int] = []
 
-    monkeypatch.setattr(rules_service, "configured_season_year", AsyncMock(side_effect=RuntimeError("no season")))
-    await layer1._warm_current_season()  # logged, not raised
+    async def warm_season(year: int) -> None:
+        seasons.append(year)
+
+    monkeypatch.setattr(layer1, "_season_warmer", warm_season)
+    await layer1._warm_live_seasons()
+    assert aid_inputs_cache.get("load", YEAR + 1) is not None
+    assert aid_inputs_cache.get("load", YEAR) is not None
+    assert seasons == [YEAR + 1, YEAR]
+
+    pb.send = MagicMock(side_effect=RuntimeError("PocketBase down"))  # type: ignore[attr-defined]
+    monkeypatch.setattr(layer1, "aid_sync_inputs", AsyncMock(side_effect=RuntimeError("PocketBase down")))
+    await layer1._warm_live_seasons()  # logged, not raised
+
+
+@pytest.mark.asyncio
+async def test_the_refresher_warms_every_synced_season_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The six-hour backstop re-warms both live seasons, not only the primary."""
+    warmed: list[int] = []
+
+    async def fake_warm(year: int) -> None:
+        warmed.append(year)
+
+    monkeypatch.setattr(layer1, "_synced_years", AsyncMock(return_value=[YEAR + 1, YEAR]))
+    task = asyncio.create_task(layer1.refresh_aid_inputs_forever(interval=0.01, warm=fake_warm))
+    for _ in range(200):
+        await asyncio.sleep(0.005)
+        if len(warmed) >= 4:
+            break
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert warmed[:4] == [YEAR + 1, YEAR, YEAR + 1, YEAR]
 
 
 @pytest.mark.asyncio
@@ -423,7 +468,7 @@ async def test_a_pending_warm_is_cancelled_on_request(monkeypatch: pytest.Monkey
     async def never_done() -> None:
         await asyncio.Event().wait()
 
-    monkeypatch.setattr(layer1, "_warm_current_season", never_done)
+    monkeypatch.setattr(layer1, "_warm_live_seasons", never_done)
     schedule_aid_warm()
     task = layer1._warm_task
     assert task is not None

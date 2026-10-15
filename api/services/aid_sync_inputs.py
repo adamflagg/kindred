@@ -28,8 +28,9 @@ Households are held with HOUSEHOLD_COLUMNS only, never that list (fetch_househol
 it itself), so a shared row cannot carry it to a reader that was never meant to see it.
 
 KEPT WARM. After every clear -- a sync's, through invalidate_server_caches -- and every backstop expiry (the refresher,
-started in api/main.py's lifespan), the configured season refills in the background, and so does its priced season
-(layer 2) through the season warmer the lifespan registers. A Camperships write clears only layer 2, and its warm
+started in api/main.py's lifespan), every synced season refills in the background (from Oct 15 staff work two: the
+new season's requests and the old one's late sessions), and so does each one's priced season (layer 2) through the
+season warmer the lifespan registers. A Camperships write clears only layer 2, and its warm
 finds this layer still filled.
 
 Single uvicorn process assumed (docker/Dockerfile.api): with workers this cache is per process.
@@ -246,11 +247,14 @@ _warm_task: asyncio.Task[None] | None = None
 _rerun_requested = False
 
 
-async def _configured_year() -> int:
-    # financial_aid_rules_service reaches the repositories that read through this module.
-    from api.services.financial_aid_rules_service import configured_season_year  # noqa: PLC0415 - circular
+async def _synced_years() -> list[int]:
+    """Every season the sync keeps current, primary first: `_synced_years` on the sync status, which the weekend warm
+    reads too (lodging_cache_warm.synced_season_years). From Oct 15 that is next year's season and this one
+    (pocketbase/sync/year.go), and staff work both for months, so both are kept warm."""
+    # lodging_cache_warm reaches the lodging repository, which nothing here otherwise needs at import.
+    from api.services.lodging_cache_warm import synced_season_years  # noqa: PLC0415 - import cost
 
-    return await configured_season_year(default_pb)
+    return await synced_season_years(default_pb)
 
 
 # Builds the live, cached season (layer 2) for a year. Registered by the lifespan, because services cannot import
@@ -280,27 +284,28 @@ async def warm_aid_year(year: int) -> None:
         logger.warning(f"Camperships season warm for {year} failed: {exc}")
 
 
-async def _warm_current_season() -> None:
-    """Fill layer 1 for the dashboard's configured season. Never raises."""
+async def _warm_live_seasons() -> None:
+    """Fill both layers for every synced season, primary first. Never raises."""
     try:
-        year = await _configured_year()
+        years = await _synced_years()
     except Exception as exc:  # no season to warm: a log line, not a task exception
         logger.warning(f"Camperships sync-input warm failed: {exc}")
         return
-    await warm_aid_year(year)
+    for year in years:
+        await warm_aid_year(year)
 
 
 async def _warm_until_settled() -> None:
     global _rerun_requested
     while True:
         _rerun_requested = False
-        await _warm_current_season()
+        await _warm_live_seasons()
         if not _rerun_requested:
             return
 
 
 def schedule_aid_warm() -> None:
-    """Start a background fill of the configured season, and return at once. One warm at a time: a request that
+    """Start a background fill of every synced season, and return at once. One warm at a time: a request that
     lands mid-warm becomes a single rerun after it (see schedule_lodging_warm)."""
     global _rerun_requested, _warm_task
     loop = asyncio.get_running_loop()
@@ -334,13 +339,13 @@ async def refresh_aid_inputs_forever(
     The interval is the six-hour backstop for a missed sync-completion clear (AID_INPUTS_BACKSTOP_SECONDS), not the
     freshness plan. A backstop expiry is a clear like any other, so it is followed by a warm too: clearing BEFORE
     the re-warm, rather than letting the entry expire on its own, keeps the staleness bound at the backstop while
-    the configured season stays filled. A request that arrives mid-warm waits on the warm's fill (single-flight per
+    every synced season stays filled. A request that arrives mid-warm waits on the warm's fill (single-flight per
     year). The priced season (layer 2) is cleared with it, since it was built from what this clear drops, and `warm`
-    rebuilds it."""
-    year_of = _configured_year if year is None else year
+    rebuilds it. `year`, a test seam, warms that one season instead of every synced one."""
     while True:
         try:
-            await warm(await year_of())
+            for season in await _synced_years() if year is None else [await year()]:
+                await warm(season)
         except Exception as exc:  # the loop must outlive one bad pass
             logger.warning(f"Camperships sync-input refresh failed: {exc}")
         await sleep(interval)

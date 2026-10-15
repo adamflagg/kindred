@@ -28,10 +28,13 @@ from api.schemas.financial_aid_decisions import ManualHoldIn
 from api.services import aid_season_cache as layer2
 from api.services import aid_sync_inputs as layer1
 from api.services.aid_season_cache import (
+    AID_SEASON_SYNC_RUN_SERVICES,
+    AID_SEASON_SYNC_TABLES,
     SEASON_SPANNING_COLLECTIONS,
     AidSeasonCache,
     bind_warm_loop,
     on_aid_commit,
+    sync_changes_aid_season,
 )
 from api.services.aid_sync_inputs import set_season_warmer
 from api.services.financial_aid_decisions_service import FinancialAidDecisionsService, Season
@@ -584,11 +587,39 @@ async def test_the_reads_that_share_a_cached_season_never_change_it() -> None:
 # --- clears from syncs and the layer-1 TTL ------------------------------------------------------------------------
 
 
+# Every job that writes something a season build reads: layer 1's tables (the people, their registrations and
+# sessions, the equity answers and the FA mirror), the ledger (aid_postings writes aid_sources and the household links
+# too), and the two jobs whose sync_runs rows date the ledger. `aid_postings` is the clear the 2026 loader's printed
+# instruction relies on (#3230). No job named, an empty name, and a job nobody has classified all clear: fail safe.
+SEASON_CLEARING = [
+    "aid_postings",
+    "financial_aid_applications",
+    "financial_transactions",
+    "persons",
+    "attendees",
+    "sessions",
+    "custom_field_defs",
+    "person_custom_values",
+    "person_custom_values_family_camp",
+    "normalize_geographic",
+    None,
+    "",
+    "a_job_nobody_classified",
+]
+# The hourly bunk_assignments run above all: after Oct 15 the N-1 pass runs it too, and it wrote nothing aid reads.
+SEASON_KEEPING = [
+    "bunk_assignments",
+    "bunks",
+    "lodging_assignments",
+    "staff",
+    "process_requests",
+    "jotform_submissions",
+]
+
+
 @pytest.mark.asyncio
-@pytest.mark.parametrize("sync_type", ["bunk_assignments", "aid_postings", "persons", None])
-async def test_every_sync_clears_the_season_and_schedules_a_warm(sync_type: str | None) -> None:
-    """Unscoped on purpose: the season reads sync-written tables layer 1 does not hold (aid_postings, aid_sources,
-    aid_household_links, and sync_runs, which every job writes)."""
+@pytest.mark.parametrize("sync_type", SEASON_CLEARING)
+async def test_a_sync_that_writes_what_the_season_reads_clears_it_and_schedules_a_warm(sync_type: str | None) -> None:
     from api.routers.metrics import invalidate_server_caches
 
     store = _store()
@@ -598,6 +629,52 @@ async def test_every_sync_clears_the_season_and_schedules_a_warm(sync_type: str 
         invalidate_server_caches(sync_type)
     warm.assert_called_once()
     assert await service.season(YEAR) is not before
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("sync_type", SEASON_KEEPING)
+async def test_a_sync_that_writes_nothing_the_season_reads_keeps_it_and_warms_nothing(sync_type: str) -> None:
+    from api.routers.metrics import invalidate_server_caches
+
+    store = _store()
+    service = _service(store, aid_season_cache)
+    before = await service.season(YEAR)
+    with patch("api.routers.metrics.schedule_lodging_warm"), patch("api.routers.metrics.schedule_aid_warm") as warm:
+        invalidate_server_caches(sync_type)
+    warm.assert_not_called()
+    assert await service.season(YEAR) is before
+    assert store.builds[YEAR] == 1
+
+
+@pytest.mark.asyncio
+async def test_the_season_sync_scope_is_exactly_what_a_season_build_reads() -> None:
+    """Derived, not guessed: a real cold season build over the budget fixture, every PocketBase read recorded. Its
+    sync-written collections (those some job in SYNC_JOB_WRITES writes) are the scope's tables, and the services
+    its sync_runs reads name are the scope's run services. A new read of a sync-written table fails here until
+    the scope names it; a table the scope names that no build reads fails too, so the scope never over-clears."""
+    from api.constants.sync_job_writes import SYNC_JOB_WRITES
+    from tests.unit.api.services.pb_recording import RecordingPb
+    from tests.unit.api.services.test_aid_pb_budget import _build_tables
+    from tests.unit.api.services.test_aid_pb_budget import _service as budget_service
+
+    pb = RecordingPb(_build_tables())
+    await budget_service(pb, cached=True).named_season(YEAR)
+    read = {collection for collection, _ in pb.calls}
+    sync_written = frozenset().union(*SYNC_JOB_WRITES.values())
+    assert read & sync_written == AID_SEASON_SYNC_TABLES
+    services = {m for c, f in pb.calls if c == "sync_runs" for m in re.findall(r"service = [\"']([a-z_]+)[\"']", f)}
+    assert services == AID_SEASON_SYNC_RUN_SERVICES
+    assert set(layer1.AID_SYNC_INPUT_TABLES) <= AID_SEASON_SYNC_TABLES  # a layer-1 clear always clears layer 2
+
+
+@pytest.mark.parametrize("sync_type", SEASON_CLEARING)
+def test_the_scope_predicate_clears_for_every_clearing_job(sync_type: str | None) -> None:
+    assert sync_changes_aid_season(sync_type)
+
+
+@pytest.mark.parametrize("sync_type", SEASON_KEEPING)
+def test_the_scope_predicate_keeps_for_every_unrelated_job(sync_type: str) -> None:
+    assert not sync_changes_aid_season(sync_type)
 
 
 @pytest.mark.asyncio
@@ -668,7 +745,7 @@ async def test_a_write_rebuilds_the_configured_season_in_the_background_and_a_re
 ) -> None:
     store = _store()
     store.gate = asyncio.Event()
-    monkeypatch.setattr(layer1, "_configured_year", AsyncMock(return_value=YEAR))
+    monkeypatch.setattr(layer1, "_synced_years", AsyncMock(return_value=[YEAR]))
     monkeypatch.setattr(layer1, "aid_sync_inputs", AsyncMock())
     monkeypatch.setattr(layer1, "_season_warmer", None)
     monkeypatch.setattr(layer2, "_warm_loop", None)

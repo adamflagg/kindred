@@ -11,6 +11,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, Query
 
 from api.constants.sync_job_writes import sync_writes_any
+from api.services.aid_season_cache import sync_changes_aid_season
 from api.services.aid_sync_inputs import AID_SYNC_INPUT_TABLES, schedule_aid_warm
 from api.services.cancellation_service import CancellationService
 from api.services.day1_service import Day1Service
@@ -645,15 +646,18 @@ def invalidate_server_caches(sync_type: str | None) -> dict[str, int]:
     `api/services/aid_sync_inputs.py`), is scoped the same way, against
     AID_SYNC_INPUT_TABLES: only a sync writes those tables, so this call is
     what keeps it current, and its TTL is only the fallback. Every clear is
-    followed by a background warm of the configured season.
+    followed by a background warm of every synced season.
 
     aid_season_cache, the priced Camperships season (layer 2,
-    `api/services/aid_season_cache.py`), is cleared on EVERY call, unscoped,
-    and a warm follows to rebuild it. Do not scope it like layer 1: the season
-    also reads sync-written tables layer 1 does not hold -- aid_postings,
-    aid_sources and aid_household_links (the `aid_postings` job) and sync_runs
-    (the ledger's freshness) -- and every sync job writes sync_runs anyway, so
-    scoping would save nothing and risks a season showing a stale ledger.
+    `api/services/aid_season_cache.py`), is scoped too, by
+    `sync_changes_aid_season`: wider than layer 1, because the season also
+    reads the ledger the `aid_postings` job writes (aid_postings, aid_sources,
+    aid_household_links) and dates it from the aid_postings and
+    financial_transactions rows of sync_runs -- every job writes its own
+    sync_runs row, but the season reads only those two services'. Layer 1's
+    tables are a subset, so a layer-1 clear always clears it. A warm of both
+    synced seasons follows its clear. Unscoped, the hourly bunk_assignments
+    run (and its N-1 pass from Oct 15) rebuilt both live seasons every hour.
 
     development_history_cache, Reports › Development's past-seasons attendance
     (`api/services/financial_aid_development_repository.py`), is scoped like
@@ -670,8 +674,9 @@ def invalidate_server_caches(sync_type: str | None) -> dict[str, int]:
         aid_inputs_cache.invalidate_all()
     if sync_writes_any(sync_type, DEVELOPMENT_HISTORY_TABLES):
         development_history_cache.invalidate_all()  # no warm: see the docstring
-    aid_season_cache.invalidate_all()  # unscoped: see the docstring
-    schedule_aid_warm()  # layer 2 always, and layer 1 when this sync cleared it
+    if sync_changes_aid_season(sync_type):
+        aid_season_cache.invalidate_all()
+        schedule_aid_warm()  # layer 2, and layer 1 when this sync cleared it too
     # graph_cache (kindred#2803): until now only scenario, solver and position
     # writes cleared it, so a sync rewriting attendees or bunk assignments left
     # the production graph stale for its whole 15-minute TTL. Scoped the same
