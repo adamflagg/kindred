@@ -126,11 +126,17 @@ export function JotformPanel() {
                 year={currentYear}
               />
               {isFamilyAdultSessionType(row.session_type) ? (
-                // No board to link to: the live queue (scenario '') sits here.
+                // No board to link to: the live queue (scenario '') sits here,
+                // without a Write-ins card, as nothing can be written in.
                 <Suspense
                   fallback={<p className="text-muted-foreground text-sm">Loading filings…</p>}
                 >
-                  <JotformQueue year={currentYear} sessionCmId={row.session_cm_id} scenario="" />
+                  <JotformQueue
+                    year={currentYear}
+                    sessionCmId={row.session_cm_id}
+                    scenario=""
+                    showWriteIns={false}
+                  />
                 </Suspense>
               ) : (
                 <RequestsLink

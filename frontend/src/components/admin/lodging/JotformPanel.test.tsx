@@ -51,16 +51,19 @@ vi.mock('./JotformQueue', () => ({
     year,
     sessionCmId,
     scenario,
+    showWriteIns,
   }: {
     year: number
     sessionCmId: number
     scenario: string
+    showWriteIns?: boolean
   }) => (
     <div
       data-testid="jotform-inline-queue"
       data-year={year}
       data-session={sessionCmId}
       data-scenario={scenario}
+      data-write-ins={String(showWriteIns ?? true)}
     />
   ),
 }))
@@ -488,6 +491,13 @@ describe('JotformPanel — Adult Reg sessions (kindred#3213 re-ruling 2026-10-14
     expect(queue).toHaveAttribute('data-year', '2027')
     expect(queue).toHaveAttribute('data-scenario', '')
     expect(screen.queryByTestId('jotform-requests-link')).not.toBeInTheDocument()
+  })
+
+  it("drops the always-empty Write-ins card from an Adult Reg session's queue", async () => {
+    // No weekend board, so nothing can be written in to link a filing to.
+    renderPanel('?session=1000010')
+    const queue = await screen.findByTestId('jotform-inline-queue')
+    expect(queue).toHaveAttribute('data-write-ins', 'false')
   })
 
   it("keeps an adult weekend's filings on its Requests tab", () => {
