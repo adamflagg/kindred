@@ -104,15 +104,14 @@ def _without_undone(events: Sequence[DecisionEvent]) -> list[DecisionEvent]:
     """The events minus every Posted or Accepted tick a later undo took back on the same round (owner, 2026-10-14: a
     tick made by mistake and undone is not this week's news, and a re-tick stands on its own). The undo events stay,
     so a reader that replays a round's standing (development's awards) sees the same history."""
-    ordered = sorted(events, key=lambda e: (e.created, e.id))
+    undos_later: set[tuple[str, int, str]] = set()  # (request, round, undo kind) seen after the current event
     undone: set[str] = set()
-    for i, event in enumerate(ordered):
+    for event in sorted(events, key=lambda e: (e.created, e.id), reverse=True):  # one pass, newest first
         undo = _UNDONE_BY.get(event.kind)
-        if undo and any(
-            later.kind == undo and later.request_id == event.request_id and later.round == event.round
-            for later in ordered[i + 1 :]
-        ):
+        if undo and (event.request_id, event.round, undo) in undos_later:
             undone.add(event.id)
+        elif event.kind in _UNDONE_BY.values():
+            undos_later.add((event.request_id, event.round, event.kind))
     return [e for e in events if e.id not in undone]
 
 
