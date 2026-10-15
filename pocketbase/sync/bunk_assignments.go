@@ -846,11 +846,20 @@ func (s *BunkAssignmentsSync) processAssignment(
 	// (warn-only, kindred#2292) rather than Stats.Errors, which would fail the whole
 	// run every hour. Session and bunk need no such split: they are validated
 	// against the very tables they resolve in.
-	personPBID, found := s.LookupRelation("persons", personCMID, "person")
-	if !found {
-		return fmt.Errorf("%w: no persons row for person cm_id %d in %d", errRejectedRecord, personCMID, year)
+	//
+	// The lookup is done here rather than through LookupRelation because that helper
+	// returns (_, false) for a failed query as well as for an empty result. Only the
+	// empty result is a rejection; a failed read is infrastructure and stays an error.
+	personRows, err := s.App.FindRecordsByFilter(
+		"persons", fmt.Sprintf("cm_id = %d && year = %d", personCMID, year), "", 1, 0)
+	if err != nil {
+		return fmt.Errorf("look up persons row for person cm_id %d in %d: %w", personCMID, year, err)
 	}
-	recordData["person"] = personPBID
+	if len(personRows) == 0 {
+		return fmt.Errorf("%w: no persons row for person cm_id %d in %d (session %d, bunk %d)",
+			errRejectedRecord, personCMID, year, sessionCMID, bunkCMID)
+	}
+	recordData["person"] = personRows[0].Id
 
 	relations := []RelationConfig{
 		{FieldName: "session", Collection: "camp_sessions", CMID: sessionCMID, Required: true},

@@ -1164,3 +1164,58 @@ func TestProcessAssignment_AttendeeWithoutPersonsRowIsRejectedNotAnError(t *test
 		t.Errorf("bunk_assignments rows = %d, want 0", len(rows))
 	}
 }
+
+// TestProcessAssignment_PersonLookupDatabaseErrorIsNotARejection pins the line
+// between the two ways the person lookup can come back empty. A missing row is
+// upstream data (Rejected, warn-only); a lookup that FAILED is an infrastructure
+// error and must stay a Stats.Errors failure, or a locked or broken database
+// during the persons read would report a green run.
+func TestProcessAssignment_PersonLookupDatabaseErrorIsNotARejection(t *testing.T) {
+	t.Parallel()
+
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+	setupBunkAssignmentGrainCollections(t, app)
+
+	const year = 2025
+	const personCMID = 9000003
+	const sessionCMID = 5301
+	const bunkCMID = 6301
+
+	s := &BunkAssignmentsSync{BaseSyncService: BaseSyncService{
+		App: app, Client: newParallelTestCampMinderClient(t, year), ProcessedKeys: make(map[string]bool),
+	}}
+	s.validPersonCMIDs = map[int]bool{personCMID: true}
+	s.validSessionCMIDs = map[int]bool{sessionCMID: true}
+	s.validBunkCMIDs = map[int]bool{bunkCMID: true}
+
+	existing, _, err := s.preloadExistingAssignments(year)
+	if err != nil {
+		t.Fatalf("preloadExistingAssignments: %v", err)
+	}
+
+	// Break the persons read itself: the query now fails instead of finding nothing.
+	if _, err = app.DB().NewQuery("PRAGMA foreign_keys = OFF").Execute(); err != nil {
+		t.Fatalf("pragma: %v", err)
+	}
+	if _, err = app.DB().NewQuery("DROP TABLE persons").Execute(); err != nil {
+		t.Fatalf("drop persons: %v", err)
+	}
+
+	err = s.processAssignment(map[string]any{
+		"PersonID":   float64(personCMID),
+		"BunkID":     float64(bunkCMID),
+		"BunkPlanID": float64(8003),
+		"SessionID":  float64(sessionCMID),
+		"ID":         float64(700002),
+	}, existing)
+	if err == nil {
+		t.Fatal("processAssignment returned nil, want an infrastructure error")
+	}
+	if errors.Is(err, errRejectedRecord) {
+		t.Errorf("a failed persons lookup was classed as a rejection: %v", err)
+	}
+}
