@@ -10,6 +10,7 @@ export type {
   AddAidCorrectionApiFinancialAidApplicationsYearHouseholdCmIdCorrectionsPostResponses,
   AgSessionAvailability,
   AidLikeOutside,
+  AidOnNoRequestOut,
   AidPostingLine,
   AidRulesInput,
   AidRulesOutput,

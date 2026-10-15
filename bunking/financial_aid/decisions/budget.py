@@ -120,6 +120,15 @@ class RoundCounts:
 
 
 @dataclass(frozen=True)
+class OffRequestAid:
+    """D170: CampMinder's live camp aid that matches no request (the 2026 loader's family x session rule,
+    api.services.financial_aid_campminder_money), and the households it is on. Shown, never counted."""
+
+    amount: Decimal = ZERO
+    families: int = 0
+
+
+@dataclass(frozen=True)
 class BelowTheLine:
     held: Count
     held_asked: Decimal
@@ -128,6 +137,8 @@ class BelowTheLine:
     outside_budget_posted: Decimal  # the posted part of outside_budget: dated on every read (3c)
     # Decision 13: the requests the outside grants offset ("offsetting awards (41 campers)").
     outside_grants_requests: Count = Count()
+    # D170: CampMinder aid on no request in this scope; None where the read didn't look (any season but 2026, a past date).
+    campminder_aid_off_requests: OffRequestAid | None = None
 
 
 @dataclass(frozen=True)
@@ -451,6 +462,7 @@ def _pool_budget(
     confirmed: bool,
     decision_types: tuple[DecisionTypeLine, ...],
     grant_requests: _Tally,
+    off_request_aid: OffRequestAid | None = None,
 ) -> PoolBudget:
     def amount(n: int, measure: str) -> Decimal:
         return _tally_of(tallies, pool, n, measure).amount
@@ -498,6 +510,7 @@ def _pool_budget(
             outside_budget=sum((amount(n, "outside_budget") for n in ROUNDS), ZERO),
             outside_budget_posted=sum((amount(n, "outside_budget_posted") for n in ROUNDS), ZERO),
             outside_grants_requests=grant_requests.count(),
+            campminder_aid_off_requests=off_request_aid,
         ),
         demand=ForwardDemand(
             round2_asks=demand.asks2.count(),
@@ -525,6 +538,7 @@ def season_budget(
     ledger: Mapping[str, Mapping[int, RoundLedger]] | None = None,
     off_list: Collection[tuple[str, int]] = frozenset(),
     costs: Mapping[str, Decimal] | None = None,
+    campminder_off_requests: Mapping[str, OffRequestAid] | None = None,
 ) -> SeasonBudget:
     """`outside_grants` is each request's counted outside grants (the grants register's shares,
     summed, a pays-after-camp-aid grant included, D143); `outside_grants_off_requests` the counted
@@ -534,7 +548,8 @@ def season_budget(
     (request, round)s needing an offer that the Requests grid's Needs an offer list leaves out (D162 C2: CampMinder
     already holds money for them): their money stays in Needs an offer, and they leave its counts. `costs` is each
     request's session cost, which caps its forward-demand asks at the D91 need (owner Q12); a request missing from it,
-    or None, counts its asks as typed."""
+    or None, counts its asks as typed. `campminder_off_requests` is D170's CampMinder aid on no request, by pool and TOTAL:
+    shown in each scope's below-the-line ($0 where a pool has none), never counted; None: not read."""
     allocated = allocations(rules) if rules is not None else {}
     shares = {key: pool.share_pct for key, pool in rules.budget.pools.items()} if rules is not None else {}
     labels = {key: pool.label for key, pool in rules.budget.pools.items()} if rules is not None else {}
@@ -583,6 +598,9 @@ def season_budget(
             confirmed=ledger is not None,
             decision_types=_type_lines(types, pool, rules),
             grant_requests=grant_requests.get(pool) or _Tally(),
+            off_request_aid=None
+            if campminder_off_requests is None
+            else campminder_off_requests.get(pool, OffRequestAid()),
         )
 
     pools = tuple(

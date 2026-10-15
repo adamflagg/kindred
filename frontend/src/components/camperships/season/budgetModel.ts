@@ -333,9 +333,17 @@ export interface BelowLine {
   readonly label: string
   readonly amount: number | null
   readonly count: ApiAidCount | null
+  /** Families alone, for a line on no request (D170), which has no requests to count; null on every other line. */
+  readonly families: number | null
   readonly note: string | null
   readonly href: string | null
+  /** What the line is, on its label and its Of it (D170); null where the label says it all. */
+  readonly title: string | null
 }
+
+/** D170's line, as the mock words it. 2026 only: the server sends it for no other season, and not on a past date. */
+export const NO_REQUEST_AID_TITLE =
+  "Camp aid CampMinder posted in 2026 that matches no request here: a family with no application, or a sheet row that named the wrong sibling. It is in CampMinder's ledger but on no decision, so it is not in Committed or Remaining. It appears for 2026 only (from 2027 every posting is ticked on its request)."
 
 /** The scope's pool (null: the total), or undefined when `?pool=` names no pool this season has. */
 export function scopePool(budget: ApiAidBudget, pool: string | null): ApiAidBudgetPool | undefined {
@@ -349,7 +357,7 @@ const postedNote = (posted: number | null): string | null =>
 
 /**
  * Shown, never counted in Remaining: outside grants (on requests, and on no request for the
- * total), one line per decision type outside the camp's budget (read 3; owner ⚠2: the type's
+ * total), CampMinder aid on no request (D170: 2026, the scope's own, when the read sends it), one line per decision type outside the camp's budget (read 3; owner ⚠2: the type's
  * `amount`), and held requests, whose amount isn't known until they are resolved. A scope whose
  * read carries no outside-budget type line but still has outside money keeps one aggregate line;
  * never both.
@@ -369,8 +377,10 @@ export function belowTheLine(
       label: 'Outside grants on requests',
       amount: below.outside_grants,
       count: below.outside_grants_requests ?? null,
+      families: null,
       note: null,
       href: null,
+      title: null,
     },
   ]
   if (pool === null) {
@@ -379,8 +389,23 @@ export function belowTheLine(
       label: 'Outside grants on no request',
       amount: budget.outside_grants_off_requests,
       count: null,
+      families: null,
       note: null,
       href: null,
+      title: null,
+    })
+  }
+  const aid = below.campminder_aid_off_requests
+  if (aid != null) {
+    lines.push({
+      key: 'campminder_off_requests',
+      label: 'CampMinder aid on no request',
+      amount: aid.amount,
+      count: null,
+      families: aid.families,
+      note: 'posted in CampMinder, on no request',
+      href: null,
+      title: NO_REQUEST_AID_TITLE,
     })
   }
   const outsideTypes = (scope.decision_types ?? []).filter((t) => !t.counts_toward_budget)
@@ -391,8 +416,10 @@ export function belowTheLine(
         label: type.label,
         amount: type.amount,
         count: type.requests,
+        families: null,
         note: postedNote(type.posted),
         href: null,
+        title: null,
       })
     }
   } else if (below.outside_budget !== null && toCents(below.outside_budget) !== 0) {
@@ -401,8 +428,10 @@ export function belowTheLine(
       label: OUTSIDE_AGGREGATE_LABEL,
       amount: below.outside_budget,
       count: null,
+      families: null,
       note: postedNote(below.outside_budget_posted),
       href: null,
+      title: null,
     })
   }
   lines.push({
@@ -410,6 +439,8 @@ export function belowTheLine(
     label: 'Held requests',
     amount: null,
     count: below.held,
+    families: null,
+    title: null,
     note: 'amount unknown until resolved',
     href:
       holds(below.held) && pool !== NO_POOL && opensQueueViews(view)

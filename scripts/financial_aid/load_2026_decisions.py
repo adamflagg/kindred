@@ -78,9 +78,9 @@ import jwt
 import requests
 from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError, model_validator
 
+from api.services.financial_aid_campminder_money import Group, campminder_money
 from api.services.financial_aid_decisions_repository import FinancialAidDecisionsRepository
 from api.services.financial_aid_intake_types import STATUS_ACTIVE, STATUS_UNMATCHED
-from api.services.financial_aid_ledger_service import family_household_set
 from api.services.financial_aid_reconciliation import CampLine
 from api.services.financial_aid_repository import FinancialAidRepository
 from api.services.financial_aid_rules_service import PRICING_SECTIONS, AidRulesRepository, FinancialAidRulesService
@@ -359,67 +359,8 @@ class LoadPlan:
 # --- CampMinder's money per request -----------------------------------------------------------------------------------
 
 
-Group = tuple[int, int]  # (household CampMinder id, session CampMinder id): the family x session (owner, 10-07)
-
-
 def _group(request: LoadRequest) -> Group:
     return (request.household_cm_id, request.session_cm_id)
-
-
-def _line_group(
-    line: CampLine, requests: Sequence[LoadRequest], linked: Collection[int] = ()
-) -> tuple[Group | None, str]:
-    """The family x session a live camp-aid line is for, from its own household's requests: Go's attributed session,
-    else the session of the attributed camper's one request there, else the household's one session. ("", group) when
-    found; else why not: "no_request" (a session the household asked no aid for) or "unplaced" (it can't be told).
-
-    CampMinder sometimes posts a family's aid under another of its household ids (aid_household_links, D26). Only when
-    the line's own household has no request that could take it are the households `linked` to it read the same way,
-    and the line then joins the one linked household's family x session that can; the household's own requests always
-    come first, so a link never moves money off them."""
-    session, person = line.attributed_session_cm_id, line.attributed_person_cm_id
-
-    def takers(households: Collection[int]) -> set[Group]:
-        return {
-            (r.household_cm_id, r.session_cm_id)
-            for r in requests
-            if r.household_cm_id in households
-            and r.session_cm_id
-            and (r.session_cm_id == session if session else not person or r.person_cm_id in (person, 0))
-        }
-
-    found = takers({line.household_cm_id}) or takers(set(linked) - {line.household_cm_id})
-    if len(found) == 1:
-        return found.pop(), ""
-    if session:
-        return (line.household_cm_id, session), "no_request"
-    return None, "unplaced"
-
-
-def campminder_money(
-    lines: Iterable[CampLine], requests: Sequence[LoadRequest], links: Iterable[Any] = ()
-) -> tuple[dict[Group, Decimal], dict[Group, Decimal], dict[int, Decimal]]:
-    """CampMinder's net live camp aid per family x session that has an aid request; per family x session that has
-    none; and per household, what no family x session could take. `links` are the season's aid_household_links rows
-    (family_household_set reads them: an excluded row joins nothing)."""
-    links = list(links)
-    families: dict[int, list[int]] = {}
-    placed: dict[Group, Decimal] = defaultdict(lambda: ZERO)
-    no_request: dict[Group, Decimal] = defaultdict(lambda: ZERO)
-    unplaced: dict[int, Decimal] = defaultdict(lambda: ZERO)
-    for line in lines:
-        if not line.live():
-            continue
-        if line.household_cm_id not in families:
-            families[line.household_cm_id] = family_household_set(links, line.household_cm_id)
-        group, why = _line_group(line, requests, families[line.household_cm_id])
-        if group is None:
-            unplaced[line.household_cm_id] += line.amount
-        elif why:
-            no_request[group] += line.amount
-        else:
-            placed[group] += line.amount
-    return dict(placed), dict(no_request), dict(unplaced)
 
 
 Slot = tuple[str, int]  # (request id, round)

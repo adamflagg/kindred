@@ -50,6 +50,7 @@ from api.constants.collections import (
 )
 from api.schemas.financial_aid_decisions import (
     AcceptedIn,
+    AidOnNoRequestOut,
     AskIn,
     AsOfAxis,
     BelowTheLineOut,
@@ -97,12 +98,14 @@ from api.services.aid_build_reads import build_scoped_reads
 from api.services.aid_season_cache import AidSeasonCache
 from api.services.camp_calendar import CAMP_TZ
 from api.services.financial_aid_calc_inputs import (
+    ag_parent_of,
     calculator_inputs,
     effective_ask,
     priced_program,
     request_issues,
     to_application_inputs,
 )
+from api.services.financial_aid_campminder_money import aid_on_no_request
 from api.services.financial_aid_cancellations import (
     CANCEL_REASON_LABELS,
     TODO_CANCEL_REASON,
@@ -253,10 +256,11 @@ from bunking.financial_aid.decisions import (
     season_budget,
     with_holds,
 )
-from bunking.financial_aid.decisions.budget import outside_part
+from bunking.financial_aid.decisions.budget import OffRequestAid, outside_part
 from bunking.financial_aid.decisions.rounds import LOADED
 from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.money import ZERO, dollars
+from bunking.financial_aid.rules import resolve_program
 from bunking.financial_aid.rules.schema import AidRules, SectionName
 from bunking.pocketbase_batch import BatchError, BatchLimitError
 from bunking.session_order import session_order
@@ -265,6 +269,9 @@ if TYPE_CHECKING:  # the household page imports this module, so the labeler type
     from api.services.financial_aid_household_page import HouseholdLabeler
 
 _LIVE: Final = frozenset({STATUS_ACTIVE, STATUS_UNMATCHED})
+# D170 (owner, 2026-10-14): "CampMinder aid on no request" shows on Season for 2026 only, the season whose decisions were
+# loaded from the sheet and refreshed to match CampMinder (E2(a)); what still matches no request is that load's residue.
+CAMPMINDER_AID_ON_NO_REQUEST_YEARS: Final = frozenset({2026})
 _CLOSED_REVERSIBLE: Final = frozenset({STATUS_WITHDRAWN, STATUS_DUPLICATE})
 
 
@@ -345,6 +352,7 @@ class DecisionsStore(Protocol):
     async def fetch_camper_names(self, year: int, person_cm_ids: Collection[int]) -> dict[int, tuple[str, str]]: ...
     async def fetch_fa_contacts(self, year: int) -> list[FaContact]: ...
     async def fetch_camp_lines(self, year: int, *, recorded_times: bool = False) -> list[CampLine]: ...
+    async def fetch_household_links(self, year: int) -> list[Any]: ...
     async def fetch_line_placements(self, year: int) -> dict[int, Placement]: ...
     async def fetch_line_splits(self, year: int) -> dict[int, tuple[SplitPart, ...]]: ...
     async def fetch_changed_since(self, year: int, floor: datetime, *, persons: bool) -> SinceRecords: ...
@@ -966,6 +974,7 @@ def _pool_out(pool: PoolBudget) -> PoolBudgetOut:
             outside_budget=money(pool.below.outside_budget),
             outside_budget_posted=money(pool.below.outside_budget_posted),
             outside_grants_requests=_count(pool.below.outside_grants_requests),
+            campminder_aid_off_requests=_off_request_aid(pool.below.campminder_aid_off_requests),
         ),
         demand=ForwardDemandOut(
             round2_asks=_count(pool.demand.round2_asks),
@@ -991,6 +1000,10 @@ def _pool_out(pool: PoolBudget) -> PoolBudgetOut:
             for t in pool.decision_types
         ],
     )
+
+
+def _off_request_aid(aid: OffRequestAid | None) -> AidOnNoRequestOut | None:
+    return None if aid is None else AidOnNoRequestOut(amount=money(aid.amount), families=aid.families)
 
 
 def budget_out(year: int, rules: RulesVersion | None, budget: SeasonBudget) -> BudgetResponse:
@@ -1244,6 +1257,20 @@ def _posted_before_request(
     if not ids:
         return []
     return [NotRebuiltOut(figure="posted_before_request", reason=PAST_DATE_GAPS["posted_before_request"], requests=ids)]
+
+
+def _session_pools(sessions: Mapping[int, SessionRow], rules: AidRules | None) -> dict[int, str]:
+    """Each session's budget pool under the rules (resolve_program, an AG or Adult Reg session through its parent, as
+    pricing reads it); a session no program claims, or a program in no pool, is absent (the caller's No pool)."""
+    if rules is None:
+        return {}
+    out: dict[int, str] = {}
+    for cm_id, session in sessions.items():
+        key = resolve_program(rules, cm_id, session.session_type, ag_parent=ag_parent_of(session, sessions))
+        program = rules.programs.get(key) if key is not None else None
+        if program is not None and program.budget_pool:
+            out[cm_id] = program.budget_pool
+    return out
 
 
 def _home(
@@ -2266,7 +2293,25 @@ class FinancialAidDecisionsService:
         day = self._past_day(as_of)
         return await self.season(year) if day is None else await self.past_season(year, day, axis)
 
-    def _budget(self, season: Season, *, confirmed: bool = False) -> SeasonBudget:
+    async def _aid_on_no_request(self, season: Season) -> dict[str, OffRequestAid] | None:
+        """D170: the live season's CampMinder aid on no request, for the seasons the line is shown for; None elsewhere
+        and on a past date (a past read loads no live ledger). By the 2026 loader's own family x session rule, over
+        every request of the season, whatever its status, and the season's household links."""
+        if season.as_of is not None or season.year not in CAMPMINDER_AID_ON_NO_REQUEST_YEARS:
+            return None
+        links = await self._store.fetch_household_links(season.year)
+        document = season.rules.document if season.rules is not None else None
+        return aid_on_no_request(
+            season.camp_lines, list(season.requests.values()), links, _session_pools(season.sessions, document).get
+        )
+
+    def _budget(
+        self,
+        season: Season,
+        *,
+        confirmed: bool = False,
+        campminder_off_requests: Mapping[str, OffRequestAid] | None = None,
+    ) -> SeasonBudget:
         # The register's money, not the calculator's inputs: a pays-after-camp-aid grant (D143) never
         # reaches the calculator but is still outside money below the line (D125).
         by_request = outside_grants_by_request(season.register)
@@ -2289,6 +2334,7 @@ class FinancialAidDecisionsService:
             off_list=season.in_campminder(),  # C2: empty unless the read ran with_unticked (budget() does)
             # Q12 (2026-10-10): forward demand's asks count at the D91 need cap, as Statistics' do (#3122).
             costs={rid: cost for rid, p in season.priced.items() if (cost := session_cost(p, document)) is not None},
+            campminder_off_requests=campminder_off_requests,
         )
 
     def budget_of(self, season: Season) -> SeasonBudget:
@@ -2546,7 +2592,8 @@ class FinancialAidDecisionsService:
         # C2 (D162, owner 10-03): Needs an offer's counts are the grid's list, so the read walks the ledger as the grid
         # does (a past read and a season before the first ticked one are returned unchanged).
         season = await self.with_unticked(await self._season_for(year, as_of, as_of_axis))
-        out = budget_out(year, season.rules, self._budget(season, confirmed=True))
+        off = await self._aid_on_no_request(season)
+        out = budget_out(year, season.rules, self._budget(season, confirmed=True, campminder_off_requests=off))
         return out if season.as_of is None else past_budget(out, season)
 
     async def remaining(

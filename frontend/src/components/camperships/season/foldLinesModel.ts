@@ -70,10 +70,13 @@ export function belowSummary(budget: ApiAidBudget, pool: string | null): string 
             : `${String(funds.length)} named outside funds ${fundsMoney}`,
         ]
   const held = scope.below.held?.requests ?? 0
+  // D170: named last, as the mock names it, wherever the read sends it (2026's live read).
+  const aid = scope.below.campminder_aid_off_requests
   return [
     `outside grants ${formatMoney(grants)}`,
     ...outside,
     `${String(held)} held ${held === 1 ? 'request' : 'requests'}`,
+    ...(aid == null ? [] : [`CampMinder aid on no request ${formatMoney(aid.amount)}`]),
   ].join(' · ')
 }
 
