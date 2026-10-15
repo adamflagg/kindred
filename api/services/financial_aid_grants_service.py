@@ -8,8 +8,9 @@ actor is the real signed-in person (AuthUser.email).
 
 The grantor directory is global, like aid_sources (Decision 7); its writes are logged under the
 current season with entity_id = the grantor key. Its writes are financial_aid.grantors (owner ruling
-2026-10-01). A grantor is RETIRED, never deleted: only once no description maps to it and no open grant
-names it; it is then hidden from pickers (list_grantors) and kept for history (every other read).
+2026-10-01). A grantor is RETIRED, never deleted: only once no open grant names it (its CampMinder
+descriptions stay mapped to it, owner ruling 2026-10-14); it is then hidden from pickers (list_grantors) and
+kept for history (every other read).
 """
 
 from __future__ import annotations
