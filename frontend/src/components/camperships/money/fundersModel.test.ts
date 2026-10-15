@@ -78,21 +78,31 @@ describe('buildFunders: grouping and order', () => {
     expect(head(shown, 'funder:grantor_a').retired).toBe(false)
   })
 
-  it('sends a description whose funder is hidden or unknown to No funder yet', () => {
-    const toRetired: ApiAidSourceRow = { ...REG_GRANTOR_A_GRANT, grantor_key: 'grantor_f' }
+  it('sends only a description with no funder, or an unknown one, to No funder yet', () => {
     const toUnknown: ApiAidSourceRow = { ...GRANTOR_C_PROGRAM, grantor_key: 'grantor_zz' }
-    const sources = [REG_CAMP_SUMMER, toRetired, toUnknown]
+    const noKey: ApiAidSourceRow = { ...REG_GRANTOR_E_NEW, grantor_key: '' }
+    const { rows, counts } = buildFunders({
+      sources: [REG_CAMP_SUMMER, toUnknown, noKey],
+      grantors: GRANTORS_ALL.grantors,
+      show: 'all',
+      showRetired: false,
+    })
+    expect(head(rows, 'group:none').descriptions.map((d) => d.id)).toEqual([toUnknown.id, noKey.id])
+    expect(counts.noFunder).toBe(2)
+  })
+
+  it("keeps a retired funder's descriptions with it: hidden with it, never counted as No funder yet", () => {
+    const toRetired: ApiAidSourceRow = { ...REG_GRANTOR_A_GRANT, grantor_key: 'grantor_f' }
+    const sources = [REG_CAMP_SUMMER, toRetired]
     const hidden = buildFunders({
       sources,
       grantors: GRANTORS_ALL.grantors,
       show: 'all',
       showRetired: false,
     })
-    expect(head(hidden.rows, 'group:none').descriptions.map((d) => d.id)).toEqual([
-      toRetired.id,
-      toUnknown.id,
-    ])
-    // Shown, the retired funder holds its own description again.
+    expect(ids(hidden.rows)).not.toContain(toRetired.id)
+    expect(ids(hidden.rows)).not.toContain('group:none')
+    expect(hidden.counts.noFunder).toBe(0)
     const shown = buildFunders({
       sources,
       grantors: GRANTORS_ALL.grantors,
@@ -102,6 +112,32 @@ describe('buildFunders: grouping and order', () => {
     expect(head(shown.rows, 'funder:grantor_f').descriptions.map((d) => d.id)).toEqual([
       toRetired.id,
     ])
+    expect(shown.counts.noFunder).toBe(0)
+  })
+
+  it('still shows a retired funder under Needs a group when a description of it needs one', () => {
+    const needs: ApiAidSourceRow = {
+      ...REG_GRANTOR_A_GRANT,
+      grantor_key: 'grantor_f',
+      needs_group: true,
+    }
+    const quiet: ApiAidSourceRow = {
+      ...GRANTOR_C_PROGRAM,
+      grantor_key: 'grantor_f',
+      needs_group: false,
+    }
+    const { rows, counts } = buildFunders({
+      sources: [needs, quiet],
+      grantors: GRANTORS_ALL.grantors,
+      show: 'needs-group',
+      showRetired: false,
+    })
+    expect(ids(rows)).toEqual(['funder:grantor_f', needs.id])
+    expect(head(rows, 'funder:grantor_f').retired).toBe(true)
+    expect(ids(rows)).not.toContain('group:none')
+    // The retired funder is still not one of the visible funders.
+    expect(counts.funders).toBe(4)
+    expect(counts.noFunder).toBe(0)
   })
 
   it('leaves out an empty Camp or No funder yet group', () => {

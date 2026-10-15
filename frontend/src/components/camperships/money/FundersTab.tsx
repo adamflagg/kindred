@@ -184,9 +184,13 @@ export function FundersTab({ view }: { view: AidView }) {
   )
   const grantorList = grantors.data?.grantors
   const sourceList = sources.data?.sources
-  // A link that names a retired funder shows it, whether or not retired ones are asked for.
-  const opensRetired =
-    funderParam !== null && (grantorList ?? []).some((g) => g.key === funderParam && isRetired(g))
+  // A link that names a retired funder, or one of its descriptions (a retired funder keeps them, owner ruling
+  // 2026-10-14: its panel's links and Today's Needs a group), shows it, whether or not retired ones are asked for.
+  const rowFunder =
+    rowParam === null ? null : (sourceList ?? []).find((s) => s.id === rowParam)?.grantor_key
+  const opensRetired = (grantorList ?? []).some(
+    (g) => (g.key === funderParam || g.key === rowFunder) && isRetired(g)
+  )
   const showRetired = params.get('retired') === 'all' || opensRetired
   const built = useMemo(
     () =>

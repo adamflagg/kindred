@@ -12,7 +12,12 @@ import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 
 import type { ApiAidFundingSources, ApiAidGrantors, ApiAidSources } from '../../../types/api-types'
-import { GRANTOR_A, GRANTOR_K, GRANTORS_ALL } from '../grants/grantorDirectoryFixtures'
+import {
+  GRANTOR_A,
+  GRANTOR_F_RETIRED,
+  GRANTOR_K,
+  GRANTORS_ALL,
+} from '../grants/grantorDirectoryFixtures'
 import { FundersTab } from './FundersTab'
 import { RULES_2027 } from './ledgerFixtures'
 import {
@@ -432,6 +437,52 @@ describe('links in', () => {
     expect(within(retired).getByRole('button', { name: 'Unretire…' })).toBeInTheDocument()
   })
 
+  /** Owner ruling 2026-10-14: a retired funder keeps its descriptions, so a link can name one of them. */
+  const retiredKeepsGrantorAGrant = () => {
+    const [description] = GRANTOR_A.descriptions
+    sourceReads = [
+      {
+        ...SOURCES_2027,
+        sources: SOURCES_2027.sources.map((s) =>
+          s.id === REG_GRANTOR_A_GRANT.id
+            ? { ...s, grantor_key: GRANTOR_F_RETIRED.key, grantor_name: GRANTOR_F_RETIRED.name }
+            : s
+        ),
+      },
+    ]
+    grantorReads = [
+      {
+        grantors: GRANTORS_ALL.grantors.map((g) =>
+          g.key === GRANTOR_A.key
+            ? { ...g, descriptions: [] }
+            : g.key === GRANTOR_F_RETIRED.key && description !== undefined
+              ? { ...g, descriptions: [description] }
+              : g
+        ),
+      },
+    ]
+  }
+
+  it("opens a retired funder's description from ?row= even while retired ones are hidden (Today's Needs a group)", async () => {
+    retiredKeepsGrantorAGrant()
+    renderTab(`/aid/money/funders?row=${REG_GRANTOR_A_GRANT.id}`)
+    await waitFor(() => expect(document.querySelector('[data-panel="source"]')).not.toBeNull())
+    expect(rowByKey(REG_GRANTOR_A_GRANT.id)).toHaveAttribute('data-highlighted', 'true')
+    expect(rowByKey(`funder:${GRANTOR_F_RETIRED.key}`)).toBeInTheDocument()
+  })
+
+  it("opens a description from a retired funder's panel link", async () => {
+    retiredKeepsGrantorAGrant()
+    renderTab(`/aid/money/funders?funder=${GRANTOR_F_RETIRED.key}`)
+    const retired = await screen.findByTestId('grantor-panel')
+    await userEvent.click(within(retired).getByRole('link', { name: 'Grantor A grant ›' }))
+    expect(screen.getByTestId('where')).toHaveTextContent(
+      `?row=${REG_GRANTOR_A_GRANT.id}&year=2027`
+    )
+    await waitFor(() => expect(document.querySelector('[data-panel="source"]')).not.toBeNull())
+    expect(rowByKey(REG_GRANTOR_A_GRANT.id)).toHaveAttribute('data-highlighted', 'true')
+  })
+
   it("keeps the table's other URL params and swaps a row for a funder when one is opened", async () => {
     renderTab('/aid/money/funders?row=srcgrantora0003&show=needs-group&year=2027')
     await screen.findByText('Grantor C full-ride program')
@@ -799,13 +850,18 @@ describe('finance (view, rules, grantors)', () => {
       await waitFor(() => expect(writes()).toHaveLength(1))
     })
 
-    it('keeps Retire… off while a description maps to the funder, and says why', async () => {
+    // Owner ruling 2026-10-14: "You don't retire the individual fund. You retire the funder." A funder's own
+    // CampMinder descriptions no longer hold Retire… off (this replaces the 2026-10-01 test that pinned the block);
+    // only an open grant does, and the server says so.
+    it('offers Retire… on a funder its descriptions map to, and says they stay with it', async () => {
       renderTab('/aid/money/funders?funder=grantor_a')
       const panelA = await screen.findByTestId('grantor-panel')
-      expect(within(panelA).getByRole('button', { name: 'Retire…' })).toBeDisabled()
+      expect(within(panelA).queryByText(/Map (it|them) to another funder first/)).toBeNull()
+      await userEvent.click(within(panelA).getByRole('button', { name: 'Retire…' }))
+      expect(within(panelA).getByText(`Retire ${GRANTOR_A.name}`)).toBeInTheDocument()
       expect(
         within(panelA).getByText(
-          '1 CampMinder description still maps to it. Map it to another funder first.'
+          'Hidden from pickers from now; its descriptions stay mapped, for history. Allowed only while no open grant names it.'
         )
       ).toBeInTheDocument()
     })
@@ -1025,7 +1081,8 @@ describe("a description's funder (grantors, no rules)", () => {
         ),
       },
     ]
-    renderTab()
+    // The description is a retired funder's, so it shows with it: Show retired on.
+    renderTab('/aid/money/funders?retired=all')
     await openRow('Grantor A grant')
     await userEvent.click(within(panel('edit')).getByRole('button', { name: 'Change the Funder…' }))
     const field = await screen.findByTestId('grantor-field')

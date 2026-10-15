@@ -1021,8 +1021,9 @@ async def save_grantor(key: _GrantorKeyPath, body: GrantorSave, user: AuthUser =
 
 @router.post("/grantors/{key}/retire", response_model=GrantorOut)
 async def retire_grantor(key: _GrantorKeyPath, body: GrantorRetireIn, user: AuthUser = _GRANTORS) -> GrantorOut:
-    """409 while a description maps to it or an open grant names it (the detail counts each), or when it is
-    already retired; nothing is written or logged then."""
+    """409 while an open grant names it (the detail counts them; `descriptions` stays in it, always 0), or when it
+    is already retired; nothing is written or logged then. Its CampMinder descriptions don't block it and stay
+    mapped to it (owner ruling 2026-10-14, superseding the description half of 2026-10-01)."""
     try:
         return await _grants().retire_grantor(key, body, user.email)
     except FinancialAidError as exc:

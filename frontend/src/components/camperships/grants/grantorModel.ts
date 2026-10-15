@@ -147,19 +147,6 @@ export const paysAfterCell = (g: ApiAidGrantor) =>
 
 export const isRetired = (g: ApiAidGrantor) => g.retired_at !== ''
 
-/**
- * Why Retire… is off, from what the read knows: a mapped description (the server refuses it, 409,
- * `financial_aid_grants_service.py` retire_grantor). Open commitments in any season also block it, but
- * the read doesn't count them, so for those the button stays on and the server's sentence answers.
- */
-export function retireBlocked(g: ApiAidGrantor): string | null {
-  const n = g.descriptions.length
-  if (n === 0) return null
-  return n === 1
-    ? '1 CampMinder description still maps to it. Map it to another funder first.'
-    : `${String(n)} CampMinder descriptions still map to it. Map them to another funder first.`
-}
-
 /** The season's grant lines and their net (GET /grantors?year=); null when the read has no season. */
 export const seasonCount = (g: ApiAidGrantor): number | null => g.season?.count ?? null
 /** "—" (null) when no line names the grantor this season; "$0" stays a real net of zero. */

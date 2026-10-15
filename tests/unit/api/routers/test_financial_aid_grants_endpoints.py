@@ -267,17 +267,17 @@ def test_a_retire_or_unretire_needs_a_reason(action: str, reason: str) -> None:
 
 
 def test_a_grantor_still_in_use_is_a_409_that_says_what_to_fix() -> None:
+    # Owner ruling 2026-10-14: only open grants block a retire. The detail keeps its `descriptions` key (always 0)
+    # so its shape doesn't change.
     service = _stub()
-    service.retire_grantor = AsyncMock(
-        side_effect=GrantorInUseError("Regional Fund", descriptions=2, grants=1),
-    )
+    service.retire_grantor = AsyncMock(side_effect=GrantorInUseError("Regional Fund", grants=1))
     response = _client().post("/api/financial-aid/grantors/regional_fund/retire", json=RETIRE_BODY)
     assert response.status_code == 409
     detail = response.json()["detail"]
-    assert detail["descriptions"] == 2
+    assert detail["descriptions"] == 0
     assert detail["grants"] == 1
-    assert "2 CampMinder descriptions" in detail["message"]
     assert "1 open grant" in detail["message"]
+    assert "CampMinder description" not in detail["message"]
 
 
 @pytest.mark.parametrize("action", ["retire", "unretire"])

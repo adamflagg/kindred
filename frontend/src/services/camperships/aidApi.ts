@@ -1308,7 +1308,7 @@ export function saveAidGrantor(
   )
 }
 
-/** Retire a grantor, with a reason. 409 while a description maps to it or an open grant names it. */
+/** Retire a grantor, with a reason. 409 while an open grant names it; its descriptions stay mapped to it. */
 export function retireAidGrantor(
   fetchWithAuth: FetchWithAuth,
   key: string,
