@@ -266,3 +266,36 @@ describe('TrendsOverview — no-coverage years render em-dash, not fabricated ze
     expect(cells.at(-1)).toBe('4.5%')
   })
 })
+
+describe('TrendsOverview — First Summer Year earliest bucket (#3207 36b)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockMetricsSession.activeSessionTypes = ['main', 'embedded']
+  })
+
+  it('labels the 2017 bucket "2017 or earlier"', () => {
+    const year = (y: number) => ({
+      year: y,
+      total: 10,
+      by_gender: [],
+      by_grade: [],
+      by_city: [],
+      by_school: [],
+      by_synagogue: [],
+      by_summer_years: [],
+      by_first_summer_year: [
+        { first_summer_year: 2017, count: 4 },
+        { first_summer_year: 2019, count: 6 },
+      ],
+    })
+    vi.mocked(useRetentionTrends).mockReturnValue({
+      ...mockRetentionTrends,
+      data: { ...mockRetentionTrends.data, enrollment_by_year: [year(2025), year(2026)] },
+    } as unknown as ReturnType<typeof useRetentionTrends>)
+
+    renderWithClient()
+
+    expect(screen.getAllByText('2017 or earlier').length).toBeGreaterThan(0)
+    expect(screen.queryByText(/^2017$/)).toBeNull()
+  })
+})

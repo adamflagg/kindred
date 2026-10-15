@@ -18,6 +18,7 @@ import type {
   SessionFlowItem,
   RetentionRateBarItem,
 } from '../types/metrics'
+import { firstSummerYearLabel } from './metricsTransforms'
 import { parseSessionName } from './sessionUtils'
 
 export type RetentionSortBy = 'rate' | 'count' | 'name' | 'none'
@@ -160,7 +161,7 @@ export function firstSummerYearToBarData(
 ): RetentionRateBarItem[] {
   if (!data?.length) return []
   return data.map((d) => ({
-    name: d.first_summer_year.toString(),
+    name: firstSummerYearLabel(d.first_summer_year),
     retentionRate: d.retention_rate,
     baseCount: d.base_count,
     returnedCount: d.returned_count,

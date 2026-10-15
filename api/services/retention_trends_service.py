@@ -7,6 +7,7 @@ testable service that uses the MetricsRepository for data access.
 from __future__ import annotations
 
 import asyncio
+from collections import Counter
 from typing import TYPE_CHECKING, Any
 
 from api.schemas.metrics import (
@@ -25,7 +26,7 @@ from api.schemas.metrics import (
 )
 from api.utils.session_metrics import (
     SUMMER_TEEN_TYPES,
-    compute_summer_metrics,
+    compute_first_summer_years,
     fetch_summer_windows,
     filter_attendees_by_session,
     resolve_scope_ids,
@@ -39,6 +40,7 @@ from .extractors import (
     extract_grade,
     extract_school,
     extract_synagogue,
+    summers_at_camp_by_person,
 )
 
 if TYPE_CHECKING:
@@ -303,7 +305,7 @@ class RetentionTrendsService:
         Args:
             years: List of years.
             data_by_year: Data for each year.
-            enrollment_history: Optional enrollment history for summer metrics.
+            enrollment_history: Optional enrollment history, for First Summer Year.
             summer_windows: Each history year's summer window, so a teen-only
                 history still has the window for its teen-only years.
 
@@ -349,29 +351,21 @@ class RetentionTrendsService:
                 for s, st in sorted(((k, v) for k, v in synagogue_stats.items() if k), key=lambda x: -x[1].count)
             ]
 
-            # Summer years + first summer year (from enrollment history)
-            summer_years_breakdown: list[SummerYearsEnrollment] = []
-            first_summer_year_breakdown: list[FirstSummerYearEnrollment] = []
+            # Summers at Camp: each camper's Years At Camp in THIS year's persons rows
+            # (decision 36), so every column reads the season it is labelled with.
+            sy_counts = Counter(summers_at_camp_by_person(person_ids, persons).values())
+            summer_years_breakdown = [
+                SummerYearsEnrollment(summer_years=sy, count=c) for sy, c in sorted(sy_counts.items())
+            ]
 
+            # First Summer Year: a year, read from history up to this year (36b folds 2017 or earlier).
+            first_summer_year_breakdown: list[FirstSummerYearEnrollment] = []
             if enrollment_history:
-                # Filter history to records up to this year for scoping
                 history_up_to_year = [r for r in enrollment_history if getattr(r, "year", 0) <= year]
-                summer_years_by_person, first_year_by_person = compute_summer_metrics(
+                first_year_by_person = compute_first_summer_years(
                     history_up_to_year, person_ids, summer_windows=summer_windows
                 )
 
-                # Aggregate summer years
-                sy_counts: dict[int, int] = {}
-                for pid in person_ids:
-                    sy = summer_years_by_person.get(pid, 0)
-                    if sy > 0:
-                        sy_counts[sy] = sy_counts.get(sy, 0) + 1
-
-                summer_years_breakdown = [
-                    SummerYearsEnrollment(summer_years=sy, count=c) for sy, c in sorted(sy_counts.items())
-                ]
-
-                # Aggregate first summer year
                 fsy_counts: dict[int, int] = {}
                 for pid in person_ids:
                     fsy = first_year_by_person.get(pid)

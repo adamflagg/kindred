@@ -4727,7 +4727,7 @@ export type FirstSummerYearBreakdown = {
   /**
    * First Summer Year
    *
-   * Year camper first attended summer camp
+   * Year camper first attended summer camp, from history; 2017 means 2017 or earlier
    */
   first_summer_year: number
   /**
@@ -4753,7 +4753,7 @@ export type FirstSummerYearEnrollment = {
   /**
    * First Summer Year
    *
-   * First summer year
+   * First summer year; 2017 means 2017 or earlier
    */
   first_summer_year: number
   /**
@@ -13128,7 +13128,7 @@ export type RegistrationMetricsResponse = {
   /**
    * By Summer Years
    *
-   * Enrollment by summer years (calculated from attendees)
+   * Enrollment by Summers at Camp (CampMinder Years At Camp)
    */
   by_summer_years?: Array<SummerYearsBreakdown>
   /**
@@ -13928,7 +13928,7 @@ export type RetentionByFirstSummerYear = {
   /**
    * First Summer Year
    *
-   * Year camper first attended summer camp
+   * Year camper first attended summer camp, from history; 2017 means 2017 or earlier
    */
   first_summer_year: number
   /**
@@ -14167,16 +14167,16 @@ export type RetentionBySessionBunk = {
 /**
  * RetentionBySummerYears
  *
- * Retention metrics by number of summer enrollment years.
+ * Retention metrics by Summers at Camp: CampMinder's Years At Camp in the base season.
  *
- * Calculated from actual attendees table enrollment history,
- * not the potentially incorrect years_at_camp field in persons.
+ * Reads the base year's persons.years_at_camp (epic #3207 decision 36), the
+ * tenure a camper had in the summer they did or didn't return from.
  */
 export type RetentionBySummerYears = {
   /**
    * Summer Years
    *
-   * Number of summer years enrolled
+   * CampMinder Years At Camp in the base season (0 when none is recorded)
    */
   summer_years: number
   /**
@@ -14350,7 +14350,7 @@ export type RetentionMetricsResponse = {
   /**
    * By Summer Years
    *
-   * Retention by summer enrollment years (calculated from attendees)
+   * Retention by Summers at Camp (CampMinder Years At Camp, base season)
    */
   by_summer_years?: Array<RetentionBySummerYears>
   /**
@@ -17312,16 +17312,16 @@ export type SummaryResponse = {
 /**
  * SummerYearsBreakdown
  *
- * Breakdown by actual summer enrollment years.
+ * Breakdown by Summers at Camp: CampMinder's Years At Camp for the season.
  *
- * Calculated from attendees table enrollment history, not the potentially
- * incorrect years_at_camp field in persons.
+ * Reads persons.years_at_camp (epic #3207 decision 36). Attendance history
+ * starts in 2017, so it undercounts anyone who came before.
  */
 export type SummerYearsBreakdown = {
   /**
    * Summer Years
    *
-   * Number of summer years enrolled
+   * CampMinder Years At Camp (0 when none is recorded)
    */
   summer_years: number
   /**
@@ -17347,7 +17347,7 @@ export type SummerYearsEnrollment = {
   /**
    * Summer Years
    *
-   * Number of summer years
+   * CampMinder Years At Camp that year (0 when none is recorded)
    */
   summer_years: number
   /**

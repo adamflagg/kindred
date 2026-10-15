@@ -165,7 +165,7 @@ export default function RegistrationOverview() {
       setFilter({
         type: 'first_summer_year',
         value: filter.value,
-        label: `First Summer ${filter.value}`,
+        label: `First Summer ${filter.label}`,
       })
     },
     [setFilter]

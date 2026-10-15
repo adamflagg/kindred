@@ -34,6 +34,7 @@ def make_mock_person(
     normalized_school: str | None = None,
     school: str | None = None,
     normalized_congregation: str | None = None,
+    years_at_camp: int | None = None,
 ) -> MagicMock:
     """Create a mock person."""
     person = MagicMock()
@@ -45,6 +46,7 @@ def make_mock_person(
     person.normalized_school = normalized_school
     person.school = school
     person.normalized_congregation = normalized_congregation
+    person.years_at_camp = years_at_camp
     return person
 
 
@@ -711,15 +713,19 @@ class TestRetentionTrendsServiceEnrollmentBreakdowns:
 
     @pytest.mark.asyncio
     async def test_enrollment_by_year_has_summer_years_breakdown(self, mock_repository: MagicMock) -> None:
-        """Test that enrollment_by_year includes summers at camp breakdown."""
+        """enrollment_by_year's Summers at Camp is each camper's Years At Camp that year.
+
+        Pinned the history-based count before #3207 decision 36. The history below
+        still gives 3 / 1 / 2 summers for 2025; CampMinder says 9 / 1 / 2.
+        """
         from api.services.retention_trends_service import RetentionTrendsService
 
-        # 2025 campers: person 1 (3 years), person 2 (1 year), person 3 (2 years)
         attendees_2025 = [make_mock_attendee(i, 100) for i in range(1, 4)]
-        persons_2025 = {i: make_mock_person(i, "M") for i in range(1, 4)}
+        yac_2025 = {1: 9, 2: 1, 3: 2}
+        persons_2025 = {i: make_mock_person(i, "M", years_at_camp=yac_2025[i]) for i in range(1, 4)}
 
         attendees_2026 = [make_mock_attendee(i, 100) for i in range(1, 4)]
-        persons_2026 = {i: make_mock_person(i, "M") for i in range(1, 4)}
+        persons_2026 = {i: make_mock_person(i, "M", years_at_camp=yac_2025[i] + 1) for i in range(1, 4)}
 
         enrollment_history = [
             # Person 1: enrolled in 2023, 2024, 2025 (3 summers)
@@ -753,15 +759,9 @@ class TestRetentionTrendsServiceEnrollmentBreakdowns:
         service = RetentionTrendsService(mock_repository)
         result = await service.calculate_retention_trends(current_year=2026, num_years=1)
 
-        # For year 2025, summer_years should reflect history up to 2025
         year_2025 = next(e for e in result.enrollment_by_year if e.year == 2025)
-        assert len(year_2025.by_summer_years) > 0
-
         sy_dict = {s.summer_years: s.count for s in year_2025.by_summer_years}
-        # Person 1: 3 summers (2023,2024,2025), Person 2: 1 (2025), Person 3: 2 (2024,2025)
-        assert sy_dict.get(3) == 1  # person 1
-        assert sy_dict.get(1) == 1  # person 2
-        assert sy_dict.get(2) == 1  # person 3
+        assert sy_dict == {9: 1, 1: 1, 2: 1}
 
     @pytest.mark.asyncio
     async def test_enrollment_by_year_has_first_summer_year_breakdown(self, mock_repository: MagicMock) -> None:
@@ -848,12 +848,15 @@ class TestRetentionTrendsServiceEnrollmentBreakdowns:
         assert year.by_city[1].count == 2
 
     @pytest.mark.asyncio
-    async def test_empty_enrollment_history_gives_empty_summer_breakdowns(self, mock_repository: MagicMock) -> None:
-        """Test that empty enrollment history produces empty summer breakdowns."""
+    async def test_empty_enrollment_history_gives_empty_first_summer_year(self, mock_repository: MagicMock) -> None:
+        """No history leaves First Summer Year empty; Summers at Camp still reads Years At Camp.
+
+        Pinned both breakdowns empty before #3207 decision 36, when both came from history.
+        """
         from api.services.retention_trends_service import RetentionTrendsService
 
         attendees = [make_mock_attendee(1, 100)]
-        persons = {1: make_mock_person(1, "M")}
+        persons = {1: make_mock_person(1, "M", years_at_camp=4)}
 
         mock_repository.fetch_attendees = AsyncMock(return_value=attendees)
         mock_repository.fetch_persons = AsyncMock(return_value=persons)
@@ -864,19 +867,22 @@ class TestRetentionTrendsServiceEnrollmentBreakdowns:
         result = await service.calculate_retention_trends(current_year=2026, num_years=1)
 
         for enrollment in result.enrollment_by_year:
-            assert enrollment.by_summer_years == []
+            assert [(b.summer_years, b.count) for b in enrollment.by_summer_years] == [(4, 1)]
             assert enrollment.by_first_summer_year == []
 
     @pytest.mark.asyncio
     async def test_summer_years_scoped_to_year(self, mock_repository: MagicMock) -> None:
-        """Test that summer_years is scoped per year (not counting future years)."""
+        """Each year's Summers at Camp reads that year's persons row, not a later one.
+
+        Pinned history up to each year before #3207 decision 36; now it is the
+        year-scoped Years At Camp (5 in 2025, 6 in 2026), whatever history says.
+        """
         from api.services.retention_trends_service import RetentionTrendsService
 
-        # Person 1 enrolled in 2024, 2025, 2026
         attendees_2025 = [make_mock_attendee(1, 100)]
-        persons_2025 = {1: make_mock_person(1, "M")}
+        persons_2025 = {1: make_mock_person(1, "M", years_at_camp=5)}
         attendees_2026 = [make_mock_attendee(1, 100)]
-        persons_2026 = {1: make_mock_person(1, "M")}
+        persons_2026 = {1: make_mock_person(1, "M", years_at_camp=6)}
 
         enrollment_history = [
             make_enrollment_record(1, 2024),
@@ -898,15 +904,11 @@ class TestRetentionTrendsServiceEnrollmentBreakdowns:
         service = RetentionTrendsService(mock_repository)
         result = await service.calculate_retention_trends(current_year=2026, num_years=1)
 
-        # For year 2025: person 1 has 2 summers (2024, 2025) — not 3
         year_2025 = next(e for e in result.enrollment_by_year if e.year == 2025)
-        sy_dict = {s.summer_years: s.count for s in year_2025.by_summer_years}
-        assert sy_dict.get(2) == 1  # 2 summers up to 2025
+        assert {s.summer_years: s.count for s in year_2025.by_summer_years} == {5: 1}
 
-        # For year 2026: person 1 has 3 summers (2024, 2025, 2026)
         year_2026 = next(e for e in result.enrollment_by_year if e.year == 2026)
-        sy_dict_2026 = {s.summer_years: s.count for s in year_2026.by_summer_years}
-        assert sy_dict_2026.get(3) == 1  # 3 summers up to 2026
+        assert {s.summer_years: s.count for s in year_2026.by_summer_years} == {6: 1}
 
 
 # ============================================================================
@@ -1009,8 +1011,12 @@ class TestRetentionTrendsSessionResolver:
         assert results[:3] == results[3:]
 
     @pytest.mark.asyncio
-    async def test_teen_only_cohort_counts_every_summer(self, mock_repository: MagicMock) -> None:
-        """A teen in TLI in 2025 and 2026 has two summers, though the history has no main rows."""
+    async def test_teen_only_cohort_has_its_first_summer(self, mock_repository: MagicMock) -> None:
+        """A teen in TLI in 2025 and 2026 first came in 2025, though the history has no main rows.
+
+        Pinned the history-based "two summers" before #3207 decision 36; Summers at
+        Camp is now Years At Camp, so the #3208 row 8 guard moves to First Summer Year.
+        """
         from api.services.retention_trends_service import RetentionTrendsService
 
         main = {y: _dated_session(10 + y, "main", "Session 1", f"{y}-06-20", f"{y}-08-10") for y in (2025, 2026)}
@@ -1029,4 +1035,4 @@ class TestRetentionTrendsSessionResolver:
         )
 
         year_2026 = next(e for e in result.enrollment_by_year if e.year == 2026)
-        assert {b.summer_years: b.count for b in year_2026.by_summer_years} == {2: 1}
+        assert {b.first_summer_year: b.count for b in year_2026.by_first_summer_year} == {2025: 1}

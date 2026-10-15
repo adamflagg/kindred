@@ -29,7 +29,7 @@ from api.utils.session_metrics import (
     BUNK_SESSION_TYPES,
     DISPLAY_SESSION_TYPES,
     SUMMER_TEEN_TYPES,
-    compute_summer_metrics,
+    compute_first_summer_years,
     fetch_summer_windows,
     get_person_from_expand,
     get_session_from_expand,
@@ -47,6 +47,7 @@ from .extractors import (
     extract_synagogue,
     extract_years_at_camp,
     is_aged_out,
+    summers_at_camp_by_person,
 )
 
 if TYPE_CHECKING:
@@ -270,16 +271,20 @@ class RetentionService:
             person_ids_base_unfiltered, returned_ids_unfiltered, bunk_assignments_base, sessions_base_all
         )
 
-        # Summer enrollment breakdowns (calculated from attendees history)
-        enrollment_history = await self.repo.fetch_summer_enrollment_history(person_ids_base, base_year)
-
-        history_years = {int(y) for r in enrollment_history if (y := getattr(r, "year", None))}
-        summer_windows = await fetch_summer_windows(self.repo, history_years)
-        summer_years_by_person, first_year_by_person = compute_summer_metrics(
-            enrollment_history, person_ids_base, summer_windows=summer_windows
+        # Retention by Summers at Camp: each camper's Years At Camp in the BASE season
+        # (decision 36). The band has always meant tenure as of the base summer, the
+        # summer they did or didn't return from, so the base year's persons rows key it.
+        by_summer_years = self._build_summer_years_breakdown(
+            person_ids_base, returned_ids, summers_at_camp_by_person(person_ids_base, persons_base)
         )
 
-        by_summer_years = self._build_summer_years_breakdown(person_ids_base, returned_ids, summer_years_by_person)
+        # First Summer Year: a year, read from history up to the base season (36b folds 2017 or earlier).
+        enrollment_history = await self.repo.fetch_summer_enrollment_history(person_ids_base, base_year)
+        history_years = {int(y) for r in enrollment_history if (y := getattr(r, "year", None))}
+        summer_windows = await fetch_summer_windows(self.repo, history_years)
+        first_year_by_person = compute_first_summer_years(
+            enrollment_history, person_ids_base, summer_windows=summer_windows
+        )
 
         by_first_summer_year = self._build_first_summer_year_breakdown(
             person_ids_base, returned_ids, first_year_by_person
@@ -878,19 +883,23 @@ class RetentionService:
         returned_ids: set[int],
         summer_years_by_person: dict[int, int],
     ) -> list[RetentionBySummerYears]:
-        """Build summer years breakdown.
+        """Build the Retention by Summers at Camp breakdown.
 
         Args:
             person_ids: Set of person IDs in base year.
             returned_ids: Set of person IDs who returned.
-            summer_years_by_person: Dict mapping person_id to summer years count.
+            summer_years_by_person: person_id -> base-season Years At Camp. A camper
+                with no persons row is absent and left out, as in every other
+                person-field breakdown.
 
         Returns:
             List of RetentionBySummerYears models.
         """
         stats: dict[int, dict[str, int]] = {}
         for pid in person_ids:
-            years_count = summer_years_by_person.get(pid, 0)
+            years_count = summer_years_by_person.get(pid)
+            if years_count is None:
+                continue
             if years_count not in stats:
                 stats[years_count] = {"base": 0, "returned": 0}
             stats[years_count]["base"] += 1

@@ -118,14 +118,27 @@ export function transformSummerYearsData(
   }))
 }
 
+/**
+ * Kindred's attendance history starts with the 2017 summer, so First Summer Year's
+ * earliest bucket holds everyone who first came in 2017 or before (the API folds
+ * any earlier year into it). Epic #3207 decision 36b names it that way.
+ */
+export const FIRST_HISTORY_SUMMER = 2017
+
+export function firstSummerYearLabel(year: number | string): string {
+  return Number(year) <= FIRST_HISTORY_SUMMER ? `${FIRST_HISTORY_SUMMER} or earlier` : String(year)
+}
+
 export function transformFirstSummerYearData(
   data: FirstSummerYearBreakdown[] | undefined
 ): ChartDataPoint[] {
   if (!data?.length) return []
   return data.map((y) => ({
-    name: y.first_summer_year.toString(),
+    name: firstSummerYearLabel(y.first_summer_year),
     value: y.count,
     percentage: y.percentage,
+    // The drill-down filters on the year, not on the label.
+    id: y.first_summer_year,
   }))
 }
 
@@ -199,7 +212,7 @@ export function transformRetentionFirstSummerYearData(
 ): ChartDataPoint[] {
   if (!data?.length) return []
   return data.map((y) => ({
-    name: y.first_summer_year.toString(),
+    name: firstSummerYearLabel(y.first_summer_year),
     value: y.returned_count,
     percentage: y.retention_rate * 100,
   }))

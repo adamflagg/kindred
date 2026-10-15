@@ -30,7 +30,7 @@ from api.utils.session_metrics import (
     DISPLAY_SESSION_TYPES,
     SESSION_LENGTH_ORDER,
     build_ag_parent_map,
-    compute_summer_metrics,
+    compute_first_summer_years,
     fetch_summer_windows,
     filter_attendees_by_session,
     find_ag_sessions_for_parent,
@@ -49,6 +49,7 @@ from .extractors import (
     extract_synagogue,
     extract_years_at_camp,
     is_new_camper,
+    summers_at_camp_by_person,
 )
 
 if TYPE_CHECKING:
@@ -191,14 +192,18 @@ class RegistrationService:
         # Gender by session length (stacked bar chart showing boys vs girls per length category)
         by_gender_by_session_length = self._compute_gender_by_session_length(combined_attendees, sessions, persons)
 
-        # Summer enrollment history metrics (uses shared utility)
+        # Summers at Camp: CampMinder's Years At Camp this season (decision 36).
+        by_summer_years = self._build_summer_years_breakdown(
+            summers_at_camp_by_person(enrolled_person_ids, persons), total_enrolled
+        )
+
+        # First Summer Year: a year, read from enrolled history (2017 or earlier folds, 36b).
         enrollment_history = await self.repo.fetch_summer_enrollment_history(enrolled_person_ids, year)
         history_years = {int(y) for r in enrollment_history if (y := getattr(r, "year", None))}
         summer_windows = await fetch_summer_windows(self.repo, history_years)
-        summer_years_by_person, first_year_by_person = compute_summer_metrics(
+        first_year_by_person = compute_first_summer_years(
             enrollment_history, enrolled_person_ids, summer_windows=summer_windows
         )
-        by_summer_years = self._build_summer_years_breakdown(summer_years_by_person, total_enrolled)
         by_first_summer_year = self._build_first_summer_year_breakdown(first_year_by_person, total_enrolled)
 
         return RegistrationMetricsResponse(
@@ -612,7 +617,7 @@ class RegistrationService:
     def _build_summer_years_breakdown(
         self, summer_years_by_person: dict[int, int], total: int
     ) -> list[SummerYearsBreakdown]:
-        """Build summer years breakdown from computed metrics."""
+        """Build the Summers at Camp breakdown from each camper's Years At Camp."""
         summer_years_stats: dict[int, int] = {}
         for years_count in summer_years_by_person.values():
             summer_years_stats[years_count] = summer_years_stats.get(years_count, 0) + 1
