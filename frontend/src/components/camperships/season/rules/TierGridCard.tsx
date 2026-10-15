@@ -253,6 +253,9 @@ export function TierGridTable({
   )
 }
 
+/** Edit… on the tier grid's other parts while one is edited: the card draws one editor at a time. */
+const GRID_BUSY = 'Save or cancel the tier grid edit first.'
+
 /**
  * The tier grid (spec §6.2 E.2; owner "Tier tables = (ii) ONE COMBINED GRID"): three stacked section headers, the
  * tiers' one line, then one grid of every tier-keyed figure. A Round 1 cell a `value_cannot_bind` warning names wears
@@ -267,6 +270,7 @@ export function TierGridCard({
   changesBySection,
   issuesBySection,
   canEdit,
+  editOff = null,
   onEdit,
   editing,
   label,
@@ -282,6 +286,8 @@ export function TierGridCard({
   changesBySection: Readonly<Partial<Record<GridPart, readonly ApiAidFieldChange[]>>>
   issuesBySection: Readonly<Partial<Record<GridPart, readonly ApiAidValidationIssue[]>>>
   canEdit: boolean
+  /** Why every part's Edit… is greyed for now (SectionCardHead); null: they work. */
+  editOff?: string | null
   onEdit: (part: GridPart) => void
   /** The open editor and the part it edits (Task 48's table editors, Task 49's tiers editor); null when none. */
   editing: { part: GridPart; node: ReactNode } | null
@@ -323,7 +329,9 @@ export function TierGridCard({
                   title={GRID_TITLES[part]}
                   status={status}
                   issues={issuesBySection[part] ?? []}
-                  canEdit={canEdit && editing === null}
+                  // The card holds one editor: the part being edited hides its Edit…, the others grey theirs.
+                  canEdit={canEdit && editing?.part !== part}
+                  editOff={editing !== null ? GRID_BUSY : editOff}
                   onEdit={() => onEdit(part)}
                   {...(part === 'award_tables' ? { list: roundOneList } : {})}
                 />

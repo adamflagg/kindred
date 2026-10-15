@@ -1,13 +1,23 @@
-/** The frozen fact (spec §6.2 B): what approving does, or where an edit goes. */
+/** What a hold says, on the lead line and on each control it greys (Edit…, Discard Draft…, Approve…). */
+export const HOLD_WORDS = {
+  edit: 'Save or cancel the edit first.',
+  approve: 'Approve or cancel first.',
+} as const
+
+/**
+ * The frozen fact (spec §6.2 B): what approving does, or where an edit goes. `nextVersion` is the number the server
+ * says a new version takes (the draft read's `next_version`): a discarded draft keeps its number, so after a discard
+ * it is past `draftVersion + 1` (owner 2026-10-14).
+ */
 export function frozenFact(
   show: 'draft' | 'approved',
   draftVersion: number,
-  approvedVersion: number | null
+  approvedVersion: number | null,
+  nextVersion: number = draftVersion + 1
 ): string {
   if (approvedVersion === null)
     return `nothing in effect yet · approving puts v${String(draftVersion)} in effect`
-  if (approvedVersion === draftVersion)
-    return `frozen · an edit starts v${String(draftVersion + 1)}`
+  if (approvedVersion === draftVersion) return `frozen · an edit starts v${String(nextVersion)}`
   return show === 'draft'
     ? `v${String(approvedVersion)} is frozen · approving puts v${String(draftVersion)} in effect`
     : `frozen · edits go to draft v${String(draftVersion)}`

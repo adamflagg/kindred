@@ -15166,6 +15166,10 @@ export type RulesDraftOut = {
    * Configured Year
    */
   configured_year?: number | null
+  /**
+   * Next Version
+   */
+  next_version?: number | null
 }
 
 /**

@@ -56,6 +56,8 @@ export interface ProgramsCostsCardProps {
   /** Both sections' issues; none on the registrar's read. */
   readonly issues: readonly ApiAidValidationIssue[]
   readonly canEdit: boolean
+  /** Why Edit… is greyed for now (SectionCardHead); null or absent: it works. */
+  readonly editOff?: string | null
   readonly onEdit: () => void
   readonly editor?: ReactNode
 }
@@ -376,6 +378,7 @@ export function ProgramsCostsCard(p: ProgramsCostsCardProps) {
         status={status}
         issues={p.issues}
         canEdit={p.canEdit && p.editor === undefined}
+        editOff={p.editOff ?? null}
         onEdit={p.onEdit}
         list={{
           shown: listed,

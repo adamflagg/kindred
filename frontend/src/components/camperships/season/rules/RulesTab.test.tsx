@@ -553,7 +553,8 @@ describe('Rules as chapters (spec §6)', () => {
     expect(screen.getByRole('button', { name: "Start 2028 from 2027's Rules" })).toBeInTheDocument()
   })
 
-  it('holds the lead line while the Approve panel is open: "Approve or cancel first.", the switch inert, no Edit…', async () => {
+  // Replaces "…the switch inert, no Edit…" (owner 2026-10-14): the cards keep Edit… in view, greyed, saying why.
+  it('holds the lead line while the Approve panel is open: "Approve or cancel first.", the switch inert, every Edit… greyed with that reason', async () => {
     granted = FINANCE
     renderAt('/aid/season/rules')
     expect(screen.getAllByRole('button', { name: 'Edit…' }).length).toBeGreaterThan(0)
@@ -563,7 +564,12 @@ describe('Rules as chapters (spec §6)', () => {
     const lead = screen.getByTestId('lead-switch')
     expect(within(lead).getByText('v3 in effect')).toBeInTheDocument()
     expect(within(lead).queryByRole('link')).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Edit…' })).toBeNull()
+    const edits = screen.getAllByRole('button', { name: 'Edit…' })
+    expect(edits.length).toBeGreaterThan(0)
+    for (const edit of edits) {
+      expect(edit).toBeDisabled()
+      expect(edit).toHaveAttribute('title', 'Approve or cancel first.')
+    }
   })
 
   it('a fully approved draft reads "frozen · an edit starts v5", and offers no Approve…', () => {
@@ -600,6 +606,44 @@ describe('Rules as chapters (spec §6)', () => {
 })
 
 /** rulesDraft() with its one draft section approved: v4 is in effect and nothing waits. */
+describe('the lead line after a discard (owner 2026-10-14)', () => {
+  it('names the version the server says an edit starts: v4 discarded, v3 in effect, so v5', () => {
+    granted = FINANCE
+    draft = {
+      data: { ...fullyApproved(), version: 3, approved_version: 3, next_version: 5 },
+      isLoading: false,
+      error: null,
+    }
+    renderAt('/aid/season/rules')
+    expect(screen.getByText('frozen · an edit starts v5')).toBeInTheDocument()
+    expect(screen.queryByText('frozen · an edit starts v4')).toBeNull()
+  })
+})
+
+describe('the chapter bar under the app header (owner 2026-10-14)', () => {
+  it('measures the app header and hands its height to the sticky bar, the chapters and the cards', () => {
+    const header = document.createElement('div')
+    header.setAttribute('data-app-chrome', '')
+    header.style.position = 'sticky'
+    header.getBoundingClientRect = () => ({ height: 65 }) as DOMRect
+    document.body.prepend(header)
+    try {
+      granted = FINANCE
+      renderAt('/aid/season/rules')
+      const bar = screen.getByTestId('chapter-bar')
+      const page = bar.parentElement as HTMLElement
+      expect(page.style.getPropertyValue('--app-chrome-h')).toBe('65px')
+      // A jump lands a chapter or a card under the header and the bar, not behind them.
+      expect(document.getElementById('chap-1')).toHaveClass(
+        'scroll-mt-[calc(var(--app-chrome-h,0px)+56px)]'
+      )
+      expect(page).toHaveClass('[&_[data-card]]:scroll-mt-[calc(var(--app-chrome-h,0px)+56px)]')
+    } finally {
+      header.remove()
+    }
+  })
+})
+
 function fullyApproved(): ApiAidRulesDraft {
   const d = rulesDraft()
   return {

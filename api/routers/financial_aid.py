@@ -472,6 +472,7 @@ def _draft_out(draft: RulesDraft, *, branched_from: int | None = None) -> RulesD
         budget_total_locked=draft.budget_total_locked,
         season_done=draft.season_done,
         configured_year=draft.configured_year,
+        next_version=draft.next_version,
         groups=[GroupOut(pool=g.pool, label=g.label, equity_class=g.equity_class) for g in draft.groups],
         sections=[
             DraftSectionOut(

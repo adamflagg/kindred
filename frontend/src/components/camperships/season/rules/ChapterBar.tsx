@@ -38,7 +38,8 @@ export function ChapterBar({
   return (
     <nav
       data-testid="chapter-bar"
-      className="bg-background sticky top-0 z-10 flex [scrollbar-width:none] flex-nowrap gap-2.5 overflow-x-auto py-[5px]"
+      // Under the app header, not behind it: the page sets --app-chrome-h to the header's height (useAppChromeHeight).
+      className="bg-background sticky top-[var(--app-chrome-h,0px)] z-10 flex [scrollbar-width:none] flex-nowrap gap-2.5 overflow-x-auto py-[5px]"
     >
       {(['Awards', 'Setup'] as const).map((group) => (
         <div key={group} data-testid="chapter-strip" className={STRIP}>
@@ -77,8 +78,9 @@ export function ChapterBar({
           )}
         </div>
       ))}
-      {/* It shrinks before the strips do: its sentence truncates, the switch and the folds stay. */}
-      {children !== undefined && <div className="ml-auto min-w-0 flex-1">{children}</div>}
+      {/* It shrinks before the strips do: its sentence truncates, the switch and the folds stay. Past that the bar
+          scrolls sideways; the slot never shrinks below its controls, which would draw them over the strips. */}
+      {children !== undefined && <div className="ml-auto min-w-min flex-1">{children}</div>}
     </nav>
   )
 }

@@ -13,7 +13,7 @@ import {
 } from '../../kit/csType'
 
 import { useSeasonChrome } from '../seasonChrome'
-import { frozenFact, receiptTitle } from './leadWords'
+import { HOLD_WORDS, frozenFact, receiptTitle } from './leadWords'
 
 /*
  * Words: spec §6.2 B, plus three the spec leaves out and the mock's leadLine() supplies (rules-v3.html,
@@ -27,6 +27,8 @@ export type LeadState =
       show: 'draft' | 'approved'
       draftVersion: number
       approvedVersion: number | null
+      /** The number a new version takes (the draft read's `next_version`); absent: the one after the draft. */
+      nextVersion?: number | undefined
       hold: 'edit' | 'approve' | null
       draftHref: string
       approvedHref: string
@@ -75,12 +77,7 @@ export function LeadLine({
       state.approvedVersion === null
         ? 'None in effect'
         : `v${String(state.approvedVersion)} in effect`
-    const holdWords =
-      state.hold === 'edit'
-        ? 'Save or cancel the edit first.'
-        : state.hold === 'approve'
-          ? 'Approve or cancel first.'
-          : null
+    const holdWords = state.hold === null ? null : HOLD_WORDS[state.hold]
     const seg = (on: boolean, text: string, href: string) =>
       state.hold !== null ? (
         <span
@@ -98,9 +95,12 @@ export function LeadLine({
       holdWords ??
       (asking && state.approvedVersion !== null
         ? `Discard v${String(state.draftVersion)}? Changes since v${String(state.approvedVersion)} are lost.`
-        : frozenFact(state.show, state.draftVersion, state.approvedVersion))
+        : frozenFact(state.show, state.draftVersion, state.approvedVersion, state.nextVersion))
+    // A grid, not a flex row, so the row's least width is its controls alone: the sentence's column is minmax(0, …)
+    // and shrinks to nothing first. A flex row's least width counted the sentence's full text, and its min-w-0 let the
+    // controls spill left over the chapter strips at 1100px instead (owner 2026-10-14).
     return (
-      <div className="flex min-w-0 flex-nowrap items-center justify-end gap-2 whitespace-nowrap">
+      <div className="grid min-w-0 grid-flow-col grid-cols-[auto_minmax(0,max-content)] items-center justify-end gap-2 whitespace-nowrap">
         <span data-testid="lead-switch" className={`${CS_SEG} shrink-0`}>
           {seg(state.show === 'draft', draftWord, state.draftHref)}
           {seg(state.show === 'approved', inEffect, state.approvedHref)}

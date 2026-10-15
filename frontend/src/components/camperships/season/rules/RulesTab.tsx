@@ -1,8 +1,17 @@
-import { useEffect, useState, type ComponentProps, type ReactNode } from 'react'
+import {
+  useEffect,
+  useState,
+  type ComponentProps,
+  type CSSProperties,
+  type Dispatch,
+  type ReactNode,
+  type SetStateAction,
+} from 'react'
 import { Link, useSearchParams } from 'react-router'
 
 import { Permission } from '../../../../constants/permissions'
 import { useAidAsOf } from '../../../../hooks/camperships/useAidAsOf'
+import { useAppChromeHeight } from '../../../../hooks/useAppChromeHeight'
 import { useAidApprovedRules, useAidRulesDraft } from '../../../../hooks/camperships/useAidRules'
 import { useAidStartRulesFromLastYear } from '../../../../hooks/camperships/useAidRulesWrites'
 import {
@@ -36,6 +45,7 @@ import { Chapter } from './Chapter'
 import { ChapterBar } from './ChapterBar'
 import { DiscardDraft } from './DiscardDraft'
 import { LeadLine, type LeadState } from './LeadLine'
+import { HOLD_WORDS } from './leadWords'
 import { sectionContent } from './rulesDraft'
 import {
   CHAPTERS,
@@ -68,12 +78,24 @@ import type { EditContext } from './sectionEdit'
 import { ProgramsCostsCard, combinedStatus } from './ProgramsCostsCard'
 import { ProgramsCostsEditor } from './ProgramsCostsEditor'
 import { RulesSectionEditor } from './RulesSectionEditor'
+import { SaveTurnProvider } from './SaveTurnProvider'
 import { CardBody, SectionCard } from './SectionCard'
 import { TierGridCard, TierGridTable, type GridPart } from './TierGridCard'
 import { TiersEditor } from './TiersEditor'
 
 const PATH = '/aid/season/rules'
 const NO_CANCELLED: ReadonlySet<number> = new Set()
+
+/**
+ * The cards being edited (owner 2026-10-14: several at once). A save sends only its own section, under that section's
+ * fingerprint, against the version the editor opened (the server merges it into the draft it loads and refuses one
+ * that moved), so editors on different cards can't overwrite each other. Programs and costs is 'programs'; the tier
+ * grid card holds one of its parts at a time.
+ */
+type Editing = ReadonlySet<ApiAidRulesSection>
+const NONE: Editing = new Set()
+/** A jump lands a chapter or a card under the app header and the chapter bar (56px), not behind them. */
+const UNDER_BAR = '[&_[data-card]]:scroll-mt-[calc(var(--app-chrome-h,0px)+56px)]'
 
 type TablesProp = ComponentProps<typeof TierGridTable>['awardTables']
 type ProgramsProp = Readonly<Record<string, { readonly equity_class?: string | null }>>
@@ -294,11 +316,12 @@ function ChaptersBody({
   leadFor: (hold: 'edit' | 'approve' | null) => LeadState
   finance: boolean
   receipt: boolean
-  editing: ApiAidRulesSection | null
-  setEditing: (section: ApiAidRulesSection | null) => void
+  editing: Editing
+  setEditing: Dispatch<SetStateAction<Editing>>
   onNotice: (notice: string | null) => void
 }) {
   const year = useYear()
+  const chromeHeight = useAppChromeHeight()
   const asOf = useAidAsOf()
   const chrome = useSeasonChrome()
   const sessions = useSessionNames()
@@ -313,6 +336,8 @@ function ChaptersBody({
   const [askingFor, setAskingFor] = useState<number | null>(null)
   // What the tiers editor would save (null while a box can't be read): Save sends it, and the grid follows it live.
   const [tiersContent, setTiersContent] = useState<Record<string, unknown> | null>(null)
+  // A new version one of this page's saves started: another open editor's save may go onto it (RulesSectionEditor).
+  const [carried, setCarried] = useState<{ from: number; to: number } | null>(null)
   const sectionParam = params.get('section')
   const budgetHref = aidHref('/aid/season/rounds-budget', { year, asOf })
   const grantsHref = aidHref('/aid/money/funders', { year, asOf })
@@ -326,14 +351,16 @@ function ChaptersBody({
     sessions
   )
   const live = asOf.kind === 'live'
-  const canEdit =
-    finance && live && !receipt && !chrome.approving && !chrome.locked && editing === null
+  // Where a card can be edited at all; while the Approve panel is open Edit… stays in view, greyed, saying why (owner
+  // 2026-10-14: never hidden). Another card being edited holds nothing: each card has its own editor.
+  const canEdit = finance && live && !receipt && !chrome.locked
+  const editOff = chrome.approving ? HOLD_WORDS.approve : null
 
   // Open: the link's list, else the chapters holding a draft section or an issue; a named section's chapter, and the
   // chapter being edited, stay open.
   const explicit = parseOpenChapters(params.get('open'))
   const forced = [
-    ...(editing === null ? [] : [chapterOfSection(editing)?.n]),
+    ...[...editing].map((section) => chapterOfSection(section)?.n),
     ...(explicit === null && isRulesSection(sectionParam)
       ? [chapterOfSection(sectionParam)?.n]
       : []),
@@ -385,7 +412,7 @@ function ChaptersBody({
   const drafting = draft !== null
   useEffect(() => {
     if (!drafting) return undefined
-    return () => setEditing(null)
+    return () => setEditing(NONE)
   }, [drafting, setEditing])
 
   const jump = (n: number) => {
@@ -406,8 +433,16 @@ function ChaptersBody({
         { replace: true }
       )
     }
-    setTiersContent(null)
-    setEditing(section)
+    // A fresh tiers editor starts from the saved tiers; opening another card leaves the tiers editor's typing be.
+    if (section === 'tiers') setTiersContent(null)
+    setEditing((open) => new Set([...open, section]))
+  }
+
+  /** An editor closed: saved (the draft it saved, which may be a new version) or cancelled (null). */
+  const endEdit = (section: ApiAidRulesSection, saved: ApiAidRulesDraft | null) => {
+    setEditing((open) => new Set([...open].filter((s) => s !== section)))
+    if (section === 'tiers') setTiersContent(null)
+    if (saved?.branched_from != null) setCarried({ from: saved.branched_from, to: saved.version })
   }
 
   /**
@@ -475,7 +510,7 @@ function ChaptersBody({
   }
 
   const editor = (section: ApiAidRulesSection) =>
-    draft !== null && editing === section ? (
+    draft !== null && editing.has(section) ? (
       <RulesSectionEditor
         key={`${String(year)}:${section}`}
         section={section}
@@ -502,11 +537,9 @@ function ChaptersBody({
           )
         }
         saveAs={section === 'tiers' ? { content: tiersContent } : undefined}
+        carried={carried}
         // No "Saved to the rules draft" line to dismiss (owner 10-08): the switch above names the draft it landed in.
-        onDone={() => {
-          setEditing(null)
-          setTiersContent(null)
-        }}
+        onDone={(saved) => endEdit(section, saved)}
       />
     ) : undefined
 
@@ -543,6 +576,7 @@ function ChaptersBody({
         changes={s.changes}
         issues={s.issues}
         canEdit={canEdit}
+        editOff={editOff}
         onEdit={() => startEdit(section)}
         dependentsMode={dependentsMode()}
         grantsHref={grantsHref}
@@ -560,8 +594,8 @@ function ChaptersBody({
   }
 
   /**
-   * Programs and costs: one card over the two sections (spec §5.2 A). Editing it is `editing === 'programs'`, the
-   * single-editor state every card shares, so chapter 5 stays open and Approve… waits.
+   * Programs and costs: one card over the two sections (spec §5.2 A). Editing it is 'programs' in `editing`, as every
+   * card's editor is, so chapter 5 stays open and Approve… waits.
    */
   const programsCostsCard = () => {
     const programs = shownOf('programs')
@@ -592,20 +626,21 @@ function ChaptersBody({
         })}
         issues={[...(programs?.issues ?? []), ...(cost?.issues ?? [])]}
         canEdit={canEdit && catalog !== undefined && !waiting}
+        editOff={editOff}
         onEdit={() => startEdit('programs')}
         editor={
           waiting ? (
             <p className={`${CS_SMALL} mt-1`}>
               Not approved yet: this card shows here once finance approves its sections.
             </p>
-          ) : draft !== null && editing === 'programs' && catalog !== undefined ? (
+          ) : draft !== null && editing.has('programs') && catalog !== undefined ? (
             <ProgramsCostsEditor
               key={`${String(year)}:programs_costs`}
               draft={draft}
               groups={groups}
               sessions={catalog}
               cancelled={cancelled ?? NO_CANCELLED}
-              onDone={() => setEditing(null)}
+              onDone={(saved) => endEdit('programs', saved)}
             />
           ) : undefined
         }
@@ -634,7 +669,7 @@ function ChaptersBody({
         </SectionCard>
       )
     }
-    const part = editing !== null && isGridPart(editing) ? editing : null
+    const part = GRID_PARTS.find((p) => editing.has(p)) ?? null
     const node = part === null ? undefined : editor(part)
     return (
       <TierGridCard
@@ -647,6 +682,7 @@ function ChaptersBody({
         changesBySection={byPart((section) => shownOf(section)?.changes ?? [])}
         issuesBySection={byPart((section) => shownOf(section)?.issues ?? [])}
         canEdit={canEdit}
+        editOff={editOff}
         onEdit={startEdit}
         editing={part !== null && node !== undefined ? { part, node } : null}
         label={groupWords(groups, names)}
@@ -659,101 +695,111 @@ function ChaptersBody({
   const budgetDraft = draft?.sections.find((s) => s.section === 'budget')?.status.state === 'draft'
   const budgetErrors = (budget?.issues ?? []).filter((i) => i.severity === 'error').length
 
-  const lead = leadFor(editing !== null ? 'edit' : chrome.approving ? 'approve' : null)
+  const lead = leadFor(editing.size > 0 ? 'edit' : chrome.approving ? 'approve' : null)
   // Only a draft newer than the version in effect, and only where a card could be edited: live, not locked, not a
-  // receipt, never mid-edit or mid-approval (scan #3093).
+  // receipt (scan #3093). Mid-edit or mid-approval it stays on the bar, greyed, and the lead line beside it says why
+  // (owner 2026-10-14): discarding under an open editor would leave its typing aimed at a version that is gone.
   const canDiscard =
     canEdit &&
     lead.kind === 'finance' &&
     lead.show === 'draft' &&
     lead.approvedVersion !== null &&
     lead.approvedVersion !== lead.draftVersion
+  const discardOff = lead.kind === 'finance' && lead.hold !== null ? HOLD_WORDS[lead.hold] : null
   // The question never outlives its button (mock: show, edit and approve each clear P.discardAsk), or it would sit on
   // the bar with no Discard or Keep, and come back after a Cancel; nor its version, or Discard would send a newer one.
-  const asking = canDiscard && askingFor === lead.draftVersion
+  const asking = canDiscard && discardOff === null && askingFor === lead.draftVersion
   if (askingFor !== null && !asking) setAskingFor(null)
 
   return (
-    <div className="space-y-2.5">
-      {/* The switch and Open All / Close All ride on the chapter bar's line (owner 10-08: buy the row back). */}
-      <ChapterBar draft={draft} inView={inView} budgetHref={budgetHref} onJump={jump}>
-        <LeadLine
-          state={lead}
-          asking={asking}
-          onAll={(all) => writeOpen(all ? CHAPTERS.map((c) => c.n) : [])}
-        >
-          {canDiscard && lead.approvedVersion !== null && (
-            <DiscardDraft
-              key={lead.draftVersion}
-              draftVersion={lead.draftVersion}
-              approvedVersion={lead.approvedVersion}
-              asking={asking}
-              onAsk={(ask) => setAskingFor(ask ? lead.draftVersion : null)}
-            />
-          )}
-        </LeadLine>
-      </ChapterBar>
-      <ApprovePanel />
-      <UnlockPanel />
-      <SeasonNotice />
-      <div className="space-y-[18px]">
-        {(['Awards', 'Setup'] as const).map((group) => (
-          <div key={group}>
-            <div className={`${CS_META} mb-1.5 font-bold`}>{group}</div>
-            <div className="space-y-2">
-              {CHAPTERS.filter((c) => c.group === group).map((chapter) => {
-                const sections = sectionsOf(chapter)
-                const listed = sections
-                  .flatMap((s) => shownOf(s)?.issues ?? [])
-                  .filter((i) => !isNote(i))
-                const errors = listed.filter((i) => i.severity === 'error').length
-                return (
-                  <Chapter
-                    key={chapter.n}
-                    chapter={chapter}
-                    open={open.includes(chapter.n)}
-                    summary={chapterSummary(chapter, statuses, listed.length, errors)}
-                    onToggle={() =>
-                      writeOpen(
-                        toggleChapter(open, chapter.n).split(',').filter(Boolean).map(Number)
-                      )
+    // One save at a time across the cards' editors (saveTurn).
+    <SaveTurnProvider>
+      <div
+        className={`space-y-2.5 ${UNDER_BAR}`}
+        // The app header's height: the sticky chapter bar sits under it, and jumps land below both (owner 2026-10-14).
+        style={{ '--app-chrome-h': `${String(chromeHeight)}px` } as CSSProperties}
+      >
+        {/* The switch and Open All / Close All ride on the chapter bar's line (owner 10-08: buy the row back). */}
+        <ChapterBar draft={draft} inView={inView} budgetHref={budgetHref} onJump={jump}>
+          <LeadLine
+            state={lead}
+            asking={asking}
+            onAll={(all) => writeOpen(all ? CHAPTERS.map((c) => c.n) : [])}
+          >
+            {canDiscard && lead.approvedVersion !== null && (
+              <DiscardDraft
+                key={lead.draftVersion}
+                draftVersion={lead.draftVersion}
+                approvedVersion={lead.approvedVersion}
+                asking={asking}
+                onAsk={(ask) => setAskingFor(ask ? lead.draftVersion : null)}
+                off={discardOff}
+              />
+            )}
+          </LeadLine>
+        </ChapterBar>
+        <ApprovePanel />
+        <UnlockPanel />
+        <SeasonNotice />
+        <div className="space-y-[18px]">
+          {(['Awards', 'Setup'] as const).map((group) => (
+            <div key={group}>
+              <div className={`${CS_META} mb-1.5 font-bold`}>{group}</div>
+              <div className="space-y-2">
+                {CHAPTERS.filter((c) => c.group === group).map((chapter) => {
+                  const sections = sectionsOf(chapter)
+                  const listed = sections
+                    .flatMap((s) => shownOf(s)?.issues ?? [])
+                    .filter((i) => !isNote(i))
+                  const errors = listed.filter((i) => i.severity === 'error').length
+                  return (
+                    <Chapter
+                      key={chapter.n}
+                      chapter={chapter}
+                      open={open.includes(chapter.n)}
+                      summary={chapterSummary(chapter, statuses, listed.length, errors)}
+                      onToggle={() =>
+                        writeOpen(
+                          toggleChapter(open, chapter.n).split(',').filter(Boolean).map(Number)
+                        )
+                      }
+                      onJumpGrid={
+                        chapter.key === 'awards'
+                          ? () => {
+                              if (!open.includes(1)) writeOpen([...open, 1].sort((a, b) => a - b))
+                              document
+                                .getElementById('card-tiergrid')
+                                ?.scrollIntoView({ block: 'start' })
+                            }
+                          : undefined
+                      }
+                    >
+                      {chapter.cards.map((card) =>
+                        card === 'tiergrid'
+                          ? gridCard()
+                          : card === 'programs_costs'
+                            ? programsCostsCard()
+                            : sectionCard(card)
+                      )}
+                    </Chapter>
+                  )
+                })}
+                {group === 'Setup' && (
+                  <BudgetPointer
+                    href={budgetHref}
+                    draftPill={
+                      budgetDraft && budget !== undefined ? budget.status.pill.toLowerCase() : null
                     }
-                    onJumpGrid={
-                      chapter.key === 'awards'
-                        ? () => {
-                            if (!open.includes(1)) writeOpen([...open, 1].sort((a, b) => a - b))
-                            document
-                              .getElementById('card-tiergrid')
-                              ?.scrollIntoView({ block: 'start' })
-                          }
-                        : undefined
-                    }
-                  >
-                    {chapter.cards.map((card) =>
-                      card === 'tiergrid'
-                        ? gridCard()
-                        : card === 'programs_costs'
-                          ? programsCostsCard()
-                          : sectionCard(card)
-                    )}
-                  </Chapter>
-                )
-              })}
-              {group === 'Setup' && (
-                <BudgetPointer
-                  href={budgetHref}
-                  draftPill={
-                    budgetDraft && budget !== undefined ? budget.status.pill.toLowerCase() : null
-                  }
-                  errors={budgetErrors}
-                />
-              )}
+                    errors={budgetErrors}
+                  />
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
+        <DefinitionNotes notes={RULES_FOOTNOTES} />
       </div>
-      <DefinitionNotes notes={RULES_FOOTNOTES} />
-    </div>
+    </SaveTurnProvider>
   )
 }
 
@@ -780,17 +826,17 @@ export function RulesTab() {
   // The page's chrome owns the notice and the Approve panel (spec §4); Rules reads them.
   const chrome = useSeasonChrome()
   const setNotice = chrome.setNotice
-  // The card being edited lives here so it survives the switch from the version in effect to the draft.
-  const [editing, setEditing] = useState<ApiAidRulesSection | null>(null)
+  // The cards being edited live here so they survive the switch from the version in effect to the draft.
+  const [editing, setEditing] = useState<Editing>(NONE)
   // Lock Again closes the open editor (its Save would only meet the server's refusal); expiry leaves it open.
   const [seenRelocks, setSeenRelocks] = useState(chrome.relocks)
   if (seenRelocks !== chrome.relocks) {
     setSeenRelocks(chrome.relocks)
-    setEditing(null)
+    setEditing(NONE)
   }
   // Approve… waits while any card editor (the tiers editor too) is open: it would approve the draft without the typing.
   const setChromeEditing = chrome.setEditing
-  const isEditing = editing !== null
+  const isEditing = editing.size > 0
   useEffect(() => {
     setChromeEditing(isEditing)
     return () => setChromeEditing(false)
@@ -830,6 +876,7 @@ export function RulesTab() {
         show,
         draftVersion: draft.data.version,
         approvedVersion: draft.data.approved_version ?? null,
+        nextVersion: draft.data.next_version ?? undefined,
         hold,
         draftHref: href({ show: null }),
         approvedHref: href({ show: 'approved' }),

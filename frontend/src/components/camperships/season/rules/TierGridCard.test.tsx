@@ -365,13 +365,23 @@ describe('the tier grid card (spec §6.2 E.2)', () => {
     )
   })
 
-  it("a table editor takes the grid's place, and no header offers Edit… while it is open", () => {
+  // Replaces "…and no header offers Edit… while it is open", which asserted the other parts' Edit… were hidden (owner
+  // 2026-10-14: greyed with the reason, never hidden). The card still draws one editor at a time.
+  it("a table editor takes the grid's place; its own header drops Edit…, the other parts' stay in view, greyed, saying why", () => {
     grid({ editing: { part: 'award_tables', node: <div>Round 1 table editor</div> } })
     expect(
       within(screen.getByTestId('grid-editor-award_tables')).getByText('Round 1 table editor')
     ).toBeInTheDocument()
     expect(screen.queryByTestId('tier-grid')).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Edit…' })).toBeNull()
+    expect(
+      within(screen.getByTestId('card-head-award_tables')).queryByRole('button', { name: 'Edit…' })
+    ).toBeNull()
+    const others = screen.getAllByRole('button', { name: 'Edit…' })
+    expect(others).toHaveLength(2)
+    for (const edit of others) {
+      expect(edit).toBeDisabled()
+      expect(edit).toHaveAttribute('title', 'Save or cancel the tier grid edit first.')
+    }
   })
 })
 

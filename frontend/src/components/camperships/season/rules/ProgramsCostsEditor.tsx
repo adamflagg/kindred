@@ -17,6 +17,7 @@ import { AidPicker } from '../../kit/AidPicker'
 import { EditorActions } from '../../kit/EditorLayout'
 import { CS_AMBER_NOTE, CS_BTN, CS_BTN2, CS_SMALL } from '../../kit/csType'
 import { MIN_COLUMN } from './programsCostsFlow'
+import { ANOTHER_SAVING, useSaveTurn } from './saveTurn'
 import { ROW, flowItems, useBoxWidth } from './programsCostsLayout'
 import {
   NOT_OPEN,
@@ -160,6 +161,7 @@ export function ProgramsCostsEditor({
   }, [edits, doc, opened, sessions, groups, cancelled])
 
   const saving = save.isPending || checking
+  const waiting = useSaveTurn('programs', saving)
   useOverlayEscape(true, () => {
     if (!saving) onDone(null)
   })
@@ -366,7 +368,8 @@ export function ProgramsCostsEditor({
         <button
           type="button"
           className={CS_BTN}
-          disabled={saving || edits.size === 0}
+          disabled={saving || waiting || edits.size === 0}
+          title={waiting && !saving ? ANOTHER_SAVING : undefined}
           onClick={() => void onSave()}
         >
           {saving ? 'Saving…' : 'Save'}
