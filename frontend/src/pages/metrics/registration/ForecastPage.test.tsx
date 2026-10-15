@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -91,7 +91,8 @@ function grandTotal(overrides: Partial<SessionForecast> = {}): SessionForecast {
 
 function mockResponse(
   sessions: SessionForecast[],
-  grand_total_overrides: Partial<SessionForecast> = {}
+  grand_total_overrides: Partial<SessionForecast> = {},
+  extra: Partial<ForecastResponse> = {}
 ): ForecastResponse {
   return {
     year: 2026,
@@ -99,6 +100,9 @@ function mockResponse(
     grand_total: grandTotal(grand_total_overrides),
     week_number: null,
     day_offset: null,
+    prior_basis: 'final',
+    section_priors: {},
+    ...extra,
   }
 }
 
@@ -582,5 +586,66 @@ describe('ForecastPage — Teen Programs section', () => {
     const dupKeyWarning = errorSpy.mock.calls.some((c) => String(c[0]).includes('same key'))
     expect(dupKeyWarning).toBe(false)
     errorSpy.mockRestore()
+  })
+})
+
+describe('ForecastPage like-with-like (#3209 rows 23, 24, 26)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockUseMetricsSession.mockReturnValue(defaultMetricsSession())
+  })
+
+  it('shows --- in the WL cell when waitlisted is null', async () => {
+    setupMockFetch(
+      mockResponse([session({ session_cm_id: 1, session_name: 'Session 2', waitlisted: null })], {
+        waitlisted: null,
+      })
+    )
+    renderWithProviders(<ForecastPage />)
+    await waitFor(() => expect(screen.getByText('Session 2')).toBeInTheDocument())
+    const row = screen.getByText('Session 2').closest('tr')!
+    expect(row.textContent).toContain('---')
+    expect(within(row).queryByText('3')).not.toBeInTheDocument()
+  })
+
+  it('labels the vs-prior column by the prior basis', async () => {
+    setupMockFetch(mockResponse([session()], {}, { prior_basis: 'same_point' }))
+    renderWithProviders(<ForecastPage />)
+    await waitFor(() => expect(screen.getByText('vs same point')).toBeInTheDocument())
+    expect(screen.getByText('Prior Yr')).toBeInTheDocument()
+    expect(screen.getByText('2yr Prior')).toBeInTheDocument()
+  })
+
+  it('labels the vs-prior column "vs final" for the final basis', async () => {
+    setupMockFetch(mockResponse([session()], {}, { prior_basis: 'final' }))
+    renderWithProviders(<ForecastPage />)
+    await waitFor(() => expect(screen.getByText('vs final')).toBeInTheDocument())
+  })
+
+  it('uses the section prior for the section total row', async () => {
+    setupMockFetch(
+      mockResponse(
+        [
+          session({
+            session_cm_id: 1,
+            session_name: 'Session 2',
+            enrolled: 50,
+            prior_year_count: 1,
+          }),
+          session({
+            session_cm_id: 2,
+            session_name: 'Session 3',
+            enrolled: 30,
+            prior_year_count: 1,
+          }),
+        ],
+        {},
+        { section_priors: { camp: { prior_year_count: 777, two_year_prior_count: 555 } } }
+      )
+    )
+    renderWithProviders(<ForecastPage />)
+    await waitFor(() => expect(screen.getByText('777')).toBeInTheDocument())
+    expect(screen.getByText('555')).toBeInTheDocument()
+    expect(screen.getByText('-697')).toBeInTheDocument()
   })
 })

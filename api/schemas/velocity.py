@@ -60,6 +60,14 @@ class PriorYearVelocity(BaseModel):
     year: int
     daily: list[DailyDataPoint] = Field(default_factory=list)
     weekly: list[WeeklyDataPoint] = Field(default_factory=list)
+    at_current_point: int | None = Field(
+        None,
+        description=(
+            "This year's value on the same registration day as the current year's latest point "
+            "(greatest day_offset <= current_day_offset). Enrollment metric: net enrolled; "
+            "cancellation metric: cumulative cancelled. Falls back to the week lookup when daily data is missing."
+        ),
+    )
 
 
 class PhaseMarker(BaseModel):
@@ -79,17 +87,33 @@ class SessionGenderBreakdown(BaseModel):
 class PriorYearCancelledSummary(BaseModel):
     year: int
     cancelled_at_current_week: int | None = Field(
-        None, description="Cancelled count at same week as current year's latest"
+        None, description="Cancelled count on the same registration day (day offset) as the current year's latest"
     )
-    cancelled_final: int = Field(description="Total cancelled for that year")
+    cancelled_final: int | None = Field(
+        None, description="Total cancelled for that year; None when the year has no cancellation data"
+    )
+    has_cancellation_data: bool = Field(
+        True, description="False exactly when cancelled_final is None for lack of cancellation history"
+    )
 
 
 class PriorYearSessionSummary(BaseModel):
     year: int
     session_name: str | None = None
     session_cm_id: int | None = None
+    current_session_cm_id: int | None = Field(
+        None,
+        description=(
+            "The current-year session this prior session is 'the same session' as "
+            "(cm_id, then alias group, then exact name); None when no current session matches"
+        ),
+    )
     enrolled_at_current_week: int | None = Field(
-        None, description="Prior year enrollment at same week_number as current"
+        None,
+        description=(
+            "Prior session's value on the same registration day (day offset) as the current year's latest point "
+            "(cancellation metric: cumulative cancelled); field name kept for API stability"
+        ),
     )
     final_enrolled: int = Field(description="Last enrollment value for this session in prior year")
 
@@ -111,6 +135,16 @@ class VelocityResponse(BaseModel):
     prior_year_season_starts: dict[int, str] = Field(
         default_factory=dict,
         description="Season start date (ISO) for each prior year, for tooltip date computation",
+    )
+    current_day_offset: int | None = Field(
+        None, description="Day offset of the current year's latest daily point; None when there is no daily data"
+    )
+    today_day_offset: int | None = Field(
+        None, description="(today - season_start) in days while the season is live, else None; drives the TODAY line"
+    )
+    status_history_start: str | None = Field(
+        None,
+        description="ISO date of the earliest attendee_status_history row of any year; cancellation metric only",
     )
     session_swap_count: int = Field(0, description="Cancellations that are session changes, not true departures")
     daily: list[DailyDataPoint] = Field(default_factory=list, description="Combined daily data for cumulative charts")

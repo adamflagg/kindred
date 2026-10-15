@@ -1,7 +1,25 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
+import { useSearchParams } from 'react-router'
+
+/**
+ * Ticked prior years live in the link as `?priors=` (ruling 6, #3209), so the selection
+ * survives reload and carries across Velocity ↔ Cancellations. Absent → the latest prior
+ * year, written into the link once the years load; present and empty → none. Deliberately not Registration's `compare=`.
+ */
+const PRIORS_PARAM = 'priors'
+
+function parsePriors(raw: string | null, options: number[]): number[] {
+  if (raw === null) return options[0] != null ? [options[0]] : []
+  const years: number[] = []
+  for (const part of raw.split(',')) {
+    const year = Number(part)
+    if (part !== '' && options.includes(year) && !years.includes(year)) years.push(year)
+  }
+  return years
+}
 
 export function useVelocityControls(availableYears: number[], currentYear: number) {
-  const [selectedPriorYears, setSelectedPriorYears] = useState<number[]>([])
+  const [searchParams, setSearchParams] = useSearchParams()
   const [splitByGender, setSplitByGender] = useState(false)
 
   const priorYearOptions = useMemo(
@@ -9,12 +27,51 @@ export function useVelocityControls(availableYears: number[], currentYear: numbe
     [availableYears, currentYear]
   )
 
+  const priorsRaw = searchParams.get(PRIORS_PARAM)
+  const selectedPriorYears = useMemo(
+    () => parsePriors(priorsRaw, priorYearOptions),
+    [priorsRaw, priorYearOptions]
+  )
+
+  // Write the implicit default into the link once the year list has loaded, so a copied link
+  // keeps its comparison year after a newer season exists. Never while options are still empty:
+  // that would write `priors=` (none ticked) over the default.
+  const defaultPrior = priorYearOptions[0]
+  useEffect(() => {
+    if (priorsRaw !== null || defaultPrior == null) return
+    setSearchParams(
+      (prev) => {
+        if (prev.has(PRIORS_PARAM)) return prev
+        const newParams = new URLSearchParams(prev)
+        newParams.set(PRIORS_PARAM, String(defaultPrior))
+        return newParams
+      },
+      { replace: true }
+    )
+  }, [priorsRaw, defaultPrior, setSearchParams])
+
+  // Read-modify-write against the latest params, so consecutive updates compose.
+  const updatePriors = useCallback(
+    (update: (current: number[]) => number[]) => {
+      setSearchParams(
+        (prev) => {
+          const newParams = new URLSearchParams(prev)
+          const current = parsePriors(prev.get(PRIORS_PARAM), priorYearOptions)
+          newParams.set(PRIORS_PARAM, update(current).join(','))
+          return newParams
+        },
+        { replace: true }
+      )
+    },
+    [setSearchParams, priorYearOptions]
+  )
+
   const togglePriorYear = (year: number) => {
     if (splitByGender) {
       // When gender split is on, only allow 1 prior year
-      setSelectedPriorYears((prev) => (prev.includes(year) ? [] : [year]))
+      updatePriors((prev) => (prev.includes(year) ? [] : [year]))
     } else {
-      setSelectedPriorYears((prev) =>
+      updatePriors((prev) =>
         prev.includes(year) ? prev.filter((y) => y !== year) : [...prev, year]
       )
     }
@@ -24,7 +81,7 @@ export function useVelocityControls(availableYears: number[], currentYear: numbe
     setSplitByGender(enabled)
     // When enabling gender, limit prior years to max 1
     if (enabled && selectedPriorYears.length > 1) {
-      setSelectedPriorYears(selectedPriorYears.slice(0, 1))
+      updatePriors((prev) => prev.slice(0, 1))
     }
   }
 

@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import type { VelocityResponse } from '../types/velocity'
+import type { PriorYearSessionSummary, VelocityResponse } from '../types/velocity'
 import { resolveSessionAlias } from '../utils/sessionAliases'
 import {
   sortSessionDataByCampThenQuest,
@@ -7,6 +7,7 @@ import {
   buildSessionTypeLookup,
 } from '../utils/sessionUtils'
 import { formatDateShort } from '../utils/chartFormatters'
+import { pickComparisonYear } from '../components/velocity/velocityCompare'
 
 export interface VelocityChartConfig {
   metric: 'enrollment' | 'cancellation'
@@ -21,7 +22,19 @@ export function useVelocityChartData(
   sessions: Array<{ cm_id: number; name: string; start_date: string; session_type: string }>,
   config: VelocityChartConfig
 ) {
-  const { metric, splitByGender } = config
+  const { metric, splitByGender, selectedPriorYears } = config
+
+  // The one prior year the cards, By Session and the delta table all compare with (#3209 row 20)
+  const comparisonYear = useMemo(
+    () =>
+      data
+        ? pickComparisonYear(
+            data.prior_years.map((py) => py.year),
+            selectedPriorYears
+          )
+        : null,
+    [data, selectedPriorYears]
+  )
 
   // Build unified chart data aligned by week_number
   const weeklyChartData = useMemo(() => {
@@ -364,25 +377,28 @@ export function useVelocityChartData(
     return milestones
   }, [dailyChartData])
 
-  // Build prior year session summary map keyed by canonical session name
+  // Comparison year's session summaries, keyed by the current session they match
+  // (`current_session_cm_id`), falling back to the canonical name when there is no match id.
   const priorSessionMap = useMemo(() => {
-    const map = new Map<string, VelocityResponse['prior_year_session_summaries'][number]>()
+    const map = new Map<number | string, PriorYearSessionSummary>()
+    if (comparisonYear == null) return map
     for (const summary of data?.prior_year_session_summaries ?? []) {
-      if (summary.session_name) {
-        const canonical = resolveSessionAlias(summary.session_name)
-        map.set(canonical, summary)
+      if (summary.year !== comparisonYear) continue
+      if (summary.current_session_cm_id != null) {
+        map.set(summary.current_session_cm_id, summary)
+      } else if (summary.session_name) {
+        map.set(resolveSessionAlias(summary.session_name), summary)
       }
     }
     return map
-  }, [data?.prior_year_session_summaries])
+  }, [data?.prior_year_session_summaries, comparisonYear])
 
-  // Build prior year week map for delta table
+  // Build prior year week map for delta table, from the comparison year
   const priorWeekMap = useMemo(() => {
-    if (!data?.prior_years.length) return null
-    const py = data.prior_years[0]
+    const py = data?.prior_years.find((p) => p.year === comparisonYear)
     if (!py) return null
     return new Map(py.weekly.map((d) => [d.week_number, d]))
-  }, [data?.prior_years])
+  }, [data?.prior_years, comparisonYear])
 
   return {
     weeklyChartData,
@@ -395,5 +411,6 @@ export function useVelocityChartData(
     dailyZoomMilestones,
     priorSessionMap,
     priorWeekMap,
+    comparisonYear,
   }
 }

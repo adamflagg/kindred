@@ -65,7 +65,7 @@ function fmtPct(value: number | null): string {
   return `${value.toFixed(1)}%`
 }
 
-function ForecastTableHeader() {
+function ForecastTableHeader({ priorBasis }: { priorBasis: 'same_point' | 'final' }) {
   return (
     <thead>
       <tr className="bg-muted/50">
@@ -77,7 +77,9 @@ function ForecastTableHeader() {
         <th className="px-3 py-2 text-right text-xs font-semibold">% Goal</th>
         <th className="px-3 py-2 text-right text-xs font-semibold">vs Budget</th>
         <th className="px-3 py-2 text-right text-xs font-semibold">Prior Yr</th>
-        <th className="px-3 py-2 text-right text-xs font-semibold">vs Prior</th>
+        <th className="px-3 py-2 text-right text-xs font-semibold">
+          {priorBasis === 'same_point' ? 'vs same point' : 'vs final'}
+        </th>
         <th className="px-3 py-2 text-right text-xs font-semibold">2yr Prior</th>
         <th className="hidden px-3 py-2 text-right text-xs font-semibold lg:table-cell">
           Budget Rev
@@ -115,7 +117,7 @@ function SessionRow({ session, isTotal }: { session: SessionForecast; isTotal?: 
           <span className="text-muted-foreground">--</span>
         )}
       </td>
-      <td className="px-3 py-2 text-right text-sm">{session.waitlisted.toLocaleString()}</td>
+      <td className="px-3 py-2 text-right text-sm">{fmt(session.waitlisted)}</td>
       <td className={`px-3 py-2 text-right text-sm font-medium ${pctColor(session.pct_of_goal)}`}>
         {fmtPct(session.pct_of_goal)}
       </td>
@@ -235,7 +237,12 @@ export default function ForecastPage() {
 
   const { grand_total } = data
 
-  const sections = buildForecastSections(campSessions, questSessions, teenSessions)
+  const sections = buildForecastSections(
+    campSessions,
+    questSessions,
+    teenSessions,
+    data.section_priors
+  )
   const showSectionHeadings = sections.length >= 2
   const showGrandTotal = sections.length >= 2 && selectedSessionCmId === null
 
@@ -286,7 +293,7 @@ export default function ForecastPage() {
               )}
               <div className="border-border overflow-x-auto rounded-xl border">
                 <table className="w-full border-collapse">
-                  <ForecastTableHeader />
+                  <ForecastTableHeader priorBasis={data.prior_basis} />
                   <tbody>
                     {section.sessions.map((s) => (
                       <SessionRow key={`${s.session_type}-${s.session_cm_id}`} session={s} />

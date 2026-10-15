@@ -615,6 +615,25 @@ class TestFetchStatusHistory:
             assert hasattr(person, "last_name")
 
 
+class TestFetchStatusHistoryStart:
+    """The earliest status-history row of any year (the cancellation coverage start)."""
+
+    @pytest.mark.asyncio
+    async def test_returns_earliest_detected_at_across_years(self, sql_db: sqlite3.Connection) -> None:
+        sql_db.execute(
+            "INSERT INTO attendee_status_history VALUES (?,?,?,?,?,?,?,?)",
+            ("ash_old", 1003, 2024, "enrolled", "cancelled", "2024-11-09", "ses_s1", "per_emma"),
+        )
+        repo = _make_repo(sql_db)
+        assert await repo.fetch_status_history_start() == "2024-11-09"
+
+    @pytest.mark.asyncio
+    async def test_none_when_no_history(self, sql_db: sqlite3.Connection) -> None:
+        sql_db.execute("DELETE FROM attendee_status_history")
+        repo = _make_repo(sql_db)
+        assert await repo.fetch_status_history_start() is None
+
+
 # ============================================================================
 # Test: fetch_enrollment_snapshots
 # ============================================================================

@@ -606,6 +606,7 @@ describe('useVelocityChartData', () => {
   describe('priorSessionMap', () => {
     it('maps canonical session names to prior year summaries', () => {
       const data = makeResponse({
+        prior_years: [{ year: 2024, daily: [], weekly: [] }],
         prior_year_session_summaries: [
           {
             year: 2024,
@@ -634,6 +635,7 @@ describe('useVelocityChartData', () => {
     it('resolves session aliases to canonical names', () => {
       // 'Taste of Camp' is aliased to 'Taste of Camp 1' in sessionAliases
       const data = makeResponse({
+        prior_years: [{ year: 2024, daily: [], weekly: [] }],
         prior_year_session_summaries: [
           {
             year: 2024,
@@ -742,6 +744,83 @@ describe('useVelocityChartData', () => {
       const row = result.current.weeklyChartData[0]!
       expect(row['cancelled_boys_2024']).toBe(7)
       expect(row['cancelled_girls_2024']).toBe(5)
+    })
+  })
+
+  // Row 20 (#3209): one comparison year drives the cards, By Session and the delta table.
+  describe('comparison year', () => {
+    function summary(overrides: Record<string, unknown> = {}) {
+      return {
+        year: 2025,
+        session_name: 'Session 2',
+        session_cm_id: 200,
+        current_session_cm_id: 1200 as number | null,
+        enrolled_at_current_week: 40 as number | null,
+        final_enrolled: 50,
+        ...overrides,
+      }
+    }
+
+    const twoYears = makeResponse({
+      prior_years: [
+        { year: 2024, daily: [], weekly: [makeWeeklyPoint({ week_number: 1, enrolled: 70 })] },
+        { year: 2025, daily: [], weekly: [makeWeeklyPoint({ week_number: 1, enrolled: 90 })] },
+      ],
+      prior_year_session_summaries: [
+        summary({
+          year: 2024,
+          session_cm_id: 100,
+          current_session_cm_id: 1200,
+          final_enrolled: 44,
+        }),
+        summary({ year: 2025 }),
+      ],
+    })
+
+    it('is the most recent selected year present in the response', () => {
+      const config = { ...enrollmentConfig, selectedPriorYears: [2024, 2025] }
+      const { result } = renderHook(() => useVelocityChartData(twoYears, defaultSessions, config))
+      expect(result.current.comparisonYear).toBe(2025)
+    })
+
+    it('skips a selected year the response does not carry', () => {
+      const config = { ...enrollmentConfig, selectedPriorYears: [2023, 2024] }
+      const { result } = renderHook(() => useVelocityChartData(twoYears, defaultSessions, config))
+      expect(result.current.comparisonYear).toBe(2024)
+    })
+
+    it('is null without data', () => {
+      const config = { ...enrollmentConfig, selectedPriorYears: [2025] }
+      const { result } = renderHook(() => useVelocityChartData(undefined, defaultSessions, config))
+      expect(result.current.comparisonYear).toBeNull()
+    })
+
+    it('drives priorWeekMap, not the first prior year in the response', () => {
+      const config = { ...enrollmentConfig, selectedPriorYears: [2024, 2025] }
+      const { result } = renderHook(() => useVelocityChartData(twoYears, defaultSessions, config))
+      expect(result.current.priorWeekMap?.get(1)?.enrolled).toBe(90)
+    })
+
+    it('builds priorSessionMap from that year only, keyed by the current session cm_id', () => {
+      const config = { ...enrollmentConfig, selectedPriorYears: [2024, 2025] }
+      const { result } = renderHook(() => useVelocityChartData(twoYears, defaultSessions, config))
+      const entry = result.current.priorSessionMap.get(1200)
+      expect(entry?.year).toBe(2025)
+      expect(entry?.final_enrolled).toBe(50)
+      expect([...result.current.priorSessionMap.values()].every((s) => s.year === 2025)).toBe(true)
+    })
+
+    it('falls back to the canonical name when the prior session has no current match id', () => {
+      const data = makeResponse({
+        prior_years: [{ year: 2025, daily: [], weekly: [] }],
+        prior_year_session_summaries: [
+          summary({ current_session_cm_id: null, session_name: 'Taste of Camp' }),
+        ],
+      })
+      const config = { ...enrollmentConfig, selectedPriorYears: [2025] }
+      const { result } = renderHook(() => useVelocityChartData(data, defaultSessions, config))
+      expect(result.current.priorSessionMap.get('Taste of Camp 1')?.year).toBe(2025)
+      expect(result.current.priorSessionMap.has(1200)).toBe(false)
     })
   })
 })

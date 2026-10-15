@@ -4783,6 +4783,24 @@ export type FlagOut = {
 }
 
 /**
+ * ForecastPriorTotals
+ */
+export type ForecastPriorTotals = {
+  /**
+   * Prior Year Count
+   *
+   * Last year's whole-scope total for this section
+   */
+  prior_year_count?: number | null
+  /**
+   * Two Year Prior Count
+   *
+   * Two years ago's whole-scope total for this section
+   */
+  two_year_prior_count?: number | null
+}
+
+/**
  * ForecastResponse
  */
 export type ForecastResponse = {
@@ -4812,6 +4830,20 @@ export type ForecastResponse = {
    * Days since registration anchor
    */
   day_offset?: number | null
+  /**
+   * Prior Basis
+   *
+   * same_point: prior years counted at the same registration day; final: their final enrollment
+   */
+  prior_basis?: 'same_point' | 'final'
+  /**
+   * Section Priors
+   *
+   * Prior whole-scope totals by section: camp (main/embedded/ag), quest, teen (scit/tli)
+   */
+  section_priors?: {
+    [key: string]: ForecastPriorTotals
+  }
 }
 
 /**
@@ -11946,15 +11978,21 @@ export type PriorYearCancelledSummary = {
   /**
    * Cancelled At Current Week
    *
-   * Cancelled count at same week as current year's latest
+   * Cancelled count on the same registration day (day offset) as the current year's latest
    */
   cancelled_at_current_week?: number | null
   /**
    * Cancelled Final
    *
-   * Total cancelled for that year
+   * Total cancelled for that year; None when the year has no cancellation data
    */
-  cancelled_final: number
+  cancelled_final?: number | null
+  /**
+   * Has Cancellation Data
+   *
+   * False exactly when cancelled_final is None for lack of cancellation history
+   */
+  has_cancellation_data?: boolean
 }
 
 /**
@@ -11974,9 +12012,15 @@ export type PriorYearSessionSummary = {
    */
   session_cm_id?: number | null
   /**
+   * Current Session Cm Id
+   *
+   * The current-year session this prior session is 'the same session' as (cm_id, then alias group, then exact name); None when no current session matches
+   */
+  current_session_cm_id?: number | null
+  /**
    * Enrolled At Current Week
    *
-   * Prior year enrollment at same week_number as current
+   * Prior session's value on the same registration day (day offset) as the current year's latest point (cancellation metric: cumulative cancelled); field name kept for API stability
    */
   enrolled_at_current_week?: number | null
   /**
@@ -12003,6 +12047,12 @@ export type PriorYearVelocity = {
    * Weekly
    */
   weekly?: Array<WeeklyDataPoint>
+  /**
+   * At Current Point
+   *
+   * This year's value on the same registration day as the current year's latest point (greatest day_offset <= current_day_offset). Enrollment metric: net enrolled; cancellation metric: cumulative cancelled. Falls back to the week lookup when daily data is missing.
+   */
+  at_current_point?: number | null
 }
 
 /**
@@ -15983,9 +16033,9 @@ export type SessionForecast = {
   /**
    * Waitlisted
    *
-   * Current waitlist count
+   * Current waitlist count; None in week mode (a past waitlist cannot be rebuilt)
    */
-  waitlisted: number
+  waitlisted: number | null
   /**
    * Pct Of Goal
    *
@@ -18820,6 +18870,24 @@ export type VelocityResponse = {
   prior_year_season_starts?: {
     [key: string]: string
   }
+  /**
+   * Current Day Offset
+   *
+   * Day offset of the current year's latest daily point; None when there is no daily data
+   */
+  current_day_offset?: number | null
+  /**
+   * Today Day Offset
+   *
+   * (today - season_start) in days while the season is live, else None; drives the TODAY line
+   */
+  today_day_offset?: number | null
+  /**
+   * Status History Start
+   *
+   * ISO date of the earliest attendee_status_history row of any year; cancellation metric only
+   */
+  status_history_start?: string | null
   /**
    * Session Swap Count
    *

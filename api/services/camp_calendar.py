@@ -102,6 +102,55 @@ def format_week_date_range(anchor: date, week_num: int) -> str:
     return f"{start_fmt}\u2013{end_fmt}"
 
 
+# Decision 45 (owner, 2026-10-14): the priority day is the priority date plus the
+# next day. In 2023 and 2025 CampMinder dated most opening-day sign-ups the
+# following day (a next-day batch), so a single-date match undercounts the day.
+PRIORITY_DAY_DAYS = 2
+
+
+def phase_clamp_offsets(reg_dates: dict[str, str]) -> tuple[int, ...]:
+    """Offsets, from the registration anchor, of the phase dates that read through the next day.
+
+    Offset 0 is always the anchor (priority date, else early). The early and open phase
+    dates (``REGISTRATION_TIERS``) follow as their day offsets from that anchor; a missing
+    or unparseable date is skipped, and no anchor leaves just ``(0,)``.
+    """
+
+    def parse(key: str) -> date | None:
+        raw = reg_dates.get(key)
+        if not raw:
+            return None
+        try:
+            return date.fromisoformat(raw.split("T")[0].split(" ")[0])
+        except ValueError:
+            return None
+
+    anchor = parse("priority_reg_date") or parse("early_reg_date")
+    if anchor is None:
+        return (0,)
+    offsets = [0]
+    for phase, config_key, _label in REGISTRATION_TIERS:
+        if phase == "priority":
+            continue
+        phase_date = parse(config_key)
+        if phase_date is not None and (phase_date - anchor).days not in offsets:
+            offsets.append((phase_date - anchor).days)
+    return tuple(offsets)
+
+
+def same_point_offset(day_offset: int, phase_offsets: tuple[int, ...] = (0,)) -> int:
+    """Registration-day offset at which to read a PRIOR year for a "same point" compare.
+
+    On a phase date (the priority date at offset 0, plus the early and open dates when the
+    caller passes their ``phase_offsets``) the prior year is read through the next day, so
+    its next-day-dated sign-ups count (decision 45; ruling 11 extends it to the early and
+    open dates, where 2023 showed the same next-day shift). Every other offset, including
+    negative pre-registration offsets, is unchanged. Only the prior side is clamped: the
+    current year has no rows dated tomorrow.
+    """
+    return day_offset + PRIORITY_DAY_DAYS - 1 if day_offset in phase_offsets else day_offset
+
+
 def day1_window(tier_date: date) -> tuple[datetime, datetime]:
     """Return the 9am-to-9am PT window for a registration tier opening day.
 

@@ -290,6 +290,22 @@ class MetricsRepository:
             logger.warning(f"Could not fetch status history: {e}")
             return []
 
+    async def fetch_status_history_start(self) -> str | None:
+        """Earliest ``detected_at`` of any attendee_status_history row (any year), or None."""
+        try:
+            page = await asyncio.to_thread(
+                self.pb.collection(ATTENDEE_STATUS_HISTORY).get_list,
+                1,
+                1,
+                {"sort": "detected_at", "filter": "detected_at != ''", "fields": "detected_at"},
+            )
+        except Exception as e:
+            logger.warning(f"Could not fetch status history start: {e}")
+            return None
+        items = getattr(page, "items", None) or []
+        value = getattr(items[0], "detected_at", None) if items else None
+        return str(value) if value else None
+
     async def fetch_enrollment_snapshots(self, year: int, session_cm_id: int | None = None) -> list[Any]:
         """Fetch enrollment snapshots for a year, optionally filtered by session."""
         filter_str = f"year = {year}"

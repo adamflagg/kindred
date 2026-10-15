@@ -1,4 +1,4 @@
-import type { SessionForecast } from '../types/forecast'
+import type { ForecastPriorTotals, SessionForecast } from '../types/forecast'
 
 export interface ForecastSection {
   key: 'camp' | 'quest' | 'teen'
@@ -10,22 +10,39 @@ export interface ForecastSection {
 /**
  * Compute a section total across a list of sessions.
  * Mirrors the Python `_compute_grand_total()` logic from forecast_service.py:
- * - enrolled/waitlisted are always summed
- * - nullable fields (goal, prior, revenue) use null-aware aggregation:
+ * - enrolled is always summed
+ * - nullable fields (waitlisted, goal, prior, revenue) use null-aware aggregation:
  *   return null if ALL sessions have null, otherwise sum treating null as 0
  * - derived fields (percentages, deltas) are computed from the aggregated totals
+ *
+ * When `priorOverride` is given (the backend's whole-scope section prior), the
+ * prior and two-year-prior counts come from it instead of the row sums, and the
+ * vs-prior delta is re-derived from it.
  */
-export function computeSectionTotal(sessions: SessionForecast[], label: string): SessionForecast {
+export function computeSectionTotal(
+  sessions: SessionForecast[],
+  label: string,
+  priorOverride?: ForecastPriorTotals
+): SessionForecast {
   const totalEnrolled = sessions.reduce((sum, s) => sum + s.enrolled, 0)
-  const totalWaitlisted = sessions.reduce((sum, s) => sum + s.waitlisted, 0)
+  const totalWaitlisted = sessions.reduce((sum, s) => sum + (s.waitlisted ?? 0), 0)
+  // An empty list keeps the historical 0; null only when every row is null.
+  const hasWaitlist = sessions.length === 0 || sessions.some((s) => s.waitlisted !== null)
 
   const totalGoal = sessions.reduce((sum, s) => sum + (s.participant_goal ?? 0), 0)
-  const totalPrior = sessions.reduce((sum, s) => sum + (s.prior_year_count ?? 0), 0)
-  const totalTwoYear = sessions.reduce((sum, s) => sum + (s.two_year_prior_count ?? 0), 0)
+  const rowPrior = sessions.reduce((sum, s) => sum + (s.prior_year_count ?? 0), 0)
+  const rowTwoYear = sessions.reduce((sum, s) => sum + (s.two_year_prior_count ?? 0), 0)
 
   const hasGoal = sessions.some((s) => s.participant_goal !== null)
-  const hasPrior = sessions.some((s) => s.prior_year_count !== null)
-  const hasTwoYear = sessions.some((s) => s.two_year_prior_count !== null)
+  const rowHasPrior = sessions.some((s) => s.prior_year_count !== null)
+  const rowHasTwoYear = sessions.some((s) => s.two_year_prior_count !== null)
+
+  const priorTotal = priorOverride ? priorOverride.prior_year_count : rowHasPrior ? rowPrior : null
+  const twoYearTotal = priorOverride
+    ? priorOverride.two_year_prior_count
+    : rowHasTwoYear
+      ? rowTwoYear
+      : null
 
   const totalBudgetRev = sessions.reduce((sum, s) => sum + (s.budget_revenue ?? 0), 0)
   const totalActualRev = sessions.reduce((sum, s) => sum + (s.actual_revenue ?? 0), 0)
@@ -37,7 +54,7 @@ export function computeSectionTotal(sessions: SessionForecast[], label: string):
   }
 
   const participantsVsBudget = hasGoal ? totalEnrolled - totalGoal : null
-  const participantsVsPriorYear = hasPrior ? totalEnrolled - totalPrior : null
+  const participantsVsPriorYear = priorTotal !== null ? totalEnrolled - priorTotal : null
 
   const revenueDelta = hasRevenue ? totalActualRev - totalBudgetRev : null
   let revenuePct: number | null = null
@@ -55,11 +72,11 @@ export function computeSectionTotal(sessions: SessionForecast[], label: string):
     session_type: 'total',
     session_fee: null,
     enrolled: totalEnrolled,
-    waitlisted: totalWaitlisted,
+    waitlisted: hasWaitlist ? totalWaitlisted : null,
     participant_goal: hasGoal ? totalGoal : null,
     pct_of_goal: pctOfGoal,
-    prior_year_count: hasPrior ? totalPrior : null,
-    two_year_prior_count: hasTwoYear ? totalTwoYear : null,
+    prior_year_count: priorTotal,
+    two_year_prior_count: twoYearTotal,
     participants_vs_budget: participantsVsBudget,
     participants_vs_prior_year: participantsVsPriorYear,
     budget_revenue: hasRevenue ? totalBudgetRev : null,
@@ -79,7 +96,8 @@ export function computeSectionTotal(sessions: SessionForecast[], label: string):
 export function buildForecastSections(
   campSessions: SessionForecast[],
   questSessions: SessionForecast[],
-  teenSessions: SessionForecast[] = []
+  teenSessions: SessionForecast[] = [],
+  sectionPriors: Record<string, ForecastPriorTotals> = {}
 ): ForecastSection[] {
   const sections: ForecastSection[] = []
 
@@ -88,7 +106,7 @@ export function buildForecastSections(
       key: 'camp',
       label: 'At Camp',
       sessions: campSessions,
-      total: computeSectionTotal(campSessions, 'At Camp'),
+      total: computeSectionTotal(campSessions, 'At Camp', sectionPriors['camp']),
     })
   }
 
@@ -97,7 +115,7 @@ export function buildForecastSections(
       key: 'quest',
       label: 'Quests',
       sessions: questSessions,
-      total: computeSectionTotal(questSessions, 'Quests'),
+      total: computeSectionTotal(questSessions, 'Quests', sectionPriors['quest']),
     })
   }
 
@@ -106,7 +124,7 @@ export function buildForecastSections(
       key: 'teen',
       label: 'Teen Programs',
       sessions: teenSessions,
-      total: computeSectionTotal(teenSessions, 'Teen Programs'),
+      total: computeSectionTotal(teenSessions, 'Teen Programs', sectionPriors['teen']),
     })
   }
 

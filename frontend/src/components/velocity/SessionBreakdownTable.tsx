@@ -10,7 +10,8 @@ export interface SessionColumnDef {
 
 interface SessionBreakdownTableProps {
   sortedBySession: VelocityCurve[]
-  priorSessionMap: Map<string, PriorYearSessionSummary>
+  /** Keyed by current session cm_id when matched, else by canonical session name. */
+  priorSessionMap: Map<number | string, PriorYearSessionSummary>
   columns: SessionColumnDef[]
 }
 
@@ -47,7 +48,10 @@ export function SessionBreakdownTable({
             const canonical = session.session_name
               ? resolveSessionAlias(session.session_name)
               : null
-            const priorSession = canonical ? priorSessionMap.get(canonical) : undefined
+            const priorSession =
+              (session.session_cm_id != null
+                ? priorSessionMap.get(session.session_cm_id)
+                : undefined) ?? (canonical ? priorSessionMap.get(canonical) : undefined)
 
             return (
               <tr

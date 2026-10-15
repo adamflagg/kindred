@@ -38,6 +38,11 @@ import {
   VelocityControls,
   SessionBreakdownTable,
   WeeklyDeltaTable,
+  MUTED_PILL_CLASS,
+  vsPriorSamePoint,
+  formatHistoryStart,
+  todayWeekNumber,
+  buildLegendLabels,
 } from '../../../components/velocity'
 import type { WeeklyDataPoint } from '../../../types/velocity'
 import { PHASE_COLORS } from './phaseColors'
@@ -93,6 +98,7 @@ export default function CancellationVelocityPage() {
     splitByGender: controls.splitByGender,
     selectedPriorYears: controls.selectedPriorYears,
   })
+  const { comparisonYear } = chartData
 
   // Separate zoom state per chart to avoid cross-contamination (#510)
   const weeklyZoom = useChartZoom(chartData.weeklyChartData.length)
@@ -109,35 +115,20 @@ export default function CancellationVelocityPage() {
     const currentMaxWeek = currentLatest.week_number
     const currentCancelled = currentLatest.enrolled // repurposed as cancelled count
 
-    let priorAtWeek: number | null = null
-    let priorFinal: number | null = null
-    // The backend omits a prior year that has no matching session; the label still names
-    // the year the user ticked, and the values stay '-'.
-    let priorYear: number | null = controls.selectedPriorYears[0] ?? null
+    // One comparison year for every card (#3209). The backend omits a prior year that has no
+    // matching session (or no status history); the label still names the most recent year the
+    // user ticked, and the values stay '-'.
+    const priorYear: number | null =
+      comparisonYear ??
+      (controls.selectedPriorYears.length ? Math.max(...controls.selectedPriorYears) : null)
+    const priorCancelledSummary = data.prior_year_cancelled_to_date.find(
+      (c) => c.year === priorYear
+    )
 
-    // Use backend cancelled_at_current_week when available (more accurate with fallback)
-    const priorCancelledSummary =
-      data.prior_year_cancelled_to_date.length > 0 ? data.prior_year_cancelled_to_date[0] : null
-
-    if (data.prior_years.length > 0) {
-      const py = data.prior_years[0]
-      if (py) {
-        priorYear = py.year
-        priorAtWeek = priorCancelledSummary?.cancelled_at_current_week ?? null
-        // Fallback to manual week lookup if backend didn't provide it
-        if (priorAtWeek == null) {
-          const pyMap = new Map(py.weekly.map((d) => [d.week_number, d]))
-          priorAtWeek = pyMap.get(currentMaxWeek)?.enrolled ?? null
-        }
-        priorFinal = priorCancelledSummary?.cancelled_final ?? null
-        if (priorFinal == null) {
-          const pyLast = py.weekly.at(-1)
-          priorFinal = pyLast?.enrolled ?? null
-        }
-      }
-    }
-
-    const delta = priorAtWeek != null ? currentCancelled - priorAtWeek : null
+    // No fallback to the curve (#3209 row 22): a year with no status history reads '-', not 0.
+    const priorAtWeek = priorCancelledSummary?.cancelled_at_current_week ?? null
+    const priorFinal = priorCancelledSummary?.cancelled_final ?? null
+    const delta = vsPriorSamePoint(currentCancelled, priorAtWeek)
 
     return {
       currentCancelled,
@@ -146,8 +137,9 @@ export default function CancellationVelocityPage() {
       priorFinal,
       priorYear,
       delta,
+      noHistory: priorCancelledSummary?.has_cancellation_data === false,
     }
-  }, [data, controls.selectedPriorYears])
+  }, [data, comparisonYear, controls.selectedPriorYears])
 
   if (isLoading) {
     return (
@@ -179,6 +171,36 @@ export default function CancellationVelocityPage() {
   const genderBreakdownMap = new Map(data.session_gender_breakdown.map((b) => [b.session_cm_id, b]))
 
   const hasPriorYear = controls.selectedPriorYears.length > 0
+  // Headers name the comparison year (#3209 row 20)
+  const priorLabel = summaryCards?.priorYear != null ? String(summaryCards.priorYear) : null
+  const historyStart = formatHistoryStart(data.status_history_start)
+  const todayDayOffset = data.today_day_offset ?? null
+  const todayLine = (x: number) => (
+    <ReferenceLine
+      x={x}
+      stroke="hsl(var(--muted-foreground))"
+      strokeDasharray="2 3"
+      label={{
+        value: 'TODAY',
+        position: 'top',
+        fill: 'hsl(var(--muted-foreground))',
+        fontSize: 10,
+      }}
+    />
+  )
+
+  // Legend totals for the combined lines: cumulative cancelled
+  const latestWeek = data.combined.weekly.at(-1)
+  const legendLabels = buildLegendLabels({
+    currentYear,
+    currentValue: latestWeek?.enrolled,
+    currentWeekNumber: latestWeek?.week_number,
+    isLive: todayDayOffset != null,
+    priors: data.prior_years.map((py) => ({ year: py.year, final: py.weekly.at(-1)?.enrolled })),
+  })
+  const legendProps = controls.splitByGender
+    ? {}
+    : { formatter: (value: string) => legendLabels[value] ?? value }
 
   // Column definitions for session breakdown table (cancellation-specific)
   const sessionColumns: SessionColumnDef[] = [
@@ -234,7 +256,7 @@ export default function CancellationVelocityPage() {
     ...(hasPriorYear
       ? [
           {
-            header: `Prior Yr${summaryCards ? ` (Wk ${summaryCards.currentWeekNumber})` : ''}`,
+            header: `${priorLabel ?? 'Prior Yr'}${summaryCards ? ` (Wk ${summaryCards.currentWeekNumber})` : ''}`,
             accessor: (_session, priorSession) => (
               <span className="text-muted-foreground">
                 {priorSession?.enrolled_at_current_week?.toLocaleString() ?? '-'}
@@ -243,7 +265,7 @@ export default function CancellationVelocityPage() {
             className: 'text-right',
           } satisfies SessionColumnDef,
           {
-            header: 'Prior Yr Final',
+            header: `${priorLabel ?? 'Prior Yr'} Final`,
             accessor: (_session, priorSession) => (
               <span className="text-muted-foreground">
                 {priorSession?.final_enrolled.toLocaleString() ?? '-'}
@@ -252,13 +274,18 @@ export default function CancellationVelocityPage() {
             className: 'text-right',
           } satisfies SessionColumnDef,
           {
-            header: 'vs Prior',
+            header: priorLabel ? `vs ${priorLabel}` : 'vs Prior',
             accessor: (session, priorSession) => {
-              const lastPoint = session.weekly.at(-1)
-              const currentCancelled = lastPoint?.enrolled ?? 0
+              // A session the comparison year has no match for is new, not missing data
+              if (!priorSession && comparisonYear != null) {
+                return <span className={MUTED_PILL_CLASS}>new</span>
+              }
+              // Same point last year, not last year's final (#3209 row 19).
               // Inverted: positive vsPrior = more cancellations = bad
-              const vsPrior =
-                priorSession != null ? currentCancelled - priorSession.final_enrolled : null
+              const vsPrior = vsPriorSamePoint(
+                session.weekly.at(-1)?.enrolled,
+                priorSession?.enrolled_at_current_week
+              )
               return (
                 <span className={invertedDeltaColorClass(vsPrior)}>
                   {vsPrior != null ? formatDeltaValue(vsPrior) : '-'}
@@ -297,7 +324,7 @@ export default function CancellationVelocityPage() {
     ...(hasPriorYear && chartData.priorWeekMap
       ? [
           {
-            header: 'Prior Year',
+            header: priorLabel ?? 'Prior Year',
             accessor: (_week: WeeklyDataPoint, priorPoint?: WeeklyDataPoint) => (
               <span className="text-muted-foreground">
                 {priorPoint?.enrolled.toLocaleString() ?? '-'}
@@ -306,7 +333,7 @@ export default function CancellationVelocityPage() {
             className: 'text-right',
           } satisfies DeltaColumnDef,
           {
-            header: 'Prior Delta',
+            header: priorLabel ? `${priorLabel} Delta` : 'Prior Delta',
             accessor: (_week: WeeklyDataPoint, priorPoint?: WeeklyDataPoint) => (
               <span className="text-muted-foreground">
                 {priorPoint
@@ -376,6 +403,11 @@ export default function CancellationVelocityPage() {
             </p>
             <p className="text-foreground text-xl font-bold">
               {summaryCards.priorFinal?.toLocaleString() ?? '-'}
+              {summaryCards.noHistory && (
+                <span className={`${MUTED_PILL_CLASS} align-middle`}>
+                  {historyStart ? `no history before ${historyStart}` : 'no history'}
+                </span>
+              )}
             </p>
           </div>
         </div>
@@ -605,7 +637,8 @@ export default function CancellationVelocityPage() {
                   )
                 }}
               />
-              <Legend />
+              <Legend {...legendProps} />
+              {todayDayOffset != null && todayLine(todayDayOffset)}
 
               {/* Brush for zoom/scrub */}
               <Brush
@@ -789,7 +822,8 @@ export default function CancellationVelocityPage() {
                   )
                 }}
               />
-              <Legend />
+              <Legend {...legendProps} />
+              {todayDayOffset != null && todayLine(todayWeekNumber(todayDayOffset))}
 
               {/* Brush for zoom/scrub */}
               <Brush

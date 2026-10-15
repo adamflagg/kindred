@@ -123,21 +123,29 @@ def _reconstruct_core(
     day_offset: int,
     season_start: datetime,
     ag_parent_map: dict[int, int] | None = None,
+    week0_window: bool = True,
 ) -> dict[int, dict[str, int | None]]:
     """Core reconstruction loop — shared by both public functions.
 
     Iterates attendees once, counting enrollments and cancellations per session.
     Gender counts are populated per-session: if any attendee in a session has
     gender data, that session gets integer gender counts; otherwise None.
+
+    ``waitlisted`` is always None: a past waitlist cannot be rebuilt from final
+    attendee records, so callers must treat it as unknown rather than zero.
+
+    ``week0_window=False`` drops the Week-0 lower bound for negative offsets, so
+    "registered by day N" counts every registration up to the cutoff (live
+    same-point comparison before the anchor). Week mode keeps the bound.
     """
     if not attendees:
         return {}
 
     cutoff_date = (season_start + timedelta(days=day_offset)).date()
-    # Lower bound: clamp to anchor - 7 days for negative offsets (Week 0 forecast)
-    # to prevent counting enrollments from arbitrarily far back.  For positive
+    # Lower bound: with week0_window, clamp to anchor - 7 days for negative offsets (Week 0
+    # forecast) to prevent counting enrollments from arbitrarily far back.  For positive
     # offsets pre-anchor enrollments are part of the cumulative total, so no bound.
-    lower_bound = (season_start - timedelta(days=7)).date() if day_offset < 0 else None
+    lower_bound = (season_start - timedelta(days=7)).date() if day_offset < 0 and week0_window else None
 
     # Per-session counters
     session_enrollments: dict[int, int] = defaultdict(int)
@@ -205,7 +213,7 @@ def _reconstruct_core(
             girls = None
         result[sid] = {
             "enrolled": net,
-            "waitlisted": 0,
+            "waitlisted": None,
             "cancelled": session_cancellations.get(sid, 0),
             "enrolled_boys": boys,
             "enrolled_girls": girls,
@@ -221,6 +229,7 @@ async def reconstruct_enrollment_at_offset(
     day_offset: int,
     season_start: datetime,
     ag_parent_map: dict[int, int] | None = None,
+    week0_window: bool = True,
 ) -> dict[int, int]:
     """Reconstruct net enrollment counts per session at a given day offset.
 
@@ -234,12 +243,13 @@ async def reconstruct_enrollment_at_offset(
         season_start: The start of the enrollment season (datetime).
         ag_parent_map: Optional mapping of AG child session cm_id -> parent cm_id.
             When provided, child sessions are merged into their parent.
+        week0_window: Apply the Week-0 lower bound for negative offsets (default).
 
     Returns:
         Dict of session cm_id -> net enrolled count at the given offset.
     """
     attendees = await repository.fetch_attendees_with_dates(year)
-    full = _reconstruct_core(attendees, sessions, day_offset, season_start, ag_parent_map)
+    full = _reconstruct_core(attendees, sessions, day_offset, season_start, ag_parent_map, week0_window)
     # "enrolled" is always int in _reconstruct_core result
     return {sid: counts["enrolled"] or 0 for sid, counts in full.items()}
 
@@ -251,11 +261,12 @@ async def reconstruct_enrollment_with_gender(
     day_offset: int,
     season_start: datetime,
     ag_parent_map: dict[int, int] | None = None,
+    week0_window: bool = True,
 ) -> dict[int, dict[str, int | None]]:
     """Reconstruct enrollment counts with gender breakdown.
 
     Returns {session_cm_id: {
-        "enrolled": int, "waitlisted": int, "cancelled": int,
+        "enrolled": int, "waitlisted": None (unknown), "cancelled": int,
         "enrolled_boys": int | None, "enrolled_girls": int | None
     }}
 
@@ -263,7 +274,7 @@ async def reconstruct_enrollment_with_gender(
     is available, gender counts are populated per-session; otherwise None.
     """
     attendees = await repository.fetch_attendees_with_dates(year, expand_person=True)
-    return _reconstruct_core(attendees, sessions, day_offset, season_start, ag_parent_map)
+    return _reconstruct_core(attendees, sessions, day_offset, season_start, ag_parent_map, week0_window)
 
 
 def _build_daily_points(

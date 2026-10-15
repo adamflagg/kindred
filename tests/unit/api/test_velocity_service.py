@@ -15,7 +15,7 @@ Tests verify the enrollment velocity curve computation:
 - Cancellation velocity curves (metric='cancellation')
 """
 
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, Mock
 
@@ -5123,3 +5123,396 @@ class TestVelocityScopeResolver:
         assert polluted.prior_years == base.prior_years
         assert [c.session_cm_id for c in polluted.by_session] == [1001]
         assert [s.session_cm_id for s in polluted.prior_year_session_summaries] == [1001]
+
+
+# ============================================================================
+# PR 3 (#3209): like-for-like prior comparison, TODAY line, cancellation coverage
+# ============================================================================
+
+
+class TestVelocitySamePointComparison:
+    """Prior values are read on the SAME registration day as the current latest point."""
+
+    @staticmethod
+    def _wire_partial_week(repo: Any) -> None:
+        # 2026 season starts 2025-11-01, 2025's 2024-11-01. Day 80 is Jan 20, three days
+        # into week 12 (days 77-83); the prior year's week 12 ends on day 83 (Jan 23).
+        _wire_years(
+            repo,
+            sessions={y: {1001: _sess(1001, "Session 1", y), 1002: _sess(1002, "Session 2", y)} for y in (2026, 2025)},
+            snapshots={
+                2026: [
+                    create_mock_snapshot("2025-11-02", 1001, 2026, enrolled=5),
+                    create_mock_snapshot("2025-11-02", 1002, 2026, enrolled=4),
+                    create_mock_snapshot("2026-01-20", 1001, 2026, enrolled=30, cancelled=1),
+                    create_mock_snapshot("2026-01-20", 1002, 2026, enrolled=20),
+                ],
+                2025: [
+                    create_mock_snapshot("2024-11-02", 1001, 2025, enrolled=5),
+                    create_mock_snapshot("2024-11-02", 1002, 2025, enrolled=4),
+                    create_mock_snapshot("2025-01-20", 1001, 2025, enrolled=40, cancelled=2),
+                    create_mock_snapshot("2025-01-20", 1002, 2025, enrolled=25),
+                    create_mock_snapshot("2025-01-23", 1001, 2025, enrolled=55, cancelled=6),
+                    create_mock_snapshot("2025-01-23", 1002, 2025, enrolled=35),
+                ],
+            },
+        )
+
+    @pytest.mark.asyncio
+    async def test_current_and_today_day_offsets(self, service, mock_repository):
+        from datetime import date
+
+        self._wire_partial_week(mock_repository)
+        result = await service.get_velocity(year=2026, compare_years=[2025], today=date(2026, 1, 22))
+
+        assert result.current_day_offset == 80  # latest daily point, Jan 20
+        assert result.today_day_offset == 82  # Jan 22 is 82 days after 2025-11-01
+
+    @pytest.mark.asyncio
+    async def test_default_today_is_the_camp_date_not_the_utc_date(self, service, mock_repository, monkeypatch):
+        """Ruling 10: 16:00 UTC on Jan 22 is 08:00 PT, before the 9am camp-day start, so it is still camp day Jan 21."""
+        from datetime import UTC
+
+        from api.services import camp_calendar
+
+        class _FrozenDatetime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return datetime(2026, 1, 22, 16, 0, tzinfo=UTC)
+
+        monkeypatch.setattr(camp_calendar, "datetime", _FrozenDatetime)
+        self._wire_partial_week(mock_repository)
+
+        result = await service.get_velocity(year=2026, compare_years=[2025])
+
+        assert result.today_day_offset == 81  # Jan 21 camp day; the UTC date (Jan 22) would read 82
+
+    @pytest.mark.asyncio
+    async def test_today_day_offset_none_outside_live_season(self, service, mock_repository):
+        from datetime import date
+
+        self._wire_partial_week(mock_repository)
+        result = await service.get_velocity(year=2026, compare_years=[2025], today=date(2027, 3, 1))
+        assert result.today_day_offset is None
+
+        before = await service.get_velocity(year=2026, compare_years=[2025], today=date(2025, 10, 30))
+        assert before.today_day_offset is None
+
+    @pytest.mark.asyncio
+    async def test_current_day_offset_none_without_daily_data(self, service, mock_repository):
+        from datetime import date
+
+        result = await service.get_velocity(year=2026, today=date(2026, 1, 22))
+        assert result.current_day_offset is None
+
+    @pytest.mark.asyncio
+    async def test_prior_at_current_point_uses_same_day_offset_in_partial_week(self, service, mock_repository):
+        from datetime import date
+
+        self._wire_partial_week(mock_repository)
+        result = await service.get_velocity(year=2026, compare_years=[2025], today=date(2026, 1, 20))
+
+        prior = result.prior_years[0]
+        # Whole-week lookup would read the end of prior week 12: 55 + 35.
+        assert prior.weekly[-1].enrolled == 90
+        assert prior.at_current_point == 65  # prior year on its own day 80: 40 + 25
+
+        by_sid = {s.session_cm_id: s for s in result.prior_year_session_summaries}
+        assert by_sid[1001].enrolled_at_current_week == 40
+        assert by_sid[1002].enrolled_at_current_week == 25
+        assert by_sid[1001].final_enrolled == 55
+
+        # Cancelled on the same day (daily `cancelled`), not gross - enrolled at week end (6).
+        assert result.prior_year_cancelled_to_date[0].cancelled_at_current_week == 2
+
+    @pytest.mark.asyncio
+    async def test_prior_at_current_point_cancellation_metric(self, service, mock_repository):
+        from datetime import date
+
+        self._wire_partial_week(mock_repository)
+        result = await service.get_velocity(
+            year=2026, compare_years=[2025], metric="cancellation", today=date(2026, 1, 20)
+        )
+
+        assert result.prior_years[0].at_current_point == 2  # cumulative cancelled on day 80
+        assert result.prior_year_cancelled_to_date[0].cancelled_at_current_week == 2
+        by_sid = {s.session_cm_id: s for s in result.prior_year_session_summaries}
+        assert by_sid[1001].enrolled_at_current_week == 2
+
+    @staticmethod
+    def _wire_priority_day(repo: Any, current_offset: int) -> None:
+        # 2026 season starts 2025-11-01, 2025's 2024-11-01. The current curve ends on
+        # `current_offset`; the prior year has a value on that day and on the NEXT day.
+        cur = date(2025, 11, 1) + timedelta(days=current_offset)
+        _wire_years(
+            repo,
+            sessions={y: {1001: _sess(1001, "Session 1", y)} for y in (2026, 2025)},
+            snapshots={
+                2026: [create_mock_snapshot(cur.isoformat(), 1001, 2026, enrolled=3)],
+                2025: [
+                    create_mock_snapshot(
+                        (date(2024, 11, 1) + timedelta(days=d)).isoformat(),
+                        1001,
+                        2025,
+                        enrolled=enrolled,
+                        cancelled=cancelled,
+                    )
+                    for d, enrolled, cancelled in (
+                        (current_offset, 10, 1),
+                        (current_offset + 1, 60, 4),
+                    )
+                ],
+            },
+        )
+
+    @pytest.mark.asyncio
+    async def test_priority_day_reads_the_prior_next_day_batch(self, service, mock_repository):
+        """Decision 45: prior registrations are dated the next day, so offset 0 reads offset 1."""
+        self._wire_priority_day(mock_repository, 0)
+        result = await service.get_velocity(year=2026, compare_years=[2025], today=date(2025, 11, 1))
+
+        assert result.current_day_offset == 0
+        assert result.prior_years[0].at_current_point == 60
+        by_sid = {s.session_cm_id: s for s in result.prior_year_session_summaries}
+        assert by_sid[1001].enrolled_at_current_week == 60
+        assert result.prior_year_cancelled_to_date[0].cancelled_at_current_week == 4
+
+    @pytest.mark.asyncio
+    async def test_early_reg_date_reads_the_prior_next_day_batch(self, service, mock_repository):
+        """Ruling 11: the early phase date gets the same next-day shift as the priority date (2023)."""
+        self._wire_priority_day(mock_repository, 7)  # early_reg_date is 2025-11-08, offset 7
+        base = mock_repository.fetch_registration_dates.side_effect
+
+        async def reg_dates(year):
+            out = dict(await base(year))
+            out["early_reg_date"] = "2025-11-08" if year == 2026 else "2024-11-08"
+            return out
+
+        mock_repository.fetch_registration_dates.side_effect = reg_dates
+
+        result = await service.get_velocity(year=2026, compare_years=[2025], today=date(2025, 11, 8))
+
+        assert result.current_day_offset == 7
+        assert result.prior_years[0].at_current_point == 60
+        by_sid = {s.session_cm_id: s for s in result.prior_year_session_summaries}
+        assert by_sid[1001].enrolled_at_current_week == 60
+        assert result.prior_year_cancelled_to_date[0].cancelled_at_current_week == 4
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("offset", [1, 2, 3, 4, 5, 6])
+    async def test_offsets_one_to_six_read_their_own_day(self, service, mock_repository, offset):
+        self._wire_priority_day(mock_repository, offset)
+        result = await service.get_velocity(
+            year=2026, compare_years=[2025], today=date(2025, 11, 1) + timedelta(days=offset)
+        )
+
+        assert result.current_day_offset == offset
+        assert result.prior_years[0].at_current_point == 10
+        by_sid = {s.session_cm_id: s for s in result.prior_year_session_summaries}
+        assert by_sid[1001].enrolled_at_current_week == 10
+        assert result.prior_year_cancelled_to_date[0].cancelled_at_current_week == 1
+
+    def test_session_summary_falls_back_to_week_without_daily(self, service):
+        """A prior session with weekly data only is read at the week, never left blank."""
+        from api.services.velocity_service import _CurveResult
+
+        weekly_only = VelocityCurve(
+            year=2025,
+            session_cm_id=1001,
+            session_name="Session 1",
+            weekly=[make_weekly_point("2025-01-17", "Wk 12", 12, 77)],
+        )
+        combined = VelocityCurve(year=2025, weekly=[make_weekly_point("2025-01-17", "Wk 12", 12, 77)])
+        summaries = service._build_prior_session_summaries(
+            2025,
+            _CurveResult(combined=combined, by_session=[weekly_only]),
+            12,
+            current_day_offset=80,
+            current_by_prior_sid={},
+        )
+        assert summaries[0].enrolled_at_current_week == 77
+
+    @pytest.mark.asyncio
+    async def test_hybrid_path_keeps_per_session_daily(self, service, mock_repository):
+        """Quest-style session with no snapshots (hybrid path) still reads by day offset."""
+        from datetime import date
+
+        sessions = {y: {1001: _sess(1001, "Session 1", y), 1002: _sess(1002, "Session 2", y)} for y in (2026, 2025)}
+        # 1002 has no snapshots at all -> hybrid (reconstruction fills it).
+        _wire_years(
+            mock_repository,
+            sessions=sessions,
+            snapshots={
+                2026: [create_mock_snapshot("2025-11-02", 1001, 2026, enrolled=5)],
+                2025: [
+                    create_mock_snapshot("2024-11-02", 1001, 2025, enrolled=5),
+                    create_mock_snapshot("2025-01-20", 1001, 2025, enrolled=40),
+                    create_mock_snapshot("2025-01-23", 1001, 2025, enrolled=55),
+                ],
+            },
+            attendees={
+                2026: [create_mock_attendee_with_date(1, 1002, "2025-11-03", year=2026, effective_date="2025-11-03")],
+                2025: [create_mock_attendee_with_date(2, 1002, "2024-11-03", year=2025, effective_date="2024-11-03")],
+            },
+        )
+        result = await service.get_velocity(year=2026, compare_years=[2025], today=date(2026, 1, 20))
+        by_sid = {s.session_cm_id: s for s in result.prior_year_session_summaries}
+        assert by_sid[1001].enrolled_at_current_week == 40  # prior day 80, not the week's end (55)
+        assert by_sid[1002].enrolled_at_current_week == 1
+
+
+class TestVelocityPriorSessionMatch:
+    """Row 20: each prior session names the current-year session it is the same as."""
+
+    @pytest.mark.asyncio
+    async def test_current_session_cm_id_same_id_alias_and_unmatched(self, service, mock_repository):
+        from datetime import date
+
+        _wire_years(
+            mock_repository,
+            sessions={
+                2026: {
+                    1001: _sess(1001, "Session 1", 2026),
+                    1000802: _sess(1000802, "Taste of Camp 1", 2026),
+                    7001: _sess(7001, "Session 5", 2026),  # new this year: no prior
+                },
+                2025: {
+                    1001: _sess(1001, "Session 1", 2025),
+                    1000103: _sess(1000103, "Taste of Camp", 2025),
+                    2001: _sess(2001, "Session 9", 2025),  # retired: no current match
+                },
+            },
+            snapshots={
+                2026: [create_mock_snapshot("2025-11-02", sid, 2026, enrolled=10) for sid in (1001, 1000802, 7001)],
+                2025: [create_mock_snapshot("2024-11-02", sid, 2025, enrolled=8) for sid in (1001, 1000103, 2001)],
+            },
+        )
+        result = await service.get_velocity(year=2026, compare_years=[2025], today=date(2026, 1, 20))
+
+        match = {s.session_cm_id: s.current_session_cm_id for s in result.prior_year_session_summaries}
+        assert match == {1001: 1001, 1000103: 1000802, 2001: None}
+
+
+class TestVelocityCancellationCoverage:
+    """Row 22: no cancellation history for a year means null, never zero."""
+
+    @staticmethod
+    def _wire(repo: Any, *, prior_transitions: list[Any]) -> None:
+        _wire_years(
+            repo,
+            sessions={y: {1001: _sess(1001, "Session 1", y)} for y in (2026, 2025)},
+            transitions={
+                2026: [create_mock_status_transition(1, 1001, "2026-01-10T00:00:00Z", year=2026)],
+                2025: prior_transitions,
+            },
+        )
+
+    @pytest.mark.asyncio
+    async def test_prior_cancellation_summary_null_without_status_history(self, service, mock_repository):
+        from datetime import date
+
+        self._wire(mock_repository, prior_transitions=[])
+        result = await service.get_velocity(
+            year=2026, compare_years=[2025], metric="cancellation", today=date(2026, 1, 20)
+        )
+
+        summary = result.prior_year_cancelled_to_date[0]
+        assert summary.cancelled_final is None
+        assert summary.cancelled_at_current_week is None
+        assert summary.has_cancellation_data is False
+
+    @pytest.mark.asyncio
+    async def test_prior_cancellation_summary_with_history_has_data(self, service, mock_repository):
+        from datetime import date
+
+        self._wire(
+            mock_repository,
+            prior_transitions=[create_mock_status_transition(2, 1001, "2025-01-10T00:00:00Z", year=2025)],
+        )
+        result = await service.get_velocity(
+            year=2026, compare_years=[2025], metric="cancellation", today=date(2026, 1, 20)
+        )
+
+        summary = result.prior_year_cancelled_to_date[0]
+        assert summary.cancelled_final == 1
+        assert summary.cancelled_at_current_week == 1
+        assert summary.has_cancellation_data is True
+
+    @pytest.mark.asyncio
+    async def test_enrollment_metric_cancelled_summary_unchanged(self, service, mock_repository):
+        """Enrollment counts come from attendee reconstruction: no null, coverage stays True."""
+        from datetime import date
+
+        self._wire(mock_repository, prior_transitions=[])
+        result = await service.get_velocity(year=2026, compare_years=[2025], today=date(2026, 1, 20))
+
+        summary = result.prior_year_cancelled_to_date[0]
+        assert summary.cancelled_final == 0
+        assert summary.has_cancellation_data is True
+
+    @pytest.mark.asyncio
+    async def test_status_history_start_only_for_cancellation_metric(self, service, mock_repository):
+        from datetime import date
+
+        self._wire(mock_repository, prior_transitions=[])
+        mock_repository.fetch_status_history_start = AsyncMock(return_value="2024-11-09 10:00:00.000Z")
+
+        cancel = await service.get_velocity(year=2026, metric="cancellation", today=date(2026, 1, 20))
+        enroll = await service.get_velocity(year=2026, today=date(2026, 1, 20))
+
+        assert cancel.status_history_start == "2024-11-09"
+        assert enroll.status_history_start is None
+
+    @pytest.mark.asyncio
+    async def test_status_history_start_tolerates_failure(self, service, mock_repository):
+        from datetime import date
+
+        self._wire(mock_repository, prior_transitions=[])
+        mock_repository.fetch_status_history_start = AsyncMock(side_effect=RuntimeError("boom"))
+
+        result = await service.get_velocity(year=2026, metric="cancellation", today=date(2026, 1, 20))
+        assert result.status_history_start is None
+
+
+class TestVelocityFamilyCampNeverFoldsIn:
+    """Pin (#2435): Family Camp / adult data with status history changes none of the new fields."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("metric", ["enrollment", "cancellation"])
+    async def test_new_fields_unchanged_by_non_summer_sessions(self, service, mock_repository, metric):
+        from datetime import date
+
+        def build(extra: bool) -> None:
+            sessions = {y: {1001: _sess(1001, "Session 1", y)} for y in (2026, 2025)}
+            snaps = {
+                2026: [create_mock_snapshot("2025-11-02", 1001, 2026, enrolled=20)],
+                2025: [
+                    create_mock_snapshot("2024-11-02", 1001, 2025, enrolled=10),
+                    create_mock_snapshot("2025-01-20", 1001, 2025, enrolled=15, cancelled=1),
+                ],
+            }
+            atts: dict[int, list[Any]] = {2026: [], 2025: []}
+            trans: dict[int, list[Any]] = {
+                2026: [create_mock_status_transition(1, 1001, "2026-01-10T00:00:00Z", year=2026)],
+                2025: [create_mock_status_transition(2, 1001, "2025-01-10T00:00:00Z", year=2025)],
+            }
+            if extra:
+                for y in (2026, 2025):
+                    sessions[y][5001] = _sess(5001, "Family Camp 1", y, session_type="family")
+                    sessions[y][5002] = _sess(5002, "Women's Weekend", y, session_type="adult")
+                    snaps[y] += [create_mock_snapshot(f"{y - 1}-11-02", sid, y, enrolled=40) for sid in (5001, 5002)]
+                    atts[y] += [
+                        create_mock_attendee_with_date(90 + i, 5001 + i, f"{y}-01-03", year=y) for i in range(2)
+                    ]
+                    trans[y] += [
+                        create_mock_status_transition(95 + i, 5001 + i, f"{y}-01-05T00:00:00Z", year=y)
+                        for i in range(2)
+                    ]
+            _wire_years(mock_repository, sessions=sessions, snapshots=snaps, attendees=atts, transitions=trans)
+
+        build(extra=False)
+        base = await service.get_velocity(year=2026, compare_years=[2025], metric=metric, today=date(2026, 1, 20))
+        build(extra=True)
+        polluted = await service.get_velocity(year=2026, compare_years=[2025], metric=metric, today=date(2026, 1, 20))
+
+        assert polluted.model_dump() == base.model_dump()

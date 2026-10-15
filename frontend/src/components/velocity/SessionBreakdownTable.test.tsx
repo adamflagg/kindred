@@ -125,6 +125,33 @@ describe('SessionBreakdownTable', () => {
     expect(screen.getByText('48')).toBeInTheDocument()
   })
 
+  it('looks the prior session up by the row session_cm_id before its name', () => {
+    const accessor = (_session: VelocityCurve, prior?: PriorYearSessionSummary) =>
+      prior ? `prior-${prior.final_enrolled}` : 'no-prior'
+    const prior = (final_enrolled: number): PriorYearSessionSummary => ({
+      year: 2025,
+      session_name: 'Session 1',
+      session_cm_id: 1000001,
+      current_session_cm_id: 1000002,
+      enrolled_at_current_week: 40,
+      final_enrolled,
+    })
+    // Renamed this year: the name key points at a different prior row than the id match.
+    const priorSessionMap = new Map<number | string, PriorYearSessionSummary>([
+      [1000002, prior(48)],
+      ['Session 1', prior(11)],
+    ])
+    render(
+      <SessionBreakdownTable
+        {...defaultProps}
+        sortedBySession={[makeSession({ session_cm_id: 1000002, session_name: 'Session 1' })]}
+        columns={[{ header: 'Prior', accessor }]}
+        priorSessionMap={priorSessionMap}
+      />
+    )
+    expect(screen.getByText('prior-48')).toBeInTheDocument()
+  })
+
   it('shows empty message when sortedBySession is empty', () => {
     render(<SessionBreakdownTable {...defaultProps} sortedBySession={[]} />)
     expect(screen.getByText('No session data available')).toBeInTheDocument()

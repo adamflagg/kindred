@@ -39,6 +39,10 @@ import {
   VelocityControls,
   SessionBreakdownTable,
   WeeklyDeltaTable,
+  MUTED_PILL_CLASS,
+  vsPriorSamePoint,
+  todayWeekNumber,
+  buildLegendLabels,
 } from '../../../components/velocity'
 import type { WeeklyDataPoint } from '../../../types/velocity'
 import { PHASE_COLORS } from './phaseColors'
@@ -107,7 +111,7 @@ export default function VelocityPage() {
     splitByGender: controls.splitByGender,
     selectedPriorYears: controls.selectedPriorYears,
   })
-  const { phaseLines } = chartData
+  const { phaseLines, comparisonYear } = chartData
 
   // Separate zoom state per chart to avoid cross-contamination (#510)
   const weeklyZoom = useChartZoom(chartData.weeklyChartData.length)
@@ -133,28 +137,21 @@ export default function VelocityPage() {
     const currentMaxWeek = currentLatest.week_number
     const currentEnrolled = currentLatest.enrolled
 
-    let priorAtWeek: number | null = null
-    let priorFinal: number | null = null
-    // The backend omits a prior year that has no matching session; the label still names
-    // the year the user ticked, and the values stay '-'.
-    let priorYear: number | null = controls.selectedPriorYears[0] ?? null
+    // One comparison year for every card (#3209). The backend omits a prior year that has no
+    // matching session; the label still names the most recent year the user ticked, and the
+    // values stay '-'.
+    const priorYear: number | null =
+      comparisonYear ??
+      (controls.selectedPriorYears.length ? Math.max(...controls.selectedPriorYears) : null)
+    const py = data.prior_years.find((p) => p.year === comparisonYear)
+    // Same registration day as the current year's latest point, not the whole prior week
+    const priorAtWeek = py?.at_current_point ?? null
+    const priorFinal = py?.weekly.at(-1)?.enrolled ?? null
 
-    if (data.prior_years.length > 0) {
-      const py = data.prior_years[0]
-      if (py) {
-        priorYear = py.year
-        const pyMap = new Map(py.weekly.map((d) => [d.week_number, d]))
-        priorAtWeek = pyMap.get(currentMaxWeek)?.enrolled ?? null
-        const pyLast = py.weekly.at(-1)
-        priorFinal = pyLast?.enrolled ?? null
-      }
-    }
-
-    const delta = priorAtWeek != null ? currentEnrolled - priorAtWeek : null
+    const delta = vsPriorSamePoint(currentEnrolled, priorAtWeek)
 
     const cancelledToDate = data.cancelled_to_date
-    const priorCancelled =
-      data.prior_year_cancelled_to_date.length > 0 ? data.prior_year_cancelled_to_date[0] : null
+    const priorCancelled = data.prior_year_cancelled_to_date.find((c) => c.year === priorYear)
 
     return {
       currentEnrolled,
@@ -167,7 +164,7 @@ export default function VelocityPage() {
       priorCancelledAtWeek: priorCancelled?.cancelled_at_current_week ?? null,
       priorCancelledFinal: priorCancelled?.cancelled_final ?? null,
     }
-  }, [data, controls.selectedPriorYears])
+  }, [data, comparisonYear, controls.selectedPriorYears])
 
   if (isLoading) {
     return (
@@ -199,6 +196,35 @@ export default function VelocityPage() {
   const genderBreakdownMap = new Map(data.session_gender_breakdown.map((b) => [b.session_cm_id, b]))
 
   const hasPriorYear = controls.selectedPriorYears.length > 0
+  // Headers name the comparison year (#3209 row 20)
+  const priorLabel = summaryCards?.priorYear != null ? String(summaryCards.priorYear) : null
+  const todayDayOffset = data.today_day_offset ?? null
+  const todayLine = (x: number) => (
+    <ReferenceLine
+      x={x}
+      stroke="hsl(var(--muted-foreground))"
+      strokeDasharray="2 3"
+      label={{
+        value: 'TODAY',
+        position: 'top',
+        fill: 'hsl(var(--muted-foreground))',
+        fontSize: 10,
+      }}
+    />
+  )
+
+  // Legend totals for the combined lines, in the line's own mode (gross or net)
+  const latestWeek = data.combined.weekly.at(-1)
+  const legendLabels = buildLegendLabels({
+    currentYear,
+    currentValue: viewMode === 'gross' ? latestWeek?.gross_enrolled : latestWeek?.enrolled,
+    currentWeekNumber: latestWeek?.week_number,
+    isLive: todayDayOffset != null,
+    priors: data.prior_years.map((py) => {
+      const last = py.weekly.at(-1)
+      return { year: py.year, final: viewMode === 'gross' ? last?.gross_enrolled : last?.enrolled }
+    }),
+  })
 
   // View mode toggle (passed as extraControls to VelocityControls)
   const viewModeToggle = (
@@ -274,7 +300,7 @@ export default function VelocityPage() {
     ...(hasPriorYear
       ? [
           {
-            header: `Prior Yr${summaryCards ? ` (Wk ${summaryCards.currentWeekNumber})` : ''}`,
+            header: `${priorLabel ?? 'Prior Yr'}${summaryCards ? ` (Wk ${summaryCards.currentWeekNumber})` : ''}`,
             accessor: (_session, priorSession) => (
               <span className="text-muted-foreground">
                 {priorSession?.enrolled_at_current_week?.toLocaleString() ?? '-'}
@@ -283,7 +309,7 @@ export default function VelocityPage() {
             className: 'text-right',
           } satisfies SessionColumnDef,
           {
-            header: 'Prior Yr Final',
+            header: `${priorLabel ?? 'Prior Yr'} Final`,
             accessor: (_session, priorSession) => (
               <span className="text-muted-foreground">
                 {priorSession?.final_enrolled.toLocaleString() ?? '-'}
@@ -292,12 +318,17 @@ export default function VelocityPage() {
             className: 'text-right',
           } satisfies SessionColumnDef,
           {
-            header: 'vs Prior',
+            header: priorLabel ? `vs ${priorLabel}` : 'vs Prior',
             accessor: (session, priorSession) => {
-              const lastPoint = session.weekly.at(-1)
-              const currentEnrolled = lastPoint?.enrolled ?? 0
-              const vsPrior =
-                priorSession != null ? currentEnrolled - priorSession.final_enrolled : null
+              // A session the comparison year has no match for is new, not missing data
+              if (!priorSession && comparisonYear != null) {
+                return <span className={MUTED_PILL_CLASS}>new</span>
+              }
+              // Same point last year, not last year's final (#3209 row 19)
+              const vsPrior = vsPriorSamePoint(
+                session.weekly.at(-1)?.enrolled,
+                priorSession?.enrolled_at_current_week
+              )
               return (
                 <span className={deltaColorClass(vsPrior)}>
                   {vsPrior != null ? formatDeltaValue(vsPrior) : '-'}
@@ -355,7 +386,7 @@ export default function VelocityPage() {
     ...(hasPriorYear && chartData.priorWeekMap
       ? [
           {
-            header: 'Prior Year',
+            header: priorLabel ?? 'Prior Year',
             accessor: (_week: WeeklyDataPoint, priorPoint?: WeeklyDataPoint) => (
               <span className="text-muted-foreground">
                 {priorPoint?.enrolled.toLocaleString() ?? '-'}
@@ -364,7 +395,7 @@ export default function VelocityPage() {
             className: 'text-right',
           } satisfies DeltaColumnDef,
           {
-            header: 'Prior Delta',
+            header: priorLabel ? `${priorLabel} Delta` : 'Prior Delta',
             accessor: (_week: WeeklyDataPoint, priorPoint?: WeeklyDataPoint) => (
               <span className={deltaColorClass(priorPoint?.delta ?? null)}>
                 {priorPoint ? formatDeltaValue(priorPoint.delta) : '-'}
@@ -400,6 +431,7 @@ export default function VelocityPage() {
             <p className="text-foreground text-xl font-bold">
               {summaryCards.currentEnrolled.toLocaleString()}
             </p>
+            <p className="text-muted-foreground text-xs">camper-sessions</p>
           </div>
           <div className="card-lodge p-3">
             <p className="text-muted-foreground text-xs font-medium">
@@ -658,6 +690,7 @@ export default function VelocityPage() {
               />
               <Legend />
               <ReferenceLine y={0} stroke="hsl(var(--border))" />
+              {todayDayOffset != null && todayLine(todayWeekNumber(todayDayOffset))}
 
               {/* Brush for zoom/scrub */}
               <Brush
@@ -912,7 +945,12 @@ export default function VelocityPage() {
                   )
                 }}
               />
-              <Legend />
+              <Legend
+                {...(controls.splitByGender
+                  ? {}
+                  : { formatter: (value: string) => legendLabels[value] ?? value })}
+              />
+              {todayDayOffset != null && todayLine(todayDayOffset)}
 
               {/* Brush for zoom/scrub */}
               <Brush

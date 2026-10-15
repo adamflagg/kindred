@@ -6,7 +6,8 @@ export interface SessionForecast {
   participant_goal: number | null
   session_fee: number | null
   enrolled: number
-  waitlisted: number
+  /** null in week mode: a past waitlist cannot be rebuilt. */
+  waitlisted: number | null
   pct_of_goal: number | null
   prior_year_count: number | null
   two_year_prior_count: number | null
@@ -20,6 +21,12 @@ export interface SessionForecast {
   enrolled_girls: number | null
 }
 
+/** Whole-scope prior totals for a section (camp / quest / teen). */
+export interface ForecastPriorTotals {
+  prior_year_count: number | null
+  two_year_prior_count: number | null
+}
+
 /** Full forecast response with per-session data and grand total. */
 export interface ForecastResponse {
   year: number
@@ -27,6 +34,10 @@ export interface ForecastResponse {
   grand_total: SessionForecast
   week_number: number | null
   day_offset: number | null
+  /** Whether the prior columns are same-point-last-year or last year's final. */
+  prior_basis: 'same_point' | 'final'
+  /** Keys: camp, quest, teen. */
+  section_priors: Record<string, ForecastPriorTotals>
 }
 
 /** A selectable week in the forecast dropdown. */

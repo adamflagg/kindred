@@ -682,7 +682,13 @@ class TestForecastDeltaFields:
     async def test_delta_fields_none_without_config(self, service, mock_repository):
         """Delta fields are None when inputs are missing."""
         sessions = {1001: create_mock_session(1001, "Session 1")}
-        mock_repository.fetch_sessions.return_value = sessions
+
+        # Ruling 7: a prior year that OFFERED the session with nobody counted reads 0, so "no prior
+        # year data" now means no prior-year session at all: only 2026 has sessions.
+        async def fetch_sessions_side_effect(year, session_types=None):
+            return sessions if year == 2026 else {}
+
+        mock_repository.fetch_sessions.side_effect = fetch_sessions_side_effect
 
         enrolled = [create_mock_attendee(i, 1001) for i in range(10)]
 
@@ -1154,7 +1160,7 @@ class TestForecastWithDayOffset:
         result = await service.calculate_forecast(year=2026)
 
         assert result.sessions[0].enrolled == 5
-        mock_repository.fetch_registration_dates.assert_not_called()
+        # Live mode now reads the anchor (row 26, same-point prior) but never reconstructs this year
         mock_repository.fetch_attendees_with_dates.assert_not_called()
         assert result.week_number is None
         assert result.day_offset is None
@@ -1698,7 +1704,9 @@ class TestForecastAGPriorByParent:
         assert main.prior_year_count == 5  # non-AG row unchanged
 
     @pytest.mark.asyncio
-    async def test_several_ag_rows_match_by_cm_id_or_exact_name_never_parent(self, service, mock_repository):
+    async def test_several_ag_rows_match_by_cm_id_or_exact_name_remainder_goes_to_first_unmatched(
+        self, service, mock_repository
+    ):
         s2026 = _ag_sessions(
             2026,
             1002,
@@ -1730,7 +1738,8 @@ class TestForecastAGPriorByParent:
 
         by_id = {s.session_cm_id: s for s in result.sessions}
         assert by_id[2002].prior_year_count == 12
-        assert by_id[2003].prior_year_count is None  # no parent fallback, so 8 is not double counted
+        # Decision 43: the retired cabin's 8 goes to the first unmatched sibling, so rows add up to the section prior
+        assert by_id[2003].prior_year_count == 8
 
     @pytest.mark.asyncio
     async def test_several_ag_rows_match_prior_by_cm_id(self, service, mock_repository):
@@ -1849,3 +1858,629 @@ class TestForecastAGPriorByParent:
             )
 
         assert results[0] == results[1]
+
+
+# ============================================================================
+# #3209 rows 23, 24, 26: unknown week-mode waitlist, same-point prior, scope total
+# ============================================================================
+
+
+def _reg(pid, sid, reg, year, status_id=2, cancelled=None):
+    return create_mock_attendee(
+        pid,
+        sid,
+        year=year,
+        status_id=status_id,
+        effective_date=reg,
+        enrollment_date=cancelled or reg,
+    )
+
+
+def _wire_dated(mock_repository, sessions_by_year, attendees_by_year, anchors):
+    _wire_years(mock_repository, sessions_by_year, attendees_by_year)
+
+    async def fetch_dates(year):
+        return {"priority_reg_date": anchors[year]} if year in anchors else {}
+
+    async def with_dates(year, expand_person=False):
+        return attendees_by_year.get(year, [])
+
+    mock_repository.fetch_registration_dates.side_effect = fetch_dates
+    mock_repository.fetch_attendees_with_dates.side_effect = with_dates
+
+
+class TestForecastWeekModeWaitlist:
+    @pytest.mark.asyncio
+    async def test_week_mode_waitlist_unknown_not_zero(self, service, mock_repository):
+        sessions = {1001: create_mock_session(1001, "Session 1")}
+        att = [_reg(1, 1001, "2025-10-16", 2026)]
+        _wire_dated(mock_repository, {2026: sessions}, {2026: att}, {2026: "2025-10-15"})
+
+        result = await service.calculate_forecast(year=2026, day_offset=30)
+
+        assert result.sessions[0].waitlisted is None
+        assert result.grand_total.waitlisted is None
+
+    @pytest.mark.asyncio
+    async def test_live_waitlist_still_counted(self, service, mock_repository):
+        sessions = {1001: create_mock_session(1001, "Session 1")}
+        _wire_years(mock_repository, {2026: sessions}, {2026: [create_mock_attendee(1, 1001)]})
+
+        result = await service.calculate_forecast(year=2026)
+
+        assert result.sessions[0].waitlisted == 0
+        assert result.grand_total.waitlisted == 0
+
+
+class TestForecastSamePointPrior:
+    """Row 26: live mode compares with the same registration day last year while the season is live."""
+
+    @staticmethod
+    def _setup(mock_repository, anchors=None):
+        sessions = {1001: create_mock_session(1001, "Session 1")}
+        prior_sessions = {9001: create_mock_session(9001, "Session 1", year=2025)}
+        prior_att = [
+            *[_reg(i, 9001, "2024-10-12", 2025) for i in range(3)],  # by day 30
+            *[_reg(10 + i, 9001, "2024-12-01", 2025) for i in range(2)],  # after day 30
+            _reg(20, 9001, "2024-10-11", 2025, status_id=32, cancelled="2024-11-01"),  # cancelled by day 30
+        ]
+        _wire_dated(
+            mock_repository,
+            {2026: sessions, 2025: prior_sessions},
+            {2026: [create_mock_attendee(1, 1001)], 2025: prior_att},
+            {2026: "2025-10-15", 2025: "2024-10-10"} if anchors is None else anchors,
+        )
+
+    @pytest.mark.asyncio
+    async def test_live_season_compares_same_point(self, service, mock_repository):
+        self._setup(mock_repository)
+
+        result = await service.calculate_forecast(year=2026, today=date(2025, 11, 14))  # day 30
+
+        assert result.prior_basis == "same_point"
+        assert result.sessions[0].prior_year_count == 3
+        assert result.grand_total.prior_year_count == 3
+
+    @pytest.mark.asyncio
+    async def test_past_season_compares_final(self, service, mock_repository):
+        self._setup(mock_repository)
+        # Final basis ignores registration dates: the live fetch's records are counted as returned.
+        result = await service.calculate_forecast(year=2026, today=date(2026, 12, 1))
+
+        assert result.prior_basis == "final"
+        assert result.sessions[0].prior_year_count == 6  # every record the live fetch returns
+
+    @pytest.mark.asyncio
+    async def test_no_anchor_is_final(self, service, mock_repository):
+        self._setup(mock_repository, anchors={})
+
+        result = await service.calculate_forecast(year=2026, today=date(2025, 11, 14))
+
+        assert result.prior_basis == "final"
+
+    @pytest.mark.asyncio
+    async def test_anchor_read_failure_falls_back_to_final(self, service, mock_repository):
+        # Live mode only reads the anchor to choose the basis; a failed read must not sink the page.
+        self._setup(mock_repository)
+        mock_repository.fetch_registration_dates.side_effect = RuntimeError("config read failed")
+
+        result = await service.calculate_forecast(year=2026, today=date(2025, 11, 14))
+
+        assert result.prior_basis == "final"
+        assert result.sessions[0].enrolled == 1
+
+    @pytest.mark.asyncio
+    async def test_malformed_anchor_falls_back_to_final(self, service, mock_repository):
+        self._setup(mock_repository, anchors={2026: "not-a-date", 2025: "2024-10-10"})
+
+        result = await service.calculate_forecast(year=2026, today=date(2025, 11, 14))
+
+        assert result.prior_basis == "final"
+        assert result.sessions[0].enrolled == 1
+
+    @pytest.mark.asyncio
+    async def test_week_mode_basis_is_same_point(self, service, mock_repository):
+        self._setup(mock_repository)
+
+        result = await service.calculate_forecast(year=2026, day_offset=30)
+
+        assert result.prior_basis == "same_point"
+
+    @pytest.mark.asyncio
+    async def test_before_anchor_live_has_no_week0_lower_bound(self, service, mock_repository):
+        sessions = {1001: create_mock_session(1001, "Session 1")}
+        prior_sessions = {9001: create_mock_session(9001, "Session 1", year=2025)}
+        # Registered well before the prior anchor's Week-0 window (anchor - 7 days)
+        prior_att = [_reg(1, 9001, "2024-09-01", 2025), _reg(2, 9001, "2024-10-08", 2025)]
+        _wire_dated(
+            mock_repository,
+            {2026: sessions, 2025: prior_sessions},
+            {2026: [], 2025: prior_att},
+            {2026: "2025-10-15", 2025: "2024-10-10"},
+        )
+
+        live = await service.calculate_forecast(year=2026, today=date(2025, 10, 10))  # day -5
+        week = await service.calculate_forecast(year=2026, day_offset=-5)
+
+        assert live.prior_basis == "same_point"
+        # Cutoff is 2024-10-05: only the early registration counts, with no Week-0 lower bound
+        assert live.sessions[0].prior_year_count == 1
+        # Week mode keeps the Week-0 window (anchor - 7 days): the September registration is outside it.
+        # Ruling 7: the session was offered, so nobody counted reads 0, not "---".
+        assert week.sessions[0].prior_year_count == 0
+
+
+class TestForecastScopeTotalPrior:
+    """Row 23: Grand Total prior is last year's whole-scope total, not the sum of matched rows."""
+
+    @staticmethod
+    def _years(with_family: bool) -> tuple[dict[int, dict[int, Any]], dict[int, list[Any]]]:
+        s2026 = {
+            1001: create_mock_session(1001, "Session 1", year=2026),
+            1361: create_mock_session(1361, "Counselor In-Training", year=2026, session_type="scit"),
+        }
+        s2025 = {
+            9001: create_mock_session(9001, "Session 1", year=2025),
+            9005: create_mock_session(9005, "Retired Session", year=2025),  # no current match
+            9101: create_mock_session(9101, "AG Cabin (9th grade)", year=2025, session_type="ag", parent_id=9001),
+            9361: create_mock_session(9361, "Counselor In-Training", year=2025, session_type="scit"),
+        }
+        a2026 = [create_mock_attendee(1, 1001), create_mock_attendee(2, 1361)]
+        a2025 = [
+            *[create_mock_attendee(10 + i, 9001, year=2025) for i in range(4)],
+            *[create_mock_attendee(30 + i, 9005, year=2025) for i in range(2)],
+            *[create_mock_attendee(40 + i, 9101, year=2025) for i in range(3)],
+            *[create_mock_attendee(50 + i, 9361, year=2025) for i in range(5)],
+        ]
+        if with_family:
+            s2025[9500] = create_mock_session(9500, "Family Camp", year=2025, session_type="family")
+            s2025[9501] = create_mock_session(9501, "Adult Weekend", year=2025, session_type="adult")
+            a2025 += [create_mock_attendee(70 + i, 9500, year=2025) for i in range(7)]
+            a2025 += [create_mock_attendee(90 + i, 9501, year=2025) for i in range(6)]
+        return {2026: s2026, 2025: s2025}, {2026: a2026, 2025: a2025}
+
+    @pytest.mark.asyncio
+    async def test_total_prior_equals_last_years_scope_total(self, service, mock_repository):
+        sessions, attendees = self._years(with_family=False)
+        _wire_years(mock_repository, sessions, attendees)
+
+        result = await service.calculate_forecast(year=2026, session_types=["main", "ag", "scit"])
+
+        main_row = next(s for s in result.sessions if s.session_cm_id == 1001)
+        assert main_row.prior_year_count == 4  # per-session rows keep their matching
+        assert result.section_priors["camp"].prior_year_count == 9  # 4 + retired 2 + AG 3
+        assert result.section_priors["teen"].prior_year_count == 5
+        assert result.grand_total.prior_year_count == 14
+        assert result.grand_total.participants_vs_prior_year == 2 - 14
+        assert result.grand_total.two_year_prior_count is None
+
+    @pytest.mark.asyncio
+    async def test_family_and_adult_never_change_a_prior_total(self, service, mock_repository):
+        out = []
+        for with_family in (False, True):
+            sessions, attendees = self._years(with_family)
+            _wire_years(mock_repository, sessions, attendees)
+            r = await service.calculate_forecast(year=2026, session_types=["main", "ag", "scit"])
+            out.append(
+                (
+                    r.grand_total.prior_year_count,
+                    {k: v.prior_year_count for k, v in r.section_priors.items()},
+                )
+            )
+        assert out[0] == out[1]
+
+    @pytest.mark.asyncio
+    async def test_week_mode_total_counts_retired_session_at_offset(self, service, mock_repository):
+        sessions, attendees = self._years(with_family=False)
+        anchors = {2026: "2025-10-15", 2025: "2024-10-10"}
+        dated = {
+            2026: [_reg(1, 1001, "2025-10-16", 2026)],
+            2025: [
+                _reg(1, 9001, "2024-10-12", 2025),
+                _reg(2, 9005, "2024-10-12", 2025),  # retired session
+                _reg(3, 9005, "2025-03-01", 2025),  # after the offset
+                _reg(4, 9101, "2024-10-13", 2025),  # AG cabin
+            ],
+        }
+        _wire_dated(mock_repository, sessions, dated, anchors)
+
+        result = await service.calculate_forecast(year=2026, session_types=["main", "ag"], day_offset=30)
+
+        assert result.grand_total.prior_year_count == 3
+        assert result.section_priors["camp"].prior_year_count == 3
+
+    @pytest.mark.asyncio
+    async def test_prior_failure_leaves_section_priors_empty(self, service, mock_repository):
+        sessions = {1001: create_mock_session(1001, "Session 1")}
+
+        async def fetch_sessions(year, session_types=None):
+            if year == 2026:
+                return sessions
+            raise Exception("boom")
+
+        mock_repository.fetch_sessions.side_effect = fetch_sessions
+        mock_repository.fetch_attendees.side_effect = _attendees_or_boom
+
+        result = await service.calculate_forecast(year=2026)
+
+        assert result.grand_total.prior_year_count is None
+        assert all(v.prior_year_count is None for v in result.section_priors.values())
+
+
+async def _attendees_or_boom(year, status_filter=None, **kwargs):
+    if status_filter == "waitlisted":
+        return []
+    if year == 2026:
+        return [create_mock_attendee(1, 1001)]
+    raise Exception("boom")
+
+
+# ============================================================================
+# Decision 45a: same-point reads on the priority day include the next-day batch
+# ============================================================================
+
+
+class TestForecastPriorityDayPrior:
+    """Prior-year registrations are dated the NEXT day, so the priority day spans two dates."""
+
+    @staticmethod
+    def _wire(mock_repository):
+        sessions = {1001: create_mock_session(1001, "Session 1")}
+        prior_sessions = {9001: create_mock_session(9001, "Session 1", year=2025)}
+        prior_att = [
+            *[_reg(i, 9001, "2024-10-10", 2025) for i in range(2)],  # anchor
+            *[_reg(10 + i, 9001, "2024-10-11", 2025) for i in range(5)],  # anchor + 1
+            *[_reg(20 + i, 9001, "2024-10-13", 2025) for i in range(3)],  # anchor + 3
+            *[_reg(30 + i, 9001, "2024-10-14", 2025) for i in range(4)],  # anchor + 4
+        ]
+        _wire_dated(
+            mock_repository,
+            {2026: sessions, 2025: prior_sessions},
+            {2026: [], 2025: prior_att},
+            {2026: "2025-10-15", 2025: "2024-10-10"},
+        )
+
+    @pytest.mark.asyncio
+    async def test_live_on_the_priority_date_includes_the_next_day(self, service, mock_repository):
+        self._wire(mock_repository)
+
+        result = await service.calculate_forecast(year=2026, today=date(2025, 10, 15))  # offset 0
+
+        assert result.prior_basis == "same_point"
+        assert result.sessions[0].prior_year_count == 7
+        assert result.section_priors["camp"].prior_year_count == 7
+
+    @pytest.mark.asyncio
+    async def test_week_mode_offset_zero_includes_the_next_day(self, service, mock_repository):
+        self._wire(mock_repository)
+
+        result = await service.calculate_forecast(year=2026, day_offset=0)
+
+        assert result.sessions[0].prior_year_count == 7
+        assert result.section_priors["camp"].prior_year_count == 7
+
+    @pytest.mark.asyncio
+    async def test_offset_three_is_unchanged_in_live_and_week_mode(self, service, mock_repository):
+        self._wire(mock_repository)
+
+        live = await service.calculate_forecast(year=2026, today=date(2025, 10, 18))  # offset 3
+        week = await service.calculate_forecast(year=2026, day_offset=3)
+
+        assert live.sessions[0].prior_year_count == 10  # 2 + 5 + 3, not the anchor + 4 batch
+        assert week.sessions[0].prior_year_count == 10
+        assert live.section_priors["camp"].prior_year_count == 10
+
+
+class TestForecastEarlyRegDatePrior:
+    """Ruling 11: the early phase date reads the prior year through its next day, as the priority date does."""
+
+    @staticmethod
+    def _wire(mock_repository):
+        sessions = {1001: create_mock_session(1001, "Session 1")}
+        prior_sessions = {9001: create_mock_session(9001, "Session 1", year=2025)}
+        prior_att = [
+            *[_reg(i, 9001, "2024-10-10", 2025) for i in range(2)],  # prior anchor
+            *[_reg(10 + i, 9001, "2024-10-17", 2025) for i in range(5)],  # anchor + 7
+            *[_reg(20 + i, 9001, "2024-10-18", 2025) for i in range(3)],  # anchor + 8
+            *[_reg(30 + i, 9001, "2024-10-19", 2025) for i in range(4)],  # anchor + 9
+        ]
+        _wire_dated(
+            mock_repository,
+            {2026: sessions, 2025: prior_sessions},
+            {2026: [], 2025: prior_att},
+            {2026: "2025-10-15", 2025: "2024-10-10"},
+        )
+
+        async def fetch_dates(year):
+            if year == 2026:
+                return {"priority_reg_date": "2025-10-15", "early_reg_date": "2025-10-22"}  # offset 7
+            return {"priority_reg_date": "2024-10-10"}
+
+        mock_repository.fetch_registration_dates.side_effect = fetch_dates
+
+    @pytest.mark.asyncio
+    async def test_live_on_the_early_date_includes_the_next_day(self, service, mock_repository):
+        self._wire(mock_repository)
+
+        result = await service.calculate_forecast(year=2026, today=date(2025, 10, 22))  # offset 7
+
+        assert result.sessions[0].prior_year_count == 10  # 2 + 5 + 3
+
+    @pytest.mark.asyncio
+    async def test_week_mode_on_the_early_offset_includes_the_next_day(self, service, mock_repository):
+        self._wire(mock_repository)
+
+        result = await service.calculate_forecast(year=2026, day_offset=7)
+
+        assert result.sessions[0].prior_year_count == 10
+
+    @pytest.mark.asyncio
+    async def test_the_day_after_the_early_date_is_unchanged(self, service, mock_repository):
+        self._wire(mock_repository)
+
+        result = await service.calculate_forecast(year=2026, today=date(2025, 10, 23))  # offset 8
+
+        assert result.sessions[0].prior_year_count == 10  # 2 + 5 + 3, not the anchor + 9 batch
+
+
+# ============================================================================
+# Decision 43 / K9: AG priors resolve per PARENT, the remainder to the first unmatched sibling
+# ============================================================================
+
+
+class TestForecastAGPriorRemainder:
+    @pytest.mark.asyncio
+    async def test_one_prior_cabin_two_new_siblings_exactly_one_row_carries_it(self, service, mock_repository):
+        s2026 = _ag_sessions(2026, 1002, "Session 2", {2002: "AG (7th grade)", 2003: "AG (8th grade)"})
+        s2025 = _ag_sessions(2025, 9002, "Session 2", {9101: "AG (9th grade)"})
+        _wire_years(
+            mock_repository,
+            {2026: s2026, 2025: s2025},
+            {2026: [], 2025: [create_mock_attendee(100 + i, 9101, year=2025) for i in range(12)]},
+        )
+
+        result = await service.calculate_forecast(year=2026, session_types=["main", "ag"])
+
+        by_id = {s.session_cm_id: s for s in result.sessions}
+        assert by_id[2002].prior_year_count == 12  # first sibling in row order carries it
+        assert by_id[2003].prior_year_count is None
+        row_sum = sum(s.prior_year_count or 0 for s in result.sessions if s.session_type == "ag")
+        assert row_sum == result.section_priors["camp"].prior_year_count
+
+    @pytest.mark.asyncio
+    async def test_first_means_the_order_the_page_shows_not_fetch_order(self, service, mock_repository):
+        # The page sorts rows by start date, then name. Fetch order lists "AG B" first,
+        # but staff see "AG A" first, so "AG A" carries last year's unmatched count.
+        s2026 = _ag_sessions(2026, 1002, "Session 2", {2003: "AG B", 2002: "AG A"})
+        s2025 = _ag_sessions(2025, 9002, "Session 2", {9101: "AG (9th grade)"})
+        _wire_years(
+            mock_repository,
+            {2026: s2026, 2025: s2025},
+            {2026: [], 2025: [create_mock_attendee(100 + i, 9101, year=2025) for i in range(12)]},
+        )
+
+        result = await service.calculate_forecast(year=2026, session_types=["main", "ag"])
+
+        by_id = {s.session_cm_id: s for s in result.sessions}
+        assert by_id[2002].prior_year_count == 12
+        assert by_id[2003].prior_year_count is None
+
+    @pytest.mark.asyncio
+    async def test_names_that_tie_on_the_page_keep_the_order_the_page_receives(self, service, mock_repository):
+        # Real AG cabin names carry the parent's "Session N" and share its start date.
+        # The page's compareByDateThenName compares only the session number and its
+        # letter suffix, so these two tie and the page keeps the API order (fetch
+        # order). The cabin listed first must carry the remainder, even though its
+        # full name sorts second alphabetically.
+        s2026 = _ag_sessions(
+            2026,
+            1002,
+            "Session 2",
+            {2003: "AG Cabin-Session 2 (9th & 10th grades)", 2002: "AG Cabin-Session 2 (7th - 9th grades)"},
+        )
+        s2025 = _ag_sessions(2025, 9002, "Session 2", {9101: "AG Cabin-Session 2 (8th & 9th grades)"})
+        _wire_years(
+            mock_repository,
+            {2026: s2026, 2025: s2025},
+            {2026: [], 2025: [create_mock_attendee(100 + i, 9101, year=2025) for i in range(12)]},
+        )
+
+        result = await service.calculate_forecast(year=2026, session_types=["main", "ag"])
+
+        by_id = {s.session_cm_id: s for s in result.sessions}
+        assert by_id[2003].prior_year_count == 12
+        assert by_id[2002].prior_year_count is None
+
+    @pytest.mark.asyncio
+    async def test_partial_match_remainder_goes_to_the_unmatched_sibling(self, service, mock_repository):
+        s2026 = _ag_sessions(2026, 1002, "Session 2", {2002: "AG A", 2003: "AG B"})
+        s2025 = _ag_sessions(2025, 9002, "Session 2", {2002: "Renamed A", 9102: "Retired cabin"})
+        _wire_years(
+            mock_repository,
+            {2026: s2026, 2025: s2025},
+            {
+                2026: [],
+                2025: [
+                    *[create_mock_attendee(100 + i, 2002, year=2025) for i in range(8)],
+                    *[create_mock_attendee(200 + i, 9102, year=2025) for i in range(12)],
+                ],
+            },
+        )
+
+        result = await service.calculate_forecast(year=2026)
+
+        by_id = {s.session_cm_id: s for s in result.sessions}
+        assert by_id[2002].prior_year_count == 8
+        assert by_id[2003].prior_year_count == 12
+
+    @pytest.mark.asyncio
+    async def test_remainder_skips_a_matched_first_sibling(self, service, mock_repository):
+        # The matched sibling is FIRST in row order: the remainder still goes to the first UNMATCHED one.
+        s2026 = _ag_sessions(2026, 1002, "Session 2", {2002: "AG A", 2003: "AG B", 2004: "AG C"})
+        s2025 = _ag_sessions(2025, 9002, "Session 2", {2002: "Renamed A", 9102: "Retired cabin"})
+        _wire_years(
+            mock_repository,
+            {2026: s2026, 2025: s2025},
+            {
+                2026: [],
+                2025: [
+                    *[create_mock_attendee(100 + i, 2002, year=2025) for i in range(8)],
+                    *[create_mock_attendee(200 + i, 9102, year=2025) for i in range(12)],
+                ],
+            },
+        )
+
+        result = await service.calculate_forecast(year=2026)
+
+        # "First" is the order the rows appear in the response (no re-sort after building)
+        ag_rows = [s for s in result.sessions if s.session_type == "ag"]
+        assert [s.session_cm_id for s in ag_rows] == [2002, 2003, 2004]
+        assert [s.prior_year_count for s in ag_rows] == [8, 12, None]
+
+    @pytest.mark.asyncio
+    async def test_all_siblings_matched_attributes_nothing_extra(self, service, mock_repository):
+        s2026 = _ag_sessions(2026, 1002, "Session 2", {2002: "AG A", 2003: "AG B"})
+        s2025 = _ag_sessions(2025, 9002, "Session 2", {2002: "Renamed A", 2003: "Renamed B", 9102: "Retired cabin"})
+        _wire_years(
+            mock_repository,
+            {2026: s2026, 2025: s2025},
+            {
+                2026: [],
+                2025: [
+                    *[create_mock_attendee(100 + i, 2002, year=2025) for i in range(8)],
+                    *[create_mock_attendee(150 + i, 2003, year=2025) for i in range(3)],
+                    *[create_mock_attendee(200 + i, 9102, year=2025) for i in range(12)],
+                ],
+            },
+        )
+
+        result = await service.calculate_forecast(year=2026)
+
+        by_id = {s.session_cm_id: s for s in result.sessions}
+        assert by_id[2002].prior_year_count == 8
+        assert by_id[2003].prior_year_count == 3
+
+    @pytest.mark.asyncio
+    async def test_week_mode_one_prior_cabin_two_new_siblings(self, service, mock_repository):
+        s2026 = _ag_sessions(2026, 1002, "Session 2", {2002: "AG (7th grade)", 2003: "AG (8th grade)"})
+        s2025 = _ag_sessions(2025, 9002, "Session 2", {9101: "AG (9th grade)"})
+        dated = {2026: [], 2025: [_reg(100 + i, 9101, "2024-10-12", 2025) for i in range(12)]}
+        _wire_dated(
+            mock_repository,
+            {2026: s2026, 2025: s2025},
+            dated,
+            {2026: "2025-10-15", 2025: "2024-10-10"},
+        )
+
+        result = await service.calculate_forecast(year=2026, session_types=["main", "ag"], day_offset=30)
+
+        by_id = {s.session_cm_id: s for s in result.sessions}
+        assert by_id[2002].prior_year_count == 12
+        assert by_id[2003].prior_year_count is None
+        row_sum = sum(s.prior_year_count or 0 for s in result.sessions if s.session_type == "ag")
+        assert row_sum == result.section_priors["camp"].prior_year_count
+
+
+class TestForecastPriorOfferedButEmptyReadsZero:
+    """Ruling 7 (2026-10-14): a prior-year session that was offered but has nobody left reads 0, not "---"."""
+
+    @staticmethod
+    def _wire(mock_repository, prior_att, *, extra_prior=None, extra_current=None):
+        sessions = {1001: create_mock_session(1001, "Session 1"), 1002: create_mock_session(1002, "Session 2")}
+        prior_sessions = {9001: create_mock_session(9001, "Session 1", year=2025)}
+        _wire_dated(
+            mock_repository,
+            {2026: sessions, 2025: prior_sessions},
+            {2026: [create_mock_attendee(1, 1001)], 2025: prior_att},
+            {2026: "2025-10-15", 2025: "2024-10-10"},
+        )
+
+    @staticmethod
+    def _all_cancelled():
+        return [_reg(i, 9001, "2024-10-12", 2025, status_id=32, cancelled="2024-10-20") for i in range(3)]
+
+    @pytest.mark.asyncio
+    async def test_week_mode_all_cancelled_matched_session_reads_zero(self, service, mock_repository):
+        self._wire(mock_repository, self._all_cancelled())
+
+        result = await service.calculate_forecast(year=2026, day_offset=30)
+
+        by_id = {s.session_cm_id: s for s in result.sessions}
+        assert by_id[1001].prior_year_count == 0
+        assert by_id[1002].prior_year_count is None  # no prior match stays "new"
+
+    @pytest.mark.asyncio
+    async def test_live_same_point_all_cancelled_matched_session_reads_zero(self, service, mock_repository):
+        self._wire(mock_repository, self._all_cancelled())
+
+        result = await service.calculate_forecast(year=2026, today=date(2025, 11, 14))  # day 30
+
+        assert result.prior_basis == "same_point"
+        by_id = {s.session_cm_id: s for s in result.sessions}
+        assert by_id[1001].prior_year_count == 0
+        assert by_id[1002].prior_year_count is None
+
+    @pytest.mark.asyncio
+    async def test_week_mode_session_with_no_events_in_window_reads_zero(self, service, mock_repository):
+        self._wire(mock_repository, [])
+
+        result = await service.calculate_forecast(year=2026, day_offset=30)
+
+        by_id = {s.session_cm_id: s for s in result.sessions}
+        assert by_id[1001].prior_year_count == 0
+        assert by_id[1002].prior_year_count is None
+
+    @pytest.mark.asyncio
+    async def test_live_same_point_session_with_no_events_reads_zero(self, service, mock_repository):
+        self._wire(mock_repository, [])
+
+        result = await service.calculate_forecast(year=2026, today=date(2025, 11, 14))
+
+        by_id = {s.session_cm_id: s for s in result.sessions}
+        assert by_id[1001].prior_year_count == 0
+        assert by_id[1002].prior_year_count is None
+
+    @pytest.mark.asyncio
+    async def test_live_final_session_with_no_attendees_reads_zero(self, service, mock_repository):
+        self._wire(mock_repository, [])
+
+        result = await service.calculate_forecast(year=2026, today=date(2026, 12, 1))
+
+        assert result.prior_basis == "final"
+        by_id = {s.session_cm_id: s for s in result.sessions}
+        assert by_id[1001].prior_year_count == 0
+        assert by_id[1002].prior_year_count is None
+
+    @pytest.mark.asyncio
+    async def test_two_year_prior_empty_session_reads_zero(self, service, mock_repository):
+        sessions = {1001: create_mock_session(1001, "Session 1")}
+        _wire_years(
+            mock_repository,
+            {
+                2026: sessions,
+                2025: {9001: create_mock_session(9001, "Session 1", year=2025)},
+                2024: {8001: create_mock_session(8001, "Session 1", year=2024)},
+            },
+            {2026: [create_mock_attendee(1, 1001)], 2025: [create_mock_attendee(5, 9001, year=2025)], 2024: []},
+        )
+
+        result = await service.calculate_forecast(year=2026)
+
+        assert result.sessions[0].prior_year_count == 1
+        assert result.sessions[0].two_year_prior_count == 0
+
+    @pytest.mark.asyncio
+    async def test_ag_sibling_matched_with_zero_is_matched_not_given_the_remainder(self, service, mock_repository):
+        s2026 = _ag_sessions(2026, 1002, "Session 2", {2002: "AG one", 2003: "AG two"})
+        s2025 = _ag_sessions(2025, 9002, "Session 2", {2002: "Renamed A", 9102: "Renamed B"})
+        _wire_years(
+            mock_repository,
+            {2026: s2026, 2025: s2025},
+            {2026: [], 2025: [create_mock_attendee(100 + i, 9102, year=2025) for i in range(4)]},
+        )
+
+        result = await service.calculate_forecast(year=2026)
+
+        by_id = {s.session_cm_id: s for s in result.sessions}
+        assert by_id[2002].prior_year_count == 0  # matched by cm_id, nobody left
+        assert by_id[2003].prior_year_count == 4  # the remainder goes to the first UNMATCHED sibling

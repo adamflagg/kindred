@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta
 from operator import attrgetter
 from typing import TYPE_CHECKING, Any
 
@@ -24,7 +24,14 @@ from api.schemas.velocity import (
     VelocityResponse,
     WeeklyDataPoint,
 )
-from api.services.camp_calendar import REGISTRATION_TIERS, SEASON_WEEKS, format_week_date_range
+from api.services.camp_calendar import (
+    REGISTRATION_TIERS,
+    SEASON_WEEKS,
+    format_week_date_range,
+    get_camp_today,
+    phase_clamp_offsets,
+    same_point_offset,
+)
 from api.services.extractors import extract_gender
 from api.services.reconstruction import (
     ENROLLMENT_STATUSES,
@@ -40,10 +47,13 @@ from api.utils.session_metrics import (
     resolve_scope_ids,
 )
 from api.utils.session_swap import detect_session_swaps
+from bunking.logging_config import get_logger
 
 if TYPE_CHECKING:
     from .metrics_repository import MetricsRepository
 
+
+logger = get_logger(__name__)
 
 # Derived from shared REGISTRATION_TIERS: config_key -> (phase, label)
 PHASE_KEY_MAP: dict[str, tuple[str, str]] = {
@@ -190,7 +200,7 @@ def _partial_week_info(week_start_str: str, *, today: date | None = None) -> tup
     registration falls in the calendar year before its season year (2027 opens
     in November 2026), so a year check hid the partial week all autumn.
     """
-    ref = today or datetime.now(tz=UTC).date()
+    ref = today or get_camp_today()
     ws = datetime.strptime(week_start_str, "%Y-%m-%d").date()
     week_end = ws + timedelta(days=7)
     if ws <= ref < week_end:
@@ -215,6 +225,24 @@ def _value_at_week(
     if closest_wn is not None:
         return wn_map[closest_wn]
     return None
+
+
+def _value_at_day_offset(
+    daily: list[DailyDataPoint],
+    day_offset: int | None,
+    read: Callable[[DailyDataPoint], int],
+) -> int | None:
+    """A daily curve's value on a registration day: its latest point at or before ``day_offset``.
+
+    None when there is no daily data or no target day. A curve whose first point
+    falls after the target day had nothing yet, so it reads 0 there.
+    """
+    if not daily or day_offset is None:
+        return None
+    at_or_before = [p for p in daily if p.day_offset <= day_offset]
+    if not at_or_before:
+        return 0
+    return read(max(at_or_before, key=attrgetter("day_offset")))
 
 
 def _daily_counts_to_weekly_points(
@@ -580,7 +608,10 @@ class VelocityService:
         reference_name = getattr(picked, "name", None)
         ag_parent_map = build_ag_parent_map(sessions)
 
-        ref_today = today or datetime.now(tz=UTC).date()
+        # Ruling 10: "today" is the camp date (9am PT boundary), as Forecast reads it, not the UTC date.
+        ref_today = today or get_camp_today()
+        # Ruling 11: the early and open dates of THIS season read the prior year through its next day too.
+        phase_offsets = phase_clamp_offsets(reg_dates)
         ctx = SeasonContext(year=year, season_start=season_start_dt, season_end=season_end_dt, today=ref_today)
 
         # Pre-fetch snapshots once for enrollment metric (avoids duplicate fetch
@@ -641,6 +672,12 @@ class VelocityService:
 
         # Get current year's latest week_number for prior year comparisons
         current_max_wn = combined.weekly[-1].week_number if combined.weekly else None
+        # Prior years are compared on the same registration DAY, not the same whole week.
+        current_day_offset = combined.daily[-1].day_offset if combined.daily else None
+        season_start_date = season_start_dt.date()
+        today_day_offset = (
+            (ctx.today - season_start_date).days if season_start_date <= ctx.today < season_end_dt.date() else None
+        )
 
         if compare_years:
             for prior_year in compare_years:
@@ -686,11 +723,21 @@ class VelocityService:
                         prior_ag_map,
                         session_cm_id=prior_cm_id,
                     )
+                # Decision 45: prior registrations are dated the NEXT day, so on the priority day (offset 0)
+                # the prior year is read through its second day too. Only the prior side moves.
+                at_current_point = _value_at_day_offset(
+                    prior_result.combined.daily,
+                    None if current_day_offset is None else same_point_offset(current_day_offset, phase_offsets),
+                    attrgetter("enrolled"),
+                )
+                if at_current_point is None and current_max_wn is not None:
+                    at_current_point = _value_at_week(prior_result.combined.weekly, current_max_wn)
                 prior_years.append(
                     PriorYearVelocity(
                         year=prior_result.combined.year,
                         daily=prior_result.combined.daily,
                         weekly=prior_result.combined.weekly,
+                        at_current_point=at_current_point,
                     )
                 )
 
@@ -700,7 +747,9 @@ class VelocityService:
                         prior_year,
                         prior_result,
                         current_max_wn,
+                        current_day_offset,
                         metric=metric,
+                        phase_offsets=phase_offsets,
                     )
                 )
 
@@ -708,8 +757,11 @@ class VelocityService:
                 prior_year_session_summaries.extend(
                     self._build_prior_session_summaries(
                         prior_year,
-                        prior_result.by_session,
+                        prior_result,
                         current_max_wn,
+                        current_day_offset,
+                        self._current_session_by_prior_sid(sessions, prior_all),
+                        phase_offsets=phase_offsets,
                     )
                 )
 
@@ -773,6 +825,10 @@ class VelocityService:
                 swap_pids = swap_pids & scoped_pids
             session_swap_count = len(swap_pids)
 
+        status_history_start: str | None = None
+        if metric == "cancellation":
+            status_history_start = await self._status_history_start()
+
         return VelocityResponse(
             year=year,
             season_start=season_start_dt.strftime("%Y-%m-%d"),
@@ -791,7 +847,37 @@ class VelocityService:
             prior_year_season_starts=prior_year_season_starts,
             session_swap_count=session_swap_count,
             warnings=warnings,
+            current_day_offset=current_day_offset,
+            today_day_offset=today_day_offset,
+            status_history_start=status_history_start,
         )
+
+    async def _status_history_start(self) -> str | None:
+        """ISO date of the earliest status-history row of any year; None when unknown."""
+        try:
+            raw = await self.repo.fetch_status_history_start()
+        except Exception:
+            logger.warning("Could not read the status history start", exc_info=True)
+            return None
+        return parse_date_only(raw) if isinstance(raw, str) and raw else None
+
+    @staticmethod
+    def _current_session_by_prior_sid(sessions: dict[int, Any], prior_all: dict[int, Any]) -> dict[int, int]:
+        """Map each prior-year session to the current-year session it is "the same session" as.
+
+        Walks the current year's in-scope non-AG sessions and asks the one session
+        matcher (cm_id, then alias group, then exact name) which prior session each is.
+        A session whose own id matches wins over a rename that lands on the same prior one.
+        """
+        current = {sid: s for sid, s in sessions.items() if getattr(s, "session_type", None) != "ag"}
+        matched: dict[int, int] = {}
+        for sid, s in sorted(current.items()):
+            prior_sid = match_session_in_year(prior_all, sid, getattr(s, "name", None))
+            if prior_sid is None:
+                continue
+            if prior_sid == sid or prior_sid not in matched:
+                matched[prior_sid] = sid
+        return matched
 
     @staticmethod
     def _snapshots_cover_scope(
@@ -1169,6 +1255,7 @@ class VelocityService:
             combined=combined,
             by_session=by_session,
             cancelled_to_date=merged_daily[-1].cancelled if merged_daily else snap_result.cancelled_to_date,
+            by_session_daily=merged_per_session_daily,
         )
 
     def _curves_from_snapshots(
@@ -1866,6 +1953,7 @@ class VelocityService:
             combined=combined,
             by_session=by_session,
             cancelled_to_date=cancelled_to_date,
+            by_session_daily=merged_per_session_daily,
         )
 
     def _cancellation_curves_from_snapshots(
@@ -2226,53 +2314,86 @@ class VelocityService:
         prior_year: int,
         prior_result: _CurveResult,
         current_max_wn: int | None,
+        current_day_offset: int | None = None,
         metric: str = "enrollment",
+        phase_offsets: tuple[int, ...] = (0,),
     ) -> PriorYearCancelledSummary:
-        """Build cancelled summary for a prior year."""
-        cancelled_final = prior_result.cancelled_to_date
+        """Build cancelled summary for a prior year.
 
-        cancelled_at_current_week: int | None = None
-        weekly = prior_result.combined.weekly
-        if current_max_wn is not None and weekly:
+        Enrollment metric: counts come from attendee reconstruction, so they are always
+        real. Cancellation metric: they come from status history, and a year whose curve
+        is empty has no history to count, so both counts are None, never a zero.
+        """
+        combined = prior_result.combined
+        if metric == "cancellation" and not combined.daily and not combined.weekly:
+            return PriorYearCancelledSummary(
+                year=prior_year,
+                cancelled_at_current_week=None,
+                cancelled_final=None,
+                has_cancellation_data=False,
+            )
+
+        # Cancellation curves carry the cumulative cancelled count in `enrolled`.
+        read_daily = attrgetter("enrolled") if metric == "cancellation" else attrgetter("cancelled")
+        # Decision 45: the prior year's priority day spans two dates (next-day batch dating).
+        prior_offset = None if current_day_offset is None else same_point_offset(current_day_offset, phase_offsets)
+        cancelled_at_current_week = _value_at_day_offset(combined.daily, prior_offset, read_daily)
+        if cancelled_at_current_week is None and current_max_wn is not None and combined.weekly:
             if metric == "cancellation":
-                # Cancellation curves carry the cumulative cancelled count in `enrolled`.
-                cancelled_at_current_week = _value_at_week(weekly, current_max_wn)
+                cancelled_at_current_week = _value_at_week(combined.weekly, current_max_wn)
             else:
                 # Enrollment curves: cumulative cancelled = gross registered - net enrolled.
                 cancelled_at_current_week = _value_at_week(
-                    weekly, current_max_wn, read=lambda p: p.gross_enrolled - p.enrolled
+                    combined.weekly, current_max_wn, read=lambda p: p.gross_enrolled - p.enrolled
                 )
 
         return PriorYearCancelledSummary(
             year=prior_year,
             cancelled_at_current_week=cancelled_at_current_week,
-            cancelled_final=cancelled_final,
+            cancelled_final=prior_result.cancelled_to_date,
         )
 
     def _build_prior_session_summaries(
         self,
         prior_year: int,
-        prior_by_session: list[VelocityCurve],
+        prior_result: _CurveResult,
         current_max_wn: int | None,
+        current_day_offset: int | None = None,
+        current_by_prior_sid: dict[int, int] | None = None,
+        phase_offsets: tuple[int, ...] = (0,),
     ) -> list[PriorYearSessionSummary]:
-        """Build per-session summaries for a prior year."""
-        summaries: list[PriorYearSessionSummary] = []
+        """Build per-session summaries for a prior year.
 
-        for curve in prior_by_session:
+        ``enrolled_at_current_week`` is read on the same registration day as the current
+        year's latest point from the session's daily curve (the cancellation curve keeps
+        its cumulative cancelled in ``enrolled`` too); a session with no daily curve
+        falls back to the week lookup.
+        """
+        summaries: list[PriorYearSessionSummary] = []
+        current_by_prior_sid = current_by_prior_sid or {}
+
+        for curve in prior_result.by_session:
             if not curve.weekly:
                 continue
 
             final_enrolled = curve.weekly[-1].enrolled
 
-            enrolled_at_current_week: int | None = None
-            if current_max_wn is not None:
+            sid = curve.session_cm_id
+            # Decision 45: the prior year's priority day spans two dates (next-day batch dating).
+            enrolled_at_current_week = _value_at_day_offset(
+                prior_result.by_session_daily.get(sid, []) if sid is not None else [],
+                None if current_day_offset is None else same_point_offset(current_day_offset, phase_offsets),
+                attrgetter("enrolled"),
+            )
+            if enrolled_at_current_week is None and current_max_wn is not None:
                 enrolled_at_current_week = _value_at_week(curve.weekly, current_max_wn)
 
             summaries.append(
                 PriorYearSessionSummary(
                     year=prior_year,
                     session_name=curve.session_name,
-                    session_cm_id=curve.session_cm_id,
+                    session_cm_id=sid,
+                    current_session_cm_id=current_by_prior_sid.get(sid) if sid is not None else None,
                     enrolled_at_current_week=enrolled_at_current_week,
                     final_enrolled=final_enrolled,
                 )

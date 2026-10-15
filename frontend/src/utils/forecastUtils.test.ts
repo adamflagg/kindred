@@ -256,6 +256,71 @@ describe('computeSectionTotal', () => {
 // buildForecastSections
 // ==========================================================================
 
+describe('computeSectionTotal null-aware waitlist', () => {
+  it('is null when every row waitlist is null', () => {
+    const total = computeSectionTotal(
+      [session({ waitlisted: null }), session({ waitlisted: null })],
+      'Total'
+    )
+    expect(total.waitlisted).toBeNull()
+  })
+
+  it('sums waitlist treating null as 0 when some rows have a value', () => {
+    const total = computeSectionTotal(
+      [session({ waitlisted: 4 }), session({ waitlisted: null })],
+      'Total'
+    )
+    expect(total.waitlisted).toBe(4)
+  })
+})
+
+describe('computeSectionTotal section prior override', () => {
+  const rows = [
+    session({ enrolled: 50, prior_year_count: 40, two_year_prior_count: 30 }),
+    session({ enrolled: 30, prior_year_count: 20, two_year_prior_count: 10 }),
+  ]
+
+  it('takes prior and two-year prior from the override and re-derives the delta', () => {
+    const total = computeSectionTotal(rows, 'Total', {
+      prior_year_count: 100,
+      two_year_prior_count: 90,
+    })
+    expect(total.prior_year_count).toBe(100)
+    expect(total.two_year_prior_count).toBe(90)
+    expect(total.participants_vs_prior_year).toBe(-20)
+  })
+
+  it('yields null prior delta when the override prior is null', () => {
+    const total = computeSectionTotal(rows, 'Total', {
+      prior_year_count: null,
+      two_year_prior_count: null,
+    })
+    expect(total.prior_year_count).toBeNull()
+    expect(total.two_year_prior_count).toBeNull()
+    expect(total.participants_vs_prior_year).toBeNull()
+  })
+
+  it('keeps the row-sum behaviour without an override', () => {
+    const total = computeSectionTotal(rows, 'Total')
+    expect(total.prior_year_count).toBe(60)
+    expect(total.participants_vs_prior_year).toBe(20)
+  })
+})
+
+describe('buildForecastSections section priors', () => {
+  const camp = session({ session_type: 'main', enrolled: 50, prior_year_count: 40 })
+  const quest = session({ session_type: 'quest', enrolled: 10, prior_year_count: 5 })
+
+  it('applies the override per section key and leaves missing keys on row sums', () => {
+    const sections = buildForecastSections([camp], [quest], [], {
+      camp: { prior_year_count: 70, two_year_prior_count: 60 },
+    })
+    expect(sections[0]!.total.prior_year_count).toBe(70)
+    expect(sections[0]!.total.participants_vs_prior_year).toBe(-20)
+    expect(sections[1]!.total.prior_year_count).toBe(5)
+  })
+})
+
 describe('buildForecastSections', () => {
   const campSession1 = session({
     session_cm_id: 1001,
