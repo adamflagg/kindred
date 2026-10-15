@@ -186,15 +186,22 @@ lodging_cache = LodgingYearCache(ttl_seconds=LODGING_CACHE_BACKSTOP_SECONDS, max
 # and the equity custom values -- read whole once per year and joined in Python
 # (api/services/aid_sync_inputs.py). Only a sync writes them, so the
 # cache-invalidate endpoint clears this when a finished sync writes one of its
-# tables; the six-hour TTL is the fallback for a missed call. Two entries: the
-# season and the `year - 1` a report reads. The committee report reads every
-# season from 2026, so from the 2028 season it reads three and refills the
-# oldest once layer 2 expires -- slower, never different (accepted 2026-10-13
-# for memory; raise to 3, ~90 MB, if that latency is ever felt). One year
-# measured 26-30 MB on the 2026-10-07 prod snapshot, and the prod box has
-# 1.9 GiB with the API container capped at 1 GiB, so four years (~120 MB) was
-# too much. A module-level singleton for the same reason as lodging_cache:
-# every request builds fresh repositories.
+# tables; the six-hour TTL is the fallback for a missed call. Three entries:
+# the TWO live seasons and the "last season" one of them compares against.
+# From Oct 15 the primary is next year's season (the rollover rule in
+# pocketbase/sync/year.go), the sync keeps it and the one before it current,
+# and staff work both for months -- the new season's incoming requests and the
+# old one's late fall and winter sessions -- so both are warmed and both must
+# stay held. The older one's last-season columns (a report, a scenario's
+# `year - 1`) read a third season, and with two slots that read evicted a live
+# one, which then re-read whole on its next click. With three nothing live is
+# evicted. Past three (the committee report reads every season from 2026, so
+# four from the 2029 season) the oldest refills once layer 2 expires -- slower,
+# never different. One year measured 26-30 MB on the 2026-10-07 prod snapshot,
+# so three is ~90 MB; the prod box has 1.9 GiB with the API container capped
+# at 1 GiB, which is why four years (~120 MB) stays too much. A module-level
+# singleton for the same reason as lodging_cache: every request builds fresh
+# repositories.
 #
 # The TTL AND the refresher's interval (aid_sync_inputs.start_aid_inputs_refresher),
 # so the two cannot drift apart. It is a BACKSTOP for a MISSED sync-completion
@@ -203,7 +210,7 @@ lodging_cache = LodgingYearCache(ttl_seconds=LODGING_CACHE_BACKSTOP_SECONDS, max
 # as a PocketBase WARN. Sync completion is the only writer that keeps it
 # current -- no Camperships write and no browser path touches these tables.
 AID_INPUTS_BACKSTOP_SECONDS = 6 * 60 * 60
-aid_inputs_cache = LodgingYearCache(ttl_seconds=AID_INPUTS_BACKSTOP_SECONDS, max_size=2)
+aid_inputs_cache = LodgingYearCache(ttl_seconds=AID_INPUTS_BACKSTOP_SECONDS, max_size=3)
 
 
 # ========================================
@@ -212,9 +219,11 @@ aid_inputs_cache = LodgingYearCache(ttl_seconds=AID_INPUTS_BACKSTOP_SECONDS, max
 
 # The priced live season, one build shared by every staff read until something
 # changes it (api/services/aid_season_cache.py): every Camperships write clears
-# its year through commit_aid_writes' listener, and every sync job's completion
-# clears it all. Five minutes is the fallback for a missed clear. Four entries:
-# the season and the prior year reports read, each on today's camp-time day.
+# its year through commit_aid_writes' listener, and a sync job's completion
+# clears it all when that job writes something a season reads
+# (sync_changes_aid_season). Five minutes is the fallback for a missed clear.
+# Four entries: the two live seasons and the prior year a report reads, each on
+# today's camp-time day, with one to spare for yesterday's entry at midnight.
 aid_season_cache = AidSeasonCache(ttl_seconds=300, max_size=4)
 
 
@@ -228,8 +237,8 @@ aid_season_cache = AidSeasonCache(ttl_seconds=300, max_size=4)
 # Development and its ZIP export share one read. Its tables -- attendees,
 # persons, camp_sessions -- are sync-written only, so the cache-invalidate
 # endpoint clears it when a finished sync writes one of them. Its own singleton
-# rather than a read inside aid_inputs_cache: that cache's two slots belong to
-# layer 1's two years, and a third entry would evict one. Two entries: the two
+# rather than a read inside aid_inputs_cache: that cache's three slots belong to
+# layer 1's three years, and a fourth entry would evict one. Two entries: the two
 # report years Development prices (the season and the one before). Layer 1's
 # TTL by reference, so the two fallbacks never drift apart.
 development_history_cache = LodgingYearCache(ttl_seconds=aid_inputs_cache.ttl_seconds, max_size=2)

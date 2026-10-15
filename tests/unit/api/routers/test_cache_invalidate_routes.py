@@ -87,3 +87,15 @@ def test_browser_route_refuses_unrelated_permission(client: TestClient) -> None:
     app.dependency_overrides[get_current_user] = lambda: _user(permissions={Permission.SHEETS_EXPORT})
     r = client.post(BROWSER)
     assert r.status_code == 403
+
+
+@pytest.mark.parametrize(("sync_type", "clears"), [("aid_postings", True), ("bunk_assignments", False)])
+def test_both_routes_scope_the_camperships_season_cache(client: TestClient, sync_type: str, clears: bool) -> None:
+    """The 2026 loader ends by POSTing the browser route with sync_type=aid_postings (#3230), which must still clear
+    the priced season; the hourly bunk_assignments run, which writes nothing Camperships reads, must not."""
+    app.dependency_overrides[get_current_user] = lambda: _user(admin=True)
+    for route in (INTERNAL, BROWSER):
+        with patch("api.routers.metrics.aid_season_cache") as season:
+            r = client.post(route, params={"sync_type": sync_type})
+        assert r.status_code == 200
+        assert season.invalidate_all.called is clears

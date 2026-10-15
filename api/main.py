@@ -106,10 +106,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             # and again on the backstop -- so a staff member's first click after a
             # restart or a backstop expiry is not the one that pays for it.
             lodging_refresh_task = start_lodging_cache_refresher()
-            # Camperships' sync inputs (layer 1), likewise in the background, now and after every backstop expiry: the
-            # first season build after a restart or an expiry should not be the one that reads every person, household
-            # and registration. Each warm then rebuilds the priced season (layer 2) through the router's own staff read,
-            # so it fills the very cache entry staff read; so does the warm that follows each write's clear.
+            # Camperships' sync inputs (layer 1) for every synced season, likewise in the background, now and after
+            # every backstop expiry: the first season build after a restart or an expiry should not be the one that
+            # reads every person, household and registration. Each warm then rebuilds the priced season (layer 2)
+            # through the router's own staff read, so it fills the very cache entry staff read; so does the warm that
+            # follows each write's clear.
             set_season_warmer(lambda year: financial_aid._decisions().named_season(year))
             bind_warm_loop(asyncio.get_running_loop())
             aid_refresh_task = start_aid_inputs_refresher()
