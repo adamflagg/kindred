@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
 )
 
@@ -415,14 +416,15 @@ func (s *StaffSkillsSync) loadSkillValues(
 	// Build field definition IDs for filter
 	fieldIDs := make([]string, 0, len(skillDefByPBID))
 	for pbID := range skillDefByPBID {
-		fieldIDs = append(fieldIDs, fmt.Sprintf("field_definition = '%s'", pbID))
+		fieldIDs = append(fieldIDs, pbID)
 	}
 
 	if len(fieldIDs) == 0 {
 		return result, nil
 	}
 
-	filter := fmt.Sprintf("(%s) && year = %d", strings.Join(fieldIDs, " || "), year)
+	fieldFilter, fieldParams := equalsAnyFilter("field_definition", fieldIDs)
+	filter := fmt.Sprintf("%s && year = %d", fieldFilter, year)
 
 	page := 1
 	perPage := 500
@@ -445,6 +447,7 @@ func (s *StaffSkillsSync) loadSkillValues(
 			"-created",
 			perPage,
 			(page-1)*perPage,
+			fieldParams,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("querying person_custom_values page %d: %w", page, err)
@@ -472,8 +475,8 @@ func (s *StaffSkillsSync) loadSkillValues(
 			if cached, ok := personCache[personPBID]; ok {
 				personCMID = cached.cmID
 			} else {
-				personFilter := fmt.Sprintf("id = '%s'", personPBID)
-				persons, err := s.App.FindRecordsByFilter("persons", personFilter, "", 1, 0)
+				persons, err := s.App.FindRecordsByFilter("persons", "id = {:id}", "", 1, 0,
+					dbx.Params{"id": personPBID})
 				if err == nil && len(persons) > 0 {
 					if cmID, ok := persons[0].Get("cm_id").(float64); ok {
 						personCMID = int(cmID)

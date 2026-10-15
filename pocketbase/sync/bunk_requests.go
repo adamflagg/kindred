@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/camp/kindred/pocketbase/campminder"
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
 )
 
@@ -302,10 +303,11 @@ func (s *BunkRequestsSync) processRow(row []string, columnIndex map[string]int, 
 		// Check if record exists for this person/year/field combination
 		existingRecords, err := s.App.FindRecordsByFilter(
 			"original_bunk_requests",
-			fmt.Sprintf("requester = '%s' && year = %d && field = '%s'", personPBID, year, fieldName),
+			fmt.Sprintf("requester = {:requester} && year = %d && field = {:field}", year),
 			"",
 			1,
 			0,
+			dbx.Params{"requester": personPBID, "field": fieldName},
 		)
 
 		if err != nil {

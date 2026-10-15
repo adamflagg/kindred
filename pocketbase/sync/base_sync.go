@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/camp/kindred/pocketbase/campminder"
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
 )
 
@@ -1556,8 +1557,7 @@ func (b *BaseSyncService) LookupCMIDByPBID(collection, pbID string) (int, bool) 
 		return 0, false
 	}
 
-	filter := fmt.Sprintf("id = '%s'", pbID)
-	records, err := b.App.FindRecordsByFilter(collection, filter, "", 1, 0)
+	records, err := b.App.FindRecordsByFilter(collection, "id = {:id}", "", 1, 0, dbx.Params{"id": pbID})
 	if err != nil || len(records) == 0 {
 		return 0, false
 	}
@@ -1672,10 +1672,11 @@ func (b *BaseSyncService) LookupBunkPlan(planCMID, bunkCMID, sessionCMID int) (s
 	// Now find the specific bunk plan with all three criteria including year
 	year := b.Client.GetSeasonID()
 	filter := fmt.Sprintf(
-		"cm_id = %d && bunk = '%s' && session = '%s' && year = %d",
-		planCMID, bunkPBID, sessionPBID, year,
+		"cm_id = %d && bunk = {:bunk} && session = {:session} && year = %d",
+		planCMID, year,
 	)
-	records, err := b.App.FindRecordsByFilter("bunk_plans", filter, "", 1, 0)
+	records, err := b.App.FindRecordsByFilter("bunk_plans", filter, "", 1, 0,
+		dbx.Params{"bunk": bunkPBID, "session": sessionPBID})
 	if err != nil {
 		slog.Error("Error looking up bunk plan relation", "error", err)
 		return "", false

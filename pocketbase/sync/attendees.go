@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
 
 	"github.com/camp/kindred/pocketbase/campminder"
@@ -92,8 +93,8 @@ func (s *AttendeesSync) Sync(ctx context.Context) error {
 	sessionMappings := make(map[string]int) // pbID -> cmID
 	if err := s.PaginateRecords(attendeesCollection, filter, func(record *core.Record) error {
 		if sessionID := record.GetString("session"); sessionID != "" {
-			sessionFilter := fmt.Sprintf("id = '%s'", sessionID)
-			sessions, err := s.App.FindRecordsByFilter("camp_sessions", sessionFilter, "", 1, 0, nil)
+			sessions, err := s.App.FindRecordsByFilter("camp_sessions", "id = {:id}", "", 1, 0,
+				dbx.Params{"id": sessionID})
 			if err == nil && len(sessions) > 0 {
 				if cmID, ok := sessions[0].Get("cm_id").(float64); ok {
 					sessionMappings[sessionID] = int(cmID)
@@ -493,8 +494,8 @@ func (s *AttendeesSync) deleteOrphans() error {
 	if err := s.PaginateRecords(attendeesCollection, filter, func(record *core.Record) error {
 		if sessionID := record.GetString("session"); sessionID != "" {
 			// Lookup session CM ID
-			sessionFilter := fmt.Sprintf("id = '%s'", sessionID)
-			sessions, err := s.App.FindRecordsByFilter("camp_sessions", sessionFilter, "", 1, 0, nil)
+			sessions, err := s.App.FindRecordsByFilter("camp_sessions", "id = {:id}", "", 1, 0,
+				dbx.Params{"id": sessionID})
 			if err == nil && len(sessions) > 0 {
 				if cmID, ok := sessions[0].Get("cm_id").(float64); ok {
 					sessionMappings[sessionID] = int(cmID)

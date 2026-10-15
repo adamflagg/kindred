@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
 )
 
@@ -161,8 +162,9 @@ func (s *EnrollmentSnapshotsSync) Sync(ctx context.Context) error {
 		}
 
 		// Count enrolled: status_id = 2
-		enrolledFilter := fmt.Sprintf("year = %d && session = '%s' && status_id = 2", year, sessionPBID)
-		enrolledRecords, err := s.App.FindRecordsByFilter("attendees", enrolledFilter, "", 0, 0)
+		sessionParam := dbx.Params{"session": sessionPBID}
+		enrolledFilter := fmt.Sprintf("year = %d && session = {:session} && status_id = 2", year)
+		enrolledRecords, err := s.App.FindRecordsByFilter("attendees", enrolledFilter, "", 0, 0, sessionParam)
 		if err != nil {
 			slog.Error("Error counting enrolled attendees", "session", sessionCMID, "error", err)
 			s.Stats.Errors++
@@ -171,8 +173,8 @@ func (s *EnrollmentSnapshotsSync) Sync(ctx context.Context) error {
 		enrolledCount := len(enrolledRecords)
 
 		// Count waitlisted
-		waitlistedFilter := fmt.Sprintf("year = %d && session = '%s' && status = 'waitlisted'", year, sessionPBID)
-		waitlistedRecords, err := s.App.FindRecordsByFilter("attendees", waitlistedFilter, "", 0, 0)
+		waitlistedFilter := fmt.Sprintf("year = %d && session = {:session} && status = 'waitlisted'", year)
+		waitlistedRecords, err := s.App.FindRecordsByFilter("attendees", waitlistedFilter, "", 0, 0, sessionParam)
 		if err != nil {
 			slog.Error("Error counting waitlisted attendees", "session", sessionCMID, "error", err)
 			s.Stats.Errors++
@@ -181,8 +183,8 @@ func (s *EnrollmentSnapshotsSync) Sync(ctx context.Context) error {
 		waitlistedCount := len(waitlistedRecords)
 
 		// Count cancelled
-		cancelledFilter := fmt.Sprintf("year = %d && session = '%s' && status = 'cancelled'", year, sessionPBID)
-		cancelledRecords, err := s.App.FindRecordsByFilter("attendees", cancelledFilter, "", 0, 0)
+		cancelledFilter := fmt.Sprintf("year = %d && session = {:session} && status = 'cancelled'", year)
+		cancelledRecords, err := s.App.FindRecordsByFilter("attendees", cancelledFilter, "", 0, 0, sessionParam)
 		if err != nil {
 			slog.Error("Error counting cancelled attendees", "session", sessionCMID, "error", err)
 			s.Stats.Errors++
@@ -214,13 +216,14 @@ func (s *EnrollmentSnapshotsSync) Sync(ctx context.Context) error {
 		// Upsert: match on date portion of snapshot_datetime + session + year
 		datePrefix := now.Format("2006-01-02")
 		existingFilter := fmt.Sprintf(
-			"snapshot_datetime ~ '%s' && session_cm_id = %d && year = %d",
-			datePrefix, sessionCMID, year,
+			"snapshot_datetime ~ {:datePrefix} && session_cm_id = %d && year = %d",
+			sessionCMID, year,
 		)
 		var record *core.Record
 		// FindFirstRecordByFilter returns sql.ErrNoRows when no match exists,
 		// so we ignore the error — nil existing means "create new record".
-		existing, _ := s.App.FindFirstRecordByFilter("enrollment_snapshots", existingFilter)
+		existing, _ := s.App.FindFirstRecordByFilter("enrollment_snapshots", existingFilter,
+			dbx.Params{"datePrefix": datePrefix})
 		if existing != nil {
 			record = existing
 		} else {
