@@ -148,6 +148,14 @@ export const REQUEST_VIEWS: readonly RequestView[] = [
     groupBy: 'reason',
     columns: ['session', 'stage', 'attention'],
   },
+  {
+    // D164 (owner 2026-10-14): every cancellation needs a reason; one CampMinder made waits here until staff give it.
+    key: 'cancel_reason',
+    slug: 'cancel-reason',
+    label: 'Cancelled: give a reason',
+    groupBy: 'one',
+    columns: ['session', 'cancelledOn', 'posted', 'attention'],
+  },
 ]
 
 export function requestView(slug: string | null): RequestView {
@@ -705,6 +713,7 @@ const LENS_GROUP_ORDER: readonly string[] = [
   'holds',
   'duplicates',
   'session_not_settled',
+  'cancel_reason',
   WORTH_A_LOOK,
   NOTHING_WAITING,
 ] satisfies ReadonlyArray<RequestViewKey | typeof WORTH_A_LOOK | typeof NOTHING_WAITING>

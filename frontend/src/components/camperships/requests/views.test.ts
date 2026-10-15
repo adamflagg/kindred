@@ -48,7 +48,7 @@ const CTX = { view: 'all' as const, today: TODAY }
 const CM_WIDTH = 84
 
 describe('REQUEST_VIEWS (§6.2)', () => {
-  it('has All and one view per live queue the server names, in its order (no cancel-reason view: owner ruling B)', () => {
+  it('has All and one view per live queue the server names, in its order (the cancel-reason view is back: D164)', () => {
     expect(REQUEST_VIEWS.map((v) => v.key)).toEqual([
       'all',
       'needs_offer',
@@ -60,7 +60,14 @@ describe('REQUEST_VIEWS (§6.2)', () => {
       'to_reverse',
       'session_not_settled',
       'duplicates',
+      'cancel_reason',
     ])
+  })
+
+  it('opens Cancelled: give a reason at /cancel-reason, with the day CampMinder cancelled (D164)', () => {
+    const view = requestView('cancel-reason')
+    expect([view.key, view.label]).toEqual(['cancel_reason', 'Cancelled: give a reason'])
+    expect(view.columns).toEqual(['session', 'cancelledOn', 'posted', 'attention'])
   })
 
   it('gives All D27’s fifteen columns at their widths, about 1,510 px with the flexible one (Stage and Confirmed widened so no chip clips: sitting A, A2)', () => {
@@ -611,6 +618,7 @@ describe('By reason on a lens: the ten strip stages', () => {
       'holds',
       'duplicates',
       'session_not_settled',
+      'cancel_reason',
       'worth_a_look',
       'nothing_waiting',
     ])

@@ -35,6 +35,8 @@ export const EXCEPTION_BADGES: readonly RequestViewKey[] = [
   'duplicates',
   'session_not_settled',
   'to_reverse',
+  // D164 (owner 2026-10-14): a CampMinder cancellation with no reason, until staff give one.
+  'cancel_reason',
 ]
 
 /**
@@ -65,6 +67,8 @@ export const BADGE_TITLES: Readonly<Record<string, string>> = {
     'Session unclear: no one enrolled session matches the request yet. It settles when the camper enrolls, or use Settle Session… on the household page.',
   to_reverse:
     'To reverse: cancelled, withdrawn or a duplicate, and camp aid is still live in CampMinder. Reverse it there.',
+  cancel_reason:
+    'Cancelled: give a reason: cancelled in CampMinder with no reason yet. Use Give a Reason… on the household page.',
 }
 
 export type BadgeTone = 'red' | 'amber' | 'zero'

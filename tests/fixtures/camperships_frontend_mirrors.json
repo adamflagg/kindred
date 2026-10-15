@@ -18,7 +18,8 @@
     "holds",
     "duplicates",
     "session_not_settled",
-    "to_reverse"
+    "to_reverse",
+    "cancel_reason"
   ],
   "unreleasable": [
     "award_above_cost",

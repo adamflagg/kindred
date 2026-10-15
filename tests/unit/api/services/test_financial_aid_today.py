@@ -19,6 +19,7 @@ from api.schemas.financial_aid_decisions import (
     RoundOut,
     RowStageOut,
     ShareConfirmationOut,
+    TodoOut,
 )
 from api.schemas.financial_aid_grants import (
     GrantorOut,
@@ -289,10 +290,50 @@ def test_a_payer_share_that_disagrees_is_counted_under_its_own_state() -> None:
     assert line.largest_gap == 250.0
 
 
-def test_today_has_no_cancel_reason_line() -> None:
-    """Owner ruling B (2026-10-04): the cancel reason is optional, so Today never nags for a missing one."""
-    assert "cancel_reason" not in CASEWORK_LINES
-    assert "cancel_reason" not in get_args(TodayKey)
+_ASK_REASON = TodoOut(code="cancel_reason_missing", message="Cancelled: give a reason")
+_CM_CANCELLED = CancellationOut(by="campminder", on=date(2031, 5, 2), reason=None, note="")
+
+
+def test_today_counts_the_cancellations_still_asking_for_a_reason() -> None:
+    """D164 (owner 2026-10-14, amending D163): a CampMinder withdrawal with no reason stays an open to-do until one is
+    given. The line counts the rows the "Cancelled: give a reason" view holds (D21), To reverse or not; a cancellation
+    carrying no to-do (2026's, or one answered) is not counted."""
+    posted = _round(1, "posted", posted=1500.0, posted_on=date(2031, 3, 9))
+    rows = [
+        _row("reqemma00000001", 1000001, posted, cancellation=_CM_CANCELLED, to_reverse=True, todos=[_ASK_REASON]),
+        _row("reqliam00000002", 1000002, _round(1, "not_decided"), cancellation=_CM_CANCELLED, todos=[_ASK_REASON]),
+        _row("reqmia000000003", 1000002, _round(1, "not_decided"), cancellation=_CM_CANCELLED, todos=[_ASK_REASON]),
+        _row("reqnoah00000004", 1000003, _round(1, "not_decided"), cancellation=_CM_CANCELLED),
+    ]
+    out = build_today(_inputs(rows), casework=True, finance=False)
+    line = _line(out.casework, "cancel_reason")
+    assert (line.items, line.families, line.item_kind) == (3, 2, "requests")
+    assert "cancel_reason" in get_args(TodayKey)
+    assert CASEWORK_LINES.index("cancel_reason") == CASEWORK_LINES.index("duplicates") + 1
+
+
+def test_the_cancel_reason_line_names_its_households_oldest_cancellation_first() -> None:
+    """Its Next up opens each household page, where Give a Reason… answers the to-do; the clock is the cancellation's
+    own day, so the longest-unanswered household comes first."""
+    early = CancellationOut(by="campminder", on=date(2031, 3, 2), reason=None, note="")
+    later = CancellationOut(by="campminder", on=date(2031, 4, 2), reason=None, note="")
+    rows = [
+        _row("reqliam00000002", 1000002, _round(1, "not_decided"), cancellation=later, todos=[_ASK_REASON]),
+        _row("reqemma00000001", 1000001, _round(1, "not_decided"), cancellation=early, todos=[_ASK_REASON]),
+    ]
+    line = _line(build_today(_inputs(rows), casework=True, finance=False).casework, "cancel_reason")
+    today = _inputs(rows).today
+    assert [(n.household_cm_id, n.days) for n in line.next_up] == [
+        (1000001, (today - date(2031, 3, 2)).days),
+        (1000002, (today - date(2031, 4, 2)).days),
+    ]
+
+
+def test_the_cancel_reason_line_is_casework_never_finance_alone() -> None:
+    """The to-do is answered with Give a Reason…, a casework write, so it sits with the casework lines (D101's
+    registrar), which the finance page also shows in its registrar queue."""
+    rows = [_row("reqemma00000001", 1000001, cancellation=_CM_CANCELLED, todos=[_ASK_REASON])]
+    assert build_today(_inputs(rows), casework=False, finance=True).casework is None
 
 
 def test_every_casework_line_is_present_even_at_zero() -> None:
@@ -925,7 +966,8 @@ def _linear() -> list[GridRowOut]:
 
 
 def _flagged() -> list[GridRowOut]:
-    """The linear rows plus a row per flag, and a cancelled one with nothing to reverse (on no segment, no chip)."""
+    """The linear rows plus a row per flag. The cancelled one with nothing to reverse is on no segment; it still asks
+    for its reason (D164), so it is the "Cancelled: give a reason" chip."""
     posted_on = date(2031, 4, 10)
     return [
         *_linear(),
@@ -954,7 +996,13 @@ def _flagged() -> list[GridRowOut]:
             cancellation=_CANCELLED,
             to_reverse=True,
         ),
-        _real("rgone", 1000011, _round(1, "not_decided"), cancellation=_CANCELLED),
+        _real(
+            "rgone",
+            1000011,
+            _round(1, "not_decided"),
+            cancellation=_CANCELLED,
+            todos=[TodoOut(code="cancel_reason_missing", message="Cancelled: give a reason")],
+        ),
     ]
 
 
@@ -1051,8 +1099,9 @@ def test_waiting_and_not_reconciled_counts_once_on_the_bar_and_once_in_the_chip(
     assert stages.flags.not_reconciled == 1
 
 
-def test_the_flags_are_only_the_four_chips_and_holds_is_not_one() -> None:
-    assert FLAG_STAGES == ("not_reconciled", "duplicates", "session_not_settled", "to_reverse")
+def test_the_flags_are_the_strips_badges_and_holds_is_not_one() -> None:
+    """D164 brings the "Cancelled: give a reason" badge back to the strip, so the hero gains it as a fifth chip."""
+    assert FLAG_STAGES == ("not_reconciled", "duplicates", "session_not_settled", "to_reverse", "cancel_reason")
     assert set(TodayFlagsOut.model_fields) == set(FLAG_STAGES)
 
 
@@ -1067,6 +1116,7 @@ def test_each_chip_counts_its_queue_membership_exactly() -> None:
         "duplicates": 1,
         "session_not_settled": 1,
         "to_reverse": 1,
+        "cancel_reason": 1,
     }
 
 

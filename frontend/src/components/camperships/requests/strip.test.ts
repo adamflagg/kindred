@@ -42,8 +42,14 @@ describe('the views strip (T4; RULED P1, P2, P4)', () => {
     ])
   })
 
-  it('puts Holds, Duplicates, Session unclear and To reverse on the right, and no Finance approval (no such view) and no cancel-reason badge (owner ruling B: the reason is optional)', () => {
-    expect(EXCEPTION_BADGES).toEqual(['holds', 'duplicates', 'session_not_settled', 'to_reverse'])
+  it('puts Holds, Duplicates, Session unclear, To reverse and Cancelled: give a reason on the right (D164), and no Finance approval (no such view)', () => {
+    expect(EXCEPTION_BADGES).toEqual([
+      'holds',
+      'duplicates',
+      'session_not_settled',
+      'to_reverse',
+      'cancel_reason',
+    ])
   })
 })
 
@@ -76,6 +82,10 @@ describe('the strip’s words live in titles (§6; answers 1a, 1b)', () => {
     )
     expect(BADGE_TITLES['to_reverse']).toBe(
       'To reverse: cancelled, withdrawn or a duplicate, and camp aid is still live in CampMinder. Reverse it there.'
+    )
+    // D164: every cancellation needs a reason; CampMinder can't be made to ask, so Kindred does.
+    expect(BADGE_TITLES['cancel_reason']).toBe(
+      'Cancelled: give a reason: cancelled in CampMinder with no reason yet. Use Give a Reason… on the household page.'
     )
   })
 })
@@ -123,6 +133,7 @@ describe('shownBadges (owner 2026-10-04: a badge shows only when something is in
 describe('badgeTone and foldTone', () => {
   it('tones a badge red, an unsettled session amber, and an empty one zero', () => {
     expect(badgeTone('holds', count(2))).toBe('red')
+    expect(badgeTone('cancel_reason', count(3))).toBe('red')
     expect(badgeTone('session_not_settled', count(1))).toBe('amber')
     expect(badgeTone('holds', count(0))).toBe('zero')
     expect(badgeTone('session_not_settled', undefined)).toBe('zero')
@@ -201,9 +212,9 @@ describe('resolveStrip (the URL: ?lens=appeals, absent All; ?view=<stage slug>, 
     expect(resolveStrip('bogus', null)).toEqual({ lens: 'all', stage: null })
   })
 
-  it('reads an unknown lens as All, and the retired ?view=cancel-reason as no stage (owner ruling B)', () => {
+  it('reads an unknown lens as All, and ?view=cancel-reason as its badge again (D164)', () => {
     expect(resolveStrip(null, 'bogus').lens).toBe('all')
-    expect(resolveStrip('cancel-reason', null)).toEqual({ lens: 'all', stage: null })
+    expect(resolveStrip('cancel-reason', null).stage?.key).toBe('cancel_reason')
   })
 })
 

@@ -190,8 +190,8 @@ CancelReasonOut = Literal[
 
 class CancellationOut(BaseModel):
     """A cancelled request (D101): by CampMinder (the enrollment; `on` is its cancellation day) or in
-    Kindred (the registrar; `on` is the day it was recorded). reason None = none recorded
-    (optional, owner ruling B 2026-10-04)."""
+    Kindred (the registrar; `on` is the day it was recorded). reason None = none given yet (D164: from 2027 the row
+    carries "Cancelled: give a reason" until it is)."""
 
     by: Literal["campminder", "kindred"]
     on: date | None
@@ -200,8 +200,7 @@ class CancellationOut(BaseModel):
 
 
 class TodoOut(BaseModel):
-    """A to-do on the row: neither a hold nor a Note. None is emitted now: owner ruling B (2026-10-04) retired the only
-    one, D101's "Cancelled: give a reason" (the cancel reason is optional)."""
+    """A to-do on the row: neither a hold nor a Note ("Cancelled: give a reason", D101 as amended by D164)."""
 
     code: str
     message: str
@@ -219,6 +218,8 @@ QueueOut = Literal[
     "to_reverse",
     "session_not_settled",
     "duplicates",
+    # D164 (owner 2026-10-14): a cancellation with no reason, until staff give one (the row's to-do).
+    "cancel_reason",
 ]
 
 

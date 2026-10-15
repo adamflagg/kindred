@@ -139,6 +139,10 @@ const ENTER_INCOME: NextStep = { kind: 'link', label: 'Enter the Income', at: 'i
 const PAYER_SHARES = toRequest('Check the Payer Shares')
 const PICK_SESSION = toRequest('Pick the Session')
 const KEEP_ONE = toRequest('Choose Which to Keep')
+/** D164: the household page's cancelled request card answers it with this button, so the step names it. */
+const GIVE_A_REASON = toRequest('Give a Reason…')
+/** The server's one to-do (TodoOut): a cancellation with no reason, from 2027 (D164). */
+const TODO_CANCEL_REASON = 'cancel_reason_missing'
 
 const STEP_BY_CODE: Readonly<Record<string, NextStep | null>> = {
   household_income_conflict: ENTER_INCOME,
@@ -277,6 +281,10 @@ export function attentionItems(
         say('Reverse it in CampMinder; nothing to do here')
       )
     )
+  }
+  // D164: only the cancel-reason to-do has a pill; a to-do this client doesn't know draws nothing.
+  if ((row.todos ?? []).some((todo) => todo.code === TODO_CANCEL_REASON)) {
+    items.push(note('Give a reason', 'No reason recorded', 'cancel_reason', GIVE_A_REASON))
   }
   const pending = row.rounds.find((r) => r.status === 'pending_approval')
   if (pending !== undefined) {

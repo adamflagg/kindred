@@ -32,8 +32,10 @@ describe('the Today heroes', () => {
       'Not reconciled 8',
       'Session unclear 2',
       'To reverse 1',
+      'Cancelled: give a reason 3',
     ])
     expect(chips[0]).toHaveAttribute('href', '/aid/requests?view=not-reconciled&year=2027')
+    expect(chips[3]).toHaveAttribute('href', '/aid/requests?view=cancel-reason&year=2027')
     expect(chips[0]?.querySelector('span')?.className).toMatch(/amber/)
     expect(screen.queryByText(/Duplicates/)).toBeNull()
   })

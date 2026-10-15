@@ -29,7 +29,7 @@ from api.schemas.financial_aid_decisions import (
     RoundCellOut,
     RoundRef,
 )
-from api.services.financial_aid_cancellations import CANCEL_REASONS, CancelEvent, EnrollmentState
+from api.services.financial_aid_cancellations import CANCEL_REASONS, TODO_CANCEL_REASON, CancelEvent, EnrollmentState
 from api.services.financial_aid_decisions_repository import (
     FinancialAidDecisionsRepository,
     cancel_event,
@@ -153,8 +153,9 @@ def test_the_response_and_the_pure_layer_hold_the_same_nine_reasons() -> None:
 
 
 @pytest.mark.asyncio
-async def test_a_camper_cancelled_in_campminder_before_the_offer_counts_nowhere_and_asks_nothing() -> None:
-    """Owner ruling B (2026-10-04): the cancel reason is optional. A cancellation with none carries no to-do."""
+async def test_a_camper_cancelled_in_campminder_before_the_offer_counts_nowhere_and_asks_for_a_reason() -> None:
+    """D164 (owner 2026-10-14): every cancellation needs a reason, CampMinder withdrawals included. CampMinder can't be
+    made to ask, so the row carries "Cancelled: give a reason" until staff give one."""
     store = FakeDecisionsStore()
     seed_request(store, EMMA, session=0, status="unmatched_session")  # intake re-resolved it after the cancel
     assert await _round1_counts(store) == (1, 0)  # before: Held, below the line
@@ -163,7 +164,8 @@ async def test_a_camper_cancelled_in_campminder_before_the_offer_counts_nowhere_
     row = await _row(store)
     assert row.cancellation is not None
     assert (row.cancellation.by, row.cancellation.on, row.cancellation.reason) == ("campminder", MAY2, None)
-    assert row.todos == []
+    assert row.todos is not None
+    assert [(t.code, t.message) for t in row.todos] == [("cancel_reason_missing", "Cancelled: give a reason")]
     assert (row.rounds, row.to_reverse, row.holds) == ([], False, [])
 
 
@@ -264,8 +266,8 @@ async def test_a_cancelled_request_keeps_its_program_and_pool_and_its_outside_gr
 
 @pytest.mark.asyncio
 async def test_a_2026_cancellation_counts_nowhere_and_carries_no_to_do() -> None:
-    """A cancelled request in any season, 2026 included, leaves Needs an offer and carries no to-do (owner
-    ruling B, 2026-10-04)."""
+    """Clean spec §5.6: cancel reasons exist from 2027. 2026's cancelled requests still leave Needs an offer, and
+    carry no to-do: D164 keeps 2026 on the reports' "reason not recorded" line rather than asking for it."""
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
     store.requests[EMMA] = replace(store.requests[EMMA], year=2026)
@@ -278,10 +280,10 @@ async def test_a_2026_cancellation_counts_nowhere_and_carries_no_to_do() -> None
 
 
 @pytest.mark.asyncio
-async def test_a_past_row_fills_included_as_of_the_day_and_names_to_reverse_by_the_ledger() -> None:
-    """A past row carries its cancellation as of the day (Decision 11), so Included is rebuilt from it; like today's
-    row it carries no to-do for the missing reason (owner ruling B, 2026-10-04). To reverse reads the ledger, which a
-    past date doesn't, so it stays empty with its own reason."""
+async def test_a_past_row_fills_included_and_the_to_dos_as_of_the_day_and_names_to_reverse_by_the_ledger() -> None:
+    """A past row carries its cancellation as of the day (Decision 11), so Included and the to-do ("Cancelled: give
+    a reason", D164) are rebuilt from it. To reverse reads the ledger, which a past date doesn't, so it stays empty
+    with its own reason."""
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
     log_seeded(store, T0 - timedelta(days=30))
@@ -290,8 +292,8 @@ async def test_a_past_row_fills_included_as_of_the_day_and_names_to_reverse_by_t
     row = next(r for r in out.rows if r.request_id == EMMA)
     assert row.cancellation is not None
     assert (row.included, row.to_reverse) == (False, None)
-    assert row.todos == []
-    assert row.todos == (await _row(store)).todos  # as today's row
+    assert [t.code for t in row.todos or []] == [TODO_CANCEL_REASON]
+    assert row.todos == (await _row(store)).todos  # the same to-do today's row carries
     named = {g.figure: g.reason for g in out.not_rebuilt}
     assert "included" not in named
     assert "todos" not in named
@@ -482,10 +484,11 @@ async def test_a_campminder_cancellation_with_a_pending_round3_ask_drops_the_sam
 
 
 @pytest.mark.asyncio
-async def test_a_reason_is_recorded_for_a_campminder_cancellation_and_only_campminder_reopens_it() -> None:
+async def test_a_reason_for_a_campminder_cancellation_clears_the_to_do_and_only_campminder_reopens_it() -> None:
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
     _enrol(store, 32, on=date(2027, 3, 1))  # before the fake clock: the reason answers this cancellation
+    assert [t.code for t in (await _row(store)).todos or []] == [TODO_CANCEL_REASON]  # D164: open until answered
     service = _service(store)
     body = CancellationIn(cancelled=True, reason="another_reason", note="Moved away")
     await service.set_cancellation(EMMA, body, ACTOR)

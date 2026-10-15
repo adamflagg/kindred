@@ -72,10 +72,18 @@ describe('attentionFor (§4.4; D24, D31)', () => {
     })
   })
 
-  // Owner ruling B (#3001): the server sends no to-dos (a missing cancel reason was the only one), so
-  // the row has no to-do path; a stray to-do changes nothing and draws no pill no mock shows.
-  it('reads a row the same with or without a to-do (the server retired them; no cancel-reason special case)', () => {
-    expect(ROW_RILEY.todos).toEqual([])
+  // D164 (owner 2026-10-14, amending D163): a cancellation with no reason stays a to-do until one is
+  // given. Its next step is the household page's own button, Give a Reason….
+  it('asks for a missing cancel reason, in its own view, pointing at Give a Reason…', () => {
+    expect(attentionFor(ROW_RILEY, 'cancel_reason', TODAY)).toEqual({
+      item: { level: 'note', pill: 'Give a reason', fact: 'No reason recorded' },
+      reason: 'Give a reason',
+      queue: 'cancel_reason',
+      next: { kind: 'link', label: 'Give a Reason…', at: 'request' },
+    })
+  })
+
+  it('draws nothing for a to-do it does not know (only the cancel-reason one has a pill)', () => {
     const withTodo = gridRow({ todos: [{ code: 'something_new', message: 'Check the new thing' }] })
     expect(attentionFor(withTodo, 'all', TODAY)).toEqual(attentionFor(gridRow({}), 'all', TODAY))
   })
