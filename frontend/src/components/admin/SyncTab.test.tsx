@@ -503,10 +503,18 @@ describe('SyncTab no-CamperDetails badge (P-25)', () => {
   it('renders a badge on the Persons card when no_camper_details is positive', () => {
     personsStatus = {
       status: 'success',
-      summary: { created: 5, updated: 0, skipped: 0, errors: 0, no_camper_details: 3 },
+      summary: {
+        created: 5,
+        updated: 0,
+        skipped: 0,
+        errors: 0,
+        no_camper_details: 3,
+        not_returned: 2,
+      },
     }
     renderSyncTab()
     expect(within(cardByTitle('Persons', 'div')).getByText('3 no details')).toBeInTheDocument()
+    expect(within(cardByTitle('Persons', 'div')).getByText('2 not returned')).toBeInTheDocument()
   })
 
   it('renders no badge when no_camper_details is zero or absent', () => {
@@ -515,7 +523,9 @@ describe('SyncTab no-CamperDetails badge (P-25)', () => {
       summary: { created: 5, updated: 0, skipped: 0, errors: 0 },
     }
     renderSyncTab()
-    expect(within(cardByTitle('Persons', 'div')).queryByText(/no details/)).not.toBeInTheDocument()
+    expect(
+      within(cardByTitle('Persons', 'div')).queryByText(/no details|not returned/)
+    ).not.toBeInTheDocument()
   })
 })
 

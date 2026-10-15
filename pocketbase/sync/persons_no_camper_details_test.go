@@ -38,7 +38,8 @@ func TestTransformPersonNoCamperDetailsWarnsAndCounts(t *testing.T) {
 }
 
 // A staff-only person (not an attendee) has no CamperDetails by design; that is the
-// expected skip, so it neither warns nor counts.
+// expected skip, so it does not warn and stays out of the camper count. It is counted
+// separately so the two populations never blur.
 func TestTransformPersonNoCamperDetailsStaffOnlyIsQuiet(t *testing.T) {
 	logs := captureSweepLogs(t)
 	s := &PersonsSync{missingDataStats: make(map[string]int)}
@@ -49,5 +50,38 @@ func TestTransformPersonNoCamperDetailsStaffOnlyIsQuiet(t *testing.T) {
 	}
 	if s.Stats.NoCamperDetails != 0 || strings.Contains(logs.String(), "level=WARN") {
 		t.Errorf("staff-only skip must be quiet; count=%d logs=%s", s.Stats.NoCamperDetails, logs.String())
+	}
+	if s.Stats.NoCamperDetailsStaff != 1 {
+		t.Errorf("Stats.NoCamperDetailsStaff = %d, want 1", s.Stats.NoCamperDetailsStaff)
+	}
+}
+
+// A person id we asked CampMinder for that comes back absent is the second way a person
+// goes missing. Campers (from attendees) warn once each and count; staff-only ids count
+// separately. Serial: captureSweepLogs swaps slog's process-global default.
+func TestRecordNotReturnedSplitsCampersFromStaff(t *testing.T) {
+	logs := captureSweepLogs(t)
+	s := &PersonsSync{missingDataStats: make(map[string]int)}
+
+	asked := []int{801, 802, 803, 804}
+	returned := []map[string]any{{"ID": float64(801)}, {"ID": float64(803)}}
+	camperIDs := map[int]bool{801: true, 802: true}
+
+	s.recordNotReturned(asked, returned, camperIDs, 2025)
+
+	if s.Stats.NotReturned != 1 || s.Stats.NotReturnedStaff != 1 {
+		t.Errorf("NotReturned=%d NotReturnedStaff=%d, want 1 and 1", s.Stats.NotReturned, s.Stats.NotReturnedStaff)
+	}
+	out := logs.String()
+	if got := strings.Count(out, "level=WARN"); got != 2 {
+		t.Fatalf("want 2 WARN lines (one per missing id), got %d:\n%s", got, out)
+	}
+	for _, want := range []string{"802", "804", "year=2025"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("logs missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "801") || strings.Contains(out, "803") {
+		t.Errorf("returned ids must not be logged:\n%s", out)
 	}
 }

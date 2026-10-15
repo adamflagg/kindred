@@ -390,6 +390,11 @@ export function SyncTab() {
                     {status.summary.no_camper_details} no details
                   </span>
                 )}
+                {(status.summary.not_returned ?? 0) > 0 && (
+                  <span className="font-medium text-amber-600 dark:text-amber-400">
+                    {status.summary.not_returned} not returned
+                  </span>
+                )}
                 {(status.summary.prod_audit_warnings ?? 0) > 0 && (
                   <span className="font-medium text-amber-600 dark:text-amber-400">
                     {status.summary.prod_audit_warnings} prod⚠
@@ -1001,6 +1006,11 @@ export function SyncTab() {
                           {(status.summary.no_camper_details ?? 0) > 0 && (
                             <span className="font-medium text-amber-600 dark:text-amber-400">
                               {status.summary.no_camper_details} no details
+                            </span>
+                          )}
+                          {(status.summary.not_returned ?? 0) > 0 && (
+                            <span className="font-medium text-amber-600 dark:text-amber-400">
+                              {status.summary.not_returned} not returned
                             </span>
                           )}
                         </div>

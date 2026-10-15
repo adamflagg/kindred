@@ -218,6 +218,8 @@ var serialGroups = []struct {
 			"TestHistoryAttributionUnparseableSourceTimeFallsBackToObservedAt",
 			"TestIsDuplicateStaffStatus",
 			"TestTransformPersonNoCamperDetailsWarnsAndCounts",
+			"TestTransformPersonNoCamperDetailsStaffOnlyIsQuiet",
+			"TestRecordNotReturnedSplitsCampersFromStaff",
 			"TestLoadPersonCustomValuesCountsAndLogsUnmappedAppFields",
 			"TestLoadPersonCustomValuesCountsAndLogsUnmappedFields",
 			"TestLoadPersonCustomValuesNoDiscardsMeansNoWarnAppLog",
