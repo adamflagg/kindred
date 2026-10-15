@@ -641,3 +641,38 @@ async def test_s2_development_never_prices_the_season() -> None:
     _posted_on(store, "reqjohnson00001", datetime(2027, 3, 8, 18, tzinfo=UTC), date(2027, 3, 8))
     week = await _priced(store, MAR24).read(YEAR, casework=False, finance=False, development=True)
     assert all(f.household_cm_id is None for f in week.feed)
+
+
+# --- An undone tick is not this week's news (owner, 2026-10-14) ---------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_posted_or_accepted_tick_that_was_undone_drops_out_of_the_feed_and_the_figures() -> None:
+    """A Posted ticked by mistake, undone and ticked again shows once: the undone post and accept are dropped from
+    the feed and from the week's counts, and the re-tick stands (owner: "id prefer they be dropped")."""
+    store = _Store()
+    seed_request(store, "reqjohnson00001", household=1000001)
+    _event(store, "reqjohnson00001", "post", _at(4, 14, 16), "400")
+    _event(store, "reqjohnson00001", "accept", _at(4, 14, 17))
+    _event(store, "reqjohnson00001", "unaccept", _at(4, 14, 18))
+    _event(store, "reqjohnson00001", "unpost", _at(4, 14, 19))
+    _event(store, "reqjohnson00001", "post", _at(4, 14, 20), "400")
+    _event(store, "reqjohnson00001", "accept", _at(4, 14, 21))
+    week = await _service(store, _Grants([])).read(2031, casework=True, finance=True, development=False)
+    kinds = [f.kind for f in week.feed if f.kind in ("posted", "accepted")]
+    assert sorted(kinds) == ["accepted", "posted"]
+    assert next(f for f in week.registrar or [] if f.key == "posted").value == 1
+    assert next(f for f in week.registrar or [] if f.key == "answered").value == 1
+    assert next(f for f in week.finance or [] if f.key == "avg").value == 400
+
+
+@pytest.mark.asyncio
+async def test_an_undone_post_with_no_re_tick_leaves_nothing_in_the_feed() -> None:
+    store = _Store()
+    seed_request(store, "reqjohnson00001", household=1000001)
+    _event(store, "reqjohnson00001", "post", _at(4, 15, 16), "400")
+    _event(store, "reqjohnson00001", "unpost", _at(4, 15, 17))
+    week = await _service(store, _Grants([])).read(2031, casework=True, finance=True, development=False)
+    assert [f for f in week.feed if f.kind == "posted"] == []
+    assert next(f for f in week.registrar or [] if f.key == "posted").value == 0
+    assert next(f for f in week.finance or [] if f.key == "helped").value == 0

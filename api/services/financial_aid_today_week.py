@@ -97,6 +97,24 @@ def _live_grants(register: Iterable[RegisterRow]) -> list[RegisterRow]:
     return [r for r in register if r.counts and not r.is_reversed and r.recorded_at is not None]
 
 
+_UNDONE_BY: Final = {"post": "unpost", "accept": "unaccept"}
+
+
+def _without_undone(events: Sequence[DecisionEvent]) -> list[DecisionEvent]:
+    """The events minus every Posted or Accepted tick a later undo took back on the same round (owner, 2026-10-14: a
+    tick made by mistake and undone is not this week's news, and a re-tick stands on its own). The undo events stay,
+    so a reader that replays a round's standing (development's awards) sees the same history."""
+    undos_later: set[tuple[str, int, str]] = set()  # (request, round, undo kind) seen after the current event
+    undone: set[str] = set()
+    for event in sorted(events, key=lambda e: (e.created, e.id), reverse=True):  # one pass, newest first
+        undo = _UNDONE_BY.get(event.kind)
+        if undo and (event.request_id, event.round, undo) in undos_later:
+            undone.add(event.id)
+        elif event.kind in _UNDONE_BY.values():
+            undos_later.add((event.request_id, event.round, event.kind))
+    return [e for e in events if e.id not in undone]
+
+
 def _recorded_day(row: RegisterRow) -> date:
     # _live_grants keeps only dated rows
     return _day(row.recorded_at) if row.recorded_at is not None else date.min
@@ -331,10 +349,11 @@ class TodayWeekService:
         request_person = {r.id: r.person_cm_id for r in requests}
         grantor_names = {g.key: g.name for g in grantors.grantors}
 
+        standing = _without_undone(events)
         kept = self._feed(
             windows,
             now,
-            events,
+            standing,
             register,
             funder_log,
             request_household,
@@ -352,8 +371,8 @@ class TodayWeekService:
         return TodayWeekResponse(
             year=year,
             week_of=windows.this_start,
-            registrar=_registrar(windows, events, register, request_household) if casework else None,
-            finance=_finance(windows, events, request_household) if finance else None,
+            registrar=_registrar(windows, standing, register, request_household) if casework else None,
+            finance=_finance(windows, standing, request_household) if finance else None,
             development=(
                 _development(windows, events, register, funder_log, {r.id: r for r in requests})
                 if development
