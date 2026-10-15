@@ -382,7 +382,9 @@ func (s *AttendeesSync) processEnrollment(
 		enrollmentDate = ParseDate(postDate)
 	}
 
-	// Parse EffectiveDate (original registration/application date, never overwritten)
+	// Parse EffectiveDate: CampMinder's effective date of the enrollment's current status. A
+	// status change moves it, and so do bulk actions (the 2020-21 bulk cancellations, the 2023 and
+	// 2025 priority-day approvals), so it is NOT the original registration date.
 	var effectiveDate string
 	if ed, ok := enrollment["EffectiveDate"].(string); ok {
 		effectiveDate = ParseDate(ed)

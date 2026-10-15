@@ -130,7 +130,7 @@ func seedAidAdultsCohort(t *testing.T, app core.App) (
 
 	relatives = map[int][]relativeRef{
 		9400001: {
-			{ID: 9400101, IsGuardian: true},
+			{ID: 9400101, IsGuardian: true, IsPrimary: true},
 			{ID: 9400102, IsGuardian: false},
 			{ID: 9400002, IsGuardian: false}, // her brother: a child in the family, not a principal
 			{ID: 9400104, IsGuardian: false}, // a principal of a household no cohort person is in
@@ -174,7 +174,7 @@ func TestSyncAidAdults_PlacesEveryCohortRelativeByPrincipalRole(t *testing.T) {
 	}
 	// Maria is named by both campers: one entry, and a guardian because Emma's record says so.
 	if got, want := householdAidAdults(t, app, 9410001), []aidAdult{
-		{CMID: 9400101, First: "Maria", Last: "Garcia", Role: 1, IsGuardian: true},
+		{CMID: 9400101, First: "Maria", Last: "Garcia", Role: 1, IsGuardian: true, IsPrimary: true},
 	}; !slices.Equal(got, want) {
 		t.Errorf("9410001 aid_adults = %+v, want %+v", got, want)
 	}
@@ -215,7 +215,7 @@ func TestSyncAidAdults_RewritesEachRunAndClearsHouseholdsThatLeave(t *testing.T)
 		t.Fatalf("syncAidAdults: %v", err)
 	}
 	if got, want := householdAidAdults(t, app, 9410001), []aidAdult{
-		{CMID: 9400101, First: "Maria", Last: "Garcia", Role: 1, IsGuardian: true},
+		{CMID: 9400101, First: "Maria", Last: "Garcia", Role: 1, IsGuardian: true, IsPrimary: true},
 	}; !slices.Equal(got, want) {
 		t.Errorf("9410001 aid_adults = %+v, want the stale entry replaced by %+v", got, want)
 	}
@@ -308,7 +308,7 @@ func TestRelativesOf(t *testing.T) {
 			"not a relative",
 		},
 	}
-	want := []relativeRef{{ID: 9400101, IsGuardian: true}, {ID: 9400102}}
+	want := []relativeRef{{ID: 9400101, IsGuardian: true, IsPrimary: true}, {ID: 9400102}}
 	if got := relativesOf(person); !slices.Equal(got, want) {
 		t.Errorf("relativesOf = %+v, want %+v", got, want)
 	}

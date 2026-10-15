@@ -2280,7 +2280,7 @@ export type PersonTagDefsRecord = {
   updated: IsoAutoDateString
 }
 
-export type PersonsRecord<Tparent_names = unknown, Traw_data = unknown> = {
+export type PersonsRecord<Tparent_names = unknown, Traw_data = unknown, Trelatives = unknown> = {
   address_city?: string
   address_state?: string
   age?: number
@@ -2316,6 +2316,7 @@ export type PersonsRecord<Tparent_names = unknown, Traw_data = unknown> = {
   primary_childhood_household?: RecordIdString
   primary_email?: string
   raw_data?: null | Traw_data
+  relatives?: null | Trelatives
   school?: string
   secondary_email?: string
   tags?: RecordIdString[]
@@ -3014,8 +3015,9 @@ export type PersonTagDefsResponse<Texpand = unknown> = Required<PersonTagDefsRec
 export type PersonsResponse<
   Tparent_names = unknown,
   Traw_data = unknown,
+  Trelatives = unknown,
   Texpand = unknown,
-> = Required<PersonsRecord<Tparent_names, Traw_data>> & BaseSystemFields<Texpand>
+> = Required<PersonsRecord<Tparent_names, Traw_data, Trelatives>> & BaseSystemFields<Texpand>
 export type QuestRegistrationsResponse<Texpand = unknown> = Required<QuestRegistrationsRecord> &
   BaseSystemFields<Texpand>
 export type RolesResponse<Tpermissions = unknown, Texpand = unknown> = Required<

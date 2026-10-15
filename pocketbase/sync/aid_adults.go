@@ -26,7 +26,7 @@ const (
 // aidAdult is one entry of households.aid_adults. Role is the FamilyPersons role, 1 (First
 // Principal) or 2 (Second Principal); staff screens say "Adult 1" / "Adult 2" and never infer
 // a relationship from it. IsGuardian is CampMinder's flag on any cohort camper's Relatives
-// entry for this person.
+// entry for this person. IsPrimary is CampMinder's "parent 1" flag on any such entry.
 type aidAdult struct {
 	CMID       int    `json:"cm_id"`
 	First      string `json:"first"`
@@ -34,13 +34,16 @@ type aidAdult struct {
 	Preferred  string `json:"preferred"`
 	Role       int    `json:"role"`
 	IsGuardian bool   `json:"is_guardian"`
+	IsPrimary  bool   `json:"is_primary"`
 }
 
 // relativeRef is one entry of a person's CampMinder Relatives: an id, and whether CampMinder
-// marks that relative a guardian. It carries no relationship type and no name.
+// marks that relative a guardian and "parent 1" (IsPrimary). It carries no relationship type and
+// no name.
 type relativeRef struct {
 	ID         int
 	IsGuardian bool
+	IsPrimary  bool
 }
 
 // aidAdultsStats counts one aid step: households named, adults placed in them, and households
@@ -65,7 +68,8 @@ func relativesOf(person map[string]any) []relativeRef {
 			continue
 		}
 		guardian, _ := rel["IsGuardian"].(bool)
-		out = append(out, relativeRef{ID: int(id), IsGuardian: guardian})
+		primary, _ := rel["IsPrimary"].(bool)
+		out = append(out, relativeRef{ID: int(id), IsGuardian: guardian, IsPrimary: primary})
 	}
 	return out
 }
@@ -121,6 +125,7 @@ func (s *PersonsSync) syncAidAdults(
 		targets[h] = true
 	}
 	guardian := map[int]bool{}
+	primary := map[int]bool{}
 	for _, person := range cohort.personCMIDs {
 		ids := households[person]
 		for _, h := range []int{ids.PrincipalID, ids.PrimaryChildhoodID, ids.AlternateChildhoodID} {
@@ -130,6 +135,7 @@ func (s *PersonsSync) syncAidAdults(
 		}
 		for _, rel := range relatives[person] {
 			guardian[rel.ID] = guardian[rel.ID] || rel.IsGuardian
+			primary[rel.ID] = primary[rel.ID] || rel.IsPrimary
 		}
 	}
 
@@ -165,6 +171,7 @@ func (s *PersonsSync) syncAidAdults(
 				Preferred:  s.fixAllCapsName(s.getString(name, "Preferred", "")),
 				Role:       role,
 				IsGuardian: guardian[cmID],
+				IsPrimary:  primary[cmID],
 			})
 		}
 	}
