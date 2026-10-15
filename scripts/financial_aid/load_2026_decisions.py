@@ -72,7 +72,9 @@ from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError, model_
 
 from api.services.financial_aid_decisions_repository import FinancialAidDecisionsRepository
 from api.services.financial_aid_intake_types import STATUS_ACTIVE, STATUS_UNMATCHED
+from api.services.financial_aid_ledger_service import family_household_set
 from api.services.financial_aid_reconciliation import CampLine
+from api.services.financial_aid_repository import FinancialAidRepository
 from api.services.financial_aid_rules_service import PRICING_SECTIONS, AidRulesRepository, FinancialAidRulesService
 from bunking.financial_aid.calculator import ApplicationInputs, CalcResult, RequestInputs, calculate
 from bunking.financial_aid.change_log import AidWrite
@@ -346,34 +348,53 @@ def _group(request: LoadRequest) -> Group:
     return (request.household_cm_id, request.session_cm_id)
 
 
-def _line_group(line: CampLine, requests: Sequence[LoadRequest]) -> tuple[Group | None, str]:
+def _line_group(
+    line: CampLine, requests: Sequence[LoadRequest], linked: Collection[int] = ()
+) -> tuple[Group | None, str]:
     """The family x session a live camp-aid line is for, from its own household's requests: Go's attributed session,
     else the session of the attributed camper's one request there, else the household's one session. ("", group) when
-    found; else why not: "no_request" (a session the household asked no aid for) or "unplaced" (it can't be told)."""
-    household = [r for r in requests if r.household_cm_id == line.household_cm_id and r.session_cm_id]
+    found; else why not: "no_request" (a session the household asked no aid for) or "unplaced" (it can't be told).
+
+    CampMinder sometimes posts a family's aid under another of its household ids (aid_household_links, D26). Only when
+    the line's own household has no request that could take it are the households `linked` to it read the same way,
+    and the line then joins the one linked household's family x session that can; the household's own requests always
+    come first, so a link never moves money off them."""
     session, person = line.attributed_session_cm_id, line.attributed_person_cm_id
+
+    def takers(households: Collection[int]) -> set[Group]:
+        return {
+            (r.household_cm_id, r.session_cm_id)
+            for r in requests
+            if r.household_cm_id in households
+            and r.session_cm_id
+            and (r.session_cm_id == session if session else not person or r.person_cm_id in (person, 0))
+        }
+
+    found = takers({line.household_cm_id}) or takers(set(linked) - {line.household_cm_id})
+    if len(found) == 1:
+        return found.pop(), ""
     if session:
-        if any(r.session_cm_id == session for r in household):
-            return (line.household_cm_id, session), ""
         return (line.household_cm_id, session), "no_request"
-    sessions = {r.session_cm_id for r in household if not person or r.person_cm_id in (person, 0)}
-    if len(sessions) == 1:
-        return (line.household_cm_id, sessions.pop()), ""
     return None, "unplaced"
 
 
 def campminder_money(
-    lines: Iterable[CampLine], requests: Sequence[LoadRequest]
+    lines: Iterable[CampLine], requests: Sequence[LoadRequest], links: Iterable[Any] = ()
 ) -> tuple[dict[Group, Decimal], dict[Group, Decimal], dict[int, Decimal]]:
     """CampMinder's net live camp aid per family x session that has an aid request; per family x session that has
-    none; and per household, what no family x session could take."""
+    none; and per household, what no family x session could take. `links` are the season's aid_household_links rows
+    (family_household_set reads them: an excluded row joins nothing)."""
+    links = list(links)
+    families: dict[int, list[int]] = {}
     placed: dict[Group, Decimal] = defaultdict(lambda: ZERO)
     no_request: dict[Group, Decimal] = defaultdict(lambda: ZERO)
     unplaced: dict[int, Decimal] = defaultdict(lambda: ZERO)
     for line in lines:
         if not line.live():
             continue
-        group, why = _line_group(line, requests)
+        if line.household_cm_id not in families:
+            families[line.household_cm_id] = family_household_set(links, line.household_cm_id)
+        group, why = _line_group(line, requests, families[line.household_cm_id])
         if group is None:
             unplaced[line.household_cm_id] += line.amount
         elif why:
@@ -641,6 +662,7 @@ def plan_load(
     rules_version: int,
     trackers: Mapping[int, str],
     overrides: Sequence[LoadOverride] = (),
+    links: Iterable[Any] = (),
 ) -> LoadPlan:
     plan = LoadPlan()
 
@@ -713,7 +735,7 @@ def plan_load(
         if not by_id[rid].session_cm_id and (chosen := applied.get(award.row)) is not None:
             by_id[rid] = replace(by_id[rid], session_cm_id=chosen.sheet_session or 0)
     requests = list(by_id.values())
-    money, no_request, unplaced = campminder_money(lines, requests)
+    money, no_request, unplaced = campminder_money(lines, requests, links)
     plan.campminder_total = sum((line.amount for line in lines if line.live()), ZERO)
     plan.campminder_unplaced = sum(unplaced.values(), ZERO)
     for household, amount in sorted(unplaced.items()):
@@ -986,6 +1008,7 @@ class LoadStore(Protocol):
     async def requests(self, year: int) -> list[LoadRequest]: ...
     async def events_of(self, year: int) -> list[DecisionEvent]: ...
     async def camp_lines(self, year: int) -> list[CampLine]: ...
+    async def links(self, year: int) -> list[Any]: ...
     async def commit(self, writes: Sequence[AidWrite]) -> None: ...
 
 
@@ -995,6 +1018,7 @@ class PocketBaseStore:
     def __init__(self) -> None:
         pb = authenticate_pocketbase(os.getenv("POCKETBASE_URL", "http://localhost:8090"))
         self._repo = FinancialAidDecisionsRepository(pb)
+        self._links = FinancialAidRepository(pb)
         self._rules = AidRulesRepository(pb, read_only=True)
 
     async def rules(self, year: int) -> tuple[AidRules, int] | None:
@@ -1012,6 +1036,9 @@ class PocketBaseStore:
 
     async def camp_lines(self, year: int) -> list[CampLine]:
         return await self._repo.fetch_camp_lines(year)
+
+    async def links(self, year: int) -> list[Any]:
+        return await self._links.fetch_links(year)
 
     async def commit(self, writes: Sequence[AidWrite]) -> None:
         await self._repo.commit(writes, actor=LOADER, reason=REASON, allow_chunking=True)
@@ -1126,12 +1153,20 @@ async def _run(args: argparse.Namespace, store: LoadStore) -> int:
     trackers: dict[int, str] = {}
     if args.trackers is not None:
         trackers = {int(k): str(v) for k, v in json.loads(args.trackers.read_text(encoding="utf-8")).items()}
-    requests, existing, lines = await asyncio.gather(
-        store.requests(args.year), store.events_of(args.year), store.camp_lines(args.year)
+    requests, existing, lines, links = await asyncio.gather(
+        store.requests(args.year), store.events_of(args.year), store.camp_lines(args.year), store.links(args.year)
     )
     try:
         plan = plan_load(
-            awards, requests, lines, existing, rules, rules_version=version, trackers=trackers, overrides=overrides
+            awards,
+            requests,
+            lines,
+            existing,
+            rules,
+            rules_version=version,
+            trackers=trackers,
+            overrides=overrides,
+            links=links,
         )
     except OverrideError as exc:  # ids only, as the person fixing the local file needs them
         print(f"{exc}. Nothing was written.", file=sys.stderr)
