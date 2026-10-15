@@ -1,6 +1,6 @@
 import { render, screen, fireEvent, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { DrillDownModal } from './DrillDownModal'
 import type { DrilldownAttendee, DrilldownFilter } from '../../types/metrics'
@@ -15,6 +15,13 @@ vi.mock('../../hooks/useDrilldownAttendees', () => ({
     isLoading: false,
     error: null,
   }),
+}))
+
+// Capture CSV downloads; building the CSV text stays real.
+const mockTriggerCsvDownload = vi.fn()
+vi.mock('../../utils/csvExport', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../utils/csvExport')>()),
+  downloadCsv: (...args: unknown[]) => mockTriggerCsvDownload(...args) as unknown,
 }))
 
 // Wrap component with QueryClient and MemoryRouter for React Query + Link
@@ -390,6 +397,100 @@ describe('DrillDownModal', () => {
 
       const downloadBtn = screen.getByRole('button', { name: /download csv/i })
       expect(downloadBtn).not.toBeDisabled()
+    })
+  })
+
+  // #3207 PR 6a: dates read one day early in a Pacific browser. `effective_date` is a calendar
+  // date stored as midnight UTC, so it is read by its YYYY-MM-DD part. `enrollment_date` is a true
+  // UTC instant, so it shows its day on camp time (Pacific), whatever zone the browser is in.
+  describe('dates in a non-UTC browser', () => {
+    const originalTz = process.env['TZ']
+
+    afterEach(() => {
+      // Assigning undefined would store the string "undefined", so unset it instead.
+      if (originalTz === undefined) delete process.env['TZ']
+      else process.env['TZ'] = originalTz
+      vi.useRealTimers()
+    })
+
+    const camper = (overrides: Partial<DrilldownAttendee>): DrilldownAttendee =>
+      ({
+        person_id: 101,
+        first_name: 'Emma',
+        last_name: 'Johnson',
+        grade: 6,
+        gender: 'F',
+        session_name: 'Session 1',
+        session_cm_id: 1001,
+        status: 'enrolled',
+        ...overrides,
+      }) as DrilldownAttendee
+
+    it('a Pacific browser shows the registered day itself, not the day before', () => {
+      process.env['TZ'] = 'America/Los_Angeles'
+      mockAttendees = [camper({ effective_date: '2025-12-17 00:00:00.000Z' })]
+
+      renderWithClient(<DrillDownModal {...defaultProps} />)
+
+      expect(screen.getByText('Dec 17, 2025')).toBeInTheDocument()
+      expect(screen.queryByText('Dec 16, 2025')).not.toBeInTheDocument()
+    })
+
+    it('an eastern browser shows the registered day itself too', () => {
+      process.env['TZ'] = 'America/New_York'
+      mockAttendees = [camper({ effective_date: '2025-12-17 00:00:00.000Z' })]
+
+      renderWithClient(<DrillDownModal {...defaultProps} />)
+
+      expect(screen.getByText('Dec 17, 2025')).toBeInTheDocument()
+    })
+
+    it('a cancellation late on a Pacific evening shows that Pacific day, from any browser', () => {
+      // 2026-03-04 05:30Z is 9:30 pm on Mar 3 in camp time.
+      process.env['TZ'] = 'America/New_York'
+      mockAttendees = [
+        camper({
+          status: 'cancelled',
+          effective_date: '2025-11-12 00:00:00.000Z',
+          enrollment_date: '2026-03-04 05:30:00.000Z',
+        }),
+      ]
+      const filter: DrilldownFilter = {
+        type: 'cancellation_was_enrolled',
+        value: '',
+        label: 'Cancelled',
+      }
+
+      renderWithClient(<DrillDownModal {...defaultProps} filter={filter} />)
+
+      expect(screen.getByText('Mar 3, 2026')).toBeInTheDocument()
+      expect(screen.getByText('Nov 12, 2025')).toBeInTheDocument()
+    })
+
+    it('with no registered date, the fallback status date shows its camp-time day', () => {
+      process.env['TZ'] = 'UTC'
+      mockAttendees = [camper({ enrollment_date: '2026-03-04 05:30:00.000Z' })]
+
+      renderWithClient(<DrillDownModal {...defaultProps} />)
+
+      expect(screen.getByText('Mar 3, 2026')).toBeInTheDocument()
+    })
+
+    it('the CSV carries the same days, and is named <season>-<view>-<camp-time date>.csv', () => {
+      process.env['TZ'] = 'UTC'
+      // 03:00Z on Oct 16 is still the evening of Oct 15 on camp time.
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(new Date('2026-10-16T03:00:00Z'))
+      mockAttendees = [camper({ effective_date: '2025-12-17 00:00:00.000Z' })]
+
+      renderWithClient(<DrillDownModal {...defaultProps} />)
+      fireEvent.click(screen.getByRole('button', { name: /download csv/i }))
+
+      expect(mockTriggerCsvDownload).toHaveBeenCalledTimes(1)
+      const [csv, filename] = mockTriggerCsvDownload.mock.calls[0] as [string, string]
+      expect(csv).toContain('Dec 17, 2025')
+      expect(csv).not.toContain('Dec 16, 2025')
+      expect(filename).toBe('2025-grade-6-2026-10-15.csv')
     })
   })
 })

@@ -19,6 +19,7 @@ import {
 import { useDrilldownAttendees } from '../../hooks/useDrilldownAttendees'
 import { sessionName } from '../../utils/sessionName'
 import { buildCsvContent, downloadCsv as triggerCsvDownload } from '../../utils/csvExport'
+import { campToday, formatLongDate } from '../camperships/kit/dates'
 import type { DrilldownAttendee, DrilldownFilter } from '../../types/metrics'
 
 /** Get display session name: comma-joined if multi-session, fallback to single session_name. */
@@ -39,19 +40,40 @@ function getEnrolledDisplay(a: DrilldownAttendee): string {
   return '—'
 }
 
-/** Format a date string as short locale date (e.g. "Nov 10, 2025"). */
-function formatDate(dateStr: string | undefined | null): string {
-  if (!dateStr) return '—'
-  return new Date(dateStr).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  })
+/** A calendar date ("Dec 17, 2025"). `effective_date` is a day stored as midnight UTC, so it is
+ *  read by its YYYY-MM-DD part: through `new Date()` it would show the day before in a western zone. */
+function formatDay(value: string | undefined | null): string {
+  if (!value) return '—'
+  return formatLongDate(value)
+}
+
+/** A moment's day on camp time ("Mar 3, 2026"). `enrollment_date` is a true UTC instant
+ *  (CampMinder's PostDate), so its day is the Pacific one, whatever zone the browser is in. */
+function formatCampDay(value: string | undefined | null): string {
+  if (!value) return '—'
+  const at = new Date(value.replace(' ', 'T'))
+  if (Number.isNaN(at.getTime())) return value
+  return formatLongDate(campToday(at))
 }
 
 /** Get the best registration date: effective_date if available, fallback to enrollment_date. */
 function getRegistrationDate(a: DrilldownAttendee): string | undefined {
   return a.effective_date ?? a.enrollment_date
+}
+
+/** The registration date as shown: each source keeps its own reading (see formatDay, formatCampDay). */
+function formatRegistrationDate(a: DrilldownAttendee): string {
+  return a.effective_date ? formatDay(a.effective_date) : formatCampDay(a.enrollment_date)
+}
+
+/** "<season>-<view>-<camp-time date>.csv", e.g. "2026-total-cancelled-2026-10-15.csv". */
+function csvFilename(year: number, label: string | undefined): string {
+  const view =
+    (label ?? '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'campers'
+  return `${String(year)}-${view}-${campToday()}.csv`
 }
 
 interface DrillDownModalProps {
@@ -331,7 +353,7 @@ export function DrillDownModal({
             a.state ?? '',
             getSessionDisplay(a),
             getEnrolledDisplay(a),
-            formatDate(getRegistrationDate(a)),
+            formatRegistrationDate(a),
             a.years_at_camp ?? '',
             a.status,
             a.is_returning ? 'Yes' : 'No',
@@ -364,8 +386,8 @@ export function DrillDownModal({
                 a.state ?? '',
                 getSessionDisplay(a),
                 getEnrolledDisplay(a),
-                formatDate(a.effective_date),
-                formatDate(a.enrollment_date),
+                formatDay(a.effective_date),
+                formatCampDay(a.enrollment_date),
                 a.years_at_camp ?? '',
                 a.status,
                 a.is_returning ? 'Yes' : 'No',
@@ -380,7 +402,7 @@ export function DrillDownModal({
                 a.city ?? '',
                 a.state ?? '',
                 getSessionDisplay(a),
-                formatDate(getRegistrationDate(a)),
+                formatRegistrationDate(a),
                 a.years_at_camp ?? '',
                 a.status,
                 a.is_returning ? 'Yes' : 'No',
@@ -389,7 +411,7 @@ export function DrillDownModal({
 
     const stringRows = rows.map((row) => row.map((cell) => String(cell)))
     const csv = buildCsvContent(headers, stringRows)
-    const filename = `${filter?.label.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`
+    const filename = csvFilename(year, filter?.label)
     triggerCsvDownload(csv, filename)
   }
 
@@ -669,7 +691,7 @@ export function DrillDownModal({
                     )}
                     {isWaitlistDrilldown && (
                       <td className="text-foreground px-4 py-3 whitespace-nowrap">
-                        {formatDate(getRegistrationDate(attendee))}
+                        {formatRegistrationDate(attendee)}
                       </td>
                     )}
                     {isRetentionDrilldown && (
@@ -691,16 +713,16 @@ export function DrillDownModal({
                           {getEnrolledDisplay(attendee)}
                         </td>
                         <td className="text-foreground px-4 py-3 whitespace-nowrap">
-                          {formatDate(attendee.effective_date)}
+                          {formatDay(attendee.effective_date)}
                         </td>
                         <td className="text-foreground px-4 py-3 whitespace-nowrap">
-                          {formatDate(attendee.enrollment_date)}
+                          {formatCampDay(attendee.enrollment_date)}
                         </td>
                       </>
                     )}
                     {!isWaitlistDrilldown && !isRetentionDrilldown && !isCancellationSpecial && (
                       <td className="text-foreground px-4 py-3 whitespace-nowrap">
-                        {formatDate(getRegistrationDate(attendee))}
+                        {formatRegistrationDate(attendee)}
                       </td>
                     )}
                     <td className="text-foreground px-4 py-3 text-center whitespace-nowrap">
