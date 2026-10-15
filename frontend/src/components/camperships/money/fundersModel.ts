@@ -2,7 +2,8 @@
  * Money › Funders' model (owner 10-08; mock q2): the registry of CampMinder descriptions and the
  * grantor directory merged into one flat list grouped by who pays. Camp first, then each active
  * funder A to Z with its descriptions under it, then "No funder yet" (an outside or unclassified
- * description no visible funder claims). Pure: the screen draws what this builds.
+ * description with no funder, or one the directory doesn't know). A retired funder's descriptions stay
+ * with it, hidden while it is. Pure: the screen draws what this builds.
  */
 import type { ApiAidGrantor, ApiAidSourceRow } from '../../../types/api-types'
 import { aidCsvFilename } from '../kit/csv'
