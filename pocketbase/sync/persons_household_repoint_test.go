@@ -77,7 +77,8 @@ func TestUpdatePersonHouseholdRelationsPayloadWithoutIDsKeepsRelations(t *testin
 
 	// Fetched this run, but the payload carried no Households object; and an id
 	// that resolves to no household record must not clear anything either.
-	for _, ids := range []personHouseholdIDs{{}, {PrincipalID: 9999, PrimaryChildhoodID: 9999, AlternateChildhoodID: 9999}} {
+	unresolved := personHouseholdIDs{PrincipalID: 9999, PrimaryChildhoodID: 9999, AlternateChildhoodID: 9999}
+	for _, ids := range []personHouseholdIDs{{}, unresolved} {
 		if err := s.updatePersonHouseholdRelations(2026, hh, map[int]personHouseholdIDs{5001: ids}); err != nil {
 			t.Fatalf("update: %v", err)
 		}

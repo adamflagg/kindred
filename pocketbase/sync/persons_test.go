@@ -2392,7 +2392,8 @@ func TestTransformPersonToPB_RelativesKeepsGuardianAndPrimaryFlagsInOrder(t *tes
 	if err != nil {
 		t.Fatalf("transformPersonToPB: %v", err)
 	}
-	want := `[{"cm_id":9400102,"is_guardian":true,"is_primary":false},{"cm_id":9400101,"is_guardian":true,"is_primary":true}]`
+	want := `[{"cm_id":9400102,"is_guardian":true,"is_primary":false},` +
+		`{"cm_id":9400101,"is_guardian":true,"is_primary":true}]`
 	if got, _ := pbData["relatives"].(string); got != want {
 		t.Errorf("relatives = %v, want %s", pbData["relatives"], want)
 	}
