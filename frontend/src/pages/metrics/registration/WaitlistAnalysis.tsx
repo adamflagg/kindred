@@ -21,6 +21,7 @@ import {
   type StackedBarDataItem,
   type StackedSegment,
 } from '../../../components/metrics/CssStackedHorizontalBarChart'
+import { SESSION_LABEL_WIDTH } from '../../../components/metrics/cssChartUtils'
 import { sessionName } from '../../../utils/sessionName'
 import { transformGenderData } from '../../../utils/metricsTransforms'
 import { SESSION_NAME_ALIASES, resolveSessionAlias } from '../../../utils/sessionAliases'
@@ -318,7 +319,7 @@ export default function WaitlistAnalysis() {
                     title={
                       isComparing ? `${currentYear} Waitlist by Session` : 'Waitlist by Session'
                     }
-                    labelWidth={140}
+                    labelWidth={SESSION_LABEL_WIDTH}
                     height={waitlistSessionChartHeight(primarySession.data.length)}
                     onBarClick={(item) =>
                       setFilter({
@@ -337,7 +338,7 @@ export default function WaitlistAnalysis() {
                       data={compSession.data}
                       segments={compSession.segments}
                       title={`${compareYear} Waitlist by Session`}
-                      labelWidth={140}
+                      labelWidth={SESSION_LABEL_WIDTH}
                       height={waitlistSessionChartHeight(compSession.data.length)}
                     />
                   )}

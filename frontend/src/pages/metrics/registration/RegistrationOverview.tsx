@@ -24,6 +24,7 @@ import { MetricCard } from '../../../components/metrics/MetricCard'
 import { SessionDetailsTable } from '../../../components/metrics/SessionDetailsTable'
 import { BreakdownChart } from '../../../components/metrics/BreakdownChart'
 import { CssHorizontalBarChart } from '../../../components/metrics/CssHorizontalBarChart'
+import { SESSION_LABEL_WIDTH } from '../../../components/metrics/cssChartUtils'
 import { CssVerticalStackedBarChart } from '../../../components/metrics/CssVerticalStackedBarChart'
 import { SESSION_NAME_ALIASES } from '../../../utils/sessionAliases'
 import {
@@ -504,7 +505,7 @@ export default function RegistrationOverview() {
                   title={`${currentYear} Session`}
                   data={sessionChartData}
                   height={300}
-                  labelWidth={140}
+                  labelWidth={SESSION_LABEL_WIDTH}
                   breakdownType="session"
                   onBarClick={setFilter}
                   percentageLabel="Capacity"
@@ -517,7 +518,7 @@ export default function RegistrationOverview() {
                     sessionTypeLookup
                   )}
                   height={300}
-                  labelWidth={140}
+                  labelWidth={SESSION_LABEL_WIDTH}
                   percentageLabel="Capacity"
                 />
               </div>
@@ -633,7 +634,7 @@ export default function RegistrationOverview() {
                 title="Enrollment by Session"
                 data={sessionChartData}
                 height={300}
-                labelWidth={140}
+                labelWidth={SESSION_LABEL_WIDTH}
                 breakdownType="session"
                 onBarClick={setFilter}
                 percentageLabel="Capacity"

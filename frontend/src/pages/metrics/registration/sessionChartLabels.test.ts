@@ -1,17 +1,14 @@
 /**
  * The by-session charts on Cancellations and Waitlist (PR 4, board 6, owner 2026-10-14): bars are
- * labelled with the shared sessionName() SHORT form, not CampMinder's raw names. Cancellations'
- * label column widens to about 150px; Waitlist keeps 140. No two-line labels, no tooltip. And a
- * long scope (All Summer) grows the Cancellations chart so no row is clipped (board 6 finding).
+ * labelled with the shared sessionName() SHORT form, not CampMinder's raw names, and no label is
+ * cut. No two-line labels, no tooltip. The ruling's "about 150px" was the means; 150 still cut
+ * the longest real quest/teen names, so every by-session chart shares one width that fits them.
+ * And a long scope (All Summer) grows the chart so no row is clipped (board 6 finding).
  */
 import { describe, it, expect } from 'vitest'
 import { sessionName } from '../../../utils/sessionName'
-import { calculateBarSizing } from '../../../components/metrics/cssChartUtils'
-import {
-  CANCEL_SESSION_LABEL_WIDTH,
-  cancelSessionChartHeight,
-  transformCancelSessionData,
-} from './CancellationAnalysis'
+import { SESSION_LABEL_WIDTH, calculateBarSizing } from '../../../components/metrics/cssChartUtils'
+import { cancelSessionChartHeight, transformCancelSessionData } from './CancellationAnalysis'
 import { transformWaitlistSessionData, waitlistSessionChartHeight } from './WaitlistAnalysis'
 
 /** Every row of an n-row chart fits in the height chosen for it, for n = 1..40. */
@@ -26,6 +23,48 @@ function expectEveryRowFits(heightFor: (rows: number) => number) {
 }
 
 const AG_RAW = 'All-Gender Session 2 (7th & 8th grades)'
+
+/**
+ * The longest session labels these charts show across 2019-2026 and every view (At Camp, All
+ * Summer, Quests, Teens), with the width each renders at in the label's own style (text-sm,
+ * DM Sans), measured in Chromium on 2026-10-14. Each entry is [raw name, session type, px].
+ */
+const LONGEST_REAL_LABELS: Array<[string, string, number]> = [
+  ['Women of the Wild Quest', 'quest', 163],
+  ['Northwest Canada Quest', 'quest', 160],
+  ['Teen Leadership Institute', 'tli', 159],
+  ['A Taste of Camp 2021', 'main', 137],
+  ['TLI: Camp to Portland', 'tli', 136],
+  ['Counselor In-Training', 'scit', 135],
+  ['Specialist In-Training', 'scit', 131],
+  ['All-Gender Cabin-Session 3 (9th & 10th grades)', 'ag', 73],
+]
+
+/** Room for subpixel rounding and the metric-matched fallback font. */
+const HEADROOM_PX = 8
+
+describe('session label width (no label is cut)', () => {
+  it.each(LONGEST_REAL_LABELS)('fits %s whole', (raw, type, px) => {
+    // The short form never cuts a name itself, so the column has to fit it whole.
+    expect(sessionName(raw, type, 'short')).not.toMatch(/(\.\.\.|…)$/)
+    expect(SESSION_LABEL_WIDTH).toBeGreaterThanOrEqual(px + HEADROOM_PX)
+  })
+
+  it('the short form of the longest real names is the full name (nothing to measure but it)', () => {
+    expect(sessionName('Teen Leadership Institute', 'tli', 'short')).toBe(
+      'Teen Leadership Institute'
+    )
+    expect(sessionName('Northwest Canada Quest', 'quest', 'short')).toBe('Northwest Canada Quest')
+    expect(sessionName('Women of the Wild Quest', 'quest', 'short')).toBe('Women of the Wild Quest')
+    expect(sessionName('All-Gender Cabin-Session 3 (9th & 10th grades)', 'ag', 'short')).toBe(
+      'AG 3 (9-10)'
+    )
+  })
+
+  it('stays a column, not most of the card', () => {
+    expect(SESSION_LABEL_WIDTH).toBeLessThanOrEqual(192)
+  })
+})
 const types = { 'Session 1': 'main', [AG_RAW]: 'ag' }
 const dates = { 'Session 1': '2026-06-15', [AG_RAW]: '2026-07-01' }
 
@@ -67,10 +106,6 @@ describe('Cancellations by Session', () => {
         )
       )
     })
-  })
-
-  it('widens the label column to about 150px', () => {
-    expect(CANCEL_SESSION_LABEL_WIDTH).toBe(150)
   })
 
   it('grows so every row of a long scope fits (no row clipped)', () => {

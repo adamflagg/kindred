@@ -30,6 +30,7 @@ import {
   type StackedBarDataItem,
   type StackedSegment,
 } from '../../../components/metrics/CssStackedHorizontalBarChart'
+import { SESSION_LABEL_WIDTH } from '../../../components/metrics/cssChartUtils'
 import { transformGenderData } from '../../../utils/metricsTransforms'
 import { SESSION_NAME_ALIASES, resolveSessionAlias } from '../../../utils/sessionAliases'
 import { ComparisonSummaryTable } from '../../../components/metrics/ComparisonSummaryTable'
@@ -49,9 +50,6 @@ const CANCEL_SEGMENTS: StackedSegment[] = [
   { key: 'other_prior_status', label: 'Other Prior Status', color: 'hsl(200, 15%, 55%)' },
   { key: 'unknown', label: 'Unknown', color: 'hsl(0, 0%, 75%)' },
 ]
-
-/** Board 6 (owner, 2026-10-14): wide enough for the longest short quest/teen name (~22 chars). */
-export const CANCEL_SESSION_LABEL_WIDTH = 150
 
 /**
  * The chart's fixed 300px clips rows past 11 into overflow-hidden (All Summer has more). Past
@@ -431,7 +429,7 @@ export default function CancellationAnalysis() {
                         ? `${currentYear} Cancellations by Session`
                         : 'Cancellations by Session'
                     }
-                    labelWidth={CANCEL_SESSION_LABEL_WIDTH}
+                    labelWidth={SESSION_LABEL_WIDTH}
                     height={cancelSessionChartHeight(primarySession.data.length)}
                     onBarClick={(item) => {
                       // Bars carry the short name; find the row by position, not by name.
@@ -450,7 +448,7 @@ export default function CancellationAnalysis() {
                       data={compSessionData.data}
                       segments={CANCEL_SEGMENTS}
                       title={`${compareYear} Cancellations by Session`}
-                      labelWidth={CANCEL_SESSION_LABEL_WIDTH}
+                      labelWidth={SESSION_LABEL_WIDTH}
                       height={cancelSessionChartHeight(
                         Math.max(primarySession.data.length, compSessionData.data.length)
                       )}
