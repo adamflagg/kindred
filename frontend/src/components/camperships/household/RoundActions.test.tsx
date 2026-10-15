@@ -71,6 +71,16 @@ describe('RoundNextAction (D51; Decision 22)', () => {
     ).toBeInTheDocument()
   })
 
+  // Owner ruling 10-14: the refusal sits in a nowrap cell and pushed the table past its card at 1100.
+  it('lets the safety refusal wrap and caps its width, so it cannot widen the table', async () => {
+    failWith = new Error('A decided amount moved since it was shown, so nothing was posted')
+    render(<RoundNextAction request={emma} line={lineOf(emma)} year={2027} canApprove={false} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Mark Posted · locks $1,420' }))
+    const words = screen.getByText(/A decided amount moved/)
+    expect(words).toHaveClass('whitespace-normal')
+    expect(words.className).toMatch(/\bmax-w-/)
+  })
+
   it('lets finance refuse a Round 3 with a reason', async () => {
     const pending = householdRequest(
       gridRow({
@@ -489,6 +499,15 @@ describe('RoundChecklist (§5.2; D47)', () => {
         body: { rows: [{ request_id: reversed.row.request_id, round: 1 }], accepted: false },
       })
     })
+  })
+
+  it('lets the Accepted refusal wrap and caps its width, so it cannot widen the table', async () => {
+    failWith = new Error('Accepted needs the round posted first, and this one is not')
+    render(<RoundChecklist request={samuel} line={lineOf(samuel)} year={2027} />)
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Accepted' }))
+    const words = screen.getByText(/Accepted needs the round posted/)
+    expect(words).toHaveClass('whitespace-normal')
+    expect(words.className).toMatch(/\bmax-w-/)
   })
 
   it('disables Accepted while its write is pending', () => {

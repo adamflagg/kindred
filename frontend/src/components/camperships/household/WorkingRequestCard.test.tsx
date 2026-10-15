@@ -4,7 +4,14 @@ import { useState } from 'react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { gridRow, roundOut, ROW_EMMA, ROW_OLIVIA, ROW_RILEY } from '../requests/gridFixtures'
+import {
+  gridRow,
+  roundOut,
+  ROW_EMMA,
+  ROW_OLIVIA,
+  ROW_RILEY,
+  ROW_SAMUEL,
+} from '../requests/gridFixtures'
 import { useEditorExits, type EditorExits } from './editorExits'
 import { applicationOut, householdPage, householdRequest, requestOut } from './householdFixtures'
 import type { DuplicateWaitingOut } from '../../../types/api-generated'
@@ -319,6 +326,19 @@ describe('WorkingRequestCard reopen, liveness and approval', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Back' }))
     expect(screen.queryByLabelText('Approval note')).toBeNull()
     expect(screen.getByRole('button', { name: 'Approve…' })).toBeInTheDocument()
+  })
+
+  // Owner ruling 10-14 (option A, inline forms on their own line): Undo Posted opens as the same
+  // full-width row, not inside the Checklist cell (which sizes to its content and left it 187px).
+  it('opens Undo Posted as a full-width row under the round line', async () => {
+    renderCards([ROW_SAMUEL])
+    await userEvent.click(screen.getByRole('checkbox', { name: /^Posted/ }))
+    const reason = screen.getByLabelText('Why undo Posted')
+    const cell = reason.closest('td') as HTMLElement
+    expect(cell).toHaveAttribute('colspan', '5')
+    expect(cell.parentElement?.previousElementSibling).toHaveTextContent('Round 1')
+    await userEvent.click(screen.getByRole('button', { name: 'Back' }))
+    expect(screen.queryByLabelText('Why undo Posted')).toBeNull()
   })
 
   it('offers no approval without it', () => {

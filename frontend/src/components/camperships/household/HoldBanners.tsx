@@ -36,7 +36,12 @@ export function HoldBanners({
           <StatusPill tone="red">{holdWords(hold.code)}</StatusPill>
           <b>{camperOf(request)}</b>
           <span>{hold.message}</span>
-          {actions && <div className="ml-auto">{actions(request, hold.code)}</div>}
+          {/* A reason form opened in the slot takes its own full-width line, on the banner's green tint. */}
+          {actions && (
+            <div className="ml-auto has-[form]:ml-0 has-[form]:basis-full">
+              {actions(request, hold.code)}
+            </div>
+          )}
         </div>
       ))}
     </div>

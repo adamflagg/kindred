@@ -124,17 +124,20 @@ export function ReleasedHolds({
             {`${codeWords(held.code)} released ${formatShortDate(held.released_at)} by ${whoWords(held.released_by, names)}: ${held.note}`}
           </span>
           {putting === held.code ? (
-            <ReasonForm
-              head="Putting the hold back"
-              label="Why put it back"
-              submitLabel="Put the Hold Back"
-              onSubmit={(note) =>
-                release
-                  .mutateAsync({ requestId, body: { code: held.code, released: false, note } })
-                  .then(() => setPutting(null))
-              }
-              onCancel={() => setPutting(null)}
-            />
+            // The row is a flex-wrap line: basis-full gives the form a line of its own, not a strip.
+            <div className="basis-full">
+              <ReasonForm
+                head="Putting the hold back"
+                label="Why put it back"
+                submitLabel="Put the Hold Back"
+                onSubmit={(note) =>
+                  release
+                    .mutateAsync({ requestId, body: { code: held.code, released: false, note } })
+                    .then(() => setPutting(null))
+                }
+                onCancel={() => setPutting(null)}
+              />
+            </div>
           ) : (
             live && (
               <button type="button" className={HH_LINK} onClick={() => setPutting(held.code)}>

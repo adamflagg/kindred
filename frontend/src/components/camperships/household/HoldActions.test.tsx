@@ -4,7 +4,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { gridRow, roundOut, ROW_EMMA } from '../requests/gridFixtures'
 import { HoldActions, ReleasedHolds } from './HoldActions'
-import { householdRequest } from './householdFixtures'
+import { HoldBanners } from './HoldBanners'
+import { householdPage, householdRequest } from './householdFixtures'
 
 const withHold = (code: string, severity: 'hold' | 'warn' = 'hold') =>
   householdRequest(gridRow({ ...ROW_EMMA, holds: [{ code, severity, message: 'm' }] }))
@@ -247,5 +248,50 @@ describe('holds on a request that is no longer live (m2)', () => {
     })
     render(<ReleasedHolds request={request} />)
     expect(screen.queryByRole('button', { name: 'Put Back…' })).toBeNull()
+  })
+})
+
+// Owner ruling 10-14 (option A): each reason form opens on its own full-width line. The hold
+// banner's actions sit in an ml-auto flex child and the released-hold line is a flex row, so the form's
+// wrapper must take the whole line (basis-full) or the form shrinks to a 22px strip.
+describe('reason forms take their own full-width line', () => {
+  it.each([
+    ['Lift…', 'manual_hold', 'Why lift the hold'],
+    ['Release…', 'py_confirm_tier_change', 'Release note'],
+    ['Keep This Request…', 'duplicate_survivor_withdrawn', 'Reason'],
+  ])(
+    '%s opens its form in a banner slot that takes the whole line',
+    async (button, code, label) => {
+      render(
+        <HoldBanners
+          page={householdPage({ requests: [withHold(code)] })}
+          actions={(r, c) => <HoldActions request={r} code={c} />}
+        />
+      )
+      const slot = screen.getByRole('button', { name: button }).closest('.ml-auto') as HTMLElement
+      expect(slot).toHaveClass('has-[form]:basis-full')
+      await userEvent.click(screen.getByRole('button', { name: button }))
+      expect(slot).toContainElement(screen.getByLabelText(label))
+    }
+  )
+
+  it('Put Back… opens its form on a line of its own', async () => {
+    const request = householdRequest({
+      ...ROW_EMMA,
+      released_holds: [
+        {
+          code: 'py_confirm_tier_change',
+          note: 'ok',
+          released_by: 'Emma Johnson',
+          released_at: '2027-03-01T10:00:00Z',
+        },
+      ],
+    })
+    render(<ReleasedHolds request={request} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Put Back…' }))
+    const wrapper = screen
+      .getByLabelText('Why put it back')
+      .closest('[data-editor-box]')?.parentElement
+    expect(wrapper).toHaveClass('basis-full')
   })
 })
