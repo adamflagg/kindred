@@ -217,6 +217,7 @@ var serialGroups = []struct {
 			"TestGateVerdictWarnsOnUnrecognizedAnswerWithoutLoggingIt",
 			"TestHistoryAttributionUnparseableSourceTimeFallsBackToObservedAt",
 			"TestIsDuplicateStaffStatus",
+			"TestTransformPersonNoCamperDetailsWarnsAndCounts",
 			"TestLoadPersonCustomValuesCountsAndLogsUnmappedAppFields",
 			"TestLoadPersonCustomValuesCountsAndLogsUnmappedFields",
 			"TestLoadPersonCustomValuesNoDiscardsMeansNoWarnAppLog",

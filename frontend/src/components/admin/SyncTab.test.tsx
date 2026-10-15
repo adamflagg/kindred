@@ -486,6 +486,39 @@ describe('SyncTab duplicate staff status badge (#2267)', () => {
   })
 })
 
+// P-25: Stats.NoCamperDetails counts attendees CampMinder returned with no CamperDetails,
+// who therefore get no persons row. A counter the Sync tab does not show is the #2284 bug.
+describe('SyncTab no-CamperDetails badge (P-25)', () => {
+  afterEach(() => {
+    personsStatus = idleStatus
+  })
+
+  function cardByTitle(name: string, selector: 'div' | 'span') {
+    const heading = screen.getByText(name, { selector })
+    const card = heading.closest('.flex.flex-col')
+    if (!card) throw new Error(`could not find card for ${name}`)
+    return card as HTMLElement
+  }
+
+  it('renders a badge on the Persons card when no_camper_details is positive', () => {
+    personsStatus = {
+      status: 'success',
+      summary: { created: 5, updated: 0, skipped: 0, errors: 0, no_camper_details: 3 },
+    }
+    renderSyncTab()
+    expect(within(cardByTitle('Persons', 'div')).getByText('3 no details')).toBeInTheDocument()
+  })
+
+  it('renders no badge when no_camper_details is zero or absent', () => {
+    personsStatus = {
+      status: 'success',
+      summary: { created: 5, updated: 0, skipped: 0, errors: 0 },
+    }
+    renderSyncTab()
+    expect(within(cardByTitle('Persons', 'div')).queryByText(/no details/)).not.toBeInTheDocument()
+  })
+})
+
 // Regression test for kindred#2356 (review follow-up): the Sync tab's persistent per-service
 // badge row rendered every other special counter (rejected, duplicate_staff_status,
 // already_processed, prod_audit_warnings, lodging_prod_audit_warnings) but not the new

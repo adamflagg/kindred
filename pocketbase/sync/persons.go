@@ -638,12 +638,20 @@ func (s *PersonsSync) transformPersonToPB(
 	// Skip if no CamperDetails (means they're not a camper)
 	camperDetails, ok := cmPerson["CamperDetails"].(map[string]any)
 	if !ok || camperDetails == nil {
-		name := s.getPersonName(cmPerson)
-		slog.Debug("Skipping person - no CamperDetails (not a camper)",
-			"name", name,
-			"personID", cmPerson["ID"],
-		)
 		s.missingDataStats["skipped_no_camper_details"]++
+		if isCamper {
+			// An attendee with no CamperDetails gets no persons row; say so (P-25).
+			s.Stats.NoCamperDetails++
+			slog.Warn("Skipping attendee - CampMinder returned no CamperDetails, so no persons row is written",
+				"personID", cmPerson["ID"],
+				"year", year,
+			)
+		} else {
+			slog.Debug("Skipping person - no CamperDetails (not a camper)",
+				"name", s.getPersonName(cmPerson),
+				"personID", cmPerson["ID"],
+			)
+		}
 		return nil, nil
 	}
 
@@ -1211,6 +1219,7 @@ func (s *PersonsSync) printDataQualitySummary() {
 		"totalCampers", s.missingDataStats["total_campers"],
 		"staffSkipped", s.skippedStaff,
 		"noCamperDetails", s.missingDataStats["skipped_no_camper_details"],
+		"attendeesNoCamperDetails", s.Stats.NoCamperDetails,
 		"missingNames", s.missingDataStats["missing_name"],
 		"missingAges", s.missingDataStats["missing_age"],
 		"missingGrades", s.missingDataStats["missing_grade"],

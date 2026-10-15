@@ -638,6 +638,14 @@ type Stats struct {
 	// -- that would need a new migration column, which is out of scope here; the counter
 	// still reaches the live Sync tab via this JSON field.
 	DuplicateStaffStatus int `json:"duplicate_staff_status,omitempty"`
+	// NoCamperDetails counts attendees CampMinder returned from the persons endpoint with no
+	// CamperDetails block, so persons.go wrote no persons row for them (P-25). Only the
+	// persons service increments it, and only for people who came from attendees: a
+	// staff-only person has no CamperDetails by design and is not counted. The person is
+	// also in Skipped (no row was written), so this is a named subset, not a replacement.
+	// An enrolled adult attendee with no persons row used to vanish from a Debug line only.
+	// Not persisted to sync_runs; it reaches the live Sync tab through this JSON field.
+	NoCamperDetails int `json:"no_camper_details,omitempty"`
 	// UnresolvedSession counts bunk_assignments the run fetched from CampMinder but could
 	// not attach to a session (kindred#2465) -- either the (bunkPlan, bunk) pair named more
 	// than one candidate session for a staff member, or no step of the resolution ladder
