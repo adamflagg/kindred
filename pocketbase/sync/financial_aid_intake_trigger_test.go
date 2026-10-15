@@ -22,7 +22,7 @@ func TestPostFinancialAidIntakeSendsTheYear(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	if err := postFinancialAidIntake(context.Background(), srv.URL, 2027); err != nil {
+	if _, err := postFinancialAidIntake(context.Background(), srv.URL, 2027); err != nil {
 		t.Fatalf("postFinancialAidIntake: %v", err)
 	}
 	if gotPath != "/api/internal/financial-aid/intake" {
@@ -40,9 +40,50 @@ func TestPostFinancialAidIntakeReportsANon200(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	err := postFinancialAidIntake(context.Background(), srv.URL, 2027)
+	_, err := postFinancialAidIntake(context.Background(), srv.URL, 2027)
 	if err == nil || !strings.Contains(err.Error(), "500") {
 		t.Fatalf("err = %v, want a 500 error", err)
+	}
+}
+
+// Intake counts the form rows that made no request, and those with no household, and used to throw both away:
+// the Go caller checked only the status. It now reads the counts (numbers only, never a name) to log them.
+func TestPostFinancialAidIntakeReadsTheRowsThatMadeNoRequest(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"year":2027,"households":12,"requests_created":2,"requests_updated":3,` +
+			`"rows_without_request":4,"rows_without_household":1,"operation_id":"op0000000000001","warnings":[]}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	report, err := postFinancialAidIntake(context.Background(), srv.URL, 2027)
+	if err != nil {
+		t.Fatalf("postFinancialAidIntake: %v", err)
+	}
+	want := intakeReportCounts{
+		Households: 12, RequestsCreated: 2, RequestsUpdated: 3, RowsWithoutRequest: 4, RowsWithoutHousehold: 1,
+	}
+	if report != want {
+		t.Errorf("report = %+v, want %+v", report, want)
+	}
+}
+
+func TestPostFinancialAidIntakeToleratesAReportItCannotRead(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`not json`))
+	}))
+	t.Cleanup(srv.Close)
+
+	// Intake ran (200): an unreadable report is only a missing log line, never a failed rebuild.
+	report, err := postFinancialAidIntake(context.Background(), srv.URL, 2027)
+	if err != nil {
+		t.Fatalf("postFinancialAidIntake: %v", err)
+	}
+	if report != (intakeReportCounts{}) {
+		t.Errorf("report = %+v, want zero", report)
 	}
 }
 

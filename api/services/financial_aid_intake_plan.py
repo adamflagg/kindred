@@ -275,18 +275,38 @@ def _equity_for(spec: RequestSpec | None, equity: Mapping[int, EquityAnswers] | 
     return equity.get(spec.person_cm_id, UNKNOWN_EQUITY)
 
 
+def planned_request(
+    spec: RequestSpec,
+    billed: Mapping[tuple[int, int], BilledHeadcount],
+    rules_check: RulesCheck | None,
+    equity: Mapping[int, EquityAnswers] | None,
+    record: RequestRecord | None = None,
+) -> dict[str, Any]:
+    """The fields a rebuild would give `spec`'s request when no other request holds its slot: the one planning rule,
+    shared with casework's add (financial_aid_casework_service.add_request), so a request staff add is the request
+    intake's next run finds already matched and leaves alone. The caller checks the slot is free first."""
+    return _request_target(record, spec, {}, billed, "", rules_check, _equity_for(spec, equity))
+
+
+def application_payload(
+    member_person_cm_ids: Sequence[int], answers: Mapping[str, Any], flags: Sequence[Flag]
+) -> dict[str, Any]:
+    """An application's intake-owned fields as a rebuild writes them (see _plan_applications)."""
+    return {
+        "status": APPLICATION_ACTIVE,
+        "answers": dict(answers),
+        "member_person_cm_ids": list(member_person_cm_ids),
+        "flags": [f.to_json() for f in flags],
+    }
+
+
 def _plan_applications(
     plan: IntakePlan, households: Sequence[HouseholdIntake], existing: Sequence[ApplicationRecord]
 ) -> None:
     by_household = {a.household_cm_id: a for a in existing}
     wanted = {h.household_cm_id for h in households}
     for household in sorted(households, key=lambda h: h.household_cm_id):
-        payload: dict[str, Any] = {
-            "status": APPLICATION_ACTIVE,
-            "answers": dict(household.answers),
-            "member_person_cm_ids": list(household.member_person_cm_ids),
-            "flags": [f.to_json() for f in household.flags],
-        }
+        payload = application_payload(household.member_person_cm_ids, household.answers, household.flags)
         record = by_household.get(household.household_cm_id)
         if record is None:
             plan.application_creates.append((household.household_cm_id, payload))

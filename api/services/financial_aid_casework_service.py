@@ -19,16 +19,24 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from contextlib import asynccontextmanager
-from dataclasses import replace
+from dataclasses import dataclass, replace
+from dataclasses import field as dataclass_field
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any, Final, Protocol
 
 from api.constants.collections import (
     AID_APPLICATION_CORRECTIONS,
+    AID_APPLICATIONS,
     AID_PAYER_SHARES,
+    AID_REQUEST_ADDITIONS,
     AID_REQUESTS,
 )
 from api.schemas.financial_aid_intake import (
+    AddedRequestOut,
+    AdditionBulkResult,
+    AdditionItemReport,
+    AdditionOut,
     AnswerOut,
     ApplicationDetailResponse,
     ApplicationListResponse,
@@ -57,10 +65,22 @@ from api.services.financial_aid_corrections import (
     effective_values,
     parse_new_value,
 )
-from api.services.financial_aid_household import HOUSEHOLD_ANSWER_FIELDS, TEXT_FIELDS
-from api.services.financial_aid_intake_plan import request_fields, share_entity_id
-from api.services.financial_aid_intake_service import season_lock
+from api.services.financial_aid_household import (
+    HOUSEHOLD_ANSWER_FIELDS,
+    TEXT_FIELDS,
+    addition_request_spec,
+    choose_household_answers,
+    enrolled_for,
+)
+from api.services.financial_aid_intake_plan import (
+    application_payload,
+    planned_request,
+    request_fields,
+    share_entity_id,
+)
+from api.services.financial_aid_intake_service import billed_for, rules_check_for, season_lock
 from api.services.financial_aid_intake_types import (
+    ADDITION_SOURCE_STAFF,
     INTAKE_ACTOR,
     PROGRAM_FAMILY_CAMP,
     RESOLUTION_STAFF,
@@ -72,12 +92,18 @@ from api.services.financial_aid_intake_types import (
     STATUS_DUPLICATE_PENDING,
     STATUS_UNMATCHED,
     STATUS_WITHDRAWN,
+    AdditionRecord,
     ApplicationRecord,
+    AttendeeRow,
+    BillingLine,
     CorrectionRecord,
     EquityAnswers,
+    FaRow,
     PayerShareRecord,
+    RequestKey,
     RequestRecord,
     SessionRow,
+    request_origin,
 )
 from api.services.financial_aid_payer_shares import (
     PayerShareError,
@@ -90,7 +116,7 @@ from api.services.financial_aid_payer_shares import (
 from api.services.financial_aid_request_overrides import DEFAULT_REASON_CODES
 from api.services.financial_aid_session_resolver import PROGRAM_SESSION_TYPES
 from bunking.financial_aid.change_diff import values_equal
-from bunking.financial_aid.change_log import AidOperationResult, AidWrite
+from bunking.financial_aid.change_log import AidOperationResult, AidWrite, new_record_id
 from bunking.financial_aid.decisions.rounds import DecisionEvent, fold_rounds
 from bunking.financial_aid.rules.schema import AidRules
 
@@ -126,6 +152,14 @@ class CaseworkStore(Protocol):
         self, year: int, request_ids: Sequence[str] | None = None
     ) -> list[PayerShareRecord]: ...
     async def fetch_equity_answers(self, year: int, person_cm_ids: Sequence[int]) -> dict[int, EquityAnswers]: ...
+    # What an added request is checked and planned against (add_request): intake's own reads.
+    async def fetch_request_additions(self, year: int) -> list[AdditionRecord]: ...
+    async def fetch_request_addition(self, record_id: str) -> AdditionRecord | None: ...
+    async def fetch_registered_attendees(self, year: int) -> list[AttendeeRow]: ...
+    async def fetch_fa_rows(self, year: int) -> list[FaRow]: ...
+    async def fetch_family_camp_billing(self, year: int) -> list[BillingLine]: ...
+    async def fetch_birthdates(self, year: int, person_cm_ids: Sequence[int]) -> dict[int, str]: ...
+    async def load_intake_rules(self, year: int) -> AidRules | None: ...
     async def commit(
         self,
         writes: Sequence[AidWrite],
@@ -282,6 +316,7 @@ def request_out(
         payer_shares=[payer_share_out(s, amounts.get(s.household_cm_id)) for s in own],
         payer_share_status=status,
         issues=list(issues),
+        origin=request_origin(record.program_option_key),
     )
 
 
@@ -303,6 +338,89 @@ def _share_fields(share: PayerShareRecord) -> dict[str, Any]:
 
 
 ReasonCodes = Callable[[int], Awaitable[tuple[str, ...]]]  # the season's cost.override_reasons (Decision 6)
+
+
+@dataclass(frozen=True)
+class AdditionItem:
+    """One request staff add (add_request / add_requests). person_cm_id 0 is a Family Camp household request."""
+
+    household_cm_id: int
+    person_cm_id: int
+    session_cm_id: int
+    ask: float
+    reason: str
+
+
+def _program_for(session: SessionRow) -> str | None:
+    """The program whose requests can name `session`: the same session-type sets Settle session checks
+    (PROGRAM_SESSION_TYPES), which never overlap. None when no program names it (an Adult Reg session)."""
+    return next((p for p, types in PROGRAM_SESSION_TYPES.items() if session.session_type in types), None)
+
+
+def _addition_fields(addition: AdditionRecord) -> dict[str, Any]:
+    """A stored addition as its log `before` (4a keeps only what changed)."""
+    return {
+        "year": addition.year,
+        "household_cm_id": addition.household_cm_id,
+        "person_cm_id": addition.person_cm_id,
+        "program_key": addition.program_key,
+        "session_cm_id": addition.session_cm_id,
+        "ask": addition.ask,
+        "source": addition.source,
+        "reason": addition.reason,
+        "actor": addition.actor,
+        "retired_at": addition.retired_at,
+        "retired_by": addition.retired_by,
+        "retire_reason": addition.retire_reason,
+    }
+
+
+def addition_out(addition: AdditionRecord, request_id: str) -> AdditionOut:
+    return AdditionOut(
+        id=addition.id,
+        year=addition.year,
+        household_cm_id=addition.household_cm_id,
+        person_cm_id=addition.person_cm_id,
+        program_key=addition.program_key,
+        session_cm_id=addition.session_cm_id,
+        ask=addition.ask,
+        source=addition.source,
+        reason=addition.reason,
+        actor=addition.actor,
+        retired_at=addition.retired_at,
+        retired_by=addition.retired_by,
+        retire_reason=addition.retire_reason,
+        request_id=request_id,
+    )
+
+
+def _subject_slot(household_cm_id: int, person_cm_id: int, session_cm_id: int) -> tuple[str, int, int]:
+    """The one-active-request slot: the camper's, or the household's for a Family Camp request."""
+    return ("person", person_cm_id, session_cm_id) if person_cm_id else ("household", household_cm_id, session_cm_id)
+
+
+@dataclass
+class _AdditionContext:
+    """One season's reads for a load of additions, taken once under the season lock."""
+
+    year: int
+    sessions: list[SessionRow]
+    attendees: list[AttendeeRow]
+    fa_rows: list[FaRow]
+    applications: dict[int, ApplicationRecord]
+    requests: dict[RequestKey, RequestRecord]
+    additions: list[AdditionRecord]
+    rules_check: Any
+    # Filled as items plan: the slots this load claims and the applications it creates.
+    claimed: set[tuple[str, int, int]] = dataclass_field(default_factory=set)
+    new_applications: dict[int, str] = dataclass_field(default_factory=dict)
+
+
+@dataclass
+class _PlannedAddition:
+    addition: AdditionRecord
+    request_id: str
+    writes: list[AidWrite]
 
 
 class FinancialAidCaseworkService:
@@ -828,6 +946,284 @@ class FinancialAidCaseworkService:
             reason=f"{reason_code}: {reason.strip()}" if reason_code else reason,
         )
         return await self._request_out(updated)
+
+    # -- staff-added requests (aid_request_additions) ------------------------------------------------------------------
+
+    async def _addition_context(self, year: int) -> _AdditionContext:
+        store = self._store
+        sessions = await store.fetch_sessions(year)
+        return _AdditionContext(
+            year=year,
+            sessions=sessions,
+            attendees=await store.fetch_registered_attendees(year),
+            fa_rows=await store.fetch_fa_rows(year),
+            applications={a.household_cm_id: a for a in await store.fetch_applications(year)},
+            requests={r.key: r for r in await store.fetch_requests(year)},
+            additions=await store.fetch_request_additions(year),
+            rules_check=rules_check_for(await store.load_intake_rules(year), sessions),
+        )
+
+    def _belongs(self, ctx: _AdditionContext, item: AdditionItem) -> bool:
+        """The camper is the household's: registered under it, or named by its aid form or application (a second
+        parent's household files for the camper too)."""
+        p, h = item.person_cm_id, item.household_cm_id
+        application = ctx.applications.get(h)
+        return (
+            any(a.person_cm_id == p and a.household_cm_id == h for a in ctx.attendees)
+            or any(r.person_cm_id == p and r.household_cm_id == h for r in ctx.fa_rows)
+            or (application is not None and p in application.member_person_cm_ids)
+        )
+
+    async def _plan_addition(
+        self, ctx: _AdditionContext, item: AdditionItem, operation_reason: str, actor: str
+    ) -> _PlannedAddition:
+        """Check one addition and plan its writes: the addition, its request (created, or a retired addition's
+        withdrawn request revived on the same key), the application when the household has none, and the default
+        payer share. Raises the casework errors; writes nothing."""
+        year, hh, person, sid = ctx.year, item.household_cm_id, item.person_cm_id, item.session_cm_id
+        reason = item.reason.strip() or operation_reason.strip()
+        if not reason:
+            raise CaseworkValidationError("a reason is required")
+        # New guard: an addition is a request, and a request asks for something.
+        if not item.ask > 0:
+            raise CaseworkValidationError("the ask must be above $0")
+        session = next((s for s in ctx.sessions if s.cm_id == sid), None)
+        if session is None:
+            raise CaseworkNotFoundError(f"no session {sid} in {year}")
+        # Reused from Settle session: the session is one a program's requests can name. The program follows it.
+        program = _program_for(session)
+        if program is None:
+            raise CaseworkValidationError("that session is not one any program's requests can name")
+        if (program == PROGRAM_FAMILY_CAMP) != (person == 0):
+            raise CaseworkValidationError(
+                "a Family Camp request is the household's (no camper); every other request is one camper's"
+            )
+        if person and not self._belongs(ctx, item):
+            raise CaseworkValidationError("that camper is not in that household's registration or aid form")
+        # New guard: the camper (or, for Family Camp, someone in the household) is ENROLLED in it: status 2.
+        if sid not in enrolled_for(hh, person, ctx.sessions, ctx.attendees):
+            raise CaseworkValidationError(
+                "no one in that household is enrolled in that session"
+                if person == 0
+                else "that camper is not enrolled in that session"
+            )
+        # Reused from Settle session: no live request already holds the slot.
+        slot = _subject_slot(hh, person, sid)
+        holder = await self._store.find_active_request(year, hh, person, sid)
+        if holder is not None:
+            raise DuplicateRequestError(holder.id)
+        if slot in ctx.claimed:
+            raise CaseworkValidationError("this load adds that request twice")
+        if any(
+            a.live and (a.household_cm_id, a.person_cm_id, a.session_cm_id) == (hh, person, sid) for a in ctx.additions
+        ):
+            raise CaseworkValidationError("that request is already added")
+
+        addition = AdditionRecord(
+            id=new_record_id(),
+            year=year,
+            household_cm_id=hh,
+            person_cm_id=person,
+            program_key=program,
+            session_cm_id=sid,
+            ask=round(float(item.ask), 2),
+            source=ADDITION_SOURCE_STAFF,
+            reason=reason,
+            actor=actor,
+        )
+        spec = addition_request_spec(addition, ctx.sessions, ctx.attendees)
+        billed = await billed_for(self._store, year, ctx.sessions, [hh]) if person == 0 else {}
+        equity = await self._store.fetch_equity_answers(year, [person]) if person else None
+        existing = ctx.requests.get(addition.request_key)
+        target = planned_request(spec, billed, ctx.rules_check, equity, existing)
+
+        writes: list[AidWrite] = []
+        application = ctx.applications.get(hh)
+        application_id = application.id if application is not None else ctx.new_applications.get(hh, "")
+        if not application_id:
+            # The application intake would build: from the household's form rows, or blank when it has none.
+            rows = [r for r in ctx.fa_rows if r.household_cm_id == hh]
+            answers, flags = choose_household_answers(rows)
+            members = sorted({r.person_cm_id for r in rows})
+            application_id = ctx.new_applications[hh] = new_record_id()
+            writes.append(
+                AidWrite(
+                    collection=AID_APPLICATIONS,
+                    action="create",
+                    year=year,
+                    record_id=application_id,
+                    data={**application_payload(members, answers, flags), "year": year, "household_cm_id": hh},
+                )
+            )
+        writes.append(
+            AidWrite(
+                collection=AID_REQUEST_ADDITIONS,
+                action="create",
+                year=year,
+                record_id=addition.id,
+                data=_addition_fields(addition),
+                log_action="add_request",
+                reason=reason,
+            )
+        )
+        if existing is None:
+            request_id = new_record_id()
+            writes.append(
+                AidWrite(
+                    collection=AID_REQUESTS,
+                    action="create",
+                    year=year,
+                    record_id=request_id,
+                    data={
+                        "household_cm_id": hh,
+                        "person_cm_id": person,
+                        "program_key": program,
+                        "program_option_key": spec.program_option_key,
+                        **target,
+                        "year": year,
+                        "application": application_id,
+                    },
+                    log_action="add_request",
+                    reason=reason,
+                )
+            )
+            has_share = False
+        else:
+            # A retired addition's request, withdrawn on its key: revived, with every decision still on it.
+            request_id = existing.id
+            changes = _changed(request_fields(existing), target)
+            if changes:
+                writes.append(replace(self._request_update(existing, changes, "add_request"), reason=reason))
+            has_share = bool(await self._store.fetch_payer_shares(year, [request_id]))
+        if not has_share:
+            writes.append(
+                AidWrite(
+                    collection=AID_PAYER_SHARES,
+                    action="create",
+                    year=year,
+                    data={
+                        "year": year,
+                        "request": request_id,
+                        "household_cm_id": hh,
+                        "share_pct": 100,
+                        "source": SHARE_SOURCE_INTAKE,
+                        "actor": INTAKE_ACTOR,
+                        "note": "",
+                    },
+                    log_action="add_request",
+                    entity_id=share_entity_id(request_id, hh),
+                    reason=reason,
+                )
+            )
+        ctx.claimed.add(slot)
+        return _PlannedAddition(addition, request_id, writes)
+
+    async def add_request(
+        self,
+        year: int,
+        household_cm_id: int,
+        person_cm_id: int,
+        session_cm_id: int,
+        ask: float,
+        reason: str,
+        actor: str,
+    ) -> AddedRequestOut:
+        """Add a request the aid form never named, as ONE operation: the addition, its request and the default
+        payer share (and the household's application when it has none), each with its aid_change_log row, logged
+        `add_request`. Intake's next run reads the addition and finds the request already matched."""
+        item = AdditionItem(household_cm_id, person_cm_id, session_cm_id, ask, reason)
+        async with season_lock(year):
+            ctx = await self._addition_context(year)
+            planned = await self._plan_addition(ctx, item, "", actor)
+            await self._store.commit(planned.writes, actor=actor, reason=planned.addition.reason, require_reason=True)
+        return await self._added_out(planned.addition, planned.request_id)
+
+    async def add_requests(
+        self, year: int, items: Sequence[AdditionItem], reason: str, actor: str, *, dry_run: bool
+    ) -> AdditionBulkResult:
+        """A load of additions, ALL OR NOTHING: every item is checked (each against the season and the items before
+        it); any refusal writes nothing, and the report says which item and why. A clean load commits as one
+        operation unless `dry_run`."""
+        reports: list[AdditionItemReport] = []
+        planned: list[_PlannedAddition] = []
+        async with season_lock(year):
+            ctx = await self._addition_context(year)
+            for index, item in enumerate(items):
+                session = next((s for s in ctx.sessions if s.cm_id == item.session_cm_id), None)
+                report = AdditionItemReport(
+                    index=index,
+                    household_cm_id=item.household_cm_id,
+                    person_cm_id=item.person_cm_id,
+                    session_cm_id=item.session_cm_id,
+                    ask=item.ask,
+                    program_key=(_program_for(session) or "") if session is not None else "",
+                    ok=False,
+                )
+                try:
+                    one = await self._plan_addition(ctx, item, reason, actor)
+                except DuplicateRequestError as exc:
+                    reports.append(report.model_copy(update={"error": str(exc), "holder_id": exc.holder_id}))
+                    continue
+                except (CaseworkValidationError, CaseworkNotFoundError) as exc:
+                    reports.append(report.model_copy(update={"error": str(exc)}))
+                    continue
+                planned.append(one)
+                reports.append(report.model_copy(update={"ok": True}))
+            clean = len(planned) == len(items)
+            if dry_run or not clean:
+                return AdditionBulkResult(year=year, dry_run=dry_run, written=False, items=reports)
+            result = await self._store.commit(
+                [w for one in planned for w in one.writes], actor=actor, reason=reason.strip(), require_reason=True
+            )
+        written = [
+            r.model_copy(update={"addition_id": one.addition.id, "request_id": one.request_id})
+            for r, one in zip(reports, planned, strict=True)
+        ]
+        return AdditionBulkResult(
+            year=year, dry_run=False, written=True, operation_id=result.operation_id, items=written
+        )
+
+    async def _added_out(self, addition: AdditionRecord, request_id: str) -> AddedRequestOut:
+        request = await self._require_request(request_id)
+        return AddedRequestOut(addition=addition_out(addition, request_id), request=await self._request_out(request))
+
+    async def retire_addition(self, year: int, addition_id: str, reason: str, actor: str) -> AddedRequestOut:
+        """Retire an addition and withdraw its request at once, as one operation. Nothing is deleted: the addition
+        keeps who retired it and why, and the request keeps its decisions and payer shares (a family that declines
+        uses Cancel… instead). Logged `remove_added_request`, plus the request's status change."""
+        if not reason.strip():
+            raise CaseworkValidationError("a reason is required")
+        async with season_lock(year):
+            addition = await self._store.fetch_request_addition(addition_id)
+            if addition is None or addition.year != year:
+                raise CaseworkNotFoundError("no such added request in that season")
+            if not addition.live:
+                raise CaseworkValidationError("that added request is already removed")
+            request = next((r for r in await self._store.fetch_requests(year) if r.key == addition.request_key), None)
+            updated = replace(
+                addition,
+                retired_at=datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S.000Z"),
+                retired_by=actor,
+                retire_reason=reason.strip(),
+            )
+            retired = {k: getattr(updated, k) for k in ("retired_at", "retired_by", "retire_reason")}
+            writes = [
+                AidWrite(
+                    collection=AID_REQUEST_ADDITIONS,
+                    action="update",
+                    year=year,
+                    record_id=addition.id,
+                    before=_addition_fields(addition),
+                    data=retired,
+                    log_action="remove_added_request",
+                )
+            ]
+            if request is not None and request.status != STATUS_WITHDRAWN:
+                writes.append(self._request_update(request, {"status": STATUS_WITHDRAWN}, "status"))
+            await self._store.commit(writes, actor=actor, reason=reason.strip(), require_reason=True)
+        if request is None:
+            raise CaseworkNotFoundError("the added request's own request is missing")
+        return await self._added_out(updated, request.id)
 
     async def calculator_inputs_for(self, year: int, household_cm_id: int, rules: AidRules) -> list[CalculatorInputs]:
         """Every live request (active or unmatched) on the family's application, converted under

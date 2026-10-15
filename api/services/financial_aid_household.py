@@ -27,6 +27,17 @@ camper's ENROLLED sessions, or the household's for family camp, resolved by
 financial_aid_session_resolver. The answer's option text only breaks a tie, and
 the one session it names on its own is carried for the planner's
 `session_differs_from_answer` flag.
+
+A second spec source is staff's: every LIVE aid_request_additions row is one
+request on its own session, keyed `added:<session_cm_id>`, with a staff
+resolution the planner keeps (`addition_request_spec`). A session an addition
+holds is not a candidate for the same camper's (or household's) OTHER requests:
+a form answer left "Session unclear" between that session and another resolves
+to the other once the addition exists. A winter retreat is a summer session type,
+so a camper in an in-training session and the retreat has two summer candidates
+until the retreat has its own request. Only an UNMATCHED resolution is retried:
+an answer that already lands somewhere, the added session included, keeps it,
+so a form answer naming the added session becomes duplicate_pending beside it.
 """
 
 from __future__ import annotations
@@ -43,6 +54,8 @@ from api.services.financial_aid_intake_types import (
     PROGRAM_FAMILY_CAMP,
     PROGRAM_SUMMER,
     REGISTERED_STATUS_IDS,
+    RESOLUTION_STAFF,
+    AdditionRecord,
     AttendeeRow,
     FaRow,
     Flag,
@@ -186,14 +199,78 @@ def _option_text(value: str) -> str:
     return value.strip()[:OPTION_TEXT_MAX_LENGTH]
 
 
+def _enrolled_sessions(attendees: Sequence[AttendeeRow], match: Any) -> frozenset[int]:
+    return frozenset(a.session_cm_id for a in attendees if match(a) and a.status_id == ACTIVE_ENROLLED_STATUS_ID)
+
+
+def enrolled_for(
+    household_cm_id: int, person_cm_id: int, sessions: Sequence[SessionRow], attendees: Sequence[AttendeeRow]
+) -> frozenset[int]:
+    """The sessions a request's subject is ENROLLED in (status 2): the camper's own, or for a household-level
+    (family camp) request the household's, counted as family camp counts them (an Adult Reg enrollment also enrolls
+    its weekend). The same sets build_request_specs records for `not_enrolled`."""
+    if person_cm_id:
+        return _enrolled_sessions(attendees, lambda a: a.person_cm_id == person_cm_id)
+    return counted_enrollments(
+        PROGRAM_FAMILY_CAMP, sessions, _enrolled_sessions(attendees, lambda a: a.household_cm_id == household_cm_id)
+    )
+
+
+def addition_request_spec(
+    addition: AdditionRecord, sessions: Sequence[SessionRow], attendees: Sequence[AttendeeRow]
+) -> RequestSpec:
+    """The request a live addition stands for. Its session is staff's, so the planner keeps it on every rebuild;
+    the subject's enrollments are still carried, so `not_enrolled` fires if they leave the session. The option text
+    is the session's name, for display only: the key is `added:<session_cm_id>`."""
+    name = next((s.name for s in sessions if s.cm_id == addition.session_cm_id), "")
+    ask = _ask(addition.ask)
+    return RequestSpec(
+        addition.household_cm_id,
+        addition.person_cm_id,
+        addition.program_key,
+        _option_text(name),
+        addition.option_key,
+        ask,
+        SessionResolution(addition.session_cm_id, RESOLUTION_STAFF, (addition.session_cm_id,)),
+        enrolled_for(addition.household_cm_id, addition.person_cm_id, sessions, attendees),
+        tuple(_ask_flags(ask)),
+    )
+
+
+def _resolve_around(
+    text: str,
+    program_key: str,
+    sessions: Sequence[SessionRow],
+    enrolled: frozenset[int],
+    held: frozenset[int],
+) -> SessionResolution:
+    """resolve_session, then once more without the sessions an addition holds when the first try is unmatched
+    between candidates that include one. A resolution that already lands is never moved; nor is one that drops to
+    no candidates at all."""
+    resolution = resolve_session(text, program_key, sessions, enrolled)
+    if resolution.session_cm_id or not held.intersection(resolution.candidates):
+        return resolution
+    narrowed = resolve_session(text, program_key, sessions, enrolled - held)
+    return narrowed if narrowed.session_cm_id else resolution
+
+
 def build_request_specs(
     household_cm_id: int,
     rows: Sequence[FaRow],
     sessions: Sequence[SessionRow],
     attendees: Sequence[AttendeeRow],
+    additions: Sequence[AdditionRecord] = (),
 ) -> tuple[RequestSpec, ...]:
+    """The household's requests: one per form answer, then one per LIVE addition (`additions` may name any
+    household's; only this one's are used)."""
+
     def sessions_of(match: Any, statuses: frozenset[int]) -> frozenset[int]:
         return frozenset(a.session_cm_id for a in attendees if match(a) and a.status_id in statuses)
+
+    live = [a for a in additions if a.live and a.household_cm_id == household_cm_id]
+
+    def held(person_cm_id: int) -> frozenset[int]:
+        return frozenset(a.session_cm_id for a in live if a.person_cm_id == person_cm_id)
 
     enrolled_only = frozenset({ACTIVE_ENROLLED_STATUS_ID})
     specs: list[RequestSpec] = []
@@ -208,7 +285,7 @@ def build_request_specs(
                 continue
             filled = True
             ask = _ask(getattr(row, ask_attr))
-            resolution = resolve_session(text, program_key, sessions, enrolled)
+            resolution = _resolve_around(text, program_key, sessions, enrolled, held(row.person_cm_id))
             specs.append(
                 RequestSpec(
                     household_cm_id,
@@ -259,7 +336,7 @@ def build_request_specs(
         if len(asks) > 1:
             flags.append(Flag("ask_conflict", {"asks": asks, "person_cm_ids": [p for p, _, _ in entries]}))
         text = entries[0][1]
-        resolution = resolve_session(text, PROGRAM_FAMILY_CAMP, sessions, household_enrolled)
+        resolution = _resolve_around(text, PROGRAM_FAMILY_CAMP, sessions, household_enrolled, held(0))
         specs.append(
             RequestSpec(
                 household_cm_id,
@@ -274,4 +351,5 @@ def build_request_specs(
                 session_named_by(text, PROGRAM_FAMILY_CAMP, sessions),
             )
         )
+    specs.extend(addition_request_spec(a, sessions, attendees) for a in sorted(live, key=lambda a: a.request_key))
     return tuple(specs)

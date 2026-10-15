@@ -96,6 +96,11 @@ from api.schemas.financial_aid_grants import (
 from api.schemas.financial_aid_history import HistoryKind, HistoryOperationDetailOut, HistoryPageOut
 from api.schemas.financial_aid_household_page import HouseholdPageResponse
 from api.schemas.financial_aid_intake import (
+    AddedRequestOut,
+    AdditionBulkCreate,
+    AdditionBulkResult,
+    AdditionCreate,
+    AdditionRetire,
     ApplicationDetailResponse,
     ApplicationListResponse,
     CorrectionCreate,
@@ -212,6 +217,7 @@ from api.schemas.financial_aid_to_place import (
 )
 from api.services.financial_aid_arrival_curves_repository import ArrivalCurveRepository
 from api.services.financial_aid_casework_service import (
+    AdditionItem,
     CaseworkNotFoundError,
     CaseworkValidationError,
     DuplicateRequestError,
@@ -251,6 +257,7 @@ from api.services.financial_aid_household_page import (
 )
 from api.services.financial_aid_household_search import HouseholdSearchRepository, HouseholdSearchService
 from api.services.financial_aid_intake_repository import FinancialAidIntakeRepository
+from api.services.financial_aid_intake_service import FinancialAidIntakeService
 from api.services.financial_aid_jump_index import JumpIndexRepository, JumpIndexService
 from api.services.financial_aid_ledger_service import (
     FinancialAidLedgerService,
@@ -340,12 +347,14 @@ from bunking.financial_aid.scenarios import (
     appeal_totals,
     round2_by_tier_totals,
 )
+from bunking.logging_config import get_logger
 from bunking.rbac.dependencies import require_any_permission, require_permission
 from bunking.rbac.permissions import Permission
 
 from ..dependencies import aid_season_cache, pb
 
 router = APIRouter(prefix="/api/financial-aid", tags=["financial-aid"])
+logger = get_logger(__name__)
 
 _VIEW = Depends(require_permission(Permission.FINANCIAL_AID_VIEW))
 _CASEWORK = Depends(require_permission(Permission.FINANCIAL_AID_CASEWORK))
@@ -684,6 +693,78 @@ async def set_aid_request_household_share(
         )
     except _ERRORS as exc:
         _raise_http(exc)
+
+
+async def _rebuild_intake(year: int) -> bool:
+    """Rebuild the season's intake right after a staff-added request is written or retired, so what the addition
+    changes elsewhere lands now, not at the next nightly form sync: a camper's other request drops the added session
+    from its candidates (a summer request "Session unclear" between an in-training session and the winter retreat
+    resolves), and a request waiting on a retired one is promoted. The write already committed, so a failed rebuild
+    is logged and reported (False), never turned into a failed write; the nightly run finishes it."""
+    try:
+        await FinancialAidIntakeService(FinancialAidIntakeRepository(pb)).build(year)
+    except Exception:
+        logger.exception("Financial-aid intake rebuild after an added-request write failed year=%s", year)
+        return False
+    return True
+
+
+def _addition_item(body: AdditionCreate) -> AdditionItem:
+    return AdditionItem(body.household_cm_id, body.person_cm_id, body.session_cm_id, body.ask, body.reason)
+
+
+@router.post("/requests/{year}/additions", response_model=AddedRequestOut, status_code=201)
+async def add_aid_request(
+    body: AdditionCreate,
+    year: _Year,
+    user: AuthUser = Depends(require_permission(Permission.FINANCIAL_AID_CASEWORK)),
+) -> AddedRequestOut:
+    """Add a request the aid form never named (a winter retreat or B*Mitzvah request beside a summer one, or a
+    Family Camp household's with person 0): stored in aid_request_additions, so intake keeps it."""
+    try:
+        added = await _casework().add_request(
+            year, body.household_cm_id, body.person_cm_id, body.session_cm_id, body.ask, body.reason, user.email
+        )
+    except _ERRORS as exc:
+        _raise_http(exc)
+    await _rebuild_intake(year)
+    return added
+
+
+@router.post("/requests/{year}/additions/bulk", response_model=AdditionBulkResult)
+async def add_aid_requests_bulk(
+    body: AdditionBulkCreate,
+    year: _Year,
+    user: AuthUser = Depends(require_permission(Permission.FINANCIAL_AID_CASEWORK)),
+) -> AdditionBulkResult:
+    """A load of added requests, all or nothing. A dry run reports what each item would add, or why it is refused,
+    and writes nothing. A real load with any refused item writes nothing either, and answers 422 with the same
+    report as its detail; a clean one commits as one aid_change_log operation."""
+    result = await _casework().add_requests(
+        year, [_addition_item(item) for item in body.items], body.reason, user.email, dry_run=body.dry_run
+    )
+    if not body.dry_run and not result.written:
+        raise HTTPException(status_code=422, detail=result.model_dump(mode="json"))
+    if result.written:
+        await _rebuild_intake(year)
+    return result
+
+
+@router.post("/requests/{year}/additions/{addition_id}/retire", response_model=AddedRequestOut)
+async def retire_aid_request_addition(
+    body: AdditionRetire,
+    year: _Year,
+    addition_id: str = Path(min_length=1, max_length=15),
+    user: AuthUser = Depends(require_permission(Permission.FINANCIAL_AID_CASEWORK)),
+) -> AddedRequestOut:
+    """Remove a staff-added request: the addition is retired and its request withdrawn at once. Nothing is
+    deleted; the request keeps its decisions. A family that declines uses Cancel… instead."""
+    try:
+        retired = await _casework().retire_addition(year, addition_id, body.reason, user.email)
+    except _ERRORS as exc:
+        _raise_http(exc)
+    await _rebuild_intake(year)
+    return retired
 
 
 def _history() -> SeasonHistoryService:

@@ -117,6 +117,216 @@ export type AccessibilityFlagSummary = {
 }
 
 /**
+ * AddedRequestOut
+ */
+export type AddedRequestOut = {
+  addition: AdditionOut
+  request: RequestOut
+}
+
+/**
+ * AdditionBulkCreate
+ *
+ * A load of additions, all or nothing. `reason` is the operation's, and stands in for an item left blank.
+ */
+export type AdditionBulkCreate = {
+  /**
+   * Reason
+   */
+  reason: string
+  /**
+   * Dry Run
+   */
+  dry_run?: boolean
+  /**
+   * Items
+   */
+  items: Array<AdditionCreate>
+}
+
+/**
+ * AdditionBulkResult
+ *
+ * `written` is true only when every item passed and the load committed, as one aid_change_log operation.
+ */
+export type AdditionBulkResult = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Dry Run
+   */
+  dry_run: boolean
+  /**
+   * Written
+   */
+  written: boolean
+  /**
+   * Operation Id
+   */
+  operation_id?: string | null
+  /**
+   * Items
+   */
+  items: Array<AdditionItemReport>
+}
+
+/**
+ * AdditionCreate
+ *
+ * One staff-added request: a camper (person_cm_id) or, for Family Camp, a household (person_cm_id 0) and an
+ * enrolled session. The program follows the session. The ask must be above $0 and the reason non-blank; the
+ * service refuses either with a message, as it does every other guard.
+ */
+export type AdditionCreate = {
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Person Cm Id
+   */
+  person_cm_id: number
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Ask
+   */
+  ask: number
+  /**
+   * Reason
+   */
+  reason?: string
+}
+
+/**
+ * AdditionItemReport
+ *
+ * One item of a bulk load: what it would add (dry run) or added, or why it was refused.
+ */
+export type AdditionItemReport = {
+  /**
+   * Index
+   */
+  index: number
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Person Cm Id
+   */
+  person_cm_id: number
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Ask
+   */
+  ask: number
+  /**
+   * Program Key
+   */
+  program_key: string
+  /**
+   * Ok
+   */
+  ok: boolean
+  /**
+   * Error
+   */
+  error?: string
+  /**
+   * Holder Id
+   */
+  holder_id?: string
+  /**
+   * Addition Id
+   */
+  addition_id?: string
+  /**
+   * Request Id
+   */
+  request_id?: string
+}
+
+/**
+ * AdditionOut
+ */
+export type AdditionOut = {
+  /**
+   * Id
+   */
+  id: string
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Person Cm Id
+   */
+  person_cm_id: number
+  /**
+   * Program Key
+   */
+  program_key: string
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Ask
+   */
+  ask: number
+  /**
+   * Source
+   */
+  source: string
+  /**
+   * Reason
+   */
+  reason: string
+  /**
+   * Actor
+   */
+  actor: string
+  /**
+   * Retired At
+   */
+  retired_at: string
+  /**
+   * Retired By
+   */
+  retired_by: string
+  /**
+   * Retire Reason
+   */
+  retire_reason: string
+  /**
+   * Request Id
+   */
+  request_id: string
+}
+
+/**
+ * AdditionRetire
+ */
+export type AdditionRetire = {
+  /**
+   * Reason
+   */
+  reason: string
+}
+
+/**
  * AidLikeOutside
  */
 export type AidLikeOutside = {
@@ -13582,6 +13792,10 @@ export type RequestOut = {
    * Issues
    */
   issues?: Array<IssueOut>
+  /**
+   * Origin
+   */
+  origin?: 'form' | 'added' | 'registration_ask'
 }
 
 /**
@@ -24361,6 +24575,108 @@ export type SetAidRequestHouseholdShareApiFinancialAidRequestsRequestIdPayerShar
 
 export type SetAidRequestHouseholdShareApiFinancialAidRequestsRequestIdPayerSharesHouseholdCmIdPutResponse =
   SetAidRequestHouseholdShareApiFinancialAidRequestsRequestIdPayerSharesHouseholdCmIdPutResponses[keyof SetAidRequestHouseholdShareApiFinancialAidRequestsRequestIdPayerSharesHouseholdCmIdPutResponses]
+
+export type AddAidRequestApiFinancialAidRequestsYearAdditionsPostData = {
+  body: AdditionCreate
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: never
+  url: '/api/financial-aid/requests/{year}/additions'
+}
+
+export type AddAidRequestApiFinancialAidRequestsYearAdditionsPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type AddAidRequestApiFinancialAidRequestsYearAdditionsPostError =
+  AddAidRequestApiFinancialAidRequestsYearAdditionsPostErrors[keyof AddAidRequestApiFinancialAidRequestsYearAdditionsPostErrors]
+
+export type AddAidRequestApiFinancialAidRequestsYearAdditionsPostResponses = {
+  /**
+   * Successful Response
+   */
+  201: AddedRequestOut
+}
+
+export type AddAidRequestApiFinancialAidRequestsYearAdditionsPostResponse =
+  AddAidRequestApiFinancialAidRequestsYearAdditionsPostResponses[keyof AddAidRequestApiFinancialAidRequestsYearAdditionsPostResponses]
+
+export type AddAidRequestsBulkApiFinancialAidRequestsYearAdditionsBulkPostData = {
+  body: AdditionBulkCreate
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: never
+  url: '/api/financial-aid/requests/{year}/additions/bulk'
+}
+
+export type AddAidRequestsBulkApiFinancialAidRequestsYearAdditionsBulkPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type AddAidRequestsBulkApiFinancialAidRequestsYearAdditionsBulkPostError =
+  AddAidRequestsBulkApiFinancialAidRequestsYearAdditionsBulkPostErrors[keyof AddAidRequestsBulkApiFinancialAidRequestsYearAdditionsBulkPostErrors]
+
+export type AddAidRequestsBulkApiFinancialAidRequestsYearAdditionsBulkPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: AdditionBulkResult
+}
+
+export type AddAidRequestsBulkApiFinancialAidRequestsYearAdditionsBulkPostResponse =
+  AddAidRequestsBulkApiFinancialAidRequestsYearAdditionsBulkPostResponses[keyof AddAidRequestsBulkApiFinancialAidRequestsYearAdditionsBulkPostResponses]
+
+export type RetireAidRequestAdditionApiFinancialAidRequestsYearAdditionsAdditionIdRetirePostData = {
+  body: AdditionRetire
+  path: {
+    /**
+     * Year
+     */
+    year: number
+    /**
+     * Addition Id
+     */
+    addition_id: string
+  }
+  query?: never
+  url: '/api/financial-aid/requests/{year}/additions/{addition_id}/retire'
+}
+
+export type RetireAidRequestAdditionApiFinancialAidRequestsYearAdditionsAdditionIdRetirePostErrors =
+  {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError
+  }
+
+export type RetireAidRequestAdditionApiFinancialAidRequestsYearAdditionsAdditionIdRetirePostError =
+  RetireAidRequestAdditionApiFinancialAidRequestsYearAdditionsAdditionIdRetirePostErrors[keyof RetireAidRequestAdditionApiFinancialAidRequestsYearAdditionsAdditionIdRetirePostErrors]
+
+export type RetireAidRequestAdditionApiFinancialAidRequestsYearAdditionsAdditionIdRetirePostResponses =
+  {
+    /**
+     * Successful Response
+     */
+    200: AddedRequestOut
+  }
+
+export type RetireAidRequestAdditionApiFinancialAidRequestsYearAdditionsAdditionIdRetirePostResponse =
+  RetireAidRequestAdditionApiFinancialAidRequestsYearAdditionsAdditionIdRetirePostResponses[keyof RetireAidRequestAdditionApiFinancialAidRequestsYearAdditionsAdditionIdRetirePostResponses]
 
 export type GetSeasonHistoryApiFinancialAidHistoryYearGetData = {
   body?: never

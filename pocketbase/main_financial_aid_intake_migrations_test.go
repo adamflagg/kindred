@@ -22,6 +22,7 @@ var aidIntakeMigrations = []struct {
 	{"pb_migrations/1500000202_aid_application_corrections.js", []string{"aid_application_corrections"}},
 	{"pb_migrations/1500000203_aid_session_reference.js", []string{"aid_session_capacity"}},
 	{"pb_migrations/1500000204_aid_payer_shares.js", []string{"aid_payer_shares"}},
+	{"pb_migrations/1500000244_aid_request_additions.js", []string{"aid_request_additions"}},
 }
 
 var aidRuleLine = regexp.MustCompile(`(listRule|viewRule|createRule|updateRule|deleteRule):\s*([^,\n]+)`)
@@ -79,6 +80,14 @@ func TestAidIntakeMigrationsDeclareTheirUniqueKeys(t *testing.T) {
 		},
 		"pb_migrations/1500000203_aid_session_reference.js": {
 			"CREATE UNIQUE INDEX `idx_aid_session_capacity_year_session` ON `aid_session_capacity` (`year`, `session_cm_id`)",
+		},
+		// One LIVE staff-added request per (season, household, camper, session). A retired row keeps its place in
+		// history, so the uniqueness is partial on an empty retired_at, as aid_requests' slot indexes are on status.
+		"pb_migrations/1500000244_aid_request_additions.js": {
+			"CREATE UNIQUE INDEX `idx_aid_request_additions_live` ON `aid_request_additions` " +
+				"(`year`, `household_cm_id`, `person_cm_id`, `session_cm_id`) WHERE `retired_at` = ''",
+			"CREATE INDEX `idx_aid_request_additions_slot` ON `aid_request_additions` " +
+				"(`year`, `household_cm_id`, `person_cm_id`, `session_cm_id`)",
 		},
 		"pb_migrations/1500000204_aid_payer_shares.js": {
 			"CREATE UNIQUE INDEX `idx_aid_payer_shares_request_household` ON `aid_payer_shares` " +

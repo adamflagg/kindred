@@ -42,6 +42,7 @@ from api.constants.collections import (
     AID_APPLICATION_CORRECTIONS,
     AID_APPLICATIONS,
     AID_PAYER_SHARES,
+    AID_REQUEST_ADDITIONS,
     AID_REQUESTS,
     ATTENDEES,
     CAMP_SESSIONS,
@@ -55,6 +56,7 @@ from api.services.financial_aid_intake_types import (
     REGISTERED_STATUS_IDS,
     STATUS_ACTIVE,
     UNKNOWN_EQUITY,
+    AdditionRecord,
     ApplicationRecord,
     AttendeeRow,
     BillingLine,
@@ -244,6 +246,25 @@ def _request(record: Any) -> RequestRecord:
         duplicate_of=_str(getattr(record, "duplicate_of", "")),
         flags=tuple(_json(getattr(record, "flags", None), [])),
         equity=equity_from_json(_json(getattr(record, "equity", None), None)),
+    )
+
+
+def _addition(record: Any) -> AdditionRecord:
+    return AdditionRecord(
+        id=record.id,
+        year=_int(record.year),
+        household_cm_id=_int(record.household_cm_id),
+        person_cm_id=_int(getattr(record, "person_cm_id", 0)),
+        program_key=_str(record.program_key),
+        session_cm_id=_int(record.session_cm_id),
+        ask=_float(getattr(record, "ask", 0)),
+        source=_str(record.source),
+        reason=_str(getattr(record, "reason", "")),
+        actor=_str(getattr(record, "actor", "")),
+        created=_str(getattr(record, "created", "")),
+        retired_at=_str(getattr(record, "retired_at", "")),
+        retired_by=_str(getattr(record, "retired_by", "")),
+        retire_reason=_str(getattr(record, "retire_reason", "")),
     )
 
 
@@ -443,7 +464,18 @@ class FinancialAidIntakeRepository:
         rows = await self._page(AID_REQUESTS, {"filter": f"year = {year}{scope}", "sort": STABLE_SORT})
         return [_request(r) for r in rows]
 
+    async def fetch_request_additions(self, year: int) -> list[AdditionRecord]:
+        """The season's staff-added requests, retired ones included (aid_request_additions; no sync writes it)."""
+        rows = await self._page(AID_REQUEST_ADDITIONS, {"filter": f"year = {int(year)}", "sort": STABLE_SORT})
+        return [_addition(r) for r in rows]
+
     # -- single-record reads -------------------------------------------------
+
+    async def fetch_request_addition(self, record_id: str) -> AdditionRecord | None:
+        rows = await self._page(
+            AID_REQUEST_ADDITIONS, {"filter": f"id = '{pb_escape(record_id)}'", "sort": STABLE_SORT}
+        )
+        return _addition(rows[0]) if rows else None
 
     async def fetch_application(self, year: int, household_cm_id: int) -> ApplicationRecord | None:
         rows = await self._page(
