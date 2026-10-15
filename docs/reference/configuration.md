@@ -156,7 +156,7 @@ TZ=America/Los_Angeles
 ADMIN_ALLOWLIST="10.0.0.0/8 192.168.0.0/16"
 ```
 
-`POCKETBASE_HOST`, `API_HOST` and `API_PORT` rename the backends Caddy proxies to; change them only if you rename containers or ports. For development, the Vite proxy reads `CADDY_PORT` and `POCKETBASE_PORT` (see [Frontend Configuration](#frontend-configuration)).
+`POCKETBASE_HOST` and `API_HOST` rename the backends Caddy proxies to (`docker/Caddyfile`); change them only if you rename containers. The backend ports are fixed there (8090 and 8000). The dev scripts read `FASTAPI_PORT` for the API's port, and `API_PORT` is read by nothing. For development, the Vite proxy reads `CADDY_PORT` and `POCKETBASE_PORT` (see [Frontend Configuration](#frontend-configuration)).
 
 ### Logging & Solver Workers
 ```bash
