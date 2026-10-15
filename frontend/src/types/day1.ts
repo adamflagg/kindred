@@ -17,6 +17,8 @@ export interface Day1TierData {
   categories: Day1Category[]
   total: Day1CategoryCounts
   approximate: boolean
+  /** This year's tier on its opening date itself (ruling 4): holds only that day until tomorrow's sync. */
+  opening_day: boolean
 }
 
 export interface Day1YearData {

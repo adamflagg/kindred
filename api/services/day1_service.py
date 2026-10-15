@@ -16,7 +16,7 @@ from api.schemas.day1 import (
     Day1TierData,
     Day1YearData,
 )
-from api.services.camp_calendar import PRIORITY_DAY_DAYS, REGISTRATION_TIERS, day1_window
+from api.services.camp_calendar import PRIORITY_DAY_DAYS, REGISTRATION_TIERS, day1_window, get_camp_today
 from api.services.metrics_repository import MetricsRepository
 from api.services.reconstruction import ENROLLMENT_STATUSES, parse_date_only
 from api.utils.session_metrics import (
@@ -43,6 +43,7 @@ class Day1Service:
         session_types: list[str] | None = None,
         session_cm_id: int | None = None,
         duration: str | None = None,
+        today: date | None = None,
     ) -> Day1Response:
         """Get Day 1 registration counts for current year + 2 prior years.
 
@@ -57,6 +58,7 @@ class Day1Service:
                 years match it with the session resolver (cm_id, alias group,
                 exact name), so renamed sessions line up; no match counts 0.
             duration: Optional duration category ("1-week", ...).
+            today: Override for the current camp date (for testing). Defaults to get_camp_today().
         """
         reference_name: str | None = None
         if session_cm_id is not None:
@@ -68,6 +70,12 @@ class Day1Service:
             self._count_year(year - 1, session_types, session_cm_id, duration, reference_name),
             self._count_year(year - 2, session_types, session_cm_id, duration, reference_name),
         )
+        # Ruling 4 (owner, 2026-10-14): on a phase's opening date (day 0 only) this year holds just
+        # that day until the next morning's sync, while every prior year holds both days. Only the
+        # current year is flagged; the page reads "updates tomorrow" in place of the comparison.
+        camp_today = (today or get_camp_today()).isoformat()
+        for tier in current:
+            tier.opening_day = tier.date == camp_today
         prior_years = [
             Day1YearData(year=year - 1, tiers=prior_1),
             Day1YearData(year=year - 2, tiers=prior_2),

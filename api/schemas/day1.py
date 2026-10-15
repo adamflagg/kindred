@@ -22,6 +22,13 @@ class Day1TierData(BaseModel):
     categories: list[Day1Category]
     total: Day1CategoryCounts
     approximate: bool = Field(False, description="True when using date-only fallback")
+    opening_day: bool = Field(
+        False,
+        description=(
+            "True on this tier's opening date itself (camp today, current year only): the year holds "
+            "only that day until the next morning's sync, so the page reads 'updates tomorrow'"
+        ),
+    )
 
 
 class Day1YearData(BaseModel):

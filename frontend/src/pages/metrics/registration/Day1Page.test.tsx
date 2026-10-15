@@ -7,7 +7,7 @@
  *
  * TDD: Tests written BEFORE implementation.
  */
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import Day1Page from './Day1Page'
@@ -46,6 +46,7 @@ function makeData(teenCount: number): Day1Response {
         ],
         total: { count: 13 + teenCount },
         approximate: false,
+        opening_day: false,
       },
     ],
     prior_years: [],
@@ -174,6 +175,84 @@ describe('Day1Page', () => {
         'Counts the opening day and the next day: in 2023 and 2025 CampMinder dated most opening-day sign-ups the following day.'
       )
       expect(note.closest('li')).toHaveTextContent(/^1\./)
+    })
+  })
+  describe('on a phase opening day the compare reads "updates tomorrow" (ruling 4)', () => {
+    /** This year's priority tier (12 so far) against last year's full first two days (40). */
+    function openingDayData(openingDay: boolean): Day1Response {
+      const tier = (count: number, flag: boolean) => ({
+        tier: 'priority' as const,
+        tier_label: 'Priority Registration',
+        date: '2025-11-12',
+        window_start: '2025-11-12T09:00:00-08:00',
+        window_end: '2025-11-14T09:00:00-08:00',
+        categories: [
+          { category: 'at_camp' as const, label: 'At Camp', count },
+          { category: 'quest' as const, label: 'Quest', count: 0 },
+          { category: 'teen' as const, label: 'Teens', count: 0 },
+        ],
+        total: { count },
+        approximate: false,
+        opening_day: flag,
+      })
+      return {
+        year: 2026,
+        tiers: [tier(12, openingDay)],
+        prior_years: [{ year: 2025, tiers: [tier(40, false)] }],
+      }
+    }
+
+    it('replaces the hero delta and keeps the count so far', () => {
+      setSession('main,embedded,ag,quest')
+      mockUseDay1.mockReturnValue({ data: openingDayData(true), isLoading: false, error: null })
+
+      renderPage()
+
+      const card = screen.getByText('First 2 days').closest('div.rounded-xl') as HTMLElement
+      expect(within(card).getByText('updates tomorrow')).toBeInTheDocument()
+      expect(within(card).queryByText(/vs 2025/)).not.toBeInTheDocument()
+      expect(within(card).getAllByText('12').length).toBeGreaterThan(0)
+    })
+
+    it("marks this year's column for that phase in the comparison table", () => {
+      setSession('main,embedded,ag,quest')
+      mockUseDay1.mockReturnValue({ data: openingDayData(true), isLoading: false, error: null })
+
+      renderPage()
+
+      // Year sub-headers run Priority, Early, Open; only Priority opens today.
+      const [priority2026, early2026, open2026] = screen.getAllByRole('columnheader', {
+        name: /^2026/,
+      })
+      expect(within(priority2026!).getByText('updates tomorrow')).toBeInTheDocument()
+      expect(within(early2026!).queryByText('updates tomorrow')).not.toBeInTheDocument()
+      expect(within(open2026!).queryByText('updates tomorrow')).not.toBeInTheDocument()
+      for (const prior of screen.getAllByRole('columnheader', { name: /^2025/ })) {
+        expect(within(prior).queryByText('updates tomorrow')).not.toBeInTheDocument()
+      }
+    })
+
+    it('keeps the numbered note', () => {
+      setSession('main,embedded,ag,quest')
+      mockUseDay1.mockReturnValue({ data: openingDayData(true), isLoading: false, error: null })
+
+      renderPage()
+
+      expect(
+        screen.getByText(
+          'Counts the opening day and the next day: in 2023 and 2025 CampMinder dated most opening-day sign-ups the following day.'
+        )
+      ).toBeInTheDocument()
+    })
+
+    it('shows the delta on any other day', () => {
+      setSession('main,embedded,ag,quest')
+      mockUseDay1.mockReturnValue({ data: openingDayData(false), isLoading: false, error: null })
+
+      renderPage()
+
+      expect(screen.getByText(/vs 2025/)).toHaveTextContent('-28 vs 2025')
+      expect(screen.queryByText('updates tomorrow')).not.toBeInTheDocument()
     })
   })
 })

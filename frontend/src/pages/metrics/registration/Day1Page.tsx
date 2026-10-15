@@ -17,6 +17,11 @@
  *   years (the Teens row appears only when teen counts are present)
  * - Delta indicators vs prior year
  * - Approximate count indicators when data is reconstructed
+ *
+ * On a phase's opening date (day 0 only) this year holds just that day until the
+ * next morning's sync, against prior years' full two days (ruling 4). The server
+ * flags that tier (`opening_day`); its hero delta reads "updates tomorrow" and so
+ * does this year's column header for it in the table. The counts so far stay.
  */
 
 import { useMemo } from 'react'
@@ -25,7 +30,12 @@ import { useDay1 } from '../../../hooks/useDay1'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { MetricsQueryGuard } from '../../../components/metrics/MetricsQueryGuard'
 import { DefinitionNotes, DefRef } from '../../../components/camperships/kit/DefinitionNotes'
-import { PRIORITY_DAY_NOTE, PRIORITY_DAY_NOTES } from '../../../utils/priorityDay'
+import {
+  PRIORITY_DAY_NOTE,
+  PRIORITY_DAY_NOTES,
+  PRIORITY_DAY_PENDING,
+  PRIORITY_DAY_PENDING_CLASS,
+} from '../../../utils/priorityDay'
 import type { Day1Response, Day1TierData, Day1YearData } from '../../../types/day1'
 
 /** Tier display configuration: label, gradient classes, and text accent */
@@ -181,12 +191,19 @@ function HeroCard({ tier, priorYears }: HeroCardProps) {
             )}
           </div>
 
-          {/* Delta vs prior year */}
-          {delta.text && priorYear && (
-            <p className={`text-sm font-medium ${delta.color}`}>
-              {delta.text} vs {priorYear.year}
-            </p>
-          )}
+          {/* Delta vs prior year; on the opening day it would read behind (ruling 4) */}
+          {delta.text &&
+            priorYear &&
+            (tier.opening_day ? (
+              // The kit's muted grey is unreadable on the gradient, so the card's own accent stands in.
+              <p className={`text-xs font-normal whitespace-nowrap ${config.accent}`}>
+                {PRIORITY_DAY_PENDING}
+              </p>
+            ) : (
+              <p className={`text-sm font-medium ${delta.color}`}>
+                {delta.text} vs {priorYear.year}
+              </p>
+            ))}
 
           {/* Prior year totals */}
           {priorSummaries.length > 0 && (
@@ -304,6 +321,11 @@ function ComparisonTable({ data, currentYear }: ComparisonTableProps) {
                   } ${yi === 0 ? 'border-l' : ''}`}
                 >
                   {year}
+                  {year === currentYear && tierByYear[tl.tier]?.[year]?.opening_day && (
+                    <span className={`block ${PRIORITY_DAY_PENDING_CLASS}`}>
+                      {PRIORITY_DAY_PENDING}
+                    </span>
+                  )}
                 </th>
               ))
             )}

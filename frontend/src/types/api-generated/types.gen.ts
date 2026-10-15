@@ -3489,6 +3489,12 @@ export type Day1TierData = {
    * True when using date-only fallback
    */
   approximate?: boolean
+  /**
+   * Opening Day
+   *
+   * True on this tier's opening date itself (camp today, current year only): the year holds only that day until the next morning's sync, so the page reads 'updates tomorrow'
+   */
+  opening_day?: boolean
 }
 
 /**

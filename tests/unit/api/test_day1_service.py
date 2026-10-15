@@ -1,5 +1,6 @@
 """Tests for Day 1 registration counting service."""
 
+from datetime import date
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -521,3 +522,42 @@ async def test_day1_summer_numbers_unchanged_by_family_adult_and_bmitzvah_sessio
     ):
         plain, mixed = await run(False, **kw), await run(True, **kw)
         assert mixed.model_dump() == plain.model_dump(), kw
+
+
+def _three_phase_repo() -> AsyncMock:
+    repo = AsyncMock()
+    repo.fetch_registration_dates.return_value = {
+        "priority_reg_date": "2025-11-12",
+        "early_reg_date": "2025-11-19",
+        "open_reg_date": "2025-12-03",
+    }
+    repo.fetch_sessions.return_value = {1001: _make_session(1001, "main")}
+    repo.fetch_attendees_with_dates.return_value = [
+        _make_attendee(session_cm_id=1001, effective_date="2025-11-19"),
+    ]
+    return repo
+
+
+@pytest.mark.asyncio
+async def test_opening_day_flags_only_this_years_phase_opening_today():
+    """Ruling 4 (owner, 2026-10-14): on a phase's opening day (day 0 only) this year holds just
+    that day until the next morning's sync, so the page reads "updates tomorrow". The server
+    flags that tier; prior years are complete and never flagged, even on the same date.
+    """
+    result = await Day1Service(_three_phase_repo()).get_day1(2026, today=date(2025, 11, 19))
+
+    assert {t.tier: t.opening_day for t in result.tiers} == {
+        "priority": False,
+        "early": True,
+        "open": False,
+    }
+    for prior in result.prior_years:
+        assert not any(t.opening_day for t in prior.tiers), prior.year
+
+
+@pytest.mark.asyncio
+async def test_opening_day_is_day_0_only_not_the_second_day():
+    """The next day's sync brings day 0 in, so the second day reads normally (ruling 4)."""
+    for today in (date(2025, 11, 20), date(2025, 11, 18), date(2026, 1, 15)):
+        result = await Day1Service(_three_phase_repo()).get_day1(2026, today=today)
+        assert not any(t.opening_day for t in result.tiers), today
