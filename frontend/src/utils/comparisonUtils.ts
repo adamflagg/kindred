@@ -27,6 +27,10 @@ export interface DeltaResult {
  *
  * Items in primary but not compare get compareValue=0 (NEW items).
  * Items in compare but not primary get primaryValue=0 (GONE items).
+ *
+ * `aliasMap` resolves both years' keys to their alias group, so a group matches in either
+ * direction: two years both under an old name stay one row, as does a year back on the old
+ * name against a prior year under the group key.
  */
 export function mergeDataForComparison<T extends Record<string, unknown>>(
   primaryData: T[],
@@ -41,8 +45,13 @@ export function mergeDataForComparison<T extends Record<string, unknown>>(
   const primaryMap = new Map<string, { displayName: string; value: number }>()
   const compareMap = new Map<string, { displayName: string; value: number }>()
 
-  for (const item of primaryData) {
+  const groupKey = (item: T): string => {
     const key = String(item[mk] ?? '')
+    return aliasMap?.[key] ?? key
+  }
+
+  for (const item of primaryData) {
+    const key = groupKey(item)
     const displayName = String(item[nameKey] ?? '')
     const rawPrimaryValue = item['value']
     primaryMap.set(key, {
@@ -52,8 +61,7 @@ export function mergeDataForComparison<T extends Record<string, unknown>>(
   }
 
   for (const item of compareData) {
-    let key = String(item[mk] ?? '')
-    if (aliasMap) key = aliasMap[key] ?? key
+    const key = groupKey(item)
     const displayName = String(item[nameKey] ?? '')
     const rawCompareValue = item['value']
     compareMap.set(key, {
