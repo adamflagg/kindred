@@ -32,6 +32,9 @@ from api.constants.collections import (
 )
 from api.constants.filters import ACTIVE_ENROLLED_FILTER
 from api.services.lodging_repository import ADULT_SESSION_TYPE, STABLE_SORT
+from api.utils.pb_filters import pb_escape
+
+PAGE_SIZE = 1000
 
 # The sessions that take Jotform intake: the adult weekends, and from 2027 the
 # "Adult Reg" sessions (`family_adult`, kindred#3213 re-ruling 2026-10-14) where
@@ -44,11 +47,6 @@ JOTFORM_SESSION_TYPES = (ADULT_SESSION_TYPE, FAMILY_ADULT_SESSION_TYPE)
 def _jotform_types(field: str) -> str:
     """`(<field> = 'adult' || <field> = 'family_adult')`."""
     return "(" + " || ".join(f"{field} = '{pb_escape(t)}'" for t in JOTFORM_SESSION_TYPES) + ")"
-
-
-from api.utils.pb_filters import pb_escape
-
-PAGE_SIZE = 1000
 
 
 def _weekend(field: str, session_cm_id: int | None) -> str:
