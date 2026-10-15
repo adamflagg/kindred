@@ -238,6 +238,8 @@ export interface RegistrationMetrics {
   by_session_length_by_session?: SessionLengthBySessionBreakdown[]
   by_gender_by_session_length?: GenderBySessionLengthBreakdown[]
   by_summer_years?: SummerYearsBreakdown[]
+  /** Mean CampMinder Years At Camp of the charted campers; null when there are none. */
+  average_summers_at_camp?: number | null
   by_first_summer_year?: FirstSummerYearBreakdown[]
 }
 

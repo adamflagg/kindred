@@ -322,3 +322,33 @@ class TestFirstSummerYears:
         assert FIRST_HISTORY_SUMMER == 2017
         history = [*_history(1, 2014, 2019), *_history(2, 2019, 2021)]
         assert compute_first_summer_years(history, {1, 2}) == {1: 2017, 2: 2019}
+
+
+class TestAverageSummersAtCamp:
+    """D-UNCOVERED (owner, 2026-10-15): "Average N summers per camper, this one included",
+    the mean of the charted campers' Years At Camp (decision 12: CampMinder's figure)."""
+
+    @pytest.mark.asyncio
+    async def test_average_is_the_mean_of_the_charted_campers_years_at_camp(self) -> None:
+        from api.services.registration_service import RegistrationService
+
+        repo = _repo(
+            {2024: [Attendee(pid, 2024, _session(2024)) for pid in (1, 2, 3, 4)]},
+            {2024: {1: Person(1, years_at_camp=1), 2: Person(2, years_at_camp=2), 3: Person(3, years_at_camp=6)}},
+            [],
+        )
+
+        result = await RegistrationService(repo).calculate_registration(2024)
+
+        # Camper 4 has no persons row, so is off the chart and out of the average.
+        assert result.average_summers_at_camp == pytest.approx(3.0)
+
+    @pytest.mark.asyncio
+    async def test_no_campers_means_no_average(self) -> None:
+        from api.services.registration_service import RegistrationService
+
+        repo = _repo({2024: []}, {2024: {}}, [])
+
+        result = await RegistrationService(repo).calculate_registration(2024)
+
+        assert result.average_summers_at_camp is None

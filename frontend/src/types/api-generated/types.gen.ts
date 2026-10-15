@@ -13132,6 +13132,12 @@ export type RegistrationMetricsResponse = {
    */
   by_summer_years?: Array<SummerYearsBreakdown>
   /**
+   * Average Summers At Camp
+   *
+   * Mean CampMinder Years At Camp of the campers in by_summer_years; null when there are none
+   */
+  average_summers_at_camp?: number | null
+  /**
    * By First Summer Year
    *
    * Enrollment by first summer year (cohort analysis)

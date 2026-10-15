@@ -6,7 +6,7 @@
  * Supports drill-down: click a bar to show matching campers.
  */
 
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, type ReactNode } from 'react'
 import type { DrilldownFilter } from '../../types/metrics'
 import { getNiceTicks, useChartTooltip, calculateBarSizing } from './cssChartUtils'
 
@@ -31,6 +31,8 @@ interface CssHorizontalBarChartProps {
   className?: string
   /** Label for the percentage line in the tooltip (default: "Percentage") */
   percentageLabel?: string
+  /** A line inside the card, below the bars (Summers at Camp's average). */
+  footer?: ReactNode
 }
 
 export function CssHorizontalBarChart({
@@ -44,6 +46,7 @@ export function CssHorizontalBarChart({
   onBarClick,
   className = '',
   percentageLabel = 'Percentage',
+  footer,
 }: CssHorizontalBarChartProps) {
   const { tooltip, tooltipRef, handleMouseMove, handleMouseLeave } =
     useChartTooltip<ChartDataItem>()
@@ -78,6 +81,7 @@ export function CssHorizontalBarChart({
         <div className="text-muted-foreground flex items-center justify-center" style={{ height }}>
           No data available
         </div>
+        {footer}
       </div>
     )
   }
@@ -215,6 +219,7 @@ export function CssHorizontalBarChart({
           </div>
         )}
       </div>
+      {footer}
     </div>
   )
 }

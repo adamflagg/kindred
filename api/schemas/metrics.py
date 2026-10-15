@@ -369,6 +369,10 @@ class RegistrationMetricsResponse(BaseModel):
     by_summer_years: list[SummerYearsBreakdown] = Field(
         default_factory=list, description="Enrollment by Summers at Camp (CampMinder Years At Camp)"
     )
+    average_summers_at_camp: float | None = Field(
+        default=None,
+        description="Mean CampMinder Years At Camp of the campers in by_summer_years; null when there are none",
+    )
     by_first_summer_year: list[FirstSummerYearBreakdown] = Field(
         default_factory=list, description="Enrollment by first summer year (cohort analysis)"
     )

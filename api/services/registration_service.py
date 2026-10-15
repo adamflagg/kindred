@@ -7,6 +7,7 @@ testable service that uses the MetricsRepository for data access.
 from __future__ import annotations
 
 import asyncio
+from statistics import mean
 from typing import TYPE_CHECKING, Any, cast
 
 from api.schemas.metrics import (
@@ -192,10 +193,11 @@ class RegistrationService:
         # Gender by session length (stacked bar chart showing boys vs girls per length category)
         by_gender_by_session_length = self._compute_gender_by_session_length(combined_attendees, sessions, persons)
 
-        # Summers at Camp: CampMinder's Years At Camp this season (decision 36).
-        by_summer_years = self._build_summer_years_breakdown(
-            summers_at_camp_by_person(enrolled_person_ids, persons), total_enrolled
-        )
+        # Summers at Camp: CampMinder's Years At Camp this season (decision 36), and the
+        # average of the same campers' figures beneath the chart (decision 12, D-UNCOVERED).
+        summers_by_person = summers_at_camp_by_person(enrolled_person_ids, persons)
+        by_summer_years = self._build_summer_years_breakdown(summers_by_person, total_enrolled)
+        average_summers_at_camp = mean(summers_by_person.values()) if summers_by_person else None
 
         # First Summer Year: a year, read from enrolled history (2017 or earlier folds, 36b).
         enrollment_history = await self.repo.fetch_summer_enrollment_history(enrolled_person_ids, year)
@@ -223,6 +225,7 @@ class RegistrationService:
             by_session_length_by_session=by_session_length_by_session,
             by_gender_by_session_length=by_gender_by_session_length,
             by_summer_years=by_summer_years,
+            average_summers_at_camp=average_summers_at_camp,
             by_first_summer_year=by_first_summer_year,
         )
 
