@@ -762,6 +762,7 @@ def _postings() -> list[Any]:
             is_reversed=bool(reversed_on),
             reversal_date=_stamp(reversed_on, 12) if reversed_on else "",
             attribution_method="",
+            attribution_level="none",
             attributed_person_cm_id=0,
             attributed_session_cm_id=0,
             program_family="",

@@ -97,6 +97,14 @@ def test_a_camp_aid_record_becomes_a_line_in_aid_dollars() -> None:
     assert camp_line(SimpleNamespace(**{**vars(record), "reversal_date": ""})).reversal_date is None
 
 
+def test_camp_line_reads_attribution_level() -> None:
+    record = SimpleNamespace(
+        transaction_cm_id=9001, household_cm_id=1000001, person_cm_id=0, amount=-100, is_reversed=False
+    )
+    assert camp_line(SimpleNamespace(**vars(record), attribution_level="person")).attribution_level == "person"
+    assert camp_line(record).attribution_level == ""
+
+
 def test_only_an_override_naming_a_person_or_a_session_places_a_line() -> None:
     reclassify = SimpleNamespace(
         transaction_cm_id=9001, attributed_person_cm_id=0, attributed_session_cm_id=0, program_family=""
@@ -128,6 +136,7 @@ async def test_camp_aid_lines_are_read_live_and_reversed_by_their_funder_type() 
         "attributed_person_cm_id",
         "attributed_session_cm_id",
         "program_family",
+        "attribution_level",  # the loader's person-level guard reads it; unread, the guard is inert
         "effective_source_key",
     }
 

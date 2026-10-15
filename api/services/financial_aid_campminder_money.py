@@ -37,15 +37,24 @@ class GroupRequest(Protocol):
 def _line_group(
     line: CampLine, requests: Sequence[GroupRequest], linked: Collection[int] = ()
 ) -> tuple[Group | None, str]:
-    """The family x session a live camp-aid line is for, from its own household's requests: Go's attributed session,
-    else the session of the attributed camper's one request there, else the household's one session. ("", group) when
-    found; else why not: "no_request" (a session the household asked no aid for) or "unplaced" (it can't be told).
+    """The family x session a live camp-aid line is for, from its own household's requests: Go's attributed session
+    (or a staff/sheet pin's), else the session of the attributed camper's one request there, else the household's one
+    session. ("", group) when found; else why not: "no_request" (a session the household asked no aid for) or
+    "unplaced" (it can't be told).
+
+    The exception is a session-less line Go attributed only to a person (attribution_level "person": one camper with
+    several active enrollments, aid_attribution.go). It is "unplaced" before any request is looked at, in its own
+    household and in linked ones alike: "the camper's one request" would be a guess, and it would move the money when
+    the camper gets a second request. A pin sets the session (or, as a staff person-only override, level "override",
+    the person), and only that is a safe signal.
 
     CampMinder sometimes posts a family's aid under another of its household ids (aid_household_links, D26). Only when
     the line's own household has no request that could take it are the households `linked` to it read the same way,
     and the line then joins the one linked household's family x session that can; the household's own requests always
     come first, so a link never moves money off them."""
     session, person = line.attributed_session_cm_id, line.attributed_person_cm_id
+    if not session and person and line.attribution_level == "person":
+        return None, "unplaced"
 
     def takers(households: Collection[int]) -> set[Group]:
         return {
@@ -108,7 +117,9 @@ def aid_on_no_request(
       - nothing it can be told, on a family (its household and the households linked to it) with no request at all.
         It has no session, so it counts in TOTAL only.
     Money no one request can take on a family that did ask is not counted: the loader leaves the sheet's decision
-    standing for it (its "not placeable on one request"), so it is on a decision already."""
+    standing for it (its "not placeable on one request"), so it is on a decision already. (Not quite true of a
+    person-level credit that waits for a pin beside a pinned award: no decision stands for it, and it is reported
+    unplaced until a pin places it.)"""
     links = list(links)
     asked = {r.household_cm_id for r in requests}
     sessionless: dict[int, set[int]] = defaultdict(set)

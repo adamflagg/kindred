@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 
-from api.services.financial_aid_campminder_money import aid_on_no_request, campminder_money
+from api.services.financial_aid_campminder_money import _line_group, aid_on_no_request, campminder_money
 from api.services.financial_aid_reconciliation import CampLine
 from bunking.financial_aid.decisions.budget import NO_POOL, TOTAL, OffRequestAid
 
@@ -30,7 +30,14 @@ class Link:
 
 
 def line(
-    txn: int, household: int, amount: str, *, session: int = 0, person: int = 0, reversed_: bool = False
+    txn: int,
+    household: int,
+    amount: str,
+    *,
+    session: int = 0,
+    person: int = 0,
+    reversed_: bool = False,
+    level: str = "",
 ) -> CampLine:
     return CampLine(
         transaction_cm_id=txn,
@@ -42,6 +49,7 @@ def line(
         reversal_date=None,
         attributed_person_cm_id=person,
         attributed_session_cm_id=session,
+        attribution_level=level,
     )
 
 
@@ -163,3 +171,57 @@ def test_the_loader_reads_the_same_split() -> None:
     from scripts.financial_aid import load_2026_decisions as loader
 
     assert vars(loader)["campminder_money"] is campminder_money
+
+
+# CS-2 loader guard: a session-less line Go placed only on a camper (level "person": one camper, several enrollments)
+# waits for a pin instead of falling onto that camper's one request.
+HH, CAMPER, LINKED_HH, TWR = 1000001, 1000011, 1000006, 1000301
+
+
+def test_a_go_person_level_line_is_not_narrowed_to_the_campers_one_request() -> None:
+    credit = line(1, HH, "250", person=CAMPER, level="person")
+    requests = [Req("r1", HH, CAMPER, SUMMER)]
+    assert _line_group(credit, requests) == (None, "unplaced")
+    placed, _, unplaced = campminder_money([credit], requests)
+    assert (placed, unplaced) == ({}, {HH: Decimal(250)})
+
+
+def test_a_go_person_level_line_does_not_reach_a_linked_households_request() -> None:
+    credit = line(1, HH, "250", person=CAMPER, level="person")
+    requests = [Req("r1", LINKED_HH, CAMPER, SUMMER)]
+    assert _line_group(credit, requests, [LINKED_HH]) == (None, "unplaced")
+
+
+def test_a_pinned_person_level_line_takes_its_pinned_session() -> None:
+    pinned = line(1, HH, "250", person=CAMPER, session=TWR, level="override")
+    requests = [Req("r1", HH, CAMPER, SUMMER), Req("r2", HH, CAMPER, TWR)]
+    assert _line_group(pinned, requests) == ((HH, TWR), "")
+
+
+def test_a_pinned_line_on_a_session_with_no_request_is_no_request() -> None:
+    pinned = line(1, HH, "250", person=CAMPER, session=TWR, level="override")
+    assert _line_group(pinned, [Req("r1", HH, CAMPER, SUMMER)]) == ((HH, TWR), "no_request")
+
+
+def test_a_staff_person_only_placement_still_takes_the_persons_one_request() -> None:
+    staff = line(1, HH, "250", person=CAMPER, level="override")
+    assert _line_group(staff, [Req("r1", HH, CAMPER, SUMMER)]) == ((HH, SUMMER), "")
+
+
+def test_a_household_line_with_one_requested_session_is_still_that_sessions() -> None:
+    household = line(1, HH, "250", level="none")
+    assert _line_group(household, [Req("r1", HH, CAMPER, SUMMER)]) == ((HH, SUMMER), "")
+
+
+def test_a_person_level_line_left_unplaced_on_a_family_that_asked_is_not_on_no_request() -> None:
+    """D170 is unchanged: money no request can take on a family that asked is the sheet's to carry, not no-request."""
+    credit = line(1, HH, "250", person=CAMPER, level="person")
+    assert on_no_request([credit], [Req("r1", HH, CAMPER, SUMMER)]) == {}
+
+
+def test_a_pinned_twr_line_with_no_twr_request_counts_on_no_request_in_its_pool() -> None:
+    pools = {**POOLS, TWR: "twr_pool"}
+    pinned = line(1, HH, "250", person=CAMPER, session=TWR, level="override")
+    out = aid_on_no_request([pinned], [Req("r1", HH, CAMPER, SUMMER)], [], pools.get)
+    assert out["twr_pool"] == OffRequestAid(Decimal(250), 1)
+    assert out[TOTAL] == OffRequestAid(Decimal(250), 1)

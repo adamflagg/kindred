@@ -74,7 +74,13 @@ def _request(
 
 
 def _line(
-    amount: str, *, txn: int = 1000900, household: int = 1000001, person: int = 1000002, session: int = 1000102
+    amount: str,
+    *,
+    txn: int = 1000900,
+    household: int = 1000001,
+    person: int = 1000002,
+    session: int = 1000102,
+    level: str = "",
 ) -> CampLine:
     return CampLine(
         transaction_cm_id=txn,
@@ -86,6 +92,7 @@ def _line(
         reversal_date=None,
         attributed_person_cm_id=person,
         attributed_session_cm_id=session,
+        attribution_level=level,
     )
 
 
@@ -1138,3 +1145,48 @@ def test_workbook_and_sheet_id_are_one_or_the_other(tmp_path: Path) -> None:
         loader.main(["--workbook", "a.xlsx", "--sheet-id", "s", "--config", "c", "--report", "r"])
     with pytest.raises(SystemExit):
         loader.main(["--config", "c", "--report", "r"])
+
+
+# --- CS-2: a line Go placed only on a camper waits for a pin ---------------------------------------------------------
+
+TWR_SESSION = 1000103  # a second session of the same camper (a winter retreat), beside the default summer one
+
+
+def test_a_person_level_repost_and_credit_unpinned_leave_the_sheet_standing() -> None:
+    plan = _plan(
+        [_award(stage="3 Accepted", appeal=Decimal(1000), r2=Decimal(600), extra=Decimal(1004))],  # 4,604 on the sheet
+        lines=[_line("3604", level="person", session=0), _line("250", txn=1000901, level="person", session=0)],
+    )
+    assert sum(_posts(plan).values(), Decimal(0)) == Decimal(4604)
+    assert plan.campminder_unplaced == Decimal(3854)
+    assert "campminder_unmatched" in _kinds(plan)
+    assert "campminder_differs" not in _kinds(plan)
+
+
+def test_a_person_level_credit_beside_a_pinned_award_is_reported_unplaced() -> None:
+    plan = _plan(
+        [_award(stage="3 Accepted", appeal=Decimal(1000), r2=Decimal(600), extra=Decimal(3578))],  # 7,178
+        lines=[_line("7178", level="override"), _line("495", txn=1000901, level="person", session=0)],
+    )
+    assert sum(_posts(plan).values(), Decimal(0)) == Decimal(7178)
+    unplaced = [r for r in plan.report if r.kind == "campminder_unplaced"]
+    assert [(r.household_cm_id, r.campminder_amount) for r in unplaced] == [(1000001, Decimal(495))]
+    assert "campminder_differs" not in _kinds(plan)
+
+
+def test_pinned_twr_credits_and_a_pinned_repost_load_each_request_at_campminders_money() -> None:
+    twr = "reqtwr000000001"
+    requests = [_request(), _request(twr, session=TWR_SESSION)]
+    awards = [
+        _award(r1=Decimal(3604)),
+        _award(row=3, session_cm_id=TWR_SESSION, request=req(session_cm_id=TWR_SESSION), r1=Decimal(250)),
+    ]
+    lines = [
+        _line("3604", level="override"),
+        _line("250", txn=1000901, session=TWR_SESSION, level="override"),
+    ]
+    plan = _plan(awards, requests, lines)
+    assert (_posts(plan, EMMA), _posts(plan, twr)) == ({1: Decimal(3604)}, {1: Decimal(250)})
+    assert plan.campminder_unplaced == Decimal(0)
+    assert "campminder_differs" not in _kinds(plan)
+    assert "campminder_unplaced" not in _kinds(plan)
