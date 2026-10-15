@@ -1190,7 +1190,8 @@ class FinancialAidCaseworkService:
     async def retire_addition(self, year: int, addition_id: str, reason: str, actor: str) -> AddedRequestOut:
         """Retire an addition and withdraw its request at once, as one operation. Nothing is deleted: the addition
         keeps who retired it and why, and the request keeps its decisions and payer shares (a family that declines
-        uses Cancel… instead). Logged `remove_added_request`, plus the request's status change."""
+        uses Cancel… instead). Refused while a round is posted. Logged `remove_added_request`, plus the request's
+        status change."""
         if not reason.strip():
             raise CaseworkValidationError("a reason is required")
         async with season_lock(year):
@@ -1200,6 +1201,13 @@ class FinancialAidCaseworkService:
             if not addition.live:
                 raise CaseworkValidationError("that added request is already removed")
             request = next((r for r in await self._store.fetch_requests(year) if r.key == addition.request_key), None)
+            if request is not None:
+                # Aid CampMinder shows as posted keeps a request that counts (owner): as keeping a duplicate pair's
+                # other request does, a posted round is undone first.
+                rounds = fold_rounds(await self._store.fetch_request_events(request.id)).get(request.id, {})
+                for n, state in sorted(rounds.items()):
+                    if state.posted:
+                        raise CaseworkValidationError(f"Round {n} is posted: undo Posted first, then remove it")
             updated = replace(
                 addition,
                 retired_at=datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S.000Z"),

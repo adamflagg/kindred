@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import replace
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
@@ -30,6 +31,7 @@ from api.services.financial_aid_intake_types import (
     RequestRecord,
     SessionRow,
 )
+from bunking.financial_aid.decisions.rounds import DecisionEvent
 from tests.unit.api.services.financial_aid_fakes import SESSIONS, YEAR, FakeAidStore, fa_row, intake_rules
 
 ACTOR = "registrar@example.com"
@@ -531,6 +533,38 @@ async def test_retiring_an_already_retired_addition_is_a_clean_error() -> None:
     with pytest.raises(CaseworkNotFoundError):
         await casework.retire_addition(YEAR + 1, added.addition.id, "Wrong season", ACTOR)
     assert len(store.operations) == operations
+
+
+@pytest.mark.asyncio
+async def test_retiring_an_addition_whose_round_is_posted_is_refused_and_writes_nothing() -> None:
+    # Aid CampMinder shows as posted always keeps a request that counts (owner): Retire would leave it on a
+    # withdrawn one. The same rule as keeping the other request of a duplicate pair: undo Posted first.
+    store = make_store(attendees=enrolled(EMMA, EMMA_HOUSEHOLD, WINTER))
+    casework = FinancialAidCaseworkService(store)
+    added = await casework.add_request(YEAR, EMMA_HOUSEHOLD, EMMA, WINTER, 600.0, "Retreat", ACTOR)
+    store.decision_events.append(
+        DecisionEvent(
+            id="evt000000000000",
+            request_id=added.request.id,
+            round=1,
+            kind="post",
+            created=datetime(2027, 3, 9, tzinfo=UTC),
+        )
+    )
+    operations = len(store.operations)
+    with pytest.raises(CaseworkValidationError, match="Round 1 is posted"):
+        await casework.retire_addition(YEAR, added.addition.id, "Entered in error", ACTOR)
+    assert len(store.operations) == operations
+    assert store.additions[added.addition.id].live
+    assert store.requests[added.request.id].status == "active"
+    # Undone, it retires as usual.
+    store.decision_events.append(
+        replace(
+            store.decision_events[0], id="evt000000000001", kind="unpost", created=datetime(2027, 3, 10, tzinfo=UTC)
+        )
+    )
+    out = await casework.retire_addition(YEAR, added.addition.id, "Entered in error", ACTOR)
+    assert out.request.status == "withdrawn"
 
 
 @pytest.mark.asyncio

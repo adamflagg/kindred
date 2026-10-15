@@ -14,8 +14,8 @@
  * `status` (an empty date field is stored as ''). FastAPI's casework service
  * checks it first, so a clash is a clean refusal, never a failed batch.
  *
- * `person_cm_id` 0 would be a Family Camp household request (not added through
- * the casework routes yet). `source` says who made it: staff, or (2027 on) the
+ * `person_cm_id` 0 is a Family Camp household request (the casework routes
+ * take one for a Family Camp session). `source` says who made it: staff, or (2027 on) the
  * dated registration-ask rule. Retiring sets `retired_at`/`retired_by`/
  * `retire_reason` and withdraws the request; a row is never deleted, so the
  * request's decisions stay attached. Every write commits with its aid_change_log

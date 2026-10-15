@@ -58,6 +58,9 @@ func postFinancialAidIntake(ctx context.Context, apiURL string, year int) (intak
 	if err != nil {
 		return intakeReportCounts{}, err
 	}
+	if raw == nil { // a body cut off mid-read, already warned
+		return intakeReportCounts{}, nil
+	}
 	var report intakeReportCounts
 	if err := json.Unmarshal(raw, &report); err != nil {
 		slog.Warn("Financial-aid intake report could not be read", "year", year, "error", err)
@@ -76,7 +79,7 @@ const maxSeasonReportBytes = 1 << 16
 // the ledger tick) and treats anything but 200 as a failure, naming the job. Only a string
 // "detail" (a service refusal) is quoted, truncated: FastAPI's own validation 422 carries a list,
 // and a raw body is never echoed, since it could hold names. On a 200 it returns the body for the
-// caller to read.
+// caller to read, or nil (with a warning) when the body breaks off mid-read.
 func postFinancialAidSeason(ctx context.Context, client *http.Client, url, what string, year int) ([]byte, error) {
 	body, err := json.Marshal(map[string]int{"year": year})
 	if err != nil {
@@ -108,9 +111,11 @@ func postFinancialAidSeason(ctx context.Context, client *http.Client, url, what 
 		}
 		return nil, fmt.Errorf("financial-aid %s returned %d%s", what, resp.StatusCode, detail)
 	}
+	// The job ran (200): a body that breaks off mid-read loses its report, never the run.
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxSeasonReportBytes))
 	if err != nil {
-		return nil, fmt.Errorf("reading financial-aid %s response: %w", what, err)
+		slog.Warn("Financial-aid "+what+" response could not be read", "year", year, "error", err)
+		return nil, nil
 	}
 	return raw, nil
 }

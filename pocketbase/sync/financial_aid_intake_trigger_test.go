@@ -87,6 +87,25 @@ func TestPostFinancialAidIntakeToleratesAReportItCannotRead(t *testing.T) {
 	}
 }
 
+// A 200 whose body breaks off mid-read is the same rebuild that ran: the report is lost, not the run.
+func TestPostFinancialAidIntakeToleratesAReportCutOffMidRead(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Length", "500")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"year":2027,"house`))
+	}))
+	t.Cleanup(srv.Close)
+
+	report, err := postFinancialAidIntake(context.Background(), srv.URL, 2027)
+	if err != nil {
+		t.Fatalf("postFinancialAidIntake: %v", err)
+	}
+	if report != (intakeReportCounts{}) {
+		t.Errorf("report = %+v, want zero", report)
+	}
+}
+
 func TestRunIntakeTriggerCountsAFailureAsAnError(t *testing.T) {
 	t.Parallel()
 	s := &FinancialAidApplicationsSync{IntakeTrigger: func(context.Context, int) error { return errors.New("down") }}
