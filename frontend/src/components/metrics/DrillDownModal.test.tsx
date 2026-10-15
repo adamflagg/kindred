@@ -493,4 +493,29 @@ describe('DrillDownModal', () => {
       expect(filename).toBe('2025-grade-6-2026-10-15.csv')
     })
   })
+
+  describe('number format', () => {
+    it('separates the camper count in the header', () => {
+      mockAttendees = Array.from({ length: 1293 }, (_, i) => ({
+        person_id: i + 1,
+        first_name: 'Emma',
+        last_name: 'Johnson',
+        grade: 5,
+        gender: 'F',
+        session_name: 'Session 1',
+        session_cm_id: 1001,
+        status: 'enrolled',
+        is_returning: true,
+      }))
+      const filter: DrilldownFilter = {
+        type: 'gender',
+        value: 'F',
+        label: 'Female',
+        titleFormat: 'adjective',
+      }
+      renderWithClient(<DrillDownModal {...defaultProps} filter={filter} />)
+
+      expect(screen.getByText(/1,293 Female Campers/)).toBeInTheDocument()
+    })
+  })
 })

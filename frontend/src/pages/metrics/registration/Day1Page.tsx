@@ -24,6 +24,7 @@
  * does this year's column header for it in the table. The counts so far stay.
  */
 
+import { formatCount, formatSignedCount } from '../../../utils/numberFormat'
 import { useMemo } from 'react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useDay1 } from '../../../hooks/useDay1'
@@ -78,7 +79,7 @@ function getCategoryCount(tier: Day1TierData | undefined, category: string): num
 /** Format a count value */
 function fmtCount(value: number | null): string {
   if (value === null) return 'n/a'
-  return value.toLocaleString()
+  return formatCount(value)
 }
 
 /** Check if a tier's registration window hasn't started yet */
@@ -101,9 +102,8 @@ function formatDelta(
   const diff = current - prior
   if (diff === 0) return { text: '0', color: 'text-white/70' }
   const arrow = diff > 0 ? '\u25B2' : '\u25BC'
-  const sign = diff > 0 ? '+' : ''
   return {
-    text: `${arrow} ${sign}${diff.toLocaleString()}`,
+    text: `${arrow} ${formatSignedCount(diff)}`,
     color: diff > 0 ? 'text-emerald-300' : 'text-red-300',
   }
 }
@@ -138,7 +138,7 @@ function HeroCard({ tier, priorYears }: HeroCardProps) {
     .map((py) => {
       const pt = findTier(py.tiers, tier.tier)
       if (!pt) return null
-      return `${py.year}: ${pt.total.count.toLocaleString()}`
+      return `${py.year}: ${formatCount(pt.total.count)}`
     })
     .filter(Boolean)
 

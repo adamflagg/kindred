@@ -12,6 +12,7 @@
  * - Phase marker bands (ReferenceArea) on daily chart; falls back to weekly on no daily data
  */
 
+import { formatCount, formatPercent, formatSignedCount } from '../../../utils/numberFormat'
 import { Fragment, useMemo } from 'react'
 import {
   LineChart,
@@ -69,11 +70,6 @@ function invertedDeltaColorClass(value: number | null): string {
   return 'text-muted-foreground'
 }
 
-function formatDeltaValue(value: number): string {
-  if (value > 0) return `+${value}`
-  return String(value)
-}
-
 /** Compute the calendar date for a prior year at a given week offset from its season start. */
 function priorYearDateLabel(
   seasonStarts: Record<number, string> | undefined,
@@ -125,7 +121,7 @@ export default function CancellationVelocityPage() {
 
     // One comparison year for every card (#3209). The backend omits a prior year that has no
     // matching session (or no status history); the label still names the most recent year the
-    // user ticked, and the values stay '-'.
+    // user ticked, and the values stay '—'.
     const priorYear: number | null =
       comparisonYear ??
       (controls.selectedPriorYears.length ? Math.max(...controls.selectedPriorYears) : null)
@@ -133,7 +129,7 @@ export default function CancellationVelocityPage() {
       (c) => c.year === priorYear
     )
 
-    // No fallback to the curve (#3209 row 22): a year with no status history reads '-', not 0.
+    // No fallback to the curve (#3209 row 22): a year with no status history reads '—', not 0.
     const priorAtWeek = priorCancelledSummary?.cancelled_at_current_week ?? null
     const priorFinal = priorCancelledSummary?.cancelled_final ?? null
     const delta = vsPriorSamePoint(currentCancelled, priorAtWeek)
@@ -231,7 +227,7 @@ export default function CancellationVelocityPage() {
                 : undefined
               return (
                 <span style={{ color: GENDER_COLORS.boys }}>
-                  {genderData?.boys_enrolled.toLocaleString() ?? '-'}
+                  {formatCount(genderData?.boys_enrolled)}
                 </span>
               )
             },
@@ -245,7 +241,7 @@ export default function CancellationVelocityPage() {
                 : undefined
               return (
                 <span style={{ color: GENDER_COLORS.girls }}>
-                  {genderData?.girls_enrolled.toLocaleString() ?? '-'}
+                  {formatCount(genderData?.girls_enrolled)}
                 </span>
               )
             },
@@ -259,7 +255,7 @@ export default function CancellationVelocityPage() {
         const lastPoint = session.weekly.at(-1)
         return (
           <span className="text-red-600 dark:text-red-400">
-            {(lastPoint?.enrolled ?? 0).toLocaleString()}
+            {formatCount(lastPoint?.enrolled ?? 0)}
           </span>
         )
       },
@@ -271,7 +267,7 @@ export default function CancellationVelocityPage() {
             header: `${priorLabel ?? 'Prior Yr'}${summaryCards ? ` (Wk ${summaryCards.currentWeekNumber})` : ''}`,
             accessor: (_session, priorSession) => (
               <span className="text-muted-foreground">
-                {priorSession?.enrolled_at_current_week?.toLocaleString() ?? '-'}
+                {formatCount(priorSession?.enrolled_at_current_week)}
               </span>
             ),
             className: 'text-right',
@@ -280,7 +276,7 @@ export default function CancellationVelocityPage() {
             header: `${priorLabel ?? 'Prior Yr'} Final`,
             accessor: (_session, priorSession) => (
               <span className="text-muted-foreground">
-                {priorSession?.final_enrolled.toLocaleString() ?? '-'}
+                {formatCount(priorSession?.final_enrolled)}
               </span>
             ),
             className: 'text-right',
@@ -289,7 +285,7 @@ export default function CancellationVelocityPage() {
             header: priorLabel ? `vs ${priorLabel}` : 'vs Prior',
             accessor: (session, priorSession) => {
               // A session the comparison year has no match for is new, not missing data. A year
-              // with no status history has no sessions to match, so its rows read '-' (ruling 6).
+              // with no status history has no sessions to match, so its rows read '—' (ruling 6).
               if (!priorSession && comparisonYear != null && !summaryCards?.noHistory) {
                 return <span className={MUTED_PILL_CLASS}>new</span>
               }
@@ -304,7 +300,7 @@ export default function CancellationVelocityPage() {
               }
               return (
                 <span className={invertedDeltaColorClass(vsPrior)}>
-                  {vsPrior != null ? formatDeltaValue(vsPrior) : '-'}
+                  {vsPrior != null ? formatSignedCount(vsPrior) : '—'}
                 </span>
               )
             },
@@ -324,16 +320,14 @@ export default function CancellationVelocityPage() {
     {
       header: 'Change',
       accessor: (week) => (
-        <span className={invertedDeltaColorClass(week.delta)}>
-          {week.delta > 0 ? `+${week.delta}` : week.delta}
-        </span>
+        <span className={invertedDeltaColorClass(week.delta)}>{formatSignedCount(week.delta)}</span>
       ),
       className: 'text-right',
     },
     {
       header: 'Cumulative',
       accessor: (week) => (
-        <span className="text-red-600 dark:text-red-400">{week.enrolled.toLocaleString()}</span>
+        <span className="text-red-600 dark:text-red-400">{formatCount(week.enrolled)}</span>
       ),
       className: 'text-right',
     },
@@ -342,9 +336,7 @@ export default function CancellationVelocityPage() {
           {
             header: priorLabel ?? 'Prior Year',
             accessor: (_week: WeeklyDataPoint, priorPoint?: WeeklyDataPoint) => (
-              <span className="text-muted-foreground">
-                {priorPoint?.enrolled.toLocaleString() ?? '-'}
-              </span>
+              <span className="text-muted-foreground">{formatCount(priorPoint?.enrolled)}</span>
             ),
             className: 'text-right',
           } satisfies DeltaColumnDef,
@@ -352,11 +344,7 @@ export default function CancellationVelocityPage() {
             header: priorLabel ? `${priorLabel} Delta` : 'Prior Delta',
             accessor: (_week: WeeklyDataPoint, priorPoint?: WeeklyDataPoint) => (
               <span className="text-muted-foreground">
-                {priorPoint
-                  ? priorPoint.delta > 0
-                    ? `+${priorPoint.delta}`
-                    : priorPoint.delta
-                  : '-'}
+                {priorPoint ? formatSignedCount(priorPoint.delta) : '—'}
               </span>
             ),
             className: 'text-right',
@@ -396,7 +384,7 @@ export default function CancellationVelocityPage() {
               Cancelled ({currentYear}, Wk {summaryCards.currentWeekNumber})
             </p>
             <p className="text-xl font-bold text-red-600 dark:text-red-400">
-              {summaryCards.currentCancelled.toLocaleString()}
+              {formatCount(summaryCards.currentCancelled)}
             </p>
           </div>
           <div className="card-lodge p-3">
@@ -405,7 +393,7 @@ export default function CancellationVelocityPage() {
               {priorityDayMark}
             </p>
             <p className="text-foreground text-xl font-bold">
-              {summaryCards.priorAtWeek?.toLocaleString() ?? '-'}
+              {formatCount(summaryCards.priorAtWeek)}
             </p>
           </div>
           <div className="card-lodge p-3">
@@ -414,9 +402,9 @@ export default function CancellationVelocityPage() {
               {priorityDayMark && summaryCards.delta != null ? (
                 <span className={PRIORITY_DAY_PENDING_CLASS}>{PRIORITY_DAY_PENDING}</span>
               ) : summaryCards.delta != null ? (
-                formatDeltaValue(summaryCards.delta)
+                formatSignedCount(summaryCards.delta)
               ) : (
-                '-'
+                '—'
               )}
             </p>
           </div>
@@ -425,7 +413,7 @@ export default function CancellationVelocityPage() {
               {summaryCards.priorYear} Final Cancelled
             </p>
             <p className="text-foreground text-xl font-bold">
-              {summaryCards.priorFinal?.toLocaleString() ?? '-'}
+              {formatCount(summaryCards.priorFinal)}
               {summaryCards.noHistory && (
                 <span className={`${MUTED_PILL_CLASS} align-middle`}>
                   {historyStart ? `no history before ${historyStart}` : 'no history'}
@@ -447,8 +435,9 @@ export default function CancellationVelocityPage() {
         data.cancelled_to_date > 0 && (
           <div className="rounded-lg border border-amber-200 bg-amber-50/50 px-4 py-3 text-sm dark:border-amber-800 dark:bg-amber-950/30">
             <span className="font-medium text-amber-800 dark:text-amber-300">
-              {data.session_swap_count} of {data.cancelled_to_date} cancellations (
-              {Math.round((data.session_swap_count / data.cancelled_to_date) * 100)}%) are session
+              {formatCount(data.session_swap_count)} of {formatCount(data.cancelled_to_date)}{' '}
+              cancellations (
+              {formatPercent((data.session_swap_count / data.cancelled_to_date) * 100)}) are session
               swaps
             </span>
             <span className="text-muted-foreground">
@@ -614,6 +603,7 @@ export default function CancellationVelocityPage() {
               />
               <YAxis
                 className="text-xs"
+                tickFormatter={(v: number) => formatCount(v)}
                 tick={{ fill: 'hsl(var(--muted-foreground))' }}
                 label={{
                   value: 'Cumulative Cancelled',
@@ -651,7 +641,7 @@ export default function CancellationVelocityPage() {
                           : null
                         return (
                           <p key={entry.name} className="text-sm" style={{ color: entry.color }}>
-                            {entry.name}: {Number(entry.value).toLocaleString()}
+                            {entry.name}: {formatCount(Number(entry.value))}
                             {priorDate && (
                               <span className="text-muted-foreground ml-1 text-xs">
                                 ({priorDate})
@@ -798,6 +788,7 @@ export default function CancellationVelocityPage() {
               />
               <YAxis
                 className="text-xs"
+                tickFormatter={(v: number) => formatCount(v)}
                 tick={{ fill: 'hsl(var(--muted-foreground))' }}
                 label={{
                   value: 'Cumulative Cancelled',
@@ -836,7 +827,7 @@ export default function CancellationVelocityPage() {
                             : null
                         return (
                           <p key={entry.name} className="text-sm" style={{ color: entry.color }}>
-                            {entry.name}: {Number(entry.value).toLocaleString()}
+                            {entry.name}: {formatCount(Number(entry.value))}
                             {priorDate && (
                               <span className="text-muted-foreground ml-1 text-xs">
                                 ({priorDate})

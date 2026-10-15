@@ -21,6 +21,7 @@ import {
   VerticalTooltipShell,
 } from './cssChartUtils'
 import type { YAxisWidth } from './cssChartUtils'
+import { formatCount } from '../../utils/numberFormat'
 
 export interface CssVerticalBarItem {
   name: string
@@ -131,7 +132,7 @@ export function CssVerticalBarChart({
 
             {data.map((item, index) => {
               const barHeightPx = (item.value / axisMax) * drawingHeight
-              const label = labelFormat ? labelFormat(item) : String(item.value)
+              const label = labelFormat ? labelFormat(item) : formatCount(item.value)
 
               const sparseHoverClass =
                 columnSizing.mode === 'sparse'

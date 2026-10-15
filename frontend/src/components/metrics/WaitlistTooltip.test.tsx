@@ -93,4 +93,18 @@ describe('WaitlistTooltip', () => {
     expect(screen.getByText(/Liz S\./)).toBeInTheDocument()
     expect(screen.queryByText(/Elizabeth/)).not.toBeInTheDocument()
   })
+
+  it('separates a large waitlist count and the "more" tail', () => {
+    render(
+      <WaitlistTooltip
+        isVisible={true}
+        position={{ x: 100, y: 100 }}
+        totalCount={1293}
+        genderLabel="girls"
+        persons={persons}
+      />
+    )
+    expect(screen.getByText('1,293 girls waitlisted')).toBeInTheDocument()
+    expect(screen.getByText('+ 1,290 more')).toBeInTheDocument()
+  })
 })

@@ -4,6 +4,7 @@
  * Recharts handles only the SVG content (lines, dots, grid).
  */
 
+import { formatCount, formatPercent } from '../../utils/numberFormat'
 import {
   LineChart,
   Line,
@@ -145,7 +146,12 @@ export function TrendLineChart({
           <p className="text-foreground mb-2 font-medium">{label}</p>
           {payload.map((entry, index) => (
             <p key={index} className="text-sm" style={{ color: entry.color }}>
-              {entry.name}: <span className="font-semibold">{entry.value.toLocaleString()}</span>
+              {entry.name}:{' '}
+              <span className="font-semibold">
+                {metric === 'cancellation_rate'
+                  ? formatPercent(entry.value)
+                  : formatCount(entry.value)}
+              </span>
             </p>
           ))}
         </div>
@@ -305,7 +311,7 @@ export function TrendLineChart({
             <Line
               type="monotone"
               dataKey="cancellation_rate"
-              name="Cancellation Rate %"
+              name="Cancellation Rate"
               stroke={COLORS.cancellation_rate}
               strokeWidth={2}
               strokeLinecap="round"

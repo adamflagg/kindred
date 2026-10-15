@@ -2,6 +2,7 @@ import type { SessionBreakdown } from '../../types/metrics'
 import { sessionName } from '../../utils/sessionName'
 import { MUTED_PILL_CLASS } from '../velocity'
 import { buildSessionDetailRows } from './sessionDetailRows'
+import { formatCount, formatPercent, formatSignedCount } from '../../utils/numberFormat'
 
 function deltaClass(delta: number | null): string {
   if (delta && delta > 0) return 'text-emerald-600 dark:text-emerald-400'
@@ -69,12 +70,12 @@ export function SessionDetailsTable({
                 <span className={MUTED_PILL_CLASS}>not offered in {currentYear}</span>
               )}
             </td>
-            <td className="text-foreground px-4 py-3 text-right">{row.enrolled ?? '—'}</td>
-            <td className="text-foreground px-4 py-3 text-right">{row.capacity ?? '—'}</td>
+            <td className="text-foreground px-4 py-3 text-right">{formatCount(row.enrolled)}</td>
+            <td className="text-foreground px-4 py-3 text-right">{formatCount(row.capacity)}</td>
             <td className="px-4 py-3 text-right">
               {row.utilization !== null ? (
                 <span className={utilizationClass(row.utilization)}>
-                  {row.utilization.toFixed(1)}%
+                  {formatPercent(row.utilization)}
                 </span>
               ) : (
                 <span className="text-muted-foreground">—</span>
@@ -82,9 +83,11 @@ export function SessionDetailsTable({
             </td>
             {comparing && (
               <>
-                <td className="text-foreground px-4 py-3 text-right">{row.priorEnrolled ?? '—'}</td>
+                <td className="text-foreground px-4 py-3 text-right">
+                  {formatCount(row.priorEnrolled)}
+                </td>
                 <td className={`px-4 py-3 text-right ${deltaClass(row.delta)}`}>
-                  {row.delta !== null ? (row.delta > 0 ? `+${row.delta}` : row.delta) : '—'}
+                  {row.delta !== null ? formatSignedCount(row.delta) : '—'}
                 </td>
               </>
             )}

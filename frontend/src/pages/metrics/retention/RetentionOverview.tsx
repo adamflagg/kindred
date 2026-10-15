@@ -39,6 +39,7 @@ import {
 import { OutlierSection } from '../../../components/metrics/RetentionNotableOutliers'
 import type { DrilldownFilter } from '../../../types/metrics'
 import { Loader2, AlertCircle } from 'lucide-react'
+import { formatCount, formatPercent, formatRate } from '../../../utils/numberFormat'
 
 export default function RetentionOverview() {
   const { currentYear } = useCurrentYear()
@@ -173,7 +174,7 @@ export default function RetentionOverview() {
         <MetricCard
           title={`Returned to ${currentYear}`}
           value={data.returned_count}
-          subtitle={`${Math.round(data.overall_retention_rate * 100)}% retention rate`}
+          subtitle={`${formatRate(data.overall_retention_rate)} retention rate`}
           onClick={() =>
             setFilter({
               type: 'retention_returned',
@@ -186,7 +187,7 @@ export default function RetentionOverview() {
         <MetricCard
           title="Did Not Return"
           value={didNotReturn}
-          subtitle={`${data.base_year_total > 0 ? Math.round((didNotReturn / data.base_year_total) * 100) : 0}% attrition`}
+          subtitle={`${formatPercent(data.base_year_total > 0 ? (didNotReturn / data.base_year_total) * 100 : 0)} attrition`}
           onClick={() =>
             setFilter({
               type: 'retention_not_returned',
@@ -198,7 +199,7 @@ export default function RetentionOverview() {
         />
         <MetricCard
           title="Overall Retention Rate"
-          value={`${Math.round(data.overall_retention_rate * 100)}%`}
+          value={formatRate(data.overall_retention_rate)}
           subtitle={`${priorYear} → ${currentYear}`}
           trend={data.overall_retention_rate >= 0.5 ? 'up' : 'down'}
           trendValue={data.overall_retention_rate >= 0.5 ? 'Good' : 'Low'}
@@ -221,31 +222,32 @@ export default function RetentionOverview() {
         if (tenthExcluded > 0 && gradExcluded > 0) {
           noteContent = (
             <>
-              Excluding {tenthExcluded} rising 10th {graderS(tenthExcluded)} and {gradExcluded}{' '}
-              rising 12th {graderS(gradExcluded)}. Only showing retention within camp sessions or
-              teen programs — check the box above to include 10th grader retention stats.
+              Excluding {formatCount(tenthExcluded)} rising 10th {graderS(tenthExcluded)} and{' '}
+              {formatCount(gradExcluded)} rising 12th {graderS(gradExcluded)}. Only showing
+              retention within camp sessions or teen programs — check the box above to include 10th
+              grader retention stats.
             </>
           )
         } else if (tenthExcluded > 0) {
           if (scopeHasTeens) {
             noteContent = (
               <>
-                Excluding {tenthExcluded} rising 10th {graderS(tenthExcluded)}. Only showing
-                retention within camp sessions or teen programs — check the box above to include
-                10th grader retention stats.
+                Excluding {formatCount(tenthExcluded)} rising 10th {graderS(tenthExcluded)}. Only
+                showing retention within camp sessions or teen programs — check the box above to
+                include 10th grader retention stats.
               </>
             )
           } else {
             noteContent = (
               <>
-                Excluding {tenthExcluded} rising 10th {graderS(tenthExcluded)}.
+                Excluding {formatCount(tenthExcluded)} rising 10th {graderS(tenthExcluded)}.
               </>
             )
           }
         } else {
           noteContent = (
             <>
-              Excluding {gradExcluded} rising 12th {graderS(gradExcluded)}.
+              Excluding {formatCount(gradExcluded)} rising 12th {graderS(gradExcluded)}.
             </>
           )
         }

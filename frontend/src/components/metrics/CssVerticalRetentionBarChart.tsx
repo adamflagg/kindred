@@ -10,6 +10,7 @@ import { useCallback, useMemo } from 'react'
 import { CssVerticalBarChart, type CssVerticalBarItem } from './CssVerticalBarChart'
 import { sortRetentionBarData, type RetentionSortBy } from '../../utils/retentionTransforms'
 import type { RetentionRateBarItem } from '../../types/metrics'
+import { formatCount, formatPercent } from '../../utils/numberFormat'
 
 interface CssVerticalRetentionBarChartProps {
   data: RetentionRateBarItem[]
@@ -49,7 +50,7 @@ export function CssVerticalRetentionBarChart({
       sorted.map((item) => ({
         ...item,
         name: item.name,
-        value: Math.round(item.retentionRate * 100),
+        value: item.retentionRate * 100,
       })),
     [sorted]
   )
@@ -65,9 +66,9 @@ export function CssVerticalRetentionBarChart({
       if (showCounts) {
         const returned = item['returnedCount'] as number
         const base = item['baseCount'] as number
-        return `${rate}% (${returned}/${base})`
+        return `${formatPercent(rate)} (${formatCount(returned)}/${formatCount(base)})`
       }
-      return `${rate}%`
+      return formatPercent(rate)
     },
     [showCounts]
   )
@@ -79,10 +80,11 @@ export function CssVerticalRetentionBarChart({
       <>
         <p className="text-foreground font-medium">{item.name}</p>
         <p className="text-muted-foreground text-sm">
-          Retention: <span className="text-foreground font-semibold">{item.value}%</span>
+          Retention:{' '}
+          <span className="text-foreground font-semibold">{formatPercent(item.value)}</span>
         </p>
         <p className="text-muted-foreground text-sm">
-          {returned} of {base} returned
+          {formatCount(returned)} of {formatCount(base)} returned
         </p>
       </>
     )

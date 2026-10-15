@@ -14,6 +14,7 @@
  * data using ComparisonSummaryTable for delta details.
  */
 
+import { formatPercent } from '../../../utils/numberFormat'
 import { useCallback, useMemo } from 'react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useComparisonRegistrationData } from '../../../hooks/useComparisonRegistrationData'
@@ -317,7 +318,7 @@ export default function RegistrationOverview() {
           compareValue={compData?.new_vs_returning.new_count}
           compareYear={compareYear ?? undefined}
           sentiment="neutral"
-          subtitle={`${data.new_vs_returning.new_percentage.toFixed(1)}% of enrolled`}
+          subtitle={`${formatPercent(data.new_vs_returning.new_percentage)} of enrolled`}
           onClick={() =>
             setFilter({
               type: 'returning_status',
@@ -331,7 +332,7 @@ export default function RegistrationOverview() {
           value={data.new_vs_returning.returning_count}
           compareValue={compData?.new_vs_returning.returning_count}
           compareYear={compareYear ?? undefined}
-          subtitle={`${data.new_vs_returning.returning_percentage.toFixed(1)}% of enrolled`}
+          subtitle={`${formatPercent(data.new_vs_returning.returning_percentage)} of enrolled`}
           onClick={() =>
             setFilter({
               type: 'returning_status',

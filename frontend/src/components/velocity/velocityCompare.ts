@@ -3,6 +3,8 @@
  * page compares with, the same-point "vs" value, and the small labels around them.
  */
 
+import { formatCount } from '../../utils/numberFormat'
+
 /** Small muted pill, as used for the "new" session marker and the no-history note. */
 export const MUTED_PILL_CLASS =
   'bg-muted text-muted-foreground ml-1.5 rounded-full px-2 py-0.5 text-xs font-medium'
@@ -73,13 +75,12 @@ export function buildLegendLabels({
   if (currentValue == null) {
     labels[current] = current
   } else if (isLive && currentWeekNumber != null) {
-    labels[current] = `${current} (${currentValue.toLocaleString()} at Wk ${currentWeekNumber})`
+    labels[current] = `${current} (${formatCount(currentValue)} at Wk ${currentWeekNumber})`
   } else {
-    labels[current] = `${current} (${currentValue.toLocaleString()} final)`
+    labels[current] = `${current} (${formatCount(currentValue)} final)`
   }
   for (const { year, final } of priors) {
-    labels[String(year)] =
-      final == null ? String(year) : `${year} (${final.toLocaleString()} final)`
+    labels[String(year)] = final == null ? String(year) : `${year} (${formatCount(final)} final)`
   }
   return labels
 }

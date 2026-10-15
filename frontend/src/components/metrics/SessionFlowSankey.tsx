@@ -6,6 +6,7 @@
  * across source and target sides. Links are colored by source session.
  */
 
+import { formatCount } from '../../utils/numberFormat'
 import { useState, useMemo } from 'react'
 import { Sankey, Tooltip, ResponsiveContainer } from 'recharts'
 import type { SankeyData } from '../../utils/retentionTransforms'
@@ -45,7 +46,7 @@ function SankeyTooltip({ active, payload, sankeyData }: CustomTooltipProps) {
       <span className="text-muted-foreground mx-1">&rarr;</span>
       <span className="font-medium">{targetName}</span>
       <span className="text-muted-foreground ml-2">
-        {value} camper{value !== 1 ? 's' : ''}
+        {formatCount(value)} camper{value !== 1 ? 's' : ''}
       </span>
     </div>
   )

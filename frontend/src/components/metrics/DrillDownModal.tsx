@@ -8,6 +8,7 @@
  * - CSV export
  */
 
+import { formatCount } from '../../utils/numberFormat'
 import { useState, useMemo, useEffect } from 'react'
 import { Link } from 'react-router'
 import { X, Download, Search, ArrowUpDown, Loader2 } from 'lucide-react'
@@ -425,14 +426,14 @@ export function DrillDownModal({
           <div>
             <h2 className="text-foreground text-lg font-semibold">
               {filter.titleFormat === 'adjective'
-                ? `${sortedAttendees.length} ${filter.label} Camper${sortedAttendees.length !== 1 ? 's' : ''}`
-                : `${sortedAttendees.length} camper${sortedAttendees.length !== 1 ? 's' : ''} in ${filter.label}`}
+                ? `${formatCount(sortedAttendees.length)} ${filter.label} Camper${sortedAttendees.length !== 1 ? 's' : ''}`
+                : `${formatCount(sortedAttendees.length)} camper${sortedAttendees.length !== 1 ? 's' : ''} in ${filter.label}`}
             </h2>
             <p className="text-muted-foreground text-sm">
               {isRetentionDrilldown
                 ? `${filter.retentionContext?.baseYear} → ${filter.retentionContext?.compareYear} retention data`
                 : `${year} enrollment data`}
-              {searchTerm && ` (filtered from ${attendees.length})`}
+              {searchTerm && ` (filtered from ${formatCount(attendees.length)})`}
             </p>
           </div>
           <div className="flex items-center gap-3">

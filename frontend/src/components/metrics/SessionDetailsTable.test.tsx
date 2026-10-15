@@ -32,7 +32,7 @@ describe('SessionDetailsTable', () => {
       '—',
       '—',
       '23',
-      '-23',
+      '\u221223',
     ])
     expect(within(row).getByText('not offered in 2026')).toBeInTheDocument()
 

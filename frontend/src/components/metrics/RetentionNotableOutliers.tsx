@@ -5,6 +5,7 @@
 
 import { TrendingUp, TrendingDown } from 'lucide-react'
 import type { RetentionOutlier } from '../../utils/retentionTransforms'
+import { formatCount, formatPercent, formatSignedPercent } from '../../utils/numberFormat'
 
 interface RetentionNotableOutliersProps {
   cityOutliers: RetentionOutlier[]
@@ -21,7 +22,6 @@ export function OutlierSection({ outliers, max }: { outliers: RetentionOutlier[]
       <h3 className="text-foreground text-base font-semibold">Notable Changes</h3>
       <ul className="divide-border mt-2 divide-y">
         {outliers.slice(0, max).map((o) => {
-          const rate = Math.round(o.retentionRate * 100)
           const isAbove = o.deviation > 0
           const Icon = isAbove ? TrendingUp : TrendingDown
           return (
@@ -29,10 +29,12 @@ export function OutlierSection({ outliers, max }: { outliers: RetentionOutlier[]
               <div className="min-w-0">
                 <div className="flex items-baseline gap-1.5">
                   <span className="text-foreground truncate text-sm font-medium">{o.name}</span>
-                  <span className="text-muted-foreground text-sm">{rate}%</span>
+                  <span className="text-muted-foreground text-sm">
+                    {formatPercent(o.retentionRate * 100)}
+                  </span>
                 </div>
                 <p className="text-muted-foreground text-xs">
-                  {o.returnedCount} of {o.baseCount} returned
+                  {formatCount(o.returnedCount)} of {formatCount(o.baseCount)} returned
                 </p>
               </div>
               <span
@@ -43,8 +45,7 @@ export function OutlierSection({ outliers, max }: { outliers: RetentionOutlier[]
                 }`}
               >
                 <Icon className="h-3 w-3" />
-                {isAbove ? '+' : ''}
-                {o.deviation}%
+                {formatSignedPercent(o.deviation)}
               </span>
             </li>
           )

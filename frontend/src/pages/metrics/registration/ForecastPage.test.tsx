@@ -647,7 +647,7 @@ describe('ForecastPage like-with-like (#3209 rows 23, 24, 26)', () => {
     renderWithProviders(<ForecastPage />)
     await waitFor(() => expect(screen.getByText('777')).toBeInTheDocument())
     expect(screen.getByText('555')).toBeInTheDocument()
-    expect(screen.getByText('-697')).toBeInTheDocument()
+    expect(screen.getByText('\u2212697')).toBeInTheDocument()
   })
 })
 
@@ -732,5 +732,38 @@ describe('ForecastPage priority-day note (decision 45)', () => {
       await waitFor(() => expect(screen.getByText('Session 2')).toBeInTheDocument())
       expect(screen.queryByText('updates tomorrow')).not.toBeInTheDocument()
     })
+  })
+})
+
+describe('ForecastPage number format (decision 43)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockUseMetricsSession.mockReturnValue(defaultMetricsSession())
+  })
+
+  it('separates the counts, splits the gender pair and writes a negative with a true minus', async () => {
+    setupMockFetch(
+      mockResponse([
+        session({
+          session_cm_id: 1,
+          session_name: 'Session 2',
+          participant_goal: 1500,
+          enrolled: 1293,
+          enrolled_boys: 1000,
+          enrolled_girls: 293,
+          participants_vs_budget: -1207,
+          participants_vs_prior_year: -56,
+        }),
+      ])
+    )
+    renderWithProviders(<ForecastPage />)
+    await waitFor(() => expect(screen.getByText('Session 2')).toBeInTheDocument())
+    const row = screen.getByText('Session 2').closest('tr')!
+    const cells = within(row)
+      .getAllByRole('cell')
+      .map((c) => c.textContent)
+    expect(cells).toEqual(
+      expect.arrayContaining(['1,500', '1,293', '1,000 / 293', '\u22121,207', '\u221256'])
+    )
   })
 })

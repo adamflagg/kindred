@@ -111,9 +111,6 @@ vi.mock('../../../components/metrics/CssVerticalRetentionBarChart', () => ({
 vi.mock('../../../components/metrics/RetentionRateLineChart', () => ({
   RetentionRateLineChart: () => null,
 }))
-vi.mock('../../../components/metrics/MetricCard', () => ({
-  MetricCard: () => null,
-}))
 vi.mock('../../../components/metrics/RetentionNotableOutliers', () => ({
   OutlierSection: () => null,
 }))
@@ -352,5 +349,46 @@ describe('RetentionOverview grade-10 reference marking + aged-out note (legacy)'
       // Must NOT point to by-grade chart (that's flag-OFF copy)
       expect(screen.queryByText(/by-grade chart/i)).not.toBeInTheDocument()
     })
+  })
+})
+
+describe('RetentionOverview number format', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockIncludeTeenPipeline = false
+    mockActiveSessionTypes = ['main', 'embedded', 'ag', 'quest']
+    useRetentionMetricsMock.mockReturnValue({
+      data: {
+        ...mockData,
+        base_year_total: 1293,
+        returned_count: 878,
+        overall_retention_rate: 0.679,
+      },
+      isLoading: false,
+      error: null,
+    })
+  })
+
+  it('writes the retention rate to one decimal in the subtitle and the rate card', () => {
+    render(<RetentionOverview />)
+    expect(screen.getByText('67.9% retention rate')).toBeInTheDocument()
+    expect(screen.getByText('67.9%')).toBeInTheDocument()
+  })
+
+  it('writes attrition to one decimal and the counts with separators', () => {
+    render(<RetentionOverview />)
+    // 415 of 1,293 did not return
+    expect(screen.getByText('32.1% attrition')).toBeInTheDocument()
+    expect(screen.getByText('1,293')).toBeInTheDocument()
+  })
+
+  it('separates the excluded counts in the aged-out note', () => {
+    useRetentionMetricsMock.mockReturnValue({
+      data: { ...mockData, aged_out_count: 1234 },
+      isLoading: false,
+      error: null,
+    })
+    render(<RetentionOverview />)
+    expect(screen.getByText(/Excluding 1,234 rising 10th graders/)).toBeInTheDocument()
   })
 })

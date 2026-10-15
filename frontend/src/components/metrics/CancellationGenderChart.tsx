@@ -6,6 +6,7 @@
  * Outer ring: Each gender split into prior status segments.
  */
 
+import { formatCount, formatPercent } from '../../utils/numberFormat'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
 import type { GenderBreakdown, DrilldownFilter } from '../../types/metrics'
 import { ChartCard } from './ChartCard'
@@ -130,15 +131,15 @@ export function CancellationGenderChart({
   }) => {
     if (active && payload?.length && payload[0]) {
       const item = payload[0].payload
-      const pct = total > 0 ? ((item.value / total) * 100).toFixed(0) : '0'
+      const pct = formatPercent(total > 0 ? (item.value / total) * 100 : 0)
       return (
         <div className="bg-card border-border rounded-lg border p-3 shadow-lg">
           <p className="text-foreground font-medium">{item.name}</p>
           <p className="text-muted-foreground text-sm">
-            Count: <span className="text-foreground font-semibold">{item.value}</span>
+            Count: <span className="text-foreground font-semibold">{formatCount(item.value)}</span>
           </p>
           <p className="text-muted-foreground text-sm">
-            Percentage: <span className="text-foreground font-semibold">{pct}%</span>
+            Percentage: <span className="text-foreground font-semibold">{pct}</span>
           </p>
         </div>
       )

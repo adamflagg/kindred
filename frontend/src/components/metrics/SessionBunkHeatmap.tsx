@@ -15,6 +15,7 @@ import type { SessionDateLookup } from '../../utils/sessionUtils'
 import { compareByDateThenName } from '../../utils/sessionUtils'
 import type { BunkStaffInfo } from '../../hooks/useBunkStaff'
 import { BunkCellTooltip } from './BunkStaffTooltip'
+import { formatRate } from '../../utils/numberFormat'
 import { getRetentionCellColor as getCellColor } from '../../utils/retentionColors'
 
 type BunkCategory = 'boys' | 'girls' | 'ag'
@@ -121,7 +122,6 @@ function BunkHeatmapTable({ title, sessions, bunks, lookup, bunkStaff }: BunkHea
                       </td>
                     )
                   }
-                  const pct = Math.round(item.retention_rate * 100)
                   const cellClass = [
                     'min-w-[2.5rem] border border-border/50 px-2 py-2 text-center font-medium',
                     getCellColor(item.retention_rate),
@@ -138,7 +138,7 @@ function BunkHeatmapTable({ title, sessions, bunks, lookup, bunkStaff }: BunkHea
                       onMouseMove={handleMouseMove}
                       onMouseLeave={handleMouseLeave}
                     >
-                      {pct}%
+                      {formatRate(item.retention_rate)}
                     </td>
                   )
                 })}

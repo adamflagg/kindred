@@ -9,6 +9,7 @@
 import { useState, useCallback, useMemo, type ReactNode } from 'react'
 import type { DrilldownFilter } from '../../types/metrics'
 import { getNiceTicks, useChartTooltip, calculateBarSizing } from './cssChartUtils'
+import { formatCount, formatPercent } from '../../utils/numberFormat'
 
 interface ChartDataItem {
   name: string
@@ -137,7 +138,7 @@ export function CssHorizontalBarChart({
                   className="text-muted-foreground shrink-0 text-center text-sm tabular-nums"
                   style={{ width: valueWidth }}
                 >
-                  {item.value}
+                  {formatCount(item.value)}
                 </span>
               </>
             )
@@ -186,7 +187,7 @@ export function CssHorizontalBarChart({
                   transform: 'translateX(-50%)',
                 }}
               >
-                {tick}
+                {formatCount(tick)}
               </span>
             ))}
           </div>
@@ -206,13 +207,16 @@ export function CssHorizontalBarChart({
           >
             <p className="text-foreground font-medium">{tooltip.item.name}</p>
             <p className="text-muted-foreground text-sm">
-              Count: <span className="text-foreground font-semibold">{tooltip.item.value}</span>
+              Count:{' '}
+              <span className="text-foreground font-semibold">
+                {formatCount(tooltip.item.value)}
+              </span>
             </p>
             {tooltip.item.percentage !== undefined && (
               <p className="text-muted-foreground text-sm">
                 {percentageLabel}:{' '}
                 <span className="text-foreground font-semibold">
-                  {tooltip.item.percentage.toFixed(1)}%
+                  {formatPercent(tooltip.item.percentage)}
                 </span>
               </p>
             )}

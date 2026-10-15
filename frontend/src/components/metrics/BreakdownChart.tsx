@@ -8,6 +8,7 @@ import { Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 import type { PieLabelRenderProps } from 'recharts'
 import type { DrilldownFilter } from '../../types/metrics'
 import { ChartCard } from './ChartCard'
+import { formatCount, formatPercent } from '../../utils/numberFormat'
 
 const COLORS = [
   'hsl(160, 100%, 35%)', // Primary green
@@ -85,12 +86,14 @@ export function BreakdownChart({
         <div className="bg-card border-border rounded-lg border p-3 shadow-lg">
           <p className="text-foreground font-medium">{item.name}</p>
           <p className="text-muted-foreground text-sm">
-            Count: <span className="text-foreground font-semibold">{item.value}</span>
+            Count: <span className="text-foreground font-semibold">{formatCount(item.value)}</span>
           </p>
           {item.percentage !== undefined && (
             <p className="text-muted-foreground text-sm">
               Percentage:{' '}
-              <span className="text-foreground font-semibold">{item.percentage.toFixed(1)}%</span>
+              <span className="text-foreground font-semibold">
+                {formatPercent(item.percentage)}
+              </span>
             </p>
           )}
         </div>
@@ -122,9 +125,9 @@ export function BreakdownChart({
               const pct = item.percentage
               const count = item.value
               const labelName = props.name ?? ''
-              let text = `${labelName}: ${count}`
+              let text = `${labelName}: ${formatCount(count)}`
               if (showPercentage && pct !== undefined) {
-                text = `${labelName}: ${count} (${pct.toFixed(0)}%)`
+                text = `${labelName}: ${formatCount(count)} (${formatPercent(pct)})`
               }
               // Position labels to the left/right of the pie, never above/below
               const RADIAN = Math.PI / 180

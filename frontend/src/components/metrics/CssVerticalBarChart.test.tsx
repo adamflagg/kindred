@@ -346,13 +346,13 @@ describe('CssVerticalRetentionBarChart wrapper', () => {
     // Use a rate that doesn't collide with Y-axis ticks (0/25/50/75/100)
     const data = [{ name: 'Test', retentionRate: 0.83, baseCount: 100, returnedCount: 83 }]
     render(<CssVerticalRetentionBarChart data={data} title="Labels" />)
-    expect(screen.getByText('83%')).toBeInTheDocument()
+    expect(screen.getByText('83.0%')).toBeInTheDocument()
   })
 
   it('should show rate label with counts when showCounts is true', () => {
     const data = [{ name: 'Test', retentionRate: 0.75, baseCount: 100, returnedCount: 75 }]
     render(<CssVerticalRetentionBarChart data={data} title="Labels" showCounts />)
-    expect(screen.getByText('75% (75/100)')).toBeInTheDocument()
+    expect(screen.getByText('75.0% (75/100)')).toBeInTheDocument()
   })
 
   it('should call onBarClick with the original RetentionRateBarItem', () => {

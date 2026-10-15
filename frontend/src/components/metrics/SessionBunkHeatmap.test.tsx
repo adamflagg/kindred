@@ -91,7 +91,7 @@ describe('SessionBunkHeatmap', () => {
     const boysTable = getTableInSection('Boys Cabins')
     const rows = within(boysTable).getAllByRole('row')
 
-    // Session 1 row in boys table: B-1=80%, B-2=25%
+    // Session 1 row in boys table: B-1=80.0%, B-2=25.0%
     const session1Row = rows.find(
       (row) => within(row).queryByRole('rowheader')?.textContent === 'Session 1'
     )
@@ -99,8 +99,8 @@ describe('SessionBunkHeatmap', () => {
 
     const session1Cells = within(session1Row!).getAllByRole('cell')
     const session1Text = session1Cells.map((c) => c.textContent)
-    expect(session1Text).toContain('80%')
-    expect(session1Text).toContain('25%')
+    expect(session1Text).toContain('80.0%')
+    expect(session1Text).toContain('25.0%')
   })
 
   it('shows "—" for missing session-bunk combos', () => {
@@ -134,7 +134,7 @@ describe('SessionBunkHeatmap', () => {
       (row) => within(row).queryByRole('rowheader')?.textContent === 'Session 1'
     )
     const cells = within(session1Row!).getAllByRole('cell')
-    const b1Cell = cells.find((c) => c.textContent === '80%')
+    const b1Cell = cells.find((c) => c.textContent === '80.0%')
 
     fireEvent.mouseEnter(b1Cell!)
 
@@ -416,7 +416,7 @@ describe('SessionBunkHeatmap', () => {
 
     // The B-1 cell in Session 1 should have cursor-help (staff data exists)
     const cells = within(session1Row!).getAllByRole('cell')
-    const b1Cell = cells.find((c) => c.textContent === '80%')
+    const b1Cell = cells.find((c) => c.textContent === '80.0%')
     expect(b1Cell).toBeDefined()
     expect(b1Cell!.className).toContain('cursor-help')
   })
@@ -436,7 +436,7 @@ describe('SessionBunkHeatmap', () => {
 
     // The B-2 cell in Session 1 should NOT have cursor-help (no staff data)
     const cells = within(session1Row!).getAllByRole('cell')
-    const b2Cell = cells.find((c) => c.textContent === '25%')
+    const b2Cell = cells.find((c) => c.textContent === '25.0%')
     expect(b2Cell).toBeDefined()
     expect(b2Cell!.className).not.toContain('cursor-help')
   })
@@ -456,7 +456,7 @@ describe('SessionBunkHeatmap', () => {
       (row) => within(row).queryByRole('rowheader')?.textContent === 'Session 1'
     )
     const cells = within(session1Row!).getAllByRole('cell')
-    const b1Cell = cells.find((c) => c.textContent === '80%')
+    const b1Cell = cells.find((c) => c.textContent === '80.0%')
 
     fireEvent.mouseEnter(b1Cell!)
 
@@ -475,7 +475,7 @@ describe('SessionBunkHeatmap', () => {
       (row) => within(row).queryByRole('rowheader')?.textContent === 'Session 1'
     )
     const cells = within(session1Row!).getAllByRole('cell')
-    const b1Cell = cells.find((c) => c.textContent === '80%')
+    const b1Cell = cells.find((c) => c.textContent === '80.0%')
 
     fireEvent.mouseEnter(b1Cell!)
     expect(screen.getByText(/8 of 10 returned/)).toBeInTheDocument()
@@ -496,7 +496,7 @@ describe('SessionBunkHeatmap', () => {
       (row) => within(row).queryByRole('rowheader')?.textContent === 'Session 1'
     )
     const cells = within(session1Row!).getAllByRole('cell')
-    const b2Cell = cells.find((c) => c.textContent === '25%')
+    const b2Cell = cells.find((c) => c.textContent === '25.0%')
 
     fireEvent.mouseEnter(b2Cell!)
 

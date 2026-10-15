@@ -4,10 +4,11 @@
  * TDD: Tests written first to define expected rendering behavior
  * for the waitlist analysis tab before implementation.
  */
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import WaitlistAnalysis from './WaitlistAnalysis'
+import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { SESSION_LABEL_WIDTH } from '../../../components/metrics/cssChartUtils'
 
 // Mock data matching the WaitlistMetrics interface
@@ -387,5 +388,61 @@ describe('WaitlistAnalysis', () => {
       // The session chart renders the "Waitlist by Session" heading
       expect(screen.getAllByText(/waitlist by session/i).length).toBeGreaterThanOrEqual(1)
     })
+  })
+})
+
+describe('WaitlistAnalysis number format', () => {
+  const bigSession = {
+    session_cm_id: 1001,
+    session_name: 'Session 1',
+    waitlisted: 1500,
+    no_enrollment: 1000,
+    has_enrollment: 500,
+    accepted: 1234,
+    declined: 266,
+    enrolled_in: [],
+  }
+
+  it('separates the session table counts and writes a fall with a true minus', () => {
+    mockUseWaitlistMetrics.mockImplementation((year: number) => ({
+      data: {
+        ...mockWaitlistData,
+        year,
+        by_session: [{ ...bigSession, waitlisted: year === 2026 ? 1500 : 2750 }],
+      },
+      isLoading: false,
+      error: null,
+    }))
+    vi.mocked(useMetricsSession).mockReturnValue({
+      selectedSessionCmId: null,
+      selectedSession: undefined,
+      sessions: [],
+      activeSessionTypes: ['main', 'embedded', 'ag'],
+      compareYear: 2025,
+      isComparing: true,
+      durationParam: undefined,
+      filterOptions: {},
+    } as unknown as ReturnType<typeof useMetricsSession>)
+
+    renderWithClient()
+    const table = screen.getByText('Session Details').closest('.card-lodge') as HTMLElement
+    const row = within(table)
+      .getByText('Session 1', { selector: 'td' })
+      .closest('tr') as HTMLElement
+    expect(
+      within(row)
+        .getAllByRole('cell')
+        .map((c) => c.textContent)
+    ).toEqual(['Session 1', '1,000', '500', '1,234', '266', '1,500', '2,750', '\u22121,250'])
+  })
+
+  it('separates the average wait days', () => {
+    mockUseWaitlistMetrics.mockReturnValue({
+      data: { ...mockWaitlistData, avg_days_to_acceptance: 1234.4 },
+      isLoading: false,
+      error: null,
+    })
+    renderWithClient()
+    expect(screen.getByText('1,234 days')).toBeInTheDocument()
   })
 })

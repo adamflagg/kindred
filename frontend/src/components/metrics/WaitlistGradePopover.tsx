@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { formatCount } from '../../utils/numberFormat'
 import { createPortal } from 'react-dom'
 import type { WaitlistedPerson } from '../../hooks/useSessionAvailability'
 
@@ -86,8 +87,8 @@ export function WaitlistGradePopover({
   const displayCount = totalGradeCount ?? persons.length
   const isPartial = persons.length < displayCount
   const headerText = genderLabel
-    ? `${displayCount} waitlisted ${gradeLbl}-grade ${genderLabel}`
-    : `${displayCount} waitlisted ${gradeLbl}-grade`
+    ? `${formatCount(displayCount)} waitlisted ${gradeLbl}-grade ${genderLabel}`
+    : `${formatCount(displayCount)} waitlisted ${gradeLbl}-grade`
 
   return createPortal(
     <div
@@ -111,7 +112,7 @@ export function WaitlistGradePopover({
       </div>
       <div className="text-muted-foreground mt-2 border-t pt-1.5 text-[10px]">
         {isPartial
-          ? `Showing ${persons.length} of ${displayCount} — click WL pill for full list`
+          ? `Showing ${formatCount(persons.length)} of ${formatCount(displayCount)} — click WL pill for full list`
           : 'Position # is session waitlist order'}
       </div>
     </div>,

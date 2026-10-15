@@ -6,6 +6,7 @@
  * other vertical/horizontal CSS charts.
  */
 
+import { formatCount } from '../../utils/numberFormat'
 import {
   type MouseEvent,
   type RefObject,
@@ -383,7 +384,7 @@ export function VerticalYAxis({
   drawingHeight,
   barsHeight,
   width = 'w-8',
-  formatTick = String,
+  formatTick = formatCount,
 }: VerticalYAxisProps) {
   return createElement(
     'div',

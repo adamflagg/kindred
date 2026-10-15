@@ -43,7 +43,7 @@ import type { CancellationSessionBreakdown } from '../../../types/metrics'
 import { sessionName } from '../../../utils/sessionName'
 import { MetricsQueryGuard } from '../../../components/metrics/MetricsQueryGuard'
 import { DefinitionNotes, DefRef } from '../../../components/camperships/kit/DefinitionNotes'
-import { formatCount, formatPercent } from '../../../utils/numberFormat'
+import { formatCount, formatPercent, formatSignedCount } from '../../../utils/numberFormat'
 import { CANCELLATIONS_NOTES } from '../cancelledNotes'
 
 const CANCEL_SEGMENTS: StackedSegment[] = [
@@ -665,26 +665,28 @@ export default function CancellationAnalysis() {
                               })()}
                           </td>
                           <td className="px-4 py-2 text-right text-blue-600 dark:text-blue-400">
-                            {session.was_enrolled}
+                            {formatCount(session.was_enrolled)}
                           </td>
                           <td className="px-4 py-2 text-right text-amber-600 dark:text-amber-400">
-                            {session.was_waitlisted}
+                            {formatCount(session.was_waitlisted)}
                           </td>
                           <td className="px-4 py-2 text-right text-purple-600 dark:text-purple-400">
-                            {session.was_applied ?? 0}
+                            {formatCount(session.was_applied ?? 0)}
                           </td>
                           <td className="text-muted-foreground px-4 py-2 text-right">
-                            {session.other_prior_status ?? 0}
+                            {formatCount(session.other_prior_status ?? 0)}
                           </td>
                           <td className="text-muted-foreground px-4 py-2 text-right">
-                            {session.total_cancelled -
-                              session.was_enrolled -
-                              session.was_waitlisted -
-                              (session.was_applied ?? 0) -
-                              (session.other_prior_status ?? 0)}
+                            {formatCount(
+                              session.total_cancelled -
+                                session.was_enrolled -
+                                session.was_waitlisted -
+                                (session.was_applied ?? 0) -
+                                (session.other_prior_status ?? 0)
+                            )}
                           </td>
                           <td className="border-border border-l px-4 py-2 text-right text-emerald-600 dark:text-emerald-400">
-                            {session.has_other_sessions}
+                            {formatCount(session.has_other_sessions)}
                           </td>
                           <td className="px-4 py-2 text-right">
                             <span
@@ -694,11 +696,11 @@ export default function CancellationAnalysis() {
                                   : ''
                               }
                             >
-                              {session.no_other_sessions}
+                              {formatCount(session.no_other_sessions)}
                             </span>
                           </td>
                           <td className="border-border border-l px-4 py-2 text-right font-medium">
-                            {session.total_cancelled}
+                            {formatCount(session.total_cancelled)}
                           </td>
                           {isComparing &&
                             compData &&
@@ -714,12 +716,12 @@ export default function CancellationAnalysis() {
                               return (
                                 <>
                                   <td className="px-4 py-2 text-right">
-                                    {compSession?.total_cancelled ?? '\u2014'}
+                                    {formatCount(compSession?.total_cancelled)}
                                   </td>
                                   <td
                                     className={`px-4 py-2 text-right ${delta && delta > 0 ? 'text-red-600 dark:text-red-400' : delta && delta < 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`}
                                   >
-                                    {delta !== null ? (delta > 0 ? `+${delta}` : delta) : '\u2014'}
+                                    {delta !== null ? formatSignedCount(delta) : '\u2014'}
                                   </td>
                                 </>
                               )

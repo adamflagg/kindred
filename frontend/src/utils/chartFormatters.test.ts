@@ -12,6 +12,11 @@ describe('formatLabelListValue', () => {
     expect(formatLabelListValue(0)).toBe((0).toLocaleString())
   })
 
+  it('writes thousands separators and a true minus', () => {
+    expect(formatLabelListValue(1293)).toBe('1,293')
+    expect(formatLabelListValue(-1200)).toBe('\u22121,200')
+  })
+
   it('coerces non-numbers to string', () => {
     expect(formatLabelListValue('hello')).toBe('hello')
     expect(formatLabelListValue(null)).toBe('')
@@ -23,6 +28,10 @@ describe('formatLabelListPercent', () => {
   it('formats numbers with one decimal and percent sign', () => {
     expect(formatLabelListPercent(12.345)).toBe('12.3%')
     expect(formatLabelListPercent(0)).toBe('0.0%')
+  })
+
+  it('writes a negative percentage with the true minus', () => {
+    expect(formatLabelListPercent(-7.3)).toBe('\u22127.3%')
   })
 
   it('coerces non-numbers to string', () => {

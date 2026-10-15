@@ -2,9 +2,12 @@
  * Registration › Cancellations: its "cancelled" and its swaps are labelled with numbered notes
  * (decisions 11 and 46, #3207), never hover text, and its numbers read with separators.
  */
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
 import CancellationAnalysis from './CancellationAnalysis'
+import { useComparisonCancellationData } from '../../../hooks/useComparisonCancellationData'
+import { useMetricsSession } from '../../../hooks/useMetricsSession'
+import type { CancellationSessionBreakdown } from '../../../types/metrics'
 
 const mockData = {
   year: 2026,
@@ -82,5 +85,66 @@ describe('CancellationAnalysis — numbered notes (decisions 11, 46)', () => {
     render(<CancellationAnalysis />)
     expect(screen.getByText('1,172')).toBeInTheDocument()
     expect(screen.getAllByText('1,091').length).toBeGreaterThan(0)
+  })
+})
+
+function sessionRow(
+  overrides: Partial<CancellationSessionBreakdown>
+): CancellationSessionBreakdown {
+  return {
+    session_cm_id: 1,
+    session_name: 'Session 1',
+    total_cancelled: 1500,
+    was_enrolled: 1000,
+    was_waitlisted: 400,
+    was_applied: 50,
+    other_prior_status: 25,
+    has_other_sessions: 1234,
+    no_other_sessions: 266,
+    ...overrides,
+  }
+}
+
+describe('CancellationAnalysis session table number format', () => {
+  it('separates every count and writes a fall against the compare year with a true minus', () => {
+    const withSessions = { ...mockData, by_session: [sessionRow({})] }
+    vi.mocked(useComparisonCancellationData).mockReturnValue({
+      primary: { data: withSessions, isLoading: false, error: null },
+      comparison: {
+        data: { ...mockData, by_session: [sessionRow({ total_cancelled: 2750 })] },
+      },
+    } as unknown as ReturnType<typeof useComparisonCancellationData>)
+    vi.mocked(useMetricsSession).mockReturnValue({
+      selectedSessionCmId: null,
+      sessions: [],
+      activeSessionTypes: ['main', 'embedded', 'ag'],
+      compareYear: 2025,
+      isComparing: true,
+      durationParam: undefined,
+      filterOptions: {},
+    } as unknown as ReturnType<typeof useMetricsSession>)
+
+    render(<CancellationAnalysis />)
+    const table = screen.getByText('Session Details').closest('.card-lodge') as HTMLElement
+    const row = within(table)
+      .getByText('Session 1', { selector: 'td' })
+      .closest('tr') as HTMLElement
+    expect(
+      within(row)
+        .getAllByRole('cell')
+        .map((c) => c.textContent)
+    ).toEqual([
+      'Session 1',
+      '1,000',
+      '400',
+      '50',
+      '25',
+      '25',
+      '1,234',
+      '266',
+      '1,500',
+      '2,750',
+      '\u22121,250',
+    ])
   })
 })

@@ -279,7 +279,7 @@ describe('CancellationVelocityPage compares with one year at the same point (#32
     expect(cardValue('2025 Final Cancelled')).toBe('140')
   })
 
-  it('shows "-" rather than falling back to the curve when the summary has no value', () => {
+  it('shows "—" rather than falling back to the curve when the summary has no value', () => {
     useComparison({
       ...comparedData,
       prior_year_cancelled_to_date: [
@@ -287,9 +287,9 @@ describe('CancellationVelocityPage compares with one year at the same point (#32
       ],
     })
     render(<CancellationVelocityPage />)
-    expect(cardValue('2025 at Wk 1')).toBe('-')
-    expect(cardValue('vs 2025')).toBe('-')
-    expect(cardValue('2025 Final Cancelled')).toMatch(/^-/)
+    expect(cardValue('2025 at Wk 1')).toBe('—')
+    expect(cardValue('vs 2025')).toBe('—')
+    expect(cardValue('2025 Final Cancelled')).toMatch(/^—/)
   })
 
   it('marks a year with no status history on the Final card', () => {
@@ -307,7 +307,7 @@ describe('CancellationVelocityPage compares with one year at the same point (#32
     })
     render(<CancellationVelocityPage />)
     const card = screen.getByText('2025 Final Cancelled').parentElement!
-    expect(within(card).getByText('-')).toBeInTheDocument()
+    expect(within(card).getByText('—')).toBeInTheDocument()
     expect(within(card).getByText('no history before 11 Feb 2026')).toBeInTheDocument()
   })
 
@@ -480,7 +480,7 @@ describe('CancellationVelocityPage By Session with a comparison year that has no
     mockState.data = mockVelocityData
   })
 
-  it('reads "-" rather than "new" when the comparison year has no status history (ruling 6)', () => {
+  it('reads "—" rather than "new" when the comparison year has no status history (ruling 6)', () => {
     useComparison({
       ...comparedData,
       prior_years: [{ year: 2025, daily: [], weekly: [] }],
@@ -497,10 +497,10 @@ describe('CancellationVelocityPage By Session with a comparison year that has no
 
     const row = screen.getByText('Session 2').closest('tr')!
     expect(within(row).queryByText('new')).not.toBeInTheDocument()
-    expect(within(row).getAllByText('-')).toHaveLength(3)
+    expect(within(row).getAllByText('—')).toHaveLength(3)
   })
 
-  it('reads "-" for a matched session before the comparison year\'s history starts (ruling 8)', () => {
+  it('reads "—" for a matched session before the comparison year\'s history starts (ruling 8)', () => {
     useComparison({
       ...comparedData,
       prior_year_cancelled_to_date: [cancelledSummary({ cancelled_at_current_week: null })],
@@ -509,12 +509,59 @@ describe('CancellationVelocityPage By Session with a comparison year that has no
     mockChart.priorSessionMap = new Map([[1, priorSession({ enrolled_at_current_week: null })]])
     render(<CancellationVelocityPage />)
 
-    expect(cardValue('2025 at Wk 1')).toBe('-')
+    expect(cardValue('2025 at Wk 1')).toBe('—')
     expect(screen.getByText('vs 2025', { selector: 'p' }).nextElementSibling).toHaveTextContent(
-      /^-$/
+      /^—$/
     )
     const row = screen.getByText('Session 1').closest('tr')!
-    expect(within(row).getAllByText('-')).toHaveLength(2)
+    expect(within(row).getAllByText('—')).toHaveLength(2)
     expect(within(row).getByText('15')).toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Decision 43 (#3207): one number format
+// ---------------------------------------------------------------------------
+describe('CancellationVelocityPage number format', () => {
+  const bigData: VelocityResponse = {
+    ...comparedData,
+    cancelled_to_date: 2345,
+    session_swap_count: 1234,
+    combined: {
+      ...comparedData.combined,
+      weekly: [wk({ enrolled: 1293, delta: -1200 })],
+    },
+    prior_year_cancelled_to_date: [
+      cancelledSummary({ cancelled_at_current_week: 1543, cancelled_final: 2600 }),
+    ],
+  }
+
+  afterEach(() => {
+    mockControls.selectedPriorYears = []
+    mockChart.comparisonYear = null
+    mockState.data = mockVelocityData
+  })
+
+  it('separates the card counts and writes the delta with a true minus', () => {
+    useComparison(bigData)
+    render(<CancellationVelocityPage />)
+    expect(cardValue('2025 at Wk 1')).toBe('1,543')
+    expect(cardValue('2025 Final Cancelled')).toBe('2,600')
+    expect(cardValue('vs 2025')).toBe('−250')
+  })
+
+  it('writes the session-swap note with separated counts and a one-decimal share', () => {
+    useComparison(bigData)
+    render(<CancellationVelocityPage />)
+    expect(
+      screen.getByText(/1,234 of 2,345 cancellations \(52\.6%\) are session swaps/)
+    ).toBeInTheDocument()
+  })
+
+  it('writes the weekly change with separators and a true minus', () => {
+    useComparison(bigData)
+    render(<CancellationVelocityPage />)
+    expect(screen.getByText('−1,200')).toBeInTheDocument()
+    expect(screen.getAllByText('1,293').length).toBeGreaterThan(0)
   })
 })

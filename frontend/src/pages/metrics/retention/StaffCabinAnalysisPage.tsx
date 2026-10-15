@@ -8,6 +8,7 @@
  * Session columns sorted chronologically.
  */
 
+import { formatRate } from '../../../utils/numberFormat'
 import { useState, useMemo, useCallback } from 'react'
 import { Users } from 'lucide-react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
@@ -229,7 +230,6 @@ export default function StaffCabinAnalysisPage() {
                             </td>
                           )
                         }
-                        const pct = Math.round(data.retentionRate * 100)
                         return (
                           <td
                             key={session}
@@ -243,7 +243,7 @@ export default function StaffCabinAnalysisPage() {
                             <div className="text-[10px] leading-tight opacity-80">
                               {data.bunkName}
                             </div>
-                            <div className="font-bold">{pct}%</div>
+                            <div className="font-bold">{formatRate(data.retentionRate)}</div>
                           </td>
                         )
                       })}
@@ -255,7 +255,7 @@ export default function StaffCabinAnalysisPage() {
                         onMouseMove={handleMouseMove}
                         onMouseLeave={handleMouseLeave}
                       >
-                        {Math.round(row.overallRetention * 100)}%
+                        {formatRate(row.overallRetention)}
                       </td>
                     </tr>
                   ))}

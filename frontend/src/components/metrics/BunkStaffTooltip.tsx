@@ -8,6 +8,7 @@
 import { useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import type { BunkStaffInfo } from '../../hooks/useBunkStaff'
+import { formatCount, formatRate } from '../../utils/numberFormat'
 
 interface RetentionInfo {
   returnedCount: number
@@ -60,8 +61,6 @@ export function BunkCellTooltip({
 
   if (!isVisible) return null
 
-  const pct = Math.round(retention.rate * 100)
-
   return createPortal(
     <div
       data-tooltip="bunk-cell"
@@ -74,7 +73,8 @@ export function BunkCellTooltip({
     >
       <h4 className="text-foreground mb-1 text-sm font-semibold">{bunkName}</h4>
       <p className="text-muted-foreground text-xs">
-        {retention.returnedCount} of {retention.baseCount} returned ({pct}%)
+        {formatCount(retention.returnedCount)} of {formatCount(retention.baseCount)} returned (
+        {formatRate(retention.rate)})
       </p>
       {staff && staff.length > 0 && (
         <>

@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
+import { formatCount, formatPercent, formatSignedCount } from '../../../utils/numberFormat'
 import { Loader2, AlertCircle } from 'lucide-react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
@@ -38,7 +39,7 @@ function pctColor(pct: number | null): string {
 
 function fmt(value: number | null, suffix = ''): string {
   if (value === null) return '---'
-  return `${value.toLocaleString()}${suffix}`
+  return `${formatCount(value)}${suffix}`
 }
 
 function deltaColor(value: number | null): string {
@@ -48,8 +49,7 @@ function deltaColor(value: number | null): string {
 
 function fmtSigned(value: number | null): string {
   if (value === null) return '---'
-  const prefix = value > 0 ? '+' : ''
-  return `${prefix}${value.toLocaleString()}`
+  return formatSignedCount(value)
 }
 
 function fmtSignedCurrency(value: number | null): string {
@@ -70,7 +70,7 @@ function fmtCurrency(value: number | null): string {
 
 function fmtPct(value: number | null): string {
   if (value === null) return '---'
-  return `${value.toFixed(1)}%`
+  return formatPercent(value)
 }
 
 function ForecastTableHeader({
@@ -134,15 +134,17 @@ function SessionRow({
         {sessionName(session.session_name, undefined, 'short')}
       </td>
       <td className="px-3 py-2 text-right text-sm">{fmt(session.participant_goal)}</td>
-      <td className="px-3 py-2 text-right text-sm font-medium">
-        {session.enrolled.toLocaleString()}
-      </td>
+      <td className="px-3 py-2 text-right text-sm font-medium">{formatCount(session.enrolled)}</td>
       <td className="px-3 py-2 text-right text-sm whitespace-nowrap">
         {session.enrolled_boys !== null && session.enrolled_girls !== null ? (
           <>
-            <span className="text-blue-800 dark:text-blue-300">{session.enrolled_boys}</span>
+            <span className="text-blue-800 dark:text-blue-300">
+              {formatCount(session.enrolled_boys)}
+            </span>
             <span className="text-muted-foreground"> / </span>
-            <span className="text-pink-800 dark:text-pink-300">{session.enrolled_girls}</span>
+            <span className="text-pink-800 dark:text-pink-300">
+              {formatCount(session.enrolled_girls)}
+            </span>
           </>
         ) : (
           <span className="text-muted-foreground">--</span>
@@ -293,13 +295,12 @@ export default function ForecastPage() {
           {grand_total.participant_goal !== null && grand_total.participant_goal > 0 && (
             <span className="text-muted-foreground text-sm">
               <span className="text-foreground font-medium">
-                {grand_total.enrolled.toLocaleString()}/
-                {grand_total.participant_goal.toLocaleString()}
+                {formatCount(grand_total.enrolled)}/{formatCount(grand_total.participant_goal)}
               </span>
               {' enrolled'}
               {grand_total.pct_of_goal !== null && (
                 <span className={`ml-1 font-medium ${pctColor(grand_total.pct_of_goal)}`}>
-                  ({grand_total.pct_of_goal.toFixed(1)}% of goal)
+                  ({formatPercent(grand_total.pct_of_goal)} of goal)
                 </span>
               )}
             </span>

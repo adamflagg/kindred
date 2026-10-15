@@ -13,6 +13,7 @@
  * - Week-over-week delta table with prior-year columns
  */
 
+import { formatCount, formatSignedCount } from '../../../utils/numberFormat'
 import { Fragment, useMemo, useState } from 'react'
 import {
   LineChart,
@@ -74,11 +75,6 @@ const Y_AXIS_LABELS: Record<VelocityViewMode, string> = {
   gross: 'Gross Enrollment',
   net: 'Net Enrollment',
   delta: 'Weekly Change',
-}
-
-function formatDeltaValue(value: number): string {
-  if (value > 0) return `+${value}`
-  return String(value)
 }
 
 function deltaColorClass(value: number | null): string {
@@ -147,7 +143,7 @@ export default function VelocityPage() {
 
     // One comparison year for every card (#3209). The backend omits a prior year that has no
     // matching session; the label still names the most recent year the user ticked, and the
-    // values stay '-'.
+    // values stay '—'.
     const priorYear: number | null =
       comparisonYear ??
       (controls.selectedPriorYears.length ? Math.max(...controls.selectedPriorYears) : null)
@@ -279,7 +275,7 @@ export default function VelocityPage() {
                 : undefined
               return (
                 <span style={{ color: GENDER_COLORS.boys }}>
-                  {genderData?.boys_enrolled.toLocaleString() ?? '-'}
+                  {formatCount(genderData?.boys_enrolled)}
                 </span>
               )
             },
@@ -293,7 +289,7 @@ export default function VelocityPage() {
                 : undefined
               return (
                 <span style={{ color: GENDER_COLORS.girls }}>
-                  {genderData?.girls_enrolled.toLocaleString() ?? '-'}
+                  {formatCount(genderData?.girls_enrolled)}
                 </span>
               )
             },
@@ -305,7 +301,7 @@ export default function VelocityPage() {
       header: controls.splitByGender ? 'Total' : 'Latest Enrolled',
       accessor: (session) => {
         const lastPoint = session.weekly.at(-1)
-        return (lastPoint?.enrolled ?? 0).toLocaleString()
+        return formatCount(lastPoint?.enrolled ?? 0)
       },
       className: 'text-right',
     },
@@ -315,7 +311,7 @@ export default function VelocityPage() {
             header: `${priorLabel ?? 'Prior Yr'}${summaryCards ? ` (Wk ${summaryCards.currentWeekNumber})` : ''}`,
             accessor: (_session, priorSession) => (
               <span className="text-muted-foreground">
-                {priorSession?.enrolled_at_current_week?.toLocaleString() ?? '-'}
+                {formatCount(priorSession?.enrolled_at_current_week)}
               </span>
             ),
             className: 'text-right',
@@ -324,7 +320,7 @@ export default function VelocityPage() {
             header: `${priorLabel ?? 'Prior Yr'} Final`,
             accessor: (_session, priorSession) => (
               <span className="text-muted-foreground">
-                {priorSession?.final_enrolled.toLocaleString() ?? '-'}
+                {formatCount(priorSession?.final_enrolled)}
               </span>
             ),
             className: 'text-right',
@@ -346,7 +342,7 @@ export default function VelocityPage() {
               }
               return (
                 <span className={deltaColorClass(vsPrior)}>
-                  {vsPrior != null ? formatDeltaValue(vsPrior) : '-'}
+                  {vsPrior != null ? formatSignedCount(vsPrior) : '—'}
                 </span>
               )
             },
@@ -367,7 +363,7 @@ export default function VelocityPage() {
       header: 'New',
       accessor: (week) => (
         <span className="text-green-600 dark:text-green-400">
-          {week.weekly_new > 0 ? `+${week.weekly_new}` : week.weekly_new}
+          {formatSignedCount(week.weekly_new)}
         </span>
       ),
       className: 'text-right',
@@ -375,26 +371,28 @@ export default function VelocityPage() {
     {
       header: 'Cancelled',
       accessor: (week) => (
-        <span className="text-red-600 dark:text-red-400">{week.weekly_cancelled ?? 0}</span>
+        <span className="text-red-600 dark:text-red-400">
+          {formatCount(week.weekly_cancelled ?? 0)}
+        </span>
       ),
       className: 'text-right',
     },
     {
       header: 'Net Change',
       accessor: (week) => (
-        <span className={deltaColorClass(week.delta)}>{formatDeltaValue(week.delta)}</span>
+        <span className={deltaColorClass(week.delta)}>{formatSignedCount(week.delta)}</span>
       ),
       className: 'text-right',
     },
     {
       header: 'Net Cumulative',
-      accessor: (week) => <span className="text-foreground">{week.enrolled.toLocaleString()}</span>,
+      accessor: (week) => <span className="text-foreground">{formatCount(week.enrolled)}</span>,
       className: 'text-right',
     },
     {
       header: 'Gross Cumulative',
       accessor: (week) => (
-        <span className="text-foreground">{week.gross_enrolled.toLocaleString()}</span>
+        <span className="text-foreground">{formatCount(week.gross_enrolled)}</span>
       ),
       className: 'text-right',
     },
@@ -403,9 +401,7 @@ export default function VelocityPage() {
           {
             header: priorLabel ?? 'Prior Year',
             accessor: (_week: WeeklyDataPoint, priorPoint?: WeeklyDataPoint) => (
-              <span className="text-muted-foreground">
-                {priorPoint?.enrolled.toLocaleString() ?? '-'}
-              </span>
+              <span className="text-muted-foreground">{formatCount(priorPoint?.enrolled)}</span>
             ),
             className: 'text-right',
           } satisfies DeltaColumnDef,
@@ -413,7 +409,7 @@ export default function VelocityPage() {
             header: priorLabel ? `${priorLabel} Delta` : 'Prior Delta',
             accessor: (_week: WeeklyDataPoint, priorPoint?: WeeklyDataPoint) => (
               <span className={deltaColorClass(priorPoint?.delta ?? null)}>
-                {priorPoint ? formatDeltaValue(priorPoint.delta) : '-'}
+                {priorPoint ? formatSignedCount(priorPoint.delta) : '—'}
               </span>
             ),
             className: 'text-right',
@@ -444,7 +440,7 @@ export default function VelocityPage() {
               Enrolled ({currentYear}, Wk {summaryCards.currentWeekNumber})
             </p>
             <p className="text-foreground text-xl font-bold">
-              {summaryCards.currentEnrolled.toLocaleString()}
+              {formatCount(summaryCards.currentEnrolled)}
             </p>
             <p className="text-muted-foreground text-xs">camper-sessions</p>
           </div>
@@ -454,7 +450,7 @@ export default function VelocityPage() {
               {priorityDayMark}
             </p>
             <p className="text-foreground text-xl font-bold">
-              {summaryCards.priorAtWeek?.toLocaleString() ?? '-'}
+              {formatCount(summaryCards.priorAtWeek)}
             </p>
           </div>
           <div className="card-lodge p-3">
@@ -463,9 +459,9 @@ export default function VelocityPage() {
               {priorityDayMark && summaryCards.delta != null ? (
                 <span className={PRIORITY_DAY_PENDING_CLASS}>{PRIORITY_DAY_PENDING}</span>
               ) : summaryCards.delta != null ? (
-                formatDeltaValue(summaryCards.delta)
+                formatSignedCount(summaryCards.delta)
               ) : (
-                '-'
+                '—'
               )}
             </p>
           </div>
@@ -474,13 +470,13 @@ export default function VelocityPage() {
               {summaryCards.priorYear} Final
             </p>
             <p className="text-foreground text-xl font-bold">
-              {summaryCards.priorFinal?.toLocaleString() ?? '-'}
+              {formatCount(summaryCards.priorFinal)}
             </p>
           </div>
           <div className="card-lodge p-3">
             <p className="text-muted-foreground text-xs font-medium">Cancelled to Date</p>
             <p className="text-foreground text-xl font-bold">
-              {summaryCards.cancelledToDate?.toLocaleString() ?? '-'}
+              {formatCount(summaryCards.cancelledToDate)}
             </p>
           </div>
           <div className="card-lodge p-3">
@@ -489,7 +485,7 @@ export default function VelocityPage() {
               {priorityDayMark}
             </p>
             <p className="text-foreground text-xl font-bold">
-              {summaryCards.priorCancelledAtWeek?.toLocaleString() ?? '-'}
+              {formatCount(summaryCards.priorCancelledAtWeek)}
             </p>
           </div>
         </div>
@@ -660,6 +656,7 @@ export default function VelocityPage() {
               />
               <YAxis
                 className="text-xs"
+                tickFormatter={(v: number) => formatCount(v)}
                 tick={{ fill: 'hsl(var(--muted-foreground))' }}
                 label={{
                   value: Y_AXIS_LABELS[viewMode],
@@ -702,7 +699,7 @@ export default function VelocityPage() {
                             : null
                         return (
                           <p key={entry.name} className="text-sm" style={{ color: entry.color }}>
-                            {entry.name}: {Number(entry.value).toLocaleString()}
+                            {entry.name}: {formatCount(Number(entry.value))}
                             {priorDate && (
                               <span className="text-muted-foreground ml-1 text-xs">
                                 ({priorDate})
@@ -922,6 +919,7 @@ export default function VelocityPage() {
               />
               <YAxis
                 className="text-xs"
+                tickFormatter={(v: number) => formatCount(v)}
                 tick={{ fill: 'hsl(var(--muted-foreground))' }}
                 label={{
                   value: Y_AXIS_LABELS[viewMode],
@@ -959,7 +957,7 @@ export default function VelocityPage() {
                           : null
                         return (
                           <p key={entry.name} className="text-sm" style={{ color: entry.color }}>
-                            {entry.name}: {Number(entry.value).toLocaleString()}
+                            {entry.name}: {formatCount(Number(entry.value))}
                             {priorDate && (
                               <span className="text-muted-foreground ml-1 text-xs">
                                 ({priorDate})
