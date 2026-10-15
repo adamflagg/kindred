@@ -666,7 +666,7 @@ class TestPreAnchorEnrollments:
 class TestAttendeesAtCutoff:
     """Decision 7: enrolled at day N = registered by N and not cancelled by N."""
 
-    ATTENDEES = [
+    ATTENDEES = (
         _make_attendee(1, 1000, 2, "2025-10-20", "2025-10-15"),  # registered day 0
         _make_attendee(2, 1000, 2, "2025-11-30", "2025-11-30"),  # registered after the cutoff
         _make_attendee(3, 1000, 32, "2025-11-20", "2025-10-16", status="cancelled"),  # cancelled after
@@ -674,12 +674,12 @@ class TestAttendeesAtCutoff:
         _make_attendee(5, 1000, 256, "2025-10-26", "2025-10-16", status="withdrawn"),  # withdrawn by
         _make_attendee(6, 1000, 8, "2025-10-16", "2025-10-16", status="waitlisted"),  # never counts
         _make_attendee(7, 1000, 2, "2025-10-18"),  # no effective_date: enrollment_date is the day
-    ]
+    )
 
     def test_splits_enrolled_and_cancelled_by_the_cutoff(self) -> None:
         from api.services.reconstruction import attendees_at_cutoff
 
-        enrolled, cancelled = attendees_at_cutoff(self.ATTENDEES, datetime(2025, 11, 1).date())
+        enrolled, cancelled = attendees_at_cutoff(list(self.ATTENDEES), datetime(2025, 11, 1).date())
 
         assert sorted(a.person_id for a in enrolled) == [1, 3, 7]
         assert sorted(a.person_id for a in cancelled) == [4, 5]
@@ -690,10 +690,10 @@ class TestAttendeesAtCutoff:
         from api.services.reconstruction import attendees_at_cutoff
 
         repo = AsyncMock()
-        repo.fetch_attendees_with_dates.return_value = self.ATTENDEES
+        repo.fetch_attendees_with_dates.return_value = list(self.ATTENDEES)
         sessions = {1000: SimpleNamespace(cm_id=1000, name="Session 1", session_type="main")}
 
         counts = await reconstruct_enrollment_at_offset(repo, 2025, sessions, 17, SEASON_START, week0_window=False)
-        enrolled, _ = attendees_at_cutoff(self.ATTENDEES, datetime(2025, 11, 1).date())
+        enrolled, _ = attendees_at_cutoff(list(self.ATTENDEES), datetime(2025, 11, 1).date())
 
         assert counts[1000] == len(enrolled)

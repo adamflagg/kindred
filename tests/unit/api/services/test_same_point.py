@@ -59,8 +59,10 @@ class TestLiveSamePoint:
         early = await live_same_point(_repo(DATES_2026), 2026, today=date(2025, 11, 19))
         open_ = await live_same_point(_repo(DATES_2026), 2026, today=date(2025, 12, 3))
 
-        assert early is not None and (early.day_offset, early.prior_offset) == (7, 8)
-        assert open_ is not None and (open_.day_offset, open_.prior_offset) == (21, 22)
+        assert early is not None
+        assert (early.day_offset, early.prior_offset) == (7, 8)
+        assert open_ is not None
+        assert (open_.day_offset, open_.prior_offset) == (21, 22)
 
     @pytest.mark.asyncio
     async def test_before_the_anchor_is_a_negative_day(self) -> None:
