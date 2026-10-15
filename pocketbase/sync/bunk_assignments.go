@@ -8,6 +8,7 @@ import (
 	"log/slog"
 
 	"github.com/camp/kindred/pocketbase/campminder"
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
 )
 
@@ -231,8 +232,8 @@ func (s *BunkAssignmentsSync) loadMappings() error {
 
 		// Get session CM ID by looking up the related session
 		if sessionID := record.GetString("session"); sessionID != "" {
-			sessionFilter := fmt.Sprintf("id = '%s'", sessionID)
-			sessions, err := s.App.FindRecordsByFilter("camp_sessions", sessionFilter, "", 1, 0)
+			sessions, err := s.App.FindRecordsByFilter("camp_sessions", "id = {:id}", "", 1, 0,
+				dbx.Params{"id": sessionID})
 			if err == nil && len(sessions) > 0 {
 				if cmID, ok := sessions[0].Get("cm_id").(float64); ok {
 					sessionCMID = int(cmID)
@@ -291,8 +292,8 @@ func (s *BunkAssignmentsSync) loadMappings() error {
 
 		// Get session CM ID by looking up the related session
 		if sessionID := record.GetString("session"); sessionID != "" {
-			sessionFilter := fmt.Sprintf("id = '%s'", sessionID)
-			sessions, err := s.App.FindRecordsByFilter("camp_sessions", sessionFilter, "", 1, 0)
+			sessions, err := s.App.FindRecordsByFilter("camp_sessions", "id = {:id}", "", 1, 0,
+				dbx.Params{"id": sessionID})
 			if err == nil && len(sessions) > 0 {
 				if cmID, ok := sessions[0].Get("cm_id").(float64); ok {
 					sessionCMID = int(cmID)
@@ -929,8 +930,9 @@ func (s *BunkAssignmentsSync) protectNonActiveStaffAssignments(year int) (int, e
 		personPBID := people[0].Id
 
 		// Find this person's existing bunk_assignments and mark as processed
-		baFilter := fmt.Sprintf("year = %d && person = '%s'", year, personPBID)
-		bas, err := s.App.FindRecordsByFilter("bunk_assignments", baFilter, "", 0, 0)
+		baFilter := fmt.Sprintf("year = %d && person = {:person}", year)
+		bas, err := s.App.FindRecordsByFilter("bunk_assignments", baFilter, "", 0, 0,
+			dbx.Params{"person": personPBID})
 		if err != nil {
 			return fmt.Errorf("finding bunk assignments for person %d: %w", personCMID, err)
 		}
@@ -950,7 +952,8 @@ func (s *BunkAssignmentsSync) protectNonActiveStaffAssignments(year int) (int, e
 			// the sweep below then deleted the row. A missing session stays a
 			// non-destructive skip -- deleteOrphans cannot derive a composite
 			// key for such a record either, so it is not at risk.
-			sessions, err := s.App.FindRecordsByFilter("camp_sessions", fmt.Sprintf("id = '%s'", sessionPBID), "", 1, 0)
+			sessions, err := s.App.FindRecordsByFilter("camp_sessions", "id = {:id}", "", 1, 0,
+				dbx.Params{"id": sessionPBID})
 			if err != nil {
 				return fmt.Errorf("resolving session %q for person %d: %w", sessionPBID, personCMID, err)
 			}
@@ -970,7 +973,8 @@ func (s *BunkAssignmentsSync) protectNonActiveStaffAssignments(year int) (int, e
 			if bunkPBID == "" {
 				continue
 			}
-			bunks, err := s.App.FindRecordsByFilter("bunks", fmt.Sprintf("id = '%s'", bunkPBID), "", 1, 0)
+			bunks, err := s.App.FindRecordsByFilter("bunks", "id = {:id}", "", 1, 0,
+				dbx.Params{"id": bunkPBID})
 			if err != nil {
 				return fmt.Errorf("resolving bunk %q for person %d: %w", bunkPBID, personCMID, err)
 			}

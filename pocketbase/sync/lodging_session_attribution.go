@@ -110,16 +110,12 @@ func LoadSessionWindows(app core.App, year int, sessionTypes []string) (map[stri
 		return map[string]SessionWindow{}, nil
 	}
 
-	quoted := make([]string, 0, len(sessionTypes))
-	for _, st := range sessionTypes {
-		quoted = append(quoted, "session_type = '"+st+"'")
-	}
-	// Session types are package constants, never user input, so inlining them is
-	// safe here. Note the spaces around every operator -- PocketBase's filter
-	// parser silently returns wrong results without them.
-	filter := fmt.Sprintf("year = %d && (%s)", year, strings.Join(quoted, " || "))
+	// Note the spaces around every operator -- PocketBase's filter parser
+	// silently returns wrong results without them.
+	typeFilter, typeParams := equalsAnyFilter("session_type", sessionTypes)
+	filter := fmt.Sprintf("year = %d && %s", year, typeFilter)
 
-	records, err := app.FindRecordsByFilter("camp_sessions", filter, "", 0, 0)
+	records, err := app.FindRecordsByFilter("camp_sessions", filter, "", 0, 0, typeParams)
 	if err != nil {
 		return nil, fmt.Errorf("loading camp_sessions for %d: %w", year, err)
 	}

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/camp/kindred/pocketbase/google"
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
 )
 
@@ -127,12 +128,13 @@ func (m *WorkbookManager) GetWorkbookForSession(
 ) (*WorkbookRecord, error) {
 	// Note the spaces around every operator -- PocketBase's filter parser
 	// silently returns wrong results without them.
-	filter := fmt.Sprintf("workbook_type = '%s' && session_cm_id = %d", workbookType, sessionCMID)
+	filter := fmt.Sprintf("workbook_type = {:workbookType} && session_cm_id = %d", sessionCMID)
 	if workbookType != workbookTypeGlobals {
 		filter = fmt.Sprintf("%s && year = %d", filter, year)
 	}
 
-	records, err := m.app.FindRecordsByFilter(sheetsWorkbooksCollection, filter, "", 1, 0)
+	records, err := m.app.FindRecordsByFilter(sheetsWorkbooksCollection, filter, "", 1, 0,
+		dbx.Params{"workbookType": workbookType})
 	if err != nil {
 		// Collection might not exist yet (before migration runs)
 		slog.Debug("Error finding workbook",

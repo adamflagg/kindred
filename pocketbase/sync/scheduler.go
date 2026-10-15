@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/robfig/cron/v3"
 )
@@ -211,10 +212,11 @@ func (s *Scheduler) pruneOldSolverRuns() error {
 	// Find old records
 	records, err := s.app.FindRecordsByFilter(
 		collection,
-		fmt.Sprintf("created < '%s'", cutoffStr),
+		"created < {:cutoff}",
 		"-created",
 		1000, // Max records to delete at once
 		0,
+		dbx.Params{"cutoff": cutoffStr},
 	)
 	if err != nil {
 		return fmt.Errorf("finding old solver runs: %w", err)

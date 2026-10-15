@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
 
 	"github.com/camp/kindred/pocketbase/campminder"
@@ -669,8 +670,8 @@ func loadPersonCustomFieldValuesByCMID(app core.App, fieldCMID, year int) (map[s
 
 	records, err := app.FindRecordsByFilter(
 		"person_custom_values",
-		fmt.Sprintf("field_definition = '%s' && year = %d", defs[0].Id, year),
-		"", 0, 0, nil)
+		fmt.Sprintf("field_definition = {:fieldDefinition} && year = %d", year),
+		"", 0, 0, dbx.Params{"fieldDefinition": defs[0].Id})
 	if err != nil {
 		return nil, fmt.Errorf("finding person_custom_values for field %d: %w", fieldCMID, err)
 	}

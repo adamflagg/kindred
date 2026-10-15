@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/camp/kindred/pocketbase/campminder"
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
 )
 
@@ -452,8 +453,9 @@ func (s *BunkPlansSync) createBunkPlan(planID, bunkCMID, sessionCMID int, name, 
 	if existing := s.existingPlans[yearScopedKey]; existing == nil {
 		// Fetch the newly created record to add to cache
 		// Use the relation fields to find the record
-		filter := fmt.Sprintf("bunk = '%s' && session = '%s' && year = %d", recordData["bunk"], recordData["session"], year)
-		records, err := s.App.FindRecordsByFilter("bunk_plans", filter, "", 1, 0)
+		filter := fmt.Sprintf("bunk = {:bunk} && session = {:session} && year = %d", year)
+		records, err := s.App.FindRecordsByFilter("bunk_plans", filter, "", 1, 0,
+			dbx.Params{"bunk": recordData["bunk"], "session": recordData["session"]})
 		if err == nil && len(records) > 0 {
 			s.existingPlans[yearScopedKey] = records[0]
 		}

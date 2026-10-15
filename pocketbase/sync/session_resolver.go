@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
 )
 
@@ -45,10 +46,8 @@ func (r *SessionResolver) ResolveSessionCMIDs(session string, year int) ([]int, 
 		return nil, fmt.Errorf("invalid session '%s': must be 'all' or a numeric cm_id", session)
 	}
 
-	yearStr := fmt.Sprintf("%d", year)
-
 	// Look up the session by cm_id
-	filter := fmt.Sprintf("cm_id = %d && year = %s", cmID, yearStr)
+	filter := fmt.Sprintf("cm_id = %d && year = %d", cmID, year)
 	sessions, err := r.app.FindRecordsByFilter("camp_sessions", filter, "", 1, 0)
 	if err != nil {
 		return nil, fmt.Errorf("querying session cm_id=%d: %w", cmID, err)
@@ -69,7 +68,7 @@ func (r *SessionResolver) ResolveSessionCMIDs(session string, year int) ([]int, 
 	switch sessionType {
 	case sessionTypeMain:
 		// Main session -> find AG children (parent_id matches this session's cm_id)
-		agFilter := fmt.Sprintf("year = %s && session_type = 'ag' && parent_id = %d", yearStr, cmID)
+		agFilter := fmt.Sprintf("year = %d && session_type = 'ag' && parent_id = %d", year, cmID)
 		agSessions, err := r.app.FindRecordsByFilter("camp_sessions", agFilter, "", 0, 0)
 		if err != nil {
 			slog.Warn("Failed to find AG sessions", "error", err)
@@ -233,14 +232,8 @@ func (r *SessionResolver) householdIDsForSession(session string, year int, enrol
 	// further if filter-overflow errors appear in logs.
 	const batchSize = 50
 	for batch := range slices.Chunk(personPBIDs, batchSize) {
-		// Build ID filter
-		idConditions := make([]string, len(batch))
-		for j, id := range batch {
-			idConditions[j] = fmt.Sprintf("id = '%s'", id)
-		}
-		idFilter := "(" + strings.Join(idConditions, " || ") + ")"
-
-		persons, err := r.app.FindRecordsByFilter("persons", idFilter, "", 0, 0)
+		idFilter, idParams := equalsAnyFilter("id", batch)
+		persons, err := r.app.FindRecordsByFilter("persons", idFilter, "", 0, 0, idParams)
 		if err != nil {
 			slog.Warn("Failed to query persons batch", "error", err)
 			continue
@@ -276,8 +269,9 @@ func (r *SessionResolver) GetFamilyCampSessionCMIDs(year int) ([]int, error) {
 // sessionCMIDsOfType returns the CampMinder ids of every session of one session_type in the
 // given year.
 func (r *SessionResolver) sessionCMIDsOfType(year int, sessionType string) ([]int, error) {
-	filter := fmt.Sprintf("year = %d && session_type = '%s'", year, sessionType)
-	sessions, err := r.app.FindRecordsByFilter("camp_sessions", filter, "", 0, 0)
+	filter := fmt.Sprintf("year = %d && session_type = {:sessionType}", year)
+	sessions, err := r.app.FindRecordsByFilter("camp_sessions", filter, "", 0, 0,
+		dbx.Params{"sessionType": sessionType})
 	if err != nil {
 		return nil, fmt.Errorf("querying %s sessions: %w", sessionType, err)
 	}

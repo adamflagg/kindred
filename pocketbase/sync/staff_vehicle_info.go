@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
 )
 
@@ -346,8 +347,8 @@ func (s *StaffVehicleInfoSync) loadPersonCustomValues(
 			if cached, ok := personCache[personPBID]; ok {
 				personID = cached
 			} else {
-				personFilter := fmt.Sprintf("id = '%s'", personPBID)
-				persons, err := s.App.FindRecordsByFilter("persons", personFilter, "", 1, 0)
+				persons, err := s.App.FindRecordsByFilter("persons", "id = {:id}", "", 1, 0,
+					dbx.Params{"id": personPBID})
 				if err == nil && len(persons) > 0 {
 					if cmID, ok := persons[0].Get("cm_id").(float64); ok {
 						personID = int(cmID)

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
 )
 
@@ -234,8 +235,9 @@ func markRequesterOBRsUnprocessed(app core.App, requesterCMID, year int) error {
 
 	obrs, err := app.FindRecordsByFilter(
 		"original_bunk_requests",
-		fmt.Sprintf("requester = '%s' && year = %d", personPBID, year),
+		fmt.Sprintf("requester = {:requester} && year = %d", year),
 		"", 0, 0,
+		dbx.Params{"requester": personPBID},
 	)
 	if err != nil {
 		return fmt.Errorf("find OBRs for person %d: %w", requesterCMID, err)
