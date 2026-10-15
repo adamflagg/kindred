@@ -835,7 +835,7 @@ func (s *SessionsSync) getSessionTypeFromGroupID(groupCMID int, sessionName stri
 		// From 2027 CampMinder files an "Adult Reg: …" session beside each Family Camp
 		// weekend in this group (kindred#3213). Adults beyond a family's first two, and
 		// adults with no children, register there: they are adult-only Family Camp
-		// attendees, not an adult weekend, and they need no Jotform.
+		// attendees, not an adult weekend. They do take Jotform intake (re-ruling 2026-10-14).
 		if isAdultRegName(sessionName) {
 			return sessionTypeFamilyAdult
 		}

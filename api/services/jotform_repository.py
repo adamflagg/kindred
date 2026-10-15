@@ -32,6 +32,20 @@ from api.constants.collections import (
 )
 from api.constants.filters import ACTIVE_ENROLLED_FILTER
 from api.services.lodging_repository import ADULT_SESSION_TYPE, STABLE_SORT
+
+# The sessions that take Jotform intake: the adult weekends, and from 2027 the
+# "Adult Reg" sessions (`family_adult`, kindred#3213 re-ruling 2026-10-14) where
+# a Family Camp household's extra adults and adult-only families register. A
+# regular Family Camp weekend takes none: its share requests come from CampMinder.
+FAMILY_ADULT_SESSION_TYPE = "family_adult"
+JOTFORM_SESSION_TYPES = (ADULT_SESSION_TYPE, FAMILY_ADULT_SESSION_TYPE)
+
+
+def _jotform_types(field: str) -> str:
+    """`(<field> = 'adult' || <field> = 'family_adult')`."""
+    return "(" + " || ".join(f"{field} = '{pb_escape(t)}'" for t in JOTFORM_SESSION_TYPES) + ")"
+
+
 from api.utils.pb_filters import pb_escape
 
 PAGE_SIZE = 1000
@@ -52,12 +66,13 @@ class JotformRepository:
         )
         return rows
 
-    async def fetch_adult_sessions(self, year: int) -> list[Any]:
-        """The active season's adult weekends -- built dynamically, never a hardcoded list."""
+    async def fetch_jotform_sessions(self, year: int) -> list[Any]:
+        """The season's Jotform sessions -- its adult weekends and Adult Reg
+        sessions -- built dynamically, never a hardcoded list."""
         return await self._page(
             CAMP_SESSIONS,
             query_params={
-                "filter": f"year = {year} && session_type = '{pb_escape(ADULT_SESSION_TYPE)}'",
+                "filter": f"year = {year} && {_jotform_types('session_type')}",
                 "sort": f"start_date,{STABLE_SORT}",
             },
         )
@@ -89,7 +104,7 @@ class JotformRepository:
         return await self._page(
             ATTENDEES,
             query_params={
-                "filter": f"year = {year} && {ACTIVE_ENROLLED_FILTER} && session.session_type = '{pb_escape(ADULT_SESSION_TYPE)}'"
+                "filter": f"year = {year} && {ACTIVE_ENROLLED_FILTER} && {_jotform_types('session.session_type')}"
                 + _weekend("session.cm_id", session_cm_id),
                 "expand": "person,session",
                 "sort": STABLE_SORT,

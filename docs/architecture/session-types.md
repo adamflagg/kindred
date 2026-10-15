@@ -54,8 +54,7 @@ independently.
 - **family** — a Family Camp weekend (CampMinder's Family Camp group), registered by a family with children.
 - **family_adult** — an **"Adult Reg: …"** session (kindred#3213). From 2027 CampMinder files one beside each Family Camp
   weekend, in the Adult Programs group. Adults beyond a family's first two, and adults with no children (empty nesters,
-  paper registrations), register there. They are **adult-only Family Camp attendees**, not an adult weekend, and need no
-  Jotform.
+  paper registrations), register there. They are **adult-only Family Camp attendees**, not an adult weekend.
   - **Classified by name**: a name starting `Adult Reg:` is `family_adult` on both the group path and the name fallback.
   - **parent_id** is the paired weekend's cm_id. Pairing goes by the "Family Camp N" number in the name, then by the
     exact name after the prefix, and only then by identical dates, when exactly one weekend matches. Otherwise it is left
@@ -65,8 +64,12 @@ independently.
     journey, the daily person custom-values cohort, and Camperships (aid is `family_camp`; an unclaimed one takes its
     weekend's rules program; a household's Family Camp aid request resolves to the paired weekend when Adult Reg is its
     only enrollment, `api/services/financial_aid_session_resolver.py`).
+  - **Takes Jotform intake** (owner re-ruling 2026-10-14): each Adult Reg session gets its own tab on Manage › Lodging ›
+    Jotform beside the adult weekends (`JOTFORM_SESSION_TYPES`, `api/services/jotform_repository.py`), and its filings
+    are matched against that session's registrations as an adult weekend's are. With no weekend board to hold a Requests
+    tab, its queue is reviewed on the Jotform tab itself. A regular `family` weekend takes no Jotform.
   - **Not yet on the weekend board**: no cards, no household linking, no cabin attribution. That arrives with the 2027
-    Family Camp lodging work. It stays off the Jotform tab, the adult board and summer metrics.
+    Family Camp lodging work. It stays off the adult board, the weekend list and summer metrics.
 
 ## Frontend AG Detection Best Practices
 - Use `session.session_type === 'ag'` to detect AG sessions (not name string matching)

@@ -74,7 +74,7 @@ _MATCH_STATUSES: dict[str, MatchStatus] = {
 
 
 class JotformNotFoundError(LookupError):
-    """No such adult weekend or submission."""
+    """No such Jotform session (adult weekend or Adult Reg) or submission."""
 
 
 class JotformValidationError(ValueError):
@@ -232,7 +232,7 @@ class JotformAdminService:
         self.repository = repository
 
     async def build_forms(self, year: int) -> JotformFormsResponse:
-        sessions = await self.repository.fetch_adult_sessions(year)
+        sessions = await self.repository.fetch_jotform_sessions(year)
         forms = await self.repository.fetch_forms(year)
         submissions = await self.repository.fetch_submissions(year)
         counts = Counter(str(s.form) for s in submissions)
@@ -242,13 +242,17 @@ class JotformAdminService:
         for session in sessions:
             cm_id = int(session.cm_id)
             form = by_session.get(cm_id)
+            session_type = str(getattr(session, "session_type", "") or "")
             if form is None:
-                rows.append(JotformFormRow(session_cm_id=cm_id, session_name=str(session.name)))
+                rows.append(
+                    JotformFormRow(session_cm_id=cm_id, session_name=str(session.name), session_type=session_type)
+                )
                 continue
             rows.append(
                 JotformFormRow(
                     session_cm_id=cm_id,
                     session_name=str(session.name),
+                    session_type=session_type,
                     form_id=str(getattr(form, "form_id", "") or ""),
                     form_title=str(getattr(form, "form_title", "") or ""),
                     field_map=dict(getattr(form, "field_map", None) or {}),
@@ -273,9 +277,11 @@ class JotformAdminService:
         back. A staff role the pull flagged missing (its question left the
         form, so the card cannot send it) keeps its staff pick, so the next
         pull flags it again instead of it quietly becoming "chose none"."""
-        sessions = await self.repository.fetch_adult_sessions(year)
+        sessions = await self.repository.fetch_jotform_sessions(year)
         if not any(int(s.cm_id) == session_cm_id for s in sessions):
-            raise JotformNotFoundError(f"No adult weekend with CampMinder id {session_cm_id} in {year}")
+            raise JotformNotFoundError(
+                f"No adult weekend or Adult Reg session with CampMinder id {session_cm_id} in {year}"
+            )
         try:
             form_id = parse_form_id(body.form_ref)
         except FormReferenceError as exc:
@@ -367,13 +373,15 @@ class JotformAdminService:
         """
         if scenario and session_cm_id is None:
             raise JotformValidationError("A scenario is read for one weekend: name the weekend too")
-        sessions = await self.repository.fetch_adult_sessions(year)
+        sessions = await self.repository.fetch_jotform_sessions(year)
         scenario_names: dict[str, str] = {}
         if session_cm_id is not None:
             sessions = [s for s in sessions if int(s.cm_id) == session_cm_id]
             if not sessions:
                 # Family Camp included: its share requests come from CampMinder.
-                raise JotformNotFoundError(f"No adult weekend with CampMinder id {session_cm_id} in {year}")
+                raise JotformNotFoundError(
+                    f"No adult weekend or Adult Reg session with CampMinder id {session_cm_id} in {year}"
+                )
             scenario_names = {
                 str(row.id): str(getattr(row, "name", "") or "")
                 for row in await self.repository.fetch_weekend_scenarios(year, session_cm_id)

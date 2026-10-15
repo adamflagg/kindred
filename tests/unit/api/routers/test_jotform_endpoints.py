@@ -71,7 +71,7 @@ def test_service_errors_map_to_404_and_422() -> None:
 def test_a_vanity_form_link_is_a_422_that_says_where_the_id_is() -> None:
     # Owner ruling: the 2026 forms' public links carry no id -- say where to find it.
     repo = MagicMock()
-    repo.fetch_adult_sessions = AsyncMock(return_value=[SimpleNamespace(cm_id=1000002, name="Women's Weekend")])
+    repo.fetch_jotform_sessions = AsyncMock(return_value=[SimpleNamespace(cm_id=1000002, name="Women's Weekend")])
     repo.upsert_form = AsyncMock()
     with patch("api.routers.jotform.JotformRepository", return_value=repo):
         response = _client(_user(Permission.BUNKING_MANAGE)).put(
