@@ -133,7 +133,7 @@ export default function WaitlistAnalysis() {
   const sessionTypeLookup = useMemo(() => buildSessionTypeLookup(sessions), [sessions])
 
   const { primary, comparison } = useComparisonWaitlistData(currentYear, compareYear, filterOptions)
-  const { data, isLoading, error } = primary
+  const { data, isLoading, error, refetch, isPlaceholderData } = primary
   const compData = comparison?.data
 
   const { setFilter, DrilldownModal } = useDrilldown({
@@ -169,7 +169,15 @@ export default function WaitlistAnalysis() {
   )
 
   return (
-    <MetricsQueryGuard isLoading={isLoading} error={error} data={data} label="waitlist">
+    <MetricsQueryGuard
+      onRetry={() => void refetch()}
+      isPlaceholderData={isPlaceholderData}
+      loadingLabel={String(currentYear)}
+      isLoading={isLoading}
+      error={error}
+      data={data}
+      label="waitlist"
+    >
       {(data) => {
         return (
           <div className="space-y-6">

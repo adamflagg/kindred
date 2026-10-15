@@ -5,6 +5,7 @@
 import { render, screen } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
 import RegistrationOverview from './RegistrationOverview'
+import { useComparisonRegistrationData } from '../../../hooks/useComparisonRegistrationData'
 
 const mockData = {
   year: 2026,
@@ -63,5 +64,34 @@ describe('RegistrationOverview — Total Cancelled note and formatting (decision
     render(<RegistrationOverview />)
     expect(screen.getByText('1,134')).toBeInTheDocument()
     expect(screen.getByText('1,172')).toBeInTheDocument()
+  })
+})
+
+describe('RegistrationOverview — busy cue and Try again (D-UNCOVERED)', () => {
+  it('dims the previous numbers under "Loading 2026…" while the next season loads', () => {
+    vi.mocked(useComparisonRegistrationData).mockReturnValueOnce({
+      primary: {
+        data: mockData,
+        isLoading: false,
+        error: null,
+        isPlaceholderData: true,
+        refetch: vi.fn(),
+      },
+      comparison: null,
+    } as unknown as ReturnType<typeof useComparisonRegistrationData>)
+    render(<RegistrationOverview />)
+    expect(screen.getByText('Loading 2026…')).toBeInTheDocument()
+    expect(screen.getByText('1,134').closest('[inert]')).not.toBeNull()
+  })
+
+  it('offers Try again on an error, which refetches', () => {
+    const refetch = vi.fn()
+    vi.mocked(useComparisonRegistrationData).mockReturnValueOnce({
+      primary: { data: undefined, isLoading: false, error: new Error('timeout'), refetch },
+      comparison: null,
+    } as unknown as ReturnType<typeof useComparisonRegistrationData>)
+    render(<RegistrationOverview />)
+    screen.getByRole('button', { name: 'Try again' }).click()
+    expect(refetch).toHaveBeenCalledTimes(1)
   })
 })

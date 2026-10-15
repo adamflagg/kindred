@@ -368,10 +368,14 @@ function ComparisonTable({ data, currentYear }: ComparisonTableProps) {
 export default function Day1Page() {
   const { currentYear } = useCurrentYear()
   const { sessionTypesParam, selectedSessionCmId, durationParam } = useMetricsSession()
-  const { data, isLoading, error } = useDay1(currentYear, sessionTypesParam, {
-    sessionCmId: selectedSessionCmId ?? undefined,
-    duration: durationParam,
-  })
+  const { data, isLoading, error, refetch, isPlaceholderData } = useDay1(
+    currentYear,
+    sessionTypesParam,
+    {
+      sessionCmId: selectedSessionCmId ?? undefined,
+      duration: durationParam,
+    }
+  )
 
   return (
     <div className="space-y-6">
@@ -384,6 +388,9 @@ export default function Day1Page() {
       </div>
 
       <MetricsQueryGuard
+        onRetry={() => void refetch()}
+        isPlaceholderData={isPlaceholderData}
+        loadingLabel={String(currentYear)}
         isLoading={isLoading}
         error={error}
         data={data}

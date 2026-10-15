@@ -146,6 +146,17 @@ describe('ForecastPage', () => {
     mockUseMetricsSession.mockReturnValue(defaultMetricsSession())
   })
 
+  it('writes a revenue shortfall with the true minus sign (decision 43)', async () => {
+    setupMockFetch(mockResponse([session({ revenue_delta: -100000 })]))
+
+    renderWithProviders(<ForecastPage />)
+
+    await waitFor(() => {
+      expect(screen.getAllByText('\u2212$100,000').length).toBeGreaterThan(0)
+    })
+    expect(screen.queryByText('-$100,000')).toBeNull()
+  })
+
   // ---------- section headings ----------
 
   it('shows section headings when both camp and quest sessions present', async () => {

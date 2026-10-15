@@ -66,7 +66,7 @@ export default function GeoAnalysis() {
     ...filterOptions,
     statuses: 'enrolled',
   })
-  const { data, isLoading, error } = primary
+  const { data, isLoading, error, refetch, isPlaceholderData } = primary
   const compData = comparison?.data
 
   // Transform data for display
@@ -221,7 +221,15 @@ export default function GeoAnalysis() {
         <p className="text-muted-foreground mt-1">Explore where your campers come from</p>
       </div>
 
-      <MetricsQueryGuard isLoading={isLoading} error={error} data={data} label="geographic">
+      <MetricsQueryGuard
+        onRetry={() => void refetch()}
+        isPlaceholderData={isPlaceholderData}
+        loadingLabel={String(currentYear)}
+        isLoading={isLoading}
+        error={error}
+        data={data}
+        label="geographic"
+      >
         {(_queryData) => {
           const anyData =
             geoData.city.length > 0 || geoData.school.length > 0 || geoData.synagogue.length > 0

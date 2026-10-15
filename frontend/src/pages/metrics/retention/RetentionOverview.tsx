@@ -38,8 +38,9 @@ import {
 } from '../../../utils/sessionUtils'
 import { OutlierSection } from '../../../components/metrics/RetentionNotableOutliers'
 import type { DrilldownFilter } from '../../../types/metrics'
-import { Loader2, AlertCircle } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { formatCount, formatPercent, formatRate } from '../../../utils/numberFormat'
+import { MetricsBusy, MetricsLoadError } from '../../../components/metrics/MetricsQueryGuard'
 
 export default function RetentionOverview() {
   const { currentYear } = useCurrentYear()
@@ -84,7 +85,7 @@ export default function RetentionOverview() {
     [priorYear, currentYear]
   )
 
-  const { data, isLoading, error } = useRetentionMetrics(
+  const { data, isLoading, error, refetch, isPlaceholderData } = useRetentionMetrics(
     priorYear,
     currentYear,
     filterOptions,
@@ -110,12 +111,7 @@ export default function RetentionOverview() {
   }
 
   if (error) {
-    return (
-      <div className="flex items-center justify-center py-12 text-red-600 dark:text-red-400">
-        <AlertCircle className="mr-2 h-6 w-6" />
-        <span>Failed to load retention data: {error.message}</span>
-      </div>
-    )
+    return <MetricsLoadError label="retention" error={error} onRetry={() => void refetch()} />
   }
 
   if (!data) {
@@ -152,243 +148,245 @@ export default function RetentionOverview() {
   const regionOutliers = computeRetentionOutliers(regionBars, data.overall_retention_rate)
 
   return (
-    <div className="space-y-6">
-      {/* Summary Cards */}
-      <div
-        className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4"
-        data-tour="retention-summary-cards"
-      >
-        <MetricCard
-          title={`${priorYear} Total Campers`}
-          value={data.base_year_total}
-          subtitle="Enrolled in prior year"
-          onClick={() =>
-            setFilter({
-              type: 'retention_all',
-              value: 'all',
-              label: `${priorYear} Enrolled Campers`,
-              retentionContext: { baseYear: priorYear, compareYear: currentYear },
-            })
-          }
-        />
-        <MetricCard
-          title={`Returned to ${currentYear}`}
-          value={data.returned_count}
-          subtitle={`${formatRate(data.overall_retention_rate)} retention rate`}
-          onClick={() =>
-            setFilter({
-              type: 'retention_returned',
-              value: 'all',
-              label: `Returned to ${currentYear}`,
-              retentionContext: { baseYear: priorYear, compareYear: currentYear },
-            })
-          }
-        />
-        <MetricCard
-          title="Did Not Return"
-          value={didNotReturn}
-          subtitle={`${formatPercent(data.base_year_total > 0 ? (didNotReturn / data.base_year_total) * 100 : 0)} attrition`}
-          onClick={() =>
-            setFilter({
-              type: 'retention_not_returned',
-              value: 'all',
-              label: `Did Not Return to ${currentYear}`,
-              retentionContext: { baseYear: priorYear, compareYear: currentYear },
-            })
-          }
-        />
-        <MetricCard
-          title="Overall Retention Rate"
-          value={formatRate(data.overall_retention_rate)}
-          subtitle={`${priorYear} → ${currentYear}`}
-          trend={data.overall_retention_rate >= 0.5 ? 'up' : 'down'}
-          trendValue={data.overall_retention_rate >= 0.5 ? 'Good' : 'Low'}
-        />
-      </div>
-
-      {(() => {
-        const effectiveOn = effectiveTeenPipeline
-        const gradeTenInBase = data.by_grade.find((g) => g.grade === 10)?.base_count ?? 0
-        const agedOut = data.aged_out_count ?? 0
-        // Split the aged-out total into its two reasons
-        const tenthExcluded = effectiveOn ? 0 : scopeHasTeens ? gradeTenInBase : agedOut
-        const gradExcluded = effectiveOn ? agedOut : Math.max(0, agedOut - tenthExcluded)
-
-        if (tenthExcluded === 0 && gradExcluded === 0) return null
-
-        const graderS = (n: number) => `grader${n === 1 ? '' : 's'}`
-
-        let noteContent: React.ReactNode
-        if (tenthExcluded > 0 && gradExcluded > 0) {
-          noteContent = (
-            <>
-              Excluding {formatCount(tenthExcluded)} rising 10th {graderS(tenthExcluded)} and{' '}
-              {formatCount(gradExcluded)} rising 12th {graderS(gradExcluded)}. Only showing
-              retention within camp sessions or teen programs — check the box above to include 10th
-              grader retention stats.
-            </>
-          )
-        } else if (tenthExcluded > 0) {
-          if (scopeHasTeens) {
-            noteContent = (
-              <>
-                Excluding {formatCount(tenthExcluded)} rising 10th {graderS(tenthExcluded)}. Only
-                showing retention within camp sessions or teen programs — check the box above to
-                include 10th grader retention stats.
-              </>
-            )
-          } else {
-            noteContent = (
-              <>
-                Excluding {formatCount(tenthExcluded)} rising 10th {graderS(tenthExcluded)}.
-              </>
-            )
-          }
-        } else {
-          noteContent = (
-            <>
-              Excluding {formatCount(gradExcluded)} rising 12th {graderS(gradExcluded)}.
-            </>
-          )
-        }
-
-        return <p className="text-muted-foreground text-xs">{noteContent}</p>
-      })()}
-
-      {/* Row 1: Gender + Grade side by side */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2" data-tour="retention-demographics">
-        {genderPieData.length > 0 && (
-          <BreakdownChart
-            data={genderPieData}
-            title="Returning Campers by Gender"
-            showPercentage
-            height={200}
-            breakdownType="gender"
-            onSegmentClick={(filter) =>
+    <MetricsBusy busy={isPlaceholderData} what={String(currentYear)}>
+      <div className="space-y-6">
+        {/* Summary Cards */}
+        <div
+          className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4"
+          data-tour="retention-summary-cards"
+        >
+          <MetricCard
+            title={`${priorYear} Total Campers`}
+            value={data.base_year_total}
+            subtitle="Enrolled in prior year"
+            onClick={() =>
               setFilter({
-                ...filter,
+                type: 'retention_all',
+                value: 'all',
+                label: `${priorYear} Enrolled Campers`,
                 retentionContext: { baseYear: priorYear, compareYear: currentYear },
               })
             }
           />
-        )}
-        {gradeBars.length > 0 && (
-          <RetentionRateLineChart
-            data={gradeBars}
-            title="Retention by Grade"
-            tooltipLabelPrefix="Grade "
-            onDotClick={(item) => setFilter(makeRetentionFilter('grade', item, 'Grade '))}
+          <MetricCard
+            title={`Returned to ${currentYear}`}
+            value={data.returned_count}
+            subtitle={`${formatRate(data.overall_retention_rate)} retention rate`}
+            onClick={() =>
+              setFilter({
+                type: 'retention_returned',
+                value: 'all',
+                label: `Returned to ${currentYear}`,
+                retentionContext: { baseYear: priorYear, compareYear: currentYear },
+              })
+            }
           />
+          <MetricCard
+            title="Did Not Return"
+            value={didNotReturn}
+            subtitle={`${formatPercent(data.base_year_total > 0 ? (didNotReturn / data.base_year_total) * 100 : 0)} attrition`}
+            onClick={() =>
+              setFilter({
+                type: 'retention_not_returned',
+                value: 'all',
+                label: `Did Not Return to ${currentYear}`,
+                retentionContext: { baseYear: priorYear, compareYear: currentYear },
+              })
+            }
+          />
+          <MetricCard
+            title="Overall Retention Rate"
+            value={formatRate(data.overall_retention_rate)}
+            subtitle={`${priorYear} → ${currentYear}`}
+            trend={data.overall_retention_rate >= 0.5 ? 'up' : 'down'}
+            trendValue={data.overall_retention_rate >= 0.5 ? 'Good' : 'Low'}
+          />
+        </div>
+
+        {(() => {
+          const effectiveOn = effectiveTeenPipeline
+          const gradeTenInBase = data.by_grade.find((g) => g.grade === 10)?.base_count ?? 0
+          const agedOut = data.aged_out_count ?? 0
+          // Split the aged-out total into its two reasons
+          const tenthExcluded = effectiveOn ? 0 : scopeHasTeens ? gradeTenInBase : agedOut
+          const gradExcluded = effectiveOn ? agedOut : Math.max(0, agedOut - tenthExcluded)
+
+          if (tenthExcluded === 0 && gradExcluded === 0) return null
+
+          const graderS = (n: number) => `grader${n === 1 ? '' : 's'}`
+
+          let noteContent: React.ReactNode
+          if (tenthExcluded > 0 && gradExcluded > 0) {
+            noteContent = (
+              <>
+                Excluding {formatCount(tenthExcluded)} rising 10th {graderS(tenthExcluded)} and{' '}
+                {formatCount(gradExcluded)} rising 12th {graderS(gradExcluded)}. Only showing
+                retention within camp sessions or teen programs — check the box above to include
+                10th grader retention stats.
+              </>
+            )
+          } else if (tenthExcluded > 0) {
+            if (scopeHasTeens) {
+              noteContent = (
+                <>
+                  Excluding {formatCount(tenthExcluded)} rising 10th {graderS(tenthExcluded)}. Only
+                  showing retention within camp sessions or teen programs — check the box above to
+                  include 10th grader retention stats.
+                </>
+              )
+            } else {
+              noteContent = (
+                <>
+                  Excluding {formatCount(tenthExcluded)} rising 10th {graderS(tenthExcluded)}.
+                </>
+              )
+            }
+          } else {
+            noteContent = (
+              <>
+                Excluding {formatCount(gradExcluded)} rising 12th {graderS(gradExcluded)}.
+              </>
+            )
+          }
+
+          return <p className="text-muted-foreground text-xs">{noteContent}</p>
+        })()}
+
+        {/* Row 1: Gender + Grade side by side */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2" data-tour="retention-demographics">
+          {genderPieData.length > 0 && (
+            <BreakdownChart
+              data={genderPieData}
+              title="Returning Campers by Gender"
+              showPercentage
+              height={200}
+              breakdownType="gender"
+              onSegmentClick={(filter) =>
+                setFilter({
+                  ...filter,
+                  retentionContext: { baseYear: priorYear, compareYear: currentYear },
+                })
+              }
+            />
+          )}
+          {gradeBars.length > 0 && (
+            <RetentionRateLineChart
+              data={gradeBars}
+              title="Retention by Grade"
+              tooltipLabelPrefix="Grade "
+              onDotClick={(item) => setFilter(makeRetentionFilter('grade', item, 'Grade '))}
+            />
+          )}
+        </div>
+
+        {/* Row 2: Session charts side by side */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          {sessionBars.length > 0 && (
+            <CssVerticalRetentionBarChart
+              data={sessionBars}
+              title={`Retention by ${currentYear} Session`}
+              sortBy="none"
+              barWidthPercent={88}
+              onBarClick={(item) => setFilter(makeRetentionFilter('retention_session', item))}
+            />
+          )}
+          {priorSessionBars.length > 0 && (
+            <CssVerticalRetentionBarChart
+              data={priorSessionBars}
+              title={`Retention by ${priorYear} Session`}
+              sortBy="none"
+              barWidthPercent={88}
+            />
+          )}
+        </div>
+
+        {/* Row 3: Summers at Camp + First Summer Year side by side */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          {summerYearsBars.length > 0 && (
+            <RetentionRateLineChart
+              data={summerYearsBars}
+              title="Retention by Summers at Camp"
+              onDotClick={(item) => setFilter(makeRetentionFilter('summer_years', item))}
+            />
+          )}
+          {firstSummerYearBars.length > 0 && (
+            <RetentionRateLineChart
+              data={firstSummerYearBars}
+              title="Retention by First Summer Year"
+              onDotClick={(item) => setFilter(makeRetentionFilter('first_summer_year', item))}
+            />
+          )}
+        </div>
+
+        {/* Row 5: City chart + outliers */}
+        {cityBars.length > 0 && (
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3" data-tour="retention-geographic">
+            <div className={cityOutliers.length > 0 ? 'lg:col-span-2' : 'lg:col-span-3'}>
+              <CssVerticalRetentionBarChart
+                data={cityBars}
+                title="Retention by City (Top 15)"
+                topN={15}
+                sortBy="count"
+                barWidthPercent={78}
+                onBarClick={(item) => setFilter(makeRetentionFilter('city', item))}
+              />
+            </div>
+            <OutlierSection outliers={cityOutliers} max={5} />
+          </div>
         )}
+
+        {/* Row 6: School chart + outliers */}
+        {schoolBars.length > 0 && (
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <div className={schoolOutliers.length > 0 ? 'lg:col-span-2' : 'lg:col-span-3'}>
+              <CssVerticalRetentionBarChart
+                data={schoolBars}
+                title="Retention by School (Top 15)"
+                topN={15}
+                sortBy="count"
+                barWidthPercent={78}
+                onBarClick={(item) => setFilter(makeRetentionFilter('school', item))}
+              />
+            </div>
+            <OutlierSection outliers={schoolOutliers} max={5} />
+          </div>
+        )}
+
+        {/* Row 7: Synagogue chart + outliers */}
+        {synagogueBars.length > 0 && (
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <div className={synagogueOutliers.length > 0 ? 'lg:col-span-2' : 'lg:col-span-3'}>
+              <CssVerticalRetentionBarChart
+                data={synagogueBars}
+                title="Retention by Synagogue (Top 15)"
+                topN={15}
+                sortBy="count"
+                barWidthPercent={78}
+                onBarClick={(item) => setFilter(makeRetentionFilter('synagogue', item))}
+              />
+            </div>
+            <OutlierSection outliers={synagogueOutliers} max={5} />
+          </div>
+        )}
+
+        {/* Row 8: Region chart + outliers */}
+        {regionBars.length > 0 && (
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <div className={regionOutliers.length > 0 ? 'lg:col-span-2' : 'lg:col-span-3'}>
+              <CssVerticalRetentionBarChart
+                data={regionBars}
+                title="Retention by Region"
+                sortBy="count"
+                barWidthPercent={80}
+              />
+            </div>
+            <OutlierSection outliers={regionOutliers} max={5} />
+          </div>
+        )}
+
+        {/* Drilldown Modal */}
+        <DrilldownModal />
       </div>
-
-      {/* Row 2: Session charts side by side */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {sessionBars.length > 0 && (
-          <CssVerticalRetentionBarChart
-            data={sessionBars}
-            title={`Retention by ${currentYear} Session`}
-            sortBy="none"
-            barWidthPercent={88}
-            onBarClick={(item) => setFilter(makeRetentionFilter('retention_session', item))}
-          />
-        )}
-        {priorSessionBars.length > 0 && (
-          <CssVerticalRetentionBarChart
-            data={priorSessionBars}
-            title={`Retention by ${priorYear} Session`}
-            sortBy="none"
-            barWidthPercent={88}
-          />
-        )}
-      </div>
-
-      {/* Row 3: Summers at Camp + First Summer Year side by side */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {summerYearsBars.length > 0 && (
-          <RetentionRateLineChart
-            data={summerYearsBars}
-            title="Retention by Summers at Camp"
-            onDotClick={(item) => setFilter(makeRetentionFilter('summer_years', item))}
-          />
-        )}
-        {firstSummerYearBars.length > 0 && (
-          <RetentionRateLineChart
-            data={firstSummerYearBars}
-            title="Retention by First Summer Year"
-            onDotClick={(item) => setFilter(makeRetentionFilter('first_summer_year', item))}
-          />
-        )}
-      </div>
-
-      {/* Row 5: City chart + outliers */}
-      {cityBars.length > 0 && (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3" data-tour="retention-geographic">
-          <div className={cityOutliers.length > 0 ? 'lg:col-span-2' : 'lg:col-span-3'}>
-            <CssVerticalRetentionBarChart
-              data={cityBars}
-              title="Retention by City (Top 15)"
-              topN={15}
-              sortBy="count"
-              barWidthPercent={78}
-              onBarClick={(item) => setFilter(makeRetentionFilter('city', item))}
-            />
-          </div>
-          <OutlierSection outliers={cityOutliers} max={5} />
-        </div>
-      )}
-
-      {/* Row 6: School chart + outliers */}
-      {schoolBars.length > 0 && (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <div className={schoolOutliers.length > 0 ? 'lg:col-span-2' : 'lg:col-span-3'}>
-            <CssVerticalRetentionBarChart
-              data={schoolBars}
-              title="Retention by School (Top 15)"
-              topN={15}
-              sortBy="count"
-              barWidthPercent={78}
-              onBarClick={(item) => setFilter(makeRetentionFilter('school', item))}
-            />
-          </div>
-          <OutlierSection outliers={schoolOutliers} max={5} />
-        </div>
-      )}
-
-      {/* Row 7: Synagogue chart + outliers */}
-      {synagogueBars.length > 0 && (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <div className={synagogueOutliers.length > 0 ? 'lg:col-span-2' : 'lg:col-span-3'}>
-            <CssVerticalRetentionBarChart
-              data={synagogueBars}
-              title="Retention by Synagogue (Top 15)"
-              topN={15}
-              sortBy="count"
-              barWidthPercent={78}
-              onBarClick={(item) => setFilter(makeRetentionFilter('synagogue', item))}
-            />
-          </div>
-          <OutlierSection outliers={synagogueOutliers} max={5} />
-        </div>
-      )}
-
-      {/* Row 8: Region chart + outliers */}
-      {regionBars.length > 0 && (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <div className={regionOutliers.length > 0 ? 'lg:col-span-2' : 'lg:col-span-3'}>
-            <CssVerticalRetentionBarChart
-              data={regionBars}
-              title="Retention by Region"
-              sortBy="count"
-              barWidthPercent={80}
-            />
-          </div>
-          <OutlierSection outliers={regionOutliers} max={5} />
-        </div>
-      )}
-
-      {/* Drilldown Modal */}
-      <DrilldownModal />
-    </div>
+    </MetricsBusy>
   )
 }

@@ -137,7 +137,7 @@ export default function CancellationAnalysis() {
     compareYear,
     filterOptions
   )
-  const { data, isLoading, error } = primary
+  const { data, isLoading, error, refetch, isPlaceholderData } = primary
   const compData = comparison?.data
 
   const { setFilter, DrilldownModal } = useDrilldown({
@@ -170,7 +170,15 @@ export default function CancellationAnalysis() {
   )
 
   return (
-    <MetricsQueryGuard isLoading={isLoading} error={error} data={data} label="cancellations">
+    <MetricsQueryGuard
+      onRetry={() => void refetch()}
+      isPlaceholderData={isPlaceholderData}
+      loadingLabel={String(currentYear)}
+      isLoading={isLoading}
+      error={error}
+      data={data}
+      label="cancellations"
+    >
       {(data) => {
         return (
           <div className="space-y-6">

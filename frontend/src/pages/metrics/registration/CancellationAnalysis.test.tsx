@@ -148,3 +148,34 @@ describe('CancellationAnalysis session table number format', () => {
     ])
   })
 })
+
+describe('CancellationAnalysis — busy cue and Try again (D-UNCOVERED)', () => {
+  it('dims the previous season under "Loading 2026…" while the next loads', () => {
+    vi.mocked(useComparisonCancellationData).mockReturnValueOnce({
+      primary: {
+        data: mockData,
+        isLoading: false,
+        error: null,
+        isPlaceholderData: true,
+        refetch: vi.fn(),
+      },
+      comparison: null,
+    } as unknown as ReturnType<typeof useComparisonCancellationData>)
+    render(<CancellationAnalysis />)
+    expect(screen.getByText('Loading 2026…')).toBeInTheDocument()
+    expect(
+      screen.getByText('Total Cancelled', { exact: false, selector: 'p' }).closest('[inert]')
+    ).not.toBeNull()
+  })
+
+  it('offers Try again on an error, which refetches', async () => {
+    const refetch = vi.fn()
+    vi.mocked(useComparisonCancellationData).mockReturnValueOnce({
+      primary: { data: undefined, isLoading: false, error: new Error('timeout'), refetch },
+      comparison: null,
+    } as unknown as ReturnType<typeof useComparisonCancellationData>)
+    render(<CancellationAnalysis />)
+    screen.getByRole('button', { name: 'Try again' }).click()
+    expect(refetch).toHaveBeenCalledTimes(1)
+  })
+})

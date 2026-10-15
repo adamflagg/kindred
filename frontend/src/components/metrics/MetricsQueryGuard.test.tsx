@@ -5,8 +5,8 @@
  * rendering children only when data is available.
  */
 
-import { render, screen } from '@testing-library/react'
-import { describe, it, expect } from 'vitest'
+import { fireEvent, render, screen } from '@testing-library/react'
+import { describe, it, expect, vi } from 'vitest'
 import { MetricsQueryGuard } from './MetricsQueryGuard'
 
 describe('MetricsQueryGuard', () => {
@@ -82,5 +82,68 @@ describe('MetricsQueryGuard', () => {
 
     expect(screen.getByText('Loading test data...')).toBeInTheDocument()
     expect(screen.queryByText(/Failed/)).not.toBeInTheDocument()
+  })
+})
+
+describe('MetricsQueryGuard — Try again and the busy cue (D-UNCOVERED, #3207)', () => {
+  it('offers "Try again" on an error and calls onRetry', () => {
+    const onRetry = vi.fn()
+    render(
+      <MetricsQueryGuard
+        isLoading={false}
+        error={new Error('timeout')}
+        data={undefined}
+        label="cancellations"
+        onRetry={onRetry}
+      >
+        {() => <p>content</p>}
+      </MetricsQueryGuard>
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(onRetry).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows no button when there is nothing to retry with', () => {
+    render(
+      <MetricsQueryGuard isLoading={false} error={new Error('x')} data={undefined} label="waitlist">
+        {() => <p>content</p>}
+      </MetricsQueryGuard>
+    )
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull()
+  })
+
+  it('dims the old numbers, makes them inert and says what is loading while placeholder data shows', () => {
+    render(
+      <MetricsQueryGuard
+        isLoading={false}
+        error={null}
+        data={{ n: 1 }}
+        label="cancellations"
+        isPlaceholderData
+        loadingLabel="2025"
+      >
+        {() => <p>old numbers</p>}
+      </MetricsQueryGuard>
+    )
+    expect(screen.getByText('Loading 2025…')).toBeInTheDocument()
+    const region = screen.getByText('old numbers').closest('[inert]')
+    expect(region).not.toBeNull()
+    expect(region?.className).toContain('opacity-')
+  })
+
+  it('shows the numbers plainly once the new data lands', () => {
+    render(
+      <MetricsQueryGuard
+        isLoading={false}
+        error={null}
+        data={{ n: 1 }}
+        label="x"
+        loadingLabel="2025"
+      >
+        {() => <p>new numbers</p>}
+      </MetricsQueryGuard>
+    )
+    expect(screen.queryByText(/Loading 2025/)).toBeNull()
+    expect(screen.getByText('new numbers').closest('[inert]')).toBeNull()
   })
 })

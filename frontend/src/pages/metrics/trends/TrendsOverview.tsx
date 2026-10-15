@@ -22,7 +22,7 @@ import { MetricCard } from '../../../components/metrics/MetricCard'
 import { RetentionRateLine } from '../../../components/metrics/RetentionRateLine'
 import { CssVerticalStackedBarChart } from '../../../components/metrics/CssVerticalStackedBarChart'
 import { CssVerticalGroupedBarChart } from '../../../components/metrics/CssVerticalGroupedBarChart'
-import { Loader2, AlertCircle } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { aggregateCityEnrollmentByRegion, REGION_DISPLAY_NAMES } from '../../../utils/regionUtils'
 import { getYearColor, YEAR_PALETTE } from '../../../utils/yearColors'
 import { trendDirection } from '../../../utils/trendDirection'
@@ -36,6 +36,7 @@ import {
   formatSignedPercent,
 } from '../../../utils/numberFormat'
 import { TRENDS_NOTES } from '../cancelledNotes'
+import { MetricsBusy, MetricsLoadError } from '../../../components/metrics/MetricsQueryGuard'
 
 interface GroupedChartItem {
   name: string
@@ -157,7 +158,7 @@ export default function TrendsOverview() {
   }, [currentYear])
 
   // Historical trends (enrollment, new vs returning, gender lines)
-  const { data, isLoading, error } = useHistoricalTrends({
+  const { data, isLoading, error, refetch, isPlaceholderData } = useHistoricalTrends({
     ...filterOptions,
     years: yearsParam,
   })
@@ -167,6 +168,7 @@ export default function TrendsOverview() {
     data: trendsData,
     isLoading: trendsLoading,
     error: trendsError,
+    refetch: refetchTrends,
   } = useRetentionTrends(currentYear, {
     numYears: 5,
     ...filterOptions,
@@ -204,10 +206,14 @@ export default function TrendsOverview() {
 
   if (error || trendsError) {
     return (
-      <div className="flex items-center justify-center py-12 text-red-600 dark:text-red-400">
-        <AlertCircle className="mr-2 h-6 w-6" />
-        <span>Failed to load historical data: {(error ?? trendsError)?.message}</span>
-      </div>
+      <MetricsLoadError
+        label="historical"
+        error={(error ?? trendsError) as Error}
+        onRetry={() => {
+          void refetch()
+          void refetchTrends()
+        }}
+      />
     )
   }
 
@@ -239,364 +245,371 @@ export default function TrendsOverview() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Summary Cards */}
-      <div
-        data-tour="trends-summary"
-        className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4"
-      >
-        <MetricCard
-          title="Years Analyzed"
-          value={data.years.length}
-          subtitle={`${earliestYear?.year ?? '?'} - ${latestYear?.year ?? '?'}`}
-        />
-        <MetricCard
-          title="Latest Enrollment"
-          value={latestYear?.total_enrolled ?? 0}
-          subtitle={`${latestYear?.year ?? ''} total campers`}
-        />
-        <MetricCard
-          title="Total Change"
-          value={formatSignedCount(totalChange)}
-          subtitle={`${formatSignedPercent(percentChange)} over ${data.years.length} years`}
-          trend={trendDirection(totalChange)}
-          trendValue={formatSignedPercent(percentChange)}
-        />
-        <MetricCard
-          title="Avg. Annual Growth"
-          value={formatSignedCount(avgGrowth)}
-          subtitle="Campers per year"
-          trend={trendDirection(avgGrowth)}
-        />
-      </div>
-
-      {/* Line Charts */}
-      <div data-tour="trends-charts" className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <TrendLineChart
-          title="Total Enrollment Over Time"
-          data={data.years}
-          metric="total"
-          height={300}
-        />
-        <TrendLineChart
-          title="New vs Returning Campers"
-          data={data.years}
-          metric="new_vs_returning"
-          height={300}
-        />
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <TrendLineChart
-          title="Enrollment by Gender"
-          data={data.years}
-          metric="gender"
-          height={300}
-        />
-        {enrollmentData.length > 0 && (
-          <CssVerticalStackedBarChart
-            data={enrollmentData.map((y) => {
-              const male = y.by_gender.find((g) => g.gender === 'M')?.count ?? 0
-              const female = y.by_gender.find((g) => g.gender === 'F')?.count ?? 0
-              return { name: String(y.year), total: male + female, male, female }
-            })}
-            segments={[
-              { key: 'female', label: 'Female', color: 'hsl(340, 70%, 50%)' },
-              { key: 'male', label: 'Male', color: 'hsl(200, 70%, 50%)' },
-            ]}
-            title={`Gender Composition (${numYearsDisplay}-Year Comparison)`}
-            percentMode
-            height={300}
-            maxColumnWidth={60}
+    <MetricsBusy busy={isPlaceholderData} what={String(currentYear)}>
+      <div className="space-y-6">
+        {/* Summary Cards */}
+        <div
+          data-tour="trends-summary"
+          className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4"
+        >
+          <MetricCard
+            title="Years Analyzed"
+            value={data.years.length}
+            subtitle={`${earliestYear?.year ?? '?'} - ${latestYear?.year ?? '?'}`}
           />
-        )}
-      </div>
-
-      {/* Data Table */}
-      <div data-tour="trends-table" className="card-lodge overflow-hidden">
-        <div className="border-border border-b px-4 py-3">
-          <h3 className="text-foreground text-base font-semibold">Year-by-Year Summary</h3>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-border bg-muted/30 border-b">
-                <th className="text-muted-foreground px-4 py-3 text-left font-medium">Year</th>
-                <th className="text-muted-foreground px-4 py-3 text-right font-medium">Total</th>
-                <th className="text-muted-foreground px-4 py-3 text-right font-medium">New</th>
-                <th className="text-muted-foreground px-4 py-3 text-right font-medium">
-                  Returning
-                </th>
-                <th className="text-muted-foreground px-4 py-3 text-right font-medium">New %</th>
-                <th className="text-muted-foreground px-4 py-3 text-right font-medium">Male</th>
-                <th className="text-muted-foreground px-4 py-3 text-right font-medium">Female</th>
-                <th className="text-muted-foreground px-4 py-3 text-right font-medium">
-                  Cancelled
-                  <DefRef n={1} />
-                </th>
-                <th className="text-muted-foreground px-4 py-3 text-right font-medium">
-                  Cancel %
-                  <DefRef n={2} />
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.years.map((year) => {
-                const maleCount = year.by_gender.find((g) => g.gender === 'M')?.count ?? 0
-                const femaleCount = year.by_gender.find((g) => g.gender === 'F')?.count ?? 0
-                return (
-                  <tr
-                    key={year.year}
-                    className="border-border hover:bg-muted/20 border-b transition-colors last:border-0"
-                  >
-                    <td className="text-foreground px-4 py-3 font-medium">{year.year}</td>
-                    <td className="text-foreground px-4 py-3 text-right">
-                      {formatCount(year.total_enrolled)}
-                    </td>
-                    <td className="text-foreground px-4 py-3 text-right">
-                      {formatCount(year.new_vs_returning.new_count)}
-                    </td>
-                    <td className="text-foreground px-4 py-3 text-right">
-                      {formatCount(year.new_vs_returning.returning_count)}
-                    </td>
-                    <td className="text-muted-foreground px-4 py-3 text-right">
-                      {formatPercent(year.new_vs_returning.new_percentage)}
-                    </td>
-                    <td className="text-foreground px-4 py-3 text-right">
-                      {formatCount(maleCount)}
-                    </td>
-                    <td className="text-foreground px-4 py-3 text-right">
-                      {formatCount(femaleCount)}
-                    </td>
-                    <td className="text-foreground px-4 py-3 text-right">
-                      {year.has_cancellation_data === false
-                        ? '—'
-                        : formatCount(year.total_cancelled ?? 0)}
-                    </td>
-                    <td className="text-muted-foreground px-4 py-3 text-right">
-                      {year.has_cancellation_data === false
-                        ? '—'
-                        : formatPercent(year.cancellation_rate ?? 0)}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Retention Rate + Cancellation Rate side-by-side */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        {retentionYears.length > 0 && (
-          <RetentionRateLine
-            data={retentionYears}
-            title="Overall Retention Rate Trend"
-            height={250}
-            headerRight={
-              scopeHasTeens ? (
-                <label className="flex cursor-pointer items-center gap-1.5 text-xs">
-                  <input
-                    type="checkbox"
-                    checked={includeTeenPipeline}
-                    onChange={(e) => setIncludeTeenPipeline(e.target.checked)}
-                    className="accent-primary h-3.5 w-3.5 rounded"
-                  />
-                  <span className="text-muted-foreground">Camp → Teen</span>
-                </label>
-              ) : undefined
-            }
+          <MetricCard
+            title="Latest Enrollment"
+            value={latestYear?.total_enrolled ?? 0}
+            subtitle={`${latestYear?.year ?? ''} total campers`}
           />
-        )}
-        {data.years.some((y) => (y.total_cancelled ?? 0) > 0) && (
+          <MetricCard
+            title="Total Change"
+            value={formatSignedCount(totalChange)}
+            subtitle={`${formatSignedPercent(percentChange)} over ${data.years.length} years`}
+            trend={trendDirection(totalChange)}
+            trendValue={formatSignedPercent(percentChange)}
+          />
+          <MetricCard
+            title="Avg. Annual Growth"
+            value={formatSignedCount(avgGrowth)}
+            subtitle="Campers per year"
+            trend={trendDirection(avgGrowth)}
+          />
+        </div>
+
+        {/* Line Charts */}
+        <div data-tour="trends-charts" className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <TrendLineChart
-            title="Cancellation Rate Over Time"
+            title="Total Enrollment Over Time"
             data={data.years}
-            metric="cancellation_rate"
-            height={250}
+            metric="total"
+            height={300}
           />
-        )}
+          <TrendLineChart
+            title="New vs Returning Campers"
+            data={data.years}
+            metric="new_vs_returning"
+            height={300}
+          />
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <TrendLineChart
+            title="Enrollment by Gender"
+            data={data.years}
+            metric="gender"
+            height={300}
+          />
+          {enrollmentData.length > 0 && (
+            <CssVerticalStackedBarChart
+              data={enrollmentData.map((y) => {
+                const male = y.by_gender.find((g) => g.gender === 'M')?.count ?? 0
+                const female = y.by_gender.find((g) => g.gender === 'F')?.count ?? 0
+                return { name: String(y.year), total: male + female, male, female }
+              })}
+              segments={[
+                { key: 'female', label: 'Female', color: 'hsl(340, 70%, 50%)' },
+                { key: 'male', label: 'Male', color: 'hsl(200, 70%, 50%)' },
+              ]}
+              title={`Gender Composition (${numYearsDisplay}-Year Comparison)`}
+              percentMode
+              height={300}
+              maxColumnWidth={60}
+            />
+          )}
+        </div>
+
+        {/* Data Table */}
+        <div data-tour="trends-table" className="card-lodge overflow-hidden">
+          <div className="border-border border-b px-4 py-3">
+            <h3 className="text-foreground text-base font-semibold">Year-by-Year Summary</h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-border bg-muted/30 border-b">
+                  <th className="text-muted-foreground px-4 py-3 text-left font-medium">Year</th>
+                  <th className="text-muted-foreground px-4 py-3 text-right font-medium">Total</th>
+                  <th className="text-muted-foreground px-4 py-3 text-right font-medium">New</th>
+                  <th className="text-muted-foreground px-4 py-3 text-right font-medium">
+                    Returning
+                  </th>
+                  <th className="text-muted-foreground px-4 py-3 text-right font-medium">New %</th>
+                  <th className="text-muted-foreground px-4 py-3 text-right font-medium">Male</th>
+                  <th className="text-muted-foreground px-4 py-3 text-right font-medium">Female</th>
+                  <th className="text-muted-foreground px-4 py-3 text-right font-medium">
+                    Cancelled
+                    <DefRef n={1} />
+                  </th>
+                  <th className="text-muted-foreground px-4 py-3 text-right font-medium">
+                    Cancel %
+                    <DefRef n={2} />
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.years.map((year) => {
+                  const maleCount = year.by_gender.find((g) => g.gender === 'M')?.count ?? 0
+                  const femaleCount = year.by_gender.find((g) => g.gender === 'F')?.count ?? 0
+                  return (
+                    <tr
+                      key={year.year}
+                      className="border-border hover:bg-muted/20 border-b transition-colors last:border-0"
+                    >
+                      <td className="text-foreground px-4 py-3 font-medium">{year.year}</td>
+                      <td className="text-foreground px-4 py-3 text-right">
+                        {formatCount(year.total_enrolled)}
+                      </td>
+                      <td className="text-foreground px-4 py-3 text-right">
+                        {formatCount(year.new_vs_returning.new_count)}
+                      </td>
+                      <td className="text-foreground px-4 py-3 text-right">
+                        {formatCount(year.new_vs_returning.returning_count)}
+                      </td>
+                      <td className="text-muted-foreground px-4 py-3 text-right">
+                        {formatPercent(year.new_vs_returning.new_percentage)}
+                      </td>
+                      <td className="text-foreground px-4 py-3 text-right">
+                        {formatCount(maleCount)}
+                      </td>
+                      <td className="text-foreground px-4 py-3 text-right">
+                        {formatCount(femaleCount)}
+                      </td>
+                      <td className="text-foreground px-4 py-3 text-right">
+                        {year.has_cancellation_data === false
+                          ? '—'
+                          : formatCount(year.total_cancelled ?? 0)}
+                      </td>
+                      <td className="text-muted-foreground px-4 py-3 text-right">
+                        {year.has_cancellation_data === false
+                          ? '—'
+                          : formatPercent(year.cancellation_rate ?? 0)}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Retention Rate + Cancellation Rate side-by-side */}
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {retentionYears.length > 0 && (
+            <RetentionRateLine
+              data={retentionYears}
+              title="Overall Retention Rate Trend"
+              height={250}
+              headerRight={
+                scopeHasTeens ? (
+                  <label className="flex cursor-pointer items-center gap-1.5 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={includeTeenPipeline}
+                      onChange={(e) => setIncludeTeenPipeline(e.target.checked)}
+                      className="accent-primary h-3.5 w-3.5 rounded"
+                    />
+                    <span className="text-muted-foreground">Camp → Teen</span>
+                  </label>
+                ) : undefined
+              }
+            />
+          )}
+          {data.years.some((y) => (y.total_cancelled ?? 0) > 0) && (
+            <TrendLineChart
+              title="Cancellation Rate Over Time"
+              data={data.years}
+              metric="cancellation_rate"
+              height={250}
+            />
+          )}
+        </div>
+
+        {/* Grade Enrollment */}
+        {enrollmentData.length > 0 &&
+          (() => {
+            const gradeSet = new Set<number | null>()
+            for (const y of enrollmentData) {
+              for (const g of y.by_grade) gradeSet.add(g.grade)
+            }
+            const sortedGrades = Array.from(gradeSet).sort((a, b) => {
+              if (a === null) return 1
+              if (b === null) return -1
+              return a - b
+            })
+
+            const years = enrollmentData.map((y) => y.year).sort((a, b) => a - b)
+            const maxYear = Math.max(...years)
+
+            const gradeData: GroupedChartItem[] = sortedGrades.map((grade) => {
+              const item: GroupedChartItem = {
+                name: grade !== null ? `Grade ${grade}` : 'Unknown',
+              }
+              for (const yearData of enrollmentData) {
+                const gd = yearData.by_grade.find((g) => g.grade === grade)
+                item[String(yearData.year)] = gd?.count ?? 0
+              }
+              return item
+            })
+
+            const yearSeries = years.map((y) => ({
+              key: String(y),
+              label: String(y),
+              color: getYearColor(y, maxYear),
+            }))
+
+            return (
+              <CssVerticalGroupedBarChart
+                data={gradeData}
+                series={yearSeries}
+                title={`Enrollment by Grade (${numYearsDisplay}-Year Comparison)`}
+                height={300}
+                rotateLabels={false}
+                groupGap={numYearsDisplay === 3 ? 24 : 20}
+                barWidthPercent={numYearsDisplay === 3 ? 30 : 55}
+              />
+            )
+          })()}
+
+        {/* Summers at Camp */}
+        {enrollmentData.length > 0 &&
+          (() => {
+            const { chartData, series } = buildGroupedChartData(
+              enrollmentData,
+              'by_summer_years',
+              'summer_years',
+              15,
+              summerYearsFormatter,
+              true
+            )
+            if (chartData.length === 0) return null
+            return (
+              <CssVerticalGroupedBarChart
+                data={chartData}
+                series={series}
+                title={`Summers at Camp (${numYearsDisplay}-Year Comparison)`}
+                height={300}
+                maxColumnWidth={numYearsDisplay === 3 ? 300 : 160}
+                groupGap={numYearsDisplay === 3 ? 48 : 32}
+              />
+            )
+          })()}
+
+        {/* First Summer Year */}
+        {enrollmentData.length > 0 &&
+          (() => {
+            const { chartData, series } = buildGroupedChartData(
+              enrollmentData,
+              'by_first_summer_year',
+              'first_summer_year',
+              15,
+              firstSummerYearLabel,
+              true,
+              'asc'
+            )
+            if (chartData.length === 0) return null
+            return (
+              <CssVerticalGroupedBarChart
+                data={chartData}
+                series={series}
+                title={`First Summer Year (${numYearsDisplay}-Year Comparison)`}
+                height={300}
+                maxColumnWidth={numYearsDisplay === 3 ? 300 : 160}
+                groupGap={numYearsDisplay === 3 ? 48 : 32}
+              />
+            )
+          })()}
+
+        {/* City Distribution */}
+        {enrollmentData.some((y) => (y.by_city?.length ?? 0) > 0) &&
+          (() => {
+            const { chartData, series } = buildGroupedChartData(
+              enrollmentData,
+              'by_city',
+              'city',
+              15
+            )
+            if (chartData.length === 0) return null
+            return (
+              <CssVerticalGroupedBarChart
+                data={chartData}
+                series={series}
+                title={`City Distribution (Top 15, ${numYearsDisplay}-Year Comparison)`}
+                height={350}
+                groupGap={numYearsDisplay === 3 ? 24 : 20}
+                barWidthPercent={numYearsDisplay === 3 ? 30 : 55}
+              />
+            )
+          })()}
+
+        {/* School Distribution */}
+        {enrollmentData.some((y) => (y.by_school?.length ?? 0) > 0) &&
+          (() => {
+            const { chartData, series } = buildGroupedChartData(
+              enrollmentData,
+              'by_school',
+              'school',
+              15
+            )
+            if (chartData.length === 0) return null
+            return (
+              <CssVerticalGroupedBarChart
+                data={chartData}
+                series={series}
+                title={`School Distribution (Top 15, ${numYearsDisplay}-Year Comparison)`}
+                height={350}
+                groupGap={numYearsDisplay === 3 ? 24 : 20}
+                barWidthPercent={numYearsDisplay === 3 ? 30 : 55}
+              />
+            )
+          })()}
+
+        {/* Synagogue Distribution */}
+        {enrollmentData.some((y) => (y.by_synagogue?.length ?? 0) > 0) &&
+          (() => {
+            const { chartData, series } = buildGroupedChartData(
+              enrollmentData,
+              'by_synagogue',
+              'synagogue',
+              15
+            )
+            if (chartData.length === 0) return null
+            return (
+              <CssVerticalGroupedBarChart
+                data={chartData}
+                series={series}
+                title={`Synagogue Distribution (Top 15, ${numYearsDisplay}-Year Comparison)`}
+                height={350}
+                groupGap={numYearsDisplay === 3 ? 24 : 20}
+                barWidthPercent={numYearsDisplay === 3 ? 30 : 55}
+              />
+            )
+          })()}
+
+        {/* Region Distribution */}
+        {enrollmentDataWithRegions.some((y) => y.by_region.length > 0) &&
+          (() => {
+            const { chartData, series } = buildGroupedChartData(
+              enrollmentDataWithRegions,
+              'by_region',
+              'region',
+              15,
+              (key) => REGION_DISPLAY_NAMES[String(key)] ?? String(key)
+            )
+            if (chartData.length === 0) return null
+            return (
+              <CssVerticalGroupedBarChart
+                data={chartData}
+                series={series}
+                title={`Region Distribution (${numYearsDisplay}-Year Comparison)`}
+                height={350}
+                groupGap={numYearsDisplay === 3 ? 24 : 20}
+                barWidthPercent={numYearsDisplay === 3 ? 30 : 55}
+              />
+            )
+          })()}
+        <DefinitionNotes notes={TRENDS_NOTES} boldTerm />
       </div>
-
-      {/* Grade Enrollment */}
-      {enrollmentData.length > 0 &&
-        (() => {
-          const gradeSet = new Set<number | null>()
-          for (const y of enrollmentData) {
-            for (const g of y.by_grade) gradeSet.add(g.grade)
-          }
-          const sortedGrades = Array.from(gradeSet).sort((a, b) => {
-            if (a === null) return 1
-            if (b === null) return -1
-            return a - b
-          })
-
-          const years = enrollmentData.map((y) => y.year).sort((a, b) => a - b)
-          const maxYear = Math.max(...years)
-
-          const gradeData: GroupedChartItem[] = sortedGrades.map((grade) => {
-            const item: GroupedChartItem = {
-              name: grade !== null ? `Grade ${grade}` : 'Unknown',
-            }
-            for (const yearData of enrollmentData) {
-              const gd = yearData.by_grade.find((g) => g.grade === grade)
-              item[String(yearData.year)] = gd?.count ?? 0
-            }
-            return item
-          })
-
-          const yearSeries = years.map((y) => ({
-            key: String(y),
-            label: String(y),
-            color: getYearColor(y, maxYear),
-          }))
-
-          return (
-            <CssVerticalGroupedBarChart
-              data={gradeData}
-              series={yearSeries}
-              title={`Enrollment by Grade (${numYearsDisplay}-Year Comparison)`}
-              height={300}
-              rotateLabels={false}
-              groupGap={numYearsDisplay === 3 ? 24 : 20}
-              barWidthPercent={numYearsDisplay === 3 ? 30 : 55}
-            />
-          )
-        })()}
-
-      {/* Summers at Camp */}
-      {enrollmentData.length > 0 &&
-        (() => {
-          const { chartData, series } = buildGroupedChartData(
-            enrollmentData,
-            'by_summer_years',
-            'summer_years',
-            15,
-            summerYearsFormatter,
-            true
-          )
-          if (chartData.length === 0) return null
-          return (
-            <CssVerticalGroupedBarChart
-              data={chartData}
-              series={series}
-              title={`Summers at Camp (${numYearsDisplay}-Year Comparison)`}
-              height={300}
-              maxColumnWidth={numYearsDisplay === 3 ? 300 : 160}
-              groupGap={numYearsDisplay === 3 ? 48 : 32}
-            />
-          )
-        })()}
-
-      {/* First Summer Year */}
-      {enrollmentData.length > 0 &&
-        (() => {
-          const { chartData, series } = buildGroupedChartData(
-            enrollmentData,
-            'by_first_summer_year',
-            'first_summer_year',
-            15,
-            firstSummerYearLabel,
-            true,
-            'asc'
-          )
-          if (chartData.length === 0) return null
-          return (
-            <CssVerticalGroupedBarChart
-              data={chartData}
-              series={series}
-              title={`First Summer Year (${numYearsDisplay}-Year Comparison)`}
-              height={300}
-              maxColumnWidth={numYearsDisplay === 3 ? 300 : 160}
-              groupGap={numYearsDisplay === 3 ? 48 : 32}
-            />
-          )
-        })()}
-
-      {/* City Distribution */}
-      {enrollmentData.some((y) => (y.by_city?.length ?? 0) > 0) &&
-        (() => {
-          const { chartData, series } = buildGroupedChartData(enrollmentData, 'by_city', 'city', 15)
-          if (chartData.length === 0) return null
-          return (
-            <CssVerticalGroupedBarChart
-              data={chartData}
-              series={series}
-              title={`City Distribution (Top 15, ${numYearsDisplay}-Year Comparison)`}
-              height={350}
-              groupGap={numYearsDisplay === 3 ? 24 : 20}
-              barWidthPercent={numYearsDisplay === 3 ? 30 : 55}
-            />
-          )
-        })()}
-
-      {/* School Distribution */}
-      {enrollmentData.some((y) => (y.by_school?.length ?? 0) > 0) &&
-        (() => {
-          const { chartData, series } = buildGroupedChartData(
-            enrollmentData,
-            'by_school',
-            'school',
-            15
-          )
-          if (chartData.length === 0) return null
-          return (
-            <CssVerticalGroupedBarChart
-              data={chartData}
-              series={series}
-              title={`School Distribution (Top 15, ${numYearsDisplay}-Year Comparison)`}
-              height={350}
-              groupGap={numYearsDisplay === 3 ? 24 : 20}
-              barWidthPercent={numYearsDisplay === 3 ? 30 : 55}
-            />
-          )
-        })()}
-
-      {/* Synagogue Distribution */}
-      {enrollmentData.some((y) => (y.by_synagogue?.length ?? 0) > 0) &&
-        (() => {
-          const { chartData, series } = buildGroupedChartData(
-            enrollmentData,
-            'by_synagogue',
-            'synagogue',
-            15
-          )
-          if (chartData.length === 0) return null
-          return (
-            <CssVerticalGroupedBarChart
-              data={chartData}
-              series={series}
-              title={`Synagogue Distribution (Top 15, ${numYearsDisplay}-Year Comparison)`}
-              height={350}
-              groupGap={numYearsDisplay === 3 ? 24 : 20}
-              barWidthPercent={numYearsDisplay === 3 ? 30 : 55}
-            />
-          )
-        })()}
-
-      {/* Region Distribution */}
-      {enrollmentDataWithRegions.some((y) => y.by_region.length > 0) &&
-        (() => {
-          const { chartData, series } = buildGroupedChartData(
-            enrollmentDataWithRegions,
-            'by_region',
-            'region',
-            15,
-            (key) => REGION_DISPLAY_NAMES[String(key)] ?? String(key)
-          )
-          if (chartData.length === 0) return null
-          return (
-            <CssVerticalGroupedBarChart
-              data={chartData}
-              series={series}
-              title={`Region Distribution (${numYearsDisplay}-Year Comparison)`}
-              height={350}
-              groupGap={numYearsDisplay === 3 ? 24 : 20}
-              barWidthPercent={numYearsDisplay === 3 ? 30 : 55}
-            />
-          )
-        })()}
-      <DefinitionNotes notes={TRENDS_NOTES} boldTerm />
-    </div>
+    </MetricsBusy>
   )
 }

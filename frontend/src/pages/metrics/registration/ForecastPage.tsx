@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
-import { formatCount, formatPercent, formatSignedCount } from '../../../utils/numberFormat'
-import { Loader2, AlertCircle } from 'lucide-react'
+import { MINUS, formatCount, formatPercent, formatSignedCount } from '../../../utils/numberFormat'
+import { Loader2 } from 'lucide-react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { useForecast } from '../../../hooks/useForecast'
@@ -29,6 +29,7 @@ import {
   PRIORITY_DAY_PENDING_CLASS,
   isPriorityDayOffset,
 } from '../../../utils/priorityDay'
+import { MetricsBusy, MetricsLoadError } from '../../../components/metrics/MetricsQueryGuard'
 
 function pctColor(pct: number | null): string {
   if (pct === null) return ''
@@ -59,7 +60,7 @@ function fmtSignedCurrency(value: number | null): string {
     maximumFractionDigits: 0,
   })
   if (value > 0) return `+$${abs}`
-  if (value < 0) return `-$${abs}`
+  if (value < 0) return `${MINUS}$${abs}`
   return `$${abs}`
 }
 
@@ -219,7 +220,7 @@ export default function ForecastPage() {
     }
   }, [weekOptions, todayWeek]) // eslint-disable-line react-hooks/exhaustive-deps -- dayOffset excluded to avoid feedback loop
 
-  const { data, isLoading, error } = useForecast(currentYear, {
+  const { data, isLoading, error, refetch, isPlaceholderData } = useForecast(currentYear, {
     sessionCmId: selectedSessionCmId,
     sessionTypes: sessionTypesParam,
     dayOffset,
@@ -256,12 +257,7 @@ export default function ForecastPage() {
   }
 
   if (error) {
-    return (
-      <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-center dark:border-red-800 dark:bg-red-950/30">
-        <AlertCircle className="mx-auto mb-2 h-6 w-6 text-red-500" />
-        <p className="text-sm text-red-700 dark:text-red-300">Failed to load forecast data</p>
-      </div>
-    )
+    return <MetricsLoadError label="forecast" error={error} onRetry={() => void refetch()} />
   }
 
   if (!data) return null
@@ -288,85 +284,87 @@ export default function ForecastPage() {
     data.prior_basis === 'same_point' && isPriorityDayOffset(data.day_offset ?? todayOffset)
 
   return (
-    <div className="space-y-6">
-      <div data-tour="reg-forecast-snapshot">
-        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-          <h2 className="text-lg font-semibold">Enrollment Forecast</h2>
-          {grand_total.participant_goal !== null && grand_total.participant_goal > 0 && (
-            <span className="text-muted-foreground text-sm">
-              <span className="text-foreground font-medium">
-                {formatCount(grand_total.enrolled)}/{formatCount(grand_total.participant_goal)}
-              </span>
-              {' enrolled'}
-              {grand_total.pct_of_goal !== null && (
-                <span className={`ml-1 font-medium ${pctColor(grand_total.pct_of_goal)}`}>
-                  ({formatPercent(grand_total.pct_of_goal)} of goal)
+    <MetricsBusy busy={isPlaceholderData} what={String(currentYear)}>
+      <div className="space-y-6">
+        <div data-tour="reg-forecast-snapshot">
+          <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+            <h2 className="text-lg font-semibold">Enrollment Forecast</h2>
+            {grand_total.participant_goal !== null && grand_total.participant_goal > 0 && (
+              <span className="text-muted-foreground text-sm">
+                <span className="text-foreground font-medium">
+                  {formatCount(grand_total.enrolled)}/{formatCount(grand_total.participant_goal)}
                 </span>
-              )}
-            </span>
-          )}
-          <div className="ml-auto">
-            <SnapshotDateSelector
-              dayOffset={dayOffset}
-              onOffsetChange={setDayOffset}
-              weekOptions={weekOptions}
-            />
-          </div>
-        </div>
-        <p className="text-muted-foreground text-sm">
-          {dayOffset != null
-            ? `Enrollment at Week ${data.week_number ?? Math.floor(dayOffset / 7)} (${dayOffset} days after priority reg)`
-            : `Budget goals and revenue projections for ${currentYear}`}
-        </p>
-      </div>
-
-      {/* Section tables */}
-      <div className="space-y-6" data-tour="reg-forecast-table">
-        {sections.map((section) => {
-          const showSectionTotal = section.sessions.length >= 2
-          return (
-            <div key={section.key}>
-              {showSectionHeadings && (
-                <h3 className="text-muted-foreground mb-2 text-sm font-semibold uppercase">
-                  {section.label}
-                </h3>
-              )}
-              <div className="border-border overflow-x-auto rounded-xl border">
-                <table className="w-full border-collapse">
-                  <ForecastTableHeader priorBasis={data.prior_basis} priorityDay={priorityDay} />
-                  <tbody>
-                    {section.sessions.map((s) => (
-                      <SessionRow
-                        key={`${s.session_type}-${s.session_cm_id}`}
-                        session={s}
-                        priorityDay={priorityDay}
-                      />
-                    ))}
-                  </tbody>
-                  {showSectionTotal && (
-                    <tfoot>
-                      <SessionRow session={section.total} isTotal priorityDay={priorityDay} />
-                    </tfoot>
-                  )}
-                </table>
-              </div>
+                {' enrolled'}
+                {grand_total.pct_of_goal !== null && (
+                  <span className={`ml-1 font-medium ${pctColor(grand_total.pct_of_goal)}`}>
+                    ({formatPercent(grand_total.pct_of_goal)} of goal)
+                  </span>
+                )}
+              </span>
+            )}
+            <div className="ml-auto">
+              <SnapshotDateSelector
+                dayOffset={dayOffset}
+                onOffsetChange={setDayOffset}
+                weekOptions={weekOptions}
+              />
             </div>
-          )
-        })}
-
-        {/* Grand total (standalone row when 2+ sections visible) */}
-        {showGrandTotal && (
-          <div className="border-border overflow-x-auto rounded-xl border">
-            <table className="w-full border-collapse">
-              <tbody>
-                <SessionRow session={grand_total} isTotal priorityDay={priorityDay} />
-              </tbody>
-            </table>
           </div>
-        )}
-      </div>
+          <p className="text-muted-foreground text-sm">
+            {dayOffset != null
+              ? `Enrollment at Week ${data.week_number ?? Math.floor(dayOffset / 7)} (${dayOffset} days after priority reg)`
+              : `Budget goals and revenue projections for ${currentYear}`}
+          </p>
+        </div>
 
-      {priorityDay && <DefinitionNotes notes={PRIORITY_DAY_NOTES} />}
-    </div>
+        {/* Section tables */}
+        <div className="space-y-6" data-tour="reg-forecast-table">
+          {sections.map((section) => {
+            const showSectionTotal = section.sessions.length >= 2
+            return (
+              <div key={section.key}>
+                {showSectionHeadings && (
+                  <h3 className="text-muted-foreground mb-2 text-sm font-semibold uppercase">
+                    {section.label}
+                  </h3>
+                )}
+                <div className="border-border overflow-x-auto rounded-xl border">
+                  <table className="w-full border-collapse">
+                    <ForecastTableHeader priorBasis={data.prior_basis} priorityDay={priorityDay} />
+                    <tbody>
+                      {section.sessions.map((s) => (
+                        <SessionRow
+                          key={`${s.session_type}-${s.session_cm_id}`}
+                          session={s}
+                          priorityDay={priorityDay}
+                        />
+                      ))}
+                    </tbody>
+                    {showSectionTotal && (
+                      <tfoot>
+                        <SessionRow session={section.total} isTotal priorityDay={priorityDay} />
+                      </tfoot>
+                    )}
+                  </table>
+                </div>
+              </div>
+            )
+          })}
+
+          {/* Grand total (standalone row when 2+ sections visible) */}
+          {showGrandTotal && (
+            <div className="border-border overflow-x-auto rounded-xl border">
+              <table className="w-full border-collapse">
+                <tbody>
+                  <SessionRow session={grand_total} isTotal priorityDay={priorityDay} />
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {priorityDay && <DefinitionNotes notes={PRIORITY_DAY_NOTES} />}
+      </div>
+    </MetricsBusy>
   )
 }

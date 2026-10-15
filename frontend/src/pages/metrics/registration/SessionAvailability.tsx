@@ -416,7 +416,7 @@ export default function SessionAvailability() {
   const { currentYear } = useCurrentYear()
   const { selectedSessionCmId, sessionTypesParam, activeSessionTypes, durationParam } =
     useMetricsSession()
-  const { data, isLoading, error } = useSessionAvailability(
+  const { data, isLoading, error, refetch, isPlaceholderData } = useSessionAvailability(
     currentYear,
     sessionTypesParam,
     selectedSessionCmId ?? undefined,
@@ -530,6 +530,9 @@ export default function SessionAvailability() {
 
   return (
     <MetricsQueryGuard
+      onRetry={() => void refetch()}
+      isPlaceholderData={isPlaceholderData}
+      loadingLabel={String(currentYear)}
       isLoading={isLoading}
       error={error}
       data={data}
