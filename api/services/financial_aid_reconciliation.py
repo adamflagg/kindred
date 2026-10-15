@@ -104,6 +104,11 @@ class CampLine:
     attributed_person_cm_id: int = 0
     attributed_session_cm_id: int = 0
     program_family: str = ""
+    # Go's attribution level for the line (aid_postings.attribution_level, aid_attribution.go: "override" for a
+    # staff/sheet pin, "decision", "session", "person", "program_family", "ambiguous" or "none"). "" when a caller
+    # didn't read it. The 2026 loader reads it:
+    # a session-less "person" line waits for a pin (financial_aid_campminder_money._line_group).
+    attribution_level: str = ""
     # The line's CampMinder description after any reclassification (aid_postings.effective_source_key): the key of the
     # aid_sources row that classifies it. "" when a caller didn't read it.
     description_key: str = ""
