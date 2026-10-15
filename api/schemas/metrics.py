@@ -390,15 +390,16 @@ class YearMetrics(BaseModel):
     total_enrolled: int = Field(description="Total enrolled campers")
     by_gender: list[GenderBreakdown] = Field(description="Enrollment by gender")
     new_vs_returning: NewVsReturning = Field(description="New vs returning breakdown")
-    total_cancelled: int = Field(default=0, description="Total cancelled campers for this year")
+    total_cancelled: int = Field(
+        default=0, description="Campers whose final status is cancelled this year (same count as Overview)"
+    )
     cancellation_rate: float = Field(default=0.0, description="Cancelled / (enrolled + cancelled)")
     has_cancellation_data: bool = Field(
         default=True,
         description=(
-            "Whether attendee_status_history holds any rows for this year at all. "
-            "attendee_status_history only began being written in 2026, so prior years "
-            "have no coverage and total_cancelled/cancellation_rate are unmeasured, not "
-            "zero -- consumers should render 'no data' rather than the fabricated 0/0.0%."
+            "Whether this year's cancellations were measured. total_cancelled counts campers "
+            "whose final status is cancelled (decision 10), which every season has, so this is "
+            "false only when the fetch failed -- consumers render 'no data', never a fabricated 0/0.0%."
         ),
     )
 
