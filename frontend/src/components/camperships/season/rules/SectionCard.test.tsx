@@ -239,3 +239,28 @@ describe('the Quality checks line (final mock: six notes)', () => {
     expect(lead.querySelector('sup')).toBeNull()
   })
 })
+
+describe('Edit… while it can’t be used (owner 2026-10-14: greyed with the reason, never hidden)', () => {
+  it('stays in view, greyed, with the reason as its title, and does nothing on a click', async () => {
+    const onEdit = vi.fn()
+    card({ editOff: 'Approve or cancel first.', onEdit })
+    const edit = within(screen.getByTestId('card-head-round3')).getByRole('button', {
+      name: 'Edit…',
+    })
+    expect(edit).toBeDisabled()
+    expect(edit).toHaveAttribute('title', 'Approve or cancel first.')
+    // Greyed like every kit button when off: the small button had no disabled look of its own.
+    expect(edit).toHaveClass('disabled:opacity-45', 'disabled:cursor-not-allowed')
+    await userEvent.click(edit)
+    expect(onEdit).not.toHaveBeenCalled()
+  })
+
+  it('works, with no title, when nothing holds it', () => {
+    card()
+    const edit = within(screen.getByTestId('card-head-round3')).getByRole('button', {
+      name: 'Edit…',
+    })
+    expect(edit).toBeEnabled()
+    expect(edit).not.toHaveAttribute('title')
+  })
+})

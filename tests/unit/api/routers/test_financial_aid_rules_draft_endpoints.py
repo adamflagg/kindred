@@ -262,6 +262,14 @@ def test_the_draft_read_says_whether_the_budget_total_is_locked() -> None:
     assert _client().get("/api/financial-aid/rules/2031/draft").json()["budget_total_locked"] is True
 
 
+def test_the_draft_read_names_the_version_the_next_edit_starts() -> None:
+    """A discarded draft keeps its number, so "an edit starts v‹n›" can't be worked out from the draft's own number:
+    the server says which number comes next."""
+    service = _stub()
+    service.draft_view = AsyncMock(return_value=replace(DRAFT, next_version=5))
+    assert _client().get("/api/financial-aid/rules/2031/draft").json()["next_version"] == 5
+
+
 def test_a_locked_budget_total_is_422_in_the_lock_words() -> None:
     service = _stub()
     service.save_section = AsyncMock(side_effect=BudgetTotalLockedError(BUDGET_TOTAL_LOCKED))

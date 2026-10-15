@@ -81,6 +81,17 @@ async def test_the_next_save_after_a_discard_takes_a_new_number() -> None:
 
 
 @pytest.mark.asyncio
+async def test_the_draft_read_names_the_number_the_next_version_takes_past_a_discarded_one() -> None:
+    """After a discard the draft read is back on v1, but v2 is spent: the next edit starts v3, and the read says so."""
+    store = FakeStore()
+    service = await _draft_v2(store)
+    assert (await service.draft_view(2031)).next_version == 3
+    await service.discard_draft(2031, 2, actor=FINANCE)
+    view = await service.draft_view(2031)
+    assert (view.version.version, view.next_version) == (1, 3)
+
+
+@pytest.mark.asyncio
 async def test_a_new_version_after_a_discard_takes_a_new_number() -> None:
     """`new_version` numbers from every version, discarded ones too: numbering from the version in effect would
     reuse the discarded draft's number, which the unique index on (year, version) refuses every time."""

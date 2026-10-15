@@ -109,3 +109,19 @@ describe('holds name themselves on the switch (mock hold())', () => {
     )
   })
 })
+
+describe('the finance row never draws over the chapter strips (owner 2026-10-14)', () => {
+  // At 1100px the switch, Discard Draft… and the folds are wider than the room the strips leave. The row's least width
+  // is those controls, never its sentence, so the chapter bar scrolls sideways (its designed fallback) rather than
+  // the row spilling left over the Setup chips.
+  it('lays the row out with the sentence in a column that shrinks to nothing first, packed to the right', () => {
+    lead(FINANCE, { children: <button type="button">Discard Draft…</button> })
+    const row = screen.getByTestId('lead-switch').parentElement as HTMLElement
+    expect(row).toHaveClass(
+      'grid',
+      'grid-flow-col',
+      'grid-cols-[auto_minmax(0,max-content)]',
+      'justify-end'
+    )
+  })
+})

@@ -359,6 +359,10 @@ class RulesDraft:
     # Spec §11.1: the season is earlier than the configured one; the configured season (None: no reader).
     season_done: bool = False
     configured_year: int | None = None
+    # The number the next new version takes (`_next_version`): one past every version, discarded ones too, so the
+    # Rules tab's "an edit starts v‹n›" never names a discarded draft's number. None only where a caller built one by
+    # hand.
+    next_version: int | None = None
 
 
 @dataclass(frozen=True)
@@ -943,6 +947,7 @@ class FinancialAidRulesService:
             groups=tuple(season_groups(current.document)),
             season_done=season_done,
             configured_year=configured_year,
+            next_version=await self._next_version(year),
         )
 
     async def _budget_total_locked(self, year: int) -> bool:

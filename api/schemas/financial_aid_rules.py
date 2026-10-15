@@ -168,6 +168,9 @@ class RulesDraftOut(BaseModel):
     # reader for it; the screen only reads it when `season_done` is true.
     season_done: bool = False
     configured_year: int | None = None
+    # The number the next new version takes: one past every version of the season, discarded ones too, so after a
+    # discard it is not `version + 1`. The Rules tab names it in "an edit starts v‹n›".
+    next_version: int | None = None
 
 
 class ApprovedSectionOut(BaseModel):

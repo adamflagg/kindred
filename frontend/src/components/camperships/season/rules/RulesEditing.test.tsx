@@ -263,12 +263,23 @@ describe('editing a section (D39; Decisions 14–16)', () => {
     expect(locked.parentElement).toBe(screen.getByRole('button', { name: 'Save' }).parentElement)
   })
 
-  it('holds the other cards still while editing', async () => {
-    renderAt('/aid/season/rules?section=awards')
+  // Replaces "holds the other cards still while editing" (owner 2026-10-14: "or possibly allow concurrent section
+  // editing?"). A save sends only its own section, under that section's fingerprint (precondition.ts), so editors on
+  // different cards can't overwrite each other: every other card keeps its Edit…, and a second editor opens beside it.
+  it('keeps every other card’s Edit… live while one card is edited, and opens a second editor beside the first', async () => {
+    renderAt('/aid/season/rules?open=2,3')
     await editCard('awards')
-    // The lead line's cue (review m2); no other card offers Edit….
-    expect(screen.getAllByText('Save or cancel the edit first.')).toHaveLength(1)
-    expect(screen.queryAllByRole('button', { name: 'Edit…' })).toHaveLength(0)
+    expect(await screen.findByRole('textbox', { name: 'Minimum award' })).toBeInTheDocument()
+    const round3 = within(screen.getByTestId('card-head-round3')).getByRole('button', {
+      name: 'Edit…',
+    })
+    expect(round3).toBeEnabled()
+    await userEvent.click(round3)
+    expect(
+      await screen.findByRole('textbox', { name: "The registrar's limit" })
+    ).toBeInTheDocument()
+    expect(screen.getAllByTestId('section-editor')).toHaveLength(2)
+    expect(screen.getByRole('textbox', { name: 'Minimum award' })).toBeInTheDocument()
   })
 })
 
@@ -1098,11 +1109,35 @@ describe('editing a card in place (spec §6.2 F; Task 48)', () => {
     expect(screen.getByRole('button', { name: 'Approve…' })).toBeEnabled()
   })
 
-  it('disables every Edit… while the Approve panel is open', async () => {
+  // Replaces "disables every Edit… while the Approve panel is open", which asserted they were hidden (owner
+  // 2026-10-14: greyed with the reason, never hidden).
+  it('greys every Edit… while the Approve panel is open, each saying why, and the lead line says it too', async () => {
     renderAt('/aid/season/rules?open=1')
     await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
-    expect(screen.queryByRole('button', { name: 'Edit…' })).toBeNull()
+    const edits = screen.getAllByRole('button', { name: 'Edit…' })
+    expect(edits.length).toBeGreaterThan(0)
+    for (const edit of edits) {
+      expect(edit).toBeDisabled()
+      expect(edit).toHaveAttribute('title', 'Approve or cancel first.')
+    }
     expect(screen.getByText('Approve or cancel first.')).toBeInTheDocument()
+  })
+
+  it('keeps Approve… waiting until every open editor is saved or cancelled', async () => {
+    renderAt('/aid/season/rules?open=2,3')
+    expect(await screen.findByRole('button', { name: 'Approve…' })).toBeEnabled()
+    await editCard('awards')
+    await screen.findByRole('textbox', { name: 'Minimum award' })
+    await editCard('round3')
+    await screen.findByRole('textbox', { name: "The registrar's limit" })
+    const cancelIn = (id: string) =>
+      userEvent.click(
+        within(document.getElementById(id) as HTMLElement).getByRole('button', { name: 'Cancel' })
+      )
+    await cancelIn('card-awards')
+    expect(screen.getByRole('button', { name: 'Approve…' })).toBeDisabled()
+    await cancelIn('card-round3')
+    expect(screen.getByRole('button', { name: 'Approve…' })).toBeEnabled()
   })
 
   // Slice 2: Approve… showed only when nothing was being edited, so it could never approve the old copy of an open
@@ -1182,6 +1217,33 @@ describe('the tiers editor and the grid editors in the tier grid card (spec §6.
       income_ceiling: '250000',
       floor_tier: 1,
     })
+  })
+
+  it('greys the tier grid’s other Edit… while one of its parts is edited: the card holds one editor', async () => {
+    renderAt('/aid/season/rules?section=tiers')
+    await editCard('tiers')
+    await screen.findByLabelText('Tiers')
+    const table = within(screen.getByTestId('card-head-award_tables')).getByRole('button', {
+      name: 'Edit…',
+    })
+    expect(table).toBeDisabled()
+    expect(table).toHaveAttribute('title', 'Save or cancel the tier grid edit first.')
+  })
+
+  it('keeps the tiers editor’s typing when another card opens for editing', async () => {
+    renderAt('/aid/season/rules?open=1,2&section=tiers')
+    await editCard('tiers')
+    const tiers = await screen.findByLabelText('Tiers')
+    await userEvent.clear(tiers)
+    await userEvent.type(tiers, '4')
+    await editCard('awards')
+    await screen.findByRole('textbox', { name: 'Minimum award' })
+    await userEvent.click(
+      within(screen.getByTestId('grid-editor-tiers')).getByRole('button', { name: 'Save' })
+    )
+    await waitFor(() => expect(calls).toHaveLength(1))
+    expect(saved().section).toBe('tiers')
+    expect((saved().body.content as { bands: unknown[] }).bands).toHaveLength(4)
   })
 
   it('holds Save while a tiers box is not a figure', async () => {
@@ -1362,6 +1424,131 @@ describe('the section editor footer (mock editFoot)', () => {
   })
 })
 
+describe('the footer after a discard (owner 2026-10-14)', () => {
+  it('names the version the server says comes next, not the one after the draft: v4 was discarded, so v5', async () => {
+    const back = { ...rulesDraft(), version: 3, approved_version: 3, next_version: 5 }
+    draft = { data: back, isLoading: false, error: null }
+    server = [back]
+    renderAt('/aid/season/rules?open=2&section=awards')
+    await editCard('awards')
+    expect(
+      await screen.findByText('Esc cancels · saving puts the change in draft v5')
+    ).toBeInTheDocument()
+  })
+})
+
+describe('several cards edited at once (owner 2026-10-14)', () => {
+  const inCard = (id: string) => within(document.getElementById(id) as HTMLElement)
+  async function openBoth() {
+    renderAt('/aid/season/rules?open=2,3')
+    await editCard('awards')
+    const minimum = await screen.findByRole('textbox', { name: 'Minimum award' })
+    await editCard('round3')
+    const limit = await screen.findByRole('textbox', { name: "The registrar's limit" })
+    await userEvent.clear(minimum)
+    await userEvent.type(minimum, '150')
+    await userEvent.clear(limit)
+    await userEvent.type(limit, '450')
+  }
+
+  it('saves each card on its own: the first save leaves the other editor open with its typing', async () => {
+    await openBoth()
+    await userEvent.click(inCard('card-awards').getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(calls).toHaveLength(1))
+    expect(calls[0]).toMatchObject({ hook: 'save', vars: { section: 'awards' } })
+    expect(screen.getAllByTestId('section-editor')).toHaveLength(1)
+    expect(screen.getByRole('textbox', { name: "The registrar's limit" })).toHaveValue('450')
+    await userEvent.click(inCard('card-round3').getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(calls).toHaveLength(2))
+    expect(calls[1]).toMatchObject({
+      hook: 'save',
+      vars: {
+        section: 'round3',
+        body: { base_version: 4, ...savePrecondition(rulesDraft(), 'round3') },
+      },
+    })
+    expect(screen.queryByTestId('rules-conflict')).toBeNull()
+  })
+
+  // v4 is in effect, so the first save starts v5 (it never overwrites the rules in effect). The other card's section
+  // is the same in v5, so its save goes onto v5 rather than meeting "Someone else changed…": nobody else did.
+  it('carries the other card onto the version its sibling’s save started, when its own section is unchanged there', async () => {
+    const inEffect = { ...rulesDraft(), approved_version: 4 }
+    const started = {
+      ...inEffect,
+      version: 5,
+      parent_version: 4,
+      branched_from: 4,
+      sections: inEffect.sections.map((s) =>
+        s.section === 'awards' ? { ...s, fingerprint: 'fp-awards-v5' } : s
+      ),
+      document: { ...inEffect.document, awards: { ...RULES_DOCUMENT.awards, minimum: '150' } },
+    }
+    draft = { data: inEffect, isLoading: false, error: null }
+    server = [inEffect, inEffect, inEffect, started]
+    outcome = { kind: 'ok', value: started }
+    await openBoth()
+    await userEvent.click(inCard('card-awards').getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(calls).toHaveLength(1))
+    await userEvent.click(inCard('card-round3').getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(calls).toHaveLength(2))
+    expect(calls[1]).toMatchObject({
+      hook: 'save',
+      vars: {
+        section: 'round3',
+        body: {
+          base_version: 5,
+          ...savePrecondition(started, 'round3'),
+          content: { registrar_limit: '450' },
+        },
+      },
+    })
+    expect(screen.queryByTestId('rules-conflict')).toBeNull()
+  })
+
+  // Live check: Save in one card, then Save in the other while the first was still on its way. The second read the
+  // draft before the first landed, sent the old version, and met a 409 it read as "Someone else changed…". One save
+  // at a time on the page: the other cards' Save waits, saying why, and is live again once the first is done.
+  it('holds the other cards’ Save while one card is saving, saying why, and frees it when that save is done', async () => {
+    let land: (draft: ApiAidRulesDraft) => void = () => undefined
+    const reading = new Promise<ApiAidRulesDraft>((resolve) => {
+      land = resolve
+    })
+    server = [rulesDraft(), rulesDraft(), reading, rulesDraft()]
+    await openBoth()
+    await userEvent.click(inCard('card-awards').getByRole('button', { name: 'Save' }))
+    const other = inCard('card-round3').getByRole('button', { name: 'Save' })
+    expect(other).toBeDisabled()
+    expect(other).toHaveAttribute(
+      'title',
+      'Another card is saving: this one can save once it is done.'
+    )
+    land(rulesDraft())
+    await waitFor(() => expect(calls).toHaveLength(1))
+    await waitFor(() =>
+      expect(inCard('card-round3').getByRole('button', { name: 'Save' })).toBeEnabled()
+    )
+    expect(inCard('card-round3').getByRole('button', { name: 'Save' })).not.toHaveAttribute('title')
+  })
+
+  it('still sends nothing when someone else’s save started the new version, though this section is unchanged', async () => {
+    const inEffect = { ...rulesDraft(), approved_version: 4 }
+    const theirs = { ...inEffect, version: 5, parent_version: 4 }
+    draft = { data: inEffect, isLoading: false, error: null }
+    server = [inEffect, theirs]
+    renderAt('/aid/season/rules?open=3')
+    await editCard('round3')
+    const limit = await screen.findByRole('textbox', { name: "The registrar's limit" })
+    await userEvent.clear(limit)
+    await userEvent.type(limit, '450')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(await screen.findByTestId('rules-conflict')).toHaveTextContent(
+      'Nothing in this section changed since you opened it.'
+    )
+    expect(calls).toHaveLength(0)
+  })
+})
+
 describe('discarding the rules draft (owner 2026-10-08)', () => {
   const bar = () => screen.getByTestId('chapter-bar')
 
@@ -1435,14 +1622,30 @@ describe('discarding the rules draft (owner 2026-10-08)', () => {
     expect(within(bar()).getByRole('button', { name: 'Discard Draft…' })).toBeInTheDocument()
   })
 
-  it('offers nothing when the draft is the version in effect, or while a card is edited', async () => {
+  // Replaces "offers nothing when the draft is the version in effect, or while a card is edited", whose second half
+  // asserted Discard Draft… was hidden while a card was edited (owner 2026-10-14: greyed with the reason, never hidden).
+  it('offers nothing when the draft is the version in effect', () => {
     draft = { data: { ...rulesDraft(), approved_version: 4 }, isLoading: false, error: null }
-    const view = renderAt('/aid/season/rules')
+    renderAt('/aid/season/rules')
     expect(within(bar()).queryByRole('button', { name: 'Discard Draft…' })).toBeNull()
-    view.unmount()
-    draft = { data: rulesDraft(), isLoading: false, error: null }
+  })
+
+  it('keeps Discard Draft… on the bar while a card is edited, greyed, with the reason beside it and in its title', async () => {
     renderAt('/aid/season/rules?section=awards')
     await editCard('awards')
-    expect(within(bar()).queryByRole('button', { name: 'Discard Draft…' })).toBeNull()
+    const discard = within(bar()).getByRole('button', { name: 'Discard Draft…' })
+    expect(discard).toBeDisabled()
+    expect(discard).toHaveAttribute('title', 'Save or cancel the edit first.')
+    expect(within(bar()).getByText('Save or cancel the edit first.')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(within(bar()).getByRole('button', { name: 'Discard Draft…' })).toBeEnabled()
+  })
+
+  it('greys Discard Draft… while the Approve panel is open, saying why', async () => {
+    renderAt('/aid/season/rules')
+    await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
+    const discard = within(bar()).getByRole('button', { name: 'Discard Draft…' })
+    expect(discard).toBeDisabled()
+    expect(discard).toHaveAttribute('title', 'Approve or cancel first.')
   })
 })

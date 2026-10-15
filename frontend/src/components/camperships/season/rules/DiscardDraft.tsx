@@ -13,11 +13,17 @@ export function DiscardDraft({
   approvedVersion,
   asking,
   onAsk,
+  off = null,
 }: {
   draftVersion: number
   approvedVersion: number
   asking: boolean
   onAsk: (asking: boolean) => void
+  /**
+   * Why it can't be used now (a card is being edited, or the Approve panel is open): it stays on the bar, greyed, with
+   * this as its title; the lead line beside it says the same (owner 2026-10-14: never hidden). Null: it works.
+   */
+  off?: string | null
 }) {
   const discard = useAidDiscardRulesDraft()
   const { setNotice } = useSeasonChrome()
@@ -26,7 +32,11 @@ export function DiscardDraft({
       <button
         type="button"
         className={CS_BTN2}
-        title={`Throws draft v${String(draftVersion)} away; the tab goes back to v${String(approvedVersion)}, the version in effect`}
+        disabled={off !== null}
+        title={
+          off ??
+          `Throws draft v${String(draftVersion)} away; the tab goes back to v${String(approvedVersion)}, the version in effect`
+        }
         onClick={() => onAsk(true)}
       >
         Discard Draft…

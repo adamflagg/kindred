@@ -35,6 +35,7 @@ export function SectionCardHead({
   status,
   issues,
   canEdit,
+  editOff = null,
   onEdit,
   extra,
   list,
@@ -44,6 +45,11 @@ export function SectionCardHead({
   status: StatusWords
   issues: readonly ApiAidValidationIssue[]
   canEdit: boolean
+  /**
+   * Why Edit… is off for now (the Approve panel is open, or another part of the same card is being edited): it stays
+   * in view, greyed, with this as its title (owner 2026-10-14: never hidden). Null: Edit… works.
+   */
+  editOff?: string | null
   onEdit: () => void
   extra?: ReactNode
   /**
@@ -100,7 +106,14 @@ export function SectionCardHead({
         <span className="ml-auto flex items-baseline gap-2">
           {extra}
           {canEdit && (
-            <button type="button" className={CS_BTN_SM} onClick={onEdit}>
+            <button
+              type="button"
+              // Greyed as the kit's other buttons are when off: CS_BTN_SM (pinned to the slice 1 string) has no look of its own.
+              className={`${CS_BTN_SM} disabled:cursor-not-allowed disabled:opacity-45`}
+              disabled={editOff !== null}
+              title={editOff ?? undefined}
+              onClick={onEdit}
+            >
               Edit…
             </button>
           )}
@@ -195,6 +208,7 @@ export function SectionCard({
   changes,
   issues,
   canEdit,
+  editOff = null,
   onEdit,
   dependentsMode = null,
   grantsHref,
@@ -210,6 +224,8 @@ export function SectionCard({
   changes: readonly ApiAidFieldChange[]
   issues: readonly ApiAidValidationIssue[]
   canEdit: boolean
+  /** Why Edit… is greyed for now (SectionCardHead); null: it works. */
+  editOff?: string | null
   onEdit: () => void
   /** income.dependents_mode from the shown document: the equity table's Dependents note reads it. */
   dependentsMode?: string | null
@@ -234,6 +250,7 @@ export function SectionCard({
         status={status}
         issues={issues}
         canEdit={canEdit && children === undefined}
+        editOff={editOff}
         onEdit={onEdit}
         extra={extra}
       />

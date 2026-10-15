@@ -26,7 +26,8 @@ export function Chapter({
     <section
       id={`chap-${String(chapter.n)}`}
       data-chapter={chapter.n}
-      className={`${CHAPTER_CARD} scroll-mt-[56px]`}
+      // A jump lands it under the app header and the chapter bar (56px), not behind them.
+      className={`${CHAPTER_CARD} scroll-mt-[calc(var(--app-chrome-h,0px)+56px)]`}
     >
       <div className="flex flex-wrap items-baseline gap-x-2">
         <button type="button" className={CS_CARD_TITLE} onClick={onToggle}>

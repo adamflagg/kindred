@@ -15,6 +15,7 @@ import { AMBER_NOTE } from '../../../admin/lodging/lodgingStyles'
 import { CS_AMBER_NOTE, CS_BTN, CS_BTN2, CS_SMALL } from '../../kit/csType'
 import type { CellControl } from './CardTables'
 import { savePrecondition } from './precondition'
+import { ANOTHER_SAVING, useSaveTurn } from './saveTurn'
 import { RuleControl } from './RuleControl'
 import { fixedSettingText, fractionText, settingText, type CardRow } from './rulesCards'
 import { sectionContent } from './rulesDraft'
@@ -55,6 +56,19 @@ type Refusal =
   | { readonly kind: 'loaded'; readonly server: string | null; readonly fresh: ApiAidRulesDraft }
   | { readonly kind: 'failed'; readonly server: string | null; readonly reason: string }
 
+/**
+ * The version a save lands in, as frozenFact says it: the draft, or, when the draft is itself in effect, the next
+ * number the server gives out (a discarded draft keeps its number, so that is not always the draft's + 1).
+ */
+const landsIn = (draft: ApiAidRulesDraft): number =>
+  draft.approved_version === draft.version
+    ? (draft.next_version ?? draft.version + 1)
+    : draft.version
+
+/** The section's fingerprint in a draft read, or null when it has none. */
+const fingerprintOf = (draft: ApiAidRulesDraft, section: ApiAidRulesSection) =>
+  draft.sections.find((s) => s.section === section)?.fingerprint ?? null
+
 const reasonOf = (caught: unknown) => (caught instanceof Error ? caught.message : String(caught))
 
 /** What saving does to a section a posted round read, or one already in effect (owner 10-09: in the footer line). */
@@ -81,6 +95,7 @@ export function RulesSectionEditor({
   context,
   renderBody,
   saveAs,
+  carried = null,
   onDone,
 }: {
   section: ApiAidRulesSection
@@ -97,6 +112,12 @@ export function RulesSectionEditor({
    * read. Without it Save sends the typed boxes.
    */
   saveAs?: { readonly content: Record<string, unknown> | null } | undefined
+  /**
+   * A new version this page's own save in ANOTHER card started (owner 2026-10-14: several cards edited at once): v4 was
+   * in effect, so saving Awards made v5. This editor opened on v4; if its section is the same in v5, its save goes onto
+   * v5, since nobody else changed anything. Anyone else's new version still stops the save (Decision 16).
+   */
+  carried?: { readonly from: number; readonly to: number } | null | undefined
   /** The saved draft, or null when cancelled. */
   onDone: (saved: ApiAidRulesDraft | null) => void
 }) {
@@ -116,6 +137,7 @@ export function RulesSectionEditor({
   )
   const draftState = useSectionDraft(openedContent, specOf)
   const saving = save.isPending || checking
+  const waiting = useSaveTurn(section, saving)
   // Esc is Cancel, as in the household editors: nothing is left behind, and a running save finishes.
   useOverlayEscape(opened !== null, () => {
     if (!saving) onDone(null)
@@ -166,6 +188,15 @@ export function RulesSectionEditor({
     )
   }
 
+  const sectionMoved = (fresh: ApiAidRulesDraft) =>
+    sectionChanges(opened.content, sectionContent(fresh.document, section)).length > 0 ||
+    fingerprintOf(fresh, section) !== fingerprintOf(opened.draft, section)
+  // The page's own save in another card started `fresh`, from the version this editor opened, and left this section be.
+  const carriedOnto = (fresh: ApiAidRulesDraft) =>
+    carried !== null &&
+    carried.from === opened.draft.version &&
+    carried.to === fresh.version &&
+    !sectionMoved(fresh)
   const moved = (fresh: ApiAidRulesDraft) =>
     fresh.version !== opened.draft.version ||
     sectionChanges(opened.content, sectionContent(fresh.document, section)).length > 0
@@ -185,16 +216,17 @@ export function RulesSectionEditor({
     } finally {
       setChecking(false)
     }
-    if (moved(fresh)) {
+    const onto = carriedOnto(fresh) ? fresh : opened.draft
+    if (onto === opened.draft && moved(fresh)) {
       setRefusal({ kind: 'loaded', server: null, fresh })
       return
     }
     let body: ApiAidSectionSaveIn
     try {
       body = {
-        base_version: opened.draft.version,
+        base_version: onto.version,
         content,
-        ...savePrecondition(opened.draft, section),
+        ...savePrecondition(onto, section),
       }
     } catch {
       // A section without a fingerprint: nothing can be sent, and the person is told.
@@ -337,7 +369,8 @@ export function RulesSectionEditor({
           type="button"
           className={CS_BTN}
           // Saving stays off while a refusal is open: the person looks at what moved first.
-          disabled={saving || refusal !== null || blocked || nothing}
+          disabled={saving || waiting || refusal !== null || blocked || nothing}
+          title={waiting && !saving ? ANOTHER_SAVING : undefined}
           onClick={() =>
             void onSave(
               saveAs?.content ??
@@ -357,7 +390,7 @@ export function RulesSectionEditor({
         {/* The version the save lands in, as frozenFact says it: a draft that is itself in effect starts the next. */}
         <span
           className={`${CS_SMALL} truncate`}
-        >{`Esc cancels · saving puts the change in draft v${String(opened.draft.approved_version === opened.draft.version ? opened.draft.version + 1 : opened.draft.version)}`}</span>
+        >{`Esc cancels · saving puts the change in draft v${String(landsIn(opened.draft))}`}</span>
         {status !== 'draft' && (
           <span className={`${CS_SMALL} min-w-0 truncate`} title={inUseWords(status)}>
             {inUseWords(status)}
