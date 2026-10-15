@@ -287,6 +287,47 @@ describe('mergeDataForComparison', () => {
       expect(result[2]?.compareName).toBe('Taste of Camp')
     })
 
+    // Both years under an old name (2024 vs 2023 both say "Taste of Camp"): aliasing only the
+    // compare side split one session into a NEW row and a GONE row.
+    it('keeps one row when both years carry the same aliased name', () => {
+      const primary = [
+        { name: 'Taste of Camp', value: 120 },
+        { name: 'Session 2b', value: 70 },
+      ]
+      const compare = [
+        { name: 'Taste of Camp', value: 100 },
+        { name: 'Session 2b', value: 60 },
+      ]
+
+      const result = mergeDataForComparison(primary, compare, 'name', undefined, aliasMap)
+
+      expect(result).toHaveLength(2)
+      expect(result[0]).toMatchObject({
+        name: 'Taste of Camp',
+        primaryValue: 120,
+        compareValue: 100,
+      })
+      expect(result[0]?.compareName).toBeUndefined()
+      expect(result[1]).toMatchObject({ name: 'Session 2b', primaryValue: 70, compareValue: 60 })
+    })
+
+    // The group runs in both directions: a current year back on the old name (2027's
+    // "Taste of Camp") matches the prior year's group key ("Taste of Camp 1").
+    it('matches an aliased current name to a prior year under the group key', () => {
+      const primary = [{ name: 'Taste of Camp', value: 120 }]
+      const compare = [{ name: 'Taste of Camp 1', value: 100 }]
+
+      const result = mergeDataForComparison(primary, compare, 'name', undefined, aliasMap)
+
+      expect(result).toHaveLength(1)
+      expect(result[0]).toMatchObject({
+        name: 'Taste of Camp',
+        primaryValue: 120,
+        compareValue: 100,
+      })
+      expect(result[0]?.compareName).toBe('Taste of Camp 1')
+    })
+
     it('handles compare-only aliased items when no primary match exists', () => {
       const primary: Array<{ name: string; value: number }> = []
       const compare = [{ name: 'Taste of Camp', value: 100 }]

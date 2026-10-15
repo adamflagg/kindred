@@ -29,6 +29,8 @@ export interface GradeBreakdown {
 export interface SessionBreakdown {
   session_cm_id: number
   session_name: string
+  /** Session type; teen programs (scit/tli) are compared by type in Session Details. */
+  session_type?: string | null
   count: number
   capacity: number | null
   utilization: number | null

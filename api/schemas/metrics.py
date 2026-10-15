@@ -40,6 +40,9 @@ class SessionBreakdown(BaseModel):
 
     session_cm_id: int = Field(description="Session CampMinder ID")
     session_name: str = Field(description="Session name")
+    session_type: str | None = Field(
+        None, description="Session type (main, embedded, quest, scit, tli...); teen programs match by type"
+    )
     count: int = Field(description="Number of campers")
     capacity: int | None = Field(None, description="Session capacity (if available)")
     utilization: float | None = Field(None, description="Capacity utilization percentage")

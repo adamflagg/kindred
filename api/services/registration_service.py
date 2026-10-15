@@ -290,6 +290,7 @@ class RegistrationService:
             SessionBreakdown(
                 session_cm_id=sid,
                 session_name=getattr(sessions.get(sid), "name", f"Session {sid}"),
+                session_type=getattr(sessions.get(sid), "session_type", None),
                 count=c,
                 capacity=capacity_by_session.get(sid),
                 utilization=self._calculate_utilization(c, capacity_by_session.get(sid)),

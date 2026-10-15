@@ -3407,7 +3407,7 @@ export type Day1Category = {
   /**
    * Count
    *
-   * Enrollments in the 24h window for this category
+   * Enrollments in the first two days for this category
    */
   count: number
 }
@@ -3419,7 +3419,7 @@ export type Day1CategoryCounts = {
   /**
    * Count
    *
-   * Number of enrollments in the 24h window
+   * Number of enrollments in the first two days (phase date and the next day)
    */
   count: number
 }
@@ -3489,6 +3489,12 @@ export type Day1TierData = {
    * True when using date-only fallback
    */
   approximate?: boolean
+  /**
+   * Opening Day
+   *
+   * True on this tier's opening date itself (camp today, current year only): the year holds only that day until the next morning's sync, so the page reads 'updates tomorrow'
+   */
+  opening_day?: boolean
 }
 
 /**
@@ -15921,6 +15927,12 @@ export type SessionBreakdown = {
    * Session name
    */
   session_name: string
+  /**
+   * Session Type
+   *
+   * Session type (main, embedded, quest, scit, tli...); teen programs match by type
+   */
+  session_type?: string | null
   /**
    * Count
    *

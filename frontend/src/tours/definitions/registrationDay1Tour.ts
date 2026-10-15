@@ -2,7 +2,7 @@ import type { TourDefinition } from '../types'
 
 const registrationDay1Tour: TourDefinition = {
   id: 'registration-day1',
-  version: 1,
+  version: 2,
   layers: ['metrics-header', 'registration-intro'],
   steps: [
     {
@@ -10,7 +10,7 @@ const registrationDay1Tour: TourDefinition = {
       popover: {
         title: 'Day 1 Metrics',
         description:
-          'Shows enrollment milestones by registration phase — priority, early, and open. Tracks how quickly sessions fill during each phase.',
+          'Shows sign-ups in the first two days of each registration phase — priority, early, and open — against the same days in prior years.',
         side: 'bottom',
         align: 'start',
       },

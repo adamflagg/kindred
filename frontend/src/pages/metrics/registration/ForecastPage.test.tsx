@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import type { SessionForecast, ForecastResponse } from '../../../types/forecast'
+import type { SessionForecast, ForecastResponse, WeekOption } from '../../../types/forecast'
 
 // Mock fetch for API call
 const mockFetch = vi.fn()
@@ -34,8 +34,9 @@ vi.mock('../../../hooks/useApiWithAuth', () => ({
 
 // Mock useWeekOptions — returns empty array by default (no Today option) so the
 // useEffect inside ForecastPage doesn't change dayOffset during tests
+const mockWeekOptions: { data: WeekOption[] } = { data: [] }
 vi.mock('../../../hooks/useWeekOptions', () => ({
-  useWeekOptions: () => ({ data: [] }),
+  useWeekOptions: () => mockWeekOptions,
 }))
 
 function createTestQueryClient() {
@@ -647,5 +648,89 @@ describe('ForecastPage like-with-like (#3209 rows 23, 24, 26)', () => {
     await waitFor(() => expect(screen.getByText('777')).toBeInTheDocument())
     expect(screen.getByText('555')).toBeInTheDocument()
     expect(screen.getByText('-697')).toBeInTheDocument()
+  })
+})
+
+describe('ForecastPage priority-day note (decision 45)', () => {
+  const NOTE =
+    'Counts the opening day and the next day: in 2023 and 2025 CampMinder dated most opening-day sign-ups the following day.'
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockWeekOptions.data = []
+    mockUseMetricsSession.mockReturnValue(defaultMetricsSession())
+  })
+
+  it('notes the two-day priority day when the snapshot is the priority date', async () => {
+    setupMockFetch(mockResponse([session()], {}, { prior_basis: 'same_point', day_offset: 0 }))
+    renderWithProviders(<ForecastPage />)
+    await waitFor(() => expect(screen.getByText(NOTE)).toBeInTheDocument())
+    expect(screen.getByText('Prior Yr').querySelector('sup')).toHaveTextContent('1')
+  })
+
+  it('notes it live on the priority date (Today is day 0)', async () => {
+    mockWeekOptions.data = [
+      { week_number: 1, day_offset: 0, label: 'Week 1 (Priority · Today)', is_today: true },
+    ]
+    setupMockFetch(mockResponse([session()], {}, { prior_basis: 'same_point', day_offset: null }))
+    renderWithProviders(<ForecastPage />)
+    await waitFor(() => expect(screen.getByText(NOTE)).toBeInTheDocument())
+  })
+
+  it('shows no note on a later day', async () => {
+    setupMockFetch(mockResponse([session()], {}, { prior_basis: 'same_point', day_offset: 3 }))
+    renderWithProviders(<ForecastPage />)
+    await waitFor(() => expect(screen.getByText('vs same point')).toBeInTheDocument())
+    expect(screen.queryByText(NOTE)).not.toBeInTheDocument()
+  })
+
+  it('shows no note against prior finals', async () => {
+    setupMockFetch(mockResponse([session()], {}, { prior_basis: 'final', day_offset: 0 }))
+    renderWithProviders(<ForecastPage />)
+    await waitFor(() => expect(screen.getByText('vs final')).toBeInTheDocument())
+    expect(screen.queryByText(NOTE)).not.toBeInTheDocument()
+  })
+
+  describe('on the priority date the vs-same-point cells read "updates tomorrow" (ruling 9)', () => {
+    const twoSessions = [
+      session({ session_cm_id: 1, session_name: 'Session 2', participants_vs_prior_year: 5 }),
+      session({
+        session_cm_id: 2,
+        session_name: 'Session 3',
+        prior_year_count: null,
+        participants_vs_prior_year: null,
+      }),
+    ]
+
+    it('replaces each row delta and the section total, keeping the prior counts', async () => {
+      setupMockFetch(mockResponse(twoSessions, {}, { prior_basis: 'same_point', day_offset: 0 }))
+      renderWithProviders(<ForecastPage />)
+      await waitFor(() => expect(screen.getByText('Session 2')).toBeInTheDocument())
+
+      const matched = screen.getByText('Session 2').closest('tr')!
+      expect(within(matched).getByText('updates tomorrow')).toBeInTheDocument()
+      expect(within(matched).queryByText('+5')).not.toBeInTheDocument()
+      expect(within(matched).getByText('75')).toBeInTheDocument()
+      // A row with no prior match has no delta to replace.
+      const unmatched = screen.getByText('Session 3').closest('tr')!
+      expect(within(unmatched).queryByText('updates tomorrow')).not.toBeInTheDocument()
+      const total = screen.getByText('At Camp').closest('tr')!
+      expect(within(total).getByText('updates tomorrow')).toBeInTheDocument()
+      expect(screen.getByText(NOTE)).toBeInTheDocument()
+    })
+
+    it('shows the delta on a later day', async () => {
+      setupMockFetch(mockResponse(twoSessions, {}, { prior_basis: 'same_point', day_offset: 1 }))
+      renderWithProviders(<ForecastPage />)
+      await waitFor(() => expect(screen.getByText('Session 2')).toBeInTheDocument())
+      expect(screen.queryByText('updates tomorrow')).not.toBeInTheDocument()
+    })
+
+    it('shows the delta against prior finals', async () => {
+      setupMockFetch(mockResponse(twoSessions, {}, { prior_basis: 'final', day_offset: 0 }))
+      renderWithProviders(<ForecastPage />)
+      await waitFor(() => expect(screen.getByText('Session 2')).toBeInTheDocument())
+      expect(screen.queryByText('updates tomorrow')).not.toBeInTheDocument()
+    })
   })
 })

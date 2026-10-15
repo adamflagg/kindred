@@ -223,7 +223,7 @@ const CALL_SITE_GROUPS: CallSiteGroup[] = [
     form: 'chart',
     was: 'getSessionChartLabel(name, undefined, lookup)',
     sites: [
-      'metrics/registration/RegistrationOverview.tsx (session table)',
+      'components/metrics/SessionDetailsTable.tsx (Overview session table)',
       'utils/metricsTransforms.ts (x3 chart points)',
     ],
     pins: [

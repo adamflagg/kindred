@@ -152,15 +152,16 @@ def same_point_offset(day_offset: int, phase_offsets: tuple[int, ...] = (0,)) ->
 
 
 def day1_window(tier_date: date) -> tuple[datetime, datetime]:
-    """Return the 9am-to-9am PT window for a registration tier opening day.
+    """Return the two-camp-day window (9am PT to 9am PT) for a registration tier opening.
 
     Used by Day 1 page to report the registration window boundaries.
     Actual counting uses date-level matching against effective_date.
 
-    The window spans 9am Pacific on tier_date to 9am Pacific the following
-    calendar day. Across a DST transition this may be 23 or 25 UTC hours.
+    The window spans 9am Pacific on tier_date to 9am Pacific PRIORITY_DAY_DAYS
+    calendar days later (decision 45: the opening day plus the next day). Across a
+    DST transition this may be 47 or 49 UTC hours.
     """
-    next_day = tier_date + timedelta(days=1)
+    end_day = tier_date + timedelta(days=PRIORITY_DAY_DAYS)
     start = datetime(tier_date.year, tier_date.month, tier_date.day, CAMP_DAY_START_HOUR, 0, tzinfo=CAMP_TZ)
-    end = datetime(next_day.year, next_day.month, next_day.day, CAMP_DAY_START_HOUR, 0, tzinfo=CAMP_TZ)
+    end = datetime(end_day.year, end_day.month, end_day.day, CAMP_DAY_START_HOUR, 0, tzinfo=CAMP_TZ)
     return (start, end)

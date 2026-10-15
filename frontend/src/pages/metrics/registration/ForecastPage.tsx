@@ -20,6 +20,14 @@ import { sessionName } from '../../../utils/sessionName'
 import { buildForecastSections } from '../../../utils/forecastUtils'
 import { resolveWeekOffset } from '../../../utils/resolveWeekOffset'
 import type { SessionForecast } from '../../../types/forecast'
+import { DefinitionNotes, DefRef } from '../../../components/camperships/kit/DefinitionNotes'
+import {
+  PRIORITY_DAY_NOTE,
+  PRIORITY_DAY_NOTES,
+  PRIORITY_DAY_PENDING,
+  PRIORITY_DAY_PENDING_CLASS,
+  isPriorityDayOffset,
+} from '../../../utils/priorityDay'
 
 function pctColor(pct: number | null): string {
   if (pct === null) return ''
@@ -65,7 +73,15 @@ function fmtPct(value: number | null): string {
   return `${value.toFixed(1)}%`
 }
 
-function ForecastTableHeader({ priorBasis }: { priorBasis: 'same_point' | 'final' }) {
+function ForecastTableHeader({
+  priorBasis,
+  priorityDay,
+}: {
+  priorBasis: 'same_point' | 'final'
+  /** The prior columns are read on the priority date, through the next day (decision 45). */
+  priorityDay: boolean
+}) {
+  const mark = priorityDay ? <DefRef n={1} title={PRIORITY_DAY_NOTE} /> : null
   return (
     <thead>
       <tr className="bg-muted/50">
@@ -76,11 +92,17 @@ function ForecastTableHeader({ priorBasis }: { priorBasis: 'same_point' | 'final
         <th className="px-3 py-2 text-right text-xs font-semibold">WL</th>
         <th className="px-3 py-2 text-right text-xs font-semibold">% Goal</th>
         <th className="px-3 py-2 text-right text-xs font-semibold">vs Budget</th>
-        <th className="px-3 py-2 text-right text-xs font-semibold">Prior Yr</th>
+        <th className="px-3 py-2 text-right text-xs font-semibold">
+          Prior Yr
+          {mark}
+        </th>
         <th className="px-3 py-2 text-right text-xs font-semibold">
           {priorBasis === 'same_point' ? 'vs same point' : 'vs final'}
         </th>
-        <th className="px-3 py-2 text-right text-xs font-semibold">2yr Prior</th>
+        <th className="px-3 py-2 text-right text-xs font-semibold">
+          2yr Prior
+          {mark}
+        </th>
         <th className="hidden px-3 py-2 text-right text-xs font-semibold lg:table-cell">
           Budget Rev
         </th>
@@ -94,7 +116,16 @@ function ForecastTableHeader({ priorBasis }: { priorBasis: 'same_point' | 'final
   )
 }
 
-function SessionRow({ session, isTotal }: { session: SessionForecast; isTotal?: boolean }) {
+function SessionRow({
+  session,
+  isTotal,
+  priorityDay = false,
+}: {
+  session: SessionForecast
+  isTotal?: boolean
+  /** On the priority date the same-point delta reads "updates tomorrow" (ruling 9). */
+  priorityDay?: boolean
+}) {
   const rowClass = isTotal ? 'font-bold bg-muted/30' : 'border-border border-b last:border-b-0'
 
   return (
@@ -128,7 +159,11 @@ function SessionRow({ session, isTotal }: { session: SessionForecast; isTotal?: 
       <td
         className={`px-3 py-2 text-right text-sm ${deltaColor(session.participants_vs_prior_year)}`}
       >
-        {fmtSigned(session.participants_vs_prior_year)}
+        {priorityDay && session.participants_vs_prior_year !== null ? (
+          <span className={PRIORITY_DAY_PENDING_CLASS}>{PRIORITY_DAY_PENDING}</span>
+        ) : (
+          fmtSigned(session.participants_vs_prior_year)
+        )}
       </td>
       <td className="px-3 py-2 text-right text-sm">{fmt(session.two_year_prior_count)}</td>
       <td className="hidden px-3 py-2 text-right text-sm lg:table-cell">
@@ -167,6 +202,8 @@ export default function ForecastPage() {
   const latestYear = Math.max(0, ...availableYears)
   const { data: latestYearOptions = [] } = useWeekOptions(latestYear)
   const todayWeek = latestYearOptions.find((o) => o.is_today)?.week_number ?? null
+  // Live mode (no week picked) reads at Today's offset in the selected season.
+  const todayOffset = weekOptions.find((o) => o.is_today)?.day_offset ?? null
 
   // Remap week selection when year changes or todayWeek becomes known
   useEffect(() => {
@@ -245,6 +282,8 @@ export default function ForecastPage() {
   )
   const showSectionHeadings = sections.length >= 2
   const showGrandTotal = sections.length >= 2 && selectedSessionCmId === null
+  const priorityDay =
+    data.prior_basis === 'same_point' && isPriorityDayOffset(data.day_offset ?? todayOffset)
 
   return (
     <div className="space-y-6">
@@ -293,15 +332,19 @@ export default function ForecastPage() {
               )}
               <div className="border-border overflow-x-auto rounded-xl border">
                 <table className="w-full border-collapse">
-                  <ForecastTableHeader priorBasis={data.prior_basis} />
+                  <ForecastTableHeader priorBasis={data.prior_basis} priorityDay={priorityDay} />
                   <tbody>
                     {section.sessions.map((s) => (
-                      <SessionRow key={`${s.session_type}-${s.session_cm_id}`} session={s} />
+                      <SessionRow
+                        key={`${s.session_type}-${s.session_cm_id}`}
+                        session={s}
+                        priorityDay={priorityDay}
+                      />
                     ))}
                   </tbody>
                   {showSectionTotal && (
                     <tfoot>
-                      <SessionRow session={section.total} isTotal />
+                      <SessionRow session={section.total} isTotal priorityDay={priorityDay} />
                     </tfoot>
                   )}
                 </table>
@@ -315,12 +358,14 @@ export default function ForecastPage() {
           <div className="border-border overflow-x-auto rounded-xl border">
             <table className="w-full border-collapse">
               <tbody>
-                <SessionRow session={grand_total} isTotal />
+                <SessionRow session={grand_total} isTotal priorityDay={priorityDay} />
               </tbody>
             </table>
           </div>
         )}
       </div>
+
+      {priorityDay && <DefinitionNotes notes={PRIORITY_DAY_NOTES} />}
     </div>
   )
 }

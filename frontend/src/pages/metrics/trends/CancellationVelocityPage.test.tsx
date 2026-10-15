@@ -389,3 +389,132 @@ describe('CancellationVelocityPage compares with one year at the same point (#32
     expect(legend).toHaveTextContent('2025 (7 final)')
   })
 })
+
+describe('CancellationVelocityPage priority-day note (decision 45)', () => {
+  const NOTE =
+    'Counts the opening day and the next day: in 2023 and 2025 CampMinder dated most opening-day sign-ups the following day.'
+
+  afterEach(() => {
+    mockControls.selectedPriorYears = []
+    mockChart.comparisonYear = null
+    mockState.data = mockVelocityData
+  })
+
+  it('notes the two-day priority day when the same point is the priority date', () => {
+    useComparison({ ...comparedData, today_day_offset: 0, current_day_offset: 0 })
+    render(<CancellationVelocityPage />)
+    expect(screen.getByText(NOTE)).toBeInTheDocument()
+    const label = screen.getByText(
+      (_, el) => el?.tagName === 'P' && el.textContent === '2025 at Wk 11'
+    )
+    expect(label.querySelector('sup')).toHaveTextContent('1')
+  })
+
+  it('shows no note on any later day', () => {
+    useComparison({ ...comparedData, current_day_offset: 20 })
+    render(<CancellationVelocityPage />)
+    expect(screen.queryByText(NOTE)).not.toBeInTheDocument()
+  })
+
+  describe('on the priority date the delta reads "updates tomorrow" (ruling 9)', () => {
+    afterEach(() => {
+      mockChart.sortedBySession = []
+      mockChart.priorSessionMap = new Map()
+    })
+
+    it('replaces the vs card value and keeps the numbered note', () => {
+      useComparison({ ...comparedData, today_day_offset: 0, current_day_offset: 0 })
+      render(<CancellationVelocityPage />)
+      expect(cardValue('vs 2025')).toBe('updates tomorrow')
+      expect(cardValue('2025 Final Cancelled')).toBe('140')
+      expect(screen.getByText(NOTE)).toBeInTheDocument()
+    })
+
+    it('replaces the By Session delta', () => {
+      useComparison({ ...comparedData, today_day_offset: 0, current_day_offset: 0 })
+      mockChart.sortedBySession = [byCurve(1, 'Session 1', 9), byCurve(3, 'Session 3', 2)]
+      mockChart.priorSessionMap = new Map([[1, priorSession({ enrolled_at_current_week: 6 })]])
+      render(<CancellationVelocityPage />)
+      const row = screen.getByText('Session 1').closest('tr')!
+      expect(within(row).getByText('updates tomorrow')).toBeInTheDocument()
+      expect(within(row).queryByText('+3')).not.toBeInTheDocument()
+    })
+
+    it('shows the delta on any later day', () => {
+      useComparison({ ...comparedData, current_day_offset: 1 })
+      render(<CancellationVelocityPage />)
+      expect(cardValue('vs 2025')).toBe('+40')
+    })
+  })
+})
+
+function byCurve(cmId: number, name: string, cancelled: number): VelocityCurve {
+  return {
+    year: 2026,
+    session_cm_id: cmId,
+    session_name: name,
+    gender: null,
+    daily: [],
+    weekly: [wk({ enrolled: cancelled })],
+  }
+}
+
+function priorSession(overrides: Partial<PriorYearSessionSummary>): PriorYearSessionSummary {
+  return {
+    year: 2025,
+    session_name: 'Session 1',
+    session_cm_id: 500,
+    current_session_cm_id: 1,
+    enrolled_at_current_week: 6,
+    final_enrolled: 15,
+    ...overrides,
+  }
+}
+
+describe('CancellationVelocityPage By Session with a comparison year that has no history', () => {
+  afterEach(() => {
+    mockControls.selectedPriorYears = []
+    mockChart.comparisonYear = null
+    mockChart.sortedBySession = []
+    mockChart.priorSessionMap = new Map()
+    mockState.data = mockVelocityData
+  })
+
+  it('reads "-" rather than "new" when the comparison year has no status history (ruling 6)', () => {
+    useComparison({
+      ...comparedData,
+      prior_years: [{ year: 2025, daily: [], weekly: [] }],
+      prior_year_cancelled_to_date: [
+        cancelledSummary({
+          cancelled_at_current_week: null,
+          cancelled_final: null,
+          has_cancellation_data: false,
+        }),
+      ],
+    })
+    mockChart.sortedBySession = [byCurve(2, 'Session 2', 4), byCurve(3, 'Session 3', 2)]
+    render(<CancellationVelocityPage />)
+
+    const row = screen.getByText('Session 2').closest('tr')!
+    expect(within(row).queryByText('new')).not.toBeInTheDocument()
+    expect(within(row).getAllByText('-')).toHaveLength(3)
+  })
+
+  it('reads "-" for a matched session before the comparison year\'s history starts (ruling 8)', () => {
+    useComparison({
+      ...comparedData,
+      prior_year_cancelled_to_date: [cancelledSummary({ cancelled_at_current_week: null })],
+    })
+    mockChart.sortedBySession = [byCurve(1, 'Session 1', 9), byCurve(3, 'Session 3', 2)]
+    mockChart.priorSessionMap = new Map([[1, priorSession({ enrolled_at_current_week: null })]])
+    render(<CancellationVelocityPage />)
+
+    expect(cardValue('2025 at Wk 1')).toBe('-')
+    expect(screen.getByText('vs 2025', { selector: 'p' }).nextElementSibling).toHaveTextContent(
+      /^-$/
+    )
+    const row = screen.getByText('Session 1').closest('tr')!
+    expect(within(row).getAllByText('-')).toHaveLength(2)
+    expect(within(row).getByText('15')).toBeInTheDocument()
+  })
+})

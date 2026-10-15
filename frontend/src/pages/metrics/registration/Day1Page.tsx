@@ -1,10 +1,14 @@
 /**
- * Day1Page - First-24-hour registration analysis per tier opening.
+ * Day1Page - First-two-day registration analysis per tier opening.
+ *
+ * Each phase counts its opening date and the next day (decision 45): in 2023
+ * and 2025 CampMinder dated most opening-day sign-ups the following day. A
+ * numbered note under the table says so.
  *
  * Honors the shared metrics session picker (like every other registration
  * page): the picker's session_types, single session and duration flow into the
  * Day 1 query, so "All Summer" includes teens, "Teens" scopes to SCIT/TLI, and a
- * single session shows its own first-24-hour sign-ups against the matching
+ * single session shows its own first-two-day sign-ups against the matching
  * session in prior years (renames matched server-side).
  *
  * Shows:
@@ -13,6 +17,11 @@
  *   years (the Teens row appears only when teen counts are present)
  * - Delta indicators vs prior year
  * - Approximate count indicators when data is reconstructed
+ *
+ * On a phase's opening date (day 0 only) this year holds just that day until the
+ * next morning's sync, against prior years' full two days (ruling 4). The server
+ * flags that tier (`opening_day`); its hero delta reads "updates tomorrow" and so
+ * does this year's column header for it in the table. The counts so far stay.
  */
 
 import { useMemo } from 'react'
@@ -20,6 +29,13 @@ import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useDay1 } from '../../../hooks/useDay1'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { MetricsQueryGuard } from '../../../components/metrics/MetricsQueryGuard'
+import { DefinitionNotes, DefRef } from '../../../components/camperships/kit/DefinitionNotes'
+import {
+  PRIORITY_DAY_NOTE,
+  PRIORITY_DAY_NOTES,
+  PRIORITY_DAY_PENDING,
+  PRIORITY_DAY_PENDING_CLASS,
+} from '../../../utils/priorityDay'
 import type { Day1Response, Day1TierData, Day1YearData } from '../../../types/day1'
 
 /** Tier display configuration: label, gradient classes, and text accent */
@@ -137,7 +153,7 @@ function HeroCard({ tier, priorYears }: HeroCardProps) {
           <p className={`text-sm ${config.accent}`}>{fmtDate(tier.date)}</p>
         </div>
         <span className={`rounded-full bg-white/20 px-2.5 py-0.5 text-xs font-medium`}>
-          First 24h
+          First 2 days
         </span>
       </div>
 
@@ -175,12 +191,19 @@ function HeroCard({ tier, priorYears }: HeroCardProps) {
             )}
           </div>
 
-          {/* Delta vs prior year */}
-          {delta.text && priorYear && (
-            <p className={`text-sm font-medium ${delta.color}`}>
-              {delta.text} vs {priorYear.year}
-            </p>
-          )}
+          {/* Delta vs prior year; on the opening day it would read behind (ruling 4) */}
+          {delta.text &&
+            priorYear &&
+            (tier.opening_day ? (
+              // The kit's muted grey is unreadable on the gradient, so the card's own accent stands in.
+              <p className={`text-xs font-normal whitespace-nowrap ${config.accent}`}>
+                {PRIORITY_DAY_PENDING}
+              </p>
+            ) : (
+              <p className={`text-sm font-medium ${delta.color}`}>
+                {delta.text} vs {priorYear.year}
+              </p>
+            ))}
 
           {/* Prior year totals */}
           {priorSummaries.length > 0 && (
@@ -298,6 +321,11 @@ function ComparisonTable({ data, currentYear }: ComparisonTableProps) {
                   } ${yi === 0 ? 'border-l' : ''}`}
                 >
                   {year}
+                  {year === currentYear && tierByYear[tl.tier]?.[year]?.opening_day && (
+                    <span className={`block ${PRIORITY_DAY_PENDING_CLASS}`}>
+                      {PRIORITY_DAY_PENDING}
+                    </span>
+                  )}
                 </th>
               ))
             )}
@@ -350,7 +378,8 @@ export default function Day1Page() {
       <div>
         <h2 className="text-lg font-semibold">Day 1 Registration</h2>
         <p className="text-muted-foreground text-sm">
-          First 24 hours of enrollment at each registration tier opening
+          First two days of enrollment at each registration phase opening
+          <DefRef n={1} title={PRIORITY_DAY_NOTE} />
         </p>
       </div>
 
@@ -379,6 +408,8 @@ export default function Day1Page() {
                 <ComparisonTable data={day1Data} currentYear={currentYear} />
               </div>
             )}
+
+            <DefinitionNotes notes={PRIORITY_DAY_NOTES} />
           </div>
         )}
       </MetricsQueryGuard>

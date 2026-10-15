@@ -1,5 +1,6 @@
 """Tests for Day 1 registration counting service."""
 
+from datetime import date
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -73,7 +74,12 @@ async def test_day1_counts_on_tier_date():
 
 @pytest.mark.asyncio
 async def test_day1_excludes_different_date():
-    """Attendees with effective_date on other dates are not counted."""
+    """Attendees dated outside the phase's first two days are not counted.
+
+    Decision 45 (owner, 2026-10-14) moved this test's pin: 11-13 (the day after the
+    priority date) now counts, so the excluded dates are the day before and the
+    second day after.
+    """
     repo = AsyncMock()
     repo.fetch_registration_dates.return_value = {
         "priority_reg_date": "2025-11-12",
@@ -83,7 +89,7 @@ async def test_day1_excludes_different_date():
     }
     repo.fetch_attendees_with_dates.return_value = [
         _make_attendee(session_cm_id=1001, effective_date="2025-11-11"),
-        _make_attendee(session_cm_id=1001, effective_date="2025-11-13"),
+        _make_attendee(session_cm_id=1001, effective_date="2025-11-14"),
     ]
 
     service = Day1Service(repo)
@@ -91,6 +97,58 @@ async def test_day1_excludes_different_date():
 
     priority_tier = next(t for t in result.tiers if t.tier == "priority")
     assert priority_tier.total.count == 0
+
+
+@pytest.mark.asyncio
+async def test_day1_counts_the_phase_date_and_the_next_day():
+    """Decision 45: Day 1 is the first two days, so the phase date and the day after both count.
+
+    In 2023 and 2025 CampMinder dated most opening-day sign-ups the following day.
+    """
+    repo = AsyncMock()
+    repo.fetch_registration_dates.return_value = {
+        "priority_reg_date": "2025-11-12",
+    }
+    repo.fetch_sessions.return_value = {
+        1001: _make_session(1001, "main"),
+    }
+    repo.fetch_attendees_with_dates.return_value = [
+        _make_attendee(session_cm_id=1001, effective_date="2025-11-12"),
+        _make_attendee(session_cm_id=1001, effective_date="2025-11-13T10:00:00.000Z"),
+    ]
+
+    service = Day1Service(repo)
+    result = await service.get_day1(2026)
+
+    priority_tier = next(t for t in result.tiers if t.tier == "priority")
+    assert priority_tier.total.count == 2
+
+
+@pytest.mark.asyncio
+async def test_day1_two_day_rule_applies_to_every_phase():
+    """Early and open phases count their next day too, not just priority."""
+    repo = AsyncMock()
+    repo.fetch_registration_dates.return_value = {
+        "priority_reg_date": "2025-11-12",
+        "early_reg_date": "2025-11-19",
+        "open_reg_date": "2025-12-03",
+    }
+    repo.fetch_sessions.return_value = {
+        1001: _make_session(1001, "main"),
+    }
+    repo.fetch_attendees_with_dates.return_value = [
+        _make_attendee(session_cm_id=1001, effective_date="2025-11-20"),
+        _make_attendee(session_cm_id=1001, effective_date="2025-11-21"),
+        _make_attendee(session_cm_id=1001, effective_date="2025-12-03"),
+        _make_attendee(session_cm_id=1001, effective_date="2025-12-04"),
+        _make_attendee(session_cm_id=1001, effective_date="2025-12-02"),
+    ]
+
+    service = Day1Service(repo)
+    result = await service.get_day1(2026)
+
+    by_tier = {t.tier: t.total.count for t in result.tiers}
+    assert by_tier == {"priority": 0, "early": 1, "open": 2}
 
 
 @pytest.mark.asyncio
@@ -174,10 +232,11 @@ async def test_day1_ignores_enrollment_date():
             effective_date="2025-11-12",
             enrollment_date="2026-02-05 20:21:10.508Z",
         ),
-        # effective_date does NOT match tier, but enrollment_date falls on tier date
+        # effective_date is outside the tier's two days, but enrollment_date falls on
+        # the tier date. (Was 11-13 until decision 45 made the next day count.)
         _make_attendee(
             session_cm_id=1001,
-            effective_date="2025-11-13",
+            effective_date="2025-11-11",
             enrollment_date="2025-11-12T18:00:00.000Z",
         ),
     ]
@@ -463,3 +522,42 @@ async def test_day1_summer_numbers_unchanged_by_family_adult_and_bmitzvah_sessio
     ):
         plain, mixed = await run(False, **kw), await run(True, **kw)
         assert mixed.model_dump() == plain.model_dump(), kw
+
+
+def _three_phase_repo() -> AsyncMock:
+    repo = AsyncMock()
+    repo.fetch_registration_dates.return_value = {
+        "priority_reg_date": "2025-11-12",
+        "early_reg_date": "2025-11-19",
+        "open_reg_date": "2025-12-03",
+    }
+    repo.fetch_sessions.return_value = {1001: _make_session(1001, "main")}
+    repo.fetch_attendees_with_dates.return_value = [
+        _make_attendee(session_cm_id=1001, effective_date="2025-11-19"),
+    ]
+    return repo
+
+
+@pytest.mark.asyncio
+async def test_opening_day_flags_only_this_years_phase_opening_today():
+    """Ruling 4 (owner, 2026-10-14): on a phase's opening day (day 0 only) this year holds just
+    that day until the next morning's sync, so the page reads "updates tomorrow". The server
+    flags that tier; prior years are complete and never flagged, even on the same date.
+    """
+    result = await Day1Service(_three_phase_repo()).get_day1(2026, today=date(2025, 11, 19))
+
+    assert {t.tier: t.opening_day for t in result.tiers} == {
+        "priority": False,
+        "early": True,
+        "open": False,
+    }
+    for prior in result.prior_years:
+        assert not any(t.opening_day for t in prior.tiers), prior.year
+
+
+@pytest.mark.asyncio
+async def test_opening_day_is_day_0_only_not_the_second_day():
+    """The next day's sync brings day 0 in, so the second day reads normally (ruling 4)."""
+    for today in (date(2025, 11, 20), date(2025, 11, 18), date(2026, 1, 15)):
+        result = await Day1Service(_three_phase_repo()).get_day1(2026, today=today)
+        assert not any(t.opening_day for t in result.tiers), today

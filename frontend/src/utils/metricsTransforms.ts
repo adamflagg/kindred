@@ -14,6 +14,7 @@ import type {
   SummerYearsBreakdown,
 } from '../types/metrics'
 import { sessionName } from './sessionName'
+import { rollUpTliSessions } from './tliRollup'
 import {
   sortSessionDataByDate,
   sortSessionDataByCampThenQuest,
@@ -89,6 +90,20 @@ export function transformSessionData(
     percentage: s.utilization ?? 0,
     id: String(s.session_cm_id),
   }))
+}
+
+/**
+ * Session rows for a year-over-year session comparison table: `transformSessionData` after the
+ * year's TLI rows roll into one "Teen Leadership Institute" line (owner, 2026-10-14), so a
+ * two-route year and a one-row year compare as one program. Compare mode only; the per-year
+ * charts keep `transformSessionData`.
+ */
+export function transformSessionComparisonData(
+  data: SessionBreakdown[] | undefined,
+  sessionDateLookup: SessionDateLookup,
+  sessionTypeLookup?: SessionTypeLookup
+): ChartDataPoint[] {
+  return transformSessionData(rollUpTliSessions(data ?? []), sessionDateLookup, sessionTypeLookup)
 }
 
 export function transformSummerYearsData(

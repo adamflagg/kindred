@@ -115,22 +115,39 @@ class TestDay1Window:
     """day1_window computes 9am-9am PT windows for tier opening dates."""
 
     def test_day1_window_basic(self):
-        """Priority reg Nov 12 2025 should give 9am-9am PT window."""
+        """Priority reg Nov 12 2025 spans two camp days: 9am Nov 12 to 9am Nov 14 PT.
+
+        Decision 45 (owner, 2026-10-14) made Day 1 the first two days; this test pinned
+        a one-day window (end Nov 13) before that ruling.
+        """
         start, end = day1_window(date(2025, 11, 12))
         assert start == datetime(2025, 11, 12, 9, 0, tzinfo=CAMP_TZ)
-        assert end == datetime(2025, 11, 13, 9, 0, tzinfo=CAMP_TZ)
+        assert end == datetime(2025, 11, 14, 9, 0, tzinfo=CAMP_TZ)
+
+    def test_day1_window_spans_priority_day_days(self):
+        start, end = day1_window(date(2025, 11, 12))
+        assert (end.date() - start.date()).days == PRIORITY_DAY_DAYS
 
     def test_day1_window_dst_boundary(self):
-        """March date spanning DST transition should use correct PT offset."""
-        # March 8, 2025: 9am PST; March 9 9am is PDT (DST springs at 2am March 9).
-        # 9am PST (UTC-8) → 17:00 UTC; 9am PDT (UTC-7) → 16:00 UTC = 23h apart.
+        """A two-day window across spring-forward is 47 UTC hours.
+
+        March 8, 2025 9am PST (17:00 UTC) to March 10 9am PDT (16:00 UTC); DST springs
+        at 2am March 9. Was a one-day (23h) window before decision 45.
+        """
         start, end = day1_window(date(2025, 3, 8))
         assert start.tzinfo == CAMP_TZ
         assert end.tzinfo == CAMP_TZ
         start_utc = start.astimezone(ZoneInfo("UTC"))
         end_utc = end.astimezone(ZoneInfo("UTC"))
         diff_hours = (end_utc - start_utc).total_seconds() / 3600
-        assert diff_hours == 23.0  # DST spring forward: 9am PST → 9am PDT = 23h
+        assert diff_hours == 47.0
+
+    def test_day1_window_dst_fall_back(self):
+        """A two-day window across fall-back is 49 UTC hours (DST ends 2am Nov 2, 2025)."""
+        start, end = day1_window(date(2025, 11, 1))
+        diff_hours = (end.astimezone(UTC) - start.astimezone(UTC)).total_seconds() / 3600
+        assert diff_hours == 49.0
+        assert end == datetime(2025, 11, 3, 9, 0, tzinfo=CAMP_TZ)
 
     def test_day1_window_november_pst(self):
         """November dates should be PST (UTC-8)."""
