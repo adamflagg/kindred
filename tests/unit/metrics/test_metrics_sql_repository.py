@@ -963,3 +963,63 @@ class TestDrilldownServiceOnSQL:
         rows = await service.get_attendees_for_breakdown(2025, "status", "enrolled", status_filter=["enrolled"])
         emma = next(r for r in rows if r.person_id == 1001)
         assert (emma.age, emma.zip, emma.caregivers) == (11, "94110", ["Sarah Johnson"])
+
+
+class TestRegistrationAgeOnSQL:
+    """Registration › Overview's age chart (#3251) and its prior-year comparison, on this repository.
+
+    The age band is the season year minus the birth year. fetch_persons never selected
+    birthdate, so on this repository every camper read "none".
+    """
+
+    @pytest.mark.asyncio
+    async def test_age_bands_read_birthdates_in_the_season_and_the_prior_season(
+        self, sql_db: sqlite3.Connection
+    ) -> None:
+        from api.services.registration_service import RegistrationService
+
+        for pid in ("per_emma", "per_emma_24"):
+            sql_db.execute("UPDATE persons SET birthdate = '2014-03-02' WHERE id = ?", (pid,))
+        for pid in ("per_liam", "per_liam_24"):
+            sql_db.execute("UPDATE persons SET birthdate = '2016-05-05' WHERE id = ?", (pid,))
+        repo: Any = _make_repo(sql_db)
+        service = RegistrationService(repo)
+
+        season = await service.calculate_registration(2025)
+        prior = await service.calculate_registration(2024)
+
+        # 2025: Emma 11, Liam 9, Olivia no birthdate. 2024: Emma 10, Liam 8.
+        assert {b.band: b.count for b in season.by_age if b.count} == {"11-13": 1, "8-10": 1, "none": 1}
+        assert {b.band: b.count for b in prior.by_age if b.count} == {"8-10": 2}
+
+
+class TestFetchPersonsContract:
+    """Both repositories read persons through one field list, so a field one path reads can't be
+    missing on the other. #3249 (drill-down Age, Zip, Caregivers) and #3251 (the age chart) both
+    shipped reading fields only the PocketBase repository returned."""
+
+    @pytest.mark.asyncio
+    async def test_sql_repository_returns_exactly_the_shared_fields(self, sql_db: sqlite3.Connection) -> None:
+        from api.services.metrics_repository import PERSON_FIELDS
+
+        repo = _make_repo(sql_db)
+        for person in (await repo.fetch_persons(2025)).values():
+            assert set(vars(person)) == set(PERSON_FIELDS)
+
+    @pytest.mark.asyncio
+    async def test_pocketbase_repository_asks_for_exactly_the_shared_fields(self) -> None:
+        from unittest.mock import MagicMock
+
+        from api.services.metrics_repository import PERSON_FIELDS, MetricsRepository
+
+        pb = MagicMock()
+        pb.collection.return_value.get_full_list.return_value = []
+        await MetricsRepository(pb).fetch_persons(2025)
+
+        params = pb.collection.return_value.get_full_list.call_args.kwargs["query_params"]
+        assert params["fields"].split(",") == list(PERSON_FIELDS)
+
+    def test_the_fields_the_drilldown_and_age_chart_read_are_shared(self) -> None:
+        from api.services.metrics_repository import PERSON_FIELDS
+
+        assert {"birthdate", "primary_childhood_household", "parent_names"} <= set(PERSON_FIELDS)

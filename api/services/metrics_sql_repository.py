@@ -15,9 +15,28 @@ from api.utils.session_metrics import parse_teen_config_key
 from bunking.logging_config import get_logger
 from bunking.solver.constants import DEFAULT_BUNK_CAPACITY
 
+from .metrics_repository import PERSON_FIELDS
 from .metrics_sql_connection import get_connection
 
 logger = get_logger(__name__)
+
+
+# Stored blanks that must read as None (the drill-down's `??` fallbacks), and the json column.
+_BLANK_AS_NONE = frozenset({"preferred_name", "address_state", "birthdate", "primary_childhood_household"})
+
+
+def _person_fields(row: sqlite3.Row) -> dict[str, Any]:
+    """One persons row as PERSON_FIELDS, read the way the PocketBase repository returns them."""
+    person: dict[str, Any] = {}
+    for name in PERSON_FIELDS:
+        value = row[name]
+        if name == "parent_names":
+            value = _json_or_none(value)
+        elif name in _BLANK_AS_NONE:
+            value = value or None
+        person[name] = value
+    person["cm_id"] = int(row["cm_id"])
+    return person
 
 
 def _json_or_none(value: str | None) -> Any:
@@ -167,37 +186,9 @@ class MetricsSQLRepository:
         (Caregivers, parsed from its stored JSON). Blank strings read as None so the
         drill-down's ``??`` fallbacks apply.
         """
-        rows = self._query(
-            """SELECT cm_id, first_name, last_name, preferred_name, gender, grade, age,
-                      school, normalized_school, address_city, address_state,
-                      normalized_city, normalized_congregation, years_at_camp, household_id,
-                      birthdate, primary_childhood_household, parent_names
-               FROM persons WHERE year = ?""",
-            (year,),
-        )
-        return {
-            int(r["cm_id"]): SimpleNamespace(
-                cm_id=int(r["cm_id"]),
-                first_name=r["first_name"],
-                last_name=r["last_name"],
-                preferred_name=r["preferred_name"] or None,
-                gender=r["gender"],
-                grade=r["grade"],
-                age=r["age"],
-                school=r["school"],
-                normalized_school=r["normalized_school"],
-                address_city=r["address_city"],
-                address_state=r["address_state"] or None,
-                normalized_city=r["normalized_city"],
-                normalized_congregation=r["normalized_congregation"],
-                years_at_camp=r["years_at_camp"],
-                household_id=r["household_id"],
-                birthdate=r["birthdate"] or None,
-                primary_childhood_household=r["primary_childhood_household"] or None,
-                parent_names=_json_or_none(r["parent_names"]),
-            )
-            for r in rows
-        }
+        # PERSON_FIELDS is a constant of column names, never input.
+        rows = self._query(f"SELECT {', '.join(PERSON_FIELDS)} FROM persons WHERE year = ?", (year,))
+        return {int(r["cm_id"]): SimpleNamespace(**_person_fields(r)) for r in rows}
 
     async def fetch_household_postal_codes(self, year: int) -> dict[str, str]:
         """Each household's billing postal code this season, keyed by its PocketBase id.
