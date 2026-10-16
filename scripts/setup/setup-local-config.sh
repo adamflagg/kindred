@@ -32,8 +32,10 @@ ln -sfr "$LOCAL_REPO/frontend/vite.config.local.ts" "$REPO_ROOT/frontend/vite.co
 ln -sfr "$LOCAL_REPO/scripts/vault.config" "$REPO_ROOT/scripts/vault.config"
 
 # Directories - remove existing dirs first to properly symlink
-rm -rf "$REPO_ROOT/docs/camp" "$REPO_ROOT/local"
+rm -rf "$REPO_ROOT/docs/camp" "$REPO_ROOT/local" "$REPO_ROOT/docs/api/external/campminder"
+mkdir -p "$REPO_ROOT/docs/api/external"
 ln -sfrn "$LOCAL_REPO/docs/camp" "$REPO_ROOT/docs/camp"
 ln -sfrn "$LOCAL_REPO/local" "$REPO_ROOT/local"
+ln -sfrn "$LOCAL_REPO/docs/api-external/campminder" "$REPO_ROOT/docs/api/external/campminder"
 
 echo "Linked local config files"

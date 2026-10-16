@@ -254,7 +254,8 @@ tmp/
 !bunking/geo_normalizer/data/us_zip_counties.json
 !bunking/geo_normalizer/data/schools.json
 !bunking/geo_normalizer/data/congregations.json
-!docs/api/external/campminder/examples/*.json
+# CampMinder API specs are their confidential docs: they live in kindred-local (symlinked by setup-local-config.sh)
+docs/api/external/campminder
 !ruff.toml
 !tsconfig.json
 !tsconfig.node.json

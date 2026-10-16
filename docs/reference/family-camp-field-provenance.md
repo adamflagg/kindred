@@ -44,7 +44,8 @@ Two things that look like additional grains and are not:
 
 ## 2. The API ceiling
 
-Verified against the vendored OpenAPI specs in `docs/api/external/campminder/specs/` and
+Verified against the CampMinder OpenAPI specs in `docs/api/external/campminder/specs/`
+(local-only, symlinked from `kindred-local`) and
 against all 1,270 field definitions already synced into `custom_field_defs`.
 
 ### What the API gives you
