@@ -165,7 +165,21 @@ func (s *FinancialAidApplicationsSync) reconcileAskHistory(
 		return nil
 	}
 
-	filter := fmt.Sprintf("year = %d", year)
+	// Only the ask fields' rows: scanning every custom value of the season on each nightly
+	// run would page through the whole table to look at two fields.
+	filter := fmt.Sprintf("year = %d && (", year)
+	fparams := make(map[string]any, len(fieldCM))
+	i := 0
+	for id := range fieldCM {
+		if i > 0 {
+			filter += " || "
+		}
+		key := fmt.Sprintf("fd%d", i)
+		filter += "field_definition = {:" + key + "}"
+		fparams[key] = id
+		i++
+	}
+	filter += ")"
 	const perPage = 500
 	for page := 1; ; page++ {
 		select {
@@ -173,7 +187,8 @@ func (s *FinancialAidApplicationsSync) reconcileAskHistory(
 			return ctx.Err()
 		default:
 		}
-		records, err := s.App.FindRecordsByFilter("person_custom_values", filter, sortByID, perPage, (page-1)*perPage)
+		records, err := s.App.FindRecordsByFilter(
+			"person_custom_values", filter, sortByID, perPage, (page-1)*perPage, fparams)
 		if err != nil {
 			return fmt.Errorf("querying person custom values page %d: %w", page, err)
 		}
