@@ -21,6 +21,10 @@ A run over the batch limit (about 1,000 writes: a first build of a whole
 season) is chunked, deliberately: intake derives everything from the mirror,
 so a run left part-done is what the next run finishes.
 
+A camper whose household changes within one aid family keeps their request (financial_aid_intake_plan): the
+season's aid_household_links, staff links included, decide "one family" exactly as family_household_set
+joins them, and every record the move touches is one write in the same operation, logged "move_household".
+
 Called by the Go FA sync after it writes (POST /api/internal/financial-aid/intake).
 Every build re-resolves each request's session from registration, so a camper who
 enrolls or switches sessions is picked up on the next run. One build per season runs
@@ -33,23 +37,34 @@ from __future__ import annotations
 import asyncio
 from collections import defaultdict
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from typing import Any, Final, Protocol
 
-from api.constants.collections import AID_APPLICATIONS, AID_PAYER_SHARES, AID_REQUESTS
+from api.constants.collections import (
+    AID_APPLICATION_CORRECTIONS,
+    AID_APPLICATIONS,
+    AID_PAYER_SHARES,
+    AID_REQUEST_ADDITIONS,
+    AID_REQUESTS,
+)
 from api.services.financial_aid_billing import AgeRule, BilledHeadcount, billed_headcounts
 from api.services.financial_aid_household import build_request_specs, choose_household_answers
 from api.services.financial_aid_intake_plan import (
     HouseholdIntake,
     IntakePlan,
+    Move,
     RulesCheck,
+    SameFamily,
+    addition_moves,
     application_fields,
+    camper_moves,
     plan_intake,
     request_fields,
     share_entity_id,
 )
 from api.services.financial_aid_intake_types import (
+    ACTION_MOVE_HOUSEHOLD,
     FLAG_AWAITING_RULES,
     FLAG_NO_PROGRAM,
     INTAKE_ACTOR,
@@ -63,6 +78,7 @@ from api.services.financial_aid_intake_types import (
     ApplicationRecord,
     AttendeeRow,
     BillingLine,
+    CorrectionRecord,
     EquityAnswers,
     FaRow,
     Flag,
@@ -70,6 +86,7 @@ from api.services.financial_aid_intake_types import (
     RequestRecord,
     SessionRow,
 )
+from api.services.financial_aid_ledger_service import family_household_set
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite, new_record_id
 from bunking.financial_aid.headcount import is_infant
 from bunking.financial_aid.rules import resolve_program
@@ -109,6 +126,8 @@ class IntakeStore(Protocol):
     async def fetch_birthdates(self, year: int, person_cm_ids: Sequence[int]) -> dict[int, str]: ...
     async def fetch_equity_answers(self, year: int, person_cm_ids: Sequence[int]) -> dict[int, EquityAnswers]: ...
     async def fetch_request_additions(self, year: int) -> list[AdditionRecord]: ...
+    async def fetch_household_links(self, year: int) -> list[Any]: ...
+    async def fetch_corrections(self, year: int, application_id: str | None) -> list[CorrectionRecord]: ...
     async def load_intake_rules(self, year: int) -> AidRules | None: ...
     async def load_equity_rules(self, year: int) -> AidRules | None: ...
     async def commit(
@@ -143,6 +162,8 @@ class IntakeReport:
     # Season-level notes for staff and admins. They never hold a request (spec 10.5): a hold
     # is per request, and these are about the season's form. See never_true_warnings.
     warnings: tuple[str, ...] = ()
+    # Requests moved in place to another household of their aid family (a camper whose household changed).
+    requests_moved: int = 0
 
 
 INTAKE_REASON: Final = "intake rebuild"
@@ -151,7 +172,11 @@ _DEFAULT_SHARE_REASON = "intake default: one share of 100% for the application's
 
 
 def plan_writes(
-    year: int, plan: IntakePlan, applications: Sequence[ApplicationRecord], requests: Sequence[RequestRecord]
+    year: int,
+    plan: IntakePlan,
+    applications: Sequence[ApplicationRecord],
+    requests: Sequence[RequestRecord],
+    corrections: Sequence[CorrectionRecord] = (),
 ) -> list[AidWrite]:
     """The plan as sub-project 4a writes, in dependency order: applications, request
     updates, request creates, then default payer shares. New records get their ids here, so
@@ -170,7 +195,14 @@ def plan_writes(
     matter there; the new id is swapped in.
 
     An update logs the record's fields before it as `before`; the helper keeps only what
-    changed. A status move is logged as action "status" (spec 12.1 as-of)."""
+    changed. A status move is logged as action "status" (spec 12.1 as-of).
+
+    A re-home (plan.*_moves) writes each moved record once, logged "move_household" with only the
+    household (and a request's application) as before/after: the application re-keyed in place first, then
+    the request, its own corrections when its application changes (`corrections`: the request's old
+    application's, read by the service), its default share and its addition. A request moves onto its new
+    household's application, whichever it is after this run's creates and re-keys. None of these touches a
+    one-active slot (a camper's is per person), so they go before the run's other updates."""
     application_ids = {a.household_cm_id: a.id for a in applications}
     applications_by_id = {a.id: a for a in applications}
     requests_by_id = {r.id: r for r in requests}
@@ -189,6 +221,44 @@ def plan_writes(
                 data={**payload, "year": year, "household_cm_id": household_cm_id},
             )
         )
+    for move in plan.application_moves:
+        if application_ids.get(move.from_household) == move.record_id:
+            del application_ids[move.from_household]
+        application_ids[move.to_household] = move.record_id
+        writes.append(_move_write(year, AID_APPLICATIONS, move))
+    for move in plan.request_moves:
+        record = requests_by_id[move.record_id]
+        household_of[record.id] = move.to_household
+        application_id = application_ids[move.to_household]
+        moved: dict[str, Any] = {"household_cm_id": move.to_household}
+        before: dict[str, Any] = {"household_cm_id": move.from_household}
+        if application_id != record.application_id:
+            moved["application"], before["application"] = application_id, record.application_id
+        writes.append(
+            AidWrite(
+                collection=AID_REQUESTS,
+                action="update",
+                year=year,
+                record_id=record.id,
+                before=before,
+                data=moved,
+                log_action=ACTION_MOVE_HOUSEHOLD,
+            )
+        )
+        if application_id != record.application_id:
+            writes.extend(
+                AidWrite(
+                    collection=AID_APPLICATION_CORRECTIONS,
+                    action="update",
+                    year=c.year,
+                    record_id=c.id,
+                    before={"application": c.application_id},
+                    data={"application": application_id},
+                    log_action=ACTION_MOVE_HOUSEHOLD,
+                )
+                for c in sorted(corrections, key=lambda c: c.id)
+                if c.request_id == record.id and c.application_id == record.application_id
+            )
     for record_id, changes in plan.application_updates:
         writes.append(
             AidWrite(
@@ -223,6 +293,11 @@ def plan_writes(
             "application": application_ids[create.household_cm_id],
         }
         writes.append(AidWrite(collection=AID_REQUESTS, action="create", year=year, record_id=request_id, data=data))
+    writes.extend(
+        _move_write(year, AID_PAYER_SHARES, move, entity_id=share_entity_id(move.request_id, move.to_household))
+        for move in plan.share_moves
+    )
+    writes.extend(_move_write(year, AID_REQUEST_ADDITIONS, move) for move in plan.addition_moves)
     for ref in plan.share_creates:
         request_id = refs.get(ref, ref)
         household_cm_id = household_of[request_id]
@@ -245,6 +320,32 @@ def plan_writes(
             )
         )
     return writes
+
+
+def _move_write(year: int, collection: str, move: Move, entity_id: str | None = None) -> AidWrite:
+    return AidWrite(
+        collection=collection,
+        action="update",
+        year=year,
+        record_id=move.record_id,
+        before={"household_cm_id": move.from_household},
+        data={"household_cm_id": move.to_household},
+        log_action=ACTION_MOVE_HOUSEHOLD,
+        entity_id=entity_id,
+    )
+
+
+def same_family_of(links: Sequence[Any]) -> SameFamily:
+    """Whether two households are one aid family this season: the season's aid_household_links (staff links
+    included, excluded rows joining nothing), joined as family_household_set joins them. Cached per household."""
+    families: dict[int, frozenset[int]] = {}
+
+    def same(a: int, b: int) -> bool:
+        if a not in families:
+            families[a] = frozenset(family_household_set(links, a))
+        return b in families[a]
+
+    return same
 
 
 def _rules_check(rules: AidRules | None, sessions: Sequence[SessionRow]) -> RulesCheck:
@@ -395,13 +496,15 @@ class FinancialAidIntakeService:
             store.fetch_family_camp_billing(year),
             store.load_intake_rules(year),
         )
-        applications, requests, shares, equity_rules, additions = await asyncio.gather(
+        applications, requests, shares, equity_rules, additions, links = await asyncio.gather(
             store.fetch_applications(year),
             store.fetch_requests(year),
             store.fetch_payer_shares(year),
             store.load_equity_rules(year),
             store.fetch_request_additions(year),
+            store.fetch_household_links(year),
         )
+        same_family = same_family_of(links)
         by_household: dict[int, list[FaRow]] = defaultdict(list)
         without_household = 0
         for row in fa_rows:
@@ -415,28 +518,40 @@ class FinancialAidIntakeService:
             attendees_by_household[attendee.household_cm_id].append(attendee)
             attendees_by_person[attendee.person_cm_id].append(attendee)
 
-        # Staff's additions are the second spec source. A household with one and no form row (registration only, or
-        # no CampMinder form at all) still gets an application, with blank answers staff fill by correction.
-        additions_by_household: dict[int, list[AdditionRecord]] = defaultdict(list)
-        for addition in additions:
-            if addition.live:
+        def intake_households(live_additions: Sequence[AdditionRecord]) -> tuple[list[HouseholdIntake], int]:
+            # Staff's additions are the second spec source. A household with one and no form row (registration only,
+            # or no CampMinder form at all) still gets an application, with blank answers staff fill by correction.
+            additions_by_household: dict[int, list[AdditionRecord]] = defaultdict(list)
+            for addition in live_additions:
                 additions_by_household[addition.household_cm_id].append(addition)
+            found: list[HouseholdIntake] = []
+            skipped = 0
+            for household_cm_id in sorted({*by_household, *additions_by_household}):
+                rows = by_household.get(household_cm_id, [])
+                added = additions_by_household.get(household_cm_id, [])
+                relevant = {id(a): a for a in attendees_by_household[household_cm_id]}
+                for person_cm_id in {*(row.person_cm_id for row in rows), *(a.person_cm_id for a in added)}:
+                    relevant.update({id(a): a for a in attendees_by_person[person_cm_id]})
+                specs = build_request_specs(household_cm_id, rows, sessions, list(relevant.values()), added)
+                if not specs:
+                    skipped += len(rows)
+                    continue
+                answers, flags = choose_household_answers(rows)
+                members = tuple(sorted({row.person_cm_id for row in rows}))
+                found.append(HouseholdIntake(household_cm_id, members, answers, flags, specs))
+            return found, skipped
 
-        households: list[HouseholdIntake] = []
-        without_request = 0
-        for household_cm_id in sorted({*by_household, *additions_by_household}):
-            rows = by_household.get(household_cm_id, [])
-            added = additions_by_household.get(household_cm_id, [])
-            relevant = {id(a): a for a in attendees_by_household[household_cm_id]}
-            for person_cm_id in {*(row.person_cm_id for row in rows), *(a.person_cm_id for a in added)}:
-                relevant.update({id(a): a for a in attendees_by_person[person_cm_id]})
-            specs = build_request_specs(household_cm_id, rows, sessions, list(relevant.values()), added)
-            if not specs:
-                without_request += len(rows)
-                continue
-            answers, flags = choose_household_answers(rows)
-            members = tuple(sorted({row.person_cm_id for row in rows}))
-            households.append(HouseholdIntake(household_cm_id, members, answers, flags, specs))
+        live = [a for a in additions if a.live]
+        households, without_request = intake_households(live)
+        # A camper whose requests move to another household of their family takes their additions there too, and
+        # the season's requests are built again from where the additions now are: the added request then moves
+        # with the camper's form request in this run, and the next run finds everything already in place.
+        moved_additions = addition_moves(live, camper_moves(households, requests, same_family))
+        if moved_additions:
+            moved = {m.record_id: m.to_household for m in moved_additions}
+            households, without_request = intake_households(
+                [replace(a, household_cm_id=moved[a.id]) if a.id in moved else a for a in live]
+            )
 
         family_households = [h.household_cm_id for h in households if any(s.person_cm_id == 0 for s in h.requests)]
         billed = await billed_for(store, year, sessions, family_households, billing)
@@ -452,8 +567,19 @@ class FinancialAidIntakeService:
             frozenset(s.request_id for s in shares),
             _rules_check(rules, sessions),
             equity=equity,
+            same_family=same_family,
+            payer_shares=shares,
+            addition_moves=moved_additions,
         )
-        operation_id = await self._commit(year, plan, applications, requests)
+        if plan.unmoved_campers:
+            logger.warning(
+                "Financial-aid intake kept withdraw-and-create for campers whose household change matched more than "
+                "one household of their aid family year=%s persons=%s",
+                year,
+                plan.unmoved_campers,
+            )
+        corrections = await self._moved_corrections(year, plan, requests)
+        operation_id = await self._commit(year, plan, applications, requests, corrections)
         statuses = _final_statuses(plan, requests)
         report = IntakeReport(
             year=year,
@@ -470,12 +596,13 @@ class FinancialAidIntakeService:
             awaiting_approved_rules=_awaiting(plan, requests),
             operation_id=operation_id,
             warnings=never_true_warnings(equity_rules, fa_rows),
+            requests_moved=len(plan.request_moves),
         )
         for warning in report.warnings:
             logger.warning("Financial-aid intake season warning year=%s %s", year, warning)
         logger.info(
             "Financial-aid intake built year=%s households=%s created=%s updated=%s unmatched=%s pending=%s "
-            "awaiting_approved_rules=%s rows_without_request=%s rows_without_household=%s operation_id=%s",
+            "awaiting_approved_rules=%s rows_without_request=%s rows_without_household=%s moved=%s operation_id=%s",
             year,
             report.households,
             report.requests_created,
@@ -485,9 +612,23 @@ class FinancialAidIntakeService:
             report.awaiting_approved_rules,
             report.rows_without_request,
             report.rows_without_household,
+            report.requests_moved,
             report.operation_id,
         )
         return report
+
+    async def _moved_corrections(
+        self, year: int, plan: IntakePlan, requests: Sequence[RequestRecord]
+    ) -> list[CorrectionRecord]:
+        """The corrections of every application a moving request leaves (one whose application is not re-keyed with
+        it); plan_writes moves the request's own. Read only when a run has such a move: most runs read none."""
+        rekeyed = {m.record_id for m in plan.application_moves}
+        by_id = {r.id: r for r in requests}
+        left = sorted({by_id[m.record_id].application_id for m in plan.request_moves} - rekeyed)
+        found: list[CorrectionRecord] = []
+        for application_id in left:
+            found.extend(await self._store.fetch_corrections(year, application_id))
+        return found
 
     async def _commit(
         self,
@@ -495,11 +636,12 @@ class FinancialAidIntakeService:
         plan: IntakePlan,
         applications: Sequence[ApplicationRecord],
         requests: Sequence[RequestRecord],
+        corrections: Sequence[CorrectionRecord] = (),
     ) -> str:
         """One run is one operation (spec 14.4). Chunking is allowed on purpose: a run over
         the batch limit is a first build of a whole season, and the next run finishes one
         left part-done. A run under the limit is still one atomic batch."""
-        writes = plan_writes(year, plan, applications, requests)
+        writes = plan_writes(year, plan, applications, requests, corrections)
         if not writes:
             return ""
         result = await self._store.commit(writes, actor=INTAKE_ACTOR, reason=INTAKE_REASON, allow_chunking=True)

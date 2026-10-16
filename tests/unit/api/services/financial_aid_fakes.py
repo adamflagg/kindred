@@ -130,6 +130,8 @@ def _tupled(changes: Mapping[str, Any]) -> dict[str, Any]:
 def _request_changes(changes: Mapping[str, Any]) -> dict[str, Any]:
     """A request update's fields as the record holds them: the equity copy parsed as the repository does."""
     out = _tupled(changes)
+    if "application" in out:  # the relation's field name; the record calls it application_id
+        out["application_id"] = out.pop("application")
     if "equity" in out:
         out["equity"] = equity_from_json(out["equity"])
     return out
@@ -474,6 +476,10 @@ class FakeAidStore:
             created = f"2027-03-09 17:00:{len(self.decision_events):02d}.000Z"
             self.decision_events.append(decision_event(SimpleNamespace(**{**body, "id": rid, "created": created})))
             return {**body, "id": rid, "created": created}
+        elif collection == AID_APPLICATION_CORRECTIONS and method == "PATCH":
+            index = next(i for i, c in enumerate(self.corrections) if c.id == rid)
+            converted = {"application_id" if k == "application" else k: v for k, v in body.items()}
+            self.corrections[index] = replace(self.corrections[index], **converted)
         elif collection == AID_APPLICATION_CORRECTIONS:
             created = f"2027-01-01 00:00:{len(self.corrections):02d}.000Z"
             self.corrections.append(
