@@ -57,8 +57,9 @@ program and option on one other household of its family. Anything else keeps wit
 ambiguous one names its camper in `unmoved_campers` for the service to log. Family Camp's household-level
 requests (person 0) never move: they have no camper to anchor them, and two households of one aid family
 (co-parents) often apply separately. What rides with a move, each its own write logged "move_household":
-* the application, re-keyed in place, when every request on it moves to one household that has no
-  application this season and the old household is left with nothing; otherwise the request lands on the new
+* the application, re-keyed in place, when every live request on it moves to one household that has no
+  application this season and the old household is left with nothing; its withdrawn requests ride with it,
+  each its own move, and stay withdrawn; otherwise the request lands on the new
   household's application (created this run if need be), where its camper's form row now is, and its own
   request-level corrections follow it there (the service's plan_writes);
 * intake's own 100% default payer share (source "intake_default", on the old household). A staff-set share is
@@ -422,21 +423,35 @@ def _rekeyed_applications(
     existing: Sequence[ApplicationRecord],
     requests: Sequence[RequestRecord],
     moved_to: Mapping[str, int],
+    riders: dict[str, int],
 ) -> dict[int, ApplicationRecord]:
     """The season's applications by household after this run's re-keys (the module docstring's first rider: every
-    request on an application the old household no longer needs moves to one household that has none)."""
+    live request on an application the old household no longer needs moves to one household that has none).
+
+    Only live requests decide it (owner ruling 2026-10-16). A withdrawn one rides with its application, its own
+    move recorded in `riders` (request id -> new household), and stays withdrawn. It can't ride when it names no
+    camper, or when its key on the new household is already a request's (the intake key is unique): then the
+    application stays where it is, and the move lands on a new application as a partial move does."""
     by_household = {a.household_cm_id: a for a in existing}
     taken = set(by_household)
+    known = {r.key for r in requests}
     for application in sorted(existing, key=lambda a: a.id):
         if application.household_cm_id in wanted:
             continue
-        targets = {moved_to.get(r.id) for r in requests if r.application_id == application.id}
+        on_it = [r for r in requests if r.application_id == application.id]
+        withdrawn = [r for r in on_it if r.status == STATUS_WITHDRAWN]
+        targets = {moved_to.get(r.id) for r in on_it if r.status != STATUS_WITHDRAWN}
         if len(targets) != 1:
             continue
         (to,) = targets
         if to is None or to not in wanted or to in taken:
             continue
+        if any(
+            r.person_cm_id <= 0 or (to, r.person_cm_id, r.program_key, r.program_option_key) in known for r in withdrawn
+        ):
+            continue
         taken.add(to)
+        riders.update({r.id: to for r in withdrawn})
         plan.application_moves.append(Move(application.id, application.household_cm_id, to))
         del by_household[application.household_cm_id]
         by_household[to] = replace(application, household_cm_id=to)
@@ -449,9 +464,12 @@ def _plan_applications(
     existing: Sequence[ApplicationRecord],
     requests: Sequence[RequestRecord] = (),
     moved_to: Mapping[str, int] | None = None,
+    riders: dict[str, int] | None = None,
 ) -> None:
     wanted = {h.household_cm_id for h in households}
-    by_household = _rekeyed_applications(plan, wanted, existing, requests, moved_to or {})
+    by_household = _rekeyed_applications(
+        plan, wanted, existing, requests, moved_to or {}, {} if riders is None else riders
+    )
     for household in sorted(households, key=lambda h: h.household_cm_id):
         payload = application_payload(household.member_person_cm_ids, household.answers, household.flags)
         record = by_household.get(household.household_cm_id)
@@ -606,7 +624,9 @@ def plan_intake(
     plan = IntakePlan()
     specs: dict[RequestKey, RequestSpec] = {s.key: s for h in households for s in h.requests}
     moved_to, plan.unmoved_campers = _pair_moves(set(specs), existing_requests, same_family)
-    _plan_applications(plan, households, existing_applications, existing_requests, moved_to)
+    riders: dict[str, int] = {}  # withdrawn requests that ride with their re-keyed application
+    _plan_applications(plan, households, existing_applications, existing_requests, moved_to, riders)
+    moved_to = {**moved_to, **riders}
     _plan_moves(plan, existing_requests, moved_to, payer_shares)
     plan.addition_moves = list(addition_moves)
     # The rest of the run plans each moved request as it stands after its move.

@@ -237,6 +237,46 @@ def test_a_moves_records_are_written_together_ahead_of_the_runs_other_writes() -
 
 
 @pytest.mark.asyncio
+async def test_a_camper_with_a_withdrawn_request_still_moves_in_place_and_the_withdrawn_request_rides_along() -> None:
+    """The prod shape after an earlier answer change: the camper's application also holds a withdrawn request. Only
+    live requests decide the in-place re-key (owner ruling 2026-10-16), and the withdrawn one moves with the
+    application, still withdrawn: no application or request is created and nothing is withdrawn."""
+    store = FakeAidStore()
+    store.rules = intake_rules()
+    store.fa_rows = [fa_row(EMMA, OLD, summer="Taste of Camp 1", summer_ask=900.0, total_gross_income=60000.0)]
+    store.attendees = [AttendeeRow(EMMA, OLD, SESSION_2, 2), AttendeeRow(EMMA, OLD, TASTE_1, 2)]
+    store.links = [link(OLD, "staff:family-1"), link(NEW, "staff:family-1")]
+    await build(store)
+    store.fa_rows = [fa_row(EMMA, OLD, summer="Session 2", summer_ask=3000.0, total_gross_income=60000.0)]
+    await build(store)
+    statuses = sorted(r.status for r in store.requests.values())
+    assert statuses == ["active", "withdrawn"]
+    (application,) = store.applications.values()
+    start, writes = len(store.change_log), len(store.writes)
+
+    move(store, EMMA, NEW)
+    report = await build(store)
+
+    assert {(r.household_cm_id, r.application_id) for r in store.requests.values()} == {(NEW, application.id)}
+    assert sorted(r.status for r in store.requests.values()) == statuses
+    assert len(store.applications) == 1
+    assert (store.applications[application.id].household_cm_id, store.applications[application.id].status) == (
+        NEW,
+        "active",
+    )
+    new_writes = store.writes[writes:]
+    assert {w[0] for w in new_writes if w[0].startswith("POST")} == {"POST aid_payer_shares"}
+    rows = rows_since(store, start)
+    assert {row["action"] for row in rows} == {MOVE}
+    assert sorted(r["entity"] for r in rows if r["entity"] == "aid_requests") == ["aid_requests"] * 2
+    assert report.applications_created == 0
+
+    writes = len(store.writes)
+    again = await build(store)
+    assert (len(store.writes), again.operation_id) == (writes, "")
+
+
+@pytest.mark.asyncio
 async def test_unchanged_data_writes_nothing_with_the_family_linked() -> None:
     store = siblings_store()
     await build(store)

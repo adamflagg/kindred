@@ -59,6 +59,61 @@ describe('historyLines: the family log in words (O4; history.html B)', () => {
     ).toBe('Intake added The Garcia Family form')
   })
 
+  it("words intake's re-home of a camper whose household changed within the family (move_household)", () => {
+    const at = { actor: 'system:intake', action: 'move_household', operation_id: 'op0000000000009' }
+    const request = { entity_id: 'reqsamuel000005', request_id: 'reqsamuel000005' }
+    expect(
+      one({ ...at, ...request, entity: 'aid_requests', after: { household_cm_id: 1000001 } })
+    ).toBe("Intake moved Samuel's request to this household")
+    expect(
+      one(
+        { ...at, ...request, entity: 'aid_requests', after: { household_cm_id: 1000003 } },
+        TWO_HOUSEHOLD_PAGE
+      )
+    ).toBe("Intake moved Samuel's request to The Garcia Family")
+    expect(
+      one({ ...at, entity: 'aid_applications', entity_id: 'app000000000001', request_id: null })
+    ).toBe("Intake moved the family's form to this household")
+    expect(
+      one({
+        ...at,
+        entity: 'aid_application_corrections',
+        entity_id: 'cor000000000001',
+        request_id: null,
+      })
+    ).toBe("Intake moved a correction to the camper's new form")
+    expect(
+      one({
+        ...at,
+        entity: 'aid_request_additions',
+        entity_id: 'add000000000001',
+        request_id: null,
+      })
+    ).toBe('Intake moved an added request to this household')
+    // A share's move is its old key's delete and its new key's create: one line, never "set … to —".
+    const share = { ...at, entity: 'aid_payer_shares', request_id: 'reqsamuel000005' }
+    const lines = historyLines({
+      ...TWO_HOUSEHOLD_PAGE,
+      history: [
+        {
+          ...HISTORY[0]!,
+          ...share,
+          entity_id: 'reqsamuel000005:1000001',
+          before: { share_pct: '100' },
+          after: null,
+        },
+        {
+          ...HISTORY[0]!,
+          ...share,
+          entity_id: 'reqsamuel000005:1000003',
+          before: null,
+          after: { household_cm_id: 1000003, share_pct: '100' },
+        },
+      ],
+    }).map(lineText)
+    expect(lines).toEqual(["Intake moved Samuel's payer share to The Garcia Family"])
+  })
+
   it('words the casework actions', () => {
     const at = {
       entity: 'aid_decisions',

@@ -353,3 +353,69 @@ def test_addition_moves_ride_in_the_plan() -> None:
     )
     assert plan.addition_moves == moved
     assert not plan.is_empty
+
+
+def one_camper_with_a_withdrawn_request() -> tuple[ApplicationRecord, RequestRecord, RequestRecord, PayerShareRecord]:
+    """One camper alone on OLD's application: a live request, and an earlier request withdrawn when the family changed
+    the form's answer (another option), still on that application."""
+    live = record(spec(person=SIBLING_A, household=OLD), "req000000000001")
+    gone = record(
+        spec(person=SIBLING_A, household=OLD), "req000000000009", status="withdrawn", program_option_key="other"
+    )
+    old_app = ApplicationRecord("app000000000001", 2027, OLD, "active", ANSWERS, (SIBLING_A,), ())
+    return old_app, live, gone, share(live.id)
+
+
+def test_a_withdrawn_request_on_the_application_still_lets_it_move_in_place_and_rides_with_it() -> None:
+    """Owner ruling (2026-10-16): only live requests decide whether the application is re-keyed in place. A withdrawn
+    one moves with its application, one move of its own, so the household page stays coherent; it stays withdrawn.
+    Without this the move fell back to a new application, and staff's application-level corrections were stranded on
+    the old, withdrawn one."""
+    old_app, live, gone, default = one_camper_with_a_withdrawn_request()
+    plan = plan_intake(
+        [household(spec(person=SIBLING_A, household=NEW), household_cm_id=NEW)],
+        [old_app],
+        [live, gone],
+        {},
+        frozenset({live.id}),
+        same_family=ONE_FAMILY,
+        payer_shares=[default],
+    )
+    assert plan.application_moves == [Move(old_app.id, OLD, NEW)]
+    assert plan.request_moves == [Move(live.id, OLD, NEW), Move(gone.id, OLD, NEW)]
+    assert plan.share_moves == [Move(default.id, OLD, NEW, live.id)]
+    assert (plan.application_creates, plan.request_creates, plan.share_creates) == ([], [], [])
+    assert plan.application_updates == []  # nothing withdrawn: not the application
+    assert plan.request_updates == [] and plan.status_changes == []  # nor a request; the withdrawn one stays so
+
+    moved = [replace(r, household_cm_id=NEW) for r in (live, gone)]
+    again = plan_intake(
+        [household(spec(person=SIBLING_A, household=NEW), household_cm_id=NEW)],
+        [replace(old_app, household_cm_id=NEW)],
+        moved,
+        {},
+        frozenset({live.id}),
+        same_family=ONE_FAMILY,
+        payer_shares=[replace(default, household_cm_id=NEW)],
+    )
+    assert again.is_empty
+
+
+def test_a_withdrawn_request_whose_key_is_taken_on_the_new_household_keeps_the_application_where_it_is() -> None:
+    """The intake key is unique (idx_aid_requests_intake_key): a withdrawn request that would land on a key the new
+    household already holds can't ride, so the application is not re-keyed and the move lands on a new application,
+    as for a partial move."""
+    old_app, live, gone, default = one_camper_with_a_withdrawn_request()
+    holder = replace(gone, id="req000000000010", household_cm_id=NEW, application_id="app000000000002")
+    plan = plan_intake(
+        [household(spec(person=SIBLING_A, household=NEW), household_cm_id=NEW)],
+        [old_app],
+        [live, gone, holder],
+        {},
+        frozenset({live.id}),
+        same_family=ONE_FAMILY,
+        payer_shares=[default],
+    )
+    assert plan.application_moves == []
+    assert plan.request_moves == [Move(live.id, OLD, NEW)]
+    assert [h for h, _ in plan.application_creates] == [NEW]

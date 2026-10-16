@@ -200,9 +200,43 @@ const REQUEST_WORDS: Readonly<Record<string, (camper: string) => string>> = {
   set_headcount: (camper) => `set ${camper} number of people`,
 }
 
+const MOVE_HOUSEHOLD = 'move_household'
+
+/** Where intake's re-home took a record: its household by name on a family page, else this one. */
+function movedTo(page: ApiAidHouseholdPage, rows: readonly ApiAidHistoryEntry[]): string {
+  const household = rows
+    .map((row) => numberOf(field(row.after, 'household_cm_id')))
+    .find((h): h is number => h !== null)
+  return multiHousehold(page) && household !== undefined
+    ? householdName(page, household)
+    : 'this household'
+}
+
+/** Intake's re-home of a camper whose household changed within the family: each record it moved. */
+function moveParts(
+  page: ApiAidHouseholdPage,
+  entry: ApiAidHistoryEntry,
+  camper: string
+): LinePart[] {
+  const to = movedTo(page, [entry])
+  switch (entry.entity) {
+    case 'aid_requests':
+      return [plain(`moved ${camper} request to ${to}`)]
+    case 'aid_applications':
+      return [plain(`moved the family's form to ${to}`)]
+    case 'aid_application_corrections':
+      return [plain("moved a correction to the camper's new form")]
+    case 'aid_request_additions':
+      return [plain(`moved an added request to ${to}`)]
+    default:
+      return [plain(`moved a ${recordWords(entry.entity)} to ${to}`)]
+  }
+}
+
 /** An entry's "did what", after the who; null when it has no words here (it reads plainly). */
 function whatParts(page: ApiAidHouseholdPage, entry: ApiAidHistoryEntry): LinePart[] | null {
   const camper = camperOf(page, entry.request_id)
+  if (entry.action === MOVE_HOUSEHOLD) return moveParts(page, entry, camper)
   switch (entry.entity) {
     case 'aid_applications':
       if (entry.action !== 'create') return null
@@ -370,7 +404,15 @@ export function historyLines(page: ApiAidHouseholdPage): HistoryLine[] {
         const row = history[next]
         if (row !== undefined) rows.push(row)
       }
-      parts = sharesParts(page, entry, rows)
+      parts =
+        entry.action === MOVE_HOUSEHOLD
+          ? // A share's move is its old key's delete and its new key's create: one line.
+            [
+              plain(
+                `moved ${camperOf(page, entry.request_id)} payer share to ${movedTo(page, rows)}`
+              ),
+            ]
+          : sharesParts(page, entry, rows)
     } else {
       parts = whatParts(page, entry) ??
         // No words here: the action and the kind of record, plainly, still with no id.
