@@ -837,6 +837,8 @@ describe('SessionConfigTable', () => {
       // sessionAvailabilityRoot() so invalidation can't silently drift.
       expect(keys).toContainEqual(['metrics', 'forecast'])
       expect(keys).toContainEqual(['session-availability'])
+      // Analytics › Today reads the same goals and beds (#3207 PR 8)
+      expect(keys).toContainEqual(['metrics', 'today'])
     })
   })
 

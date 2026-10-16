@@ -6,6 +6,7 @@
 import { TrendingUp, TrendingDown } from 'lucide-react'
 import type { RetentionOutlier } from '../../utils/retentionTransforms'
 import { formatCount, formatPercent, formatSignedPercent } from '../../utils/numberFormat'
+import { DELTA_INK } from '../../utils/deltaTokens'
 
 interface RetentionNotableOutliersProps {
   cityOutliers: RetentionOutlier[]
@@ -40,8 +41,8 @@ export function OutlierSection({ outliers, max }: { outliers: RetentionOutlier[]
               <span
                 className={`inline-flex shrink-0 items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-medium ${
                   isAbove
-                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300'
-                    : 'bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300'
+                    ? `bg-forest-100 dark:bg-forest-900/50 ${DELTA_INK.good}`
+                    : `bg-red-100 dark:bg-red-900/50 ${DELTA_INK.bad}`
                 }`}
               >
                 <Icon className="h-3 w-3" />

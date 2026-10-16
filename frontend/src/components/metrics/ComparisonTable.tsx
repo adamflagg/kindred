@@ -4,6 +4,7 @@
 
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react'
 import { formatCount, formatSignedCount, formatSignedPercent } from '../../utils/numberFormat'
+import { DELTA_INK, deltaInk } from '../../utils/deltaTokens'
 
 interface ComparisonRow {
   label: string
@@ -33,9 +34,9 @@ export function ComparisonTable({
       return <Minus className="text-muted-foreground h-4 w-4" />
     }
     return change > 0 ? (
-      <TrendingUp className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+      <TrendingUp className={`h-4 w-4 ${DELTA_INK.good}`} />
     ) : (
-      <TrendingDown className="h-4 w-4 text-red-600 dark:text-red-400" />
+      <TrendingDown className={`h-4 w-4 ${DELTA_INK.bad}`} />
     )
   }
 
@@ -49,8 +50,7 @@ export function ComparisonTable({
   }
 
   const getChangeClass = (change: number | undefined) => {
-    if (change === undefined || change === 0) return 'text-muted-foreground'
-    return change > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
+    return deltaInk(change ?? 0, 'up-good')
   }
 
   return (

@@ -45,6 +45,7 @@ import { MetricsQueryGuard } from '../../../components/metrics/MetricsQueryGuard
 import { DefinitionNotes, DefRef } from '../../../components/camperships/kit/DefinitionNotes'
 import { formatCount, formatPercent, formatSignedCount } from '../../../utils/numberFormat'
 import { CANCELLATIONS_NOTES } from '../cancelledNotes'
+import { deltaInk } from '../../../utils/deltaTokens'
 
 const CANCEL_SEGMENTS: StackedSegment[] = [
   { key: 'was_enrolled', label: 'Was Enrolled', color: 'hsl(200, 70%, 50%)' },
@@ -731,7 +732,7 @@ export default function CancellationAnalysis() {
                                     {formatCount(compSession?.total_cancelled)}
                                   </td>
                                   <td
-                                    className={`px-4 py-2 text-right ${delta && delta > 0 ? 'text-red-600 dark:text-red-400' : delta && delta < 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`}
+                                    className={`px-4 py-2 text-right ${deltaInk(delta ?? 0, 'up-bad')}`}
                                   >
                                     {delta !== null ? formatSignedCount(delta) : '\u2014'}
                                   </td>

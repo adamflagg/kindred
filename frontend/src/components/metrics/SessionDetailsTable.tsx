@@ -3,11 +3,10 @@ import { sessionName } from '../../utils/sessionName'
 import { MUTED_PILL_CLASS } from '../velocity'
 import { buildSessionDetailRows } from './sessionDetailRows'
 import { formatCount, formatPercent, formatSignedCount } from '../../utils/numberFormat'
+import { deltaInk } from '../../utils/deltaTokens'
 
 function deltaClass(delta: number | null): string {
-  if (delta && delta > 0) return 'text-emerald-600 dark:text-emerald-400'
-  if (delta && delta < 0) return 'text-red-600 dark:text-red-400'
-  return 'text-muted-foreground'
+  return deltaInk(delta ?? 0, 'up-good')
 }
 
 function utilizationClass(utilization: number): string {

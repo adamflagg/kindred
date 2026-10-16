@@ -303,6 +303,7 @@ export function SessionConfigTable() {
         // Metrics views read this config server-side; refetch them so edits show
         // without a hard refresh (prefix-match across all years/params).
         queryClient.invalidateQueries({ queryKey: queryKeys.forecastRoot() }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.todayRoot() }),
         queryClient.invalidateQueries({ queryKey: queryKeys.sessionAvailabilityRoot() }),
       ])
       toast.success('Session config saved')

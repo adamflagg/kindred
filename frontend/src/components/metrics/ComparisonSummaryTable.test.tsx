@@ -109,10 +109,10 @@ describe('ComparisonSummaryTable', () => {
         />
       )
 
-      // Positive change cell should have emerald color
+      // Positive change cell is the good delta token, forest (#3207 PR 8, ruling #16)
       const changeCells = container.querySelectorAll('td')
       const changeCell = Array.from(changeCells).find((td) => td.textContent.includes('+10'))
-      expect(changeCell).toHaveClass('text-emerald-600')
+      expect(changeCell).toHaveClass('text-forest-700')
     })
 
     it('should swap colors with sentiment="inverse" — positive becomes red', () => {
@@ -129,10 +129,10 @@ describe('ComparisonSummaryTable', () => {
 
       const changeCells = container.querySelectorAll('td')
       const changeCell = Array.from(changeCells).find((td) => td.textContent.includes('+10'))
-      expect(changeCell).toHaveClass('text-red-600')
+      expect(changeCell).toHaveClass('text-red-700')
     })
 
-    it('should swap colors with sentiment="inverse" — negative becomes green', () => {
+    it('should swap colors with sentiment="inverse" — negative becomes forest', () => {
       const { container } = render(
         <ComparisonSummaryTable
           title="Cancellations"
@@ -146,10 +146,10 @@ describe('ComparisonSummaryTable', () => {
 
       const changeCells = container.querySelectorAll('td')
       const changeCell = Array.from(changeCells).find((td) => td.textContent.includes('\u221210'))
-      expect(changeCell).toHaveClass('text-emerald-600')
+      expect(changeCell).toHaveClass('text-forest-700')
     })
 
-    it('should use blue color with sentiment="neutral"', () => {
+    it('should use grey with sentiment="neutral" (ruling #17: New Campers goes grey)', () => {
       const { container } = render(
         <ComparisonSummaryTable
           title="New Campers"
@@ -163,7 +163,7 @@ describe('ComparisonSummaryTable', () => {
 
       const changeCells = container.querySelectorAll('td')
       const changeCell = Array.from(changeCells).find((td) => td.textContent.includes('+10'))
-      expect(changeCell).toHaveClass('text-blue-600')
+      expect(changeCell).toHaveClass('text-muted-foreground')
     })
   })
 

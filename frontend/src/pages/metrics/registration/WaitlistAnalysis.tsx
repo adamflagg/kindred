@@ -34,6 +34,7 @@ import {
 } from '../../../utils/sessionUtils'
 import type { WaitlistSessionBreakdown } from '../../../types/metrics'
 import { MetricsQueryGuard } from '../../../components/metrics/MetricsQueryGuard'
+import { deltaInk } from '../../../utils/deltaTokens'
 
 const SESSION_COLORS = [
   'hsl(160, 100%, 35%)',
@@ -598,7 +599,7 @@ export default function WaitlistAnalysis() {
                                     {formatCount(compSession?.waitlisted)}
                                   </td>
                                   <td
-                                    className={`px-4 py-2 text-right ${delta && delta > 0 ? 'text-emerald-600 dark:text-emerald-400' : delta && delta < 0 ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}
+                                    className={`px-4 py-2 text-right ${deltaInk(delta ?? 0, 'neutral')}`}
                                   >
                                     {delta !== null ? formatSignedCount(delta) : '\u2014'}
                                   </td>

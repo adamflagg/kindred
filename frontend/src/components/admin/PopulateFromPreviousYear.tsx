@@ -244,6 +244,7 @@ export function PopulateFromPreviousYear() {
           queryKey: queryKeys.sessionAvailabilityRoot(),
         }),
         queryClient.invalidateQueries({ queryKey: queryKeys.forecastRoot() }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.todayRoot() }),
         // Invalidate our own queries so preview refreshes
         queryClient.invalidateQueries({
           queryKey: ['populate-config'],

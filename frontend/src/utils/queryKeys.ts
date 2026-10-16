@@ -325,6 +325,15 @@ export const queryKeys = {
   forecastRoot: () => ['metrics', 'forecast'] as const,
   forecastWeekOptions: (year: number) => ['metrics', 'forecast', 'week-options', year] as const,
 
+  // Analytics › Today (Tier 1 - sync data; #3207 PR 8). Session fill reads the budget goals and
+  // bunk plans the admin config edits, so its writers invalidate todayRoot() too.
+  todaySessions: (year: number, sessionTypes?: string, sessionCmId?: number, duration?: string) =>
+    ['metrics', 'today', 'sessions', year, sessionTypes, sessionCmId, duration] as const,
+  todayRecent: (year: number, sessionTypes?: string, sessionCmId?: number, duration?: string) =>
+    ['metrics', 'today', 'recent', year, sessionTypes, sessionCmId, duration] as const,
+  /** Root prefix for invalidating every Today query at once. */
+  todayRoot: () => ['metrics', 'today'] as const,
+
   // Camper Cohorts (Tier 1 - sync data, per-session school/congregation/city counts)
   camperCohorts: (personCmId: number | null, sessionCmId: number, year: number) =>
     ['camper-cohorts', personCmId, sessionCmId, year] as const,

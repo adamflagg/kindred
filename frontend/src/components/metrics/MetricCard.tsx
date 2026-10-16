@@ -13,6 +13,7 @@
 import { TrendingUp, TrendingDown, Minus, ChevronRight } from 'lucide-react'
 import { DefRef } from '../camperships/kit/DefinitionNotes'
 import { formatSignedCount, formatValue } from '../../utils/numberFormat'
+import { DELTA_INK } from '../../utils/deltaTokens'
 
 interface MetricCardProps {
   title: string
@@ -28,9 +29,10 @@ interface MetricCardProps {
   compareYear?: number | undefined
   className?: string | undefined
   /**
-   * Color semantics for trend direction. 'default': up is green. 'inverse': up is red.
-   * 'neutral': either way is blue. 'muted': either way is grey, for a change that is neither
-   * good nor bad news (the waitlist, decision 16); the arrow still shows the direction.
+   * Color semantics for trend direction, in the app-wide delta tokens (`utils/deltaTokens`). 'default':
+   * up is good (forest). 'inverse': up is bad (red). 'neutral' and 'muted': either way is grey, for a
+   * change that is neither good nor bad news (New Campers, ruling #17; the waitlist, decision 16); the
+   * arrow still shows the direction.
    */
   sentiment?: 'default' | 'inverse' | 'neutral' | 'muted' | undefined
   /** Click handler for drilldown functionality */
@@ -52,24 +54,11 @@ export function MetricCard({
   onClick,
   note,
 }: MetricCardProps) {
+  // The app-wide delta tokens (#3207 PR 8, rulings #16, #17): 'neutral' and 'muted' are both grey now.
   const trendColors =
-    sentiment === 'muted'
-      ? {
-          up: 'text-muted-foreground',
-          down: 'text-muted-foreground',
-          neutral: 'text-muted-foreground',
-        }
-      : sentiment === 'neutral'
-        ? {
-            up: 'text-blue-600 dark:text-blue-400',
-            down: 'text-blue-600 dark:text-blue-400',
-            neutral: 'text-muted-foreground',
-          }
-        : {
-            up: 'text-emerald-600 dark:text-emerald-400',
-            down: 'text-red-600 dark:text-red-400',
-            neutral: 'text-muted-foreground',
-          }
+    sentiment === 'muted' || sentiment === 'neutral'
+      ? { up: DELTA_INK.neutral, down: DELTA_INK.neutral, neutral: DELTA_INK.neutral }
+      : { up: DELTA_INK.good, down: DELTA_INK.bad, neutral: DELTA_INK.neutral }
 
   const TrendIcon = {
     up: TrendingUp,

@@ -28,6 +28,7 @@ from api.services.metrics_sql_repository import MetricsSQLRepository
 from api.services.registration_service import RegistrationService
 from api.services.retention_service import RetentionService
 from api.services.retention_trends_service import RetentionTrendsService
+from api.services.today_service import TodayService
 from api.services.velocity_service import VelocityService
 from api.services.waitlist_service import WaitlistService
 from api.utils.validators import check_duration_session_exclusive, parse_summer_session_types
@@ -57,6 +58,7 @@ from ..schemas.metrics import (
     RetentionTrendsResponse,
     WaitlistMetricsResponse,
 )
+from ..schemas.today import RecentSignupsResponse, TodaySessionsResponse
 from ..schemas.velocity import VelocityResponse
 
 router = APIRouter(prefix="/api/metrics", tags=["metrics"])
@@ -604,6 +606,85 @@ async def get_forecast(
         duration=duration,
     )
     metrics_cache.set("forecast", result, **cache_params)
+    return result
+
+
+# ============================================================================
+# Analytics Today (#3207 PR 8)
+# ============================================================================
+
+_SCOPE_TYPES_DESCRIPTION = "Comma-separated session types (default: summer camp sessions)"
+
+
+@router.get("/today/sessions", response_model=TodaySessionsResponse)
+async def get_today_sessions(
+    year: int = Query(..., description="Season", ge=2000, le=2100),
+    session_types: str | None = Query("main,embedded,ag,quest", description=_SCOPE_TYPES_DESCRIPTION),
+    session_cm_id: int | None = Query(None, description="One session (its AG cabins included)"),
+    duration: Literal["1-week", "2-week", "3-week", "4-week+"] | None = Query(
+        None, description="Filter by session duration category (1-week, 2-week, 3-week, 4-week+)"
+    ),
+    user: AuthUser = Depends(get_current_user),
+) -> TodaySessionsResponse:
+    """Today's Session fill: this year's sessions in session order, each with beds, goal, waitlist and its own
+    match last year read at the same registration day (rulings #14, #15; decision 7)."""
+    check_duration_session_exclusive(duration, session_cm_id)
+    camp_today = get_camp_today()
+    cache_params = {
+        "year": year,
+        "session_types": session_types,
+        "session_cm_id": session_cm_id,
+        "duration": duration,
+        "camp_today": camp_today,
+    }
+    cached: TodaySessionsResponse | None = metrics_cache.get("today_sessions", **cache_params)
+    if cached is not None:
+        return cached
+    service = TodayService(_create_repository())
+    result = await service.session_fill(
+        year,
+        parse_summer_session_types(session_types),
+        session_cm_id=session_cm_id,
+        duration=duration,
+        today=camp_today,
+    )
+    metrics_cache.set("today_sessions", result, **cache_params)
+    return result
+
+
+@router.get("/today/recent", response_model=RecentSignupsResponse)
+async def get_today_recent(
+    year: int = Query(..., description="Season", ge=2000, le=2100),
+    session_types: str | None = Query("main,embedded,ag,quest", description=_SCOPE_TYPES_DESCRIPTION),
+    session_cm_id: int | None = Query(None, description="One session (its AG cabins included)"),
+    duration: Literal["1-week", "2-week", "3-week", "4-week+"] | None = Query(
+        None, description="Filter by session duration category (1-week, 2-week, 3-week, 4-week+)"
+    ),
+    user: AuthUser = Depends(get_current_user),
+) -> RecentSignupsResponse:
+    """Today's Recent sign-ups: the last 7 days by Enrolled on, one line per camper per day, newest first, at
+    most 6 lines, and the window's enrollment count (decisions 37, 40)."""
+    check_duration_session_exclusive(duration, session_cm_id)
+    camp_today = get_camp_today()
+    cache_params = {
+        "year": year,
+        "session_types": session_types,
+        "session_cm_id": session_cm_id,
+        "duration": duration,
+        "camp_today": camp_today,
+    }
+    cached: RecentSignupsResponse | None = metrics_cache.get("today_recent", **cache_params)
+    if cached is not None:
+        return cached
+    service = TodayService(_create_repository())
+    result = await service.recent_signups(
+        year,
+        parse_summer_session_types(session_types),
+        session_cm_id=session_cm_id,
+        duration=duration,
+        today=camp_today,
+    )
+    metrics_cache.set("today_recent", result, **cache_params)
     return result
 
 
