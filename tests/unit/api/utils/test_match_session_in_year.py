@@ -5,11 +5,13 @@ for confirmation that the two are the same session under #3245's matching: id fi
 group, then the exact name. These tests pin it in both directions.
 """
 
+from typing import Any
+
 from api.utils.session_metrics import match_session_in_year
 from tests.unit.api.conftest import create_mock_session
 
 
-def _sessions_2026() -> dict:
+def _sessions_2026() -> dict[int, Any]:
     return {
         1000101: create_mock_session(1000101, "Taste of Camp 1", year=2026, session_type="embedded"),
         1000102: create_mock_session(1000102, "Taste of Camp 2", year=2026, session_type="embedded"),
@@ -18,7 +20,7 @@ def _sessions_2026() -> dict:
     }
 
 
-def _sessions_2027() -> dict:
+def _sessions_2027() -> dict[int, Any]:
     return {
         1000901: create_mock_session(1000901, "Taste of Camp", year=2027, session_type="embedded"),
         1000200: create_mock_session(1000200, "Session 2", year=2027),
