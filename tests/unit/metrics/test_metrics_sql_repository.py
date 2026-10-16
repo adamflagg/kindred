@@ -1119,7 +1119,8 @@ class TestVelocityIdentityOnTheSqlRepository:
         TestExpandedPersonKeepsRowsWithNoPersonsRecord._add_orphans(sql_db)
         # No snapshots, so the total is rebuilt from the same attendee records (the snapshot gap is accepted)
         sql_db.execute("DELETE FROM enrollment_snapshots")
-        service = VelocityService(_make_repo(sql_db))
+        repo: Any = _make_repo(sql_db)  # the router passes either repository (_create_repository -> Any)
+        service = VelocityService(repo)
 
         result = await service.get_velocity(
             year=2025, split_by_gender=True, gender_basis="identity", today=date(2025, 9, 1)
