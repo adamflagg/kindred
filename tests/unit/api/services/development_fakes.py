@@ -58,6 +58,9 @@ class FakeDevelopmentStore:
         default_factory=list
     )  # aid_change_log rows about aid_sources (the real last_changes reads them)
     earlier_reads: list[tuple[frozenset[int], frozenset[int]]] = field(default_factory=list)
+    # The seasons with a live grant line (has_live_grant_lines). None: every season may have one, so the service
+    # reads each season's register, as it did before it asked.
+    grant_line_seasons: set[int] | None = None
     columns: StoredColumns = field(default_factory=lambda: StoredColumns("", ()))
     log: list[dict[str, Any]] = field(default_factory=list)  # every aid_change_log row that committed
     operations: list[list[AidWrite]] = field(default_factory=list)  # every commit attempted
@@ -90,6 +93,9 @@ class FakeDevelopmentStore:
 
     async def grantors(self) -> list[GrantorRecord]:
         return list(self.grantor_rows)
+
+    async def has_live_grant_lines(self, year: int) -> bool:
+        return self.grant_line_seasons is None or year in self.grant_line_seasons
 
     async def source_lines(self, year: int) -> dict[str, tuple[int, Decimal]]:
         return source_lines(self.posting_rows)

@@ -282,7 +282,7 @@ class _FilteringCollection:
         for key in reversed([k for k in str(params.get("sort", "")).split(",") if k]):
             desc = key.startswith("-")
             attr = key.lstrip("-+")
-            if attr not in ("id", "created", "cm_id"):
+            if attr not in ("id", "created", "cm_id", "field_definition"):
                 raise NotImplementedError(f"unsupported sort {key!r}")
             rows.sort(key=lambda r, a=attr: getattr(r, a, ""), reverse=desc)  # type: ignore[misc]
         columns = [c for c in str(params.get("fields", "")).split(",") if c]

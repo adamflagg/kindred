@@ -88,6 +88,12 @@ _ATTENDEE_FIELDS: Final = ",".join(
 # person_custom_values: the answer, whose it is and which field (fetch_equity_answers), as the rows' own relation
 # ids: build_inputs resolves them, so the read needs no expand.
 _EQUITY_VALUE_FIELDS: Final = "id,value,person,field_definition"
+# The custom-values read's order, which picks its index. `sort=id` made SQLite walk the (year, id) index -- every custom
+# value of the season, about 170k rows on the 2026-10-14 snapshot -- to fill each page with the allowlisted fields:
+# 0.25-0.36 s a page alone, 3-7 s under parallel reads, and over 5 s failed the request (Development, 2026-10-15). This
+# order is served by idx_person_cf_vals_field (year, field_definition); id keeps offset paging total. build_inputs puts
+# the rows back in id order. Leave idx_person_custom_values_year_id alone: the orphan sweep reads by it (#2266).
+_EQUITY_VALUE_SORT: Final = "field_definition,id"
 
 
 def fa_application_fields() -> str:
@@ -169,7 +175,8 @@ def build_inputs(
     person_by_pb_id = {str(p.id): int(p.cm_id) for p in persons}
     field_cm_by_pb_id = {str(d.id): int(d.cm_id) for d in field_defs}
     equity: dict[int, list[EquityValue]] = defaultdict(list)
-    for v in values:
+    # In PocketBase-id order, whatever order the read used (_EQUITY_VALUE_SORT): a reader keeps a field's last answer.
+    for v in sorted(values, key=lambda v: str(v.id)):
         person = person_by_pb_id.get(str(getattr(v, "person", "") or ""))
         if person is not None:
             field = field_cm_by_pb_id.get(str(getattr(v, "field_definition", "") or ""), 0)
@@ -225,7 +232,10 @@ class _Loader:
             ),
             self._all(HOUSEHOLDS, {"filter": f"year = {y}", "fields": HOUSEHOLD_COLUMNS}),
             self._all(ATTENDEES, {"filter": f"year = {y}", "expand": "person,session", "fields": _ATTENDEE_FIELDS}),
-            self._all(PERSON_CUSTOM_VALUES, {"filter": f"year = {y} && ({field_ids})", "fields": _EQUITY_VALUE_FIELDS}),
+            self._all(
+                PERSON_CUSTOM_VALUES,
+                {"filter": f"year = {y} && ({field_ids})", "fields": _EQUITY_VALUE_FIELDS, "sort": _EQUITY_VALUE_SORT},
+            ),
             self._all(
                 FINANCIAL_AID_APPLICATIONS,
                 {"filter": f"year = {y}", "expand": "household", "fields": fa_application_fields()},
