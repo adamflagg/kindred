@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, type ReactNode } from 'react'
 import { MINUS, formatCount, formatPercent, formatSignedCount } from '../../../utils/numberFormat'
 import { Loader2 } from 'lucide-react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
@@ -32,6 +32,62 @@ import {
 } from '../../../utils/priorityDay'
 import { MetricsBusy, MetricsLoadError } from '../../../components/metrics/MetricsQueryGuard'
 import { deltaInk } from '../../../utils/deltaTokens'
+import { useTableSort } from '../../../hooks/useTableSort'
+import { MetricSortHeader } from '../../../components/metrics/MetricSortHeader'
+import { TableExportButtons } from '../../../components/metrics/TableExportButtons'
+import { csvFilename } from '../../../components/metrics/exportFilename'
+import type { SortValue } from '../../../utils/tableSort'
+
+type ForecastField =
+  | 'name'
+  | 'goal'
+  | 'enrolled'
+  | 'waitlisted'
+  | 'pctGoal'
+  | 'vsBudget'
+  | 'prior'
+  | 'vsPrior'
+  | 'twoYear'
+  | 'budgetRev'
+  | 'actualRev'
+  | 'revDelta'
+  | 'revPct'
+
+interface ForecastSort {
+  direction: (field: ForecastField) => 'ascending' | 'descending' | null
+  toggle: (field: ForecastField) => void
+}
+
+function forecastSortValue(s: SessionForecast, field: ForecastField): SortValue {
+  switch (field) {
+    case 'name':
+      return sessionName(s.session_name, undefined, 'short')
+    case 'goal':
+      return s.participant_goal
+    case 'enrolled':
+      return s.enrolled
+    case 'waitlisted':
+      return s.waitlisted
+    case 'pctGoal':
+      return s.pct_of_goal
+    case 'vsBudget':
+      return s.participants_vs_budget
+    case 'prior':
+      return s.prior_year_count
+    case 'vsPrior':
+      return s.participants_vs_prior_year
+    case 'twoYear':
+      return s.two_year_prior_count
+    case 'budgetRev':
+      return s.budget_revenue
+    case 'actualRev':
+      return s.actual_revenue
+    case 'revDelta':
+      return s.revenue_delta
+    case 'revPct':
+      return s.revenue_pct
+  }
+}
 
 function pctColor(pct: number | null): string {
   if (pct === null) return ''
@@ -78,41 +134,48 @@ function fmtPct(value: number | null): string {
 function ForecastTableHeader({
   priorBasis,
   priorityDay,
+  sort,
 }: {
   priorBasis: 'same_point' | 'final'
   /** The prior columns are read through the next day: a priority, early or open date (decision 45). */
   priorityDay: boolean
+  sort: ForecastSort
 }) {
   const mark = priorityDay ? <DefRef n={1} title={PRIORITY_DAY_NOTE} /> : null
+  const h = (
+    label: string,
+    field: ForecastField,
+    align: 'left' | 'right' = 'right',
+    hide = false,
+    suffix?: ReactNode
+  ) => (
+    <MetricSortHeader
+      bare
+      label={label}
+      labelSuffix={suffix}
+      align={align}
+      direction={sort.direction(field)}
+      onSort={() => sort.toggle(field)}
+      className={`${hide ? 'hidden lg:table-cell' : ''}px-3 py-2 text-${align} text-xs font-semibold`}
+    />
+  )
   return (
     <thead>
       <tr className="bg-muted/50">
-        <th className="px-3 py-2 text-left text-xs font-semibold">Session</th>
-        <th className="px-3 py-2 text-right text-xs font-semibold">Goal</th>
-        <th className="px-3 py-2 text-right text-xs font-semibold">Enrolled</th>
+        {h('Session', 'name', 'left')}
+        {h('Goal', 'goal')}
+        {h('Enrolled', 'enrolled')}
         <th className="px-3 py-2 text-right text-xs font-semibold">B / G</th>
-        <th className="px-3 py-2 text-right text-xs font-semibold">WL</th>
-        <th className="px-3 py-2 text-right text-xs font-semibold">% Goal</th>
-        <th className="px-3 py-2 text-right text-xs font-semibold">vs Budget</th>
-        <th className="px-3 py-2 text-right text-xs font-semibold">
-          Prior Yr
-          {mark}
-        </th>
-        <th className="px-3 py-2 text-right text-xs font-semibold">
-          {priorBasis === 'same_point' ? 'vs same point' : 'vs final'}
-        </th>
-        <th className="px-3 py-2 text-right text-xs font-semibold">
-          2yr Prior
-          {mark}
-        </th>
-        <th className="hidden px-3 py-2 text-right text-xs font-semibold lg:table-cell">
-          Budget Rev
-        </th>
-        <th className="hidden px-3 py-2 text-right text-xs font-semibold lg:table-cell">
-          Actual Rev
-        </th>
-        <th className="hidden px-3 py-2 text-right text-xs font-semibold lg:table-cell">Delta $</th>
-        <th className="hidden px-3 py-2 text-right text-xs font-semibold lg:table-cell">Rev%</th>
+        {h('WL', 'waitlisted')}
+        {h('% Goal', 'pctGoal')}
+        {h('vs Budget', 'vsBudget')}
+        {h('Prior Yr', 'prior', 'right', false, mark)}
+        {h(priorBasis === 'same_point' ? 'vs same point' : 'vs final', 'vsPrior')}
+        {h('2yr Prior', 'twoYear', 'right', false, mark)}
+        {h('Budget Rev', 'budgetRev', 'right', true)}
+        {h('Actual Rev', 'actualRev', 'right', true)}
+        {h('Delta $', 'revDelta', 'right', true)}
+        {h('Rev%', 'revPct', 'right', true)}
       </tr>
     </thead>
   )
@@ -190,6 +253,64 @@ function SessionRow({
   )
 }
 
+function forecastCsvHeaders(priorBasis: 'same_point' | 'final', withSection: boolean): string[] {
+  return [
+    ...(withSection ? ['Section'] : []),
+    'Session',
+    'Goal',
+    'Enrolled',
+    'Boys',
+    'Girls',
+    'Waitlisted',
+    '% Goal',
+    'vs Budget',
+    'Prior Yr',
+    priorBasis === 'same_point' ? 'vs same point' : 'vs final',
+    '2yr Prior',
+    'Budget Rev',
+    'Actual Rev',
+    'Delta $',
+    'Rev %',
+  ]
+}
+
+/** Every section's rows in the order on screen, each section's Total after it, the grand total last. */
+function forecastCsvRows(
+  sections: ReadonlyArray<{ label: string; sessions: SessionForecast[]; total: SessionForecast }>,
+  withSection: boolean,
+  withGrandTotal: boolean,
+  grandTotal: SessionForecast,
+  deltaPending: boolean
+): (string | number | null)[][] {
+  const line = (section: string, name: string, s: SessionForecast) => [
+    ...(withSection ? [section] : []),
+    name,
+    s.participant_goal,
+    s.enrolled,
+    s.enrolled_boys,
+    s.enrolled_girls,
+    s.waitlisted,
+    s.pct_of_goal,
+    s.participants_vs_budget,
+    s.prior_year_count,
+    deltaPending ? null : s.participants_vs_prior_year,
+    s.two_year_prior_count,
+    s.budget_revenue,
+    s.actual_revenue,
+    s.revenue_delta,
+    s.revenue_pct,
+  ]
+  const out: (string | number | null)[][] = []
+  for (const section of sections) {
+    for (const s of section.sessions) {
+      out.push(line(section.label, sessionName(s.session_name, undefined, 'short'), s))
+    }
+    if (section.sessions.length >= 2) out.push(line(section.label, 'Total', section.total))
+  }
+  if (withGrandTotal) out.push(line('', 'Grand total', grandTotal))
+  return out
+}
+
 export default function ForecastPage() {
   const { currentYear, availableYears } = useCurrentYear()
   const {
@@ -199,6 +320,7 @@ export default function ForecastPage() {
     durationParam,
   } = useMetricsSession()
   const [dayOffset, setDayOffset] = useState<number | null>(null)
+  const sort = useTableSort<ForecastField>('name')
   const { data: weekOptions = [] } = useWeekOptions(currentYear)
 
   // Always know "today's week" from the latest (current) season — React Query
@@ -278,7 +400,10 @@ export default function ForecastPage() {
     questSessions,
     teenSessions,
     data.section_priors
-  )
+  ).map((section) => ({
+    ...section,
+    sessions: sort.apply(section.sessions, (row, field) => forecastSortValue(row, field)),
+  }))
   const showSectionHeadings = sections.length >= 2
   const showGrandTotal = sections.length >= 2 && selectedSessionCmId === null
   const thisYearOffset = data.day_offset ?? todayOffset
@@ -306,7 +431,18 @@ export default function ForecastPage() {
                 )}
               </span>
             )}
-            <div className="ml-auto">
+            <div className="ml-auto flex items-center gap-3">
+              <TableExportButtons
+                filename={csvFilename(currentYear, 'Enrollment Forecast')}
+                headers={forecastCsvHeaders(data.prior_basis, showSectionHeadings)}
+                rows={forecastCsvRows(
+                  sections,
+                  showSectionHeadings,
+                  showGrandTotal,
+                  grand_total,
+                  deltaPending
+                )}
+              />
               <SnapshotDateSelector
                 dayOffset={dayOffset}
                 onOffsetChange={setDayOffset}
@@ -334,7 +470,11 @@ export default function ForecastPage() {
                 )}
                 <div className="border-border overflow-x-auto rounded-xl border">
                   <table className="w-full border-collapse">
-                    <ForecastTableHeader priorBasis={data.prior_basis} priorityDay={priorityDay} />
+                    <ForecastTableHeader
+                      priorBasis={data.prior_basis}
+                      priorityDay={priorityDay}
+                      sort={sort}
+                    />
                     <tbody>
                       {section.sessions.map((s) => (
                         <SessionRow

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { SortableColumnHeader, type SortDirection } from '../ui/SortableColumnHeader'
 
 /**
@@ -12,6 +13,7 @@ export function MetricSortHeader({
   align = 'right',
   className = '',
   bare = false,
+  labelSuffix,
   title,
   colSpan,
   rowSpan,
@@ -23,6 +25,7 @@ export function MetricSortHeader({
   readonly className?: string
   /** Replaces the default header look, for a matrix with its own cell styling. */
   readonly bare?: boolean
+  readonly labelSuffix?: ReactNode
   readonly title?: string
   readonly colSpan?: number
   readonly rowSpan?: number
@@ -41,6 +44,7 @@ export function MetricSortHeader({
           '↓'
         )
       }
+      labelSuffix={labelSuffix}
       title={title}
       colSpan={colSpan}
       rowSpan={rowSpan}
