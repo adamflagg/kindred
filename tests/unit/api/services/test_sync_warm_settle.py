@@ -162,3 +162,66 @@ def test_the_settle_outlasts_the_gap_between_one_runs_jobs() -> None:
     hourly-candidate job, persons, ran 13-22 s in production's daily runs (sync_runs, Oct 1-14 2026), so a settle
     shorter than ~25 s would let the warm start, and be thrown away, between persons and the next job."""
     assert SYNC_WARM_SETTLE_SECONDS >= 25
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("module", "body", "scheduler"), WARMS)
+async def test_a_later_sync_clear_does_not_push_back_an_immediate_ask(
+    monkeypatch: pytest.MonkeyPatch, module: ModuleType, body: str, scheduler: Callable[[], Callable[..., None]]
+) -> None:
+    """A staff write's warm (it records grant placements first) asked for during a settle stays immediate even when
+    a sync clear lands right after it: the sync's ask must not move the start back out to its own settle."""
+    runs: list[float] = []
+
+    async def fake_warm() -> None:
+        runs.append(time.monotonic())
+
+    monkeypatch.setattr(module, body, fake_warm)
+    schedule = scheduler()
+    schedule(settle=60)
+    await asyncio.sleep(0.01)
+    asked = time.monotonic()
+    schedule()  # staff write
+    schedule(settle=60)  # a sync clear right behind it
+    await _finish(module)
+    assert len(runs) == 1
+    assert runs[0] - asked < 1.0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("module", "body", "scheduler"), WARMS)
+async def test_a_sync_clear_behind_an_immediate_ask_during_a_warm_does_not_delay_the_rerun(
+    monkeypatch: pytest.MonkeyPatch, module: ModuleType, body: str, scheduler: Callable[[], Callable[..., None]]
+) -> None:
+    runs: list[float] = []
+    release = asyncio.Event()
+
+    async def fake_warm() -> None:
+        runs.append(time.monotonic())
+        if len(runs) == 1:
+            await release.wait()
+
+    monkeypatch.setattr(module, body, fake_warm)
+    schedule = scheduler()
+    schedule()
+    await asyncio.sleep(0)
+    schedule()  # staff write mid-warm
+    schedule(settle=60)  # sync clear behind it
+    asked = time.monotonic()
+    release.set()
+    await _finish(module)
+    assert len(runs) == 2
+    assert runs[1] - asked < 1.0
+
+
+@pytest.mark.parametrize("sync_type", [None, ""])
+def test_a_clear_no_sync_asked_for_warms_at_once(sync_type: str | None) -> None:
+    from api.routers.metrics import invalidate_server_caches
+
+    with (
+        patch("api.routers.metrics.schedule_lodging_warm") as lodging_warm,
+        patch("api.routers.metrics.schedule_aid_warm") as aid_warm,
+    ):
+        invalidate_server_caches(sync_type)
+    lodging_warm.assert_called_once_with(settle=0.0)
+    aid_warm.assert_called_once_with(settle=0.0)

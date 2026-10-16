@@ -797,18 +797,20 @@ def invalidate_server_caches(sync_type: str | None) -> dict[str, int]:
     camp_sessions): only a sync writes them. No warm follows its clear: the
     report is opened rarely, and its next open pays one read per season it prices (two in all).
     """
+    # A named sync's warm settles; a clear no sync asked for (the registration-config hook) warms at once.
+    settle = SYNC_WARM_SETTLE_SECONDS if sync_type else 0.0
     cleared = metrics_cache.invalidate_all()
     clear_person_id_cache()
     if sync_invalidates_lodging_cache(sync_type):
         lodging_cache.invalidate_all()
-        schedule_lodging_warm(settle=SYNC_WARM_SETTLE_SECONDS)
+        schedule_lodging_warm(settle=settle)
     if sync_writes_any(sync_type, AID_SYNC_INPUT_TABLES):
         aid_inputs_cache.invalidate_all()
     if sync_writes_any(sync_type, DEVELOPMENT_HISTORY_TABLES):
         development_history_cache.invalidate_all()  # no warm: see the docstring
     if sync_changes_aid_season(sync_type):
         aid_season_cache.invalidate_all()
-        schedule_aid_warm(settle=SYNC_WARM_SETTLE_SECONDS)  # layer 2, and layer 1 when this sync cleared it too
+        schedule_aid_warm(settle=settle)  # layer 2, and layer 1 when this sync cleared it too
     if sync_changes_form_intake(sync_type):
         form_intake_cache.invalidate_all()
     # graph_cache (kindred#2803): until now only scenario, solver and position

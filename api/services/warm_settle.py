@@ -38,13 +38,18 @@ class SettleDeadline:
 
     def __init__(self) -> None:
         self._deadline = 0.0
+        self._immediate = False  # an ask without a settle is waiting for its warm; no sync ask may push it back
         self.settling = False
 
     def ask(self, settle: float) -> None:
         """A warm was asked for: with a settle, push the start back to `settle` seconds from now (never earlier
         than an earlier ask's); without one, start now, cutting short any settle in progress."""
         now = time.monotonic()
-        self._deadline = max(self._deadline, now + settle) if settle > 0 else now
+        if settle <= 0:
+            self._deadline = now
+            self._immediate = True
+        elif not self._immediate:
+            self._deadline = max(self._deadline, now + settle)
 
     async def wait(self) -> None:
         """Return once the deadline has passed. `settling` is True meanwhile: an ask that lands then only moves the
@@ -55,3 +60,4 @@ class SettleDeadline:
                 await asyncio.sleep(min(left, _POLL_SECONDS))
         finally:
             self.settling = False
+            self._immediate = False
