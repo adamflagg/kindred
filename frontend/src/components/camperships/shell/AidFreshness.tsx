@@ -7,6 +7,7 @@ import {
   type SyncStatus,
   type SyncStatusResponse,
 } from '../../../hooks/useSyncStatusAPI'
+import { freshnessRun } from '../../../utils/syncFreshness'
 import { buildSyncTooltip } from '../../../utils/syncTooltip'
 import { FreshnessChip } from '../../FreshnessChip'
 
@@ -46,9 +47,10 @@ export function AidFreshness() {
   const jobs: Partial<SyncStatusResponse> = status
   const seasonJobs: Partial<SyncStatusResponse> | undefined =
     inSynced && seasonStatus && !isPlaceholderData ? seasonStatus : undefined
+  // freshnessRun: a dry run dates nothing, so a line reads the job's last real run.
   const lines: Array<[string, string, SyncStatus | undefined]> = [
-    ['Aid apps', 'FA applications', seasonJobs?.financial_aid_applications],
-    ['Ledger', 'aid ledger', jobs.aid_postings],
+    ['Aid apps', 'FA applications', freshnessRun(seasonJobs?.financial_aid_applications)],
+    ['Ledger', 'aid ledger', freshnessRun(jobs.aid_postings)],
   ]
   return (
     <div className="text-muted-foreground flex items-center gap-3 text-xs">

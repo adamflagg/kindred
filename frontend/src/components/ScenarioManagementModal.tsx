@@ -4,6 +4,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { useScenario } from '../hooks/useScenario'
 import { useYear } from '../hooks/useCurrentYear'
 import { useSyncStatusAPI } from '../hooks/useSyncStatusAPI'
+import { freshnessRun } from '../utils/syncFreshness'
 import { useRetainedDialog } from '../hooks/useRetainedDialog'
 import ScenarioEditModal from './ScenarioEditModal'
 import NewScenarioModal from './NewScenarioModal'
@@ -78,6 +79,8 @@ export default function ScenarioManagementModal({
   // cost is small -- but `enabled` is not what bounds it, and an earlier
   // version of this comment implied otherwise.
   const { data: syncStatus } = useSyncStatusAPI({ enabled: isOpen })
+  // A dry run dates nothing: freshnessRun answers it with the last real run, or nothing.
+  const productionSyncedAt = freshnessRun(syncStatus?.bunk_assignments)?.end_time
 
   const editDialog = useRetainedDialog<Scenario>()
   const newScenarioDialog = useRetainedDialog<true>()
@@ -220,8 +223,8 @@ export default function ScenarioManagementModal({
                   <div>
                     <h3 className="font-semibold">CampMinder</h3>
                     <p className="text-muted-foreground text-sm">
-                      {syncStatus?.bunk_assignments?.end_time
-                        ? `Synced ${formatDistanceToNow(new Date(syncStatus.bunk_assignments.end_time), { addSuffix: true })}`
+                      {productionSyncedAt
+                        ? `Synced ${formatDistanceToNow(new Date(productionSyncedAt), { addSuffix: true })}`
                         : 'Production bunking assignments'}
                     </p>
                   </div>

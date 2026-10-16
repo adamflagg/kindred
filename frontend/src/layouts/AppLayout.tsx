@@ -55,6 +55,7 @@ import { buildSyncTooltip } from '../utils/syncTooltip'
 import { AidFreshness } from '../components/camperships/shell/AidFreshness'
 import { AnalyticsFreshness } from '../components/metrics/AnalyticsFreshness'
 import { FreshnessChip } from '../components/FreshnessChip'
+import { freshnessRun } from '../utils/syncFreshness'
 import { AidSecondaryBarRight } from '../components/camperships/shell/AidSecondaryBarRight'
 
 /**
@@ -174,6 +175,9 @@ export const AppLayout = () => {
   const helpMenuRef = useRef<HTMLDivElement>(null)
   const canSeeSync = hasPermission(Permission.BUNKING_MANAGE)
   const { data: syncStatus } = useSyncStatusAPI({ enabled: canSeeSync })
+  // The run "Assignments synced" dates by. A dry run dates nothing: freshnessRun answers it with
+  // the job's last real run, or nothing, and the line's time and hover then name that one run.
+  const assignmentsRun = freshnessRun(syncStatus?.bunk_assignments)
   const { tourId, replay } = useTour()
   // Which weekend the shell is on, and whether it is an ADULT one — the shell
   // is the parent route, so `useParams` gives it nothing and this reads the
@@ -659,15 +663,14 @@ export const AppLayout = () => {
               */}
               {activeProgram === 'summer' &&
                 syncStatus &&
-                (syncStatus.bunk_assignments?.end_time ??
-                  syncStatus._bunk_requests_upload?.uploaded_at) && (
+                (assignmentsRun?.end_time ?? syncStatus._bunk_requests_upload?.uploaded_at) && (
                   <div className="text-muted-foreground flex items-center gap-3 text-xs">
-                    {syncStatus.bunk_assignments?.end_time && (
+                    {assignmentsRun?.end_time && (
                       <FreshnessChip
                         noun="Assignments"
                         verb="synced"
-                        at={syncStatus.bunk_assignments.end_time}
-                        title={buildSyncTooltip('bunk assignments', syncStatus.bunk_assignments)}
+                        at={assignmentsRun.end_time}
+                        title={buildSyncTooltip('bunk assignments', assignmentsRun)}
                       />
                     )}
                     {/*

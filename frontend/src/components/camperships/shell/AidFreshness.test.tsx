@@ -65,6 +65,31 @@ describe('AidFreshness (D5, D69: the two freshness chips)', () => {
     expect(screen.getByText(/^Ledger synced 6h ago$/)).toBeInTheDocument()
   })
 
+  // A dry run stays in the slot (Manage > Sync shows it) but wrote nothing: the line dates the
+  // ledger by the last REAL run the backend attaches as last_real_run.
+  it('dates a line by the last real run, never a dry run', () => {
+    statuses({
+      _configured_year: 2026,
+      aid_postings: {
+        status: 'success',
+        end_time: '2026-10-01T17:59:00Z',
+        dry_run: true,
+        last_real_run: { status: 'success', end_time: '2026-10-01T12:00:00Z' },
+      },
+    })
+    renderFreshness()
+    expect(screen.getByText(/^Ledger synced 6h ago$/)).toBeInTheDocument()
+  })
+
+  it('leaves out a line whose only run is a dry run', () => {
+    statuses({
+      _configured_year: 2026,
+      aid_postings: { status: 'success', end_time: '2026-10-01T17:59:00Z', dry_run: true },
+    })
+    renderFreshness()
+    expect(screen.queryByText(/Ledger/)).toBeNull()
+  })
+
   it("stays grey: a condition, not an alarm (#1706, summer's rule)", () => {
     statusSpy.mockReturnValue({
       data: {

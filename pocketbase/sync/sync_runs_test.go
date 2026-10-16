@@ -3,6 +3,8 @@ package sync
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -1690,5 +1692,121 @@ func TestLastRecordedRunsIgnoresDryRuns(t *testing.T) {
 	}
 	if got.DryRun {
 		t.Error("a dry run was rehydrated as the last successful run")
+	}
+}
+
+// runAndPublish runs svc through RunSingleSyncWithService and waits until the run is both
+// recorded (want rows in sync_runs) and published to the status slot.
+func runAndPublish(t *testing.T, app core.App, o *Orchestrator, svc *MockService, origin runOrigin, want int) {
+	t.Helper()
+	if err := o.RunSingleSyncWithService(context.Background(), svc.name, svc, origin); err != nil {
+		t.Fatalf("RunSingleSyncWithService: %v", err)
+	}
+	waitForSyncRuns(t, app, want)
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		o.mu.RLock()
+		_, running := o.runningJobs[svc.name]
+		o.mu.RUnlock()
+		if !running {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting for the published status")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// A finished dry run stays in the status slot so Manage > Sync can show it with its chip, but
+// it wrote nothing, so it must not date anything: the shell's freshness lines ("Assignments
+// synced N ago") read the entry's last_real_run instead, which is the last REAL successful run.
+// Both payloads carry it: the any-season one the shell reads and the ?year= one Analytics reads.
+func TestTheStatusPayloadDatesFreshnessByTheLastRealRunNotADryRun(t *testing.T) {
+	t.Parallel()
+
+	app := newSyncRunsApp(t)
+	o := NewOrchestrator(app)
+	runAndPublish(t, app, o, &MockService{name: "svc", stats: Stats{Created: 1}},
+		newBatch(triggerManual).forYear(2025), 1)
+	runAndPublish(t, app, o, &MockService{name: "svc", stats: Stats{Created: 99}},
+		newBatch(triggerManual).forYear(2025).forDryRun(true), 2)
+
+	payloads := map[string]map[string]any{
+		"any season": resolveServiceStatuses(o, []string{"svc"}),
+		"?year=":     resolveServiceStatusesForSeason(o, []string{"svc"}, 2025, 2026),
+	}
+	for name, payload := range payloads {
+		got, ok := payload["svc"].(*Status)
+		if !ok {
+			t.Fatalf("%s: svc entry is %T, want *Status", name, payload["svc"])
+		}
+		if !got.DryRun || got.Summary.Created != 99 {
+			t.Errorf("%s: the card's entry must stay the dry run (DryRun=%v, Created=%d)",
+				name, got.DryRun, got.Summary.Created)
+		}
+		lastReal := got.LastRealRun
+		if lastReal == nil {
+			t.Fatalf("%s: a finished dry run carries no last_real_run, so freshness reads the dry run", name)
+		}
+		if lastReal.DryRun || lastReal.Summary.Created != 1 || lastReal.EndTime == nil {
+			t.Errorf("%s: last_real_run = %+v, want the real run (Created 1, with an end time)", name, lastReal)
+		}
+	}
+}
+
+// A real run's entry is its own freshness: it carries no last_real_run.
+func TestARealRunCarriesNoLastRealRun(t *testing.T) {
+	t.Parallel()
+
+	app := newSyncRunsApp(t)
+	o := NewOrchestrator(app)
+	runAndPublish(t, app, o, &MockService{name: "svc", stats: Stats{Created: 1}},
+		newBatch(triggerManual).forYear(2025), 1)
+
+	if got := resolveServiceStatuses(o, []string{"svc"})["svc"].(*Status); got.LastRealRun != nil {
+		t.Errorf("a real run's entry carries last_real_run %+v", got.LastRealRun)
+	}
+}
+
+// The five dedicated endpoints that take ?dry_run= of their own must record their dry runs as
+// dry runs too, not only the unified /sync/run endpoint: the 2017-2025 replay dry-runs
+// family_camp_derived per season, and a dry lodging_assignments row recorded as real would
+// date every weekend's housing freshness.
+func TestTheDedicatedDryRunEndpointsRecordTheirRunsAsDryRuns(t *testing.T) {
+	t.Parallel()
+
+	handlers := map[string]func(*core.RequestEvent, *Scheduler) error{
+		serviceNameFamilyCampDerived: handleFamilyCampDerivedSync,
+		"lodging_assignments":        handleLodgingAssignmentsSync,
+		"staff_skills":               handleStaffSkillsSync,
+		"financial_aid_applications": handleFinancialAidApplicationsSync,
+		"household_demographics":     handleHouseholdDemographicsSync,
+	}
+	for name, handler := range handlers {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := newSyncRunsApp(t)
+			scheduler := NewScheduler(app)
+
+			re := &core.RequestEvent{}
+			re.App = app
+			re.Request = httptest.NewRequest(http.MethodPost, "/?year=2025&dry_run=true", http.NoBody)
+			rec := httptest.NewRecorder()
+			re.Response = rec
+			if err := handler(re, scheduler); err != nil {
+				t.Fatalf("handler: %v", err)
+			}
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+			}
+
+			// The run may fail on this bare app; a failed run is still recorded, and its
+			// dry_run is what is being asserted.
+			recs := waitForSyncRuns(t, app, 1)
+			if !recs[0].GetBool("dry_run") {
+				t.Errorf("%s: a ?dry_run=true run was recorded with dry_run=false", name)
+			}
+		})
 	}
 }

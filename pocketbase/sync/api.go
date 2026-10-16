@@ -1275,7 +1275,7 @@ func resolveServiceStatuses(orchestrator *Orchestrator, syncTypes []string) map[
 		live := orchestrator.GetStatus(syncType)
 		switch {
 		case live != nil:
-			statuses[syncType] = live
+			statuses[syncType] = withLastRealRun(live, recorded[syncType])
 		case recorded[syncType] != nil:
 			statuses[syncType] = recorded[syncType]
 		default:
@@ -1286,6 +1286,26 @@ func resolveServiceStatuses(orchestrator *Orchestrator, syncTypes []string) map[
 		}
 	}
 	return statuses
+}
+
+// withLastRealRun stamps a dry run's payload entry (running or finished) with the job's last
+// REAL successful run, so a freshness line can date the job by that run instead (Status.LastRealRun).
+//
+// The status slot keeps a dry run on purpose: Manage > Sync shows it, with its "Dry run" chip
+// and its would-be counts. But the slot is also what the shell's freshness lines read
+// ("Assignments synced N ago", the Camperships and Analytics chips), and a dry run wrote nothing,
+// so its end_time must not move them -- the 2017-2025 replay dry-runs every job first.
+//
+// recorded is the same sync_runs read the fallback below uses (LastRecordedRuns), which already
+// skips dry rows and failed runs. A real run that failed after the last success is therefore
+// not what a dry run's entry falls back to; a freshness line names a run that succeeded, as it
+// does after a restart. nil when the job has no real success on record: nothing to date it by.
+// live is GetStatus's copy, so stamping it never reaches the stored slot.
+func withLastRealRun(live, recorded *Status) *Status {
+	if live.DryRun {
+		live.LastRealRun = recorded
+	}
+	return live
 }
 
 // resolveServiceStatusesForSeason is resolveServiceStatuses for one synced season's Manage >
@@ -1300,7 +1320,7 @@ func resolveServiceStatusesForSeason(orchestrator *Orchestrator, syncTypes []str
 		live := orchestrator.GetStatusForSeason(syncType, year, primary)
 		switch {
 		case live != nil:
-			statuses[syncType] = live
+			statuses[syncType] = withLastRealRun(live, recorded[syncType])
 		case recorded[syncType] != nil:
 			statuses[syncType] = recorded[syncType]
 		default:
@@ -2515,7 +2535,7 @@ func handleFamilyCampDerivedSync(e *core.RequestEvent, scheduler *Scheduler) err
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 
-	origin := newBatch(triggerManual).forYear(year)
+	origin := newBatch(triggerManual).forYear(year).forDryRun(dryRun)
 	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service, origin); err != nil {
 		return e.JSON(http.StatusConflict, map[string]any{
 			"error":    "Family camp derived computation already in progress",
@@ -2566,7 +2586,7 @@ func handleLodgingAssignmentsSync(e *core.RequestEvent, scheduler *Scheduler) er
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 
-	origin := newBatch(triggerManual).forYear(year)
+	origin := newBatch(triggerManual).forYear(year).forDryRun(dryRun)
 	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service, origin); err != nil {
 		return e.JSON(http.StatusConflict, map[string]any{
 			"error":    "Lodging assignment ingest already in progress",
@@ -2620,7 +2640,7 @@ func handleStaffSkillsSync(e *core.RequestEvent, scheduler *Scheduler) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 
-	origin := newBatch(triggerManual).forYear(year)
+	origin := newBatch(triggerManual).forYear(year).forDryRun(dryRun)
 	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service, origin); err != nil {
 		return e.JSON(http.StatusConflict, map[string]any{
 			"error":    "Staff skills sync already in progress",
@@ -2675,7 +2695,7 @@ func handleFinancialAidApplicationsSync(e *core.RequestEvent, scheduler *Schedul
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 
-	origin := newBatch(triggerManual).forYear(year)
+	origin := newBatch(triggerManual).forYear(year).forDryRun(dryRun)
 	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service, origin); err != nil {
 		return e.JSON(http.StatusConflict, map[string]any{
 			"error":    "Financial aid applications sync already in progress",
@@ -2729,7 +2749,7 @@ func handleHouseholdDemographicsSync(e *core.RequestEvent, scheduler *Scheduler)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 
-	origin := newBatch(triggerManual).forYear(year)
+	origin := newBatch(triggerManual).forYear(year).forDryRun(dryRun)
 	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service, origin); err != nil {
 		return e.JSON(http.StatusConflict, map[string]any{
 			"error":    "Household demographics computation already in progress",

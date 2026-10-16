@@ -533,6 +533,47 @@ describe('AppLayout requests upload label', () => {
   // The other half of the same rule: the ASSIGNMENTS line is unaffected and must
   // still render off `bunk_assignments`, so removing the request-text fallback
   // cannot silently take the whole group down with it.
+  // A dry run stays in the slot (Manage > Sync shows it) but wrote nothing: the line and its
+  // hover date the assignments by the last REAL run the backend attaches as last_real_run.
+  it('dates the assignments line by the last real run, never a dry run', () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-04-22T18:00:00.000Z'))
+    try {
+      syncStatusSpy.mockImplementation(() => ({
+        data: {
+          bunk_assignments: {
+            status: 'success',
+            end_time: '2026-04-22T17:59:00.000Z',
+            dry_run: true,
+            summary: { created: 99, updated: 0, skipped: 0, errors: 0 },
+            last_real_run: {
+              status: 'success',
+              end_time: '2026-04-22T12:00:00.000Z',
+              summary: { created: 1, updated: 2, skipped: 0, errors: 0 },
+            },
+          },
+        } as SyncStatusResponse,
+      }))
+      renderAppLayout()
+      const line = screen.getByText(/^Assignments synced 6h ago$/)
+      const hover = line.closest('[title]')?.getAttribute('title') ?? ''
+      expect(hover).toContain('2026-04-22T12:00:00.000Z')
+      expect(hover).toContain('created 1')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('shows no assignments line when the only bunk_assignments run is a dry run', () => {
+    syncStatusSpy.mockImplementation(() => ({
+      data: {
+        bunk_assignments: { status: 'success', end_time: syncIso, dry_run: true },
+      } as SyncStatusResponse,
+    }))
+    renderAppLayout()
+    expect(screen.queryByText(/Assignments synced/)).not.toBeInTheDocument()
+  })
+
   it('still renders the assignments line when only bunk_assignments has run', () => {
     syncStatusSpy.mockImplementation(() => ({
       data: {

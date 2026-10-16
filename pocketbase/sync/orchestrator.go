@@ -533,6 +533,12 @@ type Status struct {
 	// DryRun is true for a run that computed without writing. Persisted to sync_runs.dry_run;
 	// every freshness reader skips such rows, and Manage > Sync labels them.
 	DryRun bool `json:"dry_run,omitempty"`
+	// LastRealRun is set only on a sync-status payload entry that is a dry run (running or
+	// finished): the job's last REAL successful run, from sync_runs, nil when there is none.
+	// The status slot keeps the dry run so Manage > Sync can show it with its chip, but a dry
+	// run wrote nothing, so every freshness line ("Assignments synced N ago") dates the job by
+	// this run instead (frontend freshnessRun). Never persisted. See withLastRealRun.
+	LastRealRun *Status `json:"last_real_run,omitempty"`
 	// BatchID groups every service execution of one queue — a whole nightly run — under one
 	// id. Minted when the queue starts.
 	//

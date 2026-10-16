@@ -713,7 +713,8 @@ class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
 
     async def _last_covering_run(self, service: str, year: int) -> datetime | None:
         """The start of `service`'s newest successful run covering the season (`ledger_run_covers`), of
-        its newest `_RUN_PAGE` successful runs in the season's window."""
+        its newest `_RUN_PAGE` successful runs in the season's window. A dry run (`dry_run`) wrote nothing,
+        so it covers nothing and is skipped."""
         result = await pb_read(
             aid_collection(self.pb, SYNC_RUNS).get_list,
             1,
