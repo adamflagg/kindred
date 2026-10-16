@@ -218,6 +218,22 @@ describe.each(['field', 'identity'] as const)(
       expect(screen.getByText(GAP(75))).toBeInTheDocument()
     })
 
+    it('numbers several history notes one after another, after the page notes', () => {
+      state.priorYears = [2025]
+      state.data = withGaps(basis, [
+        { year: 2026, unseen_count: 75, no_history: false },
+        { year: 2025, unseen_count: 12, no_history: false },
+      ])
+      show()
+      const first = screen.getByText(`2026: ${GAP(75)}`).closest('li') as HTMLElement
+      const second = screen.getByText(`2025: ${GAP(12)}`).closest('li') as HTMLElement
+      const numberOf = (li: HTMLElement) => Number(/^(\d+)\./.exec(li.textContent ?? '')?.[1])
+      expect(numberOf(second)).toBe(numberOf(first) + 1)
+      // Every note on the page is numbered once, so the two never share a number.
+      const all = Array.from(document.querySelectorAll('li')).map(numberOf).filter(Number.isFinite)
+      expect(new Set(all).size).toBe(all.length)
+    })
+
     it('shows nothing while the split is off', () => {
       state.splitByGender = false
       state.data = withGaps(basis, [{ year: 2026, unseen_count: 75, no_history: false }])
@@ -226,3 +242,20 @@ describe.each(['field', 'identity'] as const)(
     })
   }
 )
+
+describe('Cancellation Velocity › history gap numbering after the page notes', () => {
+  it('numbers the gap note after the gender-identity fallback note', () => {
+    state.splitByGender = true
+    state.genderBasis = 'identity'
+    state.priorYears = []
+    state.data = {
+      ...response('identity', 3),
+      gender_history_gaps: [{ year: 2026, unseen_count: 75, no_history: false }],
+    }
+    show()
+    const items = Array.from(document.querySelectorAll('li')).map((li) => li.textContent ?? '')
+    const gap = items.findIndex((t) => t.includes(GAP(75)))
+    expect(gap).toBeGreaterThan(0)
+    expect(items[gap]).toMatch(new RegExp(`^${gap + 1}\\. `))
+  })
+})
