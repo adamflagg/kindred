@@ -2057,3 +2057,60 @@ async def test_a_duplicate_waiting_moves_no_number() -> None:
     assert [h.money for h in page.households] == [h.money for h in plain.households]
     assert page.totals == plain.totals
     assert [r.model_copy(update={"duplicates_waiting": []}) for r in page.requests] == plain.requests
+
+
+# -- PR 3: an added request's card says who added it, and which rounds are posted (Remove… pre-checks them) ----------
+
+
+@pytest.mark.asyncio
+async def test_an_added_request_card_carries_its_addition_and_a_form_request_none() -> None:
+    from dataclasses import replace as _replace
+
+    from api.services.financial_aid_intake_types import AdditionRecord
+    from bunking.financial_aid.decisions.rounds import DecisionEvent
+
+    store = _family()
+    added = store.requests[EMMA] = _replace(store.requests[EMMA], program_option_key="added:1000101")
+    store.events.append(
+        DecisionEvent(id="ev0000000000099", request_id=EMMA, round=1, kind="post", created=T0, amount=Decimal("800"))
+    )
+    addition = AdditionRecord(
+        id="addemma00000001",
+        year=YEAR,
+        household_cm_id=added.household_cm_id,
+        person_cm_id=added.person_cm_id,
+        program_key=added.program_key,
+        session_cm_id=1000101,
+        ask=800.0,
+        source="staff",
+        reason="Called in before the form opened",
+        actor="registrar@example.com",
+        created="2027-01-22 18:00:00.000Z",
+    )
+
+    async def additions(year: int) -> list[AdditionRecord]:
+        return [addition]
+
+    service = HouseholdPageService(
+        store=store,
+        pricing=FakeRules(approved()),
+        grants=_Grants(),
+        casework=_Casework(store),
+        ledger=_Ledger(),
+        history=_History(),
+        additions=additions,  # the router passes the repository's read
+        clock=lambda: T0,
+    )
+    page = await service.read(YEAR, JOHNSON)
+    cards = {card.row.request_id: card for card in page.requests}
+    found = cards[EMMA].addition
+    assert found is not None
+    assert (found.addition_id, found.origin, found.added_by, found.added_reason, found.added_at) == (
+        "addemma00000001",
+        "added",
+        "registrar@example.com",
+        "Called in before the form opened",
+        "2027-01-22 18:00:00.000Z",
+    )
+    assert (found.reviewed, found.posted_rounds) == (None, [1])
+    assert cards[LIAM].addition is None

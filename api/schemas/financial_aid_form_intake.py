@@ -42,6 +42,23 @@ class RegistrationAskOut(BaseModel):
     on: str | None = None
 
 
+class RequestAdditionOut(BaseModel):
+    """The addition behind an added or rule-made request (Form intake's Became and the household request card share
+    it): who added it, when and why; a rule-made one's Mark Reviewed; and the rounds posted on its request, so Remove…
+    can say "Round N is posted: undo Posted first" before it is refused."""
+
+    addition_id: str
+    origin: RequestOrigin
+    added_by: str
+    added_at: str
+    added_reason: str
+    reviewed: bool | None  # rule-made (registration_ask) only; None for a staff addition
+    reviewed_by: str = ""
+    reviewed_at: str = ""
+    posted_rounds: list[int] = Field(default_factory=list)
+    live: bool = True  # False once Remove… retired it
+
+
 class BecameOut(BaseModel):
     request_id: str
     program_key: str

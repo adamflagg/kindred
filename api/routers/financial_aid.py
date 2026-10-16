@@ -2105,6 +2105,7 @@ async def get_household_page(
         casework=_casework(),
         ledger=FinancialAidRepository(pb),
         history=EntityLogReads(pb),
+        additions=FinancialAidDecisionsRepository(pb).fetch_request_additions,  # PR 3: each added request's card
         season_cache=aid_season_cache,
     )
     try:

@@ -47,6 +47,7 @@ from api.schemas.financial_aid_household_page import (
 )
 from api.schemas.financial_aid_intake import ApplicationDetailResponse
 from api.services.aid_season_cache import AidSeasonCache
+from api.services.financial_aid_addition_view import addition_view, additions_by_request_key
 from api.services.financial_aid_casework_service import CaseworkNotFoundError, disagreeing_fields
 from api.services.financial_aid_change_log_reads import log_detail
 from api.services.financial_aid_decisions_service import (
@@ -57,7 +58,12 @@ from api.services.financial_aid_decisions_service import (
 )
 from api.services.financial_aid_grants_register import RegisterRow, counts_as_outside, outside_grants_by_request
 from api.services.financial_aid_grants_service import GrantsLoader, OneGrantsLoad
-from api.services.financial_aid_intake_types import STATUS_DUPLICATE_PENDING, PayerShareRecord, RequestRecord
+from api.services.financial_aid_intake_types import (
+    STATUS_DUPLICATE_PENDING,
+    AdditionRecord,
+    PayerShareRecord,
+    RequestRecord,
+)
 from api.services.financial_aid_ledger_service import (
     accepted_index,
     household_display_name,
@@ -685,10 +691,12 @@ class HouseholdPageService:
         casework: CaseworkReads,
         ledger: HouseholdLedgerReads,
         history: HistoryReads,
+        additions: Callable[[int], Awaitable[Sequence[AdditionRecord]]] | None = None,
         clock: Callable[[], datetime] | None = None,
         season_cache: AidSeasonCache | None = None,
     ) -> None:
         self._store = store
+        self._additions = additions  # PR 3: the season's aid_request_additions, for each added request's card
         self._pricing = pricing
         self._grants = grants
         self._casework = casework
@@ -742,6 +750,7 @@ class HouseholdPageService:
             asyncio.gather(*(_income(self._casework, year, h) for h in scope.households)),
             self._store.fetch_fa_contacts(year),
         )
+        additions = additions_by_request_key(await self._additions(year) if self._additions is not None else [])
         requesters = requester_names(contacts, season.requests.values())
         rows = [decisions.row_of(season, names, rid, requesters) for rid in scope.request_ids]
         grant_rows = [
@@ -851,6 +860,9 @@ class HouseholdPageService:
                 grants_applied=money(applied) if applied is not None else None,
                 grants_beyond_owed=money(beyond) if beyond is not None else None,
                 duplicates_waiting=[waiting_out(r) for r in waiting.get(row.request_id, ())],
+                addition=addition_view(
+                    season.requests[row.request_id], additions, season.rounds.get(row.request_id, {})
+                ),
             )
 
         def waiting_out(twin: RequestRecord) -> DuplicateWaitingOut:

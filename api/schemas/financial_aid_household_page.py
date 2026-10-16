@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 
 from api.schemas.financial_aid import AidPostingLine, HouseholdLinkRow
 from api.schemas.financial_aid_decisions import ConfirmationStatusOut, GridRowOut
+from api.schemas.financial_aid_form_intake import RequestAdditionOut
 from api.schemas.financial_aid_grants import ExpectedOut, GrantRowOut
 from api.schemas.financial_aid_intake import AnswerOut, FlagOut, PayerShareStatus
 from bunking.financial_aid.calculator.result import TraceStep
@@ -176,6 +177,9 @@ class HouseholdRequestOut(BaseModel):
     # Every duplicate_pending request in the season, on any household, whose duplicate_of is this request, by household
     # then request id. Defaulted only so older fixtures still type-check; the page always fills it.
     duplicates_waiting: list[DuplicateWaitingOut] = Field(default_factory=list)
+    # PR 3: the addition behind an added or rule-made request (who added it, why, Mark Reviewed, the posted rounds
+    # Remove… pre-checks); None for a request the aid form made. Built as Form intake's Became builds it.
+    addition: RequestAdditionOut | None = None
 
 
 class FormPersonOut(BaseModel):

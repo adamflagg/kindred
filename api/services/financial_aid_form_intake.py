@@ -50,6 +50,7 @@ from api.schemas.financial_aid_form_intake import (
     WhyNot,
 )
 from api.services.camp_calendar import CAMP_TZ
+from api.services.financial_aid_addition_view import addition_view, additions_by_request_key, posted_rounds
 from api.services.financial_aid_campminder_money import NoRequestAid, aid_on_no_request_lines, campminder_money
 from api.services.financial_aid_cancellations import CancelEvent, fold_cancellations
 from api.services.financial_aid_casework_service import _program_for
@@ -57,7 +58,6 @@ from api.services.financial_aid_decisions_service import session_pools
 from api.services.financial_aid_household import enrolled_for
 from api.services.financial_aid_household_page import HouseholdLabeler
 from api.services.financial_aid_intake_types import (
-    ADDITION_SOURCE_REGISTRATION_ASK,
     PROGRAM_BMITZVAH,
     PROGRAM_FAMILY_CAMP,
     PROGRAM_SUMMER,
@@ -186,7 +186,7 @@ class _Explainer:
                 self.enrolled_by_person[a.person_cm_id].add(a.session_cm_id)
         self.cancelled = {rid for rid, state in fold_cancellations(season.cancellations).items() if state.reason}
         self.rounds = fold_rounds(season.events)
-        self.additions_by_key = {a.request_key: a for a in sorted(season.additions, key=lambda a: (a.live, a.created))}
+        self.additions_by_key = additions_by_request_key(season.additions)
         self.aid_by_subject: dict[Subject, list[NoRequestAid]] = defaultdict(list)
         for found in season.no_request:
             self.aid_by_subject[self.d170_subject(found)].append(found)
@@ -291,24 +291,19 @@ class _Explainer:
 
     def became(self, request: RequestRecord) -> BecameOut:
         origin = request_origin(request.program_option_key)
-        addition = self.additions_by_key.get(request.key) if origin != "form" else None
+        rounds = self.rounds.get(request.id, {})
+        # The household page's request card builds its addition with the same function, so the two agree.
+        addition = addition_view(request, self.additions_by_key, rounds)
         candidates = _candidates(request) if request.status == STATUS_UNMATCHED else []
         status: BecameStatus = _STATUS_WORDS.get(request.status, "withdrawn")
         if request.status in _LIVE and request.id in self.cancelled:
             status = "cancelled"
         why: BecameWhy | None = None
         if request.status == STATUS_WITHDRAWN:
-            why = (
-                "answer_edited"
-                if origin == "form"
-                else "removed"
-                if addition is not None and not addition.live
-                else None
-            )
+            removed = addition is not None and not addition.live
+            why = "answer_edited" if origin == "form" else "removed" if removed else None
         elif (request.status == STATUS_UNMATCHED and not candidates) or _flagged_not_enrolled(request):
             why = "not_enrolled"
-        rounds = self.rounds.get(request.id, {})
-        posted = sorted(n for n, state in rounds.items() if state.posted)
         round1 = rounds.get(1)
         return BecameOut(
             request_id=request.id,
@@ -319,16 +314,14 @@ class _Explainer:
             origin=origin,
             ask=float(request.ask),
             why=why,
-            addition_id=addition.id if addition is not None else "",
-            added_by=addition.actor if addition is not None else "",
-            added_at=addition.created if addition is not None else "",
-            added_reason=addition.reason if addition is not None else "",
-            reviewed=addition.reviewed
-            if addition is not None and addition.source == ADDITION_SOURCE_REGISTRATION_ASK
-            else None,
+            addition_id=addition.addition_id if addition is not None else "",
+            added_by=addition.added_by if addition is not None else "",
+            added_at=addition.added_at if addition is not None else "",
+            added_reason=addition.added_reason if addition is not None else "",
+            reviewed=addition.reviewed if addition is not None else None,
             reviewed_by=addition.reviewed_by if addition is not None else "",
             reviewed_at=addition.reviewed_at if addition is not None else "",
-            posted_rounds=posted,
+            posted_rounds=posted_rounds(rounds),
             round1_posted=float(round1.locked_amount)
             if round1 is not None and round1.posted and round1.locked_amount is not None
             else None,
