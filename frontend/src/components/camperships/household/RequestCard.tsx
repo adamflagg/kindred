@@ -269,16 +269,6 @@ export function RequestCard({
         </span>
         <ReceiptDetailsButton request={request} open={details.open} onToggle={details.toggle} />
       </div>
-      {addition !== null && origin === 'added' && (
-        // Set Cost's grammar ("Set by Name, date: “note”"), the name bold; the mark's title says the same.
-        <p data-testid="added-by" className={HH_NOTE} title={addedByWords(addition, originWords)}>
-          Added by{' '}
-          <b className="text-foreground font-medium">
-            {addition.added_by ? whoWords(addition.added_by, names) : 'staff'}
-          </b>
-          {addition.added_at ? `, ${costDay(addition.added_at)}` : ''}: “{addition.added_reason}”
-        </p>
-      )}
       {addition !== null && !addition.live && (
         // Mock step 17: who removed it, when and why; the request is withdrawn and keeps its decisions.
         <p data-testid="removed-by" className={HH_NOTE}>
@@ -288,6 +278,16 @@ export function RequestCard({
           </b>
           {addition.retired_at ? `, ${costDay(addition.retired_at)}` : ''}: “
           {addition.retire_reason ?? ''}” · its decisions are kept
+        </p>
+      )}
+      {addition !== null && origin === 'added' && (
+        // Set Cost's grammar ("Set by Name, date: “note”"), the name bold; the mark's title says the same.
+        <p data-testid="added-by" className={HH_NOTE} title={addedByWords(addition, originWords)}>
+          Added by{' '}
+          <b className="text-foreground font-medium">
+            {addition.added_by ? whoWords(addition.added_by, names) : 'staff'}
+          </b>
+          {addition.added_at ? `, ${costDay(addition.added_at)}` : ''}: “{addition.added_reason}”
         </p>
       )}
       {row.cancellation && (

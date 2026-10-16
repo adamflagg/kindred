@@ -815,7 +815,11 @@ describe('a C1 round on the decision panel', () => {
       expect(screen.getByTestId('removed-by')).toHaveTextContent(
         'Removed by Registrar, Mar 3: “Family is not attending TWR after all” · its decisions are kept'
       )
-      expect(screen.getByTestId('added-by')).toBeInTheDocument()
+      // Mock step 17: the removal reads first, the addition under it.
+      expect(
+        screen.getByTestId('removed-by').compareDocumentPosition(screen.getByTestId('added-by')) &
+          Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy()
     })
 
     it('draws no Removed by line on a live added request', () => {
