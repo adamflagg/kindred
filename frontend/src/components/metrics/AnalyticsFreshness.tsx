@@ -8,7 +8,8 @@ import { useCurrentYear } from '../../hooks/useCurrentYear'
  * the viewed season's own enrollment (attendees) run, never the hourly bunk-assignment run, so it
  * never claims hour-old freshness for night-old numbers. " · syncing now" while that run is going.
  *
- * Nothing for a season the scheduled runs don't cover (older seasons are not re-synced), and
+ * Nothing for a season the regular schedule doesn't cover (older seasons re-sync weekly, Saturday
+ * 05:00; N and N−1 run on the regular schedule), and
  * nothing for one never synced: the empty state says "hasn't synced from CampMinder yet" instead.
  * Summer's grammar: grey always, relative inline, the absolute time in the tooltip (#1706).
  */
