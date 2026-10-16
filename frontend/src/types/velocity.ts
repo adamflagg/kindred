@@ -113,6 +113,8 @@ export interface VelocityResponse {
   session_swap_count?: number
   /** Day offset of the current year's latest daily point; null without daily data. */
   current_day_offset?: number | null
+  /** The day the prior years were read at: one more than current_day_offset on a phase date (decision 45). */
+  prior_day_offset?: number | null
   /** Today's day offset while the season is live, else null. Drives the TODAY line. */
   today_day_offset?: number | null
   /** ISO date of the earliest status-history row (cancellation metric only). */

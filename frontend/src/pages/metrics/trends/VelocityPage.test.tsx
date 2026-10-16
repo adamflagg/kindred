@@ -421,13 +421,31 @@ describe('VelocityPage priority-day note (decision 45)', () => {
 
   it('notes the two-day priority day when the same point is the priority date', () => {
     useComparison([2025], 2025)
-    mockState.data = { ...comparedData, today_day_offset: 0, current_day_offset: 0 }
+    mockState.data = {
+      ...comparedData,
+      today_day_offset: 0,
+      current_day_offset: 0,
+      prior_day_offset: 1,
+    }
     render(<VelocityPage />)
     expect(screen.getByText(NOTE)).toBeInTheDocument()
     const label = screen.getByText(
       (_, el) => el?.tagName === 'P' && el.textContent === '2025 at Wk 11'
     )
     expect(label.querySelector('sup')).toHaveTextContent('1')
+  })
+
+  it('notes it on an early or open date too, without the "updates tomorrow" wait', () => {
+    useComparison([2025], 2025)
+    mockState.data = {
+      ...comparedData,
+      today_day_offset: 7,
+      current_day_offset: 7,
+      prior_day_offset: 8,
+    }
+    render(<VelocityPage />)
+    expect(screen.getByText(NOTE)).toBeInTheDocument()
+    expect(cardValue('vs 2025')).not.toBe('updates tomorrow')
   })
 
   it('shows no note on any later day', () => {
@@ -444,7 +462,12 @@ describe('VelocityPage priority-day note (decision 45)', () => {
 
     it('replaces the vs card value and keeps the numbered note', () => {
       useComparison([2025], 2025)
-      mockState.data = { ...comparedData, today_day_offset: 0, current_day_offset: 0 }
+      mockState.data = {
+        ...comparedData,
+        today_day_offset: 0,
+        current_day_offset: 0,
+        prior_day_offset: 1,
+      }
       render(<VelocityPage />)
       expect(cardValue('vs 2025')).toBe('updates tomorrow')
       expect(cardValue('2025 Final')).toBe('130')
@@ -453,7 +476,12 @@ describe('VelocityPage priority-day note (decision 45)', () => {
 
     it('replaces the By Session delta, and an unmatched session still reads "new"', () => {
       useComparison([2025], 2025)
-      mockState.data = { ...comparedData, today_day_offset: 0, current_day_offset: 0 }
+      mockState.data = {
+        ...comparedData,
+        today_day_offset: 0,
+        current_day_offset: 0,
+        prior_day_offset: 1,
+      }
       mockChart.sortedBySession = [
         sessionCurve(1, 'Session 1', 30),
         sessionCurve(2, 'Session 2', 12),

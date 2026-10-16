@@ -15,8 +15,22 @@ export const PRIORITY_DAY_NOTE =
 export const PRIORITY_DAY_NOTES: readonly DefinitionNote[] = [{ n: 1, text: PRIORITY_DAY_NOTE }]
 
 /**
- * True when a same-point compare is read on the priority date itself (registration day 0), the
- * one offset where the server reads the prior year through the next day.
+ * True when the server read the prior year through the next day: the same-point read ran one day
+ * later than this year's day. That happens on a priority, early or open date (decision 45,
+ * ruling 11), so this is the test for the numbered note and its mark. It takes the server's
+ * `prior_day_offset` rather than re-deriving phase dates here; Overview's compare note tests the
+ * same thing.
+ */
+export function readsThroughNextDay(
+  dayOffset: number | null | undefined,
+  priorDayOffset: number | null | undefined
+): boolean {
+  return dayOffset != null && priorDayOffset != null && priorDayOffset !== dayOffset
+}
+
+/**
+ * True when a same-point compare is read on the priority date itself (registration day 0). Only
+ * the "updates tomorrow" wait uses this (ruling 9); the note follows `readsThroughNextDay`.
  */
 export function isPriorityDayOffset(dayOffset: number | null | undefined): boolean {
   return dayOffset === 0

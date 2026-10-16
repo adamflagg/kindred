@@ -28,6 +28,7 @@ import {
   PRIORITY_DAY_PENDING,
   PRIORITY_DAY_PENDING_CLASS,
   isPriorityDayOffset,
+  readsThroughNextDay,
 } from '../../../utils/priorityDay'
 import { MetricsBusy, MetricsLoadError } from '../../../components/metrics/MetricsQueryGuard'
 
@@ -79,7 +80,7 @@ function ForecastTableHeader({
   priorityDay,
 }: {
   priorBasis: 'same_point' | 'final'
-  /** The prior columns are read on the priority date, through the next day (decision 45). */
+  /** The prior columns are read through the next day: a priority, early or open date (decision 45). */
   priorityDay: boolean
 }) {
   const mark = priorityDay ? <DefRef n={1} title={PRIORITY_DAY_NOTE} /> : null
@@ -120,12 +121,12 @@ function ForecastTableHeader({
 function SessionRow({
   session,
   isTotal,
-  priorityDay = false,
+  deltaPending = false,
 }: {
   session: SessionForecast
   isTotal?: boolean
-  /** On the priority date the same-point delta reads "updates tomorrow" (ruling 9). */
-  priorityDay?: boolean
+  /** On the priority date itself the same-point delta reads "updates tomorrow" (ruling 9). */
+  deltaPending?: boolean
 }) {
   const rowClass = isTotal ? 'font-bold bg-muted/30' : 'border-border border-b last:border-b-0'
 
@@ -162,7 +163,7 @@ function SessionRow({
       <td
         className={`px-3 py-2 text-right text-sm ${deltaColor(session.participants_vs_prior_year)}`}
       >
-        {priorityDay && session.participants_vs_prior_year !== null ? (
+        {deltaPending && session.participants_vs_prior_year !== null ? (
           <span className={PRIORITY_DAY_PENDING_CLASS}>{PRIORITY_DAY_PENDING}</span>
         ) : (
           fmtSigned(session.participants_vs_prior_year)
@@ -280,8 +281,11 @@ export default function ForecastPage() {
   )
   const showSectionHeadings = sections.length >= 2
   const showGrandTotal = sections.length >= 2 && selectedSessionCmId === null
+  const thisYearOffset = data.day_offset ?? todayOffset
   const priorityDay =
-    data.prior_basis === 'same_point' && isPriorityDayOffset(data.day_offset ?? todayOffset)
+    data.prior_basis === 'same_point' && readsThroughNextDay(thisYearOffset, data.prior_day_offset)
+  // Ruling 9: only the priority date itself waits a day for this year's data.
+  const deltaPending = data.prior_basis === 'same_point' && isPriorityDayOffset(thisYearOffset)
 
   return (
     <MetricsBusy busy={isPlaceholderData} what={String(currentYear)}>
@@ -336,13 +340,13 @@ export default function ForecastPage() {
                         <SessionRow
                           key={`${s.session_type}-${s.session_cm_id}`}
                           session={s}
-                          priorityDay={priorityDay}
+                          deltaPending={deltaPending}
                         />
                       ))}
                     </tbody>
                     {showSectionTotal && (
                       <tfoot>
-                        <SessionRow session={section.total} isTotal priorityDay={priorityDay} />
+                        <SessionRow session={section.total} isTotal deltaPending={deltaPending} />
                       </tfoot>
                     )}
                   </table>
@@ -356,7 +360,7 @@ export default function ForecastPage() {
             <div className="border-border overflow-x-auto rounded-xl border">
               <table className="w-full border-collapse">
                 <tbody>
-                  <SessionRow session={grand_total} isTotal priorityDay={priorityDay} />
+                  <SessionRow session={grand_total} isTotal deltaPending={deltaPending} />
                 </tbody>
               </table>
             </div>

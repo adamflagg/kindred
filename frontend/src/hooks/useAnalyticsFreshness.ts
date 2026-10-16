@@ -7,8 +7,9 @@
  *
  * Scoped to the season being viewed. Without `?year=` the status payload holds each job's latest
  * run of ANY season, so 2026's nightly pass would vouch for an empty 2027. Only the two synced
- * seasons can be asked for (the backend 400s any other year), and an older season is not
- * re-synced at all, so for it the chip shows nothing rather than overstate.
+ * seasons can be asked for (the backend 400s any other year). An older season re-syncs weekly
+ * (Saturday 05:00), while N and N−1 run on the regular schedule, so for it the chip shows
+ * nothing rather than overstate.
  */
 
 import { useSyncStatusAPI, type SyncStatusResponse } from './useSyncStatusAPI'

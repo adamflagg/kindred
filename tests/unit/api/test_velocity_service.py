@@ -5315,6 +5315,29 @@ class TestVelocitySamePointComparison:
         assert result.prior_year_cancelled_to_date[0].cancelled_at_current_week == 4
 
     @pytest.mark.asyncio
+    async def test_prior_day_offset_is_one_more_on_a_phase_date_only(self, service, mock_repository):
+        """The page marks its note from this, not from re-deriving phase dates (decision 45, ruling 11)."""
+        self._wire_priority_day(mock_repository, 0)
+        priority = await service.get_velocity(year=2026, compare_years=[2025], today=date(2025, 11, 1))
+        assert (priority.current_day_offset, priority.prior_day_offset) == (0, 1)
+
+        self._wire_priority_day(mock_repository, 3)
+        plain = await service.get_velocity(year=2026, compare_years=[2025], today=date(2025, 11, 4))
+        assert (plain.current_day_offset, plain.prior_day_offset) == (3, 3)
+
+        self._wire_priority_day(mock_repository, 7)
+        base = mock_repository.fetch_registration_dates.side_effect
+
+        async def reg_dates(year):
+            out = dict(await base(year))
+            out["early_reg_date"] = "2025-11-08" if year == 2026 else "2024-11-08"
+            return out
+
+        mock_repository.fetch_registration_dates.side_effect = reg_dates
+        early = await service.get_velocity(year=2026, compare_years=[2025], today=date(2025, 11, 8))
+        assert (early.current_day_offset, early.prior_day_offset) == (7, 8)
+
+    @pytest.mark.asyncio
     @pytest.mark.parametrize("offset", [1, 2, 3, 4, 5, 6])
     async def test_offsets_one_to_six_read_their_own_day(self, service, mock_repository, offset):
         self._wire_priority_day(mock_repository, offset)

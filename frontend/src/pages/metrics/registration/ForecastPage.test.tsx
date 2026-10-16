@@ -673,7 +673,13 @@ describe('ForecastPage priority-day note (decision 45)', () => {
   })
 
   it('notes the two-day priority day when the snapshot is the priority date', async () => {
-    setupMockFetch(mockResponse([session()], {}, { prior_basis: 'same_point', day_offset: 0 }))
+    setupMockFetch(
+      mockResponse(
+        [session()],
+        {},
+        { prior_basis: 'same_point', day_offset: 0, prior_day_offset: 1 }
+      )
+    )
     renderWithProviders(<ForecastPage />)
     await waitFor(() => expect(screen.getByText(NOTE)).toBeInTheDocument())
     expect(screen.getByText('Prior Yr').querySelector('sup')).toHaveTextContent('1')
@@ -683,9 +689,29 @@ describe('ForecastPage priority-day note (decision 45)', () => {
     mockWeekOptions.data = [
       { week_number: 1, day_offset: 0, label: 'Week 1 (Priority · Today)', is_today: true },
     ]
-    setupMockFetch(mockResponse([session()], {}, { prior_basis: 'same_point', day_offset: null }))
+    setupMockFetch(
+      mockResponse(
+        [session()],
+        {},
+        { prior_basis: 'same_point', day_offset: null, prior_day_offset: 1 }
+      )
+    )
     renderWithProviders(<ForecastPage />)
     await waitFor(() => expect(screen.getByText(NOTE)).toBeInTheDocument())
+  })
+
+  it('notes it on an early or open date too, without the "updates tomorrow" wait', async () => {
+    setupMockFetch(
+      mockResponse(
+        [session({ participants_vs_prior_year: 5 })],
+        {},
+        { prior_basis: 'same_point', day_offset: 7, prior_day_offset: 8 }
+      )
+    )
+    renderWithProviders(<ForecastPage />)
+    await waitFor(() => expect(screen.getByText(NOTE)).toBeInTheDocument())
+    expect(screen.getByText('Prior Yr').querySelector('sup')).toHaveTextContent('1')
+    expect(screen.queryByText('updates tomorrow')).not.toBeInTheDocument()
   })
 
   it('shows no note on a later day', async () => {
@@ -714,7 +740,13 @@ describe('ForecastPage priority-day note (decision 45)', () => {
     ]
 
     it('replaces each row delta and the section total, keeping the prior counts', async () => {
-      setupMockFetch(mockResponse(twoSessions, {}, { prior_basis: 'same_point', day_offset: 0 }))
+      setupMockFetch(
+        mockResponse(
+          twoSessions,
+          {},
+          { prior_basis: 'same_point', day_offset: 0, prior_day_offset: 1 }
+        )
+      )
       renderWithProviders(<ForecastPage />)
       await waitFor(() => expect(screen.getByText('Session 2')).toBeInTheDocument())
 

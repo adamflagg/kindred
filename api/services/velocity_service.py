@@ -867,6 +867,9 @@ class VelocityService:
             session_swap_count=session_swap_count,
             warnings=warnings,
             current_day_offset=current_day_offset,
+            prior_day_offset=None
+            if current_day_offset is None
+            else same_point_offset(current_day_offset, phase_offsets),
             today_day_offset=today_day_offset,
             status_history_start=status_history_start,
             snapshots_start=await self._snapshots_start() if metric != "cancellation" else None,

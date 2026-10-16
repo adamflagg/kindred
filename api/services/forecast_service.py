@@ -441,6 +441,7 @@ class ForecastService:
             week_number=(day_offset // 7) + 1 if day_offset is not None else None,
             day_offset=day_offset,
             prior_basis=prior_basis,
+            prior_day_offset=prior_offset if prior_basis == "same_point" else None,
             section_priors=section_priors,
         )
 

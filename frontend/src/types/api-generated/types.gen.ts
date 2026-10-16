@@ -5120,6 +5120,12 @@ export type ForecastResponse = {
    */
   prior_basis?: 'same_point' | 'final'
   /**
+   * Prior Day Offset
+   *
+   * Same-point reads: the registration day the prior years were read at. One more than this year's day on a priority, early or open date, where the prior is read through the next day (decision 45)
+   */
+  prior_day_offset?: number | null
+  /**
    * Section Priors
    *
    * Prior whole-scope totals by section: camp (main/embedded/ag), quest, teen (scit/tli)
@@ -19219,6 +19225,12 @@ export type VelocityResponse = {
    * Day offset of the current year's latest daily point; None when there is no daily data
    */
   current_day_offset?: number | null
+  /**
+   * Prior Day Offset
+   *
+   * The day the prior years were read at: one more than current_day_offset on a priority, early or open date, where the prior is read through the next day (decision 45); None when current_day_offset is
+   */
+  prior_day_offset?: number | null
   /**
    * Today Day Offset
    *

@@ -53,6 +53,13 @@ class ForecastResponse(BaseModel):
         "final",
         description="same_point: prior years counted at the same registration day; final: their final enrollment",
     )
+    prior_day_offset: int | None = Field(
+        None,
+        description=(
+            "Same-point reads: the registration day the prior years were read at. One more than this year's "
+            "day on a priority, early or open date, where the prior is read through the next day (decision 45)"
+        ),
+    )
     section_priors: dict[str, ForecastPriorTotals] = Field(
         default_factory=dict,
         description="Prior whole-scope totals by section: camp (main/embedded/ag), quest, teen (scit/tli)",

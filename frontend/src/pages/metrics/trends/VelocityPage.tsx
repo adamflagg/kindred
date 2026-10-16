@@ -53,6 +53,7 @@ import {
   PRIORITY_DAY_PENDING,
   PRIORITY_DAY_PENDING_CLASS,
   isPriorityDayOffset,
+  readsThroughNextDay,
 } from '../../../utils/priorityDay'
 import { PHASE_COLORS } from './phaseColors'
 import { describeVelocityBases } from '../../../components/velocity/velocityBases'
@@ -202,10 +203,12 @@ export default function VelocityPage() {
   // Headers name the comparison year (#3209 row 20)
   const priorLabel = summaryCards?.priorYear != null ? String(summaryCards.priorYear) : null
   const todayDayOffset = data.today_day_offset ?? null
-  // On the priority date the prior year is read through the next day (decision 45): say so.
-  const priorityDayMark = isPriorityDayOffset(data.current_day_offset) ? (
+  // On a priority, early or open date the prior year is read through the next day (decision 45): say so.
+  const priorityDayMark = readsThroughNextDay(data.current_day_offset, data.prior_day_offset) ? (
     <DefRef n={1} title={PRIORITY_DAY_NOTE} />
   ) : null
+  // Ruling 9: only the priority date itself waits a day for this year's data.
+  const deltaPending = isPriorityDayOffset(data.current_day_offset)
   const todayLine = (x: number) => (
     <ReferenceLine
       x={x}
@@ -368,7 +371,7 @@ export default function VelocityPage() {
                 session.weekly.at(-1)?.enrolled,
                 priorSession?.enrolled_at_current_week
               )
-              if (priorityDayMark && vsPrior != null) {
+              if (deltaPending && vsPrior != null) {
                 return <span className={PRIORITY_DAY_PENDING_CLASS}>{PRIORITY_DAY_PENDING}</span>
               }
               return (
@@ -492,7 +495,7 @@ export default function VelocityPage() {
                 {basesMark}
               </p>
               <p className={`text-xl font-bold ${deltaColorClass(summaryCards.delta)}`}>
-                {priorityDayMark && summaryCards.delta != null ? (
+                {deltaPending && summaryCards.delta != null ? (
                   <span className={PRIORITY_DAY_PENDING_CLASS}>{PRIORITY_DAY_PENDING}</span>
                 ) : summaryCards.delta != null ? (
                   formatSignedCount(summaryCards.delta)
