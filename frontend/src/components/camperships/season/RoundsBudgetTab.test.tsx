@@ -545,7 +545,7 @@ describe('the fold lines carry what the table, strip and notes did (spec §5.2 F
     expect(within(row).getByText('$3,783')).toBeInTheDocument()
     expect(within(row).getByText('posted in CampMinder, on no request')).toHaveAttribute(
       'title',
-      expect.stringContaining('2026 only')
+      expect.stringContaining('every season from 2027')
     )
     // Q4-A: the line opens in place (a caret), and Of it links to Form intake filtered to the families it counts.
     expect(

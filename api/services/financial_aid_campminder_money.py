@@ -1,5 +1,5 @@
 """CampMinder's live camp aid by family x session: the 2026 loader's rule (scripts/financial_aid/load_2026_decisions.py),
-and D170's "CampMinder aid on no request", which Rounds & budget shows for 2026 from the same split.
+and D170's "CampMinder aid on no request", which Rounds & budget shows for 2026 and every season from 2027 from the same split.
 
 Pure functions over records a caller read. Nothing here writes.
 

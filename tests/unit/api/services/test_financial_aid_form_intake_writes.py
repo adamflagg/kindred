@@ -279,7 +279,7 @@ async def test_recording_campminders_money_moves_it_from_the_d170_line_into_comm
     from tests.unit.api.services.decisions_fakes import FakeDecisionsStore, seed_request
     from tests.unit.api.services.test_financial_aid_decisions_service import _service
 
-    monkeypatch.setattr(decisions_module, "CAMPMINDER_AID_ON_NO_REQUEST_YEARS", frozenset({YEAR}))
+    monkeypatch.setattr(decisions_module, "shows_aid_on_no_request", lambda year: year == YEAR)
     casework_store = liam_store()
     season = FakeDecisionsStore()
     seed_request(season, EMMA_REQUEST)  # another family's request, so the season is not empty
@@ -334,7 +334,7 @@ async def test_after_undo_posted_and_remove_the_campminder_money_is_back_on_d170
     from tests.unit.api.services.decisions_fakes import FakeDecisionsStore, seed_request
     from tests.unit.api.services.test_financial_aid_decisions_service import _service
 
-    monkeypatch.setattr(decisions_module, "CAMPMINDER_AID_ON_NO_REQUEST_YEARS", frozenset({YEAR}))
+    monkeypatch.setattr(decisions_module, "shows_aid_on_no_request", lambda year: year == YEAR)
     casework_store = liam_store()
     casework = FinancialAidCaseworkService(casework_store)
     season = FakeDecisionsStore()
@@ -510,7 +510,7 @@ async def test_seasons_d170_and_the_drill_in_agree_when_one_sibling_is_recorded(
     from tests.unit.api.services.decisions_fakes import FakeDecisionsStore, seed_request
     from tests.unit.api.services.test_financial_aid_decisions_service import _service
 
-    monkeypatch.setattr(decisions_module, "CAMPMINDER_AID_ON_NO_REQUEST_YEARS", frozenset({YEAR}))
+    monkeypatch.setattr(decisions_module, "shows_aid_on_no_request", lambda year: year == YEAR)
     casework_store = credited_siblings()
     out = await FinancialAidCaseworkService(casework_store).add_request(
         YEAR, LIAM_HOUSEHOLD, LIAM, SESSION_2, 1000.0, "By phone", ACTOR, round1_campminder=1000.0

@@ -271,9 +271,16 @@ if TYPE_CHECKING:  # the household page imports this module, so the labeler type
     from api.services.financial_aid_household_page import HouseholdLabeler
 
 _LIVE: Final = frozenset({STATUS_ACTIVE, STATUS_UNMATCHED})
-# D170 (owner, 2026-10-14): "CampMinder aid on no request" shows on Season for 2026 only, the season whose decisions were
-# loaded from the sheet and refreshed to match CampMinder (E2(a)); what still matches no request is that load's residue.
-CAMPMINDER_AID_ON_NO_REQUEST_YEARS: Final = frozenset({2026})
+# D170 (owner, 2026-10-14; widened 2026-10-15, #48): "CampMinder aid on no request" shows on Season for 2026, the season
+# whose decisions were loaded from the sheet and refreshed to match CampMinder (E2(a)), and for every season from 2027
+# on, as Form intake's drill-in does. No season before 2026.
+CAMPMINDER_AID_ON_NO_REQUEST_FIRST_YEAR: Final = 2026
+
+
+def shows_aid_on_no_request(year: int) -> bool:
+    return year >= CAMPMINDER_AID_ON_NO_REQUEST_FIRST_YEAR
+
+
 _CLOSED_REVERSIBLE: Final = frozenset({STATUS_WITHDRAWN, STATUS_DUPLICATE})
 
 
@@ -2328,12 +2335,12 @@ class FinancialAidDecisionsService:
         return await self.season(year) if day is None else await self.past_season(year, day, axis)
 
     async def _aid_on_no_request(self, season: Season) -> dict[str, OffRequestAid] | None:
-        """D170: the live season's CampMinder aid on no request, for the seasons the line is shown for; None elsewhere
+        """D170: the live season's CampMinder aid on no request, for the seasons the line is shown for (2026 on); None elsewhere
         and on a past date (a past read loads no live ledger). D170Reads' one read, as Form intake's drill-in and Add a
         Request…'s guard make it: the 2026 loader's family x session rule over every request of the season, whatever
         its status, but an added request staff removed; the season's household links; and #49's per-camper holding
         (a request holds only its own camper's money: d170_person, from the registered attendees)."""
-        if season.as_of is not None or season.year not in CAMPMINDER_AID_ON_NO_REQUEST_YEARS:
+        if season.as_of is not None or not shows_aid_on_no_request(season.year):
             return None
         links, additions, attendees = await asyncio.gather(
             self._store.fetch_household_links(season.year),

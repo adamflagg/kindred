@@ -672,7 +672,15 @@ async def test_a_past_read_of_yesterday_equals_the_live_read_field_by_field() ->
     ignored = {"as_of", "as_of_axis", "not_rebuilt"}
 
     def strip(model: Any) -> Any:
-        return _without_gaps({k: v for k, v in model.model_dump().items() if k not in ignored})
+        return _without_a_ledger_line(_without_gaps({k: v for k, v in model.model_dump().items() if k not in ignored}))
+
+    def _without_a_ledger_line(node: Any) -> Any:
+        """D170's line reads the live ledger, so a past read never carries it (None); drop it from both sides."""
+        if isinstance(node, dict):
+            return {k: _without_a_ledger_line(v) for k, v in node.items() if k != "campminder_aid_off_requests"}
+        if isinstance(node, list):
+            return [_without_a_ledger_line(v) for v in node]
+        return node
 
     past_rows = [_without_gaps(row) for row in past_grid.model_dump()["rows"]]
     live_rows = [_without_gaps(row) for row in live_grid.model_dump()["rows"]]
@@ -689,6 +697,7 @@ async def test_a_past_read_of_yesterday_equals_the_live_read_field_by_field() ->
     assert (by_id[EMMA].rounds[0].clawed_back, rows[EMMA].rounds[0].clawed_back) == (False, False)
     live_budget, past_budget_ = await service.budget(YEAR), await service.budget(YEAR, as_of=yesterday)
     assert strip(past_budget_) == strip(live_budget)
+    assert past_budget_.total.below.campminder_aid_off_requests is None  # a past read never carries D170's line
     assert past_budget_.total.below.outside_budget_posted == 650.0
     assert past_budget_.total.demand.round2_asked == 700.0
     # Only the request with no resolvable pool is named as pool_unknown; nothing else is swept in.
