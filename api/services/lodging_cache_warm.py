@@ -46,6 +46,7 @@ from api.services.camp_calendar import primary_season_year
 from api.services.lodging_cache import CACHED_TABLES_ATTR
 from api.services.lodging_repository import LodgingRepository
 from api.services.person_housing_rules import LIVE_HOUSING_FROM_YEAR
+from api.services.warm_settle import SettleDeadline
 from bunking.logging_config import get_logger
 
 if TYPE_CHECKING:
@@ -59,6 +60,9 @@ logger = get_logger(__name__)
 # while this one runs -- see `schedule_lodging_warm`.
 _warm_task: asyncio.Task[None] | None = None
 _rerun_requested = False
+# When the next warm may start: at once, unless a finished sync asked it to
+# settle (schedule_lodging_warm).
+_settle = SettleDeadline()
 
 
 def cached_read_tables() -> dict[str, tuple[str, ...]]:
@@ -197,13 +201,14 @@ async def _warm_until_settled() -> None:
     """Warm, then warm once more if another request landed meanwhile."""
     global _rerun_requested
     while True:
+        await _settle.wait()  # a sync-triggered warm waits for the run's clears to stop (warm_settle.py)
         _rerun_requested = False
         await _warm_current_season()
         if not _rerun_requested:
             return
 
 
-def schedule_lodging_warm() -> None:
+def schedule_lodging_warm(*, settle: float = 0.0) -> None:
     """Start a background warm of the current season, and return at once.
 
     Coalesced: one warm at a time. The endpoint that calls this skips auth and
@@ -213,13 +218,21 @@ def schedule_lodging_warm() -> None:
     away by the generation guard. A request that lands mid-warm instead
     becomes a single rerun after it, which re-reads everything the clear made
     stale.
+
+    `settle`: a finished sync's warm (invalidate_server_caches) waits until no
+    further sync has asked for one for this long, so one sync run's clears are
+    warmed once, after its last (warm_settle.py). Without it the warm starts at
+    once and cuts short any settle in progress.
     """
     global _rerun_requested, _warm_task
+    _settle.ask(settle)
     loop = asyncio.get_running_loop()
     # A task from another event loop (a finished pytest loop) can never
     # complete here, so it must not block this loop's warms.
     if _warm_task is not None and not _warm_task.done() and _warm_task.get_loop() is loop:
-        _rerun_requested = True
+        # Still settling, it has read nothing yet: the ask above only moved its start.
+        if not _settle.settling:
+            _rerun_requested = True
         return
     _warm_task = loop.create_task(_warm_until_settled())
 

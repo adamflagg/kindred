@@ -31,6 +31,7 @@ from api.services.retention_trends_service import RetentionTrendsService
 from api.services.today_service import TodayService
 from api.services.velocity_service import VelocityService
 from api.services.waitlist_service import WaitlistService
+from api.services.warm_settle import SYNC_WARM_SETTLE_SECONDS
 from api.utils.validators import check_duration_session_exclusive, parse_summer_session_types
 from bunking.auth_middleware import AuthUser, get_current_user
 from bunking.graph.social_graph_builder import SocialGraphBuilder
@@ -761,6 +762,12 @@ def invalidate_server_caches(sync_type: str | None) -> dict[str, int]:
     panel) clears it as before. Every clear is followed by a background warm,
     so the next weekend load does not pay for the re-read.
 
+    Both warms this function asks for SETTLE (kindred#3199, `warm_settle.py`):
+    one sync run finishes several clearing jobs seconds apart, so the warm
+    starts only once no further sync has asked for one for
+    SYNC_WARM_SETTLE_SECONDS, and runs once per run instead of once per job.
+    The clears themselves are immediate; only the prefill waits.
+
     aid_inputs_cache, the Camperships sync-input cache (layer 1,
     `api/services/aid_sync_inputs.py`), is scoped the same way, against
     AID_SYNC_INPUT_TABLES: only a sync writes those tables, so this call is
@@ -794,14 +801,14 @@ def invalidate_server_caches(sync_type: str | None) -> dict[str, int]:
     clear_person_id_cache()
     if sync_invalidates_lodging_cache(sync_type):
         lodging_cache.invalidate_all()
-        schedule_lodging_warm()
+        schedule_lodging_warm(settle=SYNC_WARM_SETTLE_SECONDS)
     if sync_writes_any(sync_type, AID_SYNC_INPUT_TABLES):
         aid_inputs_cache.invalidate_all()
     if sync_writes_any(sync_type, DEVELOPMENT_HISTORY_TABLES):
         development_history_cache.invalidate_all()  # no warm: see the docstring
     if sync_changes_aid_season(sync_type):
         aid_season_cache.invalidate_all()
-        schedule_aid_warm()  # layer 2, and layer 1 when this sync cleared it too
+        schedule_aid_warm(settle=SYNC_WARM_SETTLE_SECONDS)  # layer 2, and layer 1 when this sync cleared it too
     if sync_changes_form_intake(sync_type):
         form_intake_cache.invalidate_all()
     # graph_cache (kindred#2803): until now only scenario, solver and position
