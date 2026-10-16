@@ -75,6 +75,7 @@ from api.services.financial_aid_intake_types import (
     request_origin,
 )
 from api.services.financial_aid_reconciliation import CampLine
+from api.services.financial_aid_session_resolver import session_named_by
 from bunking.financial_aid.decisions.rounds import DecisionEvent, fold_rounds
 from bunking.financial_aid.rules.schema import AidRules
 
@@ -245,7 +246,12 @@ class _Explainer:
         if person:
             sessions = self.enrolled_by_person.get(person, set())
         else:
-            sessions = set(enrolled_for(household, 0, self.s.sessions, self.s.attendees))
+            # A household row is its Family Camp request's: its Family Camp weekends, not its campers' sessions.
+            sessions = {
+                sid
+                for sid in enrolled_for(household, 0, self.s.sessions, self.s.attendees)
+                if self.program(sid) == PROGRAM_FAMILY_CAMP
+            }
         return sorted(sessions, key=self.key)
 
     def answers(self, subject: Subject) -> list[FormAnswerOut]:
@@ -260,7 +266,12 @@ class _Explainer:
                     text = str(getattr(row, text_attr)).strip()
                     if text:
                         out.append(
-                            FormAnswerOut(program_key=program, option_text=text, ask=float(getattr(row, ask_attr) or 0))
+                            FormAnswerOut(
+                                program_key=program,
+                                option_text=text,
+                                ask=float(getattr(row, ask_attr) or 0),
+                                named_session_cm_id=session_named_by(text, program, self.s.sessions),
+                            )
                         )
             return out
         merged: dict[str, FormAnswerOut] = {}
@@ -270,7 +281,12 @@ class _Explainer:
                 continue
             known = merged.get(text.casefold())
             ask = max(float(row.fc_amount_requested or 0), known.ask if known else 0.0)
-            merged[text.casefold()] = FormAnswerOut(program_key=PROGRAM_FAMILY_CAMP, option_text=text, ask=ask)
+            merged[text.casefold()] = FormAnswerOut(
+                program_key=PROGRAM_FAMILY_CAMP,
+                option_text=text,
+                ask=ask,
+                named_session_cm_id=session_named_by(text, PROGRAM_FAMILY_CAMP, self.s.sessions),
+            )
         return list(merged.values())
 
     def registration_ask(self, subject: Subject) -> RegistrationAskOut | None:

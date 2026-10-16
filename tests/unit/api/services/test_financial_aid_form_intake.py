@@ -533,3 +533,28 @@ async def test_a_removed_addition_says_who_removed_it_when_and_why() -> None:
     assert view is not None
     assert (view.live, view.retired_by, view.retire_reason) == (False, ACTOR, "Not attending after all")
     assert view.retired_at != ""
+
+
+@pytest.mark.asyncio
+async def test_an_answer_names_the_one_session_its_text_names() -> None:
+    """Form asked shows a named session in its short form and by its family (the mock's "Teen Programs: Teen
+    Leadership Institute"): the read names it (`named_session_cm_id`), 0 when the text names none or several."""
+    store = await intake(
+        fa_row(EMMA, JOHNSON, summer="Session 2", summer_ask=3000.0),
+        fa_row(OLIVIA, CHEN, summer="Session 2 or Taste 2", summer_ask=3500.0),
+        attendees=[*enrolled(EMMA, JOHNSON, SESSION_2), *enrolled(OLIVIA, CHEN, SESSION_2, TASTE_2)],
+    )
+    out = await forms(store)
+    assert [a.named_session_cm_id for a in row(out, JOHNSON, EMMA).answers] == [SESSION_2]
+    assert [a.named_session_cm_id for a in row(out, CHEN, OLIVIA).answers] == [0]
+
+
+@pytest.mark.asyncio
+async def test_a_household_rows_enrolled_lists_its_family_camp_weekends_only() -> None:
+    """A household (Family Camp) row is about the household's Family Camp request, so its Enrolled names the household's
+    Family Camp weekends (the mock's "FC2 · WFC"), not every session its campers are in: those are on their own rows."""
+    store = await intake(
+        attendees=[*enrolled(1000061, OKAFOR, FAMILY_CAMP_6), *enrolled(1000062, OKAFOR, SESSION_2)],
+        lines=[camp(59000002, OKAFOR, "458", session=FAMILY_CAMP_6)],
+    )
+    assert row(await forms(store), OKAFOR, 0).enrolled_session_cm_ids == [FAMILY_CAMP_6]
