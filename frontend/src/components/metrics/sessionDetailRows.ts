@@ -1,7 +1,6 @@
 import type { SessionBreakdown } from '../../types/metrics'
-import { resolveSessionAlias } from '../../utils/sessionAliases'
+import { pairSessions } from '../../utils/sessionPairing'
 import { rollUpTliSessions } from '../../utils/tliRollup'
-import { TEEN_PROGRAM_TYPES } from '../../utils/sessionTypePredicates'
 
 /** One row of the Overview's Session Details table. */
 export interface SessionDetailRow {
@@ -22,14 +21,9 @@ export interface SessionDetailRow {
   retired: boolean
 }
 
-function teenType(session: SessionBreakdown): string | null {
-  const type = session.session_type ?? null
-  return type != null && (TEEN_PROGRAM_TYPES as readonly string[]).includes(type) ? type : null
-}
-
 /**
- * Session Details rows. Current sessions keep their order, matched to the prior year by
- * alias-resolved name. In compare mode, each prior session no current session matches follows
+ * Session Details rows. Current sessions keep their order, paired with the prior year by
+ * `pairSessions` (id, then alias group, then exact name; epic #3207 D-SESSION-MATCH). In compare mode, each prior session no current session matches follows
  * them as a retired row (decision 43 / K8), so the Delta column sums to the real change.
  *
  * Teen programs (SCIT, TLI) match by program type, as Forecast does (ruling 12, 2026-10-14): a
@@ -50,36 +44,9 @@ export function buildSessionDetailRows(
   const comparing = isComparing && priorRows != null
   const current = comparing ? rollUpTliSessions(currentRows) : currentRows
   const prior = comparing ? rollUpTliSessions(priorRows) : []
-  const priorByName = new Map<string, SessionBreakdown>()
-  if (comparing) {
-    for (const p of prior) {
-      const name = resolveSessionAlias(p.session_name)
-      if (!priorByName.has(name)) priorByName.set(name, p)
-    }
-  }
-
-  // Each current row's prior sessions: its name match, then any teen rows of its type.
-  const matchedPrior: SessionBreakdown[][] = current.map((session) => {
-    const match = comparing ? priorByName.get(resolveSessionAlias(session.session_name)) : undefined
-    return match ? [match] : []
-  })
-  const nameMatched = matchedPrior.map((m) => m.length > 0)
-  const used = new Set<SessionBreakdown>(matchedPrior.flat())
-  const matchedNames = new Set([...used].map((p) => resolveSessionAlias(p.session_name)))
-
-  if (comparing) {
-    for (const p of prior) {
-      const type = teenType(p)
-      if (type == null || used.has(p) || matchedNames.has(resolveSessionAlias(p.session_name)))
-        continue
-      const ofType = current.flatMap((c, i) => (teenType(c) === type ? [i] : []))
-      const target =
-        ofType.find((i) => !nameMatched[i]) ?? (ofType.length === 1 ? ofType[0] : undefined)
-      if (target === undefined) continue
-      matchedPrior[target]?.push(p)
-      used.add(p)
-    }
-  }
+  const { pairs: matchedPrior, retired } = comparing
+    ? pairSessions(current, prior)
+    : { pairs: current.map((): SessionBreakdown[] => []), retired: [] }
 
   const rows: SessionDetailRow[] = current.map((session, i) => {
     const matches = matchedPrior[i] ?? []
@@ -99,8 +66,7 @@ export function buildSessionDetailRows(
   })
 
   if (!comparing) return rows
-  for (const p of prior) {
-    if (used.has(p) || matchedNames.has(resolveSessionAlias(p.session_name))) continue
+  for (const p of retired) {
     rows.push({
       key: `retired-${p.session_cm_id}-${p.session_name}`,
       sessionName: p.session_name,

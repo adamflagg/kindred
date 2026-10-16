@@ -295,3 +295,25 @@ describe('buildSessionDetailRows', () => {
     })
   })
 })
+
+describe('buildSessionDetailRows pairing (D-SESSION-MATCH)', () => {
+  it('pairs an un-aliased rename that kept its CampMinder id and shows "was: …"', () => {
+    const rows = buildSessionDetailRows(
+      [s('Session 2b renamed', 20, { session_cm_id: 5 })],
+      [s('Session 2 old', 18, { session_cm_id: 5 })],
+      true
+    )
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ priorName: 'Session 2 old', priorEnrolled: 18, delta: 2 })
+  })
+
+  it('pairs by id before name', () => {
+    const rows = buildSessionDetailRows(
+      [s('Session 2', 10, { session_cm_id: 1 }), s('Session 3', 12, { session_cm_id: 2 })],
+      [s('Session 2', 7, { session_cm_id: 2 }), s('Session 3', 9, { session_cm_id: 1 })],
+      true
+    )
+    expect(rows[0]).toMatchObject({ priorEnrolled: 9 })
+    expect(rows[1]).toMatchObject({ priorEnrolled: 7 })
+  })
+})

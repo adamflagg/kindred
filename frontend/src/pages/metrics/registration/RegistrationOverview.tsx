@@ -26,7 +26,7 @@ import { BreakdownChart } from '../../../components/metrics/BreakdownChart'
 import { CssHorizontalBarChart } from '../../../components/metrics/CssHorizontalBarChart'
 import { SESSION_LABEL_WIDTH } from '../../../components/metrics/cssChartUtils'
 import { CssVerticalStackedBarChart } from '../../../components/metrics/CssVerticalStackedBarChart'
-import { SESSION_NAME_ALIASES } from '../../../utils/sessionAliases'
+import { buildSessionComparisonData } from '../../../utils/sessionComparisonData'
 import {
   buildSessionDateLookup,
   buildSessionTypeLookup,
@@ -37,7 +37,6 @@ import {
   transformGenderData,
   transformGradeData,
   transformSessionData,
-  transformSessionComparisonData,
   transformSummerYearsData,
   transformFirstSummerYearData,
   transformNewVsReturningData,
@@ -529,17 +528,13 @@ export default function RegistrationOverview() {
                 title="Session Enrollment Comparison"
                 primaryYear={currentYear}
                 compareYear={compareYear}
-                primaryData={transformSessionComparisonData(
+                {...buildSessionComparisonData(
                   data.by_session,
-                  sessionDateLookup,
-                  sessionTypeLookup
-                )}
-                compareData={transformSessionComparisonData(
                   compData.by_session,
                   sessionDateLookup,
                   sessionTypeLookup
                 )}
-                aliasMap={SESSION_NAME_ALIASES}
+                matchKey="pairKey"
                 categoryLabel="Session"
               />
               <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
