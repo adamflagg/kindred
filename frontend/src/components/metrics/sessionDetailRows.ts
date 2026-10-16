@@ -81,3 +81,18 @@ export function buildSessionDetailRows(
   }
   return rows
 }
+
+/** The Total row: sums of the column; utilization is over the sessions that have a capacity. */
+export function sessionDetailTotals(rows: readonly SessionDetailRow[]) {
+  const sum = (pick: (r: SessionDetailRow) => number | null) =>
+    rows.reduce((acc, r) => acc + (pick(r) ?? 0), 0)
+  const capacity = sum((r) => r.capacity)
+  const enrolledWithCapacity = sum((r) => (r.capacity ? r.enrolled : null))
+  return {
+    enrolled: sum((r) => r.enrolled),
+    capacity,
+    utilization: capacity > 0 ? (enrolledWithCapacity / capacity) * 100 : null,
+    priorEnrolled: sum((r) => r.priorEnrolled),
+    delta: sum((r) => r.delta),
+  }
+}

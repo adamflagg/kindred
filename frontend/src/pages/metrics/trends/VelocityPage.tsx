@@ -421,7 +421,7 @@ export default function VelocityPage() {
     },
     {
       header: 'Cancelled',
-      value: (week) => week.weekly_cancelled ?? 0,
+      value: (week) => week.weekly_cancelled,
       accessor: (week) => (
         <span className="text-red-600 dark:text-red-400">
           {formatCount(week.weekly_cancelled ?? 0)}

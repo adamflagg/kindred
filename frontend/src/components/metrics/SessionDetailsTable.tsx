@@ -1,7 +1,7 @@
 import type { SessionBreakdown } from '../../types/metrics'
 import { sessionName } from '../../utils/sessionName'
 import { MUTED_PILL_CLASS } from '../velocity'
-import { buildSessionDetailRows, type SessionDetailRow } from './sessionDetailRows'
+import { buildSessionDetailRows, sessionDetailTotals } from './sessionDetailRows'
 import { formatCount, formatPercent, formatSignedCount } from '../../utils/numberFormat'
 import { deltaInk } from '../../utils/deltaTokens'
 import { useTableSort } from '../../hooks/useTableSort'
@@ -10,21 +10,6 @@ import { TableExportButtons } from './TableExportButtons'
 import { csvFilename } from './exportFilename'
 
 type Field = 'name' | 'enrolled' | 'capacity' | 'utilization' | 'prior' | 'delta'
-
-/** The Total row: sums of the column; utilization is over the sessions that have a capacity. */
-export function sessionDetailTotals(rows: readonly SessionDetailRow[]) {
-  const sum = (pick: (r: SessionDetailRow) => number | null) =>
-    rows.reduce((acc, r) => acc + (pick(r) ?? 0), 0)
-  const capacity = sum((r) => r.capacity)
-  const enrolledWithCapacity = sum((r) => (r.capacity ? r.enrolled : null))
-  return {
-    enrolled: sum((r) => r.enrolled),
-    capacity,
-    utilization: capacity > 0 ? (enrolledWithCapacity / capacity) * 100 : null,
-    priorEnrolled: sum((r) => r.priorEnrolled),
-    delta: sum((r) => r.delta),
-  }
-}
 
 function deltaClass(delta: number | null): string {
   return deltaInk(delta ?? 0, 'up-good')

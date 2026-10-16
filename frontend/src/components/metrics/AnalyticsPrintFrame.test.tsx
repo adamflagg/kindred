@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { AnalyticsPrintFrame, formatPrintStamp } from './AnalyticsPrintFrame'
+import { AnalyticsPrintFrame } from './AnalyticsPrintFrame'
+import { formatPrintStamp } from './printStamp'
 
 describe('formatPrintStamp (#68)', () => {
   it('reads as "Thu Oct 15, 2026, 4:12 PM" in camp time', () => {

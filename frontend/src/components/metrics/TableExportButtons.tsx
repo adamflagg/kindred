@@ -21,7 +21,7 @@ export function TableExportButtons({
 }: {
   readonly filename: string
   readonly headers: readonly string[]
-  readonly rows: readonly (readonly ExportCell[])[]
+  readonly rows: ReadonlyArray<readonly ExportCell[]>
 }) {
   const [copied, setCopied] = useState(false)
   const body = rows.map((row) => row.map(cellText))

@@ -281,7 +281,7 @@ function forecastCsvRows(
   withGrandTotal: boolean,
   grandTotal: SessionForecast,
   deltaPending: boolean
-): (string | number | null)[][] {
+): Array<Array<string | number | null>> {
   const line = (section: string, name: string, s: SessionForecast) => [
     ...(withSection ? [section] : []),
     name,
@@ -300,7 +300,7 @@ function forecastCsvRows(
     s.revenue_delta,
     s.revenue_pct,
   ]
-  const out: (string | number | null)[][] = []
+  const out: Array<Array<string | number | null>> = []
   for (const section of sections) {
     for (const s of section.sessions) {
       out.push(line(section.label, sessionName(s.session_name, undefined, 'short'), s))

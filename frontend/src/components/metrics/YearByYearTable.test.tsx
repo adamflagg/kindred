@@ -1,7 +1,8 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import type { YearMetrics } from '../../types/metrics'
-import { YearByYearTable, buildYearRows } from './YearByYearTable'
+import { YearByYearTable } from './YearByYearTable'
+import { buildYearRows } from './yearByYearRows'
 
 function y(year: number, total: number, extra: Partial<YearMetrics> = {}): YearMetrics {
   return {

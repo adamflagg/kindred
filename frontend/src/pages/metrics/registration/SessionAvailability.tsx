@@ -103,8 +103,8 @@ function availabilityRows(
   groups: ReadonlyArray<{ label: string; sessions: readonly SessionAvailabilityData[] }>,
   ag: readonly AGSessionAvailabilityData[],
   teen: readonly TeenSessionAvailabilityData[]
-): (string | number | null)[][] {
-  const out: (string | number | null)[][] = []
+): Array<Array<string | number | null>> {
+  const out: Array<Array<string | number | null>> = []
   for (const group of groups) {
     for (const session of group.sessions) {
       for (const gender of ['girls', 'boys'] as const) {
