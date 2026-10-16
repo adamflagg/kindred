@@ -37,8 +37,8 @@ func addAskHistoryCollection(t *testing.T, app core.App) {
 	col.Fields.Add(&core.AutodateField{Name: "created", OnCreate: true})
 	// Keep byte-identical in column order to the migration's indexes.
 	col.Indexes = []string{
-		"CREATE UNIQUE INDEX idx_aid_registration_ask_history_observation ON aid_registration_ask_history " +
-			"(year, field_cm_id, person_cm_id, source_changed_at, old_value, new_value)",
+		"CREATE INDEX idx_aid_registration_ask_history_lookup ON aid_registration_ask_history " +
+			"(year, field_cm_id, person_cm_id, created)",
 		"CREATE INDEX idx_aid_registration_ask_history_person_year ON aid_registration_ask_history (person_cm_id, year)",
 	}
 	if err := app.Save(col); err != nil {
@@ -232,6 +232,56 @@ func TestAskHistory_RepeatIsIdempotentAndReturnToAKeepsThree(t *testing.T) {
 	}
 }
 
+// walkAskSteps records each (old, new) step twice (a re-run) and returns the row count.
+func walkAskSteps(t *testing.T, steps [][2]string, sourceFor func(i int) string) int {
+	t.Helper()
+	app := newAskHookApp(t)
+	for i, step := range steps {
+		o := &askObservation{Year: askTestYear, FieldCMID: cmIDCAFinancialAssistanceAmount,
+			PersonCMID: askTestPersonCM, OldValue: step[0], NewValue: step[1], IsGenesis: step[0] == "",
+			SourceChangedAt: sourceFor(i), ObservedBy: "x"}
+		for rep := 0; rep < 2; rep++ {
+			if err := recordAskObservation(app, o); err != nil {
+				t.Fatalf("step %v: %v", step, err)
+			}
+		}
+	}
+	return len(askRows(t, app))
+}
+
+var askABAB = [][2]string{{"", "100"}, {"100", "200"}, {"200", "100"}, {"100", "200"}}
+
+// 4b. A -> B -> A -> B with an empty last_updated keeps all four rows: only the NEWEST row
+// is a duplicate, never an older row that happens to match.
+func TestAskHistory_RepeatedTransitionKeptWithEmptyLastUpdated(t *testing.T) {
+	t.Parallel()
+	if got := walkAskSteps(t, askABAB, func(int) string { return "" }); got != 4 {
+		t.Fatalf("A->B->A->B (empty last_updated) kept %d rows, want 4", got)
+	}
+}
+
+// 4c. The same walk with distinct last_updated also keeps all of them.
+func TestAskHistory_RepeatedTransitionKeptWithDistinctLastUpdated(t *testing.T) {
+	t.Parallel()
+	ats := []string{askAt1, askAt2, askAt3, "2026-03-16T09:30:00.000+00:00"}
+	if got := walkAskSteps(t, askABAB, func(i int) string { return ats[i] }); got != 4 {
+		t.Fatalf("A->B->A->B (distinct last_updated) kept %d rows, want 4", got)
+	}
+}
+
+// 4d. Re-running the same sync over an unchanged slot adds nothing (hook path).
+func TestAskHistory_UnchangedSlotRerunAddsNothing(t *testing.T) {
+	t.Parallel()
+	app := newAskHookApp(t)
+	askCreate(t, app, cmIDCAFinancialAssistanceAmount, "100", askAt1, false)
+	for i := 0; i < 3; i++ {
+		askUpdate(t, app, cmIDCAFinancialAssistanceAmount, "100", askAt1, false)
+	}
+	if got := len(askRows(t, app)); got != 1 {
+		t.Fatalf("unchanged slot re-run left %d rows, want 1", got)
+	}
+}
+
 // 5. DryRun writes nothing.
 func TestAskHistory_DryRunWritesNothing(t *testing.T) {
 	t.Parallel()
@@ -317,6 +367,46 @@ func TestAskHistory_ReconcileAddsNothingAfterTheHookWroteATransition(t *testing.
 	faRun(t, app)
 	if got := len(askRows(t, app)); got != 1 {
 		t.Fatalf("reconcile added to a covered slot: %d rows, want 1", got)
+	}
+}
+
+// The reconcile compares the slot to the NEWEST row only: an older differing row does not
+// matter, and a newest row that differs gets a genesis row.
+func TestAskHistory_ReconcileChecksOnlyTheNewestRow(t *testing.T) {
+	t.Parallel()
+	app, ca, _ := newAskReconcileApp(t)
+	p := faAddPerson(t, app, 4206)
+	faAddValue(t, app, p, ca, "300", askAt3)
+	rec := func(old, val, at string, genesis bool) {
+		t.Helper()
+		if err := recordAskObservation(app, &askObservation{Year: faTestYear,
+			FieldCMID: cmIDCAFinancialAssistanceAmount, PersonCMID: 4206, OldValue: old,
+			NewValue: val, SourceChangedAt: at, IsGenesis: genesis, ObservedBy: "person_custom_values"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rec("", "100", askAt1, true)
+	rec("100", "300", askAt3, false)
+	faRun(t, app)
+	if got := len(askRows(t, app)); got != 2 {
+		t.Fatalf("newest row equals the slot: %d rows, want 2", got)
+	}
+
+	// Slot moves on; the newest row (300) no longer equals it, so a genesis row is added
+	// even though an older row... also differs.
+	stored, err := app.FindRecordsByFilter("person_custom_values", "", "", 0, 0)
+	if err != nil || len(stored) != 1 {
+		t.Fatalf("stored values: %d, err=%v", len(stored), err)
+	}
+	stored[0].Set("value", "100")
+	stored[0].Set("last_updated", askAt1)
+	if err := app.Save(stored[0]); err != nil {
+		t.Fatal(err)
+	}
+	faRun(t, app)
+	rows := askRows(t, app)
+	if len(rows) != 3 {
+		t.Fatalf("newest row differs from the slot: %d rows, want 3", len(rows))
 	}
 }
 

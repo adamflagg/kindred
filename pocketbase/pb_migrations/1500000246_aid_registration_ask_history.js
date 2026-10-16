@@ -11,9 +11,11 @@
  * last_updated change, genesis on create) and made whole by the FA applications job
  * (financial_aid_applications.go reconcileAskHistory).
  *
- * Grain: (year, field_cm_id, person_cm_id, source_changed_at, old_value, new_value) -- the
- * unique index is the idempotency contract, copied from lodging_value_history; old_value stays
- * in the key so A -> B -> A survives. person_cm_id is a CampMinder id, not a relation.
+ * Grain: one row per real change of the slot for (year, field_cm_id, person_cm_id). There is
+ * deliberately NO unique index: the table is an append-only change history, so A -> B -> A -> B
+ * keeps all of its transitions even when last_updated is empty or repeats. The Go writer
+ * dedups against the NEWEST row only (ordered by created, then rowid); the non-unique lookup
+ * index serves that read. person_cm_id is a CampMinder id, not a relation.
  * source_changed_at is CampMinder's last_updated verbatim, text so a failed parse cannot lose
  * a row. is_genesis is the first value this table holds, a floor and not proof nothing came
  * before.
@@ -48,7 +50,7 @@ migrate((app) => {
       { type: "autodate", name: "created", required: false, presentable: false, onCreate: true, onUpdate: false },
     ],
     indexes: [
-      "CREATE UNIQUE INDEX `idx_aid_registration_ask_history_observation` ON `aid_registration_ask_history` (`year`, `field_cm_id`, `person_cm_id`, `source_changed_at`, `old_value`, `new_value`)",
+      "CREATE INDEX `idx_aid_registration_ask_history_lookup` ON `aid_registration_ask_history` (`year`, `field_cm_id`, `person_cm_id`, `created`)",
       "CREATE INDEX `idx_aid_registration_ask_history_person_year` ON `aid_registration_ask_history` (`person_cm_id`, `year`)",
     ],
   });

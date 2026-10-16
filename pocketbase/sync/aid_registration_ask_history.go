@@ -69,34 +69,31 @@ type askObservation struct {
 	// not proof nothing came before.
 	IsGenesis bool
 
-	// IgnoreOldValue makes the already-recorded check match on (source_changed_at,
-	// new_value) alone. The reconcile uses it so a hook-written transition counts as present.
+	// IgnoreOldValue makes the already-recorded check compare (source_changed_at,
+	// new_value) alone against the newest row. The reconcile uses it so a hook-written transition counts as present.
 	IgnoreOldValue bool
 }
 
-// textMatch builds `col = ”` or `col = {:param}`: a bound "" does not match a stored empty
-// string in PocketBase, so the empty case must be the literal.
-func textMatch(col, value string, params map[string]any) string {
-	if value == "" {
-		return " && " + col + " = ''"
-	}
-	params[col] = value
-	return " && " + col + " = {:" + col + "}"
-}
-
+// askRecorded reports whether the candidate duplicates the NEWEST row for the key. Only the
+// newest row counts: the table is an append-only change history, so an A -> B -> A -> B walk
+// must keep its second A -> B even when an older row matches it (an empty or repeated
+// last_updated makes that routine). Order is created (millisecond autodate) with @rowid as the
+// tiebreak, because PocketBase ids are random and cannot order two rows in the same ms.
 func askRecorded(app core.App, obs *askObservation) (bool, error) {
 	params := map[string]any{"year": obs.Year, "field": obs.FieldCMID, "person": obs.PersonCMID}
 	filter := "year = {:year} && field_cm_id = {:field} && person_cm_id = {:person}"
-	filter += textMatch("source_changed_at", obs.SourceChangedAt, params)
-	filter += textMatch("new_value", obs.NewValue, params)
-	if !obs.IgnoreOldValue {
-		filter += textMatch("old_value", obs.OldValue, params)
-	}
-	existing, err := app.FindRecordsByFilter(aidRegistrationAskHistoryCollection, filter, "", 1, 0, params)
+	newest, err := app.FindRecordsByFilter(aidRegistrationAskHistoryCollection, filter, "-created,-@rowid", 1, 0, params)
 	if err != nil {
 		return false, fmt.Errorf("checking for an existing %s row: %w", aidRegistrationAskHistoryCollection, err)
 	}
-	return len(existing) > 0, nil
+	if len(newest) == 0 {
+		return false, nil
+	}
+	n := newest[0]
+	if n.GetString("source_changed_at") != obs.SourceChangedAt || n.GetString("new_value") != obs.NewValue {
+		return false, nil
+	}
+	return obs.IgnoreOldValue || n.GetString("old_value") == obs.OldValue, nil
 }
 
 // recordAskObservation appends one observation, idempotently. A no-op outside the retention
@@ -149,7 +146,7 @@ func logAskChange(app core.App, obs *askObservation) {
 }
 
 // reconcileAskHistory appends a genesis row for every current ask value (28906 / 209090) of
-// the season whose (source_changed_at, value) has no history row. It seeds the table, heals a
+// the season whose (source_changed_at, value) differs from the newest history row. It seeds the table, heals a
 // hook failure, and keeps the newest history row equal to today's slot. Non-dry-run only.
 func (s *FinancialAidApplicationsSync) reconcileAskHistory(
 	ctx context.Context, year int, personInfo map[string]*personInfoEntry,

@@ -66,10 +66,12 @@ func TestAidRegistrationAskHistoryMigrationDeclaresItsShape(t *testing.T) {
 	for _, name := range []string{"amount", "observed_at", "is_genesis", "created"} {
 		field(name)
 	}
-	if !strings.Contains(up, "CREATE UNIQUE INDEX `idx_aid_registration_ask_history_observation` ON "+
-		"`aid_registration_ask_history` (`year`, `field_cm_id`, `person_cm_id`, `source_changed_at`, "+
-		"`old_value`, `new_value`)") {
-		t.Error("must declare the unique observation index, old_value included")
+	if strings.Contains(up, "UNIQUE") {
+		t.Error("must not declare a unique index: the table is an append-only change history")
+	}
+	if !strings.Contains(up, "CREATE INDEX `idx_aid_registration_ask_history_lookup` ON "+
+		"`aid_registration_ask_history` (`year`, `field_cm_id`, `person_cm_id`, `created`)") {
+		t.Error("must declare the non-unique newest-row lookup index")
 	}
 	if !strings.Contains(up, "CREATE INDEX `idx_aid_registration_ask_history_person_year` ON "+
 		"`aid_registration_ask_history` (`person_cm_id`, `year`)") {
