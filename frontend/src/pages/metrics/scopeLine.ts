@@ -70,6 +70,8 @@ const LAST_YEARS = "counted in last year's campers"
 
 /** Board 8, column "proposed" (the plan's wording where it has one). */
 const UNITS: Record<string, string | null> = {
+  // Today mixes campers and camper-sessions, so each card names its own unit (#3207 PR 8)
+  '/analytics/today': null,
   '/analytics/registration/overview': CAMPERS,
   '/analytics/registration/geo': CAMPERS,
   '/analytics/registration/waitlist': CAMPERS,

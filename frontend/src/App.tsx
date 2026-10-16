@@ -94,6 +94,7 @@ const PromptEditorPage = lazy(() => import('./pages/summer/PromptEditorPage'))
 const SolverDebugPage = lazy(() => import('./pages/summer/SolverDebugPage'))
 // Camp Analytics module - hierarchical navigation
 const MetricsLayout = lazy(() => import('./pages/metrics/MetricsLayout'))
+const TodayPage = lazy(() => import('./pages/metrics/today/TodayPage'))
 const RegistrationOverview = lazy(() => import('./pages/metrics/registration/RegistrationOverview'))
 const GeoAnalysis = lazy(() => import('./pages/metrics/registration/GeoAnalysis'))
 const WaitlistAnalysis = lazy(() => import('./pages/metrics/registration/WaitlistAnalysis'))
@@ -473,6 +474,18 @@ function App() {
                                 </ErrorBoundary>
                               }
                             >
+                              {/* Today: summer at a glance (#3207 PR 8) */}
+                              <Route
+                                path="today"
+                                element={
+                                  <ErrorBoundary>
+                                    <Suspense fallback={<PageSkeleton />}>
+                                      <TodayPage />
+                                    </Suspense>
+                                  </ErrorBoundary>
+                                }
+                              />
+
                               {/* Registration section */}
                               <Route
                                 path="registration"

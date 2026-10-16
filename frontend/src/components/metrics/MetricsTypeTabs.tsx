@@ -9,7 +9,7 @@
  * every working control reads "no {year} enrollments yet", and the picker stays live.
  */
 import { Link, useLocation } from 'react-router'
-import { BarChart3, Users, TrendingUp, type LucideIcon } from 'lucide-react'
+import { BarChart3, Sunrise, Users, TrendingUp, type LucideIcon } from 'lucide-react'
 import { MetricsSessionSelector } from './MetricsSessionSelector'
 import { CompareYearSelector } from './CompareYearSelector'
 import { useMetricsSession } from '../../hooks/useMetricsSession'
@@ -60,6 +60,9 @@ function CheckControl({
 }
 
 const METRIC_TYPES: MetricTypeTab[] = [
+  // Summer at a glance (#3207 PR 8). Its comparison is fixed (same point last year), so it shows no
+  // Compare or Expanded analysis control; the session picker stays (decision 15).
+  { id: 'today', label: 'Today', icon: Sunrise, path: '/analytics/today' },
   {
     id: 'registration',
     label: 'Registration',

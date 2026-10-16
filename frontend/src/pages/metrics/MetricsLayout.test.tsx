@@ -102,6 +102,7 @@ const renderWithRouter = (initialPath: string, childText = 'Child Content') => {
                 <Route path="retention/flow" element={<TestChild text="Session Flow" />} />
                 <Route path="retention/bunks" element={<TestChild text="Bunk Analysis" />} />
                 <Route path="trends" element={<TestChild text="Trends" />} />
+                <Route path="today" element={<TestChild text="Today" />} />
               </Route>
             </Routes>
           </CurrentYearContext>
@@ -183,6 +184,12 @@ describe('MetricsLayout', () => {
     expect(screen.getByRole('link', { name: /trends/i })).toBeInTheDocument()
     // Trends now has its own sub-nav with Overview
     expect(screen.getByRole('link', { name: /overview/i })).toBeInTheDocument()
+  })
+
+  it('titles Analytics › Today "Today", with no sub-nav (#3207 PR 8)', () => {
+    renderWithRouter('/analytics/today')
+    expect(screen.getByRole('heading', { level: 1, name: 'Today' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Overview' })).toBeNull()
   })
 
   it('renders page header with title for registration', () => {

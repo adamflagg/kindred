@@ -62,6 +62,8 @@ export interface HeroSegment {
   readonly title?: string
   /** The door. */
   readonly href?: string
+  /** Text ink for the words inside the segment, e.g. a delta token on Analytics › Today's shortfall. */
+  readonly ink?: string
 }
 
 export function AidHeroBar({
@@ -93,7 +95,7 @@ export function AidHeroBar({
       {live.map((s) => {
         const pct = sum > 0 ? (size(s) / sum) * 100 : 0
         const words = !compact && pct > labelMinPct ? (s.inner ?? s.figure) : ''
-        const cls = `border-card flex min-w-1 items-center justify-center overflow-hidden border-r-2 text-[12.5px] font-bold whitespace-nowrap tabular-nums last:border-r-0 ${FILL[s.tone]}`
+        const cls = `border-card flex min-w-1 items-center justify-center overflow-hidden border-r-2 text-[12.5px] font-bold whitespace-nowrap tabular-nums last:border-r-0 ${FILL[s.tone]}${s.ink ? ` ${s.ink}` : ''}`
         const style = { flexGrow: size(s), flexShrink: 1, flexBasis: 0 }
         const title = s.title ?? `${s.label}: ${s.figure}`
         return s.href ? (
