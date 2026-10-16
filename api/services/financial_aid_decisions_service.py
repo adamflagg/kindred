@@ -2332,8 +2332,9 @@ class FinancialAidDecisionsService:
         and the season's household links."""
         if season.as_of is not None or season.year not in CAMPMINDER_AID_ON_NO_REQUEST_YEARS:
             return None
-        links = await self._store.fetch_household_links(season.year)
-        additions = await self._store.fetch_request_additions(season.year)
+        links, additions = await asyncio.gather(
+            self._store.fetch_household_links(season.year), self._store.fetch_request_additions(season.year)
+        )
         document = season.rules.document if season.rules is not None else None
         return aid_on_no_request(
             season.camp_lines,

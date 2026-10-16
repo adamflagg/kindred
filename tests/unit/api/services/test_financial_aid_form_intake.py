@@ -702,3 +702,31 @@ async def test_became_lists_live_requests_first_then_closed_ones_each_in_session
         ("cancelled", SESSION_2),
         ("duplicate", TASTE_2),
     ]
+
+
+@pytest.mark.asyncio
+async def test_became_lists_a_request_with_no_session_and_no_candidates_after_the_dated_ones_of_its_group() -> None:
+    """Session date order puts what has no date last: a session-less request with no candidate session sorts after
+    every dated request of its group (live, or closed), never first."""
+    from dataclasses import replace
+
+    store = await intake(
+        fa_row(EMMA, JOHNSON, summer="Session 2", summer_ask=3000.0),
+        attendees=enrolled(EMMA, JOHNSON, SESSION_2, TASTE_1),
+    )
+    (base,) = store.requests.values()
+    made = {
+        "req0000000000b1": replace(
+            base, status="unmatched_session", session_cm_id=0, program_option_key="some session", flags=()
+        ),
+        "req0000000000b2": replace(base, status="withdrawn", session_cm_id=0, program_option_key="old", flags=()),
+        "req0000000000b3": replace(base, status="withdrawn", session_cm_id=TASTE_1, program_option_key="t1"),
+    }
+    store.requests = {rid: replace(r, id=rid) for rid, r in made.items()} | {base.id: base}
+    emma = row(await forms(store), JOHNSON, EMMA)
+    assert [(b.status, b.session_cm_id) for b in emma.became] == [
+        ("active", SESSION_2),
+        ("session_unclear", 0),
+        ("withdrawn", TASTE_1),
+        ("withdrawn", 0),
+    ]

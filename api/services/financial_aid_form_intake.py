@@ -333,12 +333,12 @@ class _Explainer:
             else None,
         )
 
-    def became_order(self, b: BecameOut) -> tuple[bool, tuple[str, int], str, str]:
+    def became_order(self, b: BecameOut) -> tuple[bool, bool, tuple[str, int], str, str]:
         """The Became cell's order (approved polish): live requests first (active, session unclear, duplicate
         pending), then closed ones (duplicate, withdrawn, cancelled), each in session date order (an unclear request
-        at its first candidate's)."""
+        at its first candidate's; one with no session the season knows, last in its group)."""
         sid = b.session_cm_id or next(iter(b.candidate_session_cm_ids), 0)
-        return b.status in _CLOSED_WORDS, self.key(sid), b.program_key, b.request_id
+        return b.status in _CLOSED_WORDS, sid not in self.s.by_id, self.key(sid), b.program_key, b.request_id
 
     def requests_of(self, subject: Subject) -> list[RequestRecord]:
         household, person = subject
@@ -600,8 +600,9 @@ class FormIntakeService:
         return FormIntakeLook(tuple(await self._named(year, look)) if look else ())
 
     async def aid_on_no_request(self, year: int) -> AidOnNoRequestResponse:
-        """Season's D170 line opened in place (owner Q4-A): one line per family x session, each with what Add a
-        Request… pre-fills (session = the posting's, ask and Round 1 = the posted amount)."""
+        """Season's D170 line opened in place (owner Q4-A): one line per Form intake row x session (the camper's own
+        money, d170_person, or the household's), each with what Add a Request… pre-fills (session = the posting's, ask
+        = the posted amount, and Round 1 = it when the money is that camper's or a Family Camp household's)."""
         season, rows = await self._rows(year)
         explainer = _Explainer(season)
         by_key = {r.key: r for r in await self._named(year, rows)}

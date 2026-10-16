@@ -1221,17 +1221,19 @@ class FinancialAidCaseworkService:
             and d170_person(a, family_camp, ctx.attendees) == person
         ]
         key = (min(family), person, sid)
+        # Whose money the guard took (d170_person): the camper's, or a household (Family Camp) request's household's.
+        whose = "that camper" if person else "that household"
         if key in ctx.recorded:
             raise CaseworkValidationError(
-                "CampMinder's money on that family and session is already recorded on another item in this load"
+                f"CampMinder's money on {whose} and session is already recorded on another item in this load"
             )
         if not found:
-            raise CaseworkValidationError("CampMinder shows no aid on no request for that family and session")
+            raise CaseworkValidationError(f"CampMinder shows no aid on no request for {whose} and session")
         amount = sum((line.amount for line in found), Decimal(0))
         given = Decimal(str(item.round1_campminder)).quantize(Decimal("0.01"))
         if amount.quantize(Decimal("0.01")) != given:
             raise CaseworkValidationError(
-                f"CampMinder shows {_cents(amount)} on no request for that family and session, not {_cents(given)}"
+                f"CampMinder shows {_cents(amount)} on no request for {whose} and session, not {_cents(given)}"
             )
         return amount, found, key
 

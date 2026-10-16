@@ -161,7 +161,7 @@ async def test_unticked_adds_the_request_only() -> None:
 @pytest.mark.parametrize(
     ("amount", "words"),
     [
-        (2000.0, r"\$2,258\.00 on no request for that family and session, not \$2,000\.00"),
+        (2000.0, r"\$2,258\.00 on no request for that camper and session, not \$2,000\.00"),
         (2258.01, r"not \$2,258\.01"),
     ],
 )
@@ -178,7 +178,7 @@ async def test_an_amount_that_is_not_campminders_is_refused_and_writes_nothing(a
 async def test_no_campminder_money_on_no_request_is_refused() -> None:
     store = liam_store()
     store.camp_lines = []
-    with pytest.raises(CaseworkValidationError, match="no aid on no request for that family and session"):
+    with pytest.raises(CaseworkValidationError, match="no aid on no request for that camper and session"):
         await FinancialAidCaseworkService(store).add_request(
             YEAR, LIAM_HOUSEHOLD, LIAM, SESSION_2, 2500.0, "Assessed by phone", ACTOR, round1_campminder=2258.0
         )
@@ -450,7 +450,8 @@ async def test_money_credited_to_no_camper_with_two_enrolled_siblings_is_recorde
     store = siblings_store(camp_line(59000013, LIAM_HOUSEHOLD, "700", session=SESSION_2))
     casework = FinancialAidCaseworkService(store)
     for person in (LIAM, LIAM + 1):
-        with pytest.raises(CaseworkValidationError, match="no aid on no request"):
+        # The family x session has money on no request; it is just not this camper's, and the refusal says whose.
+        with pytest.raises(CaseworkValidationError, match="no aid on no request for that camper and session"):
             await casework.add_request(
                 YEAR, LIAM_HOUSEHOLD, person, SESSION_2, 700.0, "Assessed by phone", ACTOR, round1_campminder=700.0
             )
