@@ -10,7 +10,7 @@
  * the page lists at its foot (decision 11): never a hover tooltip.
  */
 
-import { TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { TrendingUp, TrendingDown, Minus, ChevronRight } from 'lucide-react'
 import { DefRef } from '../camperships/kit/DefinitionNotes'
 import { formatSignedCount, formatValue } from '../../utils/numberFormat'
 
@@ -115,7 +115,7 @@ export function MetricCard({
   // Build className with optional interactive styles
   const cardClassName = [
     'card-lodge p-4',
-    onClick ? 'cursor-pointer hover:bg-muted/30 transition-colors' : '',
+    onClick ? 'group cursor-pointer hover:bg-muted/30 transition-colors' : '',
     className,
   ]
     .filter(Boolean)
@@ -145,6 +145,10 @@ export function MetricCard({
             })()}
             {displayTrendValue}
           </span>
+        )}
+        {onClick && (
+          // D-CUE (owner, 2026-10-15): a card that opens a list says so, always; forest on hover.
+          <ChevronRight className="text-muted-foreground group-hover:text-forest-700 dark:group-hover:text-forest-300 ml-auto h-4 w-4 flex-shrink-0 self-center" />
         )}
       </div>
       {subtitle && <p className="text-muted-foreground mt-1 text-sm">{subtitle}</p>}

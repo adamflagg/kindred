@@ -18,6 +18,7 @@ from api.constants.collections import (
     CAMP_SESSIONS,
     CONFIG,
     ENROLLMENT_SNAPSHOTS,
+    HOUSEHOLDS,
     PERSONS,
 )
 from api.constants.filters import ACTIVE_ENROLLED_FILTER
@@ -107,6 +108,23 @@ class MetricsRepository:
         )
         # Ensure int keys for consistent lookup (PocketBase may return float)
         return {int(getattr(p, "cm_id", 0)): p for p in persons}
+
+    async def fetch_household_postal_codes(self, year: int) -> dict[str, str]:
+        """Each household's billing postal code this season, keyed by its PocketBase id.
+
+        The drill-down CSV's Zip (decision 13) reads it through a camper's
+        `primary_childhood_household` relation. Names its two columns, so no
+        hidden Camperships-only household column rides along.
+        """
+        households = await asyncio.to_thread(
+            self.pb.collection(HOUSEHOLDS).get_full_list,
+            query_params={"filter": f"year = {int(year)}", "fields": "id,billing_postal_code"},
+        )
+        return {
+            str(h.id): str(code)
+            for h in households
+            if (code := getattr(h, "billing_postal_code", None)) and getattr(h, "id", None)
+        }
 
     async def fetch_sessions(
         self,

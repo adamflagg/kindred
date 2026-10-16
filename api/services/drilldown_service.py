@@ -104,10 +104,47 @@ CANCELLATION_BREAKDOWNS = frozenset(
 )
 
 
+# Where "Enrolled In" / "Has Other Sessions" look for a camper's other enrollments: every summer
+# type plus the teen programs, whatever scope is picked. WaitlistService and CancellationService
+# count their Has/No Other Sessions cards this way, so the lists and Enrolled In cells match them.
+ENROLLED_ELSEWHERE_TYPES = (*SUMMER_SESSION_TYPES, *SUMMER_TEEN_TYPES)
+
+
 def _get_str_attr(obj: Any, attr: str) -> str | None:
     """Get a string attribute, returning None for empty/non-string values."""
     val = getattr(obj, attr, None)
     return val if isinstance(val, str) and val else None
+
+
+def _season_age(person: Any, year: int) -> int | None:
+    """Season year minus birth year, the rule CampMinder uses; None without a usable birth date."""
+    birthdate = _get_str_attr(person, "birthdate")
+    if not birthdate or not birthdate[:4].isdigit():
+        return None
+    return year - int(birthdate[:4])
+
+
+def _caregiver_names(person: Any) -> list[str]:
+    """``parent_names`` as stored ("first last" each), which is the household's mailing-title order."""
+    entries = getattr(person, "parent_names", None)
+    if not isinstance(entries, list):
+        return []
+    names = (
+        f"{str(e.get('first') or '').strip()} {str(e.get('last') or '').strip()}".strip()
+        for e in entries
+        if isinstance(e, dict)
+    )
+    return [n for n in names if n]
+
+
+def _session_entry(record: Any, session: Any) -> DrilldownSession:
+    """One enrollment's session, with that enrollment's own Registered and current-status dates."""
+    return DrilldownSession(
+        session_name=str(getattr(session, "name", "Unknown")),
+        session_cm_id=int(getattr(session, "cm_id", 0)),
+        effective_date=_get_str_attr(record, "effective_date"),
+        enrollment_date=_get_str_attr(record, "enrollment_date"),
+    )
 
 
 def _group_enrolled_by_person(
@@ -157,6 +194,70 @@ class DrilldownService:
         duration: str | None = None,
         include_teen_pipeline: bool = False,
     ) -> list[DrilldownAttendee]:
+        """Get attendees matching a specific breakdown criteria (see ``_list_attendees``).
+
+        Every list row then gets the person fields that read the same on every list: Age
+        (season year minus birth year), and the CSV-only Zip and Caregivers.
+        """
+        rows = await self._list_attendees(
+            year,
+            breakdown_type,
+            breakdown_value,
+            session_cm_id=session_cm_id,
+            session_types=session_types,
+            status_filter=status_filter,
+            compare_year=compare_year,
+            duration=duration,
+            include_teen_pipeline=include_teen_pipeline,
+        )
+        return await self._with_person_fields(year, rows)
+
+    async def _with_person_fields(self, year: int, rows: list[DrilldownAttendee]) -> list[DrilldownAttendee]:
+        """Set Age, Zip and Caregivers on each row from this season's person and household records.
+
+        Age is ``year`` minus the birth year, the rule CampMinder uses; the stored
+        ``persons.age`` is a snapshot that drifts, so it is never read. Zip is the billing
+        postal code of the camper's primary childhood household (decision 13). Caregivers
+        are ``parent_names`` as stored, which is the household's mailing-title order
+        (decision 44). Zip and Caregivers are for the CSV only; the modal never shows them.
+        """
+        if not rows:
+            return rows
+        persons, postal_codes = await asyncio.gather(
+            self.repo.fetch_persons(year),
+            self.repo.fetch_household_postal_codes(year),
+        )
+        for row in rows:
+            person = persons.get(row.person_id)
+            row.age = _season_age(person, year)
+            household = _get_str_attr(person, "primary_childhood_household")
+            row.zip = postal_codes.get(household) if household else None
+            row.caregivers = _caregiver_names(person)
+        return rows
+
+    async def _cohort_session_ids(self, year: int, session_types: list[str] | None) -> set[int] | None:
+        """The session cm_ids the cards count for ``session_types``: teen sessions gated to the summer window.
+
+        None when no types were asked for, the param-less path that, like
+        RegistrationService, keeps every attendee. The window comes from the year's
+        ``main`` sessions, so this reads all of the year's sessions, not just the asked types.
+        """
+        if session_types is None:
+            return None
+        return resolve_cohort_session_ids(await self.repo.fetch_sessions(year, None), session_types)
+
+    async def _list_attendees(
+        self,
+        year: int,
+        breakdown_type: str,
+        breakdown_value: str,
+        session_cm_id: int | None = None,
+        session_types: list[str] | None = None,
+        status_filter: list[str] | None = None,
+        compare_year: int | None = None,
+        duration: str | None = None,
+        include_teen_pipeline: bool = False,
+    ) -> list[DrilldownAttendee]:
         """Get attendees matching a specific breakdown criteria.
 
         Args:
@@ -189,7 +290,17 @@ class DrilldownService:
         # Fetch sessions first to find AG sessions with matching parent
         sessions = await self.repo.fetch_sessions(year, session_types)
         ag_session_ids = find_ag_sessions_for_parent(sessions, session_cm_id)
-        duration_session_ids = resolve_duration_sessions(sessions, duration) if duration else None
+        # The teen-window gate (decision 43): a list counts what its card counts. Registration,
+        # Waitlist, Cancellations and Retention all gate SCIT/TLI to the summer window, so an
+        # off-season teen session (a February trip, a fall CIT) never reaches a list either.
+        cohort_session_ids = await self._cohort_session_ids(year, session_types)
+        duration_ids = resolve_duration_sessions(sessions, duration) if duration else None
+        if cohort_session_ids is None:
+            scope_session_ids = duration_ids
+        elif duration_ids is None:
+            scope_session_ids = cohort_session_ids
+        else:
+            scope_session_ids = cohort_session_ids & duration_ids
 
         # Retention card breakdowns (top cards: all, returned, not_returned)
         if breakdown_type in RETENTION_CARD_BREAKDOWNS and compare_year is not None:
@@ -200,7 +311,7 @@ class DrilldownService:
                 sessions=sessions,
                 session_types=session_types,
                 status_filter=status_filter,
-                duration_session_ids=duration_session_ids,
+                scope_session_ids=scope_session_ids,
                 duration=duration,
                 effective_pipeline=effective_pipeline,
             )
@@ -214,7 +325,7 @@ class DrilldownService:
                 sessions=sessions,
                 session_types=session_types,
                 status_filter=status_filter,
-                duration_session_ids=duration_session_ids,
+                scope_session_ids=scope_session_ids,
                 duration=duration,
                 effective_pipeline=effective_pipeline,
             )
@@ -223,13 +334,14 @@ class DrilldownService:
         if breakdown_type in CANCELLATION_BREAKDOWNS:
             return await self._handle_cancellation_breakdown(
                 year=year,
+                status_filter=status_filter,
                 breakdown_type=breakdown_type,
                 breakdown_value=breakdown_value,
                 sessions=sessions,
                 session_cm_id=session_cm_id,
                 session_types=session_types,
                 ag_session_ids=ag_session_ids,
-                duration_session_ids=duration_session_ids,
+                scope_session_ids=scope_session_ids,
             )
 
         # Availability chart waitlist drilldown
@@ -239,7 +351,7 @@ class DrilldownService:
                 breakdown_value=breakdown_value,
                 sessions=sessions,
                 session_types=session_types,
-                duration_session_ids=duration_session_ids,
+                scope_session_ids=scope_session_ids,
             )
 
         # Teen program (SCIT/TLI) availability waitlist drilldown. Teen rows
@@ -251,7 +363,7 @@ class DrilldownService:
                 breakdown_value=breakdown_value,
                 sessions=sessions,
                 session_types=session_types,
-                duration_session_ids=duration_session_ids,
+                scope_session_ids=scope_session_ids,
             )
 
         # Waitlist breakdown types need separate fetching logic
@@ -264,7 +376,8 @@ class DrilldownService:
                 session_cm_id=session_cm_id,
                 session_types=session_types,
                 ag_session_ids=ag_session_ids,
-                duration_session_ids=duration_session_ids,
+                scope_session_ids=scope_session_ids,
+                cohort_session_ids=cohort_session_ids,
             )
 
         # Person-level breakdowns with waitlisted status need special handling
@@ -282,7 +395,8 @@ class DrilldownService:
                 session_cm_id=session_cm_id,
                 session_types=session_types,
                 ag_session_ids=ag_session_ids,
-                duration_session_ids=duration_session_ids,
+                scope_session_ids=scope_session_ids,
+                cohort_session_ids=cohort_session_ids,
             )
 
         # Fetch data in parallel
@@ -303,7 +417,7 @@ class DrilldownService:
             session_types,
             session_cm_id,
             ag_session_ids,
-            session_cm_ids=duration_session_ids,
+            session_cm_ids=scope_session_ids,
         )
 
         # First Summer Year is read from history, so pre-compute it. Summers at Camp
@@ -573,7 +687,7 @@ class DrilldownService:
         sessions: dict[int, Any],
         session_types: list[str] | None,
         status_filter: list[str],
-        duration_session_ids: set[int] | None = None,
+        scope_session_ids: set[int] | None = None,
         duration: str | None = None,
         effective_pipeline: bool = False,
     ) -> list[DrilldownAttendee]:
@@ -586,7 +700,7 @@ class DrilldownService:
             sessions: Base year sessions dict.
             session_types: Session type filter.
             status_filter: Status filter for attendees.
-            duration_session_ids: Optional set of session cm_ids matching the duration filter.
+            scope_session_ids: The list's session scope: summer-window-gated (``_cohort_session_ids``), narrowed by duration when given.
             effective_pipeline: include_teen_pipeline AND the scope has teens; credits
                 the grade-10 -> teen bridge (mirrors the retention card).
 
@@ -604,8 +718,8 @@ class DrilldownService:
         # mirrors the retention card so the lists reconcile with its numbers.
         base_attendees = filter_aged_out_attendees(base_attendees, persons, effective_pipeline)
 
-        # Apply duration filter to base year attendees
-        base_attendees = filter_attendees_by_session(base_attendees, session_types, session_cm_ids=duration_session_ids)
+        # Scope the base year's attendees: the teen-window gate, and duration when given
+        base_attendees = filter_attendees_by_session(base_attendees, session_types, session_cm_ids=scope_session_ids)
 
         # Window-gate the returned set to match the retention card (off-season
         # teen sessions don't count as a summer return), carrying the duration
@@ -666,7 +780,7 @@ class DrilldownService:
         sessions: dict[int, Any],
         session_types: list[str] | None,
         status_filter: list[str],
-        duration_session_ids: set[int] | None = None,
+        scope_session_ids: set[int] | None = None,
         duration: str | None = None,
         effective_pipeline: bool = False,
     ) -> list[DrilldownAttendee]:
@@ -679,7 +793,7 @@ class DrilldownService:
             sessions: Base year sessions dict.
             session_types: Session type filter.
             status_filter: Status filter for attendees.
-            duration_session_ids: Optional set of session cm_ids matching the duration filter.
+            scope_session_ids: The list's session scope: summer-window-gated (``_cohort_session_ids``), narrowed by duration when given.
             effective_pipeline: include_teen_pipeline AND the scope has teens; credits
                 the grade-10 -> teen bridge (mirrors the retention card).
 
@@ -696,8 +810,8 @@ class DrilldownService:
         # mirrors the retention card so the lists reconcile with its numbers.
         base_attendees = filter_aged_out_attendees(base_attendees, persons, effective_pipeline)
 
-        # Apply duration filter to base year attendees
-        base_attendees = filter_attendees_by_session(base_attendees, session_types, session_cm_ids=duration_session_ids)
+        # Scope the base year's attendees: the teen-window gate, and duration when given
+        base_attendees = filter_attendees_by_session(base_attendees, session_types, session_cm_ids=scope_session_ids)
 
         # Build returned_person_ids (window-gated to match the retention card so
         # off-season teen sessions don't count as a summer return, and carrying
@@ -814,14 +928,9 @@ class DrilldownService:
                 for group_a in person_attendee_groups[person_id]:
                     g_session = get_session_from_expand(group_a)
                     if g_session:
-                        sessions_list.append(
-                            DrilldownSession(
-                                session_name=str(getattr(g_session, "name", "Unknown")),
-                                session_cm_id=int(getattr(g_session, "cm_id", 0)),
-                            )
-                        )
+                        sessions_list.append(_session_entry(group_a, g_session))
             else:
-                sessions_list = [DrilldownSession(session_name=session_name, session_cm_id=session_cm_id)]
+                sessions_list = [_session_entry(a, session)]
 
             # Build enrolled_sessions list from enrolled attendee records
             enrolled_sessions_list: list[DrilldownSession] = []
@@ -844,7 +953,6 @@ class DrilldownService:
                     preferred_name=getattr(person, "preferred_name", None),
                     grade=getattr(person, "grade", None),
                     gender=getattr(person, "gender", None),
-                    age=getattr(person, "age", None),
                     school=getattr(person, "normalized_school", None) or getattr(person, "school", None),
                     city=city,
                     state=state,
@@ -871,7 +979,8 @@ class DrilldownService:
         session_cm_id: int | None,
         session_types: list[str] | None,
         ag_session_ids: set[int],
-        duration_session_ids: set[int] | None = None,
+        scope_session_ids: set[int] | None = None,
+        cohort_session_ids: set[int] | None = None,
     ) -> list[DrilldownAttendee]:
         """Handle waitlist-specific breakdown types.
 
@@ -887,7 +996,7 @@ class DrilldownService:
             session_cm_id: Optional session filter.
             session_types: Optional session type filter.
             ag_session_ids: AG sessions for the filtered parent session.
-            duration_session_ids: Optional set of session cm_ids matching the duration filter.
+            scope_session_ids: The list's session scope: summer-window-gated (``_cohort_session_ids``), narrowed by duration when given.
 
         Returns:
             List of DrilldownAttendee records.
@@ -904,7 +1013,8 @@ class DrilldownService:
                 session_cm_id=session_cm_id,
                 session_types=session_types,
                 ag_session_ids=ag_session_ids,
-                duration_session_ids=duration_session_ids,
+                scope_session_ids=scope_session_ids,
+                cohort_session_ids=cohort_session_ids,
             )
 
         # UC3: accepted (waitlisted -> enrolled)
@@ -913,8 +1023,6 @@ class DrilldownService:
             new_statuses = ["enrolled"]
         else:
             new_statuses = list(DECLINED_STATUSES)
-
-        effective_types = session_types or list(SUMMER_SESSION_TYPES)
 
         all_relevant_statuses = [*list(DECLINED_STATUSES), "enrolled", "waitlisted"]
 
@@ -942,7 +1050,7 @@ class DrilldownService:
                     effective_date_lookup[pid_int] = eff_date
 
         # Build enrolled groups for enrolled_sessions population
-        enrolled_attendee_groups = _group_enrolled_by_person(enrolled_attendees, effective_types)
+        enrolled_attendee_groups = _group_enrolled_by_person(enrolled_attendees, ENROLLED_ELSEWHERE_TYPES)
 
         # Deduplicate by person, build DrilldownAttendee from history + persons
         seen_persons: set[int] = set()
@@ -962,7 +1070,7 @@ class DrilldownService:
                 record_sid = int(getattr(session_info, "cm_id", 0))
                 if session_cm_id is not None and record_sid != session_cm_id and record_sid not in ag_session_ids:
                     continue
-                if duration_session_ids is not None and record_sid not in duration_session_ids:
+                if scope_session_ids is not None and record_sid not in scope_session_ids:
                     continue
 
             seen_persons.add(pid)
@@ -994,7 +1102,6 @@ class DrilldownService:
                     preferred_name=getattr(person, "preferred_name", None),
                     grade=getattr(person, "grade", None),
                     gender=getattr(person, "gender", None),
-                    age=getattr(person, "age", None),
                     school=getattr(person, "normalized_school", None) or getattr(person, "school", None),
                     city=city,
                     state=state,
@@ -1022,7 +1129,8 @@ class DrilldownService:
         session_cm_id: int | None,
         session_types: list[str] | None,
         ag_session_ids: set[int],
-        duration_session_ids: set[int] | None = None,
+        scope_session_ids: set[int] | None = None,
+        cohort_session_ids: set[int] | None = None,
     ) -> list[DrilldownAttendee]:
         """Handle waitlist_no_enrollment, waitlist_has_enrollment, and waitlist_total breakdowns.
 
@@ -1055,6 +1163,9 @@ class DrilldownService:
 
         valid_sessions = await self.repo.fetch_sessions(year, effective_types)
         valid_session_ids = set(valid_sessions.keys())
+        if cohort_session_ids is not None:
+            # The teen-window gate reaches the Waitlisted For cell too (and so the Enrollments rows).
+            valid_session_ids &= cohort_session_ids
         for pid in all_waitlisted_groups:
             all_waitlisted_groups[pid] = [
                 att
@@ -1068,11 +1179,11 @@ class DrilldownService:
             session_types,
             effective_session_cm_id,
             ag_session_ids,
-            session_cm_ids=duration_session_ids,
+            session_cm_ids=scope_session_ids,
         )
 
         # Build enrolled person groups: person_id -> list of enrolled attendee records
-        enrolled_attendee_groups = _group_enrolled_by_person(enrolled_attendees, effective_types)
+        enrolled_attendee_groups = _group_enrolled_by_person(enrolled_attendees, ENROLLED_ELSEWHERE_TYPES)
         enrolled_person_ids = set(enrolled_attendee_groups.keys())
 
         # Partition and deduplicate by person
@@ -1107,7 +1218,7 @@ class DrilldownService:
         breakdown_value: str,
         sessions: dict[int, Any],
         session_types: list[str] | None,
-        duration_session_ids: set[int] | None,
+        scope_session_ids: set[int] | None,
     ) -> list[DrilldownAttendee]:
         """Handle waitlist drilldown filtered by session + gender + optional grade.
 
@@ -1137,7 +1248,7 @@ class DrilldownService:
         breakdown_value: str,
         sessions: dict[int, Any],
         session_types: list[str] | None,
-        duration_session_ids: set[int] | None,
+        scope_session_ids: set[int] | None,
     ) -> list[DrilldownAttendee]:
         """Handle SCIT/TLI availability waitlist drilldown.
 
@@ -1233,14 +1344,7 @@ class DrilldownService:
             if scmid not in summer_session_ids:
                 continue
             pid = int(getattr(person, "cm_id", 0))
-            if pid not in waitlisted_by_person:
-                waitlisted_by_person[pid] = []
-            waitlisted_by_person[pid].append(
-                DrilldownSession(
-                    session_name=str(getattr(session, "name", "Unknown")),
-                    session_cm_id=int(getattr(session, "cm_id", 0)),
-                )
-            )
+            waitlisted_by_person.setdefault(pid, []).append(_session_entry(att, session))
 
         # Filter waitlisted attendees for target session/gender/grade
         results = []
@@ -1281,7 +1385,6 @@ class DrilldownService:
                     preferred_name=_get_str_attr(person, "preferred_name"),
                     grade=getattr(person, "grade", None),
                     gender=gender,
-                    age=getattr(person, "age", None),
                     school=_get_str_attr(person, "normalized_school") or _get_str_attr(person, "school"),
                     city=city,
                     state=state,
@@ -1310,7 +1413,8 @@ class DrilldownService:
         session_cm_id: int | None,
         session_types: list[str] | None,
         ag_session_ids: set[int],
-        duration_session_ids: set[int] | None = None,
+        scope_session_ids: set[int] | None = None,
+        cohort_session_ids: set[int] | None = None,
     ) -> list[DrilldownAttendee]:
         """Handle person-level breakdowns (grade, gender, etc.) with waitlisted status.
 
@@ -1341,6 +1445,9 @@ class DrilldownService:
 
         valid_sessions = await self.repo.fetch_sessions(year, effective_types)
         valid_session_ids = set(valid_sessions.keys())
+        if cohort_session_ids is not None:
+            # The teen-window gate reaches the Waitlisted For cell too (and so the Enrollments rows).
+            valid_session_ids &= cohort_session_ids
         for pid in all_waitlisted_groups:
             all_waitlisted_groups[pid] = [
                 att
@@ -1354,7 +1461,7 @@ class DrilldownService:
             session_types,
             session_cm_id,
             ag_session_ids,
-            session_cm_ids=duration_session_ids,
+            session_cm_ids=scope_session_ids,
         )
 
         # Filter by breakdown criteria (grade, gender, etc.)
@@ -1372,7 +1479,7 @@ class DrilldownService:
                 deduped.append(att)
 
         # Build enrolled groups from enrolled attendees
-        enrolled_attendee_groups = _group_enrolled_by_person(enrolled_attendees, effective_types)
+        enrolled_attendee_groups = _group_enrolled_by_person(enrolled_attendees, ENROLLED_ELSEWHERE_TYPES)
 
         return self._build_response(
             deduped,
@@ -1385,13 +1492,14 @@ class DrilldownService:
     async def _handle_cancellation_breakdown(
         self,
         year: int,
+        status_filter: list[str] | None,
         breakdown_type: str,
         breakdown_value: str,
         sessions: dict[int, Any],
         session_cm_id: int | None,
         session_types: list[str] | None,
         ag_session_ids: set[int],
-        duration_session_ids: set[int] | None = None,
+        scope_session_ids: set[int] | None = None,
     ) -> list[DrilldownAttendee]:
         """Handle cancellation-specific breakdown types.
 
@@ -1410,14 +1518,27 @@ class DrilldownService:
                 session_types=session_types,
                 ag_session_ids=ag_session_ids,
                 effective_types=effective_types,
-                duration_session_ids=duration_session_ids,
+                scope_session_ids=scope_session_ids,
             )
 
+        # The Overview's Total Cancelled card counts status "cancelled" only and the Cancellations
+        # page counts withdrawn and dismissed too; a status filter naming cancelled statuses
+        # narrows the list to its card's (the page names all three, and a filter naming none of
+        # them, or no filter, keeps all three). It can only narrow, never widen past these three.
+        cancelled_statuses = [s for s in CANCELLED_STATUSES if s in (status_filter or [])] or CANCELLED_STATUSES
         cancelled_attendees, enrolled_attendees, persons = await asyncio.gather(
-            self.repo.fetch_attendees(year, CANCELLED_STATUSES),
+            self.repo.fetch_attendees(year, cancelled_statuses),
             self.repo.fetch_attendees(year, ["enrolled"]),
             self.repo.fetch_persons(year),
         )
+
+        # A by-session bar opens cancellation_total with its session as the value (as waitlist_total does)
+        if breakdown_type == "cancellation_total" and breakdown_value != "all":
+            try:
+                session_cm_id = int(breakdown_value)
+                ag_session_ids = find_ag_sessions_for_parent(sessions, session_cm_id)
+            except ValueError:
+                pass
 
         # Filter cancelled by session
         cancelled_attendees = filter_attendees_by_session(
@@ -1425,11 +1546,11 @@ class DrilldownService:
             session_types,
             session_cm_id,
             ag_session_ids,
-            session_cm_ids=duration_session_ids,
+            session_cm_ids=scope_session_ids,
         )
 
         # Build enrolled person set
-        enrolled_attendee_groups = _group_enrolled_by_person(enrolled_attendees, effective_types)
+        enrolled_attendee_groups = _group_enrolled_by_person(enrolled_attendees, ENROLLED_ELSEWHERE_TYPES)
         enrolled_person_ids = set(enrolled_attendee_groups.keys())
 
         # Build was_enrolled / was_waitlisted person sets from status history
@@ -1491,7 +1612,7 @@ class DrilldownService:
         session_types: list[str] | None,
         ag_session_ids: set[int],
         effective_types: list[str],
-        duration_session_ids: set[int] | None = None,
+        scope_session_ids: set[int] | None = None,
     ) -> list[DrilldownAttendee]:
         """Handle cancellation_re_enrolled breakdown.
 
@@ -1526,7 +1647,7 @@ class DrilldownService:
             session_types,
             session_cm_id,
             ag_session_ids,
-            session_cm_ids=duration_session_ids,
+            session_cm_ids=scope_session_ids,
         )
 
         # Build person groups for enrolled sessions display

@@ -4287,7 +4287,7 @@ export type DrilldownAttendee = {
   /**
    * Age
    *
-   * Age in years
+   * Season year minus birth year (the rule CampMinder uses); None without a birth date
    */
   age?: number | null
   /**
@@ -4362,6 +4362,18 @@ export type DrilldownAttendee = {
    * Enrolled sessions (for waitlist breakdowns)
    */
   enrolled_sessions?: Array<DrilldownSession>
+  /**
+   * Zip
+   *
+   * Billing postal code of the primary childhood household (CSV only, decision 13)
+   */
+  zip?: string | null
+  /**
+   * Caregivers
+   *
+   * Caregiver names as stored in parent_names: the household's mailing-title order (CSV only, decision 44)
+   */
+  caregivers?: Array<string>
 }
 
 /**
@@ -4382,6 +4394,18 @@ export type DrilldownSession = {
    * Session CampMinder ID
    */
   session_cm_id: number
+  /**
+   * Effective Date
+   *
+   * This enrollment's Registered day (EffectiveDate), for one row per enrollment
+   */
+  effective_date?: string | null
+  /**
+   * Enrollment Date
+   *
+   * This enrollment's current-status instant (PostDate): Enrolled on, Cancelled or Applied
+   */
+  enrollment_date?: string | null
 }
 
 /**

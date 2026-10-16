@@ -358,6 +358,10 @@ export interface RetentionRateBarItem {
 export interface DrilldownSession {
   session_name: string
   session_cm_id: number
+  /** This enrollment's Registered day (effective_date), for one row per enrollment. */
+  effective_date?: string | null
+  /** This enrollment's current-status instant: Enrolled on, Cancelled or Applied. */
+  enrollment_date?: string | null
 }
 
 export interface DrilldownFilter {
@@ -423,6 +427,10 @@ export interface DrilldownAttendee {
   is_returning: boolean
   sessions?: DrilldownSession[]
   enrolled_sessions?: DrilldownSession[]
+  /** CSV only (decision 13): the primary childhood household's billing postal code. */
+  zip?: string | null
+  /** CSV only (decision 44): caregiver names in the household's mailing-title order. */
+  caregivers?: string[]
 }
 
 // Waitlist analysis types

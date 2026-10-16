@@ -678,6 +678,12 @@ class DrilldownSession(BaseModel):
 
     session_name: str = Field(description="Session name")
     session_cm_id: int = Field(description="Session CampMinder ID")
+    effective_date: str | None = Field(
+        None, description="This enrollment's Registered day (EffectiveDate), for one row per enrollment"
+    )
+    enrollment_date: str | None = Field(
+        None, description="This enrollment's current-status instant (PostDate): Enrolled on, Cancelled or Applied"
+    )
 
 
 class DrilldownAttendee(BaseModel):
@@ -693,7 +699,9 @@ class DrilldownAttendee(BaseModel):
     preferred_name: str | None = Field(None, description="Preferred name if set")
     grade: int | None = Field(None, description="Grade level")
     gender: str | None = Field(None, description="Gender (M, F, or other)")
-    age: float | None = Field(None, description="Age in years")
+    age: int | None = Field(
+        None, description="Season year minus birth year (the rule CampMinder uses); None without a birth date"
+    )
     school: str | None = Field(None, description="School name")
     city: str | None = Field(None, description="City (parsed from address)")
     state: str | None = Field(None, description="State abbreviation (parsed from address)")
@@ -709,4 +717,11 @@ class DrilldownAttendee(BaseModel):
     )
     enrolled_sessions: list[DrilldownSession] = Field(
         default_factory=list, description="Enrolled sessions (for waitlist breakdowns)"
+    )
+    zip: str | None = Field(
+        None, description="Billing postal code of the primary childhood household (CSV only, decision 13)"
+    )
+    caregivers: list[str] = Field(
+        default_factory=list,
+        description="Caregiver names as stored in parent_names: the household's mailing-title order (CSV only, decision 44)",
     )

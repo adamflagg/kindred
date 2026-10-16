@@ -21,7 +21,8 @@ class MockPerson:
     preferred_name: str | None = None
     gender: str | None = None
     grade: int | None = None
-    age: int | None = None
+    age: float | None = None
+    birthdate: str | None = None
     school: str | None = None
     years_at_camp: int | None = None
     address: str | None = None  # JSON string with city
@@ -528,7 +529,8 @@ class TestDrilldownServiceGetAttendees:
                 preferred_name="Em",
                 gender="F",
                 grade=5,
-                age=11,
+                age=12.6,  # the stored snapshot drifts; Age is never read from it (#3207 PR 6)
+                birthdate="2014-09-30",
                 school="Riverside Elementary",
                 years_at_camp=2,
             ),
@@ -551,7 +553,7 @@ class TestDrilldownServiceGetAttendees:
         assert attendee.preferred_name == "Em"
         assert attendee.gender == "F"
         assert attendee.grade == 5
-        assert attendee.age == 11
+        assert attendee.age == 11  # 2025 - 2014: season year minus birth year
         assert attendee.school == "Riverside Elementary"
         assert attendee.years_at_camp == 2
         assert attendee.session_name == "Session 1"
