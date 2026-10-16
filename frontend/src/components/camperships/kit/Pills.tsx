@@ -5,6 +5,7 @@ import { householdChipClass, ID_CHIP, PILL, type PillTone } from './kitStyles'
 import { formatShortDate } from './dates'
 import { CM_PENDING_WORD } from '../requests/views'
 import { formatGap, formatMoney } from './money'
+import { ORIGIN_WORDS, type RequestOrigin } from './words'
 
 /**
  * A chip (design-language §11): one line, always. In a narrow column it truncates, and `title`
@@ -23,6 +24,25 @@ export function StatusPill({
     <span className={title ? `${PILL[tone]} cursor-help` : PILL[tone]} title={title}>
       {children}
     </span>
+  )
+}
+
+/**
+ * Where a request came from (design-language rule 9): "added" and "reg. ask" are outlined (`line`); a request the
+ * dashboard made from a registration ask that no one has reviewed is amber, "reg. ask · review". Requests, the
+ * household card and Form intake all draw it here. The title says who, when and why.
+ */
+export function OriginMark({
+  origin,
+  title,
+}: {
+  origin: RequestOrigin
+  title?: string | undefined
+}) {
+  return (
+    <StatusPill tone={origin === 'reg_ask_review' ? 'amber' : 'line'} title={title}>
+      {ORIGIN_WORDS[origin]}
+    </StatusPill>
   )
 }
 

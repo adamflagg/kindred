@@ -139,6 +139,8 @@ export interface AidColumn<Row> {
   readonly mark?: { readonly n: number; readonly title?: string | undefined } | undefined
   /** False leaves the column out of the CSV download: an action column has nothing to export (M16). */
   readonly inCsv?: boolean | undefined
+  /** False: this one header does not sort (an action column, `aidActionColumn`); the others still do. */
+  readonly sortable?: boolean | undefined
 }
 
 /** A column only the CSV carries: a figure the screen draws inside another cell (M16). */
@@ -262,6 +264,12 @@ export interface AidTableProps<Row> {
    * without rebuilding columns. Pass a memoised Set.
    */
   readonly markedKeys?: ReadonlySet<string> | undefined
+  /**
+   * Rows an action moved out of the page's filter, kept in view where they were (design-language rule 22): the page
+   * passes them in `rows` (`keepInView`) and their keys here. Like the search's kept row they are display only: no
+   * total, count, check or CSV line takes them. The search still applies, except to the opened row. A memoised Set.
+   */
+  readonly keptKeys?: ReadonlySet<string> | undefined
   /** Bulk actions (§4.10): the selected row keys. Pass both; a checkbox column then leads the table. */
   readonly selected?: ReadonlySet<string> | undefined
   readonly onSelectedChange?: ((next: ReadonlySet<string>) => void) | undefined
@@ -339,6 +347,7 @@ const BOX_MIN_HEIGHT = 420
 const moneyValue = (value: CellValue): number | null => (typeof value === 'number' ? value : null)
 
 const NO_GROUPINGS: readonly never[] = []
+const NO_KEYS: ReadonlySet<string> = new Set()
 /** A `rowTone` row's tint (§9), opaque in both themes (the row carries it; a pinned cell repeats it). */
 const TONE_BG = { group: CS_BAND, warn: CS_BAND_WARN } as const
 /** A group row's cell: unclipped, so a heading's words may run across the empty cells beside it. */
@@ -394,6 +403,7 @@ export function AidTable<Row>({
   footerTitle,
   footerSpan,
   markedKeys,
+  keptKeys = NO_KEYS,
   selected,
   onSelectedChange,
   onMatchingChange,
@@ -462,21 +472,28 @@ export function AidTable<Row>({
     },
     [columns, sort, sortable]
   )
-  // The rows matching the search: what the totals, the counts and the CSV are of.
-  const visible = useMemo(() => sorted(rows.filter(matches)), [rows, matches, sorted])
+  // The rows matching the search, less the rows kept in view after an action (`keptKeys`): what the totals, the
+  // counts and the CSV are of.
+  const counts = useCallback(
+    (row: Row) => matches(row) && !keptKeys.has(rowKey(row)),
+    [matches, keptKeys, rowKey]
+  )
+  const visible = useMemo(() => sorted(rows.filter(counts)), [rows, counts, sorted])
   // Their keys, for the page: independent of the sort, so only a change of match fires the callback.
   const matchingKeys = useMemo(
-    () => new Set(rows.filter(matches).map(rowKey)),
-    [rows, matches, rowKey]
+    () => new Set(rows.filter(counts).map(rowKey)),
+    [rows, counts, rowKey]
   )
   useEffect(() => {
     onMatchingChange?.(matchingKeys)
   }, [matchingKeys, onMatchingChange])
-  // What is drawn: those, plus the kept row.
+  // What is drawn: those, plus the kept row, plus the rows kept in view that the search matches.
   const shown = useMemo(
     () =>
-      kept === null ? visible : sorted(rows.filter((row) => rowKey(row) === kept || matches(row))),
-    [kept, visible, rows, rowKey, matches, sorted]
+      kept === null && keptKeys.size === 0
+        ? visible
+        : sorted(rows.filter((row) => rowKey(row) === kept || matches(row))),
+    [kept, keptKeys, visible, rows, rowKey, matches, sorted]
   )
 
   const grouping = groupings.find((g) => g.key === group)
@@ -523,9 +540,9 @@ export function AidTable<Row>({
     [groups, isFolded]
   )
   const order = useMemo(() => unfolded.map(rowKey), [unfolded, rowKey])
-  // Without the kept row: a group's count and the CSV are of matching rows only.
-  const counted = (list: readonly Row[]) =>
-    kept === null ? list : list.filter((row) => rowKey(row) !== kept)
+  // Without the kept rows: a group's count and the CSV are of matching rows only.
+  const isKept = (key: string) => key === kept || keptKeys.has(key)
+  const counted = (list: readonly Row[]) => list.filter((row) => !isKept(rowKey(row)))
 
   const selection =
     selected !== undefined && onSelectedChange !== undefined
@@ -886,7 +903,7 @@ export function AidTable<Row>({
           </th>
         )}
         {columns.map((c) =>
-          c.help || !sortable ? (
+          c.help || !sortable || c.sortable === false ? (
             <th
               key={c.key}
               style={pinStyle(c)}
@@ -957,6 +974,7 @@ export function AidTable<Row>({
             data-row-key={key}
             data-highlighted={isHighlighted ? 'true' : undefined}
             data-marked={isMarked ? 'true' : undefined}
+            data-kept={keptKeys.has(key) ? 'true' : undefined}
             ref={(element) => {
               if (element) rowRefs.current.set(key, element)
               else rowRefs.current.delete(key)
@@ -983,8 +1001,8 @@ export function AidTable<Row>({
                   (isHighlighted || isMarked) && HIGHLIGHT_EDGE
                 )}
               >
-                {/* The kept row is on screen only for its highlight: it isn't a match, so it can't be ticked (R1). */}
-                {key !== kept && (
+                {/* A kept row is on screen only for its highlight or its action: it isn't a match, so it can't be ticked (R1). */}
+                {!isKept(key) && (
                   <input
                     type="checkbox"
                     className="accent-primary align-[-2px]"

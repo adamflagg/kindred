@@ -1,4 +1,5 @@
-import { useLayoutEffect, useRef, useState } from 'react'
+import { House } from 'lucide-react'
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 
 /** Design-language §6 "Next-up chips never truncate; they drop": a name that would be cut is not shown, and "+N"
@@ -116,6 +117,59 @@ export function AidNameChips({
           +{rest}
         </span>
       ) : null}
+    </span>
+  )
+}
+
+/** The dashed chip of a camper with no household (rule 21): the chip's shape, muted, not a link. */
+const CHIP_NONE =
+  'inline-flex h-[22px] flex-none cursor-help items-baseline whitespace-nowrap rounded-full border border-dashed border-border bg-card px-2 text-[12px] leading-5 font-medium text-muted-foreground'
+const NO_HOUSEHOLD_TITLE =
+  'CampMinder links this camper to no household, so there is no household page'
+
+/**
+ * ONE household chip in a grid cell (design-language rule 21): ⌂ and the household's label, linking to the household.
+ * It never drops, unlike AidNameChips' list; the name beside it is what cuts (AidNameWithChip). With no household
+ * (`href` null) it is the dashed "no household" chip, which is not a link.
+ */
+export function AidHouseholdChip({
+  label,
+  href,
+  title,
+}: {
+  readonly label?: string | undefined
+  readonly href: string | null
+  readonly title?: string | undefined
+}) {
+  if (href === null)
+    return (
+      <span className={CHIP_NONE} title={title ?? NO_HOUSEHOLD_TITLE}>
+        {label ?? 'no household'}
+      </span>
+    )
+  return (
+    <Link to={href} title={title ?? label} className={CHIP}>
+      <House className="text-muted-foreground h-[11px] w-[11px] self-center" />
+      {label}
+    </Link>
+  )
+}
+
+/**
+ * A name that cuts beside a chip that never does (rule 21; the mock's CF.nc): the name shrinks with an ellipsis, the
+ * chip keeps its width. The cell's title (AidColumn.title) carries the full name.
+ */
+export function AidNameWithChip({
+  name,
+  chip,
+}: {
+  readonly name: ReactNode
+  readonly chip: ReactNode
+}) {
+  return (
+    <span className="flex max-w-full min-w-0 items-center gap-[5px]">
+      <span className="min-w-0 truncate">{name}</span>
+      {chip}
     </span>
   )
 }
