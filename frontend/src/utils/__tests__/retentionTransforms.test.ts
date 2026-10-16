@@ -29,19 +29,16 @@ import type {
   SessionFlowItem,
 } from '../../types/metrics'
 
+// #2898: Retention's gender rows are gender identity labels; the two lower-case ones display capitalised.
 describe('getGenderDisplayName', () => {
-  it('maps M to Male', () => {
-    expect(getGenderDisplayName('M')).toBe('Male')
+  it('capitalises self-described and not given', () => {
+    expect(getGenderDisplayName('self-described')).toBe('Self-described')
+    expect(getGenderDisplayName('not given')).toBe('Not given')
   })
 
-  it('maps F to Female', () => {
-    expect(getGenderDisplayName('F')).toBe('Female')
-  })
-
-  it('passes through unknown values unchanged', () => {
-    expect(getGenderDisplayName('NB')).toBe('NB')
-    expect(getGenderDisplayName('Other')).toBe('Other')
-    expect(getGenderDisplayName('Unknown')).toBe('Unknown')
+  it('passes identity labels through unchanged', () => {
+    expect(getGenderDisplayName('Girl/woman')).toBe('Girl/woman')
+    expect(getGenderDisplayName('Non-binary')).toBe('Non-binary')
   })
 
   it('handles empty string', () => {
