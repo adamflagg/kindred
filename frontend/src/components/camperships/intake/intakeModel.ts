@@ -479,6 +479,20 @@ export function targetFromRow(row: FormIntakeRowOut): AddTarget {
 }
 
 /**
+ * Season's `?pool=` scopes the D170 lines its "CampMinder aid on no request" opens onto, as it scopes the line's own
+ * figure: null (no pool selected) keeps every line; a pool keeps its sessions' lines; '' (No pool) keeps the lines on
+ * a session no program claims. A line with no session counts in Season's total only, so only "all" shows it.
+ */
+export function linesInPool(
+  lines: readonly AidOnNoRequestLineOut[],
+  pool: string | null
+): AidOnNoRequestLineOut[] {
+  if (pool === null) return [...lines]
+  if (pool === '') return lines.filter((l) => l.pool == null && l.session_cm_id > 0)
+  return lines.filter((l) => l.pool === pool)
+}
+
+/**
  * A Season line (owner Q4-A): the session the posting suggests, and the registration ask when the Form intake row has
  * one (the approved mock), else the line's own pre-fill, CampMinder's posted amount.
  */

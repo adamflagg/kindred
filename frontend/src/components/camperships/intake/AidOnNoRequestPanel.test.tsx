@@ -1,7 +1,7 @@
 /**
  * Season's "CampMinder aid on no request" opened in place (owner Q4-A; the form-intake mock, steps 2–5): one line per
- * family × session in a kit table, each with Add a Request… opening its editor right there, pre-filled with the session
- * the posting suggests, the registration ask, and CampMinder's amount as Round 1, ticked (Q5-A).
+ * camper (or household) × session in a kit table, each with Add a Request… opening its editor right there, pre-filled
+ * with the session the posting suggests, the registration ask, and CampMinder's amount as Round 1, ticked (Q5-A).
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor, within } from '@testing-library/react'
@@ -48,13 +48,13 @@ beforeEach(() => {
 })
 afterEach(() => fetchSpy.mockRestore())
 
-function renderPanel() {
+function renderPanel(pool: string | null = null) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
         <SeasonStatusContext.Provider value={setStatus}>
-          <AidOnNoRequestPanel />
+          <AidOnNoRequestPanel pool={pool} />
         </SeasonStatusContext.Provider>
       </MemoryRouter>
     </QueryClientProvider>
@@ -85,6 +85,14 @@ describe("Season's CampMinder aid on no request, opened in place", () => {
     expect(within(rowOf('⌂ Daniel & Priya Chen-Okafor')).getByText('FC2')).toBeInTheDocument()
     expect(screen.getByText('2 families · 2 lines')).toBeInTheDocument()
     expect(screen.getByText('$2,716').className).toMatch(/amber/)
+  })
+
+  it("shows only Season's selected pool's lines, its footer and total that pool's (?pool=)", async () => {
+    renderPanel('camp_pool')
+    await screen.findByText('Lucas Garcia')
+    expect(screen.queryByText('⌂ Daniel & Priya Chen-Okafor')).toBeNull()
+    expect(screen.getByText('1 family · 1 line')).toBeInTheDocument()
+    expect(screen.getAllByText('$2,258').length).toBe(2) // the line and its total
   })
 
   it('opens Add a Request… right there, pre-filled: the suggested session, the registration ask, Round 1 ticked', async () => {

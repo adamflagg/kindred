@@ -129,7 +129,8 @@ const NO_HOUSEHOLD_TITLE =
 
 /**
  * ONE household chip in a grid cell (design-language rule 21): ⌂ and the household's label, linking to the household.
- * It never drops, unlike AidNameChips' list; the name beside it is what cuts (AidNameWithChip). With no household
+ * It never drops, unlike AidNameChips' list; it takes at most 45% of the cell, its label cutting with the full label
+ * in its title, and the name beside it keeps the rest (AidNameWithChip). With no household
  * (`href` null) it is the dashed "no household" chip, which is not a link.
  */
 export function AidHouseholdChip({
@@ -147,10 +148,12 @@ export function AidHouseholdChip({
         {label ?? 'no household'}
       </span>
     )
+  // At most 45% of the cell (owner-approved polish): a long label cuts, the full label in the title; the name beside
+  // it keeps the rest.
   return (
-    <Link to={href} title={title ?? label} className={CHIP}>
-      <House className="text-muted-foreground h-[11px] w-[11px] self-center" />
-      {label}
+    <Link to={href} title={title ?? label} className={`${CHIP} max-w-[45%] min-w-0`}>
+      <House className="text-muted-foreground h-[11px] w-[11px] flex-none self-center" />
+      <span className="min-w-0 truncate">{label}</span>
     </Link>
   )
 }

@@ -523,6 +523,8 @@ describe('CampMinder aid on no request (D170)', () => {
     })
     expect(NO_REQUEST_AID_TITLE).toContain('not in Committed or Remaining')
     expect(NO_REQUEST_AID_TITLE).toContain('2026 only')
+    // Follow-up A to PR 3: the line now says where the money gets recorded.
+    expect(NO_REQUEST_AID_TITLE).toMatch(/Add a Request… can now record it/)
   })
 
   it("shows a pool's own share after its outside grants", () => {

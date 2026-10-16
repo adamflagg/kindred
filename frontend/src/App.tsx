@@ -683,7 +683,10 @@ function App() {
                             <Route
                               path="requests/intake"
                               element={
-                                <RequirePermission permission={Permission.FINANCIAL_AID_VIEW}>
+                                <RequirePermission
+                                  permission={Permission.FINANCIAL_AID_VIEW}
+                                  fallback={REQUESTS_FALLBACK}
+                                >
                                   <ErrorBoundary>
                                     <Suspense fallback={<PageSkeleton />}>
                                       <AidFormIntakePage />

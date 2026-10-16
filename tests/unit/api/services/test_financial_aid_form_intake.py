@@ -651,3 +651,54 @@ async def test_a_household_row_keeps_the_household_x_session_money() -> None:
     assert (_amber(household), _offered(household)) == ([(FAMILY_CAMP_6, 458.0)], [(FAMILY_CAMP_6, 458.0)])
     (line,) = (await FormIntakeService(store).aid_on_no_request(YEAR)).lines
     assert (line.person_cm_id, line.amount, line.prefill.round1_campminder) == (0, 458.0, 458.0)
+
+
+# -- Follow-up A (approved polish): the Became cell lists live requests first, then closed ones, each in date order ----
+
+
+@pytest.mark.asyncio
+async def test_became_lists_live_requests_first_then_closed_ones_each_in_session_date_order() -> None:
+    from dataclasses import replace
+
+    quest = 1000106  # River `n` Ridge Quest, 2027-07-05
+    store = await intake(
+        fa_row(EMMA, JOHNSON, summer="Session 2", summer_ask=3000.0),
+        attendees=enrolled(EMMA, JOHNSON, SESSION_2, TASTE_1, TASTE_2, quest),
+    )
+    (base,) = store.requests.values()
+    made = {
+        "req0000000000a1": replace(base, session_cm_id=TASTE_2, program_option_key="taste 2"),  # 07-25
+        "req0000000000a2": replace(base, status="withdrawn", session_cm_id=TASTE_1, program_option_key="t1"),  # 06-13
+        "req0000000000a3": replace(base, status="duplicate", session_cm_id=TASTE_2, program_option_key="t2b"),
+        "req0000000000a4": replace(base, status="duplicate_pending", session_cm_id=quest, program_option_key="q"),
+        "req0000000000a5": replace(base, session_cm_id=TASTE_1, program_option_key="taste 1"),  # 06-13
+        "req0000000000a6": replace(
+            base,
+            status="unmatched_session",
+            session_cm_id=0,
+            program_option_key="session 2 or so",
+            flags=({"code": "unmatched_session", "detail": {"candidates": [SESSION_2]}},),
+        ),
+    }
+    store.requests = {rid: replace(r, id=rid) for rid, r in made.items()} | {base.id: base}
+    store.cancel_events = [  # the form's own Session 2 request (06-20), cancelled in Kindred
+        CancelEvent(
+            id="can000000000001",
+            request_id=base.id,
+            kind="cancel",
+            created=datetime(YEAR, 3, 1, tzinfo=UTC),
+            reason="schedule",
+            note="",
+            in_kindred=True,
+        )
+    ]
+    emma = row(await forms(store), JOHNSON, EMMA)
+    assert [(b.status, b.session_cm_id or b.candidate_session_cm_ids[0]) for b in emma.became] == [
+        ("active", TASTE_1),
+        ("session_unclear", SESSION_2),
+        ("duplicate_pending", quest),
+        ("active", TASTE_2),
+        ("withdrawn", TASTE_1),
+        ("cancelled", SESSION_2),
+        ("duplicate", TASTE_2),
+    ]

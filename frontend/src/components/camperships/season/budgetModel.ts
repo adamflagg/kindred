@@ -343,7 +343,7 @@ export interface BelowLine {
 
 /** D170's line, as the mock words it. 2026 only: the server sends it for no other season, and not on a past date. */
 export const NO_REQUEST_AID_TITLE =
-  "Camp aid CampMinder posted in 2026 that matches no request here: a family with no application, or a sheet row that named the wrong sibling. It is in CampMinder's ledger but on no decision, so it is not in Committed or Remaining. It appears for 2026 only (from 2027 every posting is ticked on its request)."
+  "Camp aid CampMinder posted in 2026 that matches no request here: a family with no application, or a sheet row that named the wrong sibling. It is in CampMinder's ledger but on no decision, so it is not in Committed or Remaining. It appears for 2026 only (from 2027 every posting is ticked on its request). Add a Request… can now record it: open this line and add the camper's request, with CampMinder's amount as Round 1, posted."
 
 /** The scope's pool (null: the total), or undefined when `?pool=` names no pool this season has. */
 export function scopePool(budget: ApiAidBudget, pool: string | null): ApiAidBudgetPool | undefined {

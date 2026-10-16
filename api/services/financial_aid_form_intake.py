@@ -96,6 +96,7 @@ _STATUS_WORDS: Final[Mapping[str, BecameStatus]] = {
     STATUS_WITHDRAWN: "withdrawn",
 }
 _STATUS_ORDER: Final[Mapping[str, int]] = {s: n for n, s in enumerate(_STATUS_WORDS)}
+_CLOSED_WORDS: Final[frozenset[BecameStatus]] = frozenset({"duplicate", "withdrawn", "cancelled"})
 UNLISTED_MAX: Final = 25
 _MIN_QUERY: Final = 2
 _CAMPER_PROGRAMS: Final = ((PROGRAM_SUMMER, "summer_program", "summer_amount_requested"),
@@ -332,6 +333,13 @@ class _Explainer:
             else None,
         )
 
+    def became_order(self, b: BecameOut) -> tuple[bool, tuple[str, int], str, str]:
+        """The Became cell's order (approved polish): live requests first (active, session unclear, duplicate
+        pending), then closed ones (duplicate, withdrawn, cancelled), each in session date order (an unclear request
+        at its first candidate's)."""
+        sid = b.session_cm_id or next(iter(b.candidate_session_cm_ids), 0)
+        return b.status in _CLOSED_WORDS, self.key(sid), b.program_key, b.request_id
+
     def requests_of(self, subject: Subject) -> list[RequestRecord]:
         household, person = subject
         return sorted(
@@ -399,8 +407,8 @@ class _Explainer:
         )
         enrolled = self.enrolled(subject)
         requests = self.requests_of(subject)
-        became = [self.became(r) for r in requests]
-        live = [b for b in became if b.status not in ("withdrawn", "duplicate", "cancelled")]
+        became = sorted((self.became(r) for r in requests), key=self.became_order)
+        live = [b for b in became if b.status not in _CLOSED_WORDS]
         gaps = self.gaps(subject, requests, enrolled)
         aid = self.campminder_aid(subject, requests)
         why: WhyNot | None = None

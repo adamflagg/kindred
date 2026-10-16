@@ -18,7 +18,9 @@ let read: { data: ApiAidBudget | undefined; isLoading: boolean; error: Error | n
 vi.mock('../../../hooks/camperships/useAidBudget', () => ({ useAidBudget: () => read }))
 // The opened line's own table and editor have their own tests (intake/AidOnNoRequestPanel.test.tsx).
 vi.mock('../intake/AidOnNoRequestPanel', () => ({
-  AidOnNoRequestPanel: () => <div data-testid="aid-on-no-request-panel" />,
+  AidOnNoRequestPanel: ({ pool }: { pool: string | null }) => (
+    <div data-testid="aid-on-no-request-panel" data-pool={pool ?? 'all'} />
+  ),
 }))
 let notes: Array<{ n: number; term?: string; text: string }> = []
 vi.mock('../../../hooks/camperships/useAidDefinitions', () => ({
@@ -581,6 +583,21 @@ describe('the fold lines carry what the table, strip and notes did (spec §5.2 F
       })
     )
     expect(screen.queryByTestId('aid-on-no-request-panel')).toBeNull()
+  })
+
+  it("opens the CampMinder-aid line onto the selected pool's lines only (?pool=)", async () => {
+    const data = structuredClone(BUDGET)
+    data.total.below.campminder_aid_off_requests = { amount: 3783, families: 4 }
+    for (const p of data.pools) p.below.campminder_aid_off_requests = { amount: 3783, families: 4 }
+    read = { data, isLoading: false, error: null }
+    const pool = data.pools.find((p) => p.pool !== '')!.pool
+    renderAt(
+      `/aid/season/rounds-budget?open=lines:below,below:campminder_off_requests&pool=${pool}`
+    )
+    expect(screen.getByTestId('aid-on-no-request-panel')).toHaveAttribute('data-pool', pool)
+    cleanup()
+    renderAt('/aid/season/rounds-budget?open=lines:below,below:campminder_off_requests')
+    expect(screen.getByTestId('aid-on-no-request-panel')).toHaveAttribute('data-pool', 'all')
   })
 
   it('titles Shown, not counted, with the outside fund qualified and Held showing "—" for its unknown amount (rounds-7, m3)', () => {

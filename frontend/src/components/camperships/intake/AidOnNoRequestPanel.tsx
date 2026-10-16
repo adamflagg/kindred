@@ -20,6 +20,7 @@ import { AddRequestEditor } from './AddRequestEditor'
 import {
   fullName,
   householdHref,
+  linesInPool,
   sessionIndex,
   shortName,
   targetFromLine,
@@ -74,16 +75,19 @@ function Lines({
   read,
   rows,
   view,
+  pool,
 }: {
   read: AidOnNoRequestResponse
   rows: ReadonlyMap<string, FormIntakeRowOut>
   view: AidView
+  pool: string | null
 }) {
   const { hasPermission } = usePermissions()
   const canWork = hasPermission(Permission.FINANCIAL_AID_CASEWORK)
   const say = useContext(SeasonStatusContext)
   const names: SessionIndex = useMemo(() => sessionIndex(read.sessions), [read.sessions])
   const [adding, setAdding] = useState<string | null>(null)
+  const shown = useMemo(() => linesInPool(read.lines, pool), [read.lines, pool])
 
   const columns = useMemo((): Array<AidColumn<AidOnNoRequestLineOut>> => {
     const cols: Array<AidColumn<AidOnNoRequestLineOut>> = [
@@ -164,7 +168,7 @@ function Lines({
 
   return (
     <AidTable<AidOnNoRequestLineOut>
-      rows={read.lines}
+      rows={shown}
       columns={columns}
       rowKey={lineKey}
       csvFilename={`camperships-campminder-aid-on-no-request-${String(read.year)}.csv`}
@@ -187,10 +191,11 @@ function Lines({
 
 /**
  * Season › Rounds & budget's "CampMinder aid on no request" opened in place (owner Q4-A; design rule 23): one line per
- * family × session, each with Add a Request… opening its editor right there (Q5-A's Round 1 offered, ticked). The
- * Form intake read gives each line its registration ask and held sessions.
+ * camper (or household) × session, each with Add a Request… opening its editor right there (Q5-A's Round 1 offered,
+ * ticked, when the money is that camper's). The Form intake read gives each line its registration ask and held
+ * sessions. `pool` is Season's `?pool=` (null: every pool): the lines, footer and total are that scope's.
  */
-export function AidOnNoRequestPanel() {
+export function AidOnNoRequestPanel({ pool }: { readonly pool: string | null }) {
   const year = useYear()
   const view = useMemo((): AidView => ({ year, asOf: LIVE }), [year])
   const read = useAidAidOnNoRequest(true)
@@ -207,7 +212,7 @@ export function AidOnNoRequestPanel() {
         data={read.data}
         label="CampMinder aid on no request"
       >
-        {(data) => <Lines read={data} rows={rows} view={view} />}
+        {(data) => <Lines read={data} rows={rows} view={view} pool={pool} />}
       </QueryGuard>
     </div>
   )
