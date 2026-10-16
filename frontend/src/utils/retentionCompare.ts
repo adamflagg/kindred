@@ -150,15 +150,30 @@ export function retentionCompareView(basis: RetentionBasis, year: number): Reten
 
 type PairKey = (bar: RetentionRateBarItem) => string
 
-/** Each bar with last year's rate for the same row; a row last year did not have gets null. */
+/**
+ * Each bar with last year's rate for the same row; a row last year did not have gets null. Last
+ * year's rows that share a key (one season can hold "Springfield" and "Springfield, CA") pool their
+ * campers, so a 1-camper row never stands in for the 60-camper one.
+ */
 export function withPriorRates(
   bars: RetentionRateBarItem[],
   priorBars: RetentionRateBarItem[] | undefined,
   keyCurrent: PairKey = (b) => b.name,
   keyPrior: PairKey = keyCurrent
 ): Array<RetentionRateBarItem & { priorRate: number | null }> {
-  const prior = new Map((priorBars ?? []).map((b) => [keyPrior(b), b.retentionRate]))
-  return bars.map((b) => ({ ...b, priorRate: prior.get(keyCurrent(b)) ?? null }))
+  const pooled = new Map<string, { rate: number; base: number; returned: number }>()
+  for (const b of priorBars ?? []) {
+    const key = keyPrior(b)
+    const seen = pooled.get(key)
+    if (!seen) {
+      pooled.set(key, { rate: b.retentionRate, base: b.baseCount, returned: b.returnedCount })
+      continue
+    }
+    const base = seen.base + b.baseCount
+    const returned = seen.returned + b.returnedCount
+    pooled.set(key, { rate: base > 0 ? returned / base : seen.rate, base, returned })
+  }
+  return bars.map((b) => ({ ...b, priorRate: pooled.get(keyCurrent(b))?.rate ?? null }))
 }
 
 /**
@@ -167,8 +182,9 @@ export function withPriorRates(
  */
 export const cityPairKey: PairKey = (b) =>
   b.name
-    .replace(/,\s*[A-Za-z]{2}$/, '')
     .trim()
+    .replace(/\s+/g, ' ')
+    .replace(/,\s*[A-Za-z]{2}$/, '')
     .toLowerCase()
 
 /** Sessions pair by name through their alias group (a renamed session is the same row). */
