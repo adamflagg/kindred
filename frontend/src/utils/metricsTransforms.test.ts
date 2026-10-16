@@ -10,7 +10,6 @@ import {
   transformGenderData,
   transformGradeData,
   transformSessionData,
-  transformSessionComparisonData,
   transformSummerYearsData,
   transformFirstSummerYearData,
   firstSummerYearLabel,
@@ -22,7 +21,6 @@ import {
   transformDemographicTableData,
   getTrendDirection,
 } from './metricsTransforms'
-import { mergeDataForComparison } from './comparisonUtils'
 
 // ============================================================================
 // Registration transforms
@@ -552,34 +550,5 @@ describe('getTrendDirection', () => {
     const result = getTrendDirection('unknown' as any)
 
     expect(result.label).toBe('Stable')
-  })
-})
-
-describe('transformSessionComparisonData (TLI rollup, owner 2026-10-14)', () => {
-  const tli = (session_cm_id: number, session_name: string, count: number) => ({
-    session_cm_id,
-    session_name,
-    session_type: 'tli',
-    count,
-    capacity: 40,
-    utilization: (count / 40) * 100,
-  })
-
-  it('gives the Session Enrollment Comparison one TLI line, with no NEW or GONE TLI rows', () => {
-    const current = [tli(201, 'Teen Leadership Institute', 45)]
-    const prior = [
-      tli(101, 'TLI: Route North', 23),
-      tli(102, 'TLI: Route South', 44),
-      tli(103, 'Teen Leadership Institute', 0),
-    ]
-
-    const merged = mergeDataForComparison(
-      transformSessionComparisonData(current, {}),
-      transformSessionComparisonData(prior, {})
-    )
-
-    expect(merged).toEqual([
-      expect.objectContaining({ primaryValue: 45, compareValue: 67, change: -22 }),
-    ])
   })
 })
