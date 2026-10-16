@@ -625,8 +625,12 @@ def _fetch_sessions_by_year(sessions: dict[int, dict[int, Any]], year: int, *arg
 
 class TestDrilldownTeenSummers:
     @pytest.mark.asyncio
-    async def test_teen_only_cohort_counts_every_summer(self) -> None:
-        """Drilling into "3 summers" for teens finds the TLI-in-both-years camper."""
+    async def test_teen_only_cohort_has_its_first_summer(self) -> None:
+        """Drilling into First Summer 2024 for teens finds the TLI-every-year camper (#3208 row 8).
+
+        Pinned the "3 summers" drill-down before #3207 decision 36; Summers at Camp
+        is now Years At Camp, so the guard moves to First Summer Year.
+        """
         from api.services.drilldown_service import DrilldownService
 
         sessions, history = _teen_only_world()
@@ -640,8 +644,8 @@ class TestDrilldownTeenSummers:
 
         result = await DrilldownService(mock_repo).get_attendees_for_breakdown(
             year=2026,
-            breakdown_type="summer_years",
-            breakdown_value="3",
+            breakdown_type="first_summer_year",
+            breakdown_value="2024",
             session_types=["scit", "tli"],
         )
 

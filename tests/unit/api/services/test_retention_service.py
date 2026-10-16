@@ -1227,7 +1227,11 @@ class TestRetentionServiceComputeSummerMetrics:
 
     @pytest.mark.asyncio
     async def test_computes_summer_years_correctly(self) -> None:
-        """Service computes summer years from enrollment history."""
+        """Summers at Camp is each camper's base-year Years At Camp (decision 36).
+
+        Pinned the history-based count before #3207 decision 36. The history below
+        still says 3 and 1 summers; CampMinder says 8 and 1, and CampMinder wins.
+        """
         from api.services.retention_service import RetentionService
 
         mock_repo = AsyncMock()
@@ -1249,8 +1253,8 @@ class TestRetentionServiceComputeSummerMetrics:
         ]
 
         mock_repo.fetch_persons.return_value = {
-            1: MockPerson(cm_id=1, gender="M"),
-            2: MockPerson(cm_id=2, gender="F"),
+            1: MockPerson(cm_id=1, gender="M", years_at_camp=8),
+            2: MockPerson(cm_id=2, gender="F", years_at_camp=1),
         }
 
         mock_repo.fetch_sessions.return_value = {
@@ -1280,13 +1284,13 @@ class TestRetentionServiceComputeSummerMetrics:
         assert len(result.by_summer_years) == 2
 
         one_summer = next((s for s in result.by_summer_years if s.summer_years == 1), None)
-        three_summers = next((s for s in result.by_summer_years if s.summer_years == 3), None)
+        eight_summers = next((s for s in result.by_summer_years if s.summer_years == 8), None)
 
         assert one_summer is not None
         assert one_summer.base_count == 1  # Person 2
 
-        assert three_summers is not None
-        assert three_summers.base_count == 1  # Person 1
+        assert eight_summers is not None
+        assert eight_summers.base_count == 1  # Person 1
 
 
 class TestRetentionSessionFlow:
@@ -2299,8 +2303,13 @@ def _fetch_sessions_by_year(sessions: dict[int, dict[int, Any]], year: int, *arg
 
 class TestRetentionTeenSummers:
     @pytest.mark.asyncio
-    async def test_teen_only_cohort_counts_every_summer(self) -> None:
-        """A teen in TLI in 2024 and 2025 is in the "2 summers" bin, with no "0 summers" bin."""
+    async def test_teen_only_cohort_has_its_first_summer(self) -> None:
+        """A teen in TLI in 2024 and 2025 first came in 2024 (#3208 row 8).
+
+        Pinned the history-based "2 summers" bin before decision 36; Summers at Camp
+        is now Years At Camp, so the guard moves to First Summer Year, which the
+        same missing-window bug would have dropped entirely.
+        """
         from api.services.retention_service import RetentionService
 
         sessions, history = _teen_only_world()
@@ -2317,4 +2326,4 @@ class TestRetentionTeenSummers:
 
         result = await RetentionService(mock_repo).calculate_retention(2025, 2026, session_types=["scit", "tli"])
 
-        assert {b.summer_years: b.base_count for b in result.by_summer_years} == {2: 1}
+        assert {b.first_summer_year: b.base_count for b in result.by_first_summer_year} == {2024: 1}

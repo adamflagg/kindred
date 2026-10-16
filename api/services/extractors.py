@@ -69,6 +69,20 @@ def extract_years_at_camp(person: Any) -> int:
     return years if years is not None else 0
 
 
+def summers_at_camp_by_person(person_ids: set[int], persons: dict[int, Any]) -> dict[int, int]:
+    """Each camper's "Summers at Camp": CampMinder's Years At Camp in the season of `persons`.
+
+    Epic #3207 decision 36: tenure bands read `persons.years_at_camp`, not
+    attendance history, which starts in 2017 and so undercounts every camper who
+    came before it. `persons` is year-scoped, so the caller picks the season by
+    which year's persons it passes: the viewed season on Registration and Trends,
+    the base season on Retention. A missing value reads 0, as on the Years at
+    Camp chart; a camper with no persons row that season is left out, as every
+    other person-field breakdown leaves them out.
+    """
+    return {pid: extract_years_at_camp(person) for pid in person_ids if (person := persons.get(pid))}
+
+
 def is_new_camper(years_at_camp: int | None) -> bool:
     """New = CampMinder records the camper in their first year at camp.
 

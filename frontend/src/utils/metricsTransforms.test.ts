@@ -13,6 +13,7 @@ import {
   transformSessionComparisonData,
   transformSummerYearsData,
   transformFirstSummerYearData,
+  firstSummerYearLabel,
   transformNewVsReturningData,
   transformRetentionSessionData,
   transformRetentionSummerYearsData,
@@ -204,6 +205,15 @@ describe('transformSummerYearsData', () => {
   })
 })
 
+describe('firstSummerYearLabel', () => {
+  it('reads "2017 or earlier" for the first history summer and anything before it (#3207 36b)', () => {
+    expect(firstSummerYearLabel(2017)).toBe('2017 or earlier')
+    expect(firstSummerYearLabel(2015)).toBe('2017 or earlier')
+    expect(firstSummerYearLabel(2018)).toBe('2018')
+    expect(firstSummerYearLabel('2017')).toBe('2017 or earlier')
+  })
+})
+
 describe('transformFirstSummerYearData', () => {
   it('transforms first summer year to chart data', () => {
     const input = [
@@ -214,8 +224,20 @@ describe('transformFirstSummerYearData', () => {
     const result = transformFirstSummerYearData(input)
 
     expect(result).toEqual([
-      { name: '2020', value: 30, percentage: 30 },
-      { name: '2022', value: 70, percentage: 70 },
+      { name: '2020', value: 30, percentage: 30, id: 2020 },
+      { name: '2022', value: 70, percentage: 70, id: 2022 },
+    ])
+  })
+
+  it('labels the 2017 bucket "2017 or earlier" and keeps the year as the drill-down id (#3207 36b)', () => {
+    const result = transformFirstSummerYearData([
+      { first_summer_year: 2017, count: 29, percentage: 2.2 },
+      { first_summer_year: 2018, count: 40, percentage: 3.1 },
+    ])
+
+    expect(result.map((r) => [r.name, r['id']])).toEqual([
+      ['2017 or earlier', 2017],
+      ['2018', 2018],
     ])
   })
 
@@ -354,6 +376,14 @@ describe('transformRetentionFirstSummerYearData', () => {
     const result = transformRetentionFirstSummerYearData(input)
 
     expect(result).toEqual([{ name: '2020', value: 32, percentage: 80 }])
+  })
+
+  it('labels the 2017 bucket "2017 or earlier"', () => {
+    const result = transformRetentionFirstSummerYearData([
+      { first_summer_year: 2017, base_count: 10, returned_count: 7, retention_rate: 0.7 },
+    ])
+
+    expect(result[0]!.name).toBe('2017 or earlier')
   })
 
   it('returns empty array for undefined input', () => {

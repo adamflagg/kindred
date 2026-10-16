@@ -536,7 +536,11 @@ class TestRegistrationServiceSummerMetrics:
 
     @pytest.mark.asyncio
     async def test_summer_years_breakdown(self) -> None:
-        """Summer years breakdown counts correctly."""
+        """Summers at Camp counts each camper's CampMinder Years At Camp (decision 36).
+
+        Pinned the history-based count before #3207 decision 36; the history below
+        is deliberately shorter than Years At Camp, as it is for anyone before 2017.
+        """
         from api.services.registration_service import RegistrationService
 
         mock_repo = AsyncMock()
@@ -546,9 +550,9 @@ class TestRegistrationServiceSummerMetrics:
             MockAttendee(person_id=3, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}),
         ]
         mock_repo.fetch_persons.return_value = {
-            1: MockPerson(person_id=1),
-            2: MockPerson(person_id=2),
-            3: MockPerson(person_id=3),
+            1: MockPerson(person_id=1, years_at_camp=2),
+            2: MockPerson(person_id=2, years_at_camp=1),
+            3: MockPerson(person_id=3, years_at_camp=9),
         }
         mock_repo.fetch_sessions.return_value = {
             1000: MockSession(cm_id=1000, name="S1", session_type="main"),
@@ -557,39 +561,22 @@ class TestRegistrationServiceSummerMetrics:
         mock_repo.fetch_bunk_plans.return_value = []
         mock_repo.fetch_capacity_config.return_value = 12
 
-        # Return history showing different summer years
-        # Person 1: 2 summers (2023, 2024), Person 2: 1 summer (2024), Person 3: 3 summers (2022, 2023, 2024)
-        # year=None pins the mock so compute_summer_metrics falls through to
-        # session.start_date (a bare MagicMock's .year int()s to 1, collapsing all years).
+        # History holds only 2024 for everyone; Summers at Camp must not read it.
         mock_repo.fetch_summer_enrollment_history.return_value = [
             MagicMock(
-                person_id=1, year=None, expand={"session": MagicMock(start_date="2023-06-01", session_type="main")}
-            ),
-            MagicMock(
-                person_id=1, year=None, expand={"session": MagicMock(start_date="2024-06-01", session_type="main")}
-            ),
-            MagicMock(
-                person_id=2, year=None, expand={"session": MagicMock(start_date="2024-06-01", session_type="main")}
-            ),
-            MagicMock(
-                person_id=3, year=None, expand={"session": MagicMock(start_date="2022-06-01", session_type="main")}
-            ),
-            MagicMock(
-                person_id=3, year=None, expand={"session": MagicMock(start_date="2023-06-01", session_type="main")}
-            ),
-            MagicMock(
-                person_id=3, year=None, expand={"session": MagicMock(start_date="2024-06-01", session_type="main")}
-            ),
+                person_id=pid, year=None, expand={"session": MagicMock(start_date="2024-06-01", session_type="main")}
+            )
+            for pid in (1, 2, 3)
         ]
 
         service = RegistrationService(mock_repo)
         result = await service.calculate_registration(2025)
 
-        # Check summer years breakdown
         years_dict = {y.summer_years: y for y in result.by_summer_years}
+        assert set(years_dict) == {1, 2, 9}
         assert years_dict[1].count == 1  # Person 2
         assert years_dict[2].count == 1  # Person 1
-        assert years_dict[3].count == 1  # Person 3
+        assert years_dict[9].count == 1  # Person 3
 
     @pytest.mark.asyncio
     async def test_first_summer_year_breakdown(self) -> None:
@@ -613,7 +600,7 @@ class TestRegistrationServiceSummerMetrics:
         mock_repo.fetch_capacity_config.return_value = 12
 
         # Person 1 started 2022, Person 2 started 2024
-        # year=None pins the mock so compute_summer_metrics uses session.start_date.
+        # year=None pins the mock so compute_first_summer_years uses session.start_date.
         mock_repo.fetch_summer_enrollment_history.return_value = [
             MagicMock(
                 person_id=1, year=None, expand={"session": MagicMock(start_date="2022-06-01", session_type="main")}
@@ -956,8 +943,13 @@ def _fetch_sessions_by_year(sessions: dict[int, dict[int, Any]], year: int, *arg
 
 class TestRegistrationTeenSummers:
     @pytest.mark.asyncio
-    async def test_teen_only_cohort_counts_every_summer(self) -> None:
-        """A teen in TLI in 2024, 2025 and 2026 has three summers, not two."""
+    async def test_teen_only_cohort_has_its_first_summer(self) -> None:
+        """A teen in TLI in 2024, 2025 and 2026 first came in 2024 (#3208 row 8).
+
+        Pinned the history-based summer count (three, not two) before decision 36;
+        Summers at Camp is now Years At Camp, so the guard moves to First Summer Year,
+        which the same missing-window bug would have dropped to 2025.
+        """
         from api.services.registration_service import RegistrationService
 
         sessions, history = _teen_only_world()
@@ -973,4 +965,4 @@ class TestRegistrationTeenSummers:
 
         result = await RegistrationService(mock_repo).calculate_registration(2026, session_types=["scit", "tli"])
 
-        assert {b.summer_years: b.count for b in result.by_summer_years} == {3: 1}
+        assert {b.first_summer_year: b.count for b in result.by_first_summer_year} == {2024: 1}

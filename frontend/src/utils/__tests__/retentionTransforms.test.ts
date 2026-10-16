@@ -176,6 +176,14 @@ describe('firstSummerYearToBarData', () => {
     expect(result[0]!.retentionRate).toBe(0.75)
   })
 
+  it('labels the 2017 bucket "2017 or earlier" and keeps the year as the drill-down id (#3207 36b)', () => {
+    const result = firstSummerYearToBarData([
+      { first_summer_year: 2017, base_count: 20, returned_count: 15, retention_rate: 0.75 },
+    ])
+    expect(result[0]!.name).toBe('2017 or earlier')
+    expect(result[0]!.id).toBe(2017)
+  })
+
   it('returns empty array for undefined', () => {
     expect(firstSummerYearToBarData(undefined)).toEqual([])
   })

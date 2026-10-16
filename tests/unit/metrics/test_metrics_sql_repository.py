@@ -854,12 +854,10 @@ class TestObjectCompatibility:
             assert session.cm_id is not None
 
     @pytest.mark.asyncio
-    async def test_compute_summer_metrics(self, sql_db: sqlite3.Connection) -> None:
-        """compute_summer_metrics works on SQL-produced enrollment history."""
-        from api.utils.session_metrics import compute_summer_metrics
+    async def test_compute_first_summer_years(self, sql_db: sqlite3.Connection) -> None:
+        """compute_first_summer_years works on SQL-produced enrollment history."""
+        from api.utils.session_metrics import compute_first_summer_years
 
         repo = _make_repo(sql_db)
         history = await repo.fetch_summer_enrollment_history({1001}, max_year=2025)
-        summer_years, first_year = compute_summer_metrics(history, {1001})
-        assert summer_years[1001] == 2  # 2024 + 2025
-        assert first_year[1001] == 2024
+        assert compute_first_summer_years(history, {1001}) == {1001: 2024}

@@ -2122,7 +2122,12 @@ class TestWaitlistPersonBreakdowns:
 
 
 class TestSummerYearsBreakdown:
-    """Tests for filtering by summer_years (computed from enrollment history)."""
+    """Tests for filtering by summer_years: the person's Years At Camp (#3207 decision 36).
+
+    These pinned a history-based count before decision 36. The history below is
+    deliberately different from Years At Camp, so a regression to history fails.
+    sample_persons: 101 and 102 have 1 year, 103 has 2, 104 has 3, 105 has 5.
+    """
 
     @pytest.mark.asyncio
     async def test_filter_by_summer_years(
@@ -2138,39 +2143,23 @@ class TestSummerYearsBreakdown:
             create_mock_attendee(102, sample_sessions[1002], 2026),
             create_mock_attendee(103, sample_sessions[1003], 2026),
         ]
-
-        history_sessions = {
-            901: create_mock_session(901, "Session 2", 2024, "main", "2024-06-15", "2024-07-05"),
-            902: create_mock_session(902, "Session 3", 2025, "main", "2025-06-15", "2025-07-05"),
-        }
-
-        # Emma (101): 1 summer (2026 only)
-        # Liam (102): 2 summers (2025, 2026)
-        # Olivia (103): 3 summers (2024, 2025, 2026)
-        enrollment_history = [
-            create_mock_attendee(101, sample_sessions[1001], 2026),
-            create_mock_attendee(102, sample_sessions[1002], 2026),
-            create_mock_attendee(103, sample_sessions[1003], 2026),
-            create_mock_attendee(102, history_sessions[902], 2025),
-            create_mock_attendee(103, history_sessions[902], 2025),
-            create_mock_attendee(103, history_sessions[901], 2024),
+        history_session = create_mock_session(902, "Session 3", 2025, "main", "2025-06-15", "2025-07-05")
+        # History says Liam (102) has 2 summers; CampMinder says Olivia (103) does.
+        mock_repository.fetch_summer_enrollment_history.return_value = [
+            *attendees_2026,
+            create_mock_attendee(102, history_session, 2025),
         ]
-
         mock_repository.fetch_sessions.return_value = sample_sessions
         mock_repository.fetch_persons.return_value = sample_persons
         mock_repository.fetch_attendees.return_value = attendees_2026
-        mock_repository.fetch_summer_enrollment_history.return_value = enrollment_history
 
-        # Filter for campers with 2 summers
         result = await drilldown_service.get_attendees_for_breakdown(
             year=2026,
             breakdown_type="summer_years",
             breakdown_value="2",
         )
 
-        # Should return only Liam (102) who has 2 summers
-        assert len(result) == 1
-        assert result[0].person_id == 102
+        assert [r.person_id for r in result] == [103]
 
     @pytest.mark.asyncio
     async def test_filter_by_summer_years_one_summer(
@@ -2184,18 +2173,12 @@ class TestSummerYearsBreakdown:
         attendees_2026 = [
             create_mock_attendee(101, sample_sessions[1001], 2026),
             create_mock_attendee(102, sample_sessions[1002], 2026),
+            create_mock_attendee(104, sample_sessions[1003], 2026),
         ]
-
-        # Only 2026 enrollment for both campers
-        enrollment_history = [
-            create_mock_attendee(101, sample_sessions[1001], 2026),
-            create_mock_attendee(102, sample_sessions[1002], 2026),
-        ]
-
         mock_repository.fetch_sessions.return_value = sample_sessions
         mock_repository.fetch_persons.return_value = sample_persons
         mock_repository.fetch_attendees.return_value = attendees_2026
-        mock_repository.fetch_summer_enrollment_history.return_value = enrollment_history
+        mock_repository.fetch_summer_enrollment_history.return_value = attendees_2026
 
         result = await drilldown_service.get_attendees_for_breakdown(
             year=2026,
@@ -2203,10 +2186,7 @@ class TestSummerYearsBreakdown:
             breakdown_value="1",
         )
 
-        # Both Emma and Liam only have 1 summer in history
-        assert len(result) == 2
-        person_ids = {r.person_id for r in result}
-        assert person_ids == {101, 102}
+        assert {r.person_id for r in result} == {101, 102}
 
     @pytest.mark.asyncio
     async def test_filter_by_summer_years_is_person_level(
@@ -2217,32 +2197,24 @@ class TestSummerYearsBreakdown:
         sample_persons: dict[int, Mock],
     ) -> None:
         """summer_years is a person-level breakdown, so multi-session campers are deduped."""
-        # Olivia in two sessions in 2026
+        # Olivia (2 years at camp) in two sessions in 2026
         attendees_2026 = [
             create_mock_attendee(103, sample_sessions[1001], 2026),
             create_mock_attendee(103, sample_sessions[1003], 2026),
         ]
-
-        enrollment_history = [
-            create_mock_attendee(103, sample_sessions[1001], 2026),
-            create_mock_attendee(103, sample_sessions[1003], 2026),
-        ]
-
         mock_repository.fetch_sessions.return_value = sample_sessions
         mock_repository.fetch_persons.return_value = sample_persons
         mock_repository.fetch_attendees.return_value = attendees_2026
-        mock_repository.fetch_summer_enrollment_history.return_value = enrollment_history
+        mock_repository.fetch_summer_enrollment_history.return_value = attendees_2026
 
         result = await drilldown_service.get_attendees_for_breakdown(
             year=2026,
             breakdown_type="summer_years",
-            breakdown_value="1",
+            breakdown_value="2",
         )
 
-        # Olivia should appear only once despite two attendee records
         assert len(result) == 1
         assert result[0].person_id == 103
-        # Multi-session should show in sessions list
         assert len(result[0].sessions) == 2
 
     @pytest.mark.asyncio
@@ -2257,15 +2229,10 @@ class TestSummerYearsBreakdown:
         attendees_2026 = [
             create_mock_attendee(101, sample_sessions[1001], 2026),
         ]
-
-        enrollment_history = [
-            create_mock_attendee(101, sample_sessions[1001], 2026),
-        ]
-
         mock_repository.fetch_sessions.return_value = sample_sessions
         mock_repository.fetch_persons.return_value = sample_persons
         mock_repository.fetch_attendees.return_value = attendees_2026
-        mock_repository.fetch_summer_enrollment_history.return_value = enrollment_history
+        mock_repository.fetch_summer_enrollment_history.return_value = attendees_2026
 
         result = await drilldown_service.get_attendees_for_breakdown(
             year=2026,

@@ -62,9 +62,9 @@ SESSION_LENGTH_ORDER: dict[str, int] = {
     "unknown": 4,
 }
 
-# Non-teen summer types that count UNCONDITIONALLY toward "summers at camp" /
-# "years as camper". Used for the computed "Summers at Camp" / "First Summer Year"
-# metrics. Quest is included to match CampMinder's years_at_camp.
+# Non-teen summer types that count UNCONDITIONALLY toward a camper's First Summer
+# Year (computed from history). Quest is included to match CampMinder's
+# years_at_camp, which "Summers at Camp" reads directly (decision 36).
 #
 # Includes:
 # - main: Standard sessions (Session 1, 2, 3, 4)
@@ -75,15 +75,20 @@ SESSION_LENGTH_ORDER: dict[str, int] = {
 # Excludes:
 # - family: Family Camp (a separate program, not summer) — never counts
 # NOTE: SCIT/TLI are intentionally NOT in this tuple, but they DO count toward
-# "summers at camp" when within the summer window — admitted separately (with a
-# window gate the tuple can't express) in compute_summer_metrics(), per #1599.
-# CampMinder's years_at_camp counts teen years, and this metric mirrors it.
+# the First Summer Year when within the summer window — admitted separately (with
+# a window gate the tuple can't express) in compute_first_summer_years(), per
+# #1599. CampMinder's years_at_camp counts teen years, and this mirrors it.
 SUMMER_PROGRAM_SESSION_TYPES = ("main", "embedded", "ag", "quest")
 
 # Summer teen programs: SCIT (CIT+SIT) and TLI. NOT a default-included cohort —
 # surfaced only when explicitly selected, and always summer-window-gated to
 # exclude off-season noise (fall Family-Camp CIT, Aug->May Teen Interns, Feb L.A. Trip).
 SUMMER_TEEN_TYPES = ("scit", "tli")
+
+# Kindred's attendance history starts with the 2017 summer. First Summer Year's
+# earliest bucket therefore means "2017 or earlier" (epic #3207 decision 36b),
+# and compute_first_summer_years() folds any earlier year into it.
+FIRST_HISTORY_SUMMER = 2017
 
 # The camper journey's curated session types: summer + teen + family + adult
 # (kindred#2776 moved the journey merge server-side). The client's
@@ -274,7 +279,7 @@ def resolve_scope_ids(
 
 
 async def fetch_summer_windows(repo: Any, years: Iterable[int]) -> dict[int, tuple[str, str] | None]:
-    """Each year's summer window from that year's ``main`` sessions, for compute_summer_metrics."""
+    """Each year's summer window from that year's ``main`` sessions, for compute_first_summer_years."""
     windows: dict[int, tuple[str, str] | None] = {}
     for year in sorted(set(years)):
         windows[year] = get_summer_window(await repo.fetch_sessions(year, ["main"]))
@@ -503,43 +508,46 @@ def _summer_record_year(record: Any, session: Any | None) -> int | None:
     return None
 
 
-def compute_summer_metrics(
+def compute_first_summer_years(
     enrollment_history: list[Any],
     person_ids: set[int],
     *,
     summer_windows: Mapping[int, tuple[str, str] | None] | None = None,
-) -> tuple[dict[int, int], dict[int, int]]:
-    """Compute summer enrollment metrics from history.
+) -> dict[int, int]:
+    """Each person's First Summer Year, read from enrolled attendance history.
 
-    Shared logic used by both registration and retention services.
+    Shared by registration, retention, trends and the drill-downs. "Summers at
+    Camp" is NOT computed here: it is CampMinder's ``persons.years_at_camp`` for
+    the viewed season (epic #3207 decision 36), because history starts in
+    ``FIRST_HISTORY_SUMMER`` and undercounts anyone who came before it.
 
-    Counts the distinct years a person had a summer enrollment. Non-teen summer
+    The first year is the earliest year with a summer enrollment. Non-teen summer
     types (``SUMMER_PROGRAM_SESSION_TYPES``) always count; SCIT/TLI count too,
     but only when the session falls inside that year's summer window (#1599) — so
-    off-season teen sessions (fall Family-Camp CIT, Feb L.A. Trip) are excluded.
-    This keeps the computed metric aligned with CampMinder's ``years_at_camp``,
-    which counts teen years. Each year's window is derived from that year's
-    ``main`` sessions present in the history (always present in production — every
-    summer that runs teen programs also runs main camp); if a year's window can't
-    be derived, its teen sessions are conservatively excluded.
+    off-season teen sessions (fall Family-Camp CIT, Feb L.A. Trip) never set it.
+    Each year's window is derived from that year's ``main`` sessions present in
+    the history; if a year's window can't be derived, its teen sessions are
+    conservatively excluded.
+
+    A first year before ``FIRST_HISTORY_SUMMER`` folds into it, so the earliest
+    bucket means "2017 or earlier" (decision 36b) whatever older rows a sync
+    brings in.
 
     Pass ``summer_windows`` (from :func:`fetch_summer_windows`) wherever the
     cohort can be teen-only. A teen's history holds no ``main`` rows in the years
     they attended only SCIT/TLI, so a window derived from the history alone is
-    missing for exactly those years and every teen reads one summer short (#3208
-    row 8). A year present in ``summer_windows`` always uses the supplied window;
-    other years fall back to the history-derived one.
+    missing for exactly those years (#3208 row 8). A year present in
+    ``summer_windows`` always uses the supplied window; other years fall back to
+    the history-derived one.
 
     Args:
         enrollment_history: List of attendee records with session expansion.
-        person_ids: Set of person IDs to compute metrics for.
+        person_ids: Set of person IDs to compute it for.
         summer_windows: Optional year -> (start, end) summer window, taken from
             each year's ``main`` sessions.
 
     Returns:
-        Tuple of:
-        - summer_years_by_person: person_id -> count of distinct summer years
-        - first_year_by_person: person_id -> first summer enrollment year
+        person_id -> first summer year, for every person with a summer enrollment.
     """
     # Pass 1: derive each year's summer window from that year's main sessions.
     main_sessions_by_year: dict[int, dict[int, Any]] = {}
@@ -584,19 +592,9 @@ def compute_summer_metrics(
 
         by_person.setdefault(pid, []).append(record)
 
-    # Aggregate: count distinct years per person.
-    summer_years_by_person: dict[int, int] = {}
     first_year_by_person: dict[int, int] = {}
-
     for pid, records in by_person.items():
-        years: set[int] = set()
-        for r in records:
-            year = _summer_record_year(r, get_session_from_expand(r))
-            if year is not None:
-                years.add(year)
-
-        summer_years_by_person[pid] = len(years)
+        years = {y for r in records if (y := _summer_record_year(r, get_session_from_expand(r))) is not None}
         if years:
-            first_year_by_person[pid] = min(years)
-
-    return summer_years_by_person, first_year_by_person
+            first_year_by_person[pid] = max(min(years), FIRST_HISTORY_SUMMER)
+    return first_year_by_person

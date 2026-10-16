@@ -138,13 +138,13 @@ class GenderBySessionLengthBreakdown(BaseModel):
 
 
 class SummerYearsBreakdown(BaseModel):
-    """Breakdown by actual summer enrollment years.
+    """Breakdown by Summers at Camp: CampMinder's Years At Camp for the season.
 
-    Calculated from attendees table enrollment history, not the potentially
-    incorrect years_at_camp field in persons.
+    Reads persons.years_at_camp (epic #3207 decision 36). Attendance history
+    starts in 2017, so it undercounts anyone who came before.
     """
 
-    summer_years: int = Field(description="Number of summer years enrolled")
+    summer_years: int = Field(description="CampMinder Years At Camp (0 when none is recorded)")
     count: int = Field(description="Number of campers")
     percentage: float = Field(description="Percentage of total")
 
@@ -155,7 +155,9 @@ class FirstSummerYearBreakdown(BaseModel):
     Shows how many current campers started in each year.
     """
 
-    first_summer_year: int = Field(description="Year camper first attended summer camp")
+    first_summer_year: int = Field(
+        description="Year camper first attended summer camp, from history; 2017 means 2017 or earlier"
+    )
     count: int = Field(description="Number of campers")
     percentage: float = Field(description="Percentage of total")
 
@@ -240,13 +242,13 @@ class RetentionBySessionBunk(BaseModel):
 
 
 class RetentionBySummerYears(BaseModel):
-    """Retention metrics by number of summer enrollment years.
+    """Retention metrics by Summers at Camp: CampMinder's Years At Camp in the base season.
 
-    Calculated from actual attendees table enrollment history,
-    not the potentially incorrect years_at_camp field in persons.
+    Reads the base year's persons.years_at_camp (epic #3207 decision 36), the
+    tenure a camper had in the summer they did or didn't return from.
     """
 
-    summer_years: int = Field(description="Number of summer years enrolled")
+    summer_years: int = Field(description="CampMinder Years At Camp in the base season (0 when none is recorded)")
     base_count: int = Field(description="Count in base year")
     returned_count: int = Field(description="Count that returned in compare year")
     retention_rate: float = Field(description="Retention rate (0-1)")
@@ -259,7 +261,9 @@ class RetentionByFirstSummerYear(BaseModel):
     enabling cohort-based retention analysis.
     """
 
-    first_summer_year: int = Field(description="Year camper first attended summer camp")
+    first_summer_year: int = Field(
+        description="Year camper first attended summer camp, from history; 2017 means 2017 or earlier"
+    )
     base_count: int = Field(description="Count in base year")
     returned_count: int = Field(description="Count that returned in compare year")
     retention_rate: float = Field(description="Retention rate (0-1)")
@@ -316,7 +320,7 @@ class RetentionMetricsResponse(BaseModel):
     )
     # New breakdowns for retention tab redesign (calculated from attendees history)
     by_summer_years: list[RetentionBySummerYears] = Field(
-        default_factory=list, description="Retention by summer enrollment years (calculated from attendees)"
+        default_factory=list, description="Retention by Summers at Camp (CampMinder Years At Camp, base season)"
     )
     by_first_summer_year: list[RetentionByFirstSummerYear] = Field(
         default_factory=list, description="Retention by first summer year (cohort analysis)"
@@ -363,7 +367,11 @@ class RegistrationMetricsResponse(BaseModel):
         default_factory=list, description="Gender breakdown by session length category (for stacked bar chart)"
     )
     by_summer_years: list[SummerYearsBreakdown] = Field(
-        default_factory=list, description="Enrollment by summer years (calculated from attendees)"
+        default_factory=list, description="Enrollment by Summers at Camp (CampMinder Years At Camp)"
+    )
+    average_summers_at_camp: float | None = Field(
+        default=None,
+        description="Mean CampMinder Years At Camp of the campers in by_summer_years; null when there are none",
     )
     by_first_summer_year: list[FirstSummerYearBreakdown] = Field(
         default_factory=list, description="Enrollment by first summer year (cohort analysis)"
@@ -423,14 +431,14 @@ class GradeEnrollment(BaseModel):
 class SummerYearsEnrollment(BaseModel):
     """Summer years enrollment count for a single year."""
 
-    summer_years: int = Field(description="Number of summer years")
+    summer_years: int = Field(description="CampMinder Years At Camp that year (0 when none is recorded)")
     count: int = Field(description="Number of campers")
 
 
 class FirstSummerYearEnrollment(BaseModel):
     """First summer year enrollment count for a single year."""
 
-    first_summer_year: int = Field(description="First summer year")
+    first_summer_year: int = Field(description="First summer year; 2017 means 2017 or earlier")
     count: int = Field(description="Number of campers")
 
 

@@ -26,6 +26,7 @@ import { Loader2, AlertCircle } from 'lucide-react'
 import { aggregateCityEnrollmentByRegion, REGION_DISPLAY_NAMES } from '../../../utils/regionUtils'
 import { getYearColor, YEAR_PALETTE } from '../../../utils/yearColors'
 import { trendDirection } from '../../../utils/trendDirection'
+import { firstSummerYearLabel } from '../../../utils/metricsTransforms'
 import type { YearEnrollment } from '../../../types/metrics'
 
 interface GroupedChartItem {
@@ -483,7 +484,7 @@ export default function TrendsOverview() {
             'by_first_summer_year',
             'first_summer_year',
             15,
-            undefined,
+            firstSummerYearLabel,
             true,
             'asc'
           )

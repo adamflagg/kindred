@@ -12,7 +12,12 @@ from typing import TYPE_CHECKING, Any
 
 from api.schemas.metrics import DrilldownAttendee, DrilldownSession
 from api.services.cancellation_service import CANCELLED_STATUSES
-from api.services.extractors import filter_aged_out_attendees, is_new_camper, is_returning_camper
+from api.services.extractors import (
+    extract_years_at_camp,
+    filter_aged_out_attendees,
+    is_new_camper,
+    is_returning_camper,
+)
 from api.services.waitlist_service import DECLINED_STATUSES
 from api.utils.location_label import person_city_state_for_display
 from api.utils.session_metrics import (
@@ -20,7 +25,7 @@ from api.utils.session_metrics import (
 )
 from api.utils.session_metrics import (
     SUMMER_TEEN_TYPES,
-    compute_summer_metrics,
+    compute_first_summer_years,
     fetch_summer_windows,
     filter_attendees_by_session,
     find_ag_sessions_for_parent,
@@ -301,16 +306,16 @@ class DrilldownService:
             session_cm_ids=duration_session_ids,
         )
 
-        # For first_summer_year or summer_years breakdown, pre-compute metrics
+        # First Summer Year is read from history, so pre-compute it. Summers at Camp
+        # needs nothing extra: it is the person's Years At Camp (decision 36).
         first_year_by_person: dict[int, int] = {}
-        summer_years_by_person: dict[int, int] = {}
-        if breakdown_type in ("first_summer_year", "summer_years"):
+        if breakdown_type == "first_summer_year":
             person_ids = {pid for a in filtered_attendees if (pid := getattr(a, "person_id", None)) is not None}
             if person_ids:
                 enrollment_history = await self.repo.fetch_summer_enrollment_history(person_ids, year)
                 history_years = {int(y) for r in enrollment_history if (y := getattr(r, "year", None))}
                 summer_windows = await fetch_summer_windows(self.repo, history_years)
-                summer_years_by_person, first_year_by_person = compute_summer_metrics(
+                first_year_by_person = compute_first_summer_years(
                     enrollment_history, person_ids, summer_windows=summer_windows
                 )
 
@@ -322,7 +327,6 @@ class DrilldownService:
             breakdown_type,
             breakdown_value,
             first_year_by_person,
-            summer_years_by_person,
         )
 
         # Deduplicate for person-level breakdowns
@@ -434,7 +438,6 @@ class DrilldownService:
         breakdown_type: str,
         breakdown_value: str,
         first_year_by_person: dict[int, int] | None = None,
-        summer_years_by_person: dict[int, int] | None = None,
     ) -> list[Any]:
         """Filter attendees by the specific breakdown criteria.
 
@@ -446,16 +449,12 @@ class DrilldownService:
             breakdown_value: Value to match.
             first_year_by_person: Pre-computed first summer year by person_id
                 (only populated for first_summer_year breakdown).
-            summer_years_by_person: Pre-computed summer years count by person_id
-                (only populated for summer_years breakdown).
 
         Returns:
             Filtered list of attendees.
         """
         if first_year_by_person is None:
             first_year_by_person = {}
-        if summer_years_by_person is None:
-            summer_years_by_person = {}
         filtered = []
         for a in attendees:
             person_id = getattr(a, "person_id", None)
@@ -512,10 +511,12 @@ class DrilldownService:
                     if normalized and normalized == breakdown_value:
                         filtered.append(a)
 
-            elif breakdown_type == "years_at_camp":
+            elif breakdown_type in ("years_at_camp", "summer_years"):
+                # Summers at Camp is Years At Camp (decision 36). A missing value reads
+                # 0, as the bars count it, so the 0 bar's list matches its count.
                 try:
                     years_int = int(breakdown_value)
-                    if person and getattr(person, "years_at_camp", None) == years_int:
+                    if person and extract_years_at_camp(person) == years_int:
                         filtered.append(a)
                 except ValueError:
                     pass
@@ -560,13 +561,6 @@ class DrilldownService:
                 if pid is not None:
                     first_year = first_year_by_person.get(pid)
                     if first_year is not None and str(first_year) == breakdown_value:
-                        filtered.append(a)
-
-            elif breakdown_type == "summer_years":
-                pid = int(person_id) if person_id is not None else None
-                if pid is not None:
-                    sy = summer_years_by_person.get(pid)
-                    if sy is not None and str(sy) == breakdown_value:
                         filtered.append(a)
 
         return filtered

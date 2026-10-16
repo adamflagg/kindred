@@ -135,3 +135,18 @@ describe('CssHorizontalBarChart x-axis', () => {
     expect(screen.getByText('0')).toBeInTheDocument()
   })
 })
+
+describe('CssHorizontalBarChart footer', () => {
+  it('renders a footer line inside the card, below the bars', () => {
+    const { container } = render(
+      <CssHorizontalBarChart data={sampleData} title="Tenure" footer={<p>Footer line</p>} />
+    )
+    const card = container.firstElementChild as HTMLElement
+    expect(card).toContainElement(screen.getByText('Footer line'))
+  })
+
+  it('renders no footer when none is given', () => {
+    render(<CssHorizontalBarChart data={sampleData} title="Tenure" />)
+    expect(screen.queryByText('Footer line')).toBeNull()
+  })
+})

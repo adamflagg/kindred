@@ -44,6 +44,9 @@ import {
 } from '../../../utils/metricsTransforms'
 import { GENDER_COLORS, GENDER_SEGMENTS } from '../../../components/metrics/genderColors'
 import { Loader2, AlertCircle } from 'lucide-react'
+import { DefinitionNotes } from '../../../components/camperships/kit/DefinitionNotes'
+import { AverageSummersLine } from '../../../components/metrics/AverageSummersLine'
+import { TENURE_NOTES } from '../../../components/metrics/tenureNotes'
 import type { DrilldownFilter, SessionLengthBySessionBreakdown } from '../../../types/metrics'
 import type { SessionDateLookup, SessionTypeLookup } from '../../../utils/sessionUtils'
 
@@ -165,7 +168,7 @@ export default function RegistrationOverview() {
       setFilter({
         type: 'first_summer_year',
         value: filter.value,
-        label: `First Summer ${filter.value}`,
+        label: `First Summer ${filter.label}`,
       })
     },
     [setFilter]
@@ -696,6 +699,7 @@ export default function RegistrationOverview() {
               height={300}
               breakdownType="years_at_camp"
               onBarClick={setFilter}
+              footer={<AverageSummersLine average={data.average_summers_at_camp} />}
             />
             <CssHorizontalBarChart
               title={`${compareYear} ${(compData.by_summer_years?.length ?? 0) > 0 ? 'Summers at Camp' : 'Years at Camp'}`}
@@ -709,6 +713,7 @@ export default function RegistrationOverview() {
                     }))
               }
               height={300}
+              footer={<AverageSummersLine average={compData.average_summers_at_camp} />}
             />
           </div>
           <ComparisonSummaryTable
@@ -765,6 +770,7 @@ export default function RegistrationOverview() {
             height={300}
             breakdownType="years_at_camp"
             onBarClick={setFilter}
+            footer={<AverageSummersLine average={data.average_summers_at_camp} />}
           />
           {firstSummerYearData.length > 0 && (
             <CssHorizontalBarChart
@@ -794,6 +800,8 @@ export default function RegistrationOverview() {
           />
         </div>
       </div>
+
+      {data.average_summers_at_camp != null && <DefinitionNotes notes={TENURE_NOTES} />}
 
       {/* Drill-down Modal */}
       <DrilldownModal />
