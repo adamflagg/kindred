@@ -329,6 +329,7 @@ class RetentionService:
             overall_retention_rate=overall_rate,
             by_gender=by_gender,
             gender_fallback_count=count_binary_fallbacks(person_ids_base, persons_base),
+            gender_fallback_returned_count=count_binary_fallbacks(returned_ids, persons_base),
             by_grade=by_grade,
             by_session=by_session,
             by_years_at_camp=by_years_at_camp,

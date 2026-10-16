@@ -103,6 +103,8 @@ class MetricsSQLRepository:
             f"{prefix}last_name": "last_name",
             f"{prefix}preferred_name": "preferred_name",
             f"{prefix}gender": "gender",
+            f"{prefix}gender_identity_name": "gender_identity_name",
+            f"{prefix}gender_identity_write_in": "gender_identity_write_in",
             f"{prefix}grade": "grade",
             f"{prefix}school": "school",
             f"{prefix}city": "address_city",
@@ -407,6 +409,8 @@ class MetricsSQLRepository:
                             p.first_name AS _person_first_name,
                             p.last_name AS _person_last_name,
                             p.gender AS _person_gender,
+                            p.gender_identity_name AS _person_gender_identity_name,
+                            p.gender_identity_write_in AS _person_gender_identity_write_in,
                             p.grade AS _person_grade
                      FROM attendee_status_history ash
                      JOIN camp_sessions cs ON ash.session = cs.id
@@ -651,6 +655,8 @@ class MetricsSQLRepository:
                             p.first_name AS _person_first_name,
                             p.last_name AS _person_last_name,
                             p.gender AS _person_gender,
+                            p.gender_identity_name AS _person_gender_identity_name,
+                            p.gender_identity_write_in AS _person_gender_identity_write_in,
                             p.grade AS _person_grade"""
             person_join = "\n                     JOIN persons p ON a.person = p.id"
 

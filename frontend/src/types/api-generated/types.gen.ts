@@ -2593,6 +2593,12 @@ export type CancellationMetricsResponse = {
    * Cancellations by gender
    */
   by_gender?: Array<GenderBreakdown>
+  /**
+   * Gender Fallback Count
+   *
+   * Campers in the gender split with no Gender Identity answer, counted by the binary Gender field (owner ruling 58): the number the split's note states
+   */
+  gender_fallback_count?: number
 }
 
 /**
@@ -4537,7 +4543,7 @@ export type DrilldownAttendee = {
   /**
    * Gender
    *
-   * Gender (M, F, or other)
+   * Gender identity label: CampMinder's Gender Identity, 'self-described' for a write-in, 'not given' when blank (never the binary Gender field)
    */
   gender?: string | null
   /**
@@ -6099,7 +6105,7 @@ export type GenderBreakdown = {
   /**
    * Gender
    *
-   * Gender (M, F, or other)
+   * Gender identity label: CampMinder's Gender Identity, 'self-described' for a write-in, 'not given' when blank (never the binary Gender field)
    */
   gender: string
   /**
@@ -6155,10 +6161,7 @@ export type GenderBreakdown = {
 /**
  * GenderByGradeBreakdown
  *
- * Gender breakdown for a specific grade.
- *
- * Shows male/female counts per grade for stacked bar chart visualization.
- * Note: Only M/F tracked since CampMinder sex field only has these values.
+ * Gender identity counts for one grade, for the stacked bar chart (#2898).
  */
 export type GenderByGradeBreakdown = {
   /**
@@ -6168,21 +6171,17 @@ export type GenderByGradeBreakdown = {
    */
   grade: number | null
   /**
-   * Male Count
+   * By Gender
    *
-   * Number of male campers
+   * Campers per gender identity label (self-described and not given included), in display order
    */
-  male_count: number
-  /**
-   * Female Count
-   *
-   * Number of female campers
-   */
-  female_count: number
+  by_gender: {
+    [key: string]: number
+  }
   /**
    * Total
    *
-   * Total campers in this grade
+   * Total campers in this grade (every label, 'not given' included)
    */
   total: number
 }
@@ -6190,10 +6189,7 @@ export type GenderByGradeBreakdown = {
 /**
  * GenderBySessionLengthBreakdown
  *
- * Gender breakdown for a specific session length category.
- *
- * Shows male/female counts per session length for stacked bar chart visualization.
- * Note: Only M/F tracked since CampMinder sex field only has these values.
+ * Gender identity counts for one session length category, for the stacked bar chart (#2898).
  */
 export type GenderBySessionLengthBreakdown = {
   /**
@@ -6203,21 +6199,17 @@ export type GenderBySessionLengthBreakdown = {
    */
   length_category: string
   /**
-   * Male Count
+   * By Gender
    *
-   * Number of male campers
+   * Campers per gender identity label (self-described and not given included), in display order
    */
-  male_count: number
-  /**
-   * Female Count
-   *
-   * Number of female campers
-   */
-  female_count: number
+  by_gender: {
+    [key: string]: number
+  }
   /**
    * Total
    *
-   * Total campers in this length category
+   * Total campers in this length category (every label, 'not given' included)
    */
   total: number
 }
@@ -6231,7 +6223,7 @@ export type GenderEnrollment = {
   /**
    * Gender
    *
-   * Gender (M, F, or other)
+   * Gender identity label: CampMinder's Gender Identity, 'self-described' for a write-in, 'not given' when blank (never the binary Gender field)
    */
   gender: string
   /**
@@ -13900,6 +13892,12 @@ export type RegistrationMetricsResponse = {
    */
   by_gender: Array<GenderBreakdown>
   /**
+   * Gender Fallback Count
+   *
+   * Campers in the gender split with no Gender Identity answer, counted by the binary Gender field (owner ruling 58): the number the split's note states
+   */
+  gender_fallback_count?: number
+  /**
    * By Grade
    *
    * Enrollment by grade
@@ -15055,7 +15053,7 @@ export type RetentionByGender = {
   /**
    * Gender
    *
-   * Gender (M, F, or other)
+   * Gender identity label: CampMinder's Gender Identity, 'self-described' for a write-in, 'not given' when blank (never the binary Gender field)
    */
   gender: string
   /**
@@ -15401,6 +15399,18 @@ export type RetentionMetricsResponse = {
    */
   by_gender: Array<RetentionByGender>
   /**
+   * Gender Fallback Count
+   *
+   * Campers in the gender split with no Gender Identity answer, counted by the binary Gender field (owner ruling 58): the number the split's note states
+   */
+  gender_fallback_count?: number
+  /**
+   * Gender Fallback Returned Count
+   *
+   * How many of gender_fallback_count returned: the 'Read with care' line (#82) compares the return rate of campers with and without an identity answer
+   */
+  gender_fallback_returned_count?: number
+  /**
    * By Grade
    *
    * Retention by grade
@@ -15516,6 +15526,12 @@ export type RetentionTrendYear = {
    * Retention by gender
    */
   by_gender?: Array<RetentionByGender>
+  /**
+   * Gender Fallback Count
+   *
+   * Campers in the gender split with no Gender Identity answer, counted by the binary Gender field (owner ruling 58): the number the split's note states
+   */
+  gender_fallback_count?: number
   /**
    * By Grade
    *
@@ -17258,6 +17274,14 @@ export type SessionGenderBreakdown = {
    * Girls Enrolled
    */
   girls_enrolled: number
+  /**
+   * By Identity
+   *
+   * Gender identity split only: count per identity group with any campers; empty on the Gender field
+   */
+  by_identity?: {
+    [key: string]: number
+  }
 }
 
 /**
@@ -20150,7 +20174,7 @@ export type VelocityCurve = {
   /**
    * Gender
    *
-   * None=all, 'M'=boys, 'F'=girls
+   * None=all; Gender field split: 'M'=boys, 'F'=girls; gender identity split: one of the five groups (Girl/woman, Boy/man, Non-binary, Another identity, No answer)
    */
   gender?: string | null
   /**
@@ -20187,9 +20211,29 @@ export type VelocityResponse = {
   /**
    * By Gender
    *
-   * Empty when not split, [M, F] when split
+   * Empty when not split; [M, F] on the Gender field; the identity groups with any campers on identity
    */
   by_gender?: Array<VelocityCurve>
+  /**
+   * Gender Basis
+   *
+   * Which gender the split reads (#2898 answer #78)
+   */
+  gender_basis?: 'field' | 'identity'
+  /**
+   * Gender Fallback Count
+   *
+   * Gender identity split: this season's campers with no identity answer, counted by the Gender field (ruling 58). 0 on the Gender field or when not split
+   */
+  gender_fallback_count?: number
+  /**
+   * Prior Year Gender Fallback Counts
+   *
+   * The same count for each compared prior year above 0 (gender identity split only)
+   */
+  prior_year_gender_fallback_counts?: {
+    [key: string]: number
+  }
   /**
    * Prior Years
    */
@@ -20438,6 +20482,12 @@ export type WaitlistMetricsResponse = {
    * Waitlisted by gender
    */
   by_gender?: Array<GenderBreakdown>
+  /**
+   * Gender Fallback Count
+   *
+   * Campers in the gender split with no Gender Identity answer, counted by the binary Gender field (owner ruling 58): the number the split's note states
+   */
+  gender_fallback_count?: number
 }
 
 /**
@@ -21080,6 +21130,12 @@ export type YearEnrollment = {
    */
   by_gender: Array<GenderEnrollment>
   /**
+   * Gender Fallback Count
+   *
+   * Campers in the gender split with no Gender Identity answer, counted by the binary Gender field (owner ruling 58): the number the split's note states
+   */
+  gender_fallback_count?: number
+  /**
    * By Grade
    *
    * Enrollment by grade
@@ -21141,6 +21197,12 @@ export type YearMetrics = {
    * Enrollment by gender
    */
   by_gender: Array<GenderBreakdown>
+  /**
+   * Gender Fallback Count
+   *
+   * Campers in the gender split with no Gender Identity answer, counted by the binary Gender field (owner ruling 58): the number the split's note states
+   */
+  gender_fallback_count?: number
   /**
    * New vs returning breakdown
    */
@@ -23857,7 +23919,7 @@ export type GetDrilldownAttendeesApiMetricsDrilldownGetData = {
     /**
      * Breakdown Value
      *
-     * The value to filter by (e.g., 'F' for gender, '5' for grade, '1000' for session cm_id)
+     * The value to filter by (e.g., 'Non-binary' or 'not given' for gender, the gender identity label; '5' for grade, '1000' for session cm_id)
      */
     breakdown_value: string
     /**
@@ -23953,9 +24015,15 @@ export type GetVelocityApiMetricsVelocityGetData = {
     /**
      * Split By Gender
      *
-     * Split enrollment by gender (M/F)
+     * Split the curves by gender (gender_basis says which)
      */
     split_by_gender?: boolean
+    /**
+     * Gender Basis
+     *
+     * What the split reads (#2898 answer #78): 'field' is the binary Gender field cabins fill by (default); 'identity' is gender identity in five groups, rebuilt from attendee records
+     */
+    gender_basis?: 'field' | 'identity'
     /**
      * Metric
      *

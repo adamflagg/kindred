@@ -748,6 +748,23 @@ class TestFetchAttendeesWithDates:
         for a in result_with:
             assert "person" in a.expand
 
+    @pytest.mark.asyncio
+    async def test_person_expand_carries_gender_identity(self, sql_db: sqlite3.Connection) -> None:
+        """Velocity's gender identity split reads identity off the expanded person (#2898 answer #78). A mocked
+        repository can't catch a dropped column, so it is pinned against the real query."""
+        sql_db.execute("UPDATE persons SET gender_identity_name = 'Non-binary', gender_identity_write_in = 'x'")
+        repo = _make_repo(sql_db)
+        result = await repo.fetch_attendees_with_dates(2025, expand_person=True)
+        assert result
+        for a in result:
+            assert a.expand["person"].gender_identity_name == "Non-binary"
+            assert a.expand["person"].gender_identity_write_in == "x"
+        transitions = await repo.fetch_status_transitions(2025, to_statuses=["enrolled"], expand_person=True)
+        assert transitions
+        for t in transitions:
+            assert t.expand["person"].gender_identity_name == "Non-binary"
+            assert t.expand["person"].gender_identity_write_in == "x"
+
 
 # ============================================================================
 # Test: fetch_budget_config

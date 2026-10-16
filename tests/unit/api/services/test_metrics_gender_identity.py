@@ -262,6 +262,8 @@ async def test_retention_by_gender_reads_identity() -> None:
     }
     assert next(r.gender for r in result.by_gender) == "Girl/woman"
     assert result.gender_fallback_count == FALLBACKS
+    # #82 (a): the "Read with care" line compares how often campers with and without an answer came back.
+    assert result.gender_fallback_returned_count == 1  # Riley returned; Mia did not
 
 
 def test_retention_trends_by_gender_reads_identity() -> None:

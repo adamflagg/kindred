@@ -59,3 +59,23 @@ def has_identity_answer(name: str, write_in: str) -> bool:
 def identity_sort_key(label: str) -> tuple[float, str]:
     """Sort key for a list of gender identity labels (IDENTITY_ORDER)."""
     return (_RANK.get(label, _UNLISTED_RANK), label.casefold())
+
+
+# Owner answer #75 (a): a chart with little room (stacked bars, Trends and Velocity lines, the Trends table) folds every
+# label into five fixed groups, in this order. Donuts, comparison tables, Retention, the drill-down and the CSV list
+# every label. Transgender campers sit under Another identity (flagged to the owner, who did not object). A label
+# CampMinder adds later is an identity someone gave, so it is Another identity, never No answer.
+ANOTHER_IDENTITY: Final = "Another identity"
+NO_ANSWER: Final = "No answer"
+IDENTITY_GROUPS: Final[tuple[str, ...]] = ("Girl/woman", "Boy/man", "Non-binary", ANOTHER_IDENTITY, NO_ANSWER)
+_OWN_GROUP: Final = frozenset(IDENTITY_GROUPS[:3])
+_NO_ANSWER_LABELS: Final = frozenset({PREFER_NOT_TO_ANSWER, NOT_GIVEN})
+
+
+def identity_group(label: str) -> str:
+    """The one of IDENTITY_GROUPS a gender identity label folds into (#75 a)."""
+    if label in _OWN_GROUP:
+        return label
+    if label in _NO_ANSWER_LABELS:
+        return NO_ANSWER
+    return ANOTHER_IDENTITY

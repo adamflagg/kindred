@@ -79,3 +79,20 @@ def test_the_binary_fallback_is_a_parameter_only_analytics_passes() -> None:
     assert gender_label("Non-binary", "", binary_fallback="F") == "Non-binary"
     assert gender_label("", "words", binary_fallback="M") == SELF_DESCRIBED
     assert gender_label("", "") == NOT_GIVEN
+
+
+def test_the_five_groups_a_short_chart_folds_labels_into() -> None:
+    """Owner answer #75 (a): stacked bars, Trends lines and Velocity lines fold every label into five fixed groups.
+    Transgender campers sit under "Another identity" (flagged to the owner, who did not object)."""
+    from bunking.gender_identity import ANOTHER_IDENTITY, IDENTITY_GROUPS, NO_ANSWER, identity_group
+
+    assert IDENTITY_GROUPS == ("Girl/woman", "Boy/man", "Non-binary", ANOTHER_IDENTITY, NO_ANSWER)
+    assert identity_group("Girl/woman") == "Girl/woman"
+    assert identity_group("Boy/man") == "Boy/man"
+    assert identity_group("Non-binary") == "Non-binary"
+    for label in ("Transgender girl/woman", "Transgender boy/man", "Agender", "Not listed above", SELF_DESCRIBED):
+        assert identity_group(label) == ANOTHER_IDENTITY
+    assert identity_group("Prefer not to answer") == NO_ANSWER
+    assert identity_group(NOT_GIVEN) == NO_ANSWER
+    # A label CampMinder adds later is an identity someone gave: Another identity, never No answer.
+    assert identity_group("Two-spirit") == ANOTHER_IDENTITY

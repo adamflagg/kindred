@@ -1,6 +1,11 @@
 """Pydantic models for registration velocity response."""
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
+
+# #2898 owner answer #78: Velocity's split reads the Gender field (cabin pacing, the default) or gender identity.
+GenderBasis = Literal["field", "identity"]
 
 
 class DailyDataPoint(BaseModel):
@@ -49,7 +54,13 @@ class VelocityCurve(BaseModel):
     year: int
     session_cm_id: int | None = Field(None, description="None = combined across sessions")
     session_name: str | None = None
-    gender: str | None = Field(None, description="None=all, 'M'=boys, 'F'=girls")
+    gender: str | None = Field(
+        None,
+        description=(
+            "None=all; Gender field split: 'M'=boys, 'F'=girls; gender identity split: one of the five groups "
+            "(Girl/woman, Boy/man, Non-binary, Another identity, No answer)"
+        ),
+    )
     weekly: list[WeeklyDataPoint]
     daily: list[DailyDataPoint] = Field(
         default_factory=list, description="Daily granularity data for cumulative charts"
@@ -82,6 +93,10 @@ class SessionGenderBreakdown(BaseModel):
     session_name: str | None = None
     boys_enrolled: int
     girls_enrolled: int
+    by_identity: dict[str, int] = Field(
+        default_factory=dict,
+        description="Gender identity split only: count per identity group with any campers; empty on the Gender field",
+    )
 
 
 class PriorYearCancelledSummary(BaseModel):
@@ -123,7 +138,22 @@ class VelocityResponse(BaseModel):
     season_start: str = Field(description="ISO date of season start (priority or early registration date)")
     combined: VelocityCurve
     by_session: list[VelocityCurve]
-    by_gender: list[VelocityCurve] = Field(default_factory=list, description="Empty when not split, [M, F] when split")
+    by_gender: list[VelocityCurve] = Field(
+        default_factory=list,
+        description="Empty when not split; [M, F] on the Gender field; the identity groups with any campers on identity",
+    )
+    gender_basis: GenderBasis = Field("field", description="Which gender the split reads (#2898 answer #78)")
+    gender_fallback_count: int = Field(
+        0,
+        description=(
+            "Gender identity split: this season's campers with no identity answer, counted by the Gender field "
+            "(ruling 58). 0 on the Gender field or when not split"
+        ),
+    )
+    prior_year_gender_fallback_counts: dict[int, int] = Field(
+        default_factory=dict,
+        description="The same count for each compared prior year above 0 (gender identity split only)",
+    )
     prior_years: list[PriorYearVelocity]
     prior_year_by_gender: list[VelocityCurve] = Field(default_factory=list, description="Prior year gender curves")
     phase_markers: list[PhaseMarker]

@@ -325,6 +325,11 @@ class RetentionMetricsResponse(BaseModel):
         description="Campers in the gender split with no Gender Identity answer, counted by the binary Gender field "
         "(owner ruling 58): the number the split's note states",
     )
+    gender_fallback_returned_count: int = Field(
+        default=0,
+        description="How many of gender_fallback_count returned: the 'Read with care' line (#82) compares the "
+        "return rate of campers with and without an identity answer",
+    )
     by_grade: list[RetentionByGrade] = Field(description="Retention by grade")
     by_session: list[RetentionBySession] = Field(description="Retention by base year session")
     by_years_at_camp: list[RetentionByYearsAtCamp] = Field(description="Retention by years at camp")
