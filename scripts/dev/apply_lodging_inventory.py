@@ -30,9 +30,10 @@ import json
 import os
 import sys
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import requests
 
@@ -319,6 +320,20 @@ def _patch(base: str, token: str, record_id: str, fields: dict[str, Any]) -> Non
     resp.raise_for_status()
 
 
+def _utcnow() -> datetime:
+    """The clock the season rule reads; a seam for tests."""
+    return datetime.now(tz=UTC)
+
+
+def _season_from_clock() -> int:
+    """The Oct 15 (Pacific) season rule. MIRRORS api/services/camp_calendar.primary_season_year.
+
+    Inlined because this script runs standalone, without the api package on its path.
+    """
+    pacific = _utcnow().astimezone(ZoneInfo("America/Los_Angeles"))
+    return pacific.year + 1 if (pacific.month, pacific.day) >= (10, 15) else pacific.year
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--registry", default="config/lodging_registry.json")
@@ -331,9 +346,9 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="also apply bathroom/container/parent corrections, which OVERWRITE existing values",
     )
-    # Compute default year: use CAMPMINDER_SEASON_ID if it's numeric, else fall back to calendar year
+    # Default year: CAMPMINDER_SEASON_ID if it's numeric, else the season rule (never the calendar year).
     season_id = os.getenv("CAMPMINDER_SEASON_ID", "")
-    default_year = int(season_id) if season_id.isdigit() else datetime.now().year
+    default_year = int(season_id) if season_id.isdigit() else _season_from_clock()
     parser.add_argument(
         "--year",
         type=int,

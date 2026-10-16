@@ -595,20 +595,21 @@ class TestHistoricalServiceEdgeCases:
     async def test_default_years_fallback_without_season_id(
         self, mock_repository: MagicMock, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Test default years fall back to current year when CAMPMINDER_SEASON_ID is not set."""
-        from datetime import datetime
+        """Without CAMPMINDER_SEASON_ID the window ends on the season rule's year, not the calendar year."""
+        from datetime import UTC, datetime
 
         from api.services.historical_service import HistoricalService
 
         monkeypatch.delenv("CAMPMINDER_SEASON_ID", raising=False)
+        # 1 Nov 2026: the calendar says 2026, the Oct 15 rule says 2027.
+        monkeypatch.setattr("api.services.camp_calendar._utcnow", lambda: datetime(2026, 11, 1, tzinfo=UTC))
 
         service = HistoricalService(mock_repository)
         result = await service.calculate_historical_trends()
 
-        current_year = datetime.now().year
         assert len(result.years) == 5
         years = [y.year for y in result.years]
-        assert years == list(range(current_year - 4, current_year + 1))
+        assert years == [2023, 2024, 2025, 2026, 2027]
 
     @pytest.mark.asyncio
     async def test_attendee_without_person_record_excluded(self, mock_repository: MagicMock) -> None:

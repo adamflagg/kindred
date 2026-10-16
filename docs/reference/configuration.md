@@ -37,7 +37,7 @@ CAMPMINDER_CLIENT_ID=your-client-id
 # CAMPMINDER_SEASON_ID=2026
 ```
 
-The season needs no variable. It rolls over by itself at the start of Oct 15 in Pacific time (`pocketbase/sync/year.go`), and sync covers that season and the one before it. `CAMPMINDER_SEASON_ID` pins the season when set; an empty value counts as unset, and an invalid or out-of-range value is an error. `docker-compose.yml` passes the variable through (empty when absent from `.env`), but `docker-compose.local.yml` defaults it to `2026`, so local Docker is pinned unless you override it.
+The season needs no variable. It rolls over by itself at the start of Oct 15 in Pacific time (`pocketbase/sync/year.go`), and sync covers that season and the one before it. `CAMPMINDER_SEASON_ID` pins the season when set; an empty value counts as unset, and an invalid or out-of-range value is an error. `docker-compose.yml` passes the variable through (empty when absent from `.env`), and `docker-compose.local.yml` now does the same, so local Docker follows the rule unless you pin a year.
 
 ### PocketBase Configuration
 ```bash

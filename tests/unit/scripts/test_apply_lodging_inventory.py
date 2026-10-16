@@ -1,7 +1,7 @@
 """The apply script must never mix two seasons' unit rows."""
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -88,15 +88,13 @@ def test_the_year_defaults_to_the_campminder_season_env_var(monkeypatch: pytest.
     assert _drive_main(monkeypatch, tmp_path, []) == [2031]
 
 
-def test_the_year_falls_back_to_the_calendar_year_when_the_env_is_unset(
+def test_the_year_follows_the_season_rule_when_the_env_is_unset(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """No season configured means the clock, not a hardcoded year."""
+    """No season configured means the Oct 15 rule, not the calendar year: on 1 Nov 2026 the season is 2027."""
     monkeypatch.delenv("CAMPMINDER_SEASON_ID", raising=False)
-    before = datetime.now().year
-    seen = _drive_main(monkeypatch, tmp_path, [])
-    # A window, not an equality: the run must not flake across midnight on 31 Dec.
-    assert seen[0] in {before, datetime.now().year}
+    monkeypatch.setattr("scripts.dev.apply_lodging_inventory._utcnow", lambda: datetime(2026, 11, 1, 12, tzinfo=UTC))
+    assert _drive_main(monkeypatch, tmp_path, []) == [2027]
 
 
 def test_an_explicit_year_flag_beats_the_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -105,21 +103,19 @@ def test_an_explicit_year_flag_beats_the_environment(monkeypatch: pytest.MonkeyP
     assert _drive_main(monkeypatch, tmp_path, ["--year", "2033"]) == [2033]
 
 
-def test_the_year_falls_back_to_calendar_year_when_season_id_is_blank(
+def test_the_year_follows_the_season_rule_when_season_id_is_blank(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A blank CAMPMINDER_SEASON_ID (empty string) should fall back to calendar year, not raise."""
+    """A blank CAMPMINDER_SEASON_ID falls back to the season rule, not the calendar year, and does not raise."""
     monkeypatch.setenv("CAMPMINDER_SEASON_ID", "")
-    before = datetime.now().year
-    seen = _drive_main(monkeypatch, tmp_path, [])
-    assert seen[0] in {before, datetime.now().year}
+    monkeypatch.setattr("scripts.dev.apply_lodging_inventory._utcnow", lambda: datetime(2026, 11, 1, 12, tzinfo=UTC))
+    assert _drive_main(monkeypatch, tmp_path, []) == [2027]
 
 
-def test_the_year_falls_back_to_calendar_year_when_season_id_is_non_numeric(
+def test_the_year_follows_the_season_rule_when_season_id_is_non_numeric(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A non-numeric CAMPMINDER_SEASON_ID should fall back to calendar year, not raise."""
+    """A non-numeric CAMPMINDER_SEASON_ID falls back to the season rule, not the calendar year, and does not raise."""
     monkeypatch.setenv("CAMPMINDER_SEASON_ID", "abc")
-    before = datetime.now().year
-    seen = _drive_main(monkeypatch, tmp_path, [])
-    assert seen[0] in {before, datetime.now().year}
+    monkeypatch.setattr("scripts.dev.apply_lodging_inventory._utcnow", lambda: datetime(2026, 11, 1, 12, tzinfo=UTC))
+    assert _drive_main(monkeypatch, tmp_path, []) == [2027]

@@ -47,6 +47,7 @@ from ..schemas import (
     SolverResponse,
 )
 from ..schemas.solver import SweepRequest, SweepResponse
+from ..services.camp_calendar import default_season_year
 from ..services.data_fetcher import fetch_session_data_v2, prepare_direct_solver_input
 from ..services.id_cache import IDLookupCache
 from ..services.session_context import build_session_context
@@ -644,8 +645,8 @@ async def apply_solver_results(
     if not run_year and "year" in results:
         run_year = results["year"]
     if not run_year:
-        run_year = datetime.now(tz=UTC).year
-        logger.warning(f"apply_solver_results: No year in run config/results, using current year {run_year}")
+        run_year = default_season_year()
+        logger.warning(f"apply_solver_results: No year in run config/results, using current season {run_year}")
 
     # Create ID cache for the run year
     cache = IDLookupCache(pb, run_year)

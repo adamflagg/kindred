@@ -9,7 +9,6 @@ This router handles:
 """
 
 import asyncio
-from datetime import UTC, datetime
 from itertools import batched
 from typing import Annotated, Any
 
@@ -37,6 +36,7 @@ from ..schemas import (
     SocialGraphNode,
     SocialGraphResponse,
 )
+from ..services.camp_calendar import default_season_year
 from ..settings import get_settings
 
 logger = get_logger(__name__)
@@ -128,7 +128,7 @@ async def get_session_social_graph(
 
     Args:
         session_cm_id: CampMinder session ID
-        year: Year (defaults to current year)
+        year: Season year (defaults to the current season)
         include_metrics: Include graph metrics (density, clustering, etc.)
         layout: Graph layout algorithm (force, circle, hierarchical)
 
@@ -138,7 +138,7 @@ async def get_session_social_graph(
     _require_manage_for_scenario(user, scenario_id)
     try:
         if year is None:
-            year = datetime.now(tz=UTC).year
+            year = default_season_year()
 
         logger.info(
             f"Building social graph for session {session_cm_id}, year {year}"
@@ -429,7 +429,7 @@ async def get_bunk_social_graph(
     Args:
         bunk_cm_id: CampMinder bunk ID
         session_cm_id: CampMinder session ID (required)
-        year: Year (defaults to current year)
+        year: Season year (defaults to the current season)
         scenario_id: When provided, source bunk membership from the scenario's
             draft assignments so the bunk subgraph matches the active scenario.
             When absent, production (CampMinder) data is used. Cache entries
@@ -442,7 +442,7 @@ async def get_bunk_social_graph(
     _require_manage_for_scenario(user, scenario_id)
     try:
         if year is None:
-            year = datetime.now(tz=UTC).year
+            year = default_season_year()
 
         logger.info(
             f"Building bunk social graph for bunk {bunk_cm_id}, session {session_cm_id}, year {year}"
@@ -713,7 +713,7 @@ async def update_camper_position(
         session_cm_id: CampMinder session ID
         person_cm_id: CampMinder person ID
         update: New bunk assignment
-        year: Year (defaults to current year)
+        year: Season year (defaults to the current season)
         scenario_id: Optional scenario ID — cache reads/writes use the scenario-scoped slot
 
     Returns:
@@ -721,7 +721,7 @@ async def update_camper_position(
     """
     try:
         if year is None:
-            year = datetime.now(tz=UTC).year
+            year = default_season_year()
 
         logger.info(f"Updating position for person {person_cm_id} to bunk {update.new_bunk_cm_id}")
 
