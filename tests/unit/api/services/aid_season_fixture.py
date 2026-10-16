@@ -114,7 +114,7 @@ AID_FILTER_FIELDS: Final[dict[str, frozenset[str]]] = {
     "aid_sources": frozenset(),
     "aid_grantors": frozenset(),
     "financial_aid_applications": frozenset({"year", "one_happy_camper", "synagogue_grant"}),
-    "sync_runs": frozenset({"service", "status", "year"}),
+    "sync_runs": frozenset({"service", "status", "year", "dry_run"}),
 }
 # collection -> the columns a sort may name, beyond id and created.
 _AID_SORTS: Final[dict[str, frozenset[str]]] = {
@@ -931,7 +931,13 @@ def _fa_mirror() -> list[Any]:
 def _sync_runs() -> list[Any]:
     def run(key: str, service: str, status: str, started: str, year: int = SEASON_YEAR) -> SimpleNamespace:
         return _rec(
-            id=f"sr{key:0>13}", service=service, status=status, year=year, trigger="daily", started=_stamp(started, 3)
+            id=f"sr{key:0>13}",
+            service=service,
+            status=status,
+            year=year,
+            trigger="daily",
+            dry_run=False,
+            started=_stamp(started, 3),
         )
 
     return [

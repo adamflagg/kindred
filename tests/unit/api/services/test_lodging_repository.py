@@ -2837,7 +2837,8 @@ class TestFetchLastSuccessfulSyncEnd:
         call = pb.collection.return_value.get_list.call_args
         assert call[0] == (1, 1)
         params: dict[str, Any] = call[1]["query_params"]
-        assert params["filter"] == 'service = "lodging_assignments" && status = "success"'
+        # A dry run wrote nothing, so it never counts as the last success.
+        assert params["filter"] == 'service = "lodging_assignments" && status = "success" && dry_run = false'
         # `-started,-id` rather than `-ended`: this is the ordering
         # `Orchestrator.LastRecordedRuns` already uses to pick one row per
         # service, and the two readouts must never disagree about which run
@@ -2920,7 +2921,7 @@ class TestFetchSessionScopedSyncEnds:
         pb.collection.assert_called_with("sync_runs")
         params = _last_query(pb)
         assert params["filter"] == (
-            'service = "household_custom_values_family_camp" && status = "success" && year = 2026'
+            'service = "household_custom_values_family_camp" && status = "success" && dry_run = false && year = 2026'
         )
         # `-started,-id`, matching `Orchestrator.LastRecordedRuns` and
         # `fetch_last_successful_sync_end`. Three readouts of the same table

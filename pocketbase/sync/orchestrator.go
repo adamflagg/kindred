@@ -530,6 +530,9 @@ type Status struct {
 	// Trigger records how the run was started (see the trigger constants). Persisted to
 	// sync_runs; unreconstructable after the fact.
 	Trigger string `json:"trigger,omitempty"`
+	// DryRun is true for a run that computed without writing. Persisted to sync_runs.dry_run;
+	// every freshness reader skips such rows, and Manage > Sync labels them.
+	DryRun bool `json:"dry_run,omitempty"`
 	// BatchID groups every service execution of one queue — a whole nightly run — under one
 	// id. Minted when the queue starts.
 	//
@@ -907,6 +910,15 @@ type runOrigin struct {
 	// session is the weekend the run was started for, empty when it covers everything.
 	// See Status.Session.
 	session string
+	// dryRun marks a run that computed without writing. Persisted to sync_runs.dry_run so the
+	// row is labelled and never counted as a fresh sync.
+	dryRun bool
+}
+
+// forDryRun returns a copy of the origin marked as a dry run (or not).
+func (r runOrigin) forDryRun(dryRun bool) runOrigin {
+	r.dryRun = dryRun
+	return r
 }
 
 // newBatch mints the origin for one grouped run. Every run gets a batch id, a batch of one
@@ -1637,6 +1649,7 @@ func (o *Orchestrator) startSingleSync(
 			Trigger:   origin.trigger,
 			BatchID:   origin.batchID,
 			Session:   origin.session,
+			DryRun:    origin.dryRun,
 		}
 		o.runningJobs[syncType] = status
 	}
@@ -1759,6 +1772,7 @@ func (o *Orchestrator) RunSingleSyncWithService(
 		Year:      origin.year,
 		RunToken:  generateRunToken(),
 		Session:   origin.session,
+		DryRun:    origin.dryRun,
 		Trigger:   origin.trigger,
 		BatchID:   origin.batchID,
 	}
@@ -1864,6 +1878,7 @@ func (o *Orchestrator) markSyncRunningForYear(syncType string, year int) error {
 		Year:      origin.year,
 		RunToken:  generateRunToken(),
 		Session:   origin.session,
+		DryRun:    origin.dryRun,
 		Trigger:   origin.trigger,
 		BatchID:   origin.batchID,
 	}
@@ -2977,7 +2992,7 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		if syncedSeason {
 			trigger = triggerManual
 		}
-		batch = newBatch(trigger).forYear(opts.Year)
+		batch = newBatch(trigger).forYear(opts.Year).forDryRun(opts.DryRun)
 		if isQueueRun {
 			o.registerBatch(batch.batchID)
 		}
@@ -3007,7 +3022,7 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		// The real 3am cron never reaches this function -- RunDailySync mints its own
 		// triggerDaily batch independently. triggerDaily here mislabeled every UI-started full
 		// run as the nightly cron.
-		batch = newBatch(triggerManual)
+		batch = newBatch(triggerManual).forDryRun(opts.DryRun)
 		if isQueueRun {
 			o.registerBatch(batch.batchID)
 		}

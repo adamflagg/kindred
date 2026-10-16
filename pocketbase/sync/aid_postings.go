@@ -448,12 +448,12 @@ func (s *AidPostingsSync) syncYear(ctx context.Context, year int, sources map[st
 // matching loadAidSourcesConfig's own posture: this check must never fail a run over its own
 // telemetry query.
 func (s *AidPostingsSync) staleInputAsOf() (stale bool, asOf string) {
-	latest, err := s.App.FindRecordsByFilter(syncRunsCollection, "service = {:svc}", "-started", 1, 0,
+	latest, err := s.App.FindRecordsByFilter(syncRunsCollection, "service = {:svc} && dry_run = false", "-started", 1, 0,
 		dbx.Params{"svc": serviceNameFinancialTransactions})
 	if err != nil || len(latest) == 0 || latest[0].GetString("status") == statusSuccess {
 		return false, ""
 	}
-	lastGood, err := s.App.FindRecordsByFilter(syncRunsCollection, "service = {:svc} && status = {:success}",
+	lastGood, err := s.App.FindRecordsByFilter(syncRunsCollection, "service = {:svc} && status = {:success} && dry_run = false",
 		"-started", 1, 0, dbx.Params{"svc": serviceNameFinancialTransactions, "success": statusSuccess})
 	if err != nil || len(lastGood) == 0 {
 		return true, ""

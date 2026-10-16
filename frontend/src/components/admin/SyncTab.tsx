@@ -347,6 +347,12 @@ export function SyncTab() {
           {status.summary && status.status !== 'idle' ? (
             <div className="space-y-1">
               <div className="flex flex-wrap gap-x-2 gap-y-1 text-xs sm:text-sm">
+                {status.dry_run && (
+                  // The run computed without writing: its counts are what WOULD have changed.
+                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                    Dry run
+                  </span>
+                )}
                 {status.summary.created > 0 && (
                   <span className="font-medium text-emerald-600 dark:text-emerald-400">
                     {status.summary.created} new

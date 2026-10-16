@@ -2689,6 +2689,7 @@ export type SyncRunsRecord<Tsub_stats = unknown> = {
   created: IsoAutoDateString
   created_count?: number
   deleted_count?: number
+  dry_run?: boolean
   duration?: number
   ended?: IsoDateString
   error?: string

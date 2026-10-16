@@ -1978,7 +1978,7 @@ class LodgingRepository:
             1,
             1,
             query_params={
-                "filter": f'service = "{pb_escape(service)}" && status = "success"',
+                "filter": f'service = "{pb_escape(service)}" && status = "success" && dry_run = false',
                 "sort": "-started,-id",
                 "fields": "ended",
             },
@@ -2057,7 +2057,7 @@ class LodgingRepository:
         rows = await self._page(
             SYNC_RUNS,
             query_params={
-                "filter": f'service = "{pb_escape(service)}" && status = "success" && year = {year}',
+                "filter": f'service = "{pb_escape(service)}" && status = "success" && dry_run = false && year = {year}',
                 "sort": "-started,-id",
                 "fields": "session,ended",
             },

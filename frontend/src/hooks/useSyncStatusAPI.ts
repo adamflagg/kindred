@@ -49,6 +49,8 @@ export interface SyncStatus {
   start_time?: string
   end_time?: string
   error?: string
+  /** The run computed without writing (`Status.DryRun`); its counts are what would have changed. */
+  dry_run?: boolean
   /**
    * The weekend this run was started FOR, absent when it covers everything
    * (kindred#2601, `Status.Session` in pocketbase/sync/orchestrator.go).

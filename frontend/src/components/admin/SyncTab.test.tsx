@@ -330,6 +330,40 @@ describe('SyncTab rejected-records badge (#2284)', () => {
   })
 })
 
+// A dry run computes without writing, yet it is published in the same status slot as a real
+// run. The card has to say so, or "historical / success" with would-be counts reads as a sync
+// that wrote data.
+describe('SyncTab dry-run label', () => {
+  afterEach(() => {
+    strandedAssignmentCleanupStatus = idleStatus
+  })
+
+  const cardFor = () => {
+    renderSyncTab()
+    const heading = screen.getByText('Stranded Assignment Cleanup', { selector: 'div' })
+    const card = heading.closest('.flex.flex-col')
+    if (!card) throw new Error('could not find Stranded Assignment Cleanup card')
+    return card as HTMLElement
+  }
+
+  it('labels a run that was a dry run', () => {
+    strandedAssignmentCleanupStatus = {
+      status: 'success',
+      dry_run: true,
+      summary: { created: 12, updated: 0, skipped: 0, errors: 0 },
+    }
+    expect(within(cardFor()).getByText('Dry run')).toBeInTheDocument()
+  })
+
+  it('shows no label on a real run', () => {
+    strandedAssignmentCleanupStatus = {
+      status: 'success',
+      summary: { created: 12, updated: 0, skipped: 0, errors: 0 },
+    }
+    expect(within(cardFor()).queryByText('Dry run')).not.toBeInTheDocument()
+  })
+})
+
 // Regression test for #2295. Stats.Rejected can exist ONLY inside SubStats: `persons` is a
 // combined sync that populates households through its own Stats and reports them as
 // sub_stats.households (persons.go GetStats), and the household half is where the

@@ -108,6 +108,9 @@ func (o *Orchestrator) recordSyncRun(completed *Status) {
 	// per-weekend freshness query reads as "this run covered you", not as a gap.
 	rec.Set("session", completed.Session)
 	rec.Set("batch_id", completed.BatchID)
+	// A dry run computes without writing. Labelled so Manage > Sync can say so and so no
+	// freshness reader (LastRecordedRuns, the aid stale-input checks, FastAPI's) counts it.
+	rec.Set("dry_run", completed.DryRun)
 	rec.Set("created_count", stats.Created)
 	rec.Set("updated_count", stats.Updated)
 	rec.Set("deleted_count", stats.Deleted)
@@ -342,6 +345,8 @@ func (o *Orchestrator) lastRecordedRuns(year int) map[string]*Status {
 		return out
 	}
 
+	// NEVER A DRY RUN: it wrote nothing, so it made nothing fresh (sync_runs.dry_run).
+	//
 	// SUCCESSFUL RUNS ONLY, and that is the whole point rather than a filter for tidiness.
 	// The caller renders "<noun> synced {N} ago" off EndTime, and only a run that succeeded
 	// made anything fresh. Rehydrating the last run regardless of outcome would take a
@@ -383,7 +388,7 @@ func (o *Orchestrator) lastRecordedRuns(year int) map[string]*Status {
 		FROM (
 			SELECT *, ROW_NUMBER() OVER (PARTITION BY service ORDER BY started DESC, id DESC) AS rn
 			FROM ` + syncRunsCollection + `
-			WHERE status = {:success} AND ({:year} = 0 OR year = {:year})
+			WHERE status = {:success} AND dry_run = 0 AND ({:year} = 0 OR year = {:year})
 		)
 		WHERE rn = 1`).Bind(dbx.Params{"success": statusSuccess, "year": year})
 	if err := query.All(&rows); err != nil {

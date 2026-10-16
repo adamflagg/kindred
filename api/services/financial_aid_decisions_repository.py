@@ -585,7 +585,7 @@ class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
             page(AID_HOUSEHOLD_LINKS, season, "household_cm_id,family_key,excluded,created,updated"),
             page(
                 SYNC_RUNS,
-                f"year >= {int(year) - 1} && year <= {int(year) + 1} && deleted_count > 0 && ended > '{pb_escape(at)}' && "
+                f"year >= {int(year) - 1} && year <= {int(year) + 1} && deleted_count > 0 && dry_run = false && ended > '{pb_escape(at)}' && "
                 f"({services})",
                 "service,ended",
             ),
@@ -720,7 +720,7 @@ class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
             _RUN_PAGE,
             query_params={
                 "filter": (
-                    f'service = "{pb_escape(service)}" && status = "success" && year >= {int(year) - 1} && year <= {int(year) + 1}'
+                    f'service = "{pb_escape(service)}" && status = "success" && dry_run = false && year >= {int(year) - 1} && year <= {int(year) + 1}'
                 ),
                 "sort": "-started,-id",
                 "fields": "started,trigger,year",

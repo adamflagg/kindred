@@ -63,6 +63,7 @@ func newSyncRunsApp(t *testing.T) *tests.TestApp {
 	})
 	col.Fields.Add(&core.TextField{Name: "batch_id", Required: true, Max: 100})
 	col.Fields.Add(&core.TextField{Name: "session", Max: 100})
+	col.Fields.Add(&core.BoolField{Name: "dry_run"})
 	for _, name := range []string{
 		"created_count", "updated_count", "deleted_count", "skipped_count",
 		"errors_count", "rejected_count", "expanded_count", "already_processed_count",
@@ -1620,5 +1621,66 @@ func TestForSessionKeepsANonNumericSession(t *testing.T) {
 			t.Errorf("forSession(%q).session = %q, want it unchanged -- a numeric round-trip "+
 				"must not eat a summer session identifier", session, got)
 		}
+	}
+}
+
+// A dry run computes without writing, yet it used to be recorded exactly like a real run. The
+// row carries dry_run so Manage > Sync can label it and no freshness reader counts it.
+func TestSyncRunRecordsWhetherItWasADryRun(t *testing.T) {
+	t.Parallel()
+
+	for _, dry := range []bool{true, false} {
+		app := newSyncRunsApp(t)
+		o := NewOrchestrator(app)
+		svc := &MockService{name: "svc", stats: Stats{Created: 1}}
+		origin := newBatch(triggerManual).forDryRun(dry)
+		if err := o.RunSingleSyncWithService(context.Background(), "svc", svc, origin); err != nil {
+			t.Fatalf("RunSingleSyncWithService: %v", err)
+		}
+		recs := waitForSyncRuns(t, app, 1)
+		if got := recs[0].GetBool("dry_run"); got != dry {
+			t.Errorf("dry_run = %v, want %v", got, dry)
+		}
+		if got := completedStatus(t, o, "svc"); got.DryRun != dry {
+			t.Errorf("published Status.DryRun = %v, want %v", got.DryRun, dry)
+		}
+	}
+}
+
+// A dry run's row must never stand in for the last real run: LastRecordedRuns feeds the
+// freshness lines after a restart, and only a run that wrote anything made data fresh.
+func TestLastRecordedRunsIgnoresDryRuns(t *testing.T) {
+	t.Parallel()
+
+	app := newSyncRunsApp(t)
+	col, err := app.FindCollectionByNameOrId(syncRunsCollection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, dry := range []bool{false, true} {
+		rec := core.NewRecord(col)
+		rec.Set("service", "attendees")
+		rec.Set("year", 2026)
+		rec.Set("status", statusSuccess)
+		rec.Set("trigger", triggerManual)
+		rec.Set("batch_id", "b")
+		rec.Set("dry_run", dry)
+		rec.Set("created_count", 10+i)
+		rec.Set("started", fmt.Sprintf("2026-10-1%dT10:00:00.000Z", 1+i))
+		rec.Set("ended", fmt.Sprintf("2026-10-1%dT10:05:00.000Z", 1+i))
+		if err := app.Save(rec); err != nil {
+			t.Fatalf("save: %v", err)
+		}
+	}
+
+	got, ok := NewOrchestrator(app).LastRecordedRuns()["attendees"]
+	if !ok {
+		t.Fatal("no entry for attendees: the real run was dropped")
+	}
+	if got.Summary.Created != 10 {
+		t.Errorf("Created = %d, want 10 (the real run), the later dry run won", got.Summary.Created)
+	}
+	if got.DryRun {
+		t.Error("a dry run was rehydrated as the last successful run")
 	}
 }
