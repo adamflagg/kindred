@@ -41,6 +41,16 @@ describe('buildSessionComparisonData', () => {
     expect(rows[0]?.compareName).toBeUndefined()
   })
 
+  it('keeps rows that share a CampMinder id of 0 apart, each with its own prior', () => {
+    const rows = merge(
+      [s(0, 'Session 3', 20), s(0, 'Session 4', 22)],
+      [s(0, 'Session 3', 18), s(0, 'Session 4', 25)]
+    )
+    expect(rows).toHaveLength(2)
+    expect(rows[0]).toMatchObject({ primaryValue: 20, compareValue: 18 })
+    expect(rows[1]).toMatchObject({ primaryValue: 22, compareValue: 25 })
+  })
+
   it('keeps an unmatched prior session as a GONE row and an unmatched current as NEW', () => {
     const rows = merge([s(1, 'Session 2', 20)], [s(2, 'Session 4', 18)])
     expect(rows).toHaveLength(2)

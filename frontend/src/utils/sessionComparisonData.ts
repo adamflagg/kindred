@@ -29,9 +29,25 @@ export function buildSessionComparisonData(
   })
   retired.forEach((p, i) => pairOfPrior.set(p, { key: `retired-${i}`, currentIndex: -1 }))
 
+  // A chart point carries only the id and chart name, so find its row by both, each row once:
+  // rows that share an id (0 means "no id") must not all collapse onto the first one.
+  const rowOfPoint =
+    (rows: readonly SessionBreakdown[], taken: Set<SessionBreakdown>) =>
+    (point: ChartDataPoint) => {
+      const row = rows.find(
+        (r) =>
+          !taken.has(r) &&
+          String(r.session_cm_id) === point['id'] &&
+          transformSessionData([r], sessionDateLookup, sessionTypeLookup)[0]?.name === point.name
+      )
+      if (row) taken.add(row)
+      return row
+    }
+
+  const currentRowOf = rowOfPoint(current, new Set())
   const primaryData = transformSessionData(current, sessionDateLookup, sessionTypeLookup).map(
     (point) => {
-      const row = current.find((c) => String(c.session_cm_id) === point['id'])
+      const row = currentRowOf(point)
       return { ...point, pairKey: (row && pairKeyOfCurrent.get(row)) ?? `current-${point['id']}` }
     }
   )
@@ -39,8 +55,9 @@ export function buildSessionComparisonData(
   // One compare item per pair, at the place of its first prior row in the prior year's order.
   const priorPoints = transformSessionData(prior, sessionDateLookup, sessionTypeLookup)
   const compareByKey = new Map<string, ChartDataPoint>()
+  const priorRowOf = rowOfPoint(prior, new Set())
   for (const point of priorPoints) {
-    const row = prior.find((p) => String(p.session_cm_id) === point['id'])
+    const row = priorRowOf(point)
     const pair = row && pairOfPrior.get(row)
     if (!pair) continue
     const existing = compareByKey.get(pair.key)
