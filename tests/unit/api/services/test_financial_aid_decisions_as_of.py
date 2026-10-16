@@ -697,6 +697,7 @@ async def test_a_past_read_of_yesterday_equals_the_live_read_field_by_field() ->
     assert (by_id[EMMA].rounds[0].clawed_back, rows[EMMA].rounds[0].clawed_back) == (False, False)
     live_budget, past_budget_ = await service.budget(YEAR), await service.budget(YEAR, as_of=yesterday)
     assert strip(past_budget_) == strip(live_budget)
+    assert past_budget_.total.below.campminder_aid_off_requests is None  # a past read never carries D170's line
     assert past_budget_.total.below.outside_budget_posted == 650.0
     assert past_budget_.total.demand.round2_asked == 700.0
     # Only the request with no resolvable pool is named as pool_unknown; nothing else is swept in.
