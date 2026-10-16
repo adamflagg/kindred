@@ -30,7 +30,10 @@ def _create_schema(conn: sqlite3.Connection) -> None:
             years_at_camp INTEGER,
             household_id INTEGER,
             year INTEGER NOT NULL,
-            age REAL
+            age REAL,
+            birthdate TEXT DEFAULT '',
+            primary_childhood_household TEXT DEFAULT '',
+            parent_names TEXT DEFAULT ''
         );
 
         CREATE TABLE camp_sessions (
@@ -130,7 +133,9 @@ def _create_schema(conn: sqlite3.Connection) -> None:
 
         CREATE TABLE households (
             id TEXT PRIMARY KEY,
-            cm_id INTEGER NOT NULL
+            cm_id INTEGER NOT NULL,
+            year INTEGER NOT NULL DEFAULT 2025,
+            billing_postal_code TEXT DEFAULT ''
         );
     """)
 
@@ -381,7 +386,7 @@ def _seed_data(conn: sqlite3.Connection) -> None:
 
     # -- Households --
     conn.executemany(
-        "INSERT INTO households VALUES (?,?)",
+        "INSERT INTO households (id, cm_id) VALUES (?,?)",
         [
             ("hh_2001", 2001),
             ("hh_2002", 2002),

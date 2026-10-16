@@ -20,6 +20,16 @@ from .metrics_sql_connection import get_connection
 logger = get_logger(__name__)
 
 
+def _json_or_none(value: str | None) -> Any:
+    """A PocketBase json column as stored (text): parsed, or None when blank or unreadable."""
+    if not value:
+        return None
+    try:
+        return json.loads(value)
+    except ValueError:
+        return None
+
+
 class MetricsSQLRepository:
     """Data access layer using direct SQLite queries against PocketBase's DB.
 
@@ -152,13 +162,16 @@ class MetricsSQLRepository:
     async def fetch_persons(self, year: int) -> dict[int, Any]:
         """Fetch persons as dict keyed by cm_id (int).
 
-        preferred_name, age and address_state feed the drill-down list and CSV.
-        Blank strings read as None so the drill-down's ``??`` fallbacks apply.
+        preferred_name, age and address_state feed the drill-down list and CSV; so do
+        birthdate (Age), primary_childhood_household (Zip) and parent_names
+        (Caregivers, parsed from its stored JSON). Blank strings read as None so the
+        drill-down's ``??`` fallbacks apply.
         """
         rows = self._query(
             """SELECT cm_id, first_name, last_name, preferred_name, gender, grade, age,
                       school, normalized_school, address_city, address_state,
-                      normalized_city, normalized_congregation, years_at_camp, household_id
+                      normalized_city, normalized_congregation, years_at_camp, household_id,
+                      birthdate, primary_childhood_household, parent_names
                FROM persons WHERE year = ?""",
             (year,),
         )
@@ -179,9 +192,24 @@ class MetricsSQLRepository:
                 normalized_congregation=r["normalized_congregation"],
                 years_at_camp=r["years_at_camp"],
                 household_id=r["household_id"],
+                birthdate=r["birthdate"] or None,
+                primary_childhood_household=r["primary_childhood_household"] or None,
+                parent_names=_json_or_none(r["parent_names"]),
             )
             for r in rows
         }
+
+    async def fetch_household_postal_codes(self, year: int) -> dict[str, str]:
+        """Each household's billing postal code this season, keyed by its PocketBase id.
+
+        Same contract as MetricsRepository.fetch_household_postal_codes: the drill-down
+        CSV's Zip (decision 13), read through a camper's primary childhood household.
+        """
+        rows = self._query(
+            "SELECT id, billing_postal_code FROM households WHERE year = ?",
+            (int(year),),
+        )
+        return {str(r["id"]): str(r["billing_postal_code"]) for r in rows if r["id"] and r["billing_postal_code"]}
 
     # ------------------------------------------------------------------
     # 3. fetch_sessions

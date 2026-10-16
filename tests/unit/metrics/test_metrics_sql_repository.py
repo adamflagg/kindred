@@ -880,3 +880,85 @@ class TestObjectCompatibility:
         repo = _make_repo(sql_db)
         history = await repo.fetch_summer_enrollment_history({1001}, max_year=2025)
         assert compute_first_summer_years(history, {1001}) == {1001: 2024}
+
+
+# ============================================================================
+# Test: the drill-down list on this repository (epic #3207 PR 6 hotfix)
+# ============================================================================
+
+
+class TestDropInParity:
+    """The router serves metrics from this repository by default (METRICS_SQL_ENABLED), so every
+    method the services call on MetricsRepository must exist here too. #3249 added
+    fetch_household_postal_codes to MetricsRepository only, and every drill-down list 500ed."""
+
+    def test_every_public_method_of_metrics_repository_exists_here(self) -> None:
+        import inspect
+
+        from api.services.metrics_repository import MetricsRepository
+        from api.services.metrics_sql_repository import MetricsSQLRepository
+
+        def public(cls: type) -> set[str]:
+            return {n for n, _ in inspect.getmembers(cls, inspect.isfunction) if not n.startswith("_")}
+
+        assert public(MetricsRepository) - public(MetricsSQLRepository) == set()
+
+
+class TestDrilldownPersonFields:
+    """fetch_persons carries what the drill-down reads for Age, Zip and Caregivers.
+
+    A mocked PocketBase repository can't catch a column this query never selects.
+    """
+
+    @pytest.mark.asyncio
+    async def test_birthdate_household_and_caregivers(self, sql_db: sqlite3.Connection) -> None:
+        sql_db.execute(
+            "UPDATE persons SET birthdate = '2014-03-02', primary_childhood_household = 'hh_2001',"
+            " parent_names = ? WHERE id = 'per_emma'",
+            ('[{"first": "Sarah", "last": "Johnson", "relationship": "Mother"}]',),
+        )
+        repo = _make_repo(sql_db)
+        emma = (await repo.fetch_persons(2025))[1001]
+        assert emma.birthdate == "2014-03-02"
+        assert emma.primary_childhood_household == "hh_2001"
+        assert emma.parent_names == [{"first": "Sarah", "last": "Johnson", "relationship": "Mother"}]
+
+    @pytest.mark.asyncio
+    async def test_blank_fields_read_as_none(self, sql_db: sqlite3.Connection) -> None:
+        sql_db.execute("UPDATE persons SET parent_names = 'null' WHERE id = 'per_liam'")
+        repo = _make_repo(sql_db)
+        persons = await repo.fetch_persons(2025)
+        for person in (persons[1002], persons[1003]):
+            assert person.birthdate is None
+            assert person.primary_childhood_household is None
+            assert person.parent_names is None
+
+
+class TestFetchHouseholdPostalCodes:
+    @pytest.mark.asyncio
+    async def test_this_seasons_codes_keyed_by_pocketbase_id(self, sql_db: sqlite3.Connection) -> None:
+        sql_db.execute("UPDATE households SET billing_postal_code = '94110' WHERE id = 'hh_2001'")
+        sql_db.execute(
+            "INSERT INTO households (id, cm_id, year, billing_postal_code) VALUES ('hh_old', 2002, 2024, '94612')"
+        )
+        repo = _make_repo(sql_db)
+        assert await repo.fetch_household_postal_codes(2025) == {"hh_2001": "94110"}
+
+
+class TestDrilldownServiceOnSQL:
+    """The drill-down list runs end to end on this repository, as the router builds it."""
+
+    @pytest.mark.asyncio
+    async def test_enrolled_list_carries_age_zip_and_caregivers(self, sql_db: sqlite3.Connection) -> None:
+        from api.services.drilldown_service import DrilldownService
+
+        sql_db.execute("UPDATE households SET billing_postal_code = '94110' WHERE id = 'hh_2001'")
+        sql_db.execute(
+            "UPDATE persons SET birthdate = '2014-03-02', primary_childhood_household = 'hh_2001',"
+            " parent_names = ? WHERE id = 'per_emma'",
+            ('[{"first": "Sarah", "last": "Johnson"}]',),
+        )
+        service = DrilldownService(_make_repo(sql_db))
+        rows = await service.get_attendees_for_breakdown(2025, "status", "enrolled", status_filter=["enrolled"])
+        emma = next(r for r in rows if r.person_id == 1001)
+        assert (emma.age, emma.zip, emma.caregivers) == (11, "94110", ["Sarah Johnson"])
