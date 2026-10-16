@@ -208,7 +208,9 @@ class D170Reads:
 @dataclass(frozen=True)
 class _Split:
     no_request: list[NoRequestAid]
-    held: list[tuple[Group, int, CampLine]]  # a line a request holds: its family x session, whose (d170_person)
+    # A line a request holds: its family x session and whose (d170_person). Every line with a group is in exactly one
+    # of the two lists (the scan's conservation test pins it).
+    held: list[tuple[Group, int, CampLine]]
 
 
 def _split(lines: Iterable[CampLine], reads: D170Reads) -> _Split:
@@ -237,17 +239,17 @@ def _split(lines: Iterable[CampLine], reads: D170Reads) -> _Split:
                 out.no_request.append(NoRequestAid(line, None))
             continue
         found = NoRequestAid(line, group)
-        if why == "no_request":
-            camper = line.attributed_person_cm_id or line.person_cm_id
-            if not any(not camper or not p or p == camper for h in family for p in sessionless.get(h, ())):
-                out.no_request.append(found)
-            continue
         whose = d170_person(found, reads.family_camp, reads.attendees)
-        if not whose or any((h, whose, group[1]) in held_by for h in family):
+        if why != "no_request" and (not whose or any((h, whose, group[1]) in held_by for h in family)):
             out.held.append((group, whose, line))
-        elif not any(not p or p == whose for h in family for p in sessionless.get(h, ())):
-            # #49 (owner ruling: PER CAMPER): a sibling's request on the family x session does not hold this camper's
-            # money; it stays on D170 until the camper's own request (or an unmatched one that may be theirs) exists.
+            continue
+        # #49 (owner ruling: PER CAMPER): a sibling's request does not hold this camper's money; an unmatched request
+        # that may be theirs does (the loader may post it at this session). A line credited to no camper is the sole
+        # enrolled camper's (d170_person) or, on a Family Camp weekend or with two enrolled, anyone's.
+        camper = line.attributed_person_cm_id or line.person_cm_id or whose
+        if any(not camper or not p or p == camper for h in family for p in sessionless.get(h, ())):
+            out.held.append((group, whose, line))  # held: on the unmatched request, never on D170 as well
+        else:
             out.no_request.append(found)
     return out
 
@@ -260,7 +262,8 @@ def aid_on_no_request_lines(lines: Iterable[CampLine], reads: D170Reads) -> list
     holding_requests), and counts when it lands on:
       - a family x session with no request of any status (a family with no application, a sibling's session the
         household asked nothing for), unless the family holds a request intake matched to no session whose camper is
-        the line's, or either camper is unknown (0): the loader posts such a request at the sheet's session when an
+        the line's (for a line credited to no camper, d170_person's sole enrolled camper), or either camper is unknown
+        (0): the loader posts such a request at the sheet's session when an
         override loads a sheet row onto it, and this read, having no sheet, takes any such request to hold that money;
       - a family x session that has requests, none of them its camper's (#49, owner ruling: PER CAMPER). Whose the
         money is is d170_person's: a credited camper's, or for a line credited to no camper the household's one
@@ -278,7 +281,9 @@ def aid_on_no_request_lines(lines: Iterable[CampLine], reads: D170Reads) -> list
 
 def aid_on_request(lines: Iterable[CampLine], reads: D170Reads) -> dict[tuple[int, int, int], Decimal]:
     """The other side of D170: CampMinder's live camp aid a request holds, per (household, whose, session), whose
-    being d170_person's (0: the household's). Form intake's on-request cell shows a row only its own."""
+    being d170_person's (0: the household's). Form intake's on-request cell shows a row only its own. With
+    aid_on_no_request_lines it covers every line that has a family x session exactly once (an unmatched request's
+    money is here, though no on-request cell shows a request with no session)."""
     out: dict[tuple[int, int, int], Decimal] = defaultdict(lambda: ZERO)
     for (household, session), whose, line in _split(lines, reads).held:
         out[(household, whose, session)] += line.amount
