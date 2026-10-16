@@ -638,6 +638,24 @@ type Stats struct {
 	// -- that would need a new migration column, which is out of scope here; the counter
 	// still reaches the live Sync tab via this JSON field.
 	DuplicateStaffStatus int `json:"duplicate_staff_status,omitempty"`
+	// NoCamperDetails counts attendees CampMinder returned from the persons endpoint with no
+	// CamperDetails block, so persons.go wrote no persons row for them (P-25). Only the
+	// persons service increments it, and only for people who came from attendees: a
+	// staff-only person has no CamperDetails by design and is not counted. The person is
+	// also in Skipped (no row was written), so this is a named subset, not a replacement.
+	// An enrolled adult attendee with no persons row used to vanish from a Debug line only.
+	// Not persisted to sync_runs; it reaches the live Sync tab through this JSON field.
+	NoCamperDetails int `json:"no_camper_details,omitempty"`
+	// NoCamperDetailsStaff is the same skip for staff-only people. That is the expected
+	// outcome (a staff member who was never a camper has no CamperDetails), so it never
+	// warns; it is counted so the two populations stay separate and a jump is visible.
+	NoCamperDetailsStaff int `json:"no_camper_details_staff,omitempty"`
+	// NotReturned counts camper person ids (from attendees) the persons sync asked
+	// CampMinder for that came back absent, so no persons row was written or refreshed;
+	// NotReturnedStaff is the same for staff-only ids. Both warn once per id. Nothing but
+	// persons.go increments them. Not persisted to sync_runs.
+	NotReturned      int `json:"not_returned,omitempty"`
+	NotReturnedStaff int `json:"not_returned_staff,omitempty"`
 	// UnresolvedSession counts bunk_assignments the run fetched from CampMinder but could
 	// not attach to a session (kindred#2465) -- either the (bunkPlan, bunk) pair named more
 	// than one candidate session for a staff member, or no step of the resolution ladder

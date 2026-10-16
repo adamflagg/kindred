@@ -341,12 +341,39 @@ func (s *PersonsSync) processPersonBatches(
 			s.SyncSuccessful = true
 		}
 
+		s.recordNotReturned(batch, persons, camperIDsSet, year)
 		s.processBatchPersons(persons, camperIDsSet, existingPersons, tagDefsByName, divisionsByID, year, result)
 		processed += len(batch)
 	}
 
 	slog.Info("Extracted unique households from persons", "count", len(result.extractedHouseholds))
 	return result, nil
+}
+
+// recordNotReturned warns about, and counts, every id in asked that CampMinder did not
+// send back. Campers (ids from attendees) and staff-only ids are counted separately.
+func (s *PersonsSync) recordNotReturned(asked []int, returned []map[string]any, camperIDsSet map[int]bool, year int) {
+	got := make(map[int]bool, len(returned))
+	for _, p := range returned {
+		if id, ok := p["ID"].(float64); ok {
+			got[int(id)] = true
+		}
+	}
+	for _, id := range asked {
+		if got[id] {
+			continue
+		}
+		if camperIDsSet[id] {
+			s.Stats.NotReturned++
+		} else {
+			s.Stats.NotReturnedStaff++
+		}
+		slog.Warn("Person id requested from CampMinder was not returned, so no persons row is written or refreshed",
+			"personID", id,
+			"isCamper", camperIDsSet[id],
+			"year", year,
+		)
+	}
 }
 
 // processBatchPersons processes a batch of person records.
@@ -638,12 +665,21 @@ func (s *PersonsSync) transformPersonToPB(
 	// Skip if no CamperDetails (means they're not a camper)
 	camperDetails, ok := cmPerson["CamperDetails"].(map[string]any)
 	if !ok || camperDetails == nil {
-		name := s.getPersonName(cmPerson)
-		slog.Debug("Skipping person - no CamperDetails (not a camper)",
-			"name", name,
-			"personID", cmPerson["ID"],
-		)
 		s.missingDataStats["skipped_no_camper_details"]++
+		if isCamper {
+			// An attendee with no CamperDetails gets no persons row; say so (P-25).
+			s.Stats.NoCamperDetails++
+			slog.Warn("Skipping attendee - CampMinder returned no CamperDetails, so no persons row is written",
+				"personID", cmPerson["ID"],
+				"year", year,
+			)
+		} else {
+			s.Stats.NoCamperDetailsStaff++
+			slog.Debug("Skipping person - no CamperDetails (not a camper)",
+				"name", s.getPersonName(cmPerson),
+				"personID", cmPerson["ID"],
+			)
+		}
 		return nil, nil
 	}
 
@@ -1211,6 +1247,10 @@ func (s *PersonsSync) printDataQualitySummary() {
 		"totalCampers", s.missingDataStats["total_campers"],
 		"staffSkipped", s.skippedStaff,
 		"noCamperDetails", s.missingDataStats["skipped_no_camper_details"],
+		"attendeesNoCamperDetails", s.Stats.NoCamperDetails,
+		"staffNoCamperDetails", s.Stats.NoCamperDetailsStaff,
+		"camperIDsNotReturned", s.Stats.NotReturned,
+		"staffIDsNotReturned", s.Stats.NotReturnedStaff,
 		"missingNames", s.missingDataStats["missing_name"],
 		"missingAges", s.missingDataStats["missing_age"],
 		"missingGrades", s.missingDataStats["missing_grade"],

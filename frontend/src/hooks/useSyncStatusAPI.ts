@@ -82,6 +82,14 @@ export interface SyncStatus {
     // first status seen wins (see pocketbase/sync/staff.go's allStaffStatuses), and this
     // is the count of every later status that lost that collapse.
     duplicate_staff_status?: number
+    // Attendees CampMinder returned with no CamperDetails, so no persons row was written
+    // (P-25). Only the `persons` service sets this; staff-only people are not counted.
+    no_camper_details?: number
+    // Camper person ids CampMinder was asked for and did not return (P-25).
+    not_returned?: number
+    // Staff-only counterparts of the two counts above; carried in the payload, not shown.
+    no_camper_details_staff?: number
+    not_returned_staff?: number
     already_processed?: number // For process_requests: records already processed
     prod_audit_warnings?: number // For stranded_assignment_cleanup: stranded prod assignments (observe-only)
     lodging_prod_audit_warnings?: number // For stranded_assignment_cleanup: stranded lodging prod assignments (observe-only)
