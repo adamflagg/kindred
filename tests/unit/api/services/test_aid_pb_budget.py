@@ -328,4 +328,6 @@ async def test_a_warm_requests_page_set_reads_the_fa_mirror_never(season_pb: Rec
     season_pb.reset()
     await _requests_page_set(season_pb)
     assert season_pb.count(FA_MIRROR) == 0, _summary(season_pb)
-    assert len(season_pb.calls) <= 37, _summary(season_pb)
+    # 37 + 3: from 2027 Season's budget also reads D170's household links, request additions and registered
+    # attendees (owner #48); the 2027 fixture season now pays them, as 2026 always did.
+    assert len(season_pb.calls) <= 40, _summary(season_pb)

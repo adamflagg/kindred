@@ -672,7 +672,15 @@ async def test_a_past_read_of_yesterday_equals_the_live_read_field_by_field() ->
     ignored = {"as_of", "as_of_axis", "not_rebuilt"}
 
     def strip(model: Any) -> Any:
-        return _without_gaps({k: v for k, v in model.model_dump().items() if k not in ignored})
+        return _without_a_ledger_line(_without_gaps({k: v for k, v in model.model_dump().items() if k not in ignored}))
+
+    def _without_a_ledger_line(node: Any) -> Any:
+        """D170's line reads the live ledger, so a past read never carries it (None); drop it from both sides."""
+        if isinstance(node, dict):
+            return {k: _without_a_ledger_line(v) for k, v in node.items() if k != "campminder_aid_off_requests"}
+        if isinstance(node, list):
+            return [_without_a_ledger_line(v) for v in node]
+        return node
 
     past_rows = [_without_gaps(row) for row in past_grid.model_dump()["rows"]]
     live_rows = [_without_gaps(row) for row in live_grid.model_dump()["rows"]]
