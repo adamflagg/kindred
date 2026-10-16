@@ -302,6 +302,12 @@ func (s *FinancialAidApplicationsSync) Sync(ctx context.Context) error {
 		return wrapOrphanSweepError(sweepErr)
 	}
 
+	// Seed and heal the registration-ask history before intake runs, so the newest history
+	// row always equals today's slot. Non-critical: a failure is logged, the job carries on.
+	if err := s.reconcileAskHistory(ctx, year, personInfo); err != nil {
+		slog.Warn("Registration ask history reconcile failed", "year", year, "error", err)
+	}
+
 	s.runIntakeTrigger(ctx, year)
 
 	slog.Info("Financial aid applications computation completed",

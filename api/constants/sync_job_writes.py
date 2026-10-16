@@ -82,10 +82,13 @@ SYNC_JOB_WRITES: dict[str, frozenset[str]] = {
     # Expensive phase -- custom values, and their bounded daily variants,
     # which write the same collections under a different registered name. All
     # four also append `lodging_value_history` (`logLodgingValueChange`, called
-    # from person_custom_field_values.go and household_custom_field_values.go).
-    "person_custom_values": frozenset({PERSON_CUSTOM_VALUES, "lodging_value_history"}),
+    # from person_custom_field_values.go and household_custom_field_values.go);
+    # the two person jobs also append `aid_registration_ask_history` (`logAskChange`).
+    "person_custom_values": frozenset({PERSON_CUSTOM_VALUES, "lodging_value_history", "aid_registration_ask_history"}),
     "household_custom_values": frozenset({HOUSEHOLD_CUSTOM_VALUES, "lodging_value_history"}),
-    "person_custom_values_family_camp": frozenset({PERSON_CUSTOM_VALUES, "lodging_value_history"}),
+    "person_custom_values_family_camp": frozenset(
+        {PERSON_CUSTOM_VALUES, "lodging_value_history", "aid_registration_ask_history"}
+    ),
     "household_custom_values_family_camp": frozenset({HOUSEHOLD_CUSTOM_VALUES, "lodging_value_history"}),
     # Transform phase.
     "family_camp_derived": frozenset({FAMILY_CAMP_ADULTS, FAMILY_CAMP_REGISTRATIONS, FAMILY_CAMP_MEDICAL}),
@@ -98,7 +101,7 @@ SYNC_JOB_WRITES: dict[str, frozenset[str]] = {
         }
     ),
     "staff_skills": frozenset({"staff_skills"}),
-    "financial_aid_applications": frozenset({"financial_aid_applications"}),
+    "financial_aid_applications": frozenset({"financial_aid_applications", "aid_registration_ask_history"}),
     # Campership ledger: the derived postings, auto-created and config-classified
     # sources, and the auto household links. Never aid_attribution_overrides or
     # aid_flag_dispositions, which only FastAPI writes.

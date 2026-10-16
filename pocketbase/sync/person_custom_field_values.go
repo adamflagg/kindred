@@ -541,6 +541,18 @@ func (s *PersonCustomFieldValuesSync) processPersonCustomFieldValue(
 						SourceChangedAt: newLastUpdated,
 					})
 				}
+				// The registration-ask history records a value OR last_updated change:
+				// a re-date at the same amount is evidence too. No-op for any other
+				// field (aid_registration_ask_history.go).
+				logAskChange(s.App, &askObservation{
+					Year:            year,
+					FieldCMID:       fieldCMID,
+					PersonCMID:      personCMID,
+					OldValue:        oldValue,
+					NewValue:        newValue,
+					SourceChangedAt: newLastUpdated,
+					ObservedBy:      s.logJobName(),
+				})
 			}
 		} else {
 			s.Stats.Skipped++
@@ -586,6 +598,15 @@ func (s *PersonCustomFieldValuesSync) processPersonCustomFieldValue(
 				PersonCMID:      personCMID,
 				NewValue:        newValue,
 				SourceChangedAt: newLastUpdated,
+				IsGenesis:       true,
+			})
+			logAskChange(s.App, &askObservation{
+				Year:            year,
+				FieldCMID:       fieldCMID,
+				PersonCMID:      personCMID,
+				NewValue:        newValue,
+				SourceChangedAt: newLastUpdated,
+				ObservedBy:      s.logJobName(),
 				IsGenesis:       true,
 			})
 		}

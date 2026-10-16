@@ -27,6 +27,7 @@ export const Collections = {
   AidHouseholdLinks: 'aid_household_links',
   AidPayerShares: 'aid_payer_shares',
   AidPostings: 'aid_postings',
+  AidRegistrationAskHistory: 'aid_registration_ask_history',
   AidReportDefinitions: 'aid_report_definitions',
   AidReportedHistory: 'aid_reported_history',
   AidRequestAdditions: 'aid_request_additions',
@@ -663,6 +664,21 @@ export type AidPostingsRecord<Tcandidate_program_families = unknown, Tflags = un
   transaction_cm_id: number
   transaction_note?: string
   updated: IsoAutoDateString
+  year: number
+}
+
+export type AidRegistrationAskHistoryRecord = {
+  amount?: number
+  created: IsoAutoDateString
+  field_cm_id: number
+  id: string
+  is_genesis?: boolean
+  new_value?: string
+  observed_at?: IsoDateString
+  observed_by?: string
+  old_value?: string
+  person_cm_id: number
+  source_changed_at?: string
   year: number
 }
 
@@ -2743,6 +2759,8 @@ export type AidPostingsResponse<
   Tflags = unknown,
   Texpand = unknown,
 > = Required<AidPostingsRecord<Tcandidate_program_families, Tflags>> & BaseSystemFields<Texpand>
+export type AidRegistrationAskHistoryResponse<Texpand = unknown> =
+  Required<AidRegistrationAskHistoryRecord> & BaseSystemFields<Texpand>
 export type AidReportDefinitionsResponse<Tcolumns = unknown, Texpand = unknown> = Required<
   AidReportDefinitionsRecord<Tcolumns>
 > &
@@ -3026,6 +3044,7 @@ export type CollectionRecords = {
   aid_household_links: AidHouseholdLinksRecord
   aid_payer_shares: AidPayerSharesRecord
   aid_postings: AidPostingsRecord
+  aid_registration_ask_history: AidRegistrationAskHistoryRecord
   aid_report_definitions: AidReportDefinitionsRecord
   aid_reported_history: AidReportedHistoryRecord
   aid_request_additions: AidRequestAdditionsRecord
@@ -3136,6 +3155,7 @@ export type CollectionResponses = {
   aid_household_links: AidHouseholdLinksResponse
   aid_payer_shares: AidPayerSharesResponse
   aid_postings: AidPostingsResponse
+  aid_registration_ask_history: AidRegistrationAskHistoryResponse
   aid_report_definitions: AidReportDefinitionsResponse
   aid_reported_history: AidReportedHistoryResponse
   aid_request_additions: AidRequestAdditionsResponse
