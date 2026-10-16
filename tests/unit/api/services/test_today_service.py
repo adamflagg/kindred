@@ -4,7 +4,11 @@ Owner rulings this pins (2026-10-14 and 2026-10-15 ~22:00 PT):
 - Session fill lists this year's sessions only (#14: a session not offered this year is not drawn), each
   compared with its own match last year (#15: matched by ``match_session_in_year``, teens by program), so
   the fill total compares only matched sessions. The prior-year figure per matched session lives in one
-  function, ``prior_figure_for_session``, with no folding (the embedded add is PR 8b).
+  function, ``prior_figure_for_session``.
+- PR 8b, the embedded add (#15, #50, #51): a prior-year embedded session with no match this year folds, by
+  dates, into the prior-year figure of the main session that contains it (shared start or end included), on
+  Today only. A single-session headline counts the folded campers once (#51), and Pace's prior compares the
+  same sessions as the fill total.
 - Every comparison is "vs same point last year" while the season is live (decision 7): registered by that
   day and not cancelled by it.
 - Recent sign-ups (decision 40, decision 37): the last 7 days by Enrolled on (``enrollment_date`` as a
@@ -26,10 +30,14 @@ from api.schemas.session_availability import (
 )
 from api.services.today_service import (
     TodayService,
+    build_pace_prior,
     build_recent_lines,
     build_session_fill_rows,
     count_prior_by_session,
+    fold_embedded_sessions,
+    headline_prior_campers,
     match_prior_sessions,
+    prior_breakdown,
     prior_figure_for_program,
     prior_figure_for_session,
 )
@@ -211,8 +219,8 @@ class TestPriorFigureForSession:
         """Session 2 in 2026: 256 in the session itself plus 12 in its AG cabin."""
         assert prior_figure_for_session(1000200, _prior_2026(), PRIOR_COUNTS) == 268
 
-    def test_no_folding_of_unmatched_embedded_sessions(self) -> None:
-        """Taste of Camp 2 and Session 2b sit inside 2026's Session 2 but are not added (that is PR 8b)."""
+    def test_nothing_is_added_unless_sessions_are_folded_in(self) -> None:
+        """Taste of Camp 2 and Session 2b sit inside 2026's Session 2; they count only when passed as folded."""
         assert prior_figure_for_session(1000200, _prior_2026(), PRIOR_COUNTS) == 256 + 12
 
     def test_a_part_reads_one_cabin_group(self) -> None:
@@ -231,6 +239,154 @@ class TestPriorFigureForProgram:
 
     def test_a_program_last_year_did_not_run_reads_none(self) -> None:
         assert prior_figure_for_program("tli", _prior_2026(), PRIOR_COUNTS) is None
+
+
+# ---------------------------------------------------------------------------
+# The embedded add (PR 8b: rulings #15, #50, #51), Today only
+# ---------------------------------------------------------------------------
+
+
+def _embedded(cm_id: int, name: str, start: str, end: str, session_type: str = "embedded") -> Any:
+    return create_mock_session(cm_id, name, year=2026, session_type=session_type, start_date=start, end_date=end)
+
+
+def _matched_prior_ids() -> set[int]:
+    return set(match_prior_sessions(_current_2027(), _prior_2026()).values())
+
+
+class TestFoldEmbeddedSessions:
+    def test_unmatched_embedded_sessions_fold_into_the_main_session_containing_them(self) -> None:
+        """Taste of Camp 2 shares Session 2's start, 2b shares its end: both fold in, in date order."""
+        folds = fold_embedded_sessions(_prior_2026(), _matched_prior_ids())
+        assert folds == {1000200: [1000102, 1000202]}
+
+    def test_an_embedded_session_matched_this_year_does_not_fold(self) -> None:
+        """2026 Taste of Camp 1 matches 2027 Taste of Camp, so it never folds, even inside a main."""
+        prior = _prior_2026()
+        prior[1000300] = create_mock_session(
+            1000300, "Session 1", year=2026, start_date="2026-06-14", end_date="2026-06-20"
+        )
+        folds = fold_embedded_sessions(prior, _matched_prior_ids() | {1000300})
+        assert 1000101 not in folds.get(1000300, [])
+
+    def test_a_session_outside_by_a_day_does_not_fold(self) -> None:
+        prior = _prior_2026()
+        prior[1000203] = _embedded(1000203, "Session 2c", "2026-06-20", "2026-06-26")  # starts the day before
+        prior[1000204] = _embedded(1000204, "Session 2d", "2026-07-06", "2026-07-12")  # ends the day after
+        folds = fold_embedded_sessions(prior, _matched_prior_ids())
+        assert folds == {1000200: [1000102, 1000202]}
+
+    def test_an_unmatched_session_that_is_not_embedded_does_not_fold(self) -> None:
+        """Only embedded sessions fold: an unmatched quest inside Session 2's dates stays out."""
+        prior = _prior_2026()
+        prior[1000402] = _embedded(1000402, "Quest 2", "2026-06-28", "2026-07-04", session_type="quest")
+        folds = fold_embedded_sessions(prior, _matched_prior_ids())
+        assert folds == {1000200: [1000102, 1000202]}
+
+    def test_an_embedded_session_with_no_dates_does_not_fold(self) -> None:
+        prior = _prior_2026()
+        prior[1000205] = _embedded(1000205, "Session 2e", "", "")
+        assert fold_embedded_sessions(prior, _matched_prior_ids()) == {1000200: [1000102, 1000202]}
+
+    def test_the_tightest_containing_main_session_takes_it(self) -> None:
+        """Two main sessions containing it (a long session around a short one): the shorter one is its host."""
+        prior = _prior_2026()
+        prior[1000600] = create_mock_session(
+            1000600, "Session 6", year=2026, start_date="2026-06-14", end_date="2026-07-25"
+        )
+        folds = fold_embedded_sessions(prior, _matched_prior_ids())
+        assert folds[1000200] == [1000102, 1000202]
+        assert 1000600 not in folds
+
+
+class TestFoldedPriorFigure:
+    FOLDED = (1000102, 1000202)
+
+    def test_a_folded_figure_adds_the_embedded_sessions(self) -> None:
+        """2026 Session 2 268 · Taste of Camp 2 58 · 2b 66 (the signed-off tooltip's example)."""
+        assert prior_figure_for_session(1000200, _prior_2026(), PRIOR_COUNTS, folded=self.FOLDED) == 392
+
+    def test_each_cabin_group_adds_the_same_group(self) -> None:
+        prior = _prior_2026()
+        assert prior_figure_for_session(1000200, prior, PRIOR_COUNTS, part="F", folded=self.FOLDED) == 193
+        assert prior_figure_for_session(1000200, prior, PRIOR_COUNTS, part="M", folded=self.FOLDED) == 187
+        assert prior_figure_for_session(1000200, prior, PRIOR_COUNTS, part="AG", folded=self.FOLDED) == 12
+
+    def test_an_embedded_sessions_ag_cabins_fold_with_it(self) -> None:
+        prior = _prior_2026()
+        prior[1000206] = create_mock_session(1000206, "Session 2b AG", year=2026, session_type="ag", parent_id=1000202)
+        counts = {**PRIOR_COUNTS, (1000206, "F"): 4}
+        assert prior_figure_for_session(1000200, prior, counts, part="AG", folded=self.FOLDED) == 16
+        assert prior_figure_for_session(1000200, prior, counts, folded=self.FOLDED) == 396
+
+
+class TestPriorBreakdown:
+    FOLDED = (1000102, 1000202)
+
+    def test_the_main_session_first_then_what_folded_in(self) -> None:
+        parts = prior_breakdown(1000200, self.FOLDED, _prior_2026(), PRIOR_COUNTS)
+        assert parts is not None
+        assert [(p.name, p.prior) for p in parts] == [("Session 2", 268), ("Taste of Camp 2", 58), ("Session 2b", 66)]
+
+    def test_a_cabin_group_breaks_down_its_own_figures(self) -> None:
+        parts = prior_breakdown(1000200, self.FOLDED, _prior_2026(), PRIOR_COUNTS, part="F")
+        assert parts is not None
+        assert [(p.name, p.prior) for p in parts] == [("Session 2", 130), ("Taste of Camp 2", 30), ("Session 2b", 33)]
+
+    def test_nothing_folded_has_no_breakdown(self) -> None:
+        assert prior_breakdown(1000200, (), _prior_2026(), PRIOR_COUNTS) is None
+
+    def test_a_group_the_folded_sessions_add_nothing_to_has_no_breakdown(self) -> None:
+        """No embedded AG cabins: the AG figure is unchanged, so it is a plain figure."""
+        assert prior_breakdown(1000200, self.FOLDED, _prior_2026(), PRIOR_COUNTS, part="AG") is None
+
+
+class TestFoldedFillRows:
+    def _rows(self) -> dict[str, Any]:
+        rows = build_session_fill_rows(
+            availability=_availability_2027(),
+            current_sessions=_current_2027(),
+            goals={},
+            prior_sessions=_prior_2026(),
+            prior_counts=PRIOR_COUNTS,
+        )
+        return {r.session_name: r for r in rows}
+
+    def test_the_host_row_carries_its_breakdown(self) -> None:
+        s2 = self._rows()["Session 2"]
+        assert s2.prior_parts is not None
+        assert [(p.name, p.prior) for p in s2.prior_parts] == [
+            ("Session 2", 268),
+            ("Taste of Camp 2", 58),
+            ("Session 2b", 66),
+        ]
+        assert [p.prior_parts is not None for p in s2.parts] == [True, True, False]
+
+    def test_rows_with_nothing_folded_carry_no_breakdown(self) -> None:
+        rows = self._rows()
+        assert rows["Taste of Camp"].prior_parts is None
+        assert rows["Quest 1"].prior_parts is None
+        assert rows["SCIT"].prior_parts is None
+
+
+class TestHeadlinePriorCampers:
+    def test_the_union_counts_each_camper_once(self) -> None:
+        """#51: Session 2 ∪ Taste of Camp 2 ∪ 2b, a camper in two of them counted once."""
+
+        def att(pid: int, sid: int) -> Any:
+            a = create_mock_attendee(pid, sid, year=2026)
+            a.expand["session"] = _prior_2026()[sid]
+            return a
+
+        attendees = [
+            att(1000001, 1000200),
+            att(1000002, 1000200),
+            att(1000002, 1000102),  # in Session 2 and Taste of Camp 2: once
+            att(1000003, 1000202),
+            att(1000004, 1000201),  # Session 2's AG cabin counts with it
+            att(1000005, 1000101),  # Taste of Camp 1 is not folded in
+        ]
+        assert headline_prior_campers(attendees, {1000200, 1000201, 1000102, 1000202}) == 4
 
 
 class TestCountPriorBySession:
@@ -292,13 +448,15 @@ class TestBuildSessionFillRows:
     def test_each_row_compares_with_its_own_match(self) -> None:
         rows = {r.session_name: r for r in self._rows()}
         assert rows["Taste of Camp"].prior == 104  # 2026's Taste of Camp 1
-        assert rows["Session 2"].prior == 268
+        # 2026's Session 2 (268) plus the embedded sessions it contains, Taste of Camp 2 (58) and 2b (66) (#15)
+        assert rows["Session 2"].prior == 268 + 58 + 66
         assert rows["Quest 1"].prior == 21
         assert rows["SCIT"].prior == 36
 
     def test_parts_carry_their_own_prior(self) -> None:
+        """Each cabin group adds the same group of the folded sessions; nothing folds into AG here."""
         s2 = next(r for r in self._rows() if r.session_name == "Session 2")
-        assert [p.prior for p in s2.parts] == [130, 126, 12]
+        assert [p.prior for p in s2.parts] == [130 + 30 + 33, 126 + 28 + 33, 12]
 
     def test_quests_and_teens_are_one_part(self) -> None:
         rows = {r.session_name: r for r in self._rows()}
@@ -574,3 +732,105 @@ class TestRecentSignupsScope:
         assert result.enrollments == 1
         assert result.since == "2027-02-03"
         assert result.today == "2027-02-09"
+
+
+# ---------------------------------------------------------------------------
+# The embedded add in the async read: the headline (#51) and Pace (PR 8b)
+# ---------------------------------------------------------------------------
+
+
+REG_DATES = {2027: {"priority_reg_date": "2026-11-11"}, 2026: {"priority_reg_date": "2025-11-12"}}
+
+
+def _folding_attendees() -> list[Any]:
+    """2026 at day 10 (cutoff 2025-11-22): Session 2, Taste of Camp 2, 2b, Taste of Camp 1 and an unoffered quest."""
+    prior = _prior_2026()
+    prior[1000402] = _embedded(1000402, "Quest 2", "2026-06-28", "2026-07-04", session_type="quest")
+
+    def att(pid: int, sid: int, registered: str = "2025-11-12") -> Any:
+        a = _prior_attendee(pid, 1000200, registered)
+        a.expand["session"] = prior[sid]
+        a.session_cm_id = sid
+        return a
+
+    return [
+        att(1000001, 1000200),
+        att(1000002, 1000200),
+        att(1000002, 1000102),  # one camper in Session 2 and Taste of Camp 2
+        att(1000003, 1000202),
+        att(1000006, 1000202, "2026-01-05"),  # registered after the cutoff: not yet
+        att(1000004, 1000101),  # Taste of Camp 1: its own row
+        att(1000005, 1000402),  # Quest 2: not offered in 2027, never compared
+    ]
+
+
+def _folding_service() -> TodayService:
+    repo = _repo_for_fill(_folding_attendees(), REG_DATES)
+    prior = _prior_2026()
+    prior[1000402] = _embedded(1000402, "Quest 2", "2026-06-28", "2026-07-04", session_type="quest")
+    current = _current_2027()
+
+    async def fetch_sessions(year: int, session_types: Any = None) -> dict[int, Any]:
+        return dict(current if year == 2027 else prior)
+
+    repo.fetch_sessions = AsyncMock(side_effect=fetch_sessions)
+    service = TodayService(repo)
+    service._availability = AsyncMock(return_value=_availability_2027())  # type: ignore[method-assign]
+    return service
+
+
+class TestFoldedSessionFill:
+    @pytest.mark.asyncio
+    async def test_one_session_headline_counts_the_folded_campers_once(self) -> None:
+        """#51: 2026 Session 2 ∪ Taste of Camp 2 ∪ 2b at the same point is 3 campers, not 4 camper-sessions."""
+        service = _folding_service()
+        avail = _availability_2027()
+        avail.sessions = [s for s in avail.sessions if s.session_cm_id == 1000200]
+        avail.teen_sessions = []
+        service._availability = AsyncMock(return_value=avail)  # type: ignore[method-assign]
+        result = await service.session_fill(2027, None, session_cm_id=1000200, today=date(2026, 11, 21))
+        assert result.headline_prior == 3
+        assert result.rows[0].prior == 4
+
+    @pytest.mark.asyncio
+    async def test_whole_scope_views_have_no_headline_override(self) -> None:
+        result = await _folding_service().session_fill(
+            2027, ["main", "embedded", "ag", "quest"], today=date(2026, 11, 21)
+        )
+        assert result.headline_prior is None
+
+    @pytest.mark.asyncio
+    async def test_a_session_with_nothing_folded_has_no_headline_override(self) -> None:
+        service = _folding_service()
+        avail = _availability_2027()
+        avail.sessions = [s for s in avail.sessions if s.session_cm_id == 1000901]
+        avail.ag_sessions = []
+        avail.teen_sessions = []
+        service._availability = AsyncMock(return_value=avail)  # type: ignore[method-assign]
+        result = await service.session_fill(2027, None, session_cm_id=1000901, today=date(2026, 11, 21))
+        assert result.headline_prior is None
+
+    @pytest.mark.asyncio
+    async def test_pace_prior_compares_the_same_sessions_as_the_fill_total(self) -> None:
+        """Pace's 2026 curve counts matched sessions plus folded ones: Quest 2 (unoffered) never counts."""
+        result = await _folding_service().session_fill(
+            2027, ["main", "embedded", "ag", "quest"], today=date(2026, 11, 21)
+        )
+        assert result.pace_prior is not None
+        at = {p.day_offset: p.enrolled for p in result.pace_prior}
+        fill_total = sum(r.prior or 0 for r in result.rows)
+        assert result.prior_day_offset is not None
+        assert at[result.prior_day_offset] == fill_total == 5  # Session 2 4 + Taste of Camp 1
+        # The camper registered on 2026-01-05 (day 54) joins the curve then; Quest 2's never does.
+        assert at[60] == 6
+
+
+class TestBuildPacePrior:
+    def test_counts_the_given_sessions_by_registration_day(self) -> None:
+        points = build_pace_prior(_folding_attendees(), date(2025, 11, 12), {1000200, 1000102})
+        at = {p.day_offset: p.enrolled for p in points}
+        assert at[0] == 3
+        assert points[-1].day_offset == 41 * 7 - 1
+
+    def test_no_sessions_draw_nothing(self) -> None:
+        assert all(p.enrolled == 0 for p in build_pace_prior(_folding_attendees(), date(2025, 11, 12), set()))

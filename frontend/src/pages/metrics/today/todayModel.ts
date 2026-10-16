@@ -3,7 +3,12 @@
  * ruled is pinned by a unit test (todayModel.test.ts).
  */
 import type { DefinitionNote } from '../../../components/camperships/kit/DefinitionNotes'
-import type { ApiTodaySessionRow } from '../../../types/api-types'
+import type {
+  ApiTodayPacePoint,
+  ApiTodayPriorPart,
+  ApiTodaySessionRow,
+  ApiTodaySessions,
+} from '../../../types/api-types'
 import { PRIORITY_DAY_NOTE } from '../../../utils/priorityDay'
 
 export type PriorBasis = 'same_point' | 'final'
@@ -43,6 +48,8 @@ export interface FillRow {
   readonly goalPerSession: boolean
   /** Last year's figure from the session's own match (ruling #15); null when nothing matched. */
   readonly prior: number | null
+  /** PR 8b: the breakdown when embedded sessions folded into `prior`, the main session first. */
+  readonly priorParts: readonly ApiTodayPriorPart[] | null
   readonly parts: ApiTodaySessionRow['parts']
 }
 
@@ -63,6 +70,7 @@ export function scopeRows(rows: readonly ApiTodaySessionRow[], oneSession: boole
       goal: null,
       goalPerSession: true,
       prior: p.prior,
+      priorParts: p.prior_parts ?? null,
       parts: [{ ...p, label: '' }],
     }))
   }
@@ -77,6 +85,7 @@ export function scopeRows(rows: readonly ApiTodaySessionRow[], oneSession: boole
     goal: r.goal,
     goalPerSession: false,
     prior: r.prior,
+    priorParts: r.prior_parts ?? null,
     parts: r.parts,
   }))
 }
@@ -116,6 +125,11 @@ export interface FillTotal {
   readonly prior: number | null
   /** This year in the same matched rows, so the change compares like with like. */
   readonly matchedEnrolled: number
+  /**
+   * PR 8b: when anything folded in, the breakdown: the matched sessions ("N matched sessions", or the one
+   * session's own name when the rows are its cabin groups), then each folded session, added up by name.
+   */
+  readonly priorParts: readonly ApiTodayPriorPart[] | null
 }
 
 const sum = (xs: readonly number[]) => xs.reduce((a, b) => a + b, 0)
@@ -125,6 +139,7 @@ export function fillTotal(rows: readonly FillRow[]): FillTotal {
   const withBeds = rows.filter((r) => r.beds != null)
   const withGoal = rows.filter((r) => r.goal != null)
   const matched = rows.filter((r) => r.prior != null)
+  const prior = matched.length ? sum(matched.map((r) => r.prior ?? 0)) : null
   return {
     enrolled: sum(rows.map((r) => r.enrolled)),
     waitlisted: sum(rows.map((r) => r.waitlisted)),
@@ -132,9 +147,59 @@ export function fillTotal(rows: readonly FillRow[]): FillTotal {
     bedsEnrolled: sum(withBeds.map((r) => r.enrolled)),
     goal: withGoal.length ? sum(withGoal.map((r) => r.goal ?? 0)) : null,
     goalEnrolled: sum(withGoal.map((r) => r.enrolled)),
-    prior: matched.length ? sum(matched.map((r) => r.prior ?? 0)) : null,
+    prior,
     matchedEnrolled: sum(matched.map((r) => r.enrolled)),
+    priorParts: totalBreakdown(matched, prior),
   }
+}
+
+/** The total's breakdown (PR 8b): the matched sessions' own figures, then each folded session by name. */
+function totalBreakdown(
+  matched: readonly FillRow[],
+  prior: number | null
+): ApiTodayPriorPart[] | null {
+  const folded = new Map<string, number>()
+  for (const r of matched)
+    for (const p of (r.priorParts ?? []).slice(1))
+      folded.set(p.name, (folded.get(p.name) ?? 0) + p.prior)
+  if (prior == null || folded.size === 0) return null
+  const cabinGroups = matched.every((r) => r.goalPerSession)
+  const host = cabinGroups
+    ? (matched.find((r) => r.priorParts)?.priorParts?.[0]?.name ?? '')
+    : `${String(matched.length)} matched ${matched.length === 1 ? 'session' : 'sessions'}`
+  const added = sum([...folded.values()])
+  return [
+    { name: host, prior: prior - added },
+    ...[...folded].map(([name, n]) => ({ name, prior: n })),
+  ]
+}
+
+/** A folded session's name in the tooltip (wording A): "Session 2b" reads "2b". */
+export function foldName(name: string): string {
+  return name.replace(/^Session /, '')
+}
+
+/** The tooltip's line (#50, wording A): the main session as named, then each folded one, shortened. */
+export function foldedLine(parts: readonly ApiTodayPriorPart[]): Array<[string, number]> {
+  return parts.map((p, i) => [i === 0 ? p.name : foldName(p.name), p.prior])
+}
+
+export interface PacePrior {
+  /** Last year's curve over the sessions the fill total compares. */
+  readonly curve: readonly ApiTodayPacePoint[]
+  /** The fill total's prior figure: Pace's "{year}: N" reads exactly what the total compares with. */
+  readonly now: number | null
+  readonly parts: readonly ApiTodayPriorPart[] | null
+}
+
+/**
+ * Pace's comparison (PR 8b): the same sessions the fill total compares (matched plus folded), not
+ * Velocity's whole scope. Null when Session fill sent no curve, so Pace keeps Velocity's own prior.
+ */
+export function pacePrior(data: ApiTodaySessions, oneSession: boolean): PacePrior | null {
+  if (!data.pace_prior) return null
+  const total = fillTotal(scopeRows(data.rows, oneSession))
+  return { curve: data.pace_prior, now: total.prior, parts: total.priorParts }
 }
 
 export interface OpenPlace {
@@ -179,14 +244,16 @@ interface NoteInputs {
 
 /** The page's numbered notes (decision 11), in page order, only the ones that show; never on hover. */
 export function todayNotes(i: NoteInputs): TodayNote[] {
+  const py = String(i.priorYear)
+  const fold = `A ${py} embedded session with no ${String(i.priorYear + 1)} match is added to the ${py} figure of the session whose dates contain it (dotted figures show the breakdown); with one session picked, the headline counts each camper in them once.`
   const same =
     i.basis === 'same_point'
       ? `Same point: the same day of ${String(i.priorYear)}'s registration, counted from priority day${
           i.dayOffset != null && i.dayOffset >= 0
             ? ` (today is day ${String(i.dayOffset + 1)})`
             : ''
-        }. Enrolled then means registered by that day and not cancelled by it. Registration never closes: families come off waitlists until the day before a session starts, so every change on this page compares this way, all season. Each session compares with its own match in ${String(i.priorYear)} (the same session, a renamed one, or the same name; teen programs by program), and the total adds only those, so a ${String(i.priorYear)} session not offered this year is not counted.`
-      : `${String(i.priorYear)} final: this season's registration year is over, so every change compares with ${String(i.priorYear)}'s final numbers. Each session compares with its own match, and the total adds only those.`
+        }. Enrolled then means registered by that day and not cancelled by it. Registration never closes: families come off waitlists until the day before a session starts, so every change on this page compares this way, all season. Each session compares with its own match in ${String(i.priorYear)} (the same session, a renamed one, or the same name; teen programs by program), and the total adds only those, so a ${String(i.priorYear)} session not offered this year is not counted. ${fold}`
+      : `${String(i.priorYear)} final: this season's registration year is over, so every change compares with ${String(i.priorYear)}'s final numbers. Each session compares with its own match, and the total adds only those. ${fold}`
   const fill =
     i.fill === 'plan'
       ? 'Fill: Beds are the bunk plan, cabins planned times beds per cabin, as Overview\'s Capacity counts them, with all-gender cabins in their session. They answer "is there a bed?". Quests and teen programs have no cabins and use the places set in Manage. A group is "full" at its beds and shows the places left once Availability calls it limited.'

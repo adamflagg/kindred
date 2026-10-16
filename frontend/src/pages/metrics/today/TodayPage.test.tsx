@@ -505,3 +505,154 @@ describe('Today › the priority date itself (ruling 9)', () => {
     expect(within(hero()).getByTestId('hero-change')).toHaveTextContent('updates tomorrow')
   })
 })
+
+// PR 8b (#15, #50, #51): 2026's Taste of Camp 2 (58) and Session 2b (66) fold into 2026 Session 2 (268)
+const S2_FOLDED = {
+  ...SESSIONS.rows[1]!,
+  prior: 392,
+  prior_parts: [
+    { name: 'Session 2', prior: 268 },
+    { name: 'Taste of Camp 2', prior: 58 },
+    { name: 'Session 2b', prior: 66 },
+  ],
+  parts: [
+    {
+      label: 'Girls' as const,
+      enrolled: 134,
+      waitlisted: 10,
+      beds: 138,
+      prior: 193,
+      prior_parts: [
+        { name: 'Session 2', prior: 130 },
+        { name: 'Taste of Camp 2', prior: 30 },
+        { name: 'Session 2b', prior: 33 },
+      ],
+    },
+    {
+      label: 'Boys' as const,
+      enrolled: 131,
+      waitlisted: 16,
+      beds: 138,
+      prior: 187,
+      prior_parts: [
+        { name: 'Session 2', prior: 126 },
+        { name: 'Taste of Camp 2', prior: 28 },
+        { name: 'Session 2b', prior: 33 },
+      ],
+    },
+    { label: 'AG' as const, enrolled: 12, waitlisted: 2, beds: 12, prior: 12 },
+  ],
+}
+const FOLDED: ApiTodaySessions = {
+  ...SESSIONS,
+  rows: [SESSIONS.rows[0]!, S2_FOLDED],
+  pace_prior: [
+    { day_offset: 0, enrolled: 300 },
+    { day_offset: 90, enrolled: 496 },
+    { day_offset: 262, enrolled: 540 },
+  ],
+}
+const FOOT = 'Sessions with no 2027 match are added to the session that contains them. Today only.'
+
+function withSessions(data: ApiTodaySessions | undefined, over: Record<string, unknown> = {}) {
+  vi.mocked(useTodaySessions).mockReturnValue(
+    q(data, over) as unknown as ReturnType<typeof useTodaySessions>
+  )
+}
+
+describe('Today › the embedded add (PR 8b)', () => {
+  it('a folded figure is dotted and opens its breakdown, the main session first (#50, wording A)', () => {
+    withSessions(FOLDED)
+    renderPage()
+    const s2 = within(fill()).getAllByRole('row')[2]!
+    expect(within(s2).getAllByRole('cell').at(-1)).toHaveTextContent('▼ 115 · 392')
+    const trigger = within(s2).getByRole('button', { name: '392' })
+    expect(trigger.className).toContain('decoration-dotted')
+    fireEvent.focus(trigger)
+    const tip = screen.getByRole('tooltip')
+    expect(tip).toHaveTextContent('2026: Session 2 268 · Taste of Camp 2 58 · 2b 66')
+    expect(tip).toHaveTextContent(FOOT)
+  })
+
+  it('a row with nothing folded in shows a plain figure', () => {
+    withSessions(FOLDED)
+    renderPage()
+    const toc = within(fill()).getAllByRole('row')[1]!
+    expect(within(toc).queryByRole('button')).toBeNull()
+  })
+
+  it('the total row breaks down into the matched sessions, then each folded one', () => {
+    withSessions(FOLDED)
+    renderPage()
+    const total = within(fill()).getAllByRole('row').at(-1)!
+    expect(total).toHaveTextContent('▼ 110 · 496') // 386 vs 104 + 392
+    fireEvent.focus(within(total).getByRole('button', { name: '496' }))
+    expect(screen.getByRole('tooltip')).toHaveTextContent(
+      '2026: 2 matched sessions 372 · Taste of Camp 2 58 · 2b 66'
+    )
+  })
+
+  it("one session's cabin groups and total carry their own breakdowns", () => {
+    vi.mocked(useMetricsSession).mockReturnValue(
+      session({
+        selectedSessionCmId: 1000200,
+        selectedSession: { cm_id: 1000200, name: 'Session 2' },
+      })
+    )
+    withSessions({ ...FOLDED, rows: [S2_FOLDED], headline_prior: 380 })
+    renderPage()
+    const rows = within(fill()).getAllByRole('row')
+    fireEvent.focus(within(rows[1]!).getByRole('button', { name: '193' }))
+    expect(screen.getByRole('tooltip')).toHaveTextContent(
+      '2026: Session 2 130 · Taste of Camp 2 30 · 2b 33'
+    )
+    expect(within(rows[3]!).queryByRole('button')).toBeNull() // AG: nothing folded in
+    fireEvent.focus(within(rows.at(-1)!).getByRole('button', { name: '392' }))
+    expect(screen.getAllByRole('tooltip').at(-1)).toHaveTextContent(
+      '2026: Session 2 268 · Taste of Camp 2 58 · 2b 66'
+    )
+  })
+
+  it('Pace compares what the fill total compares, with the same breakdown', () => {
+    withSessions(FOLDED)
+    renderPage()
+    const pace = screen.getByTestId('today-pace')
+    expect(pace).toHaveTextContent('2026: 496')
+    expect(pace).toHaveTextContent('2026 final 540')
+    fireEvent.focus(within(pace).getByRole('button', { name: '2026: 496' }))
+    expect(screen.getByRole('tooltip')).toHaveTextContent(
+      '2026: 2 matched sessions 372 · Taste of Camp 2 58 · 2b 66'
+    )
+  })
+
+  it("Pace waits for Session fill's comparison while it loads", () => {
+    withSessions(undefined, { isLoading: true })
+    renderPage()
+    expect(screen.getByTestId('today-pace')).toHaveTextContent('Loading pace')
+  })
+
+  it("Pace keeps Velocity's own prior when Session fill failed to load", () => {
+    withSessions(undefined, { error: new Error('boom') })
+    renderPage()
+    expect(screen.getByTestId('today-pace')).toHaveTextContent('2026: 1,109')
+  })
+
+  it('one session picked: the headline compares with its folded campers, each once (#51)', () => {
+    vi.mocked(useMetricsSession).mockReturnValue(
+      session({
+        selectedSessionCmId: 1000200,
+        selectedSession: { cm_id: 1000200, name: 'Session 2' },
+      })
+    )
+    withSessions({ ...FOLDED, rows: [S2_FOLDED], headline_prior: 380 })
+    renderPage()
+    expect(hero()).toHaveTextContent('same point 2026 380')
+    expect(within(hero()).getByTestId('hero-change')).toHaveTextContent('▲ 500') // 880 vs 380
+  })
+
+  it('a whole-scope headline is unchanged (#51)', () => {
+    withSessions({ ...FOLDED, headline_prior: null })
+    renderPage()
+    expect(hero()).toHaveTextContent('same point 2026 902')
+  })
+})

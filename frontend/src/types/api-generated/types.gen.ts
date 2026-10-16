@@ -19193,6 +19193,44 @@ export type TodayNextUpOut = {
 }
 
 /**
+ * TodayPacePoint
+ *
+ * Last year's Pace curve: enrolled camper-sessions at the end of one registration day.
+ */
+export type TodayPacePoint = {
+  /**
+   * Day Offset
+   *
+   * Days from last year's priority date (negative: before it)
+   */
+  day_offset: number
+  /**
+   * Enrolled
+   */
+  enrolled: number
+}
+
+/**
+ * TodayPriorPart
+ *
+ * One prior-year session in a folded figure's breakdown (#15 embedded add, #50 tooltip).
+ */
+export type TodayPriorPart = {
+  /**
+   * Name
+   *
+   * The prior-year session's name
+   */
+  name: string
+  /**
+   * Prior
+   *
+   * Its prior-year figure, on the same basis as the folded figure
+   */
+  prior: number
+}
+
+/**
  * TodayReasonOut
  *
  * One reason inside a line ("income conflict 3 · payer shares 1"): a hold code, a round (r1, r2, r3),
@@ -19295,6 +19333,12 @@ export type TodaySessionPart = {
    * Last year's figure for this group; None when the session has no match
    */
   prior: number | null
+  /**
+   * Prior Parts
+   *
+   * The breakdown when embedded sessions folded into this group's figure: the main session first
+   */
+  prior_parts?: Array<TodayPriorPart> | null
 }
 
 /**
@@ -19342,9 +19386,15 @@ export type TodaySessionRow = {
   /**
    * Prior
    *
-   * Last year's enrolled camper-sessions in the matched session; None when nothing matches
+   * Last year's enrolled camper-sessions in the matched session, plus the unmatched embedded sessions it contains (#15); None when nothing matches
    */
   prior: number | null
+  /**
+   * Prior Parts
+   *
+   * The breakdown when embedded sessions folded into the figure: the main session first
+   */
+  prior_parts?: Array<TodayPriorPart> | null
   /**
    * Parts
    */
@@ -19399,6 +19449,18 @@ export type TodaySessionsResponse = {
    * The day last year was read at (YYYY-MM-DD)
    */
   as_of_date?: string | null
+  /**
+   * Headline Prior
+   *
+   * #51: with one session picked and embedded sessions folded into it, last year's enrolled campers in that session and the folded ones, each counted once. None otherwise
+   */
+  headline_prior?: number | null
+  /**
+   * Pace Prior
+   *
+   * Last year's Pace curve over the sessions the fill total compares (matched plus folded); None when last year has no registration date
+   */
+  pace_prior?: Array<TodayPacePoint> | null
 }
 
 /**
