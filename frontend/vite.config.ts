@@ -22,6 +22,8 @@ interface BrandingConfig {
   page_description: string;
   // Base URL of the staff guide; null hides the Help menu's Staff Guide item.
   docs_url: string | null;
+  // CARTO basemaps key for the geo map tiles; null leaves them watermarked.
+  basemaps_key: string | null;
   logo: {
     large: string | null;
     nav: string | null;
@@ -39,6 +41,7 @@ let defaultBranding: BrandingConfig = {
   page_title: 'Kindred',
   page_description: 'Cabin assignments that put relationships first',
   docs_url: null,
+  basemaps_key: null,
   logo: { large: null, nav: null },
 }
 
