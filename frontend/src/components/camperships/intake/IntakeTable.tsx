@@ -4,7 +4,7 @@ import { Link } from 'react-router'
 import { POOL_NEGATIVE_INK } from '../kit/aidStyles'
 import { AidTable, type AidColumn, type AidCsvExtra } from '../kit/AidTable'
 import type { AidView } from '../kit/asOf'
-import { CS_LINK_CELL, CS_LINK_SM, CS_POPEN_META } from '../kit/csType'
+import { CS_LINK_CELL, CS_LINK_SM, CS_PANEL, CS_POPEN_META } from '../kit/csType'
 import { formatShortDate } from '../kit/dates'
 import { Money } from '../kit/MoneyText'
 import { AidHouseholdChip, AidNameWithChip } from '../kit/NameChips'
@@ -237,7 +237,7 @@ function IntakeDetail({
   })
   return (
     <div className="flex flex-col gap-1">
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 text-sm">
+      <div className={`grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 ${CS_PANEL}`}>
         <span>
           {evidence.map((e, i) => (
             <span key={i}>

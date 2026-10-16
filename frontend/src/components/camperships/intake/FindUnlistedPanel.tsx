@@ -2,7 +2,7 @@ import { Search } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { UNLISTED_MIN, useAidIntakeUnlisted } from '../../../hooks/camperships/useAidIntake'
-import { CS_BTN2, CS_POPEN_META, CS_SEARCH } from '../kit/csType'
+import { CS_BTN2, CS_POPEN_META, CS_SEARCH, CS_SMALL } from '../kit/csType'
 import { EditorForm } from '../kit/EditorLayout'
 import { AidRowAction } from '../kit/RowAction'
 import { AddRequestEditor } from './AddRequestEditor'
@@ -54,7 +54,7 @@ export function FindUnlistedPanel({
           {r.can_add === true ? (
             <AidRowAction label="Add a Request…" onClick={() => setPicked(r)} />
           ) : (
-            <span className="text-muted-foreground text-xs">
+            <span className={CS_SMALL}>
               {r.household_cm_id > 0
                 ? 'nothing to add: every enrolled session holds a request'
                 : 'fix the household in CampMinder first'}
