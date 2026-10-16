@@ -66,7 +66,7 @@ from api.services.financial_aid_development_repository import (
     SourceRecord,
     StoredColumns,
 )
-from api.services.financial_aid_grants_register import PROGRAM_FAMILY_BY_SESSION_TYPE, RegisterRow
+from api.services.financial_aid_grants_register import PROGRAM_FAMILY_BY_SESSION_TYPE, RegisterRow, camp_day
 from api.services.financial_aid_intake_types import SessionRow
 from api.services.financial_aid_ledger_service import (
     GRANT_FUNDER_TYPES,
@@ -265,8 +265,8 @@ def _live_on(row: RegisterRow, as_of: date | None) -> bool:
     """A ledger line live now, or (a dated column) posted by `as_of` and not reversed by then."""
     if as_of is None:
         return not row.is_reversed
-    posted = _iso_day(row.recorded_on)
-    reversed_on = _iso_day(row.reversal_date)
+    posted = _iso_day(row.recorded_on)  # already the camp day (build_register)
+    reversed_on = _iso_day(camp_day(row.reversal_date))  # true UTC: an evening reversal is the camp's day before
     if posted is None or posted > as_of:
         return False
     return not row.is_reversed or (reversed_on is not None and reversed_on > as_of)

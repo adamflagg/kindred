@@ -1132,3 +1132,17 @@ async def test_with_no_approved_rules_in_any_season_there_are_no_groups_and_no_n
     out = await _service(_development(), fake_rules=_RulesFrom(set())).development(YEAR)
     assert out.groups == []
     assert "groups_from" not in {n.figure for n in out.not_built}
+
+
+async def test_a_dated_column_reads_a_reversal_on_its_camp_day_not_its_utc_date() -> None:
+    """reversal_date is true UTC (main spec §6.2): reversed the evening of December 31 Pacific (January 1 in UTC),
+    the line was no longer money given out at the end of December 31."""
+    found = grouping(intake_rules(), SESSIONS)
+    line = replace(
+        grant_row("reqemma00000001", "500"),
+        recorded_on="2026-12-01",
+        is_reversed=True,
+        reversal_date="2027-01-01 03:30:00.000Z",
+    )
+    assert grant_money([line], found, as_of=date(2026, 12, 31)) == ()
+    assert len(grant_money([line], found, as_of=date(2026, 12, 30))) == 1
