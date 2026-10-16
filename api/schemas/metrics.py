@@ -733,6 +733,10 @@ class DrilldownAttendee(BaseModel):
     zip: str | None = Field(
         None, description="Billing postal code of the primary childhood household (CSV only, decision 13)"
     )
+    household_cm_id: int | None = Field(
+        None,
+        description="CampMinder id of the primary childhood household: the key the list groups by, and the CSV's Household ID (PR 6b)",
+    )
     caregivers: list[str] = Field(
         default_factory=list,
         description="Caregiver names as stored in parent_names: the household's mailing-title order (CSV only, decision 44)",

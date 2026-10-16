@@ -57,7 +57,7 @@ def mock_repository():
     repo.fetch_persons = AsyncMock(return_value={})
     repo.fetch_sessions = AsyncMock(return_value={})
     repo.fetch_summer_enrollment_history = AsyncMock(return_value=[])
-    repo.fetch_household_postal_codes = AsyncMock(return_value={})
+    repo.fetch_drilldown_households = AsyncMock(return_value={})
     return repo
 
 

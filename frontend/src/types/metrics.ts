@@ -441,6 +441,8 @@ export interface DrilldownAttendee {
   zip?: string | null
   /** CSV only (decision 44): caregiver names in the household's mailing-title order. */
   caregivers?: string[]
+  /** The primary childhood household's CampMinder id: what the list groups by, and the CSV's Household ID (PR 6b). */
+  household_cm_id?: number | null
 }
 
 // Waitlist analysis types

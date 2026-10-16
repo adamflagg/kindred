@@ -215,25 +215,29 @@ class DrilldownService:
         return await self._with_person_fields(year, rows)
 
     async def _with_person_fields(self, year: int, rows: list[DrilldownAttendee]) -> list[DrilldownAttendee]:
-        """Set Age, Zip and Caregivers on each row from this season's person and household records.
+        """Set Age, Zip, Household ID and Caregivers on each row from this season's person and household records.
 
         Age is ``year`` minus the birth year, the rule CampMinder uses; the stored
         ``persons.age`` is a snapshot that drifts, so it is never read. Zip is the billing
-        postal code of the camper's primary childhood household (decision 13). Caregivers
+        postal code of the camper's primary childhood household (decision 13), and
+        ``household_cm_id`` is that household's CampMinder id: the key the list groups by
+        and the CSV's Household ID (PR 6b, decision 39). Caregivers
         are ``parent_names`` as stored, which is the household's mailing-title order
         (decision 44). Zip and Caregivers are for the CSV only; the modal never shows them.
         """
         if not rows:
             return rows
-        persons, postal_codes = await asyncio.gather(
+        persons, households = await asyncio.gather(
             self.repo.fetch_persons(year),
-            self.repo.fetch_household_postal_codes(year),
+            self.repo.fetch_drilldown_households(year),
         )
         for row in rows:
             person = persons.get(row.person_id)
             row.age = _season_age(person, year)
-            household = _get_str_attr(person, "primary_childhood_household")
-            row.zip = postal_codes.get(household) if household else None
+            household_pb_id = _get_str_attr(person, "primary_childhood_household")
+            household = households.get(household_pb_id) if household_pb_id else None
+            row.zip = household.postal_code if household else None
+            row.household_cm_id = household.cm_id if household else None
             row.caregivers = _caregiver_names(person)
         return rows
 
