@@ -234,6 +234,13 @@ aid_inputs_cache = LodgingYearCache(ttl_seconds=AID_INPUTS_BACKSTOP_SECONDS, max
 # today's camp-time day, with one to spare for yesterday's entry at midnight.
 aid_season_cache = AidSeasonCache(ttl_seconds=300, max_size=4)
 
+# Requests › Form intake's explained season (api/services/financial_aid_form_intake_cache.py): its rows and the four
+# responses built from them (the band count, the page, the D170 line, Today's line), one build shared until a
+# Camperships write (commit_aid_writes' listener) or a sync job that writes a table it reads clears it. Its own
+# singleton so its entries never evict a priced season. Ten entries: five parts of each of the two live seasons; at
+# midnight the new day's entries drop the old day's, which nothing reads again. The season cache's TTL.
+form_intake_cache = AidSeasonCache(ttl_seconds=300, max_size=10)
+
 
 # ========================================
 # Camperships Development History Cache
@@ -305,6 +312,7 @@ __all__ = [
     "authenticate_task_pb",
     "create_task_pb_client",
     "development_history_cache",
+    "form_intake_cache",
     "get_pb_client",
     "graph_cache",
     "lodging_cache",

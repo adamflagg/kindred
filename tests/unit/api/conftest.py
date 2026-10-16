@@ -13,7 +13,7 @@ os.environ["SKIP_PB_AUTH"] = "true"
 # Imported after the environment above, like every import that may load settings.
 import pytest
 
-from api.dependencies import aid_inputs_cache, aid_season_cache, development_history_cache
+from api.dependencies import aid_inputs_cache, aid_season_cache, development_history_cache, form_intake_cache
 
 
 @pytest.fixture(autouse=True)
@@ -27,14 +27,18 @@ def _reset_aid_inputs_cache() -> Iterator[None]:
     fakes built would otherwise answer the next test's staff read.
 
     Development's past-seasons cache (development_history_cache) likewise: keyed by report year alone, it would answer
-    the next test's history read from this test's double."""
+    the next test's history read from this test's double.
+
+    Form intake's explained season (form_intake_cache) likewise: keyed by season and day, not by store."""
     aid_inputs_cache.invalidate_all()
     aid_season_cache.invalidate_all()
     development_history_cache.invalidate_all()
+    form_intake_cache.invalidate_all()
     yield
     aid_inputs_cache.invalidate_all()
     aid_season_cache.invalidate_all()
     development_history_cache.invalidate_all()
+    form_intake_cache.invalidate_all()
 
 
 def create_mock_session(
