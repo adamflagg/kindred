@@ -386,7 +386,8 @@ def test_a_withdrawn_request_on_the_application_still_lets_it_move_in_place_and_
     assert plan.share_moves == [Move(default.id, OLD, NEW, live.id)]
     assert (plan.application_creates, plan.request_creates, plan.share_creates) == ([], [], [])
     assert plan.application_updates == []  # nothing withdrawn: not the application
-    assert plan.request_updates == [] and plan.status_changes == []  # nor a request; the withdrawn one stays so
+    assert plan.request_updates == []  # nor a request: the withdrawn one stays so
+    assert plan.status_changes == []
 
     moved = [replace(r, household_cm_id=NEW) for r in (live, gone)]
     again = plan_intake(
