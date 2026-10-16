@@ -327,6 +327,11 @@ var serviceGrainDeclarations = []ServiceGrain{
 				"a filter query rather than a tracked key and never swept " +
 				"(lodging_value_history.go)",
 		},
+		{
+			Collection: "aid_registration_ask_history",
+			NoGrain: "append-only capture appended by logAskChange, deduped by a filter query " +
+				"rather than a tracked key and never swept (aid_registration_ask_history.go)",
+		},
 	}},
 
 	{Service: "household_custom_values", Writes: []CollectionGrain{
@@ -412,6 +417,10 @@ var serviceGrainDeclarations = []ServiceGrain{
 		Collection: "financial_aid_applications",
 		NoGrain: "FinancialAidApplicationsSync.deleteOrphans is hand-rolled -- it does not " +
 			"embed BaseSyncService; keyed by person PB id against loadExistingApplications' map",
+	}, {
+		Collection: "aid_registration_ask_history",
+		NoGrain: "append-only reconcile appended by reconcileAskHistory, deduped by a filter " +
+			"query rather than a tracked key and never swept (aid_registration_ask_history.go)",
 	}}},
 
 	{Service: "aid_postings", Writes: []CollectionGrain{
