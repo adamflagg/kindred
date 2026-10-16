@@ -1050,6 +1050,28 @@ describe('WorkingRequestCard: a duplicate pair (item 11)', () => {
       )
     })
 
+    it('says on the Remove form itself that removing a rule-made request is permanent (owner #83)', async () => {
+      additionFor = {
+        [ROW_EMMA.request_id]: added({ origin: 'registration_ask', reviewed: false }),
+      }
+      renderCards([ROW_EMMA])
+      await userEvent.click(screen.getByRole('button', { name: 'Remove…' }))
+      expect(screen.getByText('Remove this request the dashboard made')).toBeInTheDocument()
+      expect(screen.getByText('Permanent')).toBeInTheDocument()
+      expect(
+        screen.getByText(/the dashboard never makes this request again from the registration ask/)
+      ).toBeInTheDocument()
+      expect(screen.getByText(/use Cancel Request… instead/)).toBeInTheDocument()
+    })
+
+    it('keeps a staff-added request’s Remove form free of the rule-made permanence line', async () => {
+      additionFor = { [ROW_EMMA.request_id]: added() }
+      renderCards([ROW_EMMA])
+      await userEvent.click(screen.getByRole('button', { name: 'Remove…' }))
+      expect(screen.getByText('Remove this added request')).toBeInTheDocument()
+      expect(screen.queryByText('Permanent')).toBeNull()
+    })
+
     it('offers no Remove… on a removed request, or without casework', () => {
       additionFor = { [ROW_EMMA.request_id]: added({ live: false }) }
       const again = renderCards([ROW_EMMA])

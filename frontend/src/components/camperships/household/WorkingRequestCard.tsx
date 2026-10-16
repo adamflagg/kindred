@@ -303,7 +303,14 @@ export function WorkingRequestCard({
       />
     )
   } else if (open?.kind === 'remove' && removable && removeRefusal === null) {
-    editor = <RemoveAddedForm year={year} additionId={addition.addition_id} onDone={close} />
+    editor = (
+      <RemoveAddedForm
+        year={year}
+        additionId={addition.addition_id}
+        ruleMade={ruleMade}
+        onDone={close}
+      />
+    )
   } else if (open?.kind === 'hold') {
     editor = (
       <ReasonForm

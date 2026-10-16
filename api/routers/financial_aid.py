@@ -784,8 +784,10 @@ async def retire_aid_request_addition(
     addition_id: str = Path(min_length=1, max_length=15),
     user: AuthUser = Depends(require_permission(Permission.FINANCIAL_AID_CASEWORK)),
 ) -> AddedRequestOut:
-    """Remove a staff-added request: the addition is retired and its request withdrawn at once. Nothing is
-    deleted; the request keeps its decisions. A family that declines uses Cancel… instead."""
+    """Remove an added request, staff-added or rule-made (a registration ask, PR 4b): the addition is retired and its
+    request withdrawn at once. Nothing is deleted; the request keeps its decisions. Removing a rule-made request is
+    permanent: the rule never re-makes a slot that has had an addition. Owner #83: Remove… for a request that's wrong;
+    a family that declined uses Cancel Request… instead."""
     try:
         retired = await _casework().retire_addition(year, addition_id, body.reason, user.email)
     except _ERRORS as exc:
