@@ -173,6 +173,23 @@ class TestFetchPersons:
         assert liam.address_state is None
         assert liam.age is None
 
+    @pytest.mark.asyncio
+    async def test_gender_identity_fields(self, sql_db: sqlite3.Connection) -> None:
+        """fetch_persons carries Gender Identity and its write-in, which every Analytics gender split reads (#2898).
+        A mocked repository can't catch a dropped column, so it is pinned against the real query."""
+        from api.services.extractors import extract_gender_identity
+
+        sql_db.execute("UPDATE persons SET gender_identity_name = 'Non-binary' WHERE id = 'per_emma'")
+        sql_db.execute("UPDATE persons SET gender_identity_write_in = 'their own words' WHERE id = 'per_liam'")
+        repo = _make_repo(sql_db)
+        result = await repo.fetch_persons(2025)
+        assert result[1001].gender_identity_name == "Non-binary"
+        assert result[1002].gender_identity_write_in == "their own words"
+        assert extract_gender_identity(result[1001]) == "Non-binary"
+        assert extract_gender_identity(result[1002]) == "self-described"
+        # No identity answer: ruling 58 counts the binary field (F) as Girl/woman.
+        assert extract_gender_identity(result[1003]) == "Girl/woman"
+
 
 # ============================================================================
 # Test: fetch_sessions

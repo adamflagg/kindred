@@ -230,13 +230,13 @@ class TestRetentionTrendsServiceBreakdowns:
 
         gender_dict = {g.gender: g for g in transition.by_gender}
         # 3/5 M returned = 60%
-        assert gender_dict["M"].base_count == 5
-        assert gender_dict["M"].returned_count == 3
-        assert abs(gender_dict["M"].retention_rate - 0.6) < 0.001
+        assert gender_dict["Boy/man"].base_count == 5
+        assert gender_dict["Boy/man"].returned_count == 3
+        assert abs(gender_dict["Boy/man"].retention_rate - 0.6) < 0.001
         # 4/5 F returned = 80%
-        assert gender_dict["F"].base_count == 5
-        assert gender_dict["F"].returned_count == 4
-        assert abs(gender_dict["F"].retention_rate - 0.8) < 0.001
+        assert gender_dict["Girl/woman"].base_count == 5
+        assert gender_dict["Girl/woman"].returned_count == 4
+        assert abs(gender_dict["Girl/woman"].retention_rate - 0.8) < 0.001
 
     @pytest.mark.asyncio
     async def test_grade_breakdown_per_transition(self, mock_repository: MagicMock) -> None:
@@ -479,8 +479,8 @@ class TestRetentionTrendsServiceEnrollment:
 
         year_2024 = next(e for e in result.enrollment_by_year if e.year == 2024)
         gender_dict = {g.gender: g.count for g in year_2024.by_gender}
-        assert gender_dict["M"] == 6
-        assert gender_dict["F"] == 4
+        assert gender_dict["Boy/man"] == 6
+        assert gender_dict["Girl/woman"] == 4
 
     @pytest.mark.asyncio
     async def test_enrollment_by_year_grade_breakdown(self, mock_repository: MagicMock) -> None:

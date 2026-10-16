@@ -8,7 +8,10 @@ Demographics extractors (school, city, synagogue) use persons' normalized
 fields, falling back to raw fields when normalized values are not available.
 """
 
+from collections.abc import Iterable, Mapping
 from typing import Any
+
+from bunking.gender_identity import NOT_GIVEN, gender_label, has_identity_answer
 
 # Grade boundaries for retention aged-out logic (spec §8).
 # RETENTION_AGED_OUT_GRADE is the main-camp ceiling (the 10th-grade -> teen bridge);
@@ -38,9 +41,50 @@ def is_aged_out(grade: int | None, include_teen_pipeline: bool = False) -> bool:
 
 
 def extract_gender(person: Any) -> str:
-    """Extract gender from person, returning 'Unknown' for None/empty."""
+    """The binary Gender field (M / F / Other), 'Unknown' for None/empty.
+
+    Only for what decision 38 keeps on the binary field: cabins, capacity and the Velocity boys/girls curves that
+    pace against them. Every Analytics gender split reads extract_gender_identity (#2898).
+    """
     gender = getattr(person, "gender", None)
     return gender or "Unknown"
+
+
+# Owner ruling 58 (b), superseding decision 38b's "no fallback" for Analytics: a camper with no Gender Identity answer
+# counts by the binary Gender field (F as Girl/woman, M as Boy/man), and every split that does so says how many campers
+# it counted that way (count_binary_fallbacks). The one switch: False puts every blank answer back to "not given".
+# Camperships keeps its own no-fallback rule and never reads this.
+IDENTITY_FALLS_BACK_TO_BINARY = True
+
+
+def _text(person: Any, field: str) -> str:
+    value = getattr(person, field, None)
+    return value if isinstance(value, str) else ""
+
+
+def extract_gender_identity(person: Any) -> str:
+    """The gender identity label Analytics counts a camper under (#2898; decision 38): CampMinder's Gender Identity,
+    "self-described" for a write-in, the binary field for a blank answer (IDENTITY_FALLS_BACK_TO_BINARY), "not given"
+    when there is nothing to read. The labels are the ones Camperships' development report counts."""
+    return gender_label(
+        _text(person, "gender_identity_name"),
+        _text(person, "gender_identity_write_in"),
+        binary_fallback=_text(person, "gender") if IDENTITY_FALLS_BACK_TO_BINARY else None,
+    )
+
+
+def counted_by_binary_field(person: Any) -> bool:
+    """Whether extract_gender_identity counted this camper by the binary field (ruling 58)."""
+    return (
+        IDENTITY_FALLS_BACK_TO_BINARY
+        and not has_identity_answer(_text(person, "gender_identity_name"), _text(person, "gender_identity_write_in"))
+        and extract_gender_identity(person) != NOT_GIVEN
+    )
+
+
+def count_binary_fallbacks(person_ids: Iterable[int], persons: Mapping[int, Any]) -> int:
+    """How many of these campers a gender split counted by the binary field: the number its note states."""
+    return sum(1 for pid in person_ids if (person := persons.get(pid)) is not None and counted_by_binary_field(person))
 
 
 def extract_grade(person: Any) -> int | None:

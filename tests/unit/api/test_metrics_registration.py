@@ -2283,8 +2283,8 @@ class TestGenderBySessionLength:
 
         assert len(result) == 1
         assert result[0].length_category == "3-week"
-        assert result[0].male_count == 4
-        assert result[0].female_count == 4
+        assert result[0].by_gender.get("Boy/man", 0) == 4
+        assert result[0].by_gender.get("Girl/woman", 0) == 4
         assert result[0].total == 8
 
     def test_gender_by_session_length_multiple_categories(self) -> None:
@@ -2327,13 +2327,13 @@ class TestGenderBySessionLength:
         assert "3-week" in categories
 
         # 1-week: 1M (Liam), 1F (Emma)
-        assert categories["1-week"].male_count == 1
-        assert categories["1-week"].female_count == 1
+        assert categories["1-week"].by_gender.get("Boy/man", 0) == 1
+        assert categories["1-week"].by_gender.get("Girl/woman", 0) == 1
         assert categories["1-week"].total == 2
 
         # 3-week: 1M (Noah), 2F (Olivia, Ava)
-        assert categories["3-week"].male_count == 1
-        assert categories["3-week"].female_count == 2
+        assert categories["3-week"].by_gender.get("Boy/man", 0) == 1
+        assert categories["3-week"].by_gender.get("Girl/woman", 0) == 2
         assert categories["3-week"].total == 3
 
     def test_gender_by_session_length_sorted_by_length(self) -> None:
@@ -2402,8 +2402,8 @@ class TestGenderBySessionLength:
 
         assert len(result) == 1
         assert result[0].total == 1
-        assert result[0].female_count == 1
-        assert result[0].male_count == 0
+        assert result[0].by_gender.get("Girl/woman", 0) == 1
+        assert result[0].by_gender.get("Boy/man", 0) == 0
 
     def test_gender_by_session_length_ag_merged(self) -> None:
         """AG session attendees should be counted under parent session's length category."""
@@ -2434,8 +2434,8 @@ class TestGenderBySessionLength:
         # All should be under 3-week (parent session's length)
         assert len(result) == 1
         assert result[0].length_category == "3-week"
-        assert result[0].male_count == 1  # Liam
-        assert result[0].female_count == 2  # Emma + Olivia (AG merged)
+        assert result[0].by_gender.get("Boy/man", 0) == 1  # Liam
+        assert result[0].by_gender.get("Girl/woman", 0) == 2  # Emma + Olivia (AG merged)
         assert result[0].total == 3
 
     def test_gender_by_session_length_deduplicates_persons(self) -> None:
@@ -2463,7 +2463,7 @@ class TestGenderBySessionLength:
         # Emma should only be counted once in 3-week
         assert len(result) == 1
         assert result[0].length_category == "3-week"
-        assert result[0].female_count == 1
+        assert result[0].by_gender.get("Girl/woman", 0) == 1
         assert result[0].total == 1
 
     def test_gender_by_session_length_excludes_non_display_sessions(self) -> None:
@@ -2495,8 +2495,8 @@ class TestGenderBySessionLength:
         # Only main session should appear; family excluded
         assert len(result) == 1
         assert result[0].length_category == "3-week"
-        assert result[0].female_count == 1
-        assert result[0].male_count == 0
+        assert result[0].by_gender.get("Girl/woman", 0) == 1
+        assert result[0].by_gender.get("Boy/man", 0) == 0
         assert result[0].total == 1
 
     def test_gender_by_session_length_person_id_cast_to_int(self) -> None:
@@ -2523,7 +2523,7 @@ class TestGenderBySessionLength:
 
         # Should still find the person despite string person_id
         assert len(result) == 1
-        assert result[0].female_count == 1
+        assert result[0].by_gender.get("Girl/woman", 0) == 1
         assert result[0].total == 1
 
     def test_gender_by_session_length_unknown_gender_in_total(self) -> None:
@@ -2556,6 +2556,6 @@ class TestGenderBySessionLength:
         result = service._compute_gender_by_session_length(attendees, sessions_dict, persons_dict)
 
         assert len(result) == 1
-        assert result[0].male_count == 1  # Liam
-        assert result[0].female_count == 1  # Emma
+        assert result[0].by_gender.get("Boy/man", 0) == 1  # Liam
+        assert result[0].by_gender.get("Girl/woman", 0) == 1  # Emma
         assert result[0].total == 4  # All 4 persons, not just M+F

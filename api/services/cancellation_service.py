@@ -22,7 +22,7 @@ from api.schemas.metrics import (
     TimeBucket,
 )
 from api.services.breakdown_calculator import calculate_percentage, compute_registration_breakdown
-from api.services.extractors import extract_gender, extract_grade
+from api.services.extractors import count_binary_fallbacks, extract_gender_identity, extract_grade
 from api.utils.session_metrics import (
     DEFAULT_SUMMER_SESSION_TYPES,
     SUMMER_TEEN_TYPES,
@@ -31,6 +31,7 @@ from api.utils.session_metrics import (
     resolve_scope_ids,
 )
 from api.utils.session_swap import detect_session_swaps
+from bunking.gender_identity import identity_sort_key
 from bunking.logging_config import get_logger
 
 # Back-compat alias as an explicit module export (shared default lives in session_metrics).
@@ -276,6 +277,7 @@ class CancellationService:
             by_session=by_session,
             by_grade=by_grade,
             by_gender=by_gender,
+            gender_fallback_count=count_binary_fallbacks(seen_for_summary, persons),
         )
 
     @staticmethod
@@ -325,7 +327,7 @@ class CancellationService:
             if not person:
                 continue
             grade = extract_grade(person)
-            gender = extract_gender(person)
+            gender = extract_gender_identity(person)
 
             if grade not in grade_split:
                 grade_split[grade] = {**_zero}
@@ -351,7 +353,7 @@ class CancellationService:
             for g, s in sorted(grade_stats.items(), key=lambda x: (x[0] is None, x[0]))
         ]
 
-        gender_stats = compute_registration_breakdown(person_ids, persons, extract_gender)
+        gender_stats = compute_registration_breakdown(person_ids, persons, extract_gender_identity)
         by_gender = [
             GenderBreakdown(
                 gender=g,
@@ -362,7 +364,7 @@ class CancellationService:
                 was_applied=gender_split.get(g, _zero)["applied"],
                 other_prior_status=gender_split.get(g, _zero)["other"],
             )
-            for g, s in sorted(gender_stats.items())
+            for g, s in sorted(gender_stats.items(), key=lambda x: identity_sort_key(x[0]))
         ]
 
         return by_grade, by_gender

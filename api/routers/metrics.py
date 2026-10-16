@@ -444,7 +444,8 @@ async def get_drilldown_attendees(
     ),
     breakdown_value: str = Query(
         ...,
-        description="The value to filter by (e.g., 'F' for gender, '5' for grade, '1000' for session cm_id)",
+        description="The value to filter by (e.g., 'Non-binary' or 'not given' for gender, the gender identity label; "
+        "'5' for grade, '1000' for session cm_id)",
     ),
     session_cm_id: int | None = Query(
         None,
@@ -512,7 +513,9 @@ async def get_velocity(
     compare_years: str | None = Query(None, description="Comma-separated prior years to overlay"),
     session_cm_id: int | None = Query(None, description="Filter to specific session"),
     session_types: str | None = Query("main,embedded,ag", description="Session types"),
-    split_by_gender: bool = Query(False, description="Split enrollment by gender (M/F)"),
+    split_by_gender: bool = Query(
+        False, description="Split enrollment by the binary Gender field (M/F), the cabin field Velocity paces against"
+    ),
     metric: str = Query("enrollment", description="'enrollment' or 'cancellation'"),
     duration: Literal["1-week", "2-week", "3-week", "4-week+"] | None = Query(
         None, description="Filter by session duration category (1-week, 2-week, 3-week, 4-week+)"

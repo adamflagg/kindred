@@ -44,6 +44,8 @@ PERSON_FIELDS: tuple[str, ...] = (
     "last_name",
     "preferred_name",
     "gender",
+    "gender_identity_name",
+    "gender_identity_write_in",
     "grade",
     "age",
     "school",

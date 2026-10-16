@@ -1208,13 +1208,15 @@ class TestDemographicEnrollmentSplit:
 
         gender_map = {g.gender: g for g in result.by_gender}
         # Emma: F, no enrollment
-        assert gender_map["F"].no_enrollment == 1
-        assert gender_map["F"].has_enrollment == 0
-        assert gender_map["F"].count == 1
+        assert gender_map["Girl/woman"].no_enrollment == 1
+        assert gender_map["Girl/woman"].has_enrollment == 0
+        assert gender_map["Girl/woman"].count == 1
         # Liam: M, has enrollment
-        assert gender_map["M"].no_enrollment == 0
-        assert gender_map["M"].has_enrollment == 1
-        assert gender_map["M"].count == 1
+        assert gender_map["Boy/man"].no_enrollment == 0
+        assert gender_map["Boy/man"].has_enrollment == 1
+        assert gender_map["Boy/man"].count == 1
+        # Neither has an identity answer: both counted by the binary field, which the chart's note states (ruling 58)
+        assert result.gender_fallback_count == 2
 
     @pytest.mark.asyncio
     async def test_mixed_enrollment_within_same_grade(

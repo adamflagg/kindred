@@ -8,11 +8,18 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+# Every Analytics gender split reads CampMinder's Gender Identity, never the binary field (#2898; epic #3207
+# decision 38). bunking.gender_identity holds the rule, shared with Camperships' development report.
+GENDER_IDENTITY_DESCRIPTION = (
+    "Gender identity label: CampMinder's Gender Identity, 'self-described' for a write-in, 'not given' when blank "
+    "(never the binary Gender field)"
+)
+
 
 class GenderBreakdown(BaseModel):
     """Breakdown of metrics by gender."""
 
-    gender: str = Field(description="Gender (M, F, or other)")
+    gender: str = Field(description=GENDER_IDENTITY_DESCRIPTION)
     count: int = Field(description="Number of campers")
     percentage: float = Field(description="Percentage of total")
     no_enrollment: int = Field(default=0, description="Waitlisted with no other enrollment")
@@ -92,16 +99,13 @@ class SynagogueBreakdown(BaseModel):
 
 
 class GenderByGradeBreakdown(BaseModel):
-    """Gender breakdown for a specific grade.
-
-    Shows male/female counts per grade for stacked bar chart visualization.
-    Note: Only M/F tracked since CampMinder sex field only has these values.
-    """
+    """Gender identity counts for one grade, for the stacked bar chart (#2898)."""
 
     grade: int | None = Field(description="Grade level (None if unknown)")
-    male_count: int = Field(description="Number of male campers")
-    female_count: int = Field(description="Number of female campers")
-    total: int = Field(description="Total campers in this grade")
+    by_gender: dict[str, int] = Field(
+        description="Campers per gender identity label (self-described and not given included), in display order"
+    )
+    total: int = Field(description="Total campers in this grade (every label, 'not given' included)")
 
 
 class SessionInLengthCategory(BaseModel):
@@ -127,16 +131,13 @@ class SessionLengthBySessionBreakdown(BaseModel):
 
 
 class GenderBySessionLengthBreakdown(BaseModel):
-    """Gender breakdown for a specific session length category.
-
-    Shows male/female counts per session length for stacked bar chart visualization.
-    Note: Only M/F tracked since CampMinder sex field only has these values.
-    """
+    """Gender identity counts for one session length category, for the stacked bar chart (#2898)."""
 
     length_category: str = Field(description="Length category (1-week, 2-week, etc.)")
-    male_count: int = Field(description="Number of male campers")
-    female_count: int = Field(description="Number of female campers")
-    total: int = Field(description="Total campers in this length category")
+    by_gender: dict[str, int] = Field(
+        description="Campers per gender identity label (self-described and not given included), in display order"
+    )
+    total: int = Field(description="Total campers in this length category (every label, 'not given' included)")
 
 
 class SummerYearsBreakdown(BaseModel):
@@ -180,7 +181,7 @@ class FirstSummerYearBreakdown(BaseModel):
 class RetentionByGender(BaseModel):
     """Retention metrics by gender."""
 
-    gender: str = Field(description="Gender (M, F, or other)")
+    gender: str = Field(description=GENDER_IDENTITY_DESCRIPTION)
     base_count: int = Field(description="Count in base year")
     returned_count: int = Field(description="Count that returned in compare year")
     retention_rate: float = Field(description="Retention rate (0-1)")
@@ -319,6 +320,11 @@ class RetentionMetricsResponse(BaseModel):
     overall_retention_rate: float = Field(description="Overall retention rate (0-1)")
 
     by_gender: list[RetentionByGender] = Field(description="Retention by gender")
+    gender_fallback_count: int = Field(
+        default=0,
+        description="Campers in the gender split with no Gender Identity answer, counted by the binary Gender field "
+        "(owner ruling 58): the number the split's note states",
+    )
     by_grade: list[RetentionByGrade] = Field(description="Retention by grade")
     by_session: list[RetentionBySession] = Field(description="Retention by base year session")
     by_years_at_camp: list[RetentionByYearsAtCamp] = Field(description="Retention by years at camp")
@@ -360,6 +366,11 @@ class RegistrationMetricsResponse(BaseModel):
     total_cancelled: int = Field(description="Total cancelled registrations")
 
     by_gender: list[GenderBreakdown] = Field(description="Enrollment by gender")
+    gender_fallback_count: int = Field(
+        default=0,
+        description="Campers in the gender split with no Gender Identity answer, counted by the binary Gender field "
+        "(owner ruling 58): the number the split's note states",
+    )
     by_grade: list[GradeBreakdown] = Field(description="Enrollment by grade")
     by_session: list[SessionBreakdown] = Field(description="Enrollment by session")
     by_years_at_camp: list[YearsAtCampBreakdown] = Field(description="Enrollment by years at camp")
@@ -432,6 +443,11 @@ class YearMetrics(BaseModel):
     year: int = Field(description="Year")
     total_enrolled: int = Field(description="Total enrolled campers")
     by_gender: list[GenderBreakdown] = Field(description="Enrollment by gender")
+    gender_fallback_count: int = Field(
+        default=0,
+        description="Campers in the gender split with no Gender Identity answer, counted by the binary Gender field "
+        "(owner ruling 58): the number the split's note states",
+    )
     new_vs_returning: NewVsReturning = Field(description="New vs returning breakdown")
     total_cancelled: int = Field(
         default=0, description="Campers whose final status is cancelled this year (same count as Overview)"
@@ -461,7 +477,7 @@ class HistoricalTrendsResponse(BaseModel):
 class GenderEnrollment(BaseModel):
     """Gender enrollment count for a single year."""
 
-    gender: str = Field(description="Gender (M, F, or other)")
+    gender: str = Field(description=GENDER_IDENTITY_DESCRIPTION)
     count: int = Field(description="Number enrolled")
 
 
@@ -513,6 +529,11 @@ class YearEnrollment(BaseModel):
     year: int = Field(description="Year")
     total: int = Field(description="Total enrolled")
     by_gender: list[GenderEnrollment] = Field(description="Enrollment by gender")
+    gender_fallback_count: int = Field(
+        default=0,
+        description="Campers in the gender split with no Gender Identity answer, counted by the binary Gender field "
+        "(owner ruling 58): the number the split's note states",
+    )
     by_grade: list[GradeEnrollment] = Field(description="Enrollment by grade")
     by_summer_years: list[SummerYearsEnrollment] = Field(
         default_factory=list, description="Enrollment by summers at camp"
@@ -539,6 +560,11 @@ class RetentionTrendYear(BaseModel):
     base_count: int = Field(description="Total campers in base year")
     returned_count: int = Field(description="Campers who returned")
     by_gender: list[RetentionByGender] = Field(default_factory=list, description="Retention by gender")
+    gender_fallback_count: int = Field(
+        default=0,
+        description="Campers in the gender split with no Gender Identity answer, counted by the binary Gender field "
+        "(owner ruling 58): the number the split's note states",
+    )
     by_grade: list[RetentionByGrade] = Field(default_factory=list, description="Retention by grade")
     aged_out_count: int = Field(0, description="Base year campers excluded (aged out of all eligible sessions)")
 
@@ -605,6 +631,11 @@ class WaitlistMetricsResponse(BaseModel):
     )
     by_grade: list[GradeBreakdown] = Field(default_factory=list, description="Waitlisted by grade")
     by_gender: list[GenderBreakdown] = Field(default_factory=list, description="Waitlisted by gender")
+    gender_fallback_count: int = Field(
+        default=0,
+        description="Campers in the gender split with no Gender Identity answer, counted by the binary Gender field "
+        "(owner ruling 58): the number the split's note states",
+    )
 
 
 # ============================================================================
@@ -678,6 +709,11 @@ class CancellationMetricsResponse(BaseModel):
     )
     by_grade: list[GradeBreakdown] = Field(default_factory=list, description="Cancellations by grade")
     by_gender: list[GenderBreakdown] = Field(default_factory=list, description="Cancellations by gender")
+    gender_fallback_count: int = Field(
+        default=0,
+        description="Campers in the gender split with no Gender Identity answer, counted by the binary Gender field "
+        "(owner ruling 58): the number the split's note states",
+    )
 
 
 # ============================================================================
@@ -710,7 +746,7 @@ class DrilldownAttendee(BaseModel):
     last_name: str = Field(description="Last name")
     preferred_name: str | None = Field(None, description="Preferred name if set")
     grade: int | None = Field(None, description="Grade level")
-    gender: str | None = Field(None, description="Gender (M, F, or other)")
+    gender: str | None = Field(None, description=GENDER_IDENTITY_DESCRIPTION)
     age: int | None = Field(
         None, description="Season year minus birth year (the rule CampMinder uses); None without a birth date"
     )

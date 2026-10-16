@@ -515,15 +515,17 @@ class TestDemographics:
         result = await service.calculate_cancellations(year=2025)
 
         assert len(result.by_gender) > 0
-        female = next((g for g in result.by_gender if g.gender == "F"), None)
+        female = next((g for g in result.by_gender if g.gender == "Girl/woman"), None)
         assert female is not None
         assert female.count == 2  # persons 101, 103
         assert female.was_enrolled == 2  # both were enrolled
 
-        male = next((g for g in result.by_gender if g.gender == "M"), None)
+        male = next((g for g in result.by_gender if g.gender == "Boy/man"), None)
         assert male is not None
         assert male.count == 1  # person 102
         assert male.was_waitlisted == 1
+        # No identity answers: all three counted by the binary field, which the chart's note states (ruling 58)
+        assert result.gender_fallback_count == 3
 
 
 # ============================================================================
@@ -838,7 +840,7 @@ class TestPriorStatusClassification:
         assert grade_5.other_prior_status == 1
 
         # Gender breakdown
-        female = next(g for g in result.by_gender if g.gender == "F")
+        female = next(g for g in result.by_gender if g.gender == "Girl/woman")
         assert female.count == 4
         assert female.was_enrolled == 1
         assert female.was_waitlisted == 1

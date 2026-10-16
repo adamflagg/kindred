@@ -122,7 +122,7 @@ class TestTeenWindowGate:
         service = DrilldownService(_repo({"enrolled": enrolled}, persons))
 
         result = await service.get_attendees_for_breakdown(
-            YEAR, "gender", "F", session_types=["scit", "tli"], status_filter=["enrolled"]
+            YEAR, "gender", "Girl/woman", session_types=["scit", "tli"], status_filter=["enrolled"]
         )
 
         assert [a.person_id for a in result] == [2]

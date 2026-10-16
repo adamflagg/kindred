@@ -257,8 +257,8 @@ class TestRetentionServiceCalculateRetention:
         result = await service.calculate_retention(base_year=2025, compare_year=2026)
 
         # Find gender breakdowns
-        male_stats = next((g for g in result.by_gender if g.gender == "M"), None)
-        female_stats = next((g for g in result.by_gender if g.gender == "F"), None)
+        male_stats = next((g for g in result.by_gender if g.gender == "Boy/man"), None)
+        female_stats = next((g for g in result.by_gender if g.gender == "Girl/woman"), None)
 
         assert male_stats is not None
         assert male_stats.base_count == 2

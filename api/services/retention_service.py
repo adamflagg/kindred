@@ -36,12 +36,14 @@ from api.utils.session_metrics import (
     resolve_cohort_session_ids,
     resolve_duration_sessions,
 )
+from bunking.gender_identity import identity_sort_key
 
 from .breakdown_calculator import compute_breakdown, safe_rate
 from .extractors import (
+    count_binary_fallbacks,
     exclude_aged_out_persons,
     extract_city,
-    extract_gender,
+    extract_gender_identity,
     extract_grade,
     extract_school,
     extract_synagogue,
@@ -208,7 +210,13 @@ class RetentionService:
 
         # Compute breakdowns using generic calculator
         by_gender = self._build_retention_breakdown(
-            person_ids_base, returned_ids, persons_base, extract_gender, RetentionByGender, "gender"
+            person_ids_base,
+            returned_ids,
+            persons_base,
+            extract_gender_identity,
+            RetentionByGender,
+            "gender",
+            sort_key=lambda r: identity_sort_key(r.gender),
         )
 
         by_grade = self._build_retention_breakdown(
@@ -319,6 +327,7 @@ class RetentionService:
             returned_count=returned_count,
             overall_retention_rate=overall_rate,
             by_gender=by_gender,
+            gender_fallback_count=count_binary_fallbacks(person_ids_base, persons_base),
             by_grade=by_grade,
             by_session=by_session,
             by_years_at_camp=by_years_at_camp,

@@ -129,10 +129,10 @@ class TestRegistrationServiceCalculate:
         result = await service.calculate_registration(2025)
 
         gender_dict = {g.gender: g for g in result.by_gender}
-        assert gender_dict["M"].count == 2
-        assert gender_dict["F"].count == 1
-        assert gender_dict["M"].percentage == pytest.approx(2 / 3 * 100)
-        assert gender_dict["F"].percentage == pytest.approx(1 / 3 * 100)
+        assert gender_dict["Boy/man"].count == 2
+        assert gender_dict["Girl/woman"].count == 1
+        assert gender_dict["Boy/man"].percentage == pytest.approx(2 / 3 * 100)
+        assert gender_dict["Girl/woman"].percentage == pytest.approx(1 / 3 * 100)
 
     @pytest.mark.asyncio
     async def test_grade_breakdown_handles_none(self) -> None:
@@ -657,11 +657,11 @@ class TestRegistrationServiceGenderByGrade:
         result = await service.calculate_registration(2025)
 
         grade_dict = {g.grade: g for g in result.by_gender_grade}
-        assert grade_dict[5].male_count == 1
-        assert grade_dict[5].female_count == 2
+        assert grade_dict[5].by_gender.get("Boy/man", 0) == 1
+        assert grade_dict[5].by_gender.get("Girl/woman", 0) == 2
         assert grade_dict[5].total == 3
-        assert grade_dict[6].male_count == 1
-        assert grade_dict[6].female_count == 0
+        assert grade_dict[6].by_gender.get("Boy/man", 0) == 1
+        assert grade_dict[6].by_gender.get("Girl/woman", 0) == 0
         assert grade_dict[6].total == 1
 
 
