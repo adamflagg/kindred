@@ -19,6 +19,7 @@ from .breakdown_calculator import (
 from .extractors import (
     extract_city,
     extract_gender,
+    extract_gender_identity,
     extract_grade,
     extract_school,
     extract_synagogue,
@@ -44,6 +45,7 @@ __all__ = [
     "extract_city",
     # Extractors
     "extract_gender",
+    "extract_gender_identity",
     "extract_grade",
     "extract_school",
     "extract_synagogue",

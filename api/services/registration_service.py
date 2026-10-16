@@ -7,6 +7,7 @@ testable service that uses the MetricsRepository for data access.
 from __future__ import annotations
 
 import asyncio
+from collections import Counter
 from datetime import date, timedelta
 from statistics import mean
 from typing import TYPE_CHECKING, Any, Literal, cast
@@ -42,14 +43,16 @@ from api.utils.session_metrics import (
     resolve_cohort_session_ids,
     resolve_duration_sessions,
 )
+from bunking.gender_identity import NOT_GIVEN, identity_sort_key
 from bunking.logging_config import get_logger
 
 from .breakdown_calculator import calculate_percentage, compute_registration_breakdown
 from .extractors import (
     AGE_BAND_KEYS,
+    count_binary_fallbacks,
     extract_age_band,
     extract_city,
-    extract_gender,
+    extract_gender_identity,
     extract_grade,
     extract_school,
     extract_synagogue,
@@ -64,6 +67,11 @@ if TYPE_CHECKING:
     from .metrics_repository import MetricsRepository
 
 logger = get_logger(__name__)
+
+
+def _in_identity_order(counts: Counter[str]) -> dict[str, int]:
+    """A gender identity count, keyed in the order a split lists its labels (identity_sort_key)."""
+    return {label: counts[label] for label in sorted(counts, key=identity_sort_key)}
 
 
 class RegistrationService:
@@ -238,7 +246,7 @@ class RegistrationService:
         # Session length by session (stacked bar chart showing sessions per length category)
         by_session_length_by_session = self._compute_session_length_by_session(combined_attendees, sessions)
 
-        # Gender by session length (stacked bar chart showing boys vs girls per length category)
+        # Gender by session length (stacked bar chart of the gender identity groups per length category)
         by_gender_by_session_length = self._compute_gender_by_session_length(combined_attendees, sessions, persons)
 
         # Summers at Camp: CampMinder's Years At Camp this season (decision 36), and the
@@ -262,6 +270,7 @@ class RegistrationService:
             total_waitlisted=total_waitlisted,
             total_cancelled=total_cancelled,
             by_gender=by_gender,
+            gender_fallback_count=count_binary_fallbacks(enrolled_person_ids, persons),
             by_grade=by_grade,
             by_session=by_session,
             by_years_at_camp=by_years_at_camp,
@@ -305,10 +314,10 @@ class RegistrationService:
         self, person_ids: set[int], persons: dict[int, Any], total: int
     ) -> list[GenderBreakdown]:
         """Compute gender breakdown."""
-        stats = compute_registration_breakdown(person_ids, persons, extract_gender)
+        stats = compute_registration_breakdown(person_ids, persons, extract_gender_identity, missing=NOT_GIVEN)
         return [
             GenderBreakdown(gender=g, count=s.count, percentage=calculate_percentage(s.count, total))
-            for g, s in sorted(stats.items())
+            for g, s in sorted(stats.items(), key=lambda x: identity_sort_key(x[0]))
         ]
 
     def _compute_grade_breakdown(
@@ -600,34 +609,17 @@ class RegistrationService:
         ]
 
     def _compute_gender_by_grade(self, person_ids: set[int], persons: dict[int, Any]) -> list[GenderByGradeBreakdown]:
-        """Compute gender by grade cross-tabulation.
-
-        Note: Only M/F tracked since CampMinder sex field only has these values.
-        """
-        gender_grade_stats: dict[int | None, dict[str, int]] = {}
+        """Gender identity by grade (#2898): every camper counts under their identity label, "not given" included."""
+        gender_grade_stats: dict[int | None, Counter[str]] = {}
         for pid in person_ids:
             person = persons.get(pid)
             if not person:
                 continue
             grade = getattr(person, "grade", None)
-            gender = getattr(person, "gender", "") or ""
-
-            if grade not in gender_grade_stats:
-                gender_grade_stats[grade] = {"M": 0, "F": 0}
-
-            if gender == "M":
-                gender_grade_stats[grade]["M"] += 1
-            elif gender == "F":
-                gender_grade_stats[grade]["F"] += 1
-            # Non-M/F values are ignored since CampMinder sex field only has M/F
+            gender_grade_stats.setdefault(grade, Counter())[extract_gender_identity(person)] += 1
 
         return [
-            GenderByGradeBreakdown(
-                grade=g,
-                male_count=stats["M"],
-                female_count=stats["F"],
-                total=stats["M"] + stats["F"],
-            )
+            GenderByGradeBreakdown(grade=g, by_gender=_in_identity_order(stats), total=stats.total())
             for g, stats in sorted(gender_grade_stats.items(), key=lambda x: (x[0] is None, x[0]))
         ]
 
@@ -778,30 +770,15 @@ class RegistrationService:
                 length_persons[length] = set()
             length_persons[length].add(int(person_id))
 
-        # Count genders per length category
+        # Count gender identities per length category (#2898)
         result = []
         for length, person_ids in sorted(length_persons.items(), key=lambda x: SESSION_LENGTH_ORDER.get(x[0], 5)):
-            male_count = 0
-            female_count = 0
-            total = 0
-            for pid in person_ids:
-                person = persons.get(pid)
-                if not person:
-                    continue
-                total += 1
-                gender = getattr(person, "gender", "") or ""
-                if gender == "M":
-                    male_count += 1
-                elif gender == "F":
-                    female_count += 1
-
-            if total > 0:
+            # a camper with no persons row counts as "not given", so the lengths add up to the enrolled total
+            counts = Counter(extract_gender_identity(persons.get(pid)) for pid in person_ids)
+            if counts:
                 result.append(
                     GenderBySessionLengthBreakdown(
-                        length_category=length,
-                        male_count=male_count,
-                        female_count=female_count,
-                        total=total,
+                        length_category=length, by_gender=_in_identity_order(counts), total=counts.total()
                     )
                 )
 

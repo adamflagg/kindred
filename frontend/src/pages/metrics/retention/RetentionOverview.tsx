@@ -43,6 +43,11 @@ import type { DrilldownFilter } from '../../../types/metrics'
 import { Loader2 } from 'lucide-react'
 import { formatCount, formatPercent, formatRate } from '../../../utils/numberFormat'
 import { MetricsBusy, MetricsLoadError } from '../../../components/metrics/MetricsQueryGuard'
+import { RetentionGenderTable } from '../../../components/metrics/RetentionGenderTable'
+import { GenderFallbackLine } from '../../../components/metrics/genderIdentityNotes'
+import { genderNote } from '../../../components/metrics/genderNotes'
+import { GENDER_DISPLAY_COLORS } from '../../../components/metrics/genderColors'
+import { DefinitionNotes } from '../../../components/camperships/kit/DefinitionNotes'
 
 // P-20 option B (owner, 2026-10-15): the session, school and synagogue charts write
 // shorter names on the axis. City and region names are left as they are.
@@ -132,6 +137,10 @@ export default function RetentionOverview() {
 
   // Pre-sort session data chronologically before converting to bar data
   const genderPieData = genderToPieData(data.by_gender)
+  // #2898 ruling 58: the base season's campers with no identity answer count by the Gender field, said under the
+  // gender cards and in the page's one note (none at 0, #73 a).
+  const fallback = data.gender_fallback_count ?? 0
+  const genderNoteN = fallback > 0 ? 1 : undefined
   const gradeBars = gradeToBarData(data.by_grade)
   const sessionBars = sessionToBarData(sortSessionDataByDate(data.by_session, sessionDateLookup))
   const priorSessionBars = priorSessionToBarData(
@@ -267,6 +276,17 @@ export default function RetentionOverview() {
               showPercentage
               height={200}
               breakdownType="gender"
+              colorMap={GENDER_DISPLAY_COLORS}
+              footer={
+                genderNoteN !== undefined && (
+                  // The pie holds the campers who returned, so its line counts them (#72 a)
+                  <GenderFallbackLine
+                    n={genderNoteN}
+                    count={data.gender_fallback_returned_count ?? 0}
+                    season={`${priorYear} campers who returned`}
+                  />
+                )
+              }
               onSegmentClick={(filter) =>
                 setFilter({
                   ...filter,
@@ -284,6 +304,15 @@ export default function RetentionOverview() {
             />
           )}
         </div>
+
+        {data.by_gender.length > 0 && (
+          <RetentionGenderTable
+            data={data}
+            baseYear={priorYear}
+            compareYear={currentYear}
+            noteN={genderNoteN}
+          />
+        )}
 
         {/* Row 2: Session charts side by side */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -392,6 +421,18 @@ export default function RetentionOverview() {
             </div>
             <OutlierSection outliers={regionOutliers} max={5} />
           </div>
+        )}
+
+        {genderNoteN !== undefined && (
+          <DefinitionNotes
+            notes={[
+              genderNote(
+                genderNoteN,
+                [{ season: priorYear, count: fallback }],
+                ' Read for the base season.'
+              ),
+            ]}
+          />
         )}
 
         {/* Drilldown Modal */}

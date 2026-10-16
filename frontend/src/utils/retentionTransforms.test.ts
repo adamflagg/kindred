@@ -232,27 +232,20 @@ describe('regionToBarData', () => {
 })
 
 describe('genderToPieData', () => {
-  it('should convert retention gender data to pie chart format', () => {
+  it('converts retention gender identity data to pie chart format, in the fixed order (#2898)', () => {
     const data: RetentionByGender[] = [
-      { gender: 'M', base_count: 50, returned_count: 40, retention_rate: 0.8 },
-      { gender: 'F', base_count: 30, returned_count: 20, retention_rate: 0.667 },
+      { gender: 'Boy/man', base_count: 50, returned_count: 40, retention_rate: 0.8 },
+      { gender: 'not given', base_count: 3, returned_count: 0, retention_rate: 0 },
+      { gender: 'Girl/woman', base_count: 30, returned_count: 20, retention_rate: 0.667 },
     ]
 
     const result = genderToPieData(data)
 
-    expect(result).toHaveLength(2)
-    expect(result[0]).toEqual({
-      name: 'Male',
-      value: 40,
-      percentage: expect.closeTo(66.7, 0),
-      id: 'M',
-    })
-    expect(result[1]).toEqual({
-      name: 'Female',
-      value: 20,
-      percentage: expect.closeTo(33.3, 0),
-      id: 'F',
-    })
+    expect(result).toEqual([
+      { name: 'Girl/woman', value: 20, percentage: expect.closeTo(33.3, 0), id: 'Girl/woman' },
+      { name: 'Boy/man', value: 40, percentage: expect.closeTo(66.7, 0), id: 'Boy/man' },
+      { name: 'Not given', value: 0, percentage: 0, id: 'not given' },
+    ])
   })
 
   it('should return empty array for undefined input', () => {
@@ -261,21 +254,5 @@ describe('genderToPieData', () => {
 
   it('should return empty array for empty input', () => {
     expect(genderToPieData([])).toEqual([])
-  })
-
-  it('should handle single gender', () => {
-    const data: RetentionByGender[] = [
-      { gender: 'M', base_count: 10, returned_count: 8, retention_rate: 0.8 },
-    ]
-
-    const result = genderToPieData(data)
-
-    expect(result).toHaveLength(1)
-    expect(result[0]).toEqual({
-      name: 'Male',
-      value: 8,
-      percentage: 100,
-      id: 'M',
-    })
   })
 })

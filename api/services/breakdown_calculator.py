@@ -57,6 +57,8 @@ def compute_breakdown[T](
     returned_ids: set[int],
     persons: dict[int, Any],
     extractor: Callable[[Any], T],
+    *,
+    missing: T | None = None,
 ) -> dict[T, BreakdownStats]:
     """Compute breakdown statistics for retention metrics.
 
@@ -69,6 +71,7 @@ def compute_breakdown[T](
         returned_ids: Set of person IDs who returned (intersection of base and compare years).
         persons: Dictionary mapping person_id to person/record object.
         extractor: Function that extracts the category value from a person/record.
+        missing: Where a person id with no record counts; None (the default) leaves it out.
 
     Returns:
         Dictionary mapping category value to BreakdownStats.
@@ -83,10 +86,10 @@ def compute_breakdown[T](
 
     for pid in person_ids:
         person = persons.get(pid)
-        if not person:
+        if not person and missing is None:
             continue
 
-        value = extractor(person)
+        value = extractor(person) if person else missing
         if value not in stats:
             stats[value] = {"base": 0, "returned": 0}
         stats[value]["base"] += 1
@@ -107,6 +110,8 @@ def compute_registration_breakdown[T](
     person_ids: set[int],
     persons: dict[int, Any],
     extractor: Callable[[Any], T],
+    *,
+    missing: T | None = None,
 ) -> dict[T, RegistrationBreakdownStats]:
     """Compute breakdown statistics for registration metrics (count-only).
 
@@ -117,6 +122,7 @@ def compute_registration_breakdown[T](
         person_ids: Set of person IDs to count.
         persons: Dictionary mapping person_id to person/record object.
         extractor: Function that extracts the category value from a person/record.
+        missing: Where a person id with no record counts; None (the default) leaves it out.
 
     Returns:
         Dictionary mapping category value to RegistrationBreakdownStats.
@@ -131,10 +137,10 @@ def compute_registration_breakdown[T](
 
     for pid in person_ids:
         person = persons.get(pid)
-        if not person:
+        if not person and missing is None:
             continue
 
-        value = extractor(person)
+        value = extractor(person) if person else missing
         counts[value] = counts.get(value, 0) + 1
 
     total = sum(counts.values())

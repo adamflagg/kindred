@@ -5,6 +5,10 @@
  * testing and reduce component complexity.
  */
 
+import {
+  genderDisplayName,
+  sortByIdentityOrder,
+} from '../components/camperships/kit/genderIdentity'
 import type {
   AgeBandBreakdown,
   FirstSummerYearBreakdown,
@@ -51,15 +55,11 @@ export interface TrendDisplay {
 // Registration transforms (types from types/metrics.ts)
 // ============================================================================
 
-const GENDER_LABEL_MAP: Record<string, string> = {
-  M: 'Male',
-  F: 'Female',
-}
-
+/** Gender identity labels (#2898) in the fixed order (#76 a), shown as staff read them, drilled by the raw label. */
 export function transformGenderData(data: GenderBreakdown[] | undefined): ChartDataPoint[] {
   if (!data?.length) return []
-  return data.map((g) => ({
-    name: GENDER_LABEL_MAP[g.gender] ?? (g.gender || 'Unknown'),
+  return sortByIdentityOrder(data, (g) => g.gender).map((g) => ({
+    name: g.gender ? genderDisplayName(g.gender) : 'Unknown',
     value: g.count,
     percentage: g.percentage,
     id: g.gender,

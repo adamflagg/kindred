@@ -20,11 +20,12 @@ from api.utils.session_metrics import (
     filter_attendees_by_session,
     resolve_scope_ids,
 )
+from bunking.gender_identity import NOT_GIVEN, identity_sort_key
 from bunking.logging_config import get_logger
 
 from .breakdown_calculator import calculate_percentage, compute_registration_breakdown
 from .camp_calendar import default_season_year
-from .extractors import extract_gender, is_new_camper
+from .extractors import count_binary_fallbacks, extract_gender_identity, is_new_camper
 
 if TYPE_CHECKING:
     from .metrics_repository import MetricsRepository
@@ -159,10 +160,10 @@ class HistoricalService:
         total_enrolled = len(person_ids)
 
         # Gender breakdown from persons table
-        gender_stats = compute_registration_breakdown(person_ids, persons, extract_gender)
+        gender_stats = compute_registration_breakdown(person_ids, persons, extract_gender_identity, missing=NOT_GIVEN)
         by_gender = [
             GenderBreakdown(gender=g, count=s.count, percentage=calculate_percentage(s.count, total_enrolled))
-            for g, s in sorted(gender_stats.items())
+            for g, s in sorted(gender_stats.items(), key=lambda x: identity_sort_key(x[0]))
         ]
 
         # New vs returning from persons.years_at_camp
@@ -186,6 +187,7 @@ class HistoricalService:
             year=year,
             total_enrolled=total_enrolled,
             by_gender=by_gender,
+            gender_fallback_count=count_binary_fallbacks(person_ids, persons),
             new_vs_returning=new_vs_returning,
             total_cancelled=total_cancelled,
             cancellation_rate=cancellation_rate,

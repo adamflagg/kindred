@@ -63,7 +63,12 @@ export interface SessionGenderBreakdown {
   session_name: string | null
   boys_enrolled: number
   girls_enrolled: number
+  /** Gender identity split only (#2898 answer #78): each identity group with any campers. */
+  by_identity?: Record<string, number>
 }
+
+/** Which gender Velocity's split reads: the Gender field cabins fill by (default) or gender identity. */
+export type GenderBasis = 'field' | 'identity'
 
 export interface PriorYearCancelledSummary {
   year: number
@@ -102,6 +107,12 @@ export interface VelocityResponse {
   by_gender: VelocityCurve[]
   prior_years: PriorYearVelocity[]
   prior_year_by_gender: VelocityCurve[]
+  /** Which gender `by_gender` reads; absent from older responses = the Gender field. */
+  gender_basis?: GenderBasis
+  /** Gender identity split: this season's campers with no identity answer, counted by the Gender field. */
+  gender_fallback_count?: number
+  /** The same count for each compared prior year above 0. */
+  prior_year_gender_fallback_counts?: Record<number, number>
   phase_markers: PhaseMarker[]
   session_gender_breakdown: SessionGenderBreakdown[]
   cancelled_to_date: number | null

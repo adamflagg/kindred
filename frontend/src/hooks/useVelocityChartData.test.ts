@@ -418,14 +418,16 @@ describe('useVelocityChartData', () => {
       expect(row).not.toHaveProperty('gross_enrolled')
     })
 
-    it('cancellation daily gender: maps from enrolled_boys/enrolled_girls on daily point', () => {
+    it('cancellation daily gender: maps from enrolled on each gender curve daily point', () => {
+      // The API's cancellation gender curves carry their running count in `enrolled`, as the combined
+      // curve's daily points do (#3273 scan); enrolled_boys / enrolled_girls stay null on them.
       const mCurve = makeVelocityCurve({
         gender: 'M',
-        daily: [makeDailyPoint({ day_offset: 0, enrolled_boys: 15, enrolled: 15 })],
+        daily: [makeDailyPoint({ day_offset: 0, enrolled: 15 })],
       })
       const fCurve = makeVelocityCurve({
         gender: 'F',
-        daily: [makeDailyPoint({ day_offset: 0, enrolled_girls: 10, enrolled: 10 })],
+        daily: [makeDailyPoint({ day_offset: 0, enrolled: 10 })],
       })
       const data = makeResponse({
         daily: [makeDailyPoint({ day_offset: 0, enrolled: 25 })],
@@ -436,8 +438,8 @@ describe('useVelocityChartData', () => {
       const { result } = renderHook(() => useVelocityChartData(data, defaultSessions, config))
 
       const row = result.current.dailyChartData[0]!
-      expect(row['cancelled_boys']).toBe(15) // from enrolled_boys on daily point
-      expect(row['cancelled_girls']).toBe(10) // from enrolled_girls on daily point
+      expect(row['cancelled_boys']).toBe(15)
+      expect(row['cancelled_girls']).toBe(10)
     })
 
     it('enrollment daily gender: maps from enrolled on gender curve daily point', () => {
@@ -822,5 +824,89 @@ describe('useVelocityChartData', () => {
       expect(result.current.priorSessionMap.get('Taste of Camp 1')?.year).toBe(2025)
       expect(result.current.priorSessionMap.has(1200)).toBe(false)
     })
+  })
+})
+
+describe('gender identity lines (#2898 owner answer #78)', () => {
+  const identity = (over: Partial<VelocityResponse>) =>
+    makeResponse({ gender_basis: 'identity', ...over })
+
+  it('builds one set of weekly keys per identity group, this year and the prior', () => {
+    const data = identity({
+      by_gender: [
+        makeVelocityCurve({
+          gender: 'Girl/woman',
+          weekly: [
+            makeWeeklyPoint({ week_number: 1, enrolled: 60, gross_enrolled: 64, weekly_new: 9 }),
+          ],
+        }),
+        makeVelocityCurve({
+          gender: 'Non-binary',
+          weekly: [makeWeeklyPoint({ week_number: 1, enrolled: 3, weekly_cancelled: 1 })],
+        }),
+      ],
+      prior_year_by_gender: [
+        makeVelocityCurve({
+          year: 2024,
+          gender: 'Non-binary',
+          weekly: [makeWeeklyPoint({ week_number: 1, enrolled: 2, weekly_new: 1 })],
+        }),
+      ],
+    })
+    const { result } = renderHook(() =>
+      useVelocityChartData(data, defaultSessions, { ...enrollmentConfig, splitByGender: true })
+    )
+    expect(result.current.genderSeries.map((s) => s.key)).toEqual(['girl_woman', 'non_binary'])
+    const row = result.current.weeklyChartData[0]!
+    expect(row['enrolled_girl_woman']).toBe(60)
+    expect(row['gross_enrolled_girl_woman']).toBe(64)
+    expect(row['weekly_new_girl_woman']).toBe(9)
+    expect(row['weekly_cancelled_non_binary']).toBe(1)
+    expect(row['enrolled_non_binary_2024']).toBe(2)
+    expect(row['weekly_new_non_binary_2024']).toBe(1)
+    expect(row['enrolled_boys']).toBeUndefined()
+  })
+
+  it('reads daily identity lines from each group curve', () => {
+    const data = identity({
+      daily: [makeDailyPoint({ day_offset: 0, enrolled: 100 })],
+      by_gender: [
+        makeVelocityCurve({
+          gender: 'Another identity',
+          daily: [makeDailyPoint({ day_offset: 0, enrolled: 4, gross_enrolled: 5 })],
+        }),
+      ],
+    })
+    const { result } = renderHook(() =>
+      useVelocityChartData(data, defaultSessions, { ...enrollmentConfig, splitByGender: true })
+    )
+    const row = result.current.dailyChartData[0]!
+    expect(row['enrolled_another_identity']).toBe(4)
+    expect(row['gross_enrolled_another_identity']).toBe(5)
+  })
+
+  it('carries cancellation identity lines under cancelled_<group>', () => {
+    const data = identity({
+      by_gender: [
+        makeVelocityCurve({
+          gender: 'No answer',
+          weekly: [makeWeeklyPoint({ week_number: 1, enrolled: 2 })],
+        }),
+      ],
+    })
+    const { result } = renderHook(() =>
+      useVelocityChartData(data, defaultSessions, { ...cancellationConfig, splitByGender: true })
+    )
+    expect(result.current.weeklyChartData[0]!['cancelled_no_answer']).toBe(2)
+  })
+
+  it('keeps Boys and Girls on the Gender field', () => {
+    const { result } = renderHook(() =>
+      useVelocityChartData(makeResponse({}), defaultSessions, {
+        ...enrollmentConfig,
+        splitByGender: true,
+      })
+    )
+    expect(result.current.genderSeries.map((s) => s.label)).toEqual(['Boys', 'Girls'])
   })
 })

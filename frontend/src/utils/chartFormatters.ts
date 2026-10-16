@@ -12,11 +12,6 @@ export const PRIOR_YEAR_COLORS = [
   'hsl(180, 50%, 45%)',
 ]
 
-export const GENDER_COLORS = {
-  boys: 'hsl(210, 70%, 55%)',
-  girls: 'hsl(340, 65%, 55%)',
-}
-
 /**
  * Format a Recharts <LabelList> value as a separated count.
  * Recharts passes `value` as `unknown` (number | string | undefined depending on data shape).

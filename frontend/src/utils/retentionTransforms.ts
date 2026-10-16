@@ -3,6 +3,10 @@
  * Converts RetentionBy* types to bar chart items or pie chart slices.
  */
 
+import {
+  genderDisplayName,
+  sortByIdentityOrder,
+} from '../components/camperships/kit/genderIdentity'
 import type {
   RetentionByGender,
   RetentionByGrade,
@@ -51,17 +55,8 @@ export function sortRetentionBarData(
   return topN ? sorted.slice(0, topN) : sorted
 }
 
-/** Map raw gender codes to readable display names. */
-export function getGenderDisplayName(raw: string): string {
-  switch (raw) {
-    case 'M':
-      return 'Male'
-    case 'F':
-      return 'Female'
-    default:
-      return raw
-  }
-}
+/** A gender identity label as staff read it (#2898). */
+export const getGenderDisplayName = genderDisplayName
 
 /** Convert retention gender data to pie chart format (returned counts with percentages). */
 export function genderToPieData(
@@ -69,7 +64,7 @@ export function genderToPieData(
 ): Array<{ name: string; value: number; percentage: number; id: string }> {
   if (!data?.length) return []
   const total = data.reduce((sum, d) => sum + d.returned_count, 0)
-  return data.map((d) => ({
+  return sortByIdentityOrder(data, (d) => d.gender).map((d) => ({
     name: getGenderDisplayName(d.gender),
     value: d.returned_count,
     percentage: total > 0 ? Math.round((d.returned_count / total) * 1000) / 10 : 0,

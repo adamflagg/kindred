@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react'
+import type { GenderBasis } from '../../types/velocity'
+import { GenderBasisPicker } from './GenderBasisPicker'
 
 interface VelocityControlsProps {
   priorYearOptions: number[]
@@ -6,6 +8,9 @@ interface VelocityControlsProps {
   splitByGender: boolean
   onTogglePriorYear: (year: number) => void
   onToggleGender: (enabled: boolean) => void
+  /** #78: which gender the split reads; the picker shows while Split by gender is on. */
+  genderBasis?: GenderBasis
+  onGenderBasisChange?: (basis: GenderBasis) => void
   extraControls?: ReactNode
 }
 
@@ -15,6 +20,8 @@ export function VelocityControls({
   splitByGender,
   onTogglePriorYear,
   onToggleGender,
+  genderBasis = 'field',
+  onGenderBasisChange,
   extraControls,
 }: VelocityControlsProps) {
   return (
@@ -68,6 +75,9 @@ export function VelocityControls({
             />
             <span className="text-foreground">Split by gender</span>
           </label>
+          {splitByGender && onGenderBasisChange && (
+            <GenderBasisPicker value={genderBasis} onChange={onGenderBasisChange} />
+          )}
         </div>
       </div>
     </div>

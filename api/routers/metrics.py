@@ -59,7 +59,7 @@ from ..schemas.metrics import (
     WaitlistMetricsResponse,
 )
 from ..schemas.today import RecentSignupsResponse, TodaySessionsResponse
-from ..schemas.velocity import VelocityResponse
+from ..schemas.velocity import GenderBasis, VelocityResponse
 
 router = APIRouter(prefix="/api/metrics", tags=["metrics"])
 
@@ -444,7 +444,8 @@ async def get_drilldown_attendees(
     ),
     breakdown_value: str = Query(
         ...,
-        description="The value to filter by (e.g., 'F' for gender, '5' for grade, '1000' for session cm_id)",
+        description="The value to filter by (e.g., 'Non-binary' or 'not given' for gender, the gender identity label; "
+        "'5' for grade, '1000' for session cm_id)",
     ),
     session_cm_id: int | None = Query(
         None,
@@ -512,7 +513,14 @@ async def get_velocity(
     compare_years: str | None = Query(None, description="Comma-separated prior years to overlay"),
     session_cm_id: int | None = Query(None, description="Filter to specific session"),
     session_types: str | None = Query("main,embedded,ag", description="Session types"),
-    split_by_gender: bool = Query(False, description="Split enrollment by gender (M/F)"),
+    split_by_gender: bool = Query(False, description="Split the curves by gender (gender_basis says which)"),
+    gender_basis: GenderBasis = Query(
+        "field",
+        description=(
+            "What the split reads (#2898 answer #78): 'field' is the binary Gender field cabins fill by (default); "
+            "'identity' is gender identity in five groups, rebuilt from attendee records"
+        ),
+    ),
     metric: str = Query("enrollment", description="'enrollment' or 'cancellation'"),
     duration: Literal["1-week", "2-week", "3-week", "4-week+"] | None = Query(
         None, description="Filter by session duration category (1-week, 2-week, 3-week, 4-week+)"
@@ -528,6 +536,7 @@ async def get_velocity(
         "session_cm_id": session_cm_id,
         "session_types": session_types,
         "split_by_gender": split_by_gender,
+        "gender_basis": gender_basis,
         "metric": metric,
         "duration": duration,
     }
@@ -547,6 +556,7 @@ async def get_velocity(
         split_by_gender=split_by_gender,
         metric=metric,
         duration=duration,
+        gender_basis=gender_basis,
     )
     metrics_cache.set("velocity", result, **cache_params)
     return result

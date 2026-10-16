@@ -4,6 +4,7 @@
  * Supports drill-down: click a segment to show matching campers.
  */
 
+import type { ReactNode } from 'react'
 import { Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 import type { PieLabelRenderProps } from 'recharts'
 import type { DrilldownFilter } from '../../types/metrics'
@@ -42,6 +43,8 @@ interface BreakdownChartProps {
   onSegmentClick?: (filter: DrilldownFilter) => void
   /** Optional color map keyed by item name, overrides default palette */
   colorMap?: Record<string, string>
+  /** Under the legend: visible note lines (#2898's Gender field count). */
+  footer?: ReactNode
 }
 
 export function BreakdownChart({
@@ -53,6 +56,7 @@ export function BreakdownChart({
   breakdownType,
   onSegmentClick,
   colorMap,
+  footer,
 }: BreakdownChartProps) {
   const getColor = (index: number, name?: string) =>
     (name && colorMap?.[name]) ?? COLORS[index % COLORS.length] ?? '#00b36b'
@@ -108,7 +112,13 @@ export function BreakdownChart({
   }))
 
   return (
-    <ChartCard title={title} className={className} isEmpty={data.length === 0} legend={legendItems}>
+    <ChartCard
+      title={title}
+      className={className}
+      isEmpty={data.length === 0}
+      legend={legendItems}
+      footer={footer}
+    >
       <ResponsiveContainer width="100%" height={height}>
         <PieChart>
           <Pie

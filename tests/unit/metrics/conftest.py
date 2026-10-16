@@ -33,7 +33,9 @@ def _create_schema(conn: sqlite3.Connection) -> None:
             age REAL,
             birthdate TEXT DEFAULT '',
             primary_childhood_household TEXT DEFAULT '',
-            parent_names TEXT DEFAULT ''
+            parent_names TEXT DEFAULT '',
+            gender_identity_name TEXT DEFAULT '',
+            gender_identity_write_in TEXT DEFAULT ''
         );
 
         CREATE TABLE camp_sessions (

@@ -10,7 +10,10 @@ import {
 import { PRIORITY_DAY_PENDING, PRIORITY_DAY_PENDING_CLASS } from '../../utils/priorityDay'
 import { DefinitionNotes, DefRef, type DefinitionNote } from '../camperships/kit/DefinitionNotes'
 import { CANCELLED_FINAL_NOTE, CANCEL_RATE_NOTE } from '../../pages/metrics/cancelledNotes'
-import { buildYearRows, type LiveCompare, type YearRow } from './yearByYearRows'
+import { AnotherIdentityLine, GenderFallbackSeasonsLine } from './genderIdentityNotes'
+import { genderNote } from './genderNotes'
+import { GENDER_IDENTITY_GROUPS, genderDisplayName } from '../camperships/kit/genderIdentity'
+import { buildYearRows, yearNoteCount, type LiveCompare, type YearRow } from './yearByYearRows'
 import { MetricSortHeader } from './MetricSortHeader'
 import { TableExportButtons } from './TableExportButtons'
 import { csvFilename } from './exportFilename'
@@ -22,8 +25,7 @@ type Field =
   | 'new'
   | 'returning'
   | 'newPct'
-  | 'male'
-  | 'female'
+  | `g:${string}`
   | 'cancelled'
   | 'cancelPct'
 
@@ -41,13 +43,21 @@ function liveNote(live: LiveCompare): string {
   return `${String(live.year)} is still registering, so it is compared with ${String(live.priorYear)} at the same registration day (${day}). Earlier rows compare final to final.`
 }
 
-/** Notes 1-3 are the column notes; the live row's follows them (ruling #66). */
-function yearNotes(live: LiveCompare | null): DefinitionNote[] {
+const GENDER_AFTER =
+  ' CampMinder holds few identity answers before 2023, so an early season’s split is mostly the Gender field.'
+
+/** Notes 1-3 are the column notes; the live row's follows them (ruling #66), then the Gender note (#2898). */
+function yearNotes(
+  live: LiveCompare | null,
+  fallbackSeasons: ReadonlyArray<{ season: number; count: number; of: number }>
+): DefinitionNote[] {
+  const hasFallback = fallbackSeasons.some((s) => s.count > 0)
   return [
     { n: 1, term: 'vs final', text: VS_FINAL_NOTE },
     { n: 2, term: 'Cancelled', text: CANCELLED_FINAL_NOTE },
     { n: 3, term: 'Cancel %', text: CANCEL_RATE_NOTE },
     ...(live ? [{ n: 4, text: liveNote(live) }] : []),
+    ...(hasFallback ? [genderNote(yearNoteCount(live) + 1, fallbackSeasons, GENDER_AFTER)] : []),
   ]
 }
 
@@ -82,14 +92,12 @@ function sortValue(row: YearRow, field: Field) {
       return row.returning
     case 'newPct':
       return row.newPct
-    case 'male':
-      return row.male
-    case 'female':
-      return row.female
     case 'cancelled':
       return row.cancelled
     case 'cancelPct':
       return row.cancelPct
+    default:
+      return row.groups[field.slice(2)] ?? 0
   }
 }
 
@@ -107,6 +115,16 @@ export function YearByYearTable({
   live: LiveCompare | null
 }) {
   const natural = buildYearRows(years, live)
+  const fallbackSeasons = years.map((y) => ({
+    season: y.year,
+    count: y.gender_fallback_count ?? 0,
+    of: y.total_enrolled,
+  }))
+  const genderN = fallbackSeasons.some((x) => x.count > 0) ? yearNoteCount(live) + 1 : undefined
+  const tableGroups = GENDER_IDENTITY_GROUPS.filter((g) =>
+    natural.some((r) => (r.groups[g] ?? 0) > 0)
+  )
+  const fallbackByYear = new Map(fallbackSeasons.map((x) => [x.season, x.count]))
   const sort = useTableSort<Field>('year')
   const rows = sort.apply(natural, sortValue)
   const newest = natural.at(-1)?.year ?? 0
@@ -137,8 +155,7 @@ export function YearByYearTable({
               'New',
               'Returning',
               'New %',
-              'Male',
-              'Female',
+              ...tableGroups.map((g) => genderDisplayName(g)),
               'Cancelled',
               'Cancel %',
             ]}
@@ -151,8 +168,7 @@ export function YearByYearTable({
               r.newCount,
               r.returning,
               oneDecimal(r.newPct),
-              r.male,
-              r.female,
+              ...tableGroups.map((g) => r.groups[g] ?? 0),
               r.cancelled,
               oneDecimal(r.cancelPct),
             ])}
@@ -168,8 +184,7 @@ export function YearByYearTable({
                 {h('New', 'new')}
                 {h('Returning', 'returning')}
                 {h('New %', 'newPct')}
-                {h('Male', 'male')}
-                {h('Female', 'female')}
+                {tableGroups.map((g) => h(genderDisplayName(g), `g:${g}`))}
                 {h('Cancelled', 'cancelled', 'right', 2)}
                 {h('Cancel %', 'cancelPct', 'right', 3)}
               </tr>
@@ -180,7 +195,12 @@ export function YearByYearTable({
                   key={r.year}
                   className="border-border hover:bg-muted/20 border-b transition-colors last:border-0"
                 >
-                  <td className="text-foreground px-4 py-3 font-medium">{r.year}</td>
+                  <td className="text-foreground px-4 py-3 font-medium">
+                    {r.year}
+                    {genderN !== undefined && (fallbackByYear.get(r.year) ?? 0) > 0 && (
+                      <DefRef n={genderN} />
+                    )}
+                  </td>
                   <td className="text-foreground px-4 py-3 text-right">{formatCount(r.total)}</td>
                   <td className="px-4 py-3 text-right">
                     <ChangeCell row={r} />
@@ -194,8 +214,11 @@ export function YearByYearTable({
                   <td className="text-muted-foreground px-4 py-3 text-right">
                     {formatPercent(r.newPct)}
                   </td>
-                  <td className="text-foreground px-4 py-3 text-right">{formatCount(r.male)}</td>
-                  <td className="text-foreground px-4 py-3 text-right">{formatCount(r.female)}</td>
+                  {tableGroups.map((g) => (
+                    <td key={g} className="text-foreground px-4 py-3 text-right">
+                      {formatCount(r.groups[g] ?? 0)}
+                    </td>
+                  ))}
                   <td className="text-foreground px-4 py-3 text-right">
                     {r.cancelled === null ? '—' : formatCount(r.cancelled)}
                   </td>
@@ -207,8 +230,14 @@ export function YearByYearTable({
             </tbody>
           </table>
         </div>
+        <div className="px-4 pb-3">
+          <AnotherIdentityLine counts={rows.map((r) => r.groups)} />
+          {genderN !== undefined && (
+            <GenderFallbackSeasonsLine n={genderN} seasons={fallbackSeasons} />
+          )}
+        </div>
       </div>
-      <DefinitionNotes notes={yearNotes(live)} boldTerm />
+      <DefinitionNotes notes={yearNotes(live, fallbackSeasons)} boldTerm />
     </>
   )
 }

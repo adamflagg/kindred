@@ -15,18 +15,23 @@ import {
   ResponsiveContainer,
   LabelList,
 } from 'recharts'
-import { useMemo } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import type { YearMetrics } from '../../types/metrics'
 import { ChartCard } from './ChartCard'
 import { getNiceTicks, calculateVerticalLayout, computeCoverageBands } from './cssChartUtils'
 import { formatLabelListValue, formatLabelListPercent } from '../../utils/chartFormatters'
+import {
+  GENDER_IDENTITY_GROUPS,
+  genderDisplayName,
+  genderHatched,
+  genderIdentityColor,
+} from '../camperships/kit/genderIdentity'
+import { groupCounts } from './genderNotes'
 
 const COLORS = {
   total: 'hsl(160, 100%, 35%)', // Primary green
   new: 'hsl(200, 70%, 50%)', // Blue
   returning: 'hsl(42, 92%, 50%)', // Gold
-  male: 'hsl(200, 70%, 50%)', // Blue
-  female: 'hsl(350, 70%, 50%)', // Red/Pink
   cancelled: 'hsl(0, 70%, 50%)', // Red
   cancellation_rate: 'hsl(0, 70%, 50%)', // Red
 }
@@ -37,6 +42,13 @@ interface TrendLineChartProps {
   metric: 'total' | 'new_vs_returning' | 'gender' | 'cancellation_rate'
   height?: number
   className?: string
+  /** Under the legend: visible note lines (#2898's Gender field count). */
+  footer?: ReactNode
+}
+
+/** A year's gender identity counts folded into the five groups (#75 a). */
+function genderGroups(yearData: YearMetrics): Record<string, number> {
+  return groupCounts(Object.fromEntries(yearData.by_gender.map((g) => [g.gender, g.count])))
 }
 
 export function TrendLineChart({
@@ -45,6 +57,7 @@ export function TrendLineChart({
   metric,
   height = 300,
   className = '',
+  footer,
 }: TrendLineChartProps) {
   // Transform data based on metric type
   const chartData = useMemo(
@@ -65,13 +78,7 @@ export function TrendLineChart({
         }
 
         if (metric === 'gender') {
-          const maleData = yearData.by_gender.find((g) => g.gender === 'M')
-          const femaleData = yearData.by_gender.find((g) => g.gender === 'F')
-          return {
-            ...base,
-            male: maleData?.count ?? 0,
-            female: femaleData?.count ?? 0,
-          }
+          return { ...base, ...genderGroups(yearData) }
         }
 
         return {
@@ -112,6 +119,17 @@ export function TrendLineChart({
     return { ticks: t, axisMax: t.at(-1) ?? dataMax }
   }, [chartData, metric])
 
+  // #2898: one line per gender identity group any year counts, in the fixed order
+  const genderLines = useMemo(
+    () =>
+      metric === 'gender'
+        ? GENDER_IDENTITY_GROUPS.filter((group) =>
+            chartData.some((d) => Number((d as Record<string, number>)[group] ?? 0) > 0)
+          )
+        : [],
+    [chartData, metric]
+  )
+
   // Compute legend items based on metric
   const legendItems = useMemo(
     () =>
@@ -123,12 +141,13 @@ export function TrendLineChart({
               { label: 'Returning Campers', color: COLORS.returning },
             ]
           : metric === 'gender'
-            ? [
-                { label: 'Male', color: COLORS.male },
-                { label: 'Female', color: COLORS.female },
-              ]
+            ? genderLines.map((group) => ({
+                label: genderDisplayName(group),
+                color: genderIdentityColor(group),
+                ...(genderHatched(group) ? { hatch: true } : {}),
+              }))
             : [{ label: 'Cancellation Rate', color: COLORS.cancellation_rate }],
-    [metric]
+    [metric, genderLines]
   )
 
   const CustomTooltip = ({
@@ -176,6 +195,7 @@ export function TrendLineChart({
       xAxisEdgeAligned
       xAxisRightPadding={20}
       {...(legendItems.length > 1 && { legend: legendItems })}
+      footer={footer}
     >
       {coverageBands.length > 0 && (
         // Reduced-width box mirrors the recharts LineChart margin (right: 20,
@@ -266,46 +286,34 @@ export function TrendLineChart({
             </>
           )}
 
-          {metric === 'gender' && (
-            <>
+          {genderLines.map((group, i) => {
+            const color = genderIdentityColor(group)
+            return (
               <Line
+                key={group}
                 type="monotone"
-                dataKey="male"
-                name="Male"
-                stroke={COLORS.male}
+                dataKey={group}
+                name={genderDisplayName(group)}
+                stroke={color}
                 strokeWidth={2}
                 strokeLinecap="round"
-                dot={{ fill: COLORS.male, strokeWidth: 2 }}
+                {...(genderHatched(group) ? { strokeDasharray: '5 3' } : {})}
+                dot={{ fill: color, strokeWidth: 2 }}
                 activeDot={{ r: 6 }}
               >
-                <LabelList
-                  dataKey="male"
-                  position="top"
-                  className="text-xs"
-                  fill="hsl(var(--muted-foreground))"
-                  formatter={formatLabelListValue}
-                />
+                {/* The first two groups drawn, in the fixed order, carry their values, as Male and Female did. */}
+                {i < 2 && (
+                  <LabelList
+                    dataKey={group}
+                    position={i === 0 ? 'top' : 'bottom'}
+                    className="text-xs"
+                    fill="hsl(var(--muted-foreground))"
+                    formatter={formatLabelListValue}
+                  />
+                )}
               </Line>
-              <Line
-                type="monotone"
-                dataKey="female"
-                name="Female"
-                stroke={COLORS.female}
-                strokeWidth={2}
-                strokeLinecap="round"
-                dot={{ fill: COLORS.female, strokeWidth: 2 }}
-                activeDot={{ r: 6 }}
-              >
-                <LabelList
-                  dataKey="female"
-                  position="bottom"
-                  className="text-xs"
-                  fill="hsl(var(--muted-foreground))"
-                  formatter={formatLabelListValue}
-                />
-              </Line>
-            </>
-          )}
+            )
+          })}
 
           {metric === 'cancellation_rate' && (
             <Line

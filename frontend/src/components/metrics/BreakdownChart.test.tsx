@@ -61,3 +61,16 @@ describe('BreakdownChart number format', () => {
     expect(screen.getByText('67.9%')).toBeInTheDocument()
   })
 })
+
+describe('BreakdownChart footer (#2898)', () => {
+  it('renders the footer under the chart', () => {
+    render(
+      <BreakdownChart
+        data={[{ name: 'Girl/woman', value: 3, percentage: 100 }]}
+        title="2018 Gender"
+        footer={<p>a note line</p>}
+      />
+    )
+    expect(screen.getByText('a note line')).toBeInTheDocument()
+  })
+})

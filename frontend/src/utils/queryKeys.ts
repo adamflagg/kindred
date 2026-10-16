@@ -425,7 +425,8 @@ export const queryKeys = {
     sessionTypes?: string,
     splitByGender?: boolean,
     metric?: string,
-    duration?: string
+    duration?: string,
+    genderBasis?: string
   ) =>
     [
       'metrics',
@@ -437,6 +438,7 @@ export const queryKeys = {
       splitByGender,
       metric,
       duration,
+      genderBasis,
     ] as const,
 
   // Prefix factories for broad invalidation of bunk_request data.

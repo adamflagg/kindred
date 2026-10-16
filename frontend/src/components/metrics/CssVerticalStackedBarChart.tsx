@@ -23,11 +23,14 @@ import {
 } from './cssChartUtils'
 import { ChartLegend } from './ChartLegend'
 import { formatCount, formatPercent } from '../../utils/numberFormat'
+import { GENDER_HATCH_IMAGE } from '../camperships/kit/genderIdentity'
 
 export interface VerticalStackedSegment {
   key: string
   label: string
   color: string
+  /** Hatched: a segment that folds several labels (gender identity's Another identity, #2898). */
+  hatch?: boolean
 }
 
 interface DataItem {
@@ -51,6 +54,8 @@ interface CssVerticalStackedBarChartProps {
   className?: string
   /** Override max column width (px). Useful when normal mode columns are too wide. */
   maxColumnWidth?: number
+  /** Under the legend: a chart's visible note lines (#2898's Gender field count). */
+  footer?: ReactNode
 }
 
 export function CssVerticalStackedBarChart({
@@ -66,6 +71,7 @@ export function CssVerticalStackedBarChart({
   onBarClick,
   className = '',
   maxColumnWidth,
+  footer,
 }: CssVerticalStackedBarChartProps) {
   const xAxisHeight = rotateLabels ? X_AXIS_HEIGHT_ROTATED : X_AXIS_HEIGHT_STRAIGHT
   const { barsHeight, drawingHeight } = calculateVerticalLayout(height, { xAxisHeight })
@@ -128,7 +134,7 @@ export function CssVerticalStackedBarChart({
             return (typeof v === 'number' ? v : 0) > 0
           })
         )
-        .map((s) => ({ label: s.label, color: s.color })),
+        .map((s) => ({ label: s.label, color: s.color, ...(s.hatch ? { hatch: true } : {}) })),
     [segments, data]
   )
 
@@ -220,6 +226,7 @@ export function CssVerticalStackedBarChart({
                           style={{
                             flex: value,
                             backgroundColor: seg.color,
+                            ...(seg.hatch ? { backgroundImage: GENDER_HATCH_IMAGE } : {}),
                           }}
                         />
                       )
@@ -335,6 +342,7 @@ export function CssVerticalStackedBarChart({
       </div>
 
       <ChartLegend items={legendItems} className={rotateLabels ? 'mt-3' : 'mt-1'} />
+      {footer}
     </div>
   )
 }

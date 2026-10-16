@@ -44,7 +44,17 @@ import {
   transformFirstSummerYearData,
   transformNewVsReturningData,
 } from '../../../utils/metricsTransforms'
-import { GENDER_COLORS, GENDER_SEGMENTS } from '../../../components/metrics/genderColors'
+import {
+  GENDER_DISPLAY_COLORS,
+  genderGroupRow,
+  genderGroupSegments,
+} from '../../../components/metrics/genderColors'
+import {
+  AnotherIdentityLine,
+  GenderFallbackLine,
+  GenderFallbackPairLine,
+} from '../../../components/metrics/genderIdentityNotes'
+import { genderNote } from '../../../components/metrics/genderNotes'
 import { Loader2 } from 'lucide-react'
 import { DefinitionNotes, DefRef } from '../../../components/camperships/kit/DefinitionNotes'
 import { PRIORITY_DAY_PENDING } from '../../../utils/priorityDay'
@@ -54,7 +64,12 @@ import { tenureNote } from '../../../components/metrics/tenureNotes'
 import { OVERVIEW_NOTES } from '../cancelledNotes'
 import { AgeChart } from '../../../components/metrics/AgeChart'
 import { ageNote } from '../../../components/metrics/ageNotes'
-import type { DrilldownFilter, SessionLengthBySessionBreakdown } from '../../../types/metrics'
+import type {
+  DrilldownFilter,
+  GenderByGradeBreakdown,
+  GenderBySessionLengthBreakdown,
+  SessionLengthBySessionBreakdown,
+} from '../../../types/metrics'
 import type { SessionDateLookup, SessionTypeLookup } from '../../../utils/sessionUtils'
 import { MetricsBusy, MetricsLoadError } from '../../../components/metrics/MetricsQueryGuard'
 
@@ -121,19 +136,23 @@ function buildSessionLengthCssData(
   return { chartData, segments }
 }
 
-/** Transform gender-by-grade API data into chart-ready format */
-function transformGenderByGrade(
-  data:
-    | Array<{ grade: number | null; total: number; male_count: number; female_count: number }>
-    | undefined
-) {
+/** Gender-by-grade rows: one column per gender identity group (#2898, #75 a). */
+function transformGenderByGrade(data: GenderByGradeBreakdown[] | undefined) {
   return (data ?? []).map((g) => ({
     name: g.grade !== null ? String(g.grade) : '?',
     tooltipLabel: g.grade !== null ? `Grade ${g.grade}` : 'Unknown',
     total: g.total,
-    male_count: g.male_count,
-    female_count: g.female_count,
     grade: g.grade,
+    ...genderGroupRow(g.by_gender),
+  }))
+}
+
+/** Gender-by-session-length rows: one column per gender identity group. */
+function transformGenderByLength(data: GenderBySessionLengthBreakdown[] | undefined) {
+  return (data ?? []).map((g) => ({
+    name: g.length_category,
+    total: g.total,
+    ...genderGroupRow(g.by_gender),
   }))
 }
 
@@ -235,20 +254,12 @@ export default function RegistrationOverview() {
   const summerYearsData = transformSummerYearsData(data.by_summer_years)
   const firstSummerYearData = transformFirstSummerYearData(data.by_first_summer_year)
   const newVsReturningData = transformNewVsReturningData(data.new_vs_returning)
-  const genderByLengthData = (data.by_gender_by_session_length ?? []).map((g) => ({
-    name: g.length_category,
-    total: g.total,
-    male_count: g.male_count,
-    female_count: g.female_count,
-  }))
+  const genderByLengthData = transformGenderByLength(data.by_gender_by_session_length)
   const compGenderByLengthData = compData
-    ? (compData.by_gender_by_session_length ?? []).map((g) => ({
-        name: g.length_category,
-        total: g.total,
-        male_count: g.male_count,
-        female_count: g.female_count,
-      }))
+    ? transformGenderByLength(compData.by_gender_by_session_length)
     : []
+  const gradeRows = transformGenderByGrade(data.by_gender_grade)
+  const compGradeRows = compData ? transformGenderByGrade(compData.by_gender_grade) : []
 
   // Fallback to years_at_camp if summer years not available
   const yearsChartData =
@@ -265,13 +276,31 @@ export default function RegistrationOverview() {
   // One note list in page order (decision 11), numbered by position: Total Cancelled, the age
   // chart when it has bars, the Summers at Camp average when it exists, then the compare notes
   // while Compare is on.
-  const ageNoteN = transformAgeData(data.by_age).length > 0 ? OVERVIEW_NOTES.length + 1 : undefined
+  // #2898: the gender charts sit under the cards, so Gender's note follows Total Cancelled's. Ruling 58's
+  // Gender field count shows only when a season shown counted anyone that way (#73 a).
+  const fallbackSeasons = [
+    { season: currentYear, count: data.gender_fallback_count ?? 0 },
+    ...(compareYear !== null && compData
+      ? [{ season: compareYear, count: compData.gender_fallback_count ?? 0 }]
+      : []),
+  ]
+  const genderNoteN = fallbackSeasons.some((s) => s.count > 0)
+    ? OVERVIEW_NOTES.length + 1
+    : undefined
+  const beforeAge = OVERVIEW_NOTES.length + (genderNoteN !== undefined ? 1 : 0)
+  const ageNoteN = transformAgeData(data.by_age).length > 0 ? beforeAge + 1 : undefined
   const tenureNoteN =
     data.average_summers_at_camp != null
-      ? OVERVIEW_NOTES.length + (ageNoteN !== undefined ? 1 : 0) + 1
+      ? beforeAge + (ageNoteN !== undefined ? 1 : 0) + 1
       : undefined
+  const fallbackLine = (count: number | undefined) =>
+    genderNoteN !== undefined && <GenderFallbackLine n={genderNoteN} count={count ?? 0} />
+  const groupLine = (rows: ReadonlyArray<{ by_gender: Record<string, number> }> | undefined) => (
+    <AnotherIdentityLine counts={(rows ?? []).map((r) => r.by_gender)} />
+  )
   const pageNotes = [
     ...OVERVIEW_NOTES,
+    ...(genderNoteN !== undefined ? [genderNote(genderNoteN, fallbackSeasons)] : []),
     ...(ageNoteN !== undefined ? [ageNote(ageNoteN)] : []),
     ...(tenureNoteN !== undefined ? [tenureNote(tenureNoteN)] : []),
   ]
@@ -409,14 +438,16 @@ export default function RegistrationOverview() {
                   height={250}
                   breakdownType="gender"
                   onSegmentClick={setFilter}
-                  colorMap={GENDER_COLORS}
+                  colorMap={GENDER_DISPLAY_COLORS}
+                  footer={fallbackLine(data.gender_fallback_count)}
                 />
                 <BreakdownChart
                   title={`${compareYear} Gender`}
                   data={transformGenderData(compData.by_gender)}
                   showPercentage
                   height={250}
-                  colorMap={GENDER_COLORS}
+                  colorMap={GENDER_DISPLAY_COLORS}
+                  footer={fallbackLine(compData.gender_fallback_count)}
                 />
               </div>
               <ComparisonSummaryTable
@@ -425,16 +456,26 @@ export default function RegistrationOverview() {
                 compareYear={compareYear}
                 primaryData={genderChartData}
                 compareData={transformGenderData(compData.by_gender)}
+                categoryLabel="Gender"
+                colorMap={GENDER_DISPLAY_COLORS}
+                footer={
+                  genderNoteN !== undefined && (
+                    <GenderFallbackPairLine n={genderNoteN} seasons={fallbackSeasons} />
+                  )
+                }
               />
               <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                 <CssVerticalStackedBarChart
                   key={`gender-grade-${selectedSessionCmId ?? 'all'}`}
                   title={`${currentYear} Gender by Grade`}
-                  data={transformGenderByGrade(data.by_gender_grade)}
-                  segments={[
-                    { key: 'female_count', label: 'Female', color: 'hsl(350, 70%, 50%)' },
-                    { key: 'male_count', label: 'Male', color: 'hsl(200, 70%, 50%)' },
-                  ]}
+                  data={gradeRows}
+                  segments={genderGroupSegments(gradeRows)}
+                  footer={
+                    <>
+                      {groupLine(data.by_gender_grade)}
+                      {fallbackLine(data.gender_fallback_count)}
+                    </>
+                  }
                   height={250}
                   onBarClick={(item) => {
                     const grade = item['grade']
@@ -445,11 +486,14 @@ export default function RegistrationOverview() {
                 />
                 <CssVerticalStackedBarChart
                   title={`${compareYear} Gender by Grade`}
-                  data={transformGenderByGrade(compData.by_gender_grade)}
-                  segments={[
-                    { key: 'female_count', label: 'Female', color: 'hsl(350, 70%, 50%)' },
-                    { key: 'male_count', label: 'Male', color: 'hsl(200, 70%, 50%)' },
-                  ]}
+                  data={compGradeRows}
+                  segments={genderGroupSegments(compGradeRows)}
+                  footer={
+                    <>
+                      {groupLine(compData.by_gender_grade)}
+                      {fallbackLine(compData.gender_fallback_count)}
+                    </>
+                  }
                   height={250}
                 />
               </div>
@@ -463,16 +507,20 @@ export default function RegistrationOverview() {
                 height={250}
                 breakdownType="gender"
                 onSegmentClick={setFilter}
-                colorMap={GENDER_COLORS}
+                colorMap={GENDER_DISPLAY_COLORS}
+                footer={fallbackLine(data.gender_fallback_count)}
               />
               <CssVerticalStackedBarChart
                 key={`gender-grade-${selectedSessionCmId ?? 'all'}`}
                 title="Gender by Grade"
-                data={transformGenderByGrade(data.by_gender_grade)}
-                segments={[
-                  { key: 'female_count', label: 'Female', color: 'hsl(350, 70%, 50%)' },
-                  { key: 'male_count', label: 'Male', color: 'hsl(200, 70%, 50%)' },
-                ]}
+                data={gradeRows}
+                segments={genderGroupSegments(gradeRows)}
+                footer={
+                  <>
+                    {groupLine(data.by_gender_grade)}
+                    {fallbackLine(data.gender_fallback_count)}
+                  </>
+                }
                 height={250}
                 onBarClick={(item) => {
                   const grade = item['grade']
@@ -668,7 +716,13 @@ export default function RegistrationOverview() {
                     <CssVerticalStackedBarChart
                       title={`${currentYear} Gender by Session Length`}
                       data={genderByLengthData}
-                      segments={GENDER_SEGMENTS}
+                      segments={genderGroupSegments(genderByLengthData)}
+                      footer={
+                        <>
+                          {groupLine(data.by_gender_by_session_length)}
+                          {fallbackLine(data.gender_fallback_count)}
+                        </>
+                      }
                       showTotalLabel
                       height={300}
                       onBarClick={(item) =>
@@ -684,7 +738,13 @@ export default function RegistrationOverview() {
                     <CssVerticalStackedBarChart
                       title={`${compareYear} Gender by Session Length`}
                       data={compGenderByLengthData}
-                      segments={GENDER_SEGMENTS}
+                      segments={genderGroupSegments(compGenderByLengthData)}
+                      footer={
+                        <>
+                          {groupLine(compData.by_gender_by_session_length)}
+                          {fallbackLine(compData.gender_fallback_count)}
+                        </>
+                      }
                       showTotalLabel
                       height={300}
                     />
@@ -748,7 +808,13 @@ export default function RegistrationOverview() {
                     key={`gender-session-length-${selectedSessionCmId ?? 'all'}`}
                     title="Gender by Session Length"
                     data={genderByLengthData}
-                    segments={GENDER_SEGMENTS}
+                    segments={genderGroupSegments(genderByLengthData)}
+                    footer={
+                      <>
+                        {groupLine(data.by_gender_by_session_length)}
+                        {fallbackLine(data.gender_fallback_count)}
+                      </>
+                    }
                     showTotalLabel
                     height={300}
                     onBarClick={(item) =>

@@ -26,6 +26,8 @@ Paths are relative to `frontend/src/components/camperships/` unless they say oth
 | §14 sessions | 14 |
 | §16 explanations, §21 staff words | 15 |
 
+Section 16, Gender identity, came after that working set, so comments cite it by name (design language "Gender identity").
+
 ---
 
 ## How this relates to "Family Camp Models Summer"
@@ -71,6 +73,7 @@ Where Camperships deliberately differs from summer, the reason is stated at that
 | 21 | A camper's household in a grid cell is ONE chip that never drops, beside a name that cuts. The chip takes at most 45% of the cell: its label cuts, with the full label in its title. No household is a dashed chip that is not a link | `AidHouseholdChip`, `AidNameWithChip` |
 | 22 | A row an action moved out of the filter stays where it was, opened, until the filter changes. It is never counted | `useKeptRows`, `keepInView`, `AidTable keptKeys` |
 | 23 | A fold line opens in place onto a kit table whose rows carry their own actions. Never a modal | `AidFoldToggle`, `AidFoldPanel`, `CS_FOLD_PANEL` |
+| 24 | A gender identity split takes its order, groups, names and colours from the kit's tokens, never its own | `GENDER_IDENTITY_ORDER`, `GENDER_IDENTITY_GROUPS`, `genderIdentityColor`, `genderDisplayName` |
 
 ---
 
@@ -250,12 +253,25 @@ A line that **replaces** the table (loading, failed, empty) is allowed. So is a 
 - **Money** renders through `Money`, `MoneyCompact` and `ReversedAmount` (`kit/MoneyText.tsx`). Never format a figure by hand.
 - **Accessibility is opt-out here.** Follow `frontend/CLAUDE.md` § "Accessibility — deliberately minimal": add `aria-label` / `role` only as a test query handle, and add no `sr-only`, `aria-live` or extra keyboard handlers. Native `title` tooltips are the one affordance this guide requires everywhere (§8).
 
+
+## 16. Gender identity
+
+**Every chart or table that splits by gender identity takes its order, groups, names and colours from `kit/genderIdentity.ts`** (#2898), so a label wears one colour on every page. Analytics adopts these tokens (option 3 below), together with `AidSegmented` for its Gender picker and `DefinitionNotes` for its notes.
+
+- **Labels** are the ones the API sends (`bunking/gender_identity.py`): CampMinder's Gender Identity options, "self-described" for a write-in and "not given" for no answer at all. `genderDisplayName` capitalises those two for staff ("Self-described", "Not given"). Camperships' own words are unchanged.
+- **Order** is `GENDER_IDENTITY_ORDER`, the same as Camperships'. Sort with `sortByIdentityOrder`, never by size.
+- **Groups.** A chart with little room (stacked bars, Trends' lines and table, Velocity's lines) folds labels into the five `GENDER_IDENTITY_GROUPS`: Girl/woman, Boy/man, Non-binary, Another identity (`ANOTHER_IDENTITY_MEMBERS`: both transgender labels, Agender, Not listed above, Self-described) and No answer (Prefer not to answer, Not given). `identityGroup` maps a label to its group. A grouped chart says under it what Another identity holds. Donuts, comparison tables, Retention, the drill-down and the CSV list every label.
+- **Colours** are named tokens: `GENDER_GIRL_WOMAN`, `GENDER_BOY_MAN`, `GENDER_NON_BINARY`, `GENDER_TRANSGENDER_GIRL_WOMAN`, `GENDER_TRANSGENDER_BOY_MAN`, `GENDER_AGENDER`, `GENDER_NOT_LISTED`, `GENDER_SELF_DESCRIBED` and `GENDER_ANOTHER_IDENTITY`. The two non-answers are greys that change with the theme: `GENDER_PREFER_NOT` and `GENDER_NOT_GIVEN` (`--gender-prefer-not`, `--gender-not-given` in `index.css`). Look a label up with `genderIdentityColor` or `GENDER_IDENTITY_COLOR`. The binary Gender field's F and M wear Girl/woman's and Boy/man's colours.
+- **Another identity is hatched** on a bar or swatch (`GENDER_HATCH_IMAGE`, `genderHatched`) and dashed as a line, because it folds several identities.
+- **The Gender field** reads "Girls" and "Boys" (`GENDER_FIELD_LABEL`) wherever a chart still reads it: Velocity's split defaults to it, because cabins fill by it.
+- **No identity answer.** Analytics counts such a camper by the Gender field (owner ruling 58) and says how many in a visible numbered line under the chart, plus a page-foot note. There is no note when the count is 0. The lines are in `components/metrics/genderIdentityNotes.tsx`.
+
 ---
 
 ## Adding to the kit
 
 1. **A pattern the kit lacks goes into `kit/` first, with its tests.** Then it gets a rule here naming the export. A page never grows a private near-copy of a picker, toolbar, table, CSV button or chip.
-2. **Tokens live in `kit/csType.ts`.** Exports marked `@deprecated` (`CS_BTN_TOOL`, `PILL.emerald`) exist only so older call sites keep rendering correctly. New code never uses them.
+2. **Tokens live in `kit/csType.ts`**, except the gender identity colours, which live with their order and groups in `kit/genderIdentity.ts` (section 16). Exports marked `@deprecated` (`CS_BTN_TOOL`, `PILL.emerald`) exist only so older call sites keep rendering correctly. New code never uses them.
 3. **Visual changes hold for the owner.** Every Camperships screen has an approved mock. A change matches that mock and this guide before it is called merge-ready, and anything with visual impact waits for the owner's eyes before merge.
 4. **Change a rule here, not in one place.** If a rule turns out wrong, change it in this document and the kit together. Never work around it on a single page.
 

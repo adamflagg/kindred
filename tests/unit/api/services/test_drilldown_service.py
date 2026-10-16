@@ -81,7 +81,7 @@ class TestDrilldownServiceGetAttendees:
         result = await service.get_attendees_for_breakdown(
             year=2025,
             breakdown_type="gender",
-            breakdown_value="F",
+            breakdown_value="Girl/woman",
         )
 
         assert len(result) == 1
@@ -122,7 +122,7 @@ class TestDrilldownServiceGetAttendees:
         result = await service.get_attendees_for_breakdown(
             year=2025,
             breakdown_type="gender",
-            breakdown_value="F",
+            breakdown_value="Girl/woman",
         )
 
         assert len(result) == 2
@@ -321,7 +321,7 @@ class TestDrilldownServiceGetAttendees:
         result = await service.get_attendees_for_breakdown(
             year=2025,
             breakdown_type="gender",
-            breakdown_value="F",
+            breakdown_value="Girl/woman",
             session_cm_id=1000,
         )
 
@@ -358,7 +358,7 @@ class TestDrilldownServiceGetAttendees:
         result = await service.get_attendees_for_breakdown(
             year=2025,
             breakdown_type="gender",
-            breakdown_value="F",
+            breakdown_value="Girl/woman",
             session_cm_id=1000,
         )
 
@@ -393,7 +393,7 @@ class TestDrilldownServiceGetAttendees:
         result = await service.get_attendees_for_breakdown(
             year=2025,
             breakdown_type="gender",
-            breakdown_value="F",
+            breakdown_value="Girl/woman",
             session_types=["main"],
         )
 
@@ -429,7 +429,7 @@ class TestDrilldownServiceGetAttendees:
         result = await service.get_attendees_for_breakdown(
             year=2025,
             breakdown_type="gender",
-            breakdown_value="F",
+            breakdown_value="Girl/woman",
         )
 
         # Gender is person-level: deduped to 1 result with both sessions
@@ -543,7 +543,7 @@ class TestDrilldownServiceGetAttendees:
         result = await service.get_attendees_for_breakdown(
             year=2025,
             breakdown_type="gender",
-            breakdown_value="F",
+            breakdown_value="Girl/woman",
         )
 
         attendee = result[0]
@@ -551,7 +551,7 @@ class TestDrilldownServiceGetAttendees:
         assert attendee.first_name == "Emma"
         assert attendee.last_name == "Johnson"
         assert attendee.preferred_name == "Em"
-        assert attendee.gender == "F"
+        assert attendee.gender == "Girl/woman"  # #2898: the identity label; no answer falls back (ruling 58)
         assert attendee.grade == 5
         assert attendee.age == 11  # 2025 - 2014: season year minus birth year
         assert attendee.school == "Riverside Elementary"
@@ -595,7 +595,7 @@ class TestDrilldownServiceStatusFilter:
         result = await service.get_attendees_for_breakdown(
             year=2025,
             breakdown_type="gender",
-            breakdown_value="F",
+            breakdown_value="Girl/woman",
             status_filter=["enrolled"],
         )
 

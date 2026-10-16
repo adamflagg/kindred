@@ -31,12 +31,14 @@ from api.utils.session_metrics import (
     filter_attendees_by_session,
     resolve_scope_ids,
 )
+from bunking.gender_identity import NOT_GIVEN, identity_sort_key
 
 from .breakdown_calculator import compute_breakdown, compute_registration_breakdown, safe_rate
 from .extractors import (
+    count_binary_fallbacks,
     exclude_aged_out_persons,
     extract_city,
-    extract_gender,
+    extract_gender_identity,
     extract_grade,
     extract_school,
     extract_synagogue,
@@ -256,6 +258,7 @@ class RetentionTrendsService:
                     base_count=base_count,
                     returned_count=returned_count,
                     by_gender=by_gender,
+                    gender_fallback_count=count_binary_fallbacks(base_person_ids, persons_base),
                     by_grade=by_grade,
                     aged_out_count=aged_out_count,
                 )
@@ -270,12 +273,12 @@ class RetentionTrendsService:
         persons: dict[int, Any],
     ) -> list[RetentionByGender]:
         """Compute gender breakdown for retention."""
-        stats = compute_breakdown(base_person_ids, returned_ids, persons, extract_gender)
+        stats = compute_breakdown(base_person_ids, returned_ids, persons, extract_gender_identity, missing=NOT_GIVEN)
         return [
             RetentionByGender(
                 gender=g, base_count=s.base_count, returned_count=s.returned_count, retention_rate=s.retention_rate
             )
-            for g, s in sorted(stats.items())
+            for g, s in sorted(stats.items(), key=lambda x: identity_sort_key(x[0]))
         ]
 
     def _compute_grade_breakdown(
@@ -324,8 +327,11 @@ class RetentionTrendsService:
             total = len(person_ids)
 
             # Demographic breakdowns using generic calculator
-            gender_stats = compute_registration_breakdown(person_ids, persons, extract_gender)
-            gender_breakdown = [GenderEnrollment(gender=g, count=s.count) for g, s in sorted(gender_stats.items())]
+            gender_stats = compute_registration_breakdown(person_ids, persons, extract_gender_identity)
+            gender_breakdown = [
+                GenderEnrollment(gender=g, count=s.count)
+                for g, s in sorted(gender_stats.items(), key=lambda x: identity_sort_key(x[0]))
+            ]
 
             grade_stats = compute_registration_breakdown(person_ids, persons, extract_grade)
             grade_breakdown = [
@@ -381,6 +387,7 @@ class RetentionTrendsService:
                     year=year,
                     total=total,
                     by_gender=gender_breakdown,
+                    gender_fallback_count=count_binary_fallbacks(person_ids, persons),
                     by_grade=grade_breakdown,
                     by_city=city_breakdown,
                     by_school=school_breakdown,

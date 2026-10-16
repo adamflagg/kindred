@@ -92,6 +92,11 @@ class MetricsSQLRepository:
                 data[attr] = row[col]
         return SimpleNamespace(**data)
 
+    @classmethod
+    def _person_or_none(cls, row: sqlite3.Row) -> SimpleNamespace | None:
+        """The LEFT-joined person, or None when the row has no persons record (PocketBase leaves expand.person out)."""
+        return cls._person_ns(row) if row["_person_cm_id"] is not None else None
+
     @staticmethod
     def _person_ns(row: sqlite3.Row, prefix: str = "_person_") -> SimpleNamespace:
         """Build a person SimpleNamespace from prefixed columns."""
@@ -103,6 +108,8 @@ class MetricsSQLRepository:
             f"{prefix}last_name": "last_name",
             f"{prefix}preferred_name": "preferred_name",
             f"{prefix}gender": "gender",
+            f"{prefix}gender_identity_name": "gender_identity_name",
+            f"{prefix}gender_identity_write_in": "gender_identity_write_in",
             f"{prefix}grade": "grade",
             f"{prefix}school": "school",
             f"{prefix}city": "address_city",
@@ -407,10 +414,12 @@ class MetricsSQLRepository:
                             p.first_name AS _person_first_name,
                             p.last_name AS _person_last_name,
                             p.gender AS _person_gender,
+                            p.gender_identity_name AS _person_gender_identity_name,
+                            p.gender_identity_write_in AS _person_gender_identity_write_in,
                             p.grade AS _person_grade
                      FROM attendee_status_history ash
                      JOIN camp_sessions cs ON ash.session = cs.id
-                     JOIN persons p ON ash.person = p.id
+                     LEFT JOIN persons p ON ash.person = p.id
                      WHERE ash.year = ?"""
         else:
             sql = """SELECT ash.person_id, ash.old_status, ash.new_status,
@@ -433,7 +442,7 @@ class MetricsSQLRepository:
         for r in rows:
             expand: dict[str, Any] = {"session": self._session_ns(r)}
             if expand_person:
-                expand["person"] = self._person_ns(r)
+                expand["person"] = self._person_or_none(r)
             results.append(
                 SimpleNamespace(
                     person_id=r["person_id"],
@@ -651,8 +660,11 @@ class MetricsSQLRepository:
                             p.first_name AS _person_first_name,
                             p.last_name AS _person_last_name,
                             p.gender AS _person_gender,
+                            p.gender_identity_name AS _person_gender_identity_name,
+                            p.gender_identity_write_in AS _person_gender_identity_write_in,
                             p.grade AS _person_grade"""
-            person_join = "\n                     JOIN persons p ON a.person = p.id"
+            # LEFT: a row with no persons record stays, with person None (as PocketBase's expand returns it)
+            person_join = "\n                     LEFT JOIN persons p ON a.person = p.id"
 
         sql = f"""SELECT a.person_id, a.year, a.status, a.status_id,
                             a.enrollment_date, a.effective_date,
@@ -674,7 +686,7 @@ class MetricsSQLRepository:
         for r in rows:
             expand: dict[str, Any] = {"session": self._session_ns(r)}
             if expand_person:
-                expand["person"] = self._person_ns(r)
+                expand["person"] = self._person_or_none(r)
             results.append(
                 SimpleNamespace(
                     person_id=r["person_id"],

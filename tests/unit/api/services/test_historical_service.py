@@ -205,10 +205,10 @@ class TestHistoricalServiceFromAttendees:
         gender_dict = {g.gender: g for g in year_metric.by_gender}
 
         # 5 unique persons: 3M, 2F
-        assert gender_dict["M"].count == 3
-        assert gender_dict["F"].count == 2
-        assert abs(gender_dict["M"].percentage - 60.0) < 0.001
-        assert abs(gender_dict["F"].percentage - 40.0) < 0.001
+        assert gender_dict["Boy/man"].count == 3
+        assert gender_dict["Girl/woman"].count == 2
+        assert abs(gender_dict["Boy/man"].percentage - 60.0) < 0.001
+        assert abs(gender_dict["Girl/woman"].percentage - 40.0) < 0.001
 
     @pytest.mark.asyncio
     async def test_new_vs_returning_from_persons(self, mock_repository: MagicMock) -> None:
@@ -453,10 +453,10 @@ class TestHistoricalServiceBreakdowns:
         year_metric = result.years[0]
         gender_dict = {g.gender: g for g in year_metric.by_gender}
 
-        assert gender_dict["M"].count == 6
-        assert abs(gender_dict["M"].percentage - 60.0) < 0.001
-        assert gender_dict["F"].count == 4
-        assert abs(gender_dict["F"].percentage - 40.0) < 0.001
+        assert gender_dict["Boy/man"].count == 6
+        assert abs(gender_dict["Boy/man"].percentage - 60.0) < 0.001
+        assert gender_dict["Girl/woman"].count == 4
+        assert abs(gender_dict["Girl/woman"].percentage - 40.0) < 0.001
 
     @pytest.mark.asyncio
     async def test_new_vs_returning(self, mock_repository: MagicMock) -> None:

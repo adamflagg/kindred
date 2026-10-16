@@ -21,7 +21,7 @@ from api.schemas.metrics import (
     WaitlistSessionBreakdown,
 )
 from api.services.breakdown_calculator import calculate_percentage, compute_registration_breakdown
-from api.services.extractors import extract_gender, extract_grade
+from api.services.extractors import count_binary_fallbacks, extract_gender_identity, extract_grade
 from api.utils.session_metrics import (
     DEFAULT_SUMMER_SESSION_TYPES,
     SUMMER_TEEN_TYPES,
@@ -29,6 +29,7 @@ from api.utils.session_metrics import (
     get_session_from_expand,
     resolve_scope_ids,
 )
+from bunking.gender_identity import NOT_GIVEN, identity_sort_key
 from bunking.logging_config import get_logger
 
 # Back-compat alias as an explicit module export (shared default lives in session_metrics).
@@ -278,6 +279,7 @@ class WaitlistService:
             by_session=by_session,
             by_grade=by_grade,
             by_gender=by_gender,
+            gender_fallback_count=count_binary_fallbacks(all_waitlisted_pids, persons),
         )
 
     def _filter_to_sessions(
@@ -316,14 +318,14 @@ class WaitlistService:
         if enrolled_person_ids is not None:
             for pid in person_ids:
                 person = persons.get(pid)
-                if not person:
-                    continue
-                grade = extract_grade(person)
-                gender = extract_gender(person)
+                # A camper with no persons row still counts in the gender split, as "not given" (#2898)
+                gender = extract_gender_identity(person)
                 has_enroll = pid in enrolled_person_ids
 
-                g_no, g_has = grade_enrollment.get(grade, (0, 0))
-                grade_enrollment[grade] = (g_no + (0 if has_enroll else 1), g_has + (1 if has_enroll else 0))
+                if person:
+                    grade = extract_grade(person)
+                    g_no, g_has = grade_enrollment.get(grade, (0, 0))
+                    grade_enrollment[grade] = (g_no + (0 if has_enroll else 1), g_has + (1 if has_enroll else 0))
 
                 gn_no, gn_has = gender_enrollment.get(gender, (0, 0))
                 gender_enrollment[gender] = (gn_no + (0 if has_enroll else 1), gn_has + (1 if has_enroll else 0))
@@ -340,7 +342,7 @@ class WaitlistService:
             for g, s in sorted(grade_stats.items(), key=lambda x: (x[0] is None, x[0]))
         ]
 
-        gender_stats = compute_registration_breakdown(person_ids, persons, extract_gender)
+        gender_stats = compute_registration_breakdown(person_ids, persons, extract_gender_identity, missing=NOT_GIVEN)
         by_gender = [
             GenderBreakdown(
                 gender=g,
@@ -349,7 +351,7 @@ class WaitlistService:
                 no_enrollment=gender_enrollment.get(g, (0, 0))[0],
                 has_enrollment=gender_enrollment.get(g, (0, 0))[1],
             )
-            for g, s in sorted(gender_stats.items())
+            for g, s in sorted(gender_stats.items(), key=lambda x: identity_sort_key(x[0]))
         ]
 
         return by_grade, by_gender

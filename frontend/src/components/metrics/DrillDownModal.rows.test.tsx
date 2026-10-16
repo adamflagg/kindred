@@ -388,7 +388,7 @@ describe('DrillDownModal — PR 6 lists', () => {
       const { lines, filename } = lastCsv()
       expect(lines[0]).toBe(
         // PR 6b ruling #42: Household ID always sits before Caregivers
-        'CampMinder ID,Name,Grade,Gender,Age,School,City,State,Zip,Session,Registered,Enrolled on,Years at Camp,Status,Returning,Household ID,Caregivers'
+        'CampMinder ID,Name,Grade,Gender identity,Gender field,Age,School,City,State,Zip,Session,Registered,Enrolled on,Years at Camp,Status,Returning,Household ID,Caregivers'
       )
       expect(lines[1]).toContain(',12,')
       expect(lines[1]).toContain(',94110,')

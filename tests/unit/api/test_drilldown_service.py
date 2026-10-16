@@ -1039,7 +1039,7 @@ class TestPersonLevelDeduplication:
     @pytest.mark.parametrize(
         ("breakdown_type", "breakdown_value", "expected_person_ids", "check_multi_sessions"),
         [
-            ("gender", "F", {101}, True),
+            ("gender", "Girl/woman", {101}, True),
             ("grade", "5", {101}, False),
             ("status", "enrolled", {101, 102}, False),
             ("session_length", "2-week", {101}, True),
@@ -1204,7 +1204,7 @@ class TestPersonLevelDeduplication:
         result = await drilldown_service.get_attendees_for_breakdown(
             year=2026,
             breakdown_type="gender",
-            breakdown_value="M",
+            breakdown_value="Boy/man",
         )
 
         # Liam is M, in 1 session => 1 result with sessions list of 1
@@ -2461,7 +2461,7 @@ class TestCompareYearIsReturning:
         result = await drilldown_service.get_attendees_for_breakdown(
             year=2025,
             breakdown_type="gender",
-            breakdown_value="F",
+            breakdown_value="Girl/woman",
             compare_year=2026,
         )
 
@@ -2499,7 +2499,7 @@ class TestCompareYearIsReturning:
         result = await drilldown_service.get_attendees_for_breakdown(
             year=2025,
             breakdown_type="gender",
-            breakdown_value="M",
+            breakdown_value="Boy/man",
             compare_year=2026,
         )
 
@@ -2525,7 +2525,7 @@ class TestCompareYearIsReturning:
         result = await drilldown_service.get_attendees_for_breakdown(
             year=2026,
             breakdown_type="gender",
-            breakdown_value="M",
+            breakdown_value="Boy/man",
             # No compare_year
         )
 
@@ -2884,7 +2884,7 @@ class TestRetentionEnrolledSessions:
         result = await drilldown_service.get_attendees_for_breakdown(
             year=2025,
             breakdown_type="gender",
-            breakdown_value="F",
+            breakdown_value="Girl/woman",
             compare_year=2026,
         )
 
@@ -2921,7 +2921,7 @@ class TestRetentionEnrolledSessions:
         result = await drilldown_service.get_attendees_for_breakdown(
             year=2025,
             breakdown_type="gender",
-            breakdown_value="F",
+            breakdown_value="Girl/woman",
             compare_year=2026,
         )
 
@@ -3039,7 +3039,7 @@ class TestRetentionSessionTypeFiltering:
         result = await drilldown_service.get_attendees_for_breakdown(
             year=2025,
             breakdown_type="gender",
-            breakdown_value="F",
+            breakdown_value="Girl/woman",
             session_types=["main", "embedded", "ag", "quest"],
             compare_year=2026,
         )
@@ -3087,7 +3087,7 @@ class TestRetentionSessionTypeFiltering:
         result = await drilldown_service.get_attendees_for_breakdown(
             year=2025,
             breakdown_type="gender",
-            breakdown_value="F",
+            breakdown_value="Girl/woman",
             session_types=["main", "embedded", "ag"],
             compare_year=2026,
         )
@@ -3135,7 +3135,7 @@ class TestRetentionSessionTypeFiltering:
         result = await drilldown_service.get_attendees_for_breakdown(
             year=2025,
             breakdown_type="gender",
-            breakdown_value="F",
+            breakdown_value="Girl/woman",
             session_types=["main", "embedded", "ag", "quest"],
             compare_year=2026,
         )
@@ -3249,7 +3249,7 @@ class TestRetentionSessionTypeFiltering:
         result = await drilldown_service.get_attendees_for_breakdown(
             year=2025,
             breakdown_type="gender",
-            breakdown_value="F",
+            breakdown_value="Girl/woman",
             session_types=["main", "embedded", "ag", "quest"],
             compare_year=2026,
         )
@@ -3337,7 +3337,7 @@ class TestRetentionSessionTypeFiltering:
         result = await drilldown_service.get_attendees_for_breakdown(
             year=2025,
             breakdown_type="gender",
-            breakdown_value="F",
+            breakdown_value="Girl/woman",
             # No compare_year = non-retention mode
         )
 
@@ -3424,7 +3424,7 @@ class TestEnrollmentDatePopulation:
         result = await drilldown_service.get_attendees_for_breakdown(
             year=2026,
             breakdown_type="gender",
-            breakdown_value="M",
+            breakdown_value="Boy/man",
         )
 
         assert len(result) == 1
@@ -3771,7 +3771,7 @@ class TestDrilldownEffectiveDate:
         result = await drilldown_service.get_attendees_for_breakdown(
             year=2026,
             breakdown_type="gender",
-            breakdown_value="F",
+            breakdown_value="Girl/woman",
         )
 
         assert len(result) >= 1
@@ -3829,7 +3829,7 @@ class TestDrilldownEffectiveDate:
         result = await drilldown_service.get_attendees_for_breakdown(
             year=2026,
             breakdown_type="gender",
-            breakdown_value="F",
+            breakdown_value="Girl/woman",
         )
 
         match = [r for r in result if r.person_id == 101]

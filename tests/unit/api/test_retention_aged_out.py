@@ -215,7 +215,7 @@ class TestRetentionAgedOutExclusion:
         result = await svc.calculate_retention(2025, 2026)
 
         # M should have base_count=1 (person 3 only, not person 2)
-        m_breakdown = next((g for g in result.by_gender if g.gender == "M"), None)
+        m_breakdown = next((g for g in result.by_gender if g.gender == "Boy/man"), None)
         assert m_breakdown is not None
         assert m_breakdown.base_count == 1
 

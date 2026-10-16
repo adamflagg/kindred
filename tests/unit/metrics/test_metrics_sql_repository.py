@@ -173,6 +173,23 @@ class TestFetchPersons:
         assert liam.address_state is None
         assert liam.age is None
 
+    @pytest.mark.asyncio
+    async def test_gender_identity_fields(self, sql_db: sqlite3.Connection) -> None:
+        """fetch_persons carries Gender Identity and its write-in, which every Analytics gender split reads (#2898).
+        A mocked repository can't catch a dropped column, so it is pinned against the real query."""
+        from api.services.extractors import extract_gender_identity
+
+        sql_db.execute("UPDATE persons SET gender_identity_name = 'Non-binary' WHERE id = 'per_emma'")
+        sql_db.execute("UPDATE persons SET gender_identity_write_in = 'their own words' WHERE id = 'per_liam'")
+        repo = _make_repo(sql_db)
+        result = await repo.fetch_persons(2025)
+        assert result[1001].gender_identity_name == "Non-binary"
+        assert result[1002].gender_identity_write_in == "their own words"
+        assert extract_gender_identity(result[1001]) == "Non-binary"
+        assert extract_gender_identity(result[1002]) == "self-described"
+        # No identity answer: ruling 58 counts the binary field (F) as Girl/woman.
+        assert extract_gender_identity(result[1003]) == "Girl/woman"
+
 
 # ============================================================================
 # Test: fetch_sessions
@@ -731,6 +748,61 @@ class TestFetchAttendeesWithDates:
         for a in result_with:
             assert "person" in a.expand
 
+    @pytest.mark.asyncio
+    async def test_person_expand_carries_gender_identity(self, sql_db: sqlite3.Connection) -> None:
+        """Velocity's gender identity split reads identity off the expanded person (#2898 answer #78). A mocked
+        repository can't catch a dropped column, so it is pinned against the real query."""
+        sql_db.execute("UPDATE persons SET gender_identity_name = 'Non-binary', gender_identity_write_in = 'x'")
+        repo = _make_repo(sql_db)
+        result = await repo.fetch_attendees_with_dates(2025, expand_person=True)
+        assert result
+        for a in result:
+            assert a.expand["person"].gender_identity_name == "Non-binary"
+            assert a.expand["person"].gender_identity_write_in == "x"
+        transitions = await repo.fetch_status_transitions(2025, to_statuses=["enrolled"], expand_person=True)
+        assert transitions
+        for t in transitions:
+            assert t.expand["person"].gender_identity_name == "Non-binary"
+            assert t.expand["person"].gender_identity_write_in == "x"
+
+
+class TestExpandedPersonKeepsRowsWithNoPersonsRecord:
+    """An attendee or status change with no persons row stays in the expanded fetch, with person None, as the
+    PocketBase repository returns it (#3273 scan). An inner join used to drop it, so Velocity's gender identity split
+    could not count it under No answer and summed to less than the total."""
+
+    @staticmethod
+    def _add_orphans(conn: sqlite3.Connection) -> None:
+        conn.execute(
+            "INSERT INTO attendees VALUES (?,?,?,?,?,?,?,?,?)",
+            ("att_orphan", 1099, 2025, "enrolled", 2, "2025-01-22", "2025-01-22", "ses_s1", "per_missing"),
+        )
+        conn.execute(
+            "INSERT INTO attendee_status_history VALUES (?,?,?,?,?,?,?,?)",
+            ("ash_orphan", 1099, 2025, "enrolled", "cancelled", "2025-03-02", "ses_s1", "per_missing"),
+        )
+
+    @pytest.mark.asyncio
+    async def test_attendees_with_dates(self, sql_db: sqlite3.Connection) -> None:
+        self._add_orphans(sql_db)
+        repo = _make_repo(sql_db)
+        plain = await repo.fetch_attendees_with_dates(2025)
+        expanded = await repo.fetch_attendees_with_dates(2025, expand_person=True)
+        assert len(expanded) == len(plain)
+        orphan = next(a for a in expanded if a.person_id == 1099)
+        assert orphan.expand["person"] is None
+        assert orphan.expand["session"].cm_id == 1000001
+
+    @pytest.mark.asyncio
+    async def test_status_transitions(self, sql_db: sqlite3.Connection) -> None:
+        self._add_orphans(sql_db)
+        repo = _make_repo(sql_db)
+        plain = await repo.fetch_status_transitions(2025, to_statuses=["cancelled"])
+        expanded = await repo.fetch_status_transitions(2025, to_statuses=["cancelled"], expand_person=True)
+        assert len(expanded) == len(plain) == 2
+        assert next(t for t in expanded if t.person_id == 1099).expand["person"] is None
+        assert next(t for t in expanded if t.person_id == 1002).expand["person"].cm_id == 1002
+
 
 # ============================================================================
 # Test: fetch_budget_config
@@ -1032,3 +1104,28 @@ class TestFetchPersonsContract:
         from api.services.metrics_repository import PERSON_FIELDS
 
         assert {"birthdate", "primary_childhood_household", "parent_names"} <= set(PERSON_FIELDS)
+
+
+class TestVelocityIdentityOnTheSqlRepository:
+    """End to end on the real queries (#3273 scan): an enrolled camper with no persons row is in Velocity's total and
+    in the gender identity split's No answer line, so the lines add up to the total."""
+
+    @pytest.mark.asyncio
+    async def test_no_persons_row_counts_under_no_answer(self, sql_db: sqlite3.Connection) -> None:
+        from datetime import date
+
+        from api.services.velocity_service import VelocityService
+
+        TestExpandedPersonKeepsRowsWithNoPersonsRecord._add_orphans(sql_db)
+        # No snapshots, so the total is rebuilt from the same attendee records (the snapshot gap is accepted)
+        sql_db.execute("DELETE FROM enrollment_snapshots")
+        repo: Any = _make_repo(sql_db)  # the router passes either repository (_create_repository -> Any)
+        service = VelocityService(repo)
+
+        result = await service.get_velocity(
+            year=2025, split_by_gender=True, gender_basis="identity", today=date(2025, 9, 1)
+        )
+
+        by = {c.gender: c for c in result.by_gender}
+        assert by["No answer"].daily[-1].enrolled == 1
+        assert sum(c.daily[-1].enrolled for c in result.by_gender) == result.combined.daily[-1].enrolled

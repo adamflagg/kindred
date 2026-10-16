@@ -1,5 +1,7 @@
 import { useState, useMemo, useCallback, useEffect } from 'react'
 import { useSearchParams } from 'react-router'
+import type { GenderBasis } from '../types/velocity'
+import { GENDER_BASIS_PARAM, parseGenderBasis } from '../components/velocity/velocityGenderSeries'
 
 /**
  * Ticked prior years live in the link as `?priors=` (ruling 6, #3209), so the selection
@@ -77,6 +79,24 @@ export function useVelocityControls(availableYears: number[], currentYear: numbe
     }
   }
 
+  // #2898 owner answer #78: the Gender picker lives in the link (`gender=identity`), like a tab, so a copied
+  // link keeps it; the default (the Gender field) writes nothing.
+  const genderBasis = parseGenderBasis(searchParams.get(GENDER_BASIS_PARAM))
+  const setGenderBasis = useCallback(
+    (basis: GenderBasis) => {
+      setSearchParams(
+        (prev) => {
+          const newParams = new URLSearchParams(prev)
+          if (basis === 'identity') newParams.set(GENDER_BASIS_PARAM, basis)
+          else newParams.delete(GENDER_BASIS_PARAM)
+          return newParams
+        },
+        { replace: true }
+      )
+    },
+    [setSearchParams]
+  )
+
   const handleGenderToggle = (enabled: boolean) => {
     setSplitByGender(enabled)
     // When enabling gender, limit prior years to max 1
@@ -88,6 +108,8 @@ export function useVelocityControls(availableYears: number[], currentYear: numbe
   return {
     selectedPriorYears,
     splitByGender,
+    genderBasis,
+    setGenderBasis,
     priorYearOptions,
     togglePriorYear,
     handleGenderToggle,

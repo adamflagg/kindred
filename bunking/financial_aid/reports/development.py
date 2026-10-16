@@ -53,11 +53,14 @@ from bunking.financial_aid.money import ZERO
 from bunking.financial_aid.reports.facts import ReportRequest, average, is_capped, need
 from bunking.financial_aid.scenarios.committee import pct
 
+# D94: the one gender identity rule, shared with Analytics (#2898); re-exported for this module's callers.
+from bunking.gender_identity import NOT_GIVEN as NOT_GIVEN
+from bunking.gender_identity import SELF_DESCRIBED as SELF_DESCRIBED
+from bunking.gender_identity import gender_label as gender_label
+
 GroupKind = Literal["summer", "families", "campers"]
 AID_NOT_ENOUGH: Final = "aid_not_enough"  # D141's "declined: aid not enough / financial constraints"
 NOT_RECORDED_REASON: Final = "not_recorded"  # a cancellation with no reason given (every one before 2027)
-SELF_DESCRIBED: Final = "self-described"
-NOT_GIVEN: Final = "not given"
 TEEN, YOUTH, ADULT, AGE_UNKNOWN = "13–17", "0–12", "18 and over", "age unknown"
 CAMP_SOURCE: Final = ""  # the camp's own awards' source key in `by_source`
 NOT_REPORTED: Final = ""  # the group key of money development counts in its totals but in no group
@@ -195,13 +198,6 @@ class DevelopmentColumn:
     not_in_group: NotInGroup = NotInGroup(ZERO, ZERO, 0, 0)
     requests_capped: int = 0  # Rule M: the groups' requests counted at their session's cost in Total Requests
     budget: Decimal | None = None  # the Budget row: this camp's first approved budget total; the service's
-
-
-def gender_label(name: str, write_in: str) -> str:
-    """D94: a write-in is "self-described", a blank "not given"; otherwise CampMinder's own label."""
-    if write_in.strip():
-        return SELF_DESCRIBED
-    return name.strip() or NOT_GIVEN
 
 
 def age_on(birthdate: date | None, day: date | None) -> int | None:

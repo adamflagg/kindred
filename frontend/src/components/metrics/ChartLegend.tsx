@@ -1,6 +1,10 @@
+import { GENDER_HATCH_IMAGE } from '../camperships/kit/genderIdentity'
+
 interface LegendItem {
   label: string
   color: string
+  /** Hatched swatch, matching a hatched segment (#2898's Another identity). */
+  hatch?: boolean
 }
 
 interface ChartLegendProps {
@@ -19,7 +23,10 @@ export function ChartLegend({ items, className = '' }: ChartLegendProps) {
         <div key={item.label} className="flex items-center gap-1.5">
           <div
             className="h-3 w-3 flex-shrink-0 rounded-sm"
-            style={{ backgroundColor: item.color }}
+            style={{
+              backgroundColor: item.color,
+              ...(item.hatch ? { backgroundImage: GENDER_HATCH_IMAGE } : {}),
+            }}
           />
           <span className={`text-muted-foreground ${compact ? 'text-xs' : 'text-sm'}`}>
             {item.label}

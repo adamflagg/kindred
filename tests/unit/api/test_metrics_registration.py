@@ -339,17 +339,10 @@ class TestGenderByGradeBreakdown:
         sample_persons_2026: list[Mock],
         sample_attendees_2026: list[Mock],
     ) -> None:
-        """by_gender_grade should have male/female counts per grade.
+        """The fixtures' Gender field per grade: one M and one F in each of grades 5-8.
 
-        Note: We only track M/F since CampMinder's sex field only has these values.
-
-        Expected structure:
-        [
-            { grade: 5, male_count: 1, female_count: 1, total: 2 },
-            { grade: 6, male_count: 1, female_count: 1, total: 2 },
-            { grade: 7, male_count: 1, female_count: 1, total: 2 },
-            { grade: 8, male_count: 1, female_count: 1, total: 2 },
-        ]
+        by_gender_grade counts gender identity (#2898); these fixtures have no identity answer, so the API counts
+        them by this field (ruling 58), as {"grade": 5, "by_gender": {"Girl/woman": 1, "Boy/man": 1}, "total": 2}.
         """
         persons_by_id = {p.cm_id: p for p in sample_persons_2026}
         person_ids = {a.person_id for a in sample_attendees_2026}
@@ -579,7 +572,7 @@ class TestRegistrationEndpointWithSessionFilter:
         Expected response field:
         {
             "by_gender_grade": [
-                {"grade": 5, "male_count": 1, "female_count": 1, "total": 2},
+                {"grade": 5, "by_gender": {"Girl/woman": 1, "Boy/man": 1}, "total": 2},
                 ...
             ]
         }
@@ -2270,7 +2263,7 @@ class TestGenderBySessionLength:
         - 4 females: Emma (101), Olivia (103), Ava (105), Sophia (107)
 
         Expected:
-        [{ length_category: "3-week", male_count: 4, female_count: 4, total: 8 }]
+        [{ length_category: "3-week", by_gender: {"Girl/woman": 4, "Boy/man": 4}, total: 8 }]
         """
         from api.services.registration_service import RegistrationService
 
@@ -2283,8 +2276,8 @@ class TestGenderBySessionLength:
 
         assert len(result) == 1
         assert result[0].length_category == "3-week"
-        assert result[0].male_count == 4
-        assert result[0].female_count == 4
+        assert result[0].by_gender.get("Boy/man", 0) == 4
+        assert result[0].by_gender.get("Girl/woman", 0) == 4
         assert result[0].total == 8
 
     def test_gender_by_session_length_multiple_categories(self) -> None:
@@ -2327,13 +2320,13 @@ class TestGenderBySessionLength:
         assert "3-week" in categories
 
         # 1-week: 1M (Liam), 1F (Emma)
-        assert categories["1-week"].male_count == 1
-        assert categories["1-week"].female_count == 1
+        assert categories["1-week"].by_gender.get("Boy/man", 0) == 1
+        assert categories["1-week"].by_gender.get("Girl/woman", 0) == 1
         assert categories["1-week"].total == 2
 
         # 3-week: 1M (Noah), 2F (Olivia, Ava)
-        assert categories["3-week"].male_count == 1
-        assert categories["3-week"].female_count == 2
+        assert categories["3-week"].by_gender.get("Boy/man", 0) == 1
+        assert categories["3-week"].by_gender.get("Girl/woman", 0) == 2
         assert categories["3-week"].total == 3
 
     def test_gender_by_session_length_sorted_by_length(self) -> None:
@@ -2379,7 +2372,9 @@ class TestGenderBySessionLength:
         assert result == []
 
     def test_gender_by_session_length_missing_person(self) -> None:
-        """Attendees without matching person should be skipped."""
+        """An attendee with no persons row counts as "not given" (#2898), so the lengths add up to the enrolled total.
+
+        Spec change: this used to skip them, back when the split had only male/female columns to put them in."""
         from api.services.registration_service import RegistrationService
 
         session_2 = create_mock_session(2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05")
@@ -2401,9 +2396,10 @@ class TestGenderBySessionLength:
         result = service._compute_gender_by_session_length(attendees, sessions_dict, persons_dict)
 
         assert len(result) == 1
-        assert result[0].total == 1
-        assert result[0].female_count == 1
-        assert result[0].male_count == 0
+        assert result[0].total == 2
+        assert result[0].by_gender.get("Girl/woman", 0) == 1
+        assert result[0].by_gender.get("not given", 0) == 1
+        assert result[0].by_gender.get("Boy/man", 0) == 0
 
     def test_gender_by_session_length_ag_merged(self) -> None:
         """AG session attendees should be counted under parent session's length category."""
@@ -2434,8 +2430,8 @@ class TestGenderBySessionLength:
         # All should be under 3-week (parent session's length)
         assert len(result) == 1
         assert result[0].length_category == "3-week"
-        assert result[0].male_count == 1  # Liam
-        assert result[0].female_count == 2  # Emma + Olivia (AG merged)
+        assert result[0].by_gender.get("Boy/man", 0) == 1  # Liam
+        assert result[0].by_gender.get("Girl/woman", 0) == 2  # Emma + Olivia (AG merged)
         assert result[0].total == 3
 
     def test_gender_by_session_length_deduplicates_persons(self) -> None:
@@ -2463,7 +2459,7 @@ class TestGenderBySessionLength:
         # Emma should only be counted once in 3-week
         assert len(result) == 1
         assert result[0].length_category == "3-week"
-        assert result[0].female_count == 1
+        assert result[0].by_gender.get("Girl/woman", 0) == 1
         assert result[0].total == 1
 
     def test_gender_by_session_length_excludes_non_display_sessions(self) -> None:
@@ -2495,8 +2491,8 @@ class TestGenderBySessionLength:
         # Only main session should appear; family excluded
         assert len(result) == 1
         assert result[0].length_category == "3-week"
-        assert result[0].female_count == 1
-        assert result[0].male_count == 0
+        assert result[0].by_gender.get("Girl/woman", 0) == 1
+        assert result[0].by_gender.get("Boy/man", 0) == 0
         assert result[0].total == 1
 
     def test_gender_by_session_length_person_id_cast_to_int(self) -> None:
@@ -2523,7 +2519,7 @@ class TestGenderBySessionLength:
 
         # Should still find the person despite string person_id
         assert len(result) == 1
-        assert result[0].female_count == 1
+        assert result[0].by_gender.get("Girl/woman", 0) == 1
         assert result[0].total == 1
 
     def test_gender_by_session_length_unknown_gender_in_total(self) -> None:
@@ -2556,6 +2552,6 @@ class TestGenderBySessionLength:
         result = service._compute_gender_by_session_length(attendees, sessions_dict, persons_dict)
 
         assert len(result) == 1
-        assert result[0].male_count == 1  # Liam
-        assert result[0].female_count == 1  # Emma
+        assert result[0].by_gender.get("Boy/man", 0) == 1  # Liam
+        assert result[0].by_gender.get("Girl/woman", 0) == 1  # Emma
         assert result[0].total == 4  # All 4 persons, not just M+F

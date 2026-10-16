@@ -153,6 +153,11 @@
        `components/weekend/shareEmphasis.ts`. `shareEmphasis.test.ts` pins
        this declaration and that constant to the same value. */
     --share-emphasis-amp: 0.4;
+
+    /* Gender identity's two non-answers (kit/genderIdentity.ts, #2898): complete colours, greys that
+       sit behind the identity hues in each theme. */
+    --gender-prefer-not: #9ca3af;
+    --gender-not-given: #cbd5e1;
   }
 
   .dark {
@@ -183,6 +188,9 @@
     /* The dark-theme share green — lighter and less saturated so the halo
        reads as a bloom against the forest-night card, not a smear. */
     --share-yes: hsl(160 55% 62%);
+
+    --gender-prefer-not: #6b7280;
+    --gender-not-given: #475569;
   }
 }
 

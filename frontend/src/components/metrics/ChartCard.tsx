@@ -25,6 +25,8 @@ export interface ChartCardProps {
   legend?: Array<{ label: string; color: string }>
   isEmpty?: boolean
   emptyMessage?: string
+  /** Under the legend: a chart's visible note lines (#2898's Gender field count). */
+  footer?: ReactNode
   children: ReactNode
 }
 
@@ -41,12 +43,13 @@ export function ChartCard({
   legend,
   isEmpty,
   emptyMessage = 'No data available',
+  footer,
   children,
 }: ChartCardProps) {
   if (isEmpty) {
     return (
       <div className={`card-lodge p-4 ${className}`}>
-        {(title || headerRight) && (
+        {(Boolean(title) || headerRight) && (
           <div className="mb-2 flex items-center justify-between gap-2">
             {title && <h3 className="text-foreground text-base font-semibold">{title}</h3>}
             {headerRight}
@@ -63,7 +66,7 @@ export function ChartCard({
 
   return (
     <div className={`card-lodge flex flex-col px-4 pt-4 pb-4 ${className}`}>
-      {(title || headerRight) && (
+      {(Boolean(title) || headerRight) && (
         <div className="mb-2 flex items-center justify-between gap-2">
           {title && <h3 className="text-foreground text-base font-semibold">{title}</h3>}
           {headerRight}
@@ -105,6 +108,7 @@ export function ChartCard({
       </div>
 
       {legend && legend.length > 0 && <ChartLegend items={legend} className="mt-3" />}
+      {footer}
     </div>
   )
 }

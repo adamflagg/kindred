@@ -27,17 +27,23 @@ import {
 // ============================================================================
 
 describe('transformGenderData', () => {
-  it('transforms gender breakdown to chart data', () => {
+  // #2898 (decision 38, ruling 58): the API sends gender identity labels; the chart shows them in the
+  // fixed order (#76 a), capitalising the two lower-case ones, and drills down by the raw label.
+  it('transforms gender identity labels to chart data in the fixed order', () => {
     const input = [
-      { gender: 'M', count: 60, percentage: 60 },
-      { gender: 'F', count: 40, percentage: 40 },
+      { gender: 'not given', count: 1, percentage: 1 },
+      { gender: 'Boy/man', count: 40, percentage: 40 },
+      { gender: 'self-described', count: 2, percentage: 2 },
+      { gender: 'Girl/woman', count: 57, percentage: 57 },
     ]
 
     const result = transformGenderData(input)
 
     expect(result).toEqual([
-      { name: 'Male', value: 60, percentage: 60, id: 'M' },
-      { name: 'Female', value: 40, percentage: 40, id: 'F' },
+      { name: 'Girl/woman', value: 57, percentage: 57, id: 'Girl/woman' },
+      { name: 'Boy/man', value: 40, percentage: 40, id: 'Boy/man' },
+      { name: 'Self-described', value: 2, percentage: 2, id: 'self-described' },
+      { name: 'Not given', value: 1, percentage: 1, id: 'not given' },
     ])
   })
 

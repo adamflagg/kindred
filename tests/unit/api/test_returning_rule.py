@@ -83,7 +83,7 @@ class TestEnrolledSitesAgree:
         repo.fetch_attendees.return_value = [_attendee(pid, session) for pid in persons]
 
         result = await DrilldownService(repo).get_attendees_for_breakdown(
-            year=2026, breakdown_type="gender", breakdown_value="M"
+            year=2026, breakdown_type="gender", breakdown_value="Boy/man"
         )
 
         assert {r.person_id: r.is_returning for r in result} == {102: True}
@@ -186,7 +186,7 @@ class TestWaitlistBadgeUnchanged:
         repo.fetch_attendees.return_value = [_attendee(102, session, status="cancelled", status_id=32)]
 
         result = await DrilldownService(repo).get_attendees_for_breakdown(
-            year=2026, breakdown_type="gender", breakdown_value="M", status_filter=["cancelled"]
+            year=2026, breakdown_type="gender", breakdown_value="Boy/man", status_filter=["cancelled"]
         )
 
         assert [(r.person_id, r.is_returning) for r in result] == [(102, False)]

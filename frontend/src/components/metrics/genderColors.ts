@@ -1,21 +1,46 @@
-/** Shared gender color palette for metrics charts. */
+/**
+ * Analytics' gender colours and stacked-bar segments, read from the kit's gender identity tokens
+ * (`camperships/kit/genderIdentity.ts`, design language "Gender identity") so every chart wears the same
+ * colour per label.
+ */
 
-export const GENDER_COLORS: Record<string, string> = {
-  M: 'hsl(200, 70%, 50%)', // Blue
-  Male: 'hsl(200, 70%, 50%)', // Blue
-  F: 'hsl(340, 70%, 50%)', // Pink
-  Female: 'hsl(340, 70%, 50%)', // Pink
-  Unknown: 'hsl(0, 0%, 60%)', // Gray
-}
+import {
+  ANOTHER_IDENTITY,
+  GENDER_IDENTITY_COLOR,
+  GENDER_IDENTITY_GROUPS,
+  GENDER_IDENTITY_ORDER,
+  NO_ANSWER,
+  genderDisplayName,
+  genderHatched,
+  genderIdentityColor,
+} from '../camperships/kit/genderIdentity'
+import { groupCounts } from './genderNotes'
+import type { VerticalStackedSegment } from './CssVerticalStackedBarChart'
 
-/** Segment definitions for stacked bar charts with male/female breakdown. */
-export const GENDER_SEGMENTS: Array<{ key: string; label: string; color: string }> = [
-  { key: 'female_count', label: 'Female', color: 'hsl(350, 70%, 50%)' },
-  { key: 'male_count', label: 'Male', color: 'hsl(200, 70%, 50%)' },
-]
+/** A label's colour (F and M, the Gender field, wear Girl/woman's and Boy/man's). */
+export const getGenderColor = genderIdentityColor
 
-const FALLBACK_COLOR = 'hsl(280, 60%, 50%)' // Purple
+/** Colour by the name a chart displays (`transformGenderData`'s "Self-described", "Not given"). */
+export const GENDER_DISPLAY_COLORS: Readonly<Record<string, string>> = Object.fromEntries(
+  [...GENDER_IDENTITY_ORDER, ANOTHER_IDENTITY, NO_ANSWER].map((label) => [
+    genderDisplayName(label),
+    GENDER_IDENTITY_COLOR[label] ?? genderIdentityColor(label),
+  ])
+)
 
-export function getGenderColor(gender: string): string {
-  return GENDER_COLORS[gender] ?? FALLBACK_COLOR
+/** A stacked-bar row's group columns from a `by_gender` count (#75 a). */
+export const genderGroupRow = groupCounts
+
+/** One segment per group any row counts, in the fixed order (#76 a); Another identity hatched. */
+export function genderGroupSegments(
+  rows: ReadonlyArray<Readonly<Record<string, unknown>>>
+): VerticalStackedSegment[] {
+  return GENDER_IDENTITY_GROUPS.filter((group) =>
+    rows.some((row) => typeof row[group] === 'number' && row[group] > 0)
+  ).map((group) => ({
+    key: group,
+    label: genderDisplayName(group),
+    color: genderIdentityColor(group),
+    ...(genderHatched(group) ? { hatch: true } : {}),
+  }))
 }

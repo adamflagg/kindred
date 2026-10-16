@@ -13,7 +13,9 @@ from typing import TYPE_CHECKING, Any
 from api.schemas.metrics import DrilldownAttendee, DrilldownSession
 from api.services.cancellation_service import CANCELLED_STATUSES
 from api.services.extractors import (
+    counted_by_binary_field,
     extract_age_band,
+    extract_gender_identity,
     extract_years_at_camp,
     filter_aged_out_attendees,
     is_new_camper,
@@ -233,6 +235,11 @@ class DrilldownService:
         )
         for row in rows:
             person = persons.get(row.person_id)
+            # Gender reads as every Analytics gender split counts it, on every list (#2898). A list built from
+            # the binary field (Session Availability's boys/girls waitlist) still shows each camper's identity.
+            row.gender = extract_gender_identity(person) if person is not None else row.gender
+            row.gender_field = _get_str_attr(person, "gender") if person is not None else None
+            row.gender_counted_by_field = person is not None and counted_by_binary_field(person)
             row.age = _season_age(person, year)
             household_pb_id = _get_str_attr(person, "primary_childhood_household")
             household = households.get(household_pb_id) if household_pb_id else None
@@ -586,7 +593,8 @@ class DrilldownService:
             session = get_session_from_expand(a)
 
             if breakdown_type == "gender":
-                if person and getattr(person, "gender", None) == breakdown_value:
+                # A gender slice is a gender identity label (#2898), as every Analytics gender split counts it.
+                if person and extract_gender_identity(person) == breakdown_value:
                     filtered.append(a)
 
             elif breakdown_type == "grade":

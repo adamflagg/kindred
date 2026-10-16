@@ -360,3 +360,36 @@ describe('ComparisonSummaryTable sortable (#3207 PR 10)', () => {
     expect(screen.queryByRole('button', { name: /^2026/ })).not.toBeInTheDocument()
   })
 })
+
+describe('ComparisonSummaryTable footer (#2898)', () => {
+  it('renders the footer under the table', () => {
+    render(
+      <ComparisonSummaryTable
+        title="Gender Comparison"
+        primaryYear={2018}
+        compareYear={2017}
+        primaryData={[{ name: 'Girl/woman', value: 50 }]}
+        compareData={[{ name: 'Girl/woman', value: 45 }]}
+        footer={<p>a note line</p>}
+      />
+    )
+    expect(screen.getByText('a note line')).toBeInTheDocument()
+  })
+
+  it('shows a colour swatch per row when given a colour map', () => {
+    const { container } = render(
+      <ComparisonSummaryTable
+        title="Gender Comparison"
+        primaryYear={2018}
+        compareYear={2017}
+        primaryData={[{ name: 'Girl/woman', value: 50 }]}
+        compareData={[{ name: 'Girl/woman', value: 45 }]}
+        colorMap={{ 'Girl/woman': '#d9266b' }}
+      />
+    )
+    const swatch = [...container.querySelectorAll<HTMLElement>('[style]')].find(
+      (el) => el.style.backgroundColor !== ''
+    )
+    expect(swatch?.style.backgroundColor).toBe('rgb(217, 38, 107)')
+  })
+})
