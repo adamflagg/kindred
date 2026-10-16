@@ -558,6 +558,15 @@ describe('CancellationVelocityPage number format', () => {
     ).toBeInTheDocument()
   })
 
+  it('describes a swap with no time window (decision 46)', () => {
+    useComparison(bigData)
+    render(<CancellationVelocityPage />)
+    expect(
+      screen.getByText(/cancelled one session but are still enrolled in another this summer/)
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/within the same day/)).toBeNull()
+  })
+
   it('writes the weekly change with separators and a true minus', () => {
     useComparison(bigData)
     render(<CancellationVelocityPage />)

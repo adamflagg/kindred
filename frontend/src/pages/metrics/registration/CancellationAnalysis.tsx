@@ -139,6 +139,10 @@ export default function CancellationAnalysis() {
   )
   const { data, isLoading, error, refetch, isPlaceholderData } = primary
   const compData = comparison?.data
+  // The compare query keeps its previous result too, so a new compare year gets the busy cue
+  // as well: its label must not sit over the last compare year's numbers (D-UNCOVERED, #3207).
+  const busy = isPlaceholderData || comparison?.isPlaceholderData === true
+  const busyYear = isPlaceholderData || compareYear === null ? currentYear : compareYear
 
   const { setFilter, DrilldownModal } = useDrilldown({
     year: currentYear,
@@ -172,8 +176,8 @@ export default function CancellationAnalysis() {
   return (
     <MetricsQueryGuard
       onRetry={() => void refetch()}
-      isPlaceholderData={isPlaceholderData}
-      loadingLabel={String(currentYear)}
+      isPlaceholderData={busy}
+      loadingLabel={String(busyYear)}
       isLoading={isLoading}
       error={error}
       data={data}

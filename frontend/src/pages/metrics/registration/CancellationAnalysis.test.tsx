@@ -178,4 +178,31 @@ describe('CancellationAnalysis — busy cue and Try again (D-UNCOVERED)', () => 
     screen.getByRole('button', { name: 'Try again' }).click()
     expect(refetch).toHaveBeenCalledTimes(1)
   })
+  it('dims the page under "Loading 2024…" while a newly picked compare year loads', () => {
+    vi.mocked(useMetricsSession).mockReturnValue({
+      selectedSessionCmId: null,
+      sessions: [],
+      activeSessionTypes: ['main', 'embedded', 'ag'],
+      compareYear: 2024,
+      isComparing: true,
+      durationParam: undefined,
+      filterOptions: {},
+    } as unknown as ReturnType<typeof useMetricsSession>)
+    vi.mocked(useComparisonCancellationData).mockReturnValue({
+      primary: {
+        data: mockData,
+        isLoading: false,
+        error: null,
+        isPlaceholderData: false,
+        refetch: vi.fn(),
+      },
+      // The compare query keeps 2025's result on screen while 2024 loads
+      comparison: { data: { ...mockData, year: 2025 }, isPlaceholderData: true },
+    } as unknown as ReturnType<typeof useComparisonCancellationData>)
+    render(<CancellationAnalysis />)
+    expect(screen.getByText('Loading 2024…')).toBeInTheDocument()
+    expect(
+      screen.getAllByText('Total Cancelled', { exact: false, selector: 'p' })[0]?.closest('[inert]')
+    ).not.toBeNull()
+  })
 })

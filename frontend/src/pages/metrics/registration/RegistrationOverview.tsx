@@ -187,6 +187,10 @@ export default function RegistrationOverview() {
   })
   const { data, isLoading, error, refetch, isPlaceholderData } = primary
   const compData = comparison?.data
+  // The compare query keeps its previous result too, so a new compare year gets the busy cue
+  // as well: its label must not sit over the last compare year's numbers (D-UNCOVERED, #3207).
+  const busy = isPlaceholderData || comparison?.isPlaceholderData === true
+  const busyYear = isPlaceholderData || compareYear === null ? currentYear : compareYear
 
   if (isLoading) {
     return (
@@ -253,7 +257,7 @@ export default function RegistrationOverview() {
   )
 
   return (
-    <MetricsBusy busy={isPlaceholderData} what={String(currentYear)}>
+    <MetricsBusy busy={busy} what={String(busyYear)}>
       <div className="space-y-6">
         {/* Summary Cards */}
         <div

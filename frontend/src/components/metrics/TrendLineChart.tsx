@@ -83,10 +83,10 @@ export function TrendLineChart({
     [data, metric]
   )
 
-  // #2443 -- greyed band(s) behind years with no attendee_status_history
-  // coverage, scoped to the cancellation-rate metric (the only one with a
-  // coverage concept -- enrollment/gender/new-vs-returning are always
-  // measured).
+  // #2443 -- greyed band(s) behind years whose cancellation count was not
+  // measured (the cancelled-attendee fetch failed), scoped to the
+  // cancellation-rate metric (the only one with a coverage concept --
+  // enrollment/gender/new-vs-returning are always measured).
   const coverageBands = useMemo(
     () =>
       metric === 'cancellation_rate'

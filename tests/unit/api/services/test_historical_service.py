@@ -853,6 +853,32 @@ class TestCancellationDataCoverage:
         assert year_metric.total_cancelled == 0
         assert year_metric.total_enrolled == 1
 
+    @pytest.mark.asyncio
+    async def test_a_failed_cancelled_fetch_is_logged(
+        self, mock_repository: MagicMock, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """The unmeasured year must leave a trace: the repository does not log the failure itself."""
+        import logging
+
+        from api.services.historical_service import HistoricalService
+
+        async def fetch_attendees(year: int, status_filter: Any = None, **_: Any) -> list[Any]:
+            if status_filter == "cancelled":
+                raise RuntimeError("PocketBase unavailable")
+            return [make_mock_attendee(1, 5001)]
+
+        mock_repository.fetch_sessions = AsyncMock(return_value={5001: make_mock_session(5001, "Session 1")})
+        mock_repository.fetch_attendees = AsyncMock(side_effect=fetch_attendees)
+
+        with caplog.at_level(logging.WARNING, logger="api.services.historical_service"):
+            await HistoricalService(mock_repository).calculate_historical_trends(years=[2025])
+
+        failures = [r for r in caplog.records if r.name == "api.services.historical_service"]
+        assert len(failures) == 1
+        assert failures[0].levelno == logging.WARNING
+        assert "2025" in failures[0].getMessage()
+        assert failures[0].exc_info is not None
+
 
 # ============================================================================
 # Scope through the one session resolver (#3208 rows 9 and 12)

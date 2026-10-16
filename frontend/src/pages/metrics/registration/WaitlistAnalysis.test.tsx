@@ -445,4 +445,27 @@ describe('WaitlistAnalysis number format', () => {
     renderWithClient()
     expect(screen.getByText('1,234 days')).toBeInTheDocument()
   })
+  it('dims the page under "Loading 2024…" while a newly picked compare year loads', () => {
+    // The compare query (2024) keeps 2025's result on screen while it loads
+    mockUseWaitlistMetrics.mockImplementation((year: number) => ({
+      data: { ...mockWaitlistData, year: year === 2026 ? 2026 : 2025 },
+      isLoading: false,
+      error: null,
+      isPlaceholderData: year !== 2026,
+      refetch: vi.fn(),
+    }))
+    vi.mocked(useMetricsSession).mockReturnValue({
+      selectedSessionCmId: null,
+      selectedSession: undefined,
+      sessions: [],
+      activeSessionTypes: ['main', 'embedded', 'ag'],
+      compareYear: 2024,
+      isComparing: true,
+      durationParam: undefined,
+      filterOptions: {},
+    } as unknown as ReturnType<typeof useMetricsSession>)
+    renderWithClient()
+    expect(screen.getByText('Loading 2024…')).toBeInTheDocument()
+    expect(screen.getByText('Session Details').closest('[inert]')).not.toBeNull()
+  })
 })

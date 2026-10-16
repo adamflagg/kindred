@@ -441,7 +441,7 @@ export default function CancellationVelocityPage() {
               </span>
               <span className="text-muted-foreground">
                 {' '}
-                — cancelled one session and enrolled in another within the same day
+                — cancelled one session but are still enrolled in another this summer
               </span>
             </div>
           )}

@@ -22,12 +22,15 @@ from api.utils.session_metrics import (
     filter_attendees_by_session,
     resolve_scope_ids,
 )
+from bunking.logging_config import get_logger
 
 from .breakdown_calculator import calculate_percentage, compute_registration_breakdown
 from .extractors import extract_gender, is_new_camper
 
 if TYPE_CHECKING:
     from .metrics_repository import MetricsRepository
+
+logger = get_logger(__name__)
 
 
 class HistoricalService:
@@ -131,6 +134,9 @@ class HistoricalService:
             result: list[Any] = await self.repo.fetch_attendees(year, "cancelled")
             return result
         except Exception:
+            # The repository does not log its own failures; without this the year
+            # reads "—" in Trends with no trace of why.
+            logger.warning("Cancelled attendee fetch failed; year=%s shows as unmeasured", year, exc_info=True)
             return None
 
     def _compute_year_metrics(
