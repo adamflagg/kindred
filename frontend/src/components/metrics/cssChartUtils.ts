@@ -466,7 +466,7 @@ export function VerticalXAxis({
             'span',
             {
               key: i,
-              className: 'text-muted-foreground absolute text-sm',
+              className: 'text-muted-foreground absolute text-sm whitespace-nowrap',
               style: {
                 left: `${(i / (n - 1)) * 100}%`,
                 transform: 'translateX(-50%)',

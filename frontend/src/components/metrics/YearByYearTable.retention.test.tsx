@@ -83,7 +83,7 @@ describe('YearByYearTable retention columns', () => {
     render(<YearByYearTable years={YEARS} live={null} retention={RETENTION_FINAL} />)
     const headers = screen
       .getAllByRole('columnheader')
-      .map((h) => h.textContent?.replace(/[↕↑↓]/g, ''))
+      .map((h) => h.textContent.replace(/[↕↑↓]/g, ''))
     expect(headers.slice(-3)).toEqual(['Cancel %3', 'Retention4', 'Retention change'])
     const row = screen.getByText('2024').closest('tr')!
     expect(within(row).getByText('69.7%')).toBeInTheDocument()

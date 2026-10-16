@@ -5,13 +5,8 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
-import {
-  RetentionChange,
-  RetentionCompareHeader,
-  RetentionCompareLegend,
-  describeRowChange,
-} from './RetentionChange'
-import { retentionCompareView } from '../../utils/retentionCompare'
+import { RetentionChange, RetentionCompareHeader, RetentionCompareLegend } from './RetentionChange'
+import { describeRowChange, retentionCompareView } from '../../utils/retentionCompare'
 import type { RetentionBasis } from '../../utils/retentionCompare'
 
 const liveBasis: RetentionBasis = {

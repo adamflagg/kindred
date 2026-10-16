@@ -5,7 +5,8 @@
  */
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import { RetentionRateLine, retentionLineData } from './RetentionRateLine'
+import { RetentionRateLine } from './RetentionRateLine'
+import { retentionLineData } from './retentionLineData'
 import type { RetentionTrendYear } from '../../types/metrics'
 
 const t = (from: number, rate: number, samePoint: number | null = null): RetentionTrendYear => ({

@@ -156,10 +156,20 @@ export function withPriorRates(
   priorBars: RetentionRateBarItem[] | undefined,
   keyCurrent: PairKey = (b) => b.name,
   keyPrior: PairKey = keyCurrent
-): (RetentionRateBarItem & { priorRate: number | null })[] {
+): Array<RetentionRateBarItem & { priorRate: number | null }> {
   const prior = new Map((priorBars ?? []).map((b) => [keyPrior(b), b.retentionRate]))
   return bars.map((b) => ({ ...b, priorRate: prior.get(keyCurrent(b)) ?? null }))
 }
+
+/**
+ * Cities pair by name without a trailing state: CampMinder holds a city as "Springfield" one year
+ * and "Springfield, CA" the next, so the exact name would leave most rows unpaired.
+ */
+export const cityPairKey: PairKey = (b) =>
+  b.name
+    .replace(/,\s*[A-Za-z]{2}$/, '')
+    .trim()
+    .toLowerCase()
 
 /** Sessions pair by name through their alias group (a renamed session is the same row). */
 export const sessionPairKey = resolveSessionAlias
@@ -192,4 +202,15 @@ export function regionPriorBars(
     ...b,
     name: REGION_DISPLAY_NAMES[b.name] ?? b.name,
   }))
+}
+
+/** The tooltip's words for a row's change: "+6.1 pts vs 2025 at this registration day". */
+export function describeRowChange(
+  rate: number,
+  priorRate: number | null | undefined,
+  compare: RetentionCompareView
+): string {
+  const points = pointsBetween(rate, priorRate)
+  if (points === null) return `${compare.priorYear} had no such row`
+  return `${formatSignedPoints(points)} vs ${compare.priorLegend}`
 }

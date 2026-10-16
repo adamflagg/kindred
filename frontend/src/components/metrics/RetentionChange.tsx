@@ -59,17 +59,6 @@ export function RetentionChange({
   )
 }
 
-/** The tooltip's words for a row's change: "+6.1 pts vs 2025 at this registration day". */
-export function describeRowChange(
-  rate: number,
-  priorRate: number | null | undefined,
-  compare: RetentionCompareView
-): string {
-  const points = pointsBetween(rate, priorRate)
-  if (points === null) return `${compare.priorYear} had no such row`
-  return `${formatSignedPoints(points)} vs ${compare.priorLegend}`
-}
-
 /** "Change vs same point last year¹": heads a compared chart or column. */
 export function RetentionCompareHeader({ compare }: { compare: RetentionCompareView }) {
   return (

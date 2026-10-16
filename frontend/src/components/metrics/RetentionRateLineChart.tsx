@@ -31,11 +31,8 @@ import {
 } from '../../utils/retentionCompare'
 import { DELTA_INK, deltaInk } from '../../utils/deltaTokens'
 import { PRIORITY_DAY_PENDING } from '../../utils/priorityDay'
-import {
-  RetentionCompareHeader,
-  RetentionCompareLegend,
-  describeRowChange,
-} from './RetentionChange'
+import { RetentionCompareHeader, RetentionCompareLegend } from './RetentionChange'
+import { describeRowChange } from '../../utils/retentionCompare'
 
 interface RetentionRateLineChartProps {
   data: RetentionRateBarItem[]

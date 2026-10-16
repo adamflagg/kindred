@@ -121,7 +121,11 @@ vi.mock('../../../hooks/useDrilldown', () => ({
 }))
 vi.mock('../../../components/metrics/BreakdownChart', () => ({ BreakdownChart: () => null }))
 
-type ChartProps = { title: string; data: RetentionRateBarItem[]; compare?: { live: boolean } }
+interface ChartProps {
+  title: string
+  data: RetentionRateBarItem[]
+  compare?: { live: boolean }
+}
 const charts = new Map<string, ChartProps>()
 vi.mock('../../../components/metrics/CssVerticalRetentionBarChart', () => ({
   CssVerticalRetentionBarChart: (props: ChartProps) => {

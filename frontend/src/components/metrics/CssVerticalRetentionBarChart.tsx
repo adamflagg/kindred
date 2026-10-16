@@ -13,12 +13,8 @@ import type { RetentionRateBarItem } from '../../types/metrics'
 import { chartAxisLabels } from '../../utils/chartLabels'
 import { formatCount, formatPercent } from '../../utils/numberFormat'
 import { isSmallBase, type RetentionCompareView } from '../../utils/retentionCompare'
-import {
-  RetentionChange,
-  RetentionCompareHeader,
-  RetentionCompareLegend,
-  describeRowChange,
-} from './RetentionChange'
+import { RetentionChange, RetentionCompareHeader, RetentionCompareLegend } from './RetentionChange'
+import { describeRowChange } from '../../utils/retentionCompare'
 
 interface CssVerticalRetentionBarChartProps {
   data: RetentionRateBarItem[]

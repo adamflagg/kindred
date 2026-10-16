@@ -21,6 +21,7 @@ import type { RetentionTrendYear } from '../../types/metrics'
 import { ChartCard } from './ChartCard'
 import { formatCount, formatPercent } from '../../utils/numberFormat'
 import { calculateVerticalLayout } from './cssChartUtils'
+import { retentionLineData, type ChartDataItem } from './retentionLineData'
 import { DefinitionNotes, DefRef } from '../camperships/kit/DefinitionNotes'
 import { PRIORITY_DAY_NOTE } from '../../utils/priorityDay'
 
@@ -37,17 +38,6 @@ interface RetentionRateLineProps {
   samePoint?: { asOf: string; noteN: number; throughNextDay: boolean } | undefined
 }
 
-interface ChartDataItem {
-  name: string
-  transition: string
-  /** The final rate; null for the live year, which is not drawn on the finals line (#89). */
-  retentionRate: number | null
-  /** The rate at the same registration day, percent; the live year's is today's. */
-  samePoint: number | null
-  baseCount: number
-  returnedCount: number
-}
-
 const MONTH_DAY = new Intl.DateTimeFormat('en-US', {
   month: 'short',
   day: 'numeric',
@@ -57,22 +47,35 @@ const FINAL_STROKE = 'hsl(160, 100%, 35%)'
 const SAME_POINT_STROKE = 'hsl(var(--muted-foreground))'
 
 /**
- * Points labelled by the year campers returned into (a ruled call, #3207 PR 11; it read the base
- * year before). While live, the newest is "so far" and sits on the dashed line only.
+ * A point's rate label, set above its dot when its line is the higher of the two at that year and
+ * below when it is the lower, so the finals' and the same-day line's labels never sit on each other.
  */
-export function retentionLineData(data: RetentionTrendYear[], live: boolean): ChartDataItem[] {
-  const newest = Math.max(0, ...data.map((y) => y.to_year))
-  return data.map((year) => {
-    const isLive = live && year.to_year === newest
-    return {
-      name: isLive ? `${year.to_year} so far` : year.to_year.toString(),
-      transition: `${year.from_year} → ${year.to_year}`,
-      retentionRate: isLive ? null : year.retention_rate * 100,
-      samePoint: live && year.same_point_rate != null ? year.same_point_rate * 100 : null,
-      baseCount: year.base_count,
-      returnedCount: year.returned_count,
-    }
-  })
+function PointLabel(props: {
+  x?: number | string | undefined
+  y?: number | string | undefined
+  index?: number | undefined
+  rows: ChartDataItem[]
+  series: 'final' | 'samePoint'
+}) {
+  const { index, rows, series } = props
+  const x = Number(props.x)
+  const y = Number(props.y)
+  const row = index === undefined ? undefined : rows[index]
+  const value = row ? (series === 'final' ? row.retentionRate : row.samePoint) : null
+  if (!row || value === null || Number.isNaN(x) || Number.isNaN(y)) return null
+  const other = series === 'final' ? row.samePoint : row.retentionRate
+  const above = other === null || value >= other
+  return (
+    <text
+      x={x}
+      y={above ? y - 10 : y + 18}
+      textAnchor="middle"
+      className="text-xs"
+      fill="hsl(var(--muted-foreground))"
+    >
+      {formatPercent(value)}
+    </text>
+  )
 }
 
 export function RetentionRateLine({
@@ -182,13 +185,20 @@ export function RetentionRateLine({
             dot={{ fill: FINAL_STROKE, r: 6 }}
             activeDot={{ r: 8 }}
           >
-            <LabelList
-              dataKey="retentionRate"
-              position="top"
-              className="text-xs"
-              fill="hsl(var(--muted-foreground))"
-              formatter={(value) => (value == null ? '' : formatPercent(Number(value)))}
-            />
+            {samePoint ? (
+              <LabelList
+                dataKey="retentionRate"
+                content={(props) => <PointLabel {...props} rows={chartData} series="final" />}
+              />
+            ) : (
+              <LabelList
+                dataKey="retentionRate"
+                position="top"
+                className="text-xs"
+                fill="hsl(var(--muted-foreground))"
+                formatter={(value) => (value == null ? '' : formatPercent(Number(value)))}
+              />
+            )}
           </Line>
           {samePoint && (
             <Line
@@ -203,10 +213,7 @@ export function RetentionRateLine({
             >
               <LabelList
                 dataKey="samePoint"
-                position="bottom"
-                className="text-xs"
-                fill="hsl(var(--muted-foreground))"
-                formatter={(value) => (value == null ? '' : formatPercent(Number(value)))}
+                content={(props) => <PointLabel {...props} rows={chartData} series="samePoint" />}
               />
             </Line>
           )}

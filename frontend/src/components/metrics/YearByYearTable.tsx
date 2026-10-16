@@ -1,3 +1,4 @@
+import { Fragment } from 'react'
 import type { RetentionTrendsResponse, YearMetrics } from '../../types/metrics'
 import { useTableSort } from '../../hooks/useTableSort'
 import { DELTA_INK, deltaInk } from '../../utils/deltaTokens'
@@ -187,6 +188,9 @@ export function YearByYearTable({
       align={align}
       direction={sort.direction(field)}
       onSort={() => sort.toggle(field)}
+      // #3207 PR 11: fifteen columns fit a 1440 screen with tighter cells, the card edges kept (no side scroll)
+      bare
+      className={`text-muted-foreground px-1.5 py-3 font-medium first:pl-4 last:pr-4 text-${align}`}
       labelSuffix={mark === undefined ? undefined : <DefRef n={mark} />}
     />
   )
@@ -194,7 +198,7 @@ export function YearByYearTable({
   return (
     <>
       <div data-tour="trends-table" className="card-lodge overflow-hidden">
-        <div className="border-border flex items-center justify-between gap-3 border-b px-4 py-3">
+        <div className="border-border flex items-center justify-between gap-3 border-b px-1.5 py-3 first:pl-4 last:pr-4">
           <h3 className="text-foreground text-base font-semibold">Year-by-Year Summary</h3>
           <TableExportButtons
             filename={csvFilename(newest, 'Trends year-by-year')}
@@ -243,7 +247,9 @@ export function YearByYearTable({
                 {h('New', 'new')}
                 {h('Returning', 'returning')}
                 {h('New %', 'newPct')}
-                {tableGroups.map((g) => h(genderDisplayName(g), `g:${g}`))}
+                {tableGroups.map((g) => (
+                  <Fragment key={g}>{h(genderDisplayName(g), `g:${g}`)}</Fragment>
+                ))}
                 {h('Cancelled', 'cancelled', 'right', 2)}
                 {h('Cancel %', 'cancelPct', 'right', 3)}
                 {hasRetention && h('Retention', 'retention', 'right', RETENTION_NOTE_N)}
@@ -256,7 +262,7 @@ export function YearByYearTable({
                   key={r.year}
                   className="border-border hover:bg-muted/20 border-b transition-colors last:border-0"
                 >
-                  <td className="text-foreground px-4 py-3 font-medium">
+                  <td className="text-foreground px-1.5 py-3 font-medium first:pl-4 last:pr-4">
                     {r.year}
                     {hasRetention && r.retentionBasis === 'same point' && (
                       <span className="text-muted-foreground ml-1.5 text-xs font-normal">
@@ -267,37 +273,42 @@ export function YearByYearTable({
                       <DefRef n={genderN} />
                     )}
                   </td>
-                  <td className="text-foreground px-4 py-3 text-right">{formatCount(r.total)}</td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="text-foreground px-1.5 py-3 text-right first:pl-4 last:pr-4">
+                    {formatCount(r.total)}
+                  </td>
+                  <td className="px-1.5 py-3 text-right first:pl-4 last:pr-4">
                     <ChangeCell row={r} liveN={liveN} />
                   </td>
-                  <td className="text-foreground px-4 py-3 text-right">
+                  <td className="text-foreground px-1.5 py-3 text-right first:pl-4 last:pr-4">
                     {formatCount(r.newCount)}
                   </td>
-                  <td className="text-foreground px-4 py-3 text-right">
+                  <td className="text-foreground px-1.5 py-3 text-right first:pl-4 last:pr-4">
                     {formatCount(r.returning)}
                   </td>
-                  <td className="text-muted-foreground px-4 py-3 text-right">
+                  <td className="text-muted-foreground px-1.5 py-3 text-right first:pl-4 last:pr-4">
                     {formatPercent(r.newPct)}
                   </td>
                   {tableGroups.map((g) => (
-                    <td key={g} className="text-foreground px-4 py-3 text-right">
+                    <td
+                      key={g}
+                      className="text-foreground px-1.5 py-3 text-right first:pl-4 last:pr-4"
+                    >
                       {formatCount(r.groups[g] ?? 0)}
                     </td>
                   ))}
-                  <td className="text-foreground px-4 py-3 text-right">
+                  <td className="text-foreground px-1.5 py-3 text-right first:pl-4 last:pr-4">
                     {r.cancelled === null ? '—' : formatCount(r.cancelled)}
                   </td>
-                  <td className="text-muted-foreground px-4 py-3 text-right">
+                  <td className="text-muted-foreground px-1.5 py-3 text-right first:pl-4 last:pr-4">
                     {r.cancelPct === null ? '—' : formatPercent(r.cancelPct)}
                   </td>
                   {hasRetention && (
-                    <td className="text-foreground px-4 py-3 text-right tabular-nums">
+                    <td className="text-foreground px-1.5 py-3 text-right tabular-nums first:pl-4 last:pr-4">
                       {r.retention === null ? '—' : formatPercent(r.retention)}
                     </td>
                   )}
                   {hasRetention && (
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-1.5 py-3 text-right first:pl-4 last:pr-4">
                       <RetentionChangeCell row={r} liveN={liveN} />
                     </td>
                   )}

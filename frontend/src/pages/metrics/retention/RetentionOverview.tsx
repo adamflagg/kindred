@@ -52,6 +52,7 @@ import { useCompareYearFilter } from '../../../hooks/useCompareYearFilter'
 import { formatSignedCount } from '../../../utils/numberFormat'
 import { RetentionChange } from '../../../components/metrics/RetentionChange'
 import {
+  cityPairKey,
   describeRetentionBasis,
   firstSummerPairKeys,
   regionPriorBars,
@@ -205,7 +206,7 @@ export default function RetentionOverview() {
     firstSummerPairKeys.current,
     firstSummerPairKeys.prior
   )
-  const cityBars = pair(cityToBarData(data.by_city), cityToBarData(prior?.by_city))
+  const cityBars = pair(cityToBarData(data.by_city), cityToBarData(prior?.by_city), cityPairKey)
   const schoolBars = pair(schoolToBarData(data.by_school), schoolToBarData(prior?.by_school))
   const synagogueBars = pair(
     synagogueToBarData(data.by_synagogue),
@@ -556,14 +557,15 @@ function BasisSentence({ basis }: { basis: RetentionBasis }) {
     const rest = basis.text.slice(at)
     const dayWord = 'registration day'
     const cut = second ? rest.indexOf(dayWord) : -1
+    const secondN = second?.n
     body = (
       <>
         {basis.text.slice(0, at)}
         <DefRef n={first.n} />
-        {cut >= 0 ? (
+        {cut >= 0 && secondN !== undefined ? (
           <>
             {rest.slice(0, cut + dayWord.length)}
-            <DefRef n={second!.n} />
+            <DefRef n={secondN} />
             {rest.slice(cut + dayWord.length)}
           </>
         ) : (

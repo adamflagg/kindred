@@ -33,7 +33,7 @@ function prior(extra: Partial<RetentionMetrics>): RetentionMetrics {
     by_session: [],
     by_years_at_camp: [],
     ...extra,
-  } as RetentionMetrics
+  }
 }
 
 describe('the small-row rule (#91)', () => {
