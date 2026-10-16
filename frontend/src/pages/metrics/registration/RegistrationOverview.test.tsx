@@ -121,3 +121,36 @@ describe('RegistrationOverview — busy cue and Try again (D-UNCOVERED)', () => 
     expect(screen.getAllByText('1,134')[0]?.closest('[inert]')).not.toBeNull()
   })
 })
+
+describe('RegistrationOverview — one numbered note list in page order (decisions 11, 12)', () => {
+  const footNotes = (container: HTMLElement) => {
+    const lists = container.querySelectorAll('ol')
+    return Array.from(lists).flatMap((ol) =>
+      Array.from(ol.querySelectorAll('li')).map((li) => li.textContent)
+    )
+  }
+
+  it('lists Cancelled as 1 and the Summers at Camp average as 2 in one list', () => {
+    vi.mocked(useComparisonRegistrationData).mockReturnValueOnce({
+      primary: {
+        data: { ...mockData, average_summers_at_camp: 2.6 },
+        isLoading: false,
+        error: null,
+      },
+      comparison: null,
+    } as unknown as ReturnType<typeof useComparisonRegistrationData>)
+    const { container } = render(<RegistrationOverview />)
+    expect(container.querySelectorAll('ol')).toHaveLength(1)
+    const notes = footNotes(container)
+    expect(notes).toHaveLength(2)
+    expect(notes[0]).toMatch(/^1\..*Cancelled now/)
+    expect(notes[1]).toMatch(/^2\..*Years at Camp/)
+  })
+
+  it('leaves the average note out when there is no average', () => {
+    const { container } = render(<RegistrationOverview />)
+    const notes = footNotes(container)
+    expect(notes).toHaveLength(1)
+    expect(notes[0]).toMatch(/^1\..*Cancelled now/)
+  })
+})

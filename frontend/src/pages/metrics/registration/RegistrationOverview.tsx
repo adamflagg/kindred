@@ -800,8 +800,13 @@ export default function RegistrationOverview() {
           </div>
         </div>
 
-        <DefinitionNotes notes={OVERVIEW_NOTES} />
-        {data.average_summers_at_camp != null && <DefinitionNotes notes={TENURE_NOTES} />}
+        <DefinitionNotes
+          notes={
+            data.average_summers_at_camp != null
+              ? [...OVERVIEW_NOTES, ...TENURE_NOTES]
+              : OVERVIEW_NOTES
+          }
+        />
 
         {/* Drill-down Modal */}
         <DrilldownModal />

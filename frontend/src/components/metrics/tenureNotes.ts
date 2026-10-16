@@ -2,9 +2,10 @@ import type { DefinitionNote } from '../camperships/kit/DefinitionNotes'
 
 /**
  * Registration › Overview's numbered note on the Summers at Camp average (decision 12).
- * Numbered 1 on its own; when the page gains other notes the list renumbers together.
+ * The page keeps one note list in page order: Total Cancelled is 1 (`OVERVIEW_NOTES`), and this
+ * note is 2, listed only when the average exists.
  */
-export const TENURE_NOTE = 1
+export const TENURE_NOTE = 2
 
 export const TENURE_NOTES: readonly DefinitionNote[] = [
   {
