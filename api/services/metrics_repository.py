@@ -33,6 +33,32 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+# The persons fields every metrics service may read, on both repositories. MetricsSQLRepository
+# selects exactly these and this repository asks PocketBase for exactly these, so a field one
+# path reads can't be missing on the other (the router serves the SQL one by default). #3249's
+# drill-down Age, Zip and Caregivers and #3251's age chart read fields only this repository
+# returned, and shipped blank or failing. Add a field here, never in one repository alone.
+PERSON_FIELDS: tuple[str, ...] = (
+    "cm_id",
+    "first_name",
+    "last_name",
+    "preferred_name",
+    "gender",
+    "grade",
+    "age",
+    "school",
+    "normalized_school",
+    "address_city",
+    "address_state",
+    "normalized_city",
+    "normalized_congregation",
+    "years_at_camp",
+    "household_id",
+    "birthdate",
+    "primary_childhood_household",
+    "parent_names",
+)
+
 
 class MetricsRepository:
     """Data access layer for metrics - enables mocking in tests.
@@ -104,7 +130,7 @@ class MetricsRepository:
         """
         persons = await asyncio.to_thread(
             self.pb.collection(PERSONS).get_full_list,
-            query_params={"filter": f"year = {year}"},
+            query_params={"filter": f"year = {year}", "fields": ",".join(PERSON_FIELDS)},
         )
         # Ensure int keys for consistent lookup (PocketBase may return float)
         return {int(getattr(p, "cm_id", 0)): p for p in persons}

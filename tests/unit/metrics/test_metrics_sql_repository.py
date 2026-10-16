@@ -12,7 +12,7 @@ Test data uses fictional names per CLAUDE.md conventions:
 from __future__ import annotations
 
 import sqlite3
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -880,3 +880,146 @@ class TestObjectCompatibility:
         repo = _make_repo(sql_db)
         history = await repo.fetch_summer_enrollment_history({1001}, max_year=2025)
         assert compute_first_summer_years(history, {1001}) == {1001: 2024}
+
+
+# ============================================================================
+# Test: the drill-down list on this repository (epic #3207 PR 6 hotfix)
+# ============================================================================
+
+
+class TestDropInParity:
+    """The router serves metrics from this repository by default (METRICS_SQL_ENABLED), so every
+    method the services call on MetricsRepository must exist here too. #3249 added
+    fetch_household_postal_codes to MetricsRepository only, and every drill-down list 500ed."""
+
+    def test_every_public_method_of_metrics_repository_exists_here(self) -> None:
+        import inspect
+
+        from api.services.metrics_repository import MetricsRepository
+        from api.services.metrics_sql_repository import MetricsSQLRepository
+
+        def public(cls: type) -> set[str]:
+            return {n for n, _ in inspect.getmembers(cls, inspect.isfunction) if not n.startswith("_")}
+
+        assert public(MetricsRepository) - public(MetricsSQLRepository) == set()
+
+
+class TestDrilldownPersonFields:
+    """fetch_persons carries what the drill-down reads for Age, Zip and Caregivers.
+
+    A mocked PocketBase repository can't catch a column this query never selects.
+    """
+
+    @pytest.mark.asyncio
+    async def test_birthdate_household_and_caregivers(self, sql_db: sqlite3.Connection) -> None:
+        sql_db.execute(
+            "UPDATE persons SET birthdate = '2014-03-02', primary_childhood_household = 'hh_2001',"
+            " parent_names = ? WHERE id = 'per_emma'",
+            ('[{"first": "Sarah", "last": "Johnson", "relationship": "Mother"}]',),
+        )
+        repo = _make_repo(sql_db)
+        emma = (await repo.fetch_persons(2025))[1001]
+        assert emma.birthdate == "2014-03-02"
+        assert emma.primary_childhood_household == "hh_2001"
+        assert emma.parent_names == [{"first": "Sarah", "last": "Johnson", "relationship": "Mother"}]
+
+    @pytest.mark.asyncio
+    async def test_blank_fields_read_as_none(self, sql_db: sqlite3.Connection) -> None:
+        sql_db.execute("UPDATE persons SET parent_names = 'null' WHERE id = 'per_liam'")
+        repo = _make_repo(sql_db)
+        persons = await repo.fetch_persons(2025)
+        for person in (persons[1002], persons[1003]):
+            assert person.birthdate is None
+            assert person.primary_childhood_household is None
+            assert person.parent_names is None
+
+
+class TestFetchHouseholdPostalCodes:
+    @pytest.mark.asyncio
+    async def test_this_seasons_codes_keyed_by_pocketbase_id(self, sql_db: sqlite3.Connection) -> None:
+        sql_db.execute("UPDATE households SET billing_postal_code = '94110' WHERE id = 'hh_2001'")
+        sql_db.execute(
+            "INSERT INTO households (id, cm_id, year, billing_postal_code) VALUES ('hh_old', 2002, 2024, '94612')"
+        )
+        repo = _make_repo(sql_db)
+        assert await repo.fetch_household_postal_codes(2025) == {"hh_2001": "94110"}
+
+
+class TestDrilldownServiceOnSQL:
+    """The drill-down list runs end to end on this repository, as the router builds it."""
+
+    @pytest.mark.asyncio
+    async def test_enrolled_list_carries_age_zip_and_caregivers(self, sql_db: sqlite3.Connection) -> None:
+        from api.services.drilldown_service import DrilldownService
+
+        sql_db.execute("UPDATE households SET billing_postal_code = '94110' WHERE id = 'hh_2001'")
+        sql_db.execute(
+            "UPDATE persons SET birthdate = '2014-03-02', primary_childhood_household = 'hh_2001',"
+            " parent_names = ? WHERE id = 'per_emma'",
+            ('[{"first": "Sarah", "last": "Johnson"}]',),
+        )
+        repo: Any = _make_repo(sql_db)  # as the router passes it (_create_repository)
+        service = DrilldownService(repo)
+        rows = await service.get_attendees_for_breakdown(2025, "status", "enrolled", status_filter=["enrolled"])
+        emma = next(r for r in rows if r.person_id == 1001)
+        assert (emma.age, emma.zip, emma.caregivers) == (11, "94110", ["Sarah Johnson"])
+
+
+class TestRegistrationAgeOnSQL:
+    """Registration › Overview's age chart (#3251) and its prior-year comparison, on this repository.
+
+    The age band is the season year minus the birth year. fetch_persons never selected
+    birthdate, so on this repository every camper read "none".
+    """
+
+    @pytest.mark.asyncio
+    async def test_age_bands_read_birthdates_in_the_season_and_the_prior_season(
+        self, sql_db: sqlite3.Connection
+    ) -> None:
+        from api.services.registration_service import RegistrationService
+
+        for pid in ("per_emma", "per_emma_24"):
+            sql_db.execute("UPDATE persons SET birthdate = '2014-03-02' WHERE id = ?", (pid,))
+        for pid in ("per_liam", "per_liam_24"):
+            sql_db.execute("UPDATE persons SET birthdate = '2016-05-05' WHERE id = ?", (pid,))
+        repo: Any = _make_repo(sql_db)
+        service = RegistrationService(repo)
+
+        season = await service.calculate_registration(2025)
+        prior = await service.calculate_registration(2024)
+
+        # 2025: Emma 11, Liam 9, Olivia no birthdate. 2024: Emma 10, Liam 8.
+        assert {b.band: b.count for b in season.by_age if b.count} == {"11-13": 1, "8-10": 1, "none": 1}
+        assert {b.band: b.count for b in prior.by_age if b.count} == {"8-10": 2}
+
+
+class TestFetchPersonsContract:
+    """Both repositories read persons through one field list, so a field one path reads can't be
+    missing on the other. #3249 (drill-down Age, Zip, Caregivers) and #3251 (the age chart) both
+    shipped reading fields only the PocketBase repository returned."""
+
+    @pytest.mark.asyncio
+    async def test_sql_repository_returns_exactly_the_shared_fields(self, sql_db: sqlite3.Connection) -> None:
+        from api.services.metrics_repository import PERSON_FIELDS
+
+        repo = _make_repo(sql_db)
+        for person in (await repo.fetch_persons(2025)).values():
+            assert set(vars(person)) == set(PERSON_FIELDS)
+
+    @pytest.mark.asyncio
+    async def test_pocketbase_repository_asks_for_exactly_the_shared_fields(self) -> None:
+        from unittest.mock import MagicMock
+
+        from api.services.metrics_repository import PERSON_FIELDS, MetricsRepository
+
+        pb = MagicMock()
+        pb.collection.return_value.get_full_list.return_value = []
+        await MetricsRepository(pb).fetch_persons(2025)
+
+        params = pb.collection.return_value.get_full_list.call_args.kwargs["query_params"]
+        assert params["fields"].split(",") == list(PERSON_FIELDS)
+
+    def test_the_fields_the_drilldown_and_age_chart_read_are_shared(self) -> None:
+        from api.services.metrics_repository import PERSON_FIELDS
+
+        assert {"birthdate", "primary_childhood_household", "parent_names"} <= set(PERSON_FIELDS)
