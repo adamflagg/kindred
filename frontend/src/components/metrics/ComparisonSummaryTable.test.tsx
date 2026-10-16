@@ -3,7 +3,7 @@
  *
  * TDD: Tests written first to define expected rendering behavior.
  */
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, it, expect } from 'vitest'
 import { ComparisonSummaryTable } from './ComparisonSummaryTable'
 
@@ -317,5 +317,46 @@ describe('ComparisonSummaryTable', () => {
     // Values should be present
     expect(screen.getByText('50')).toBeInTheDocument()
     expect(screen.getByText('45')).toBeInTheDocument()
+  })
+})
+
+describe('ComparisonSummaryTable sortable (#3207 PR 10)', () => {
+  const props = {
+    title: 'Session Enrollment Comparison',
+    primaryYear: 2026,
+    compareYear: 2025,
+    primaryData: [
+      { name: 'Session A', value: 10 },
+      { name: 'Session B', value: 30 },
+      { name: 'Session C', value: 20 },
+    ],
+    compareData: [
+      { name: 'Session A', value: 12 },
+      { name: 'Session B', value: 25 },
+      { name: 'Session C', value: 20 },
+    ],
+  }
+  const names = () =>
+    screen
+      .getAllByRole('row')
+      .slice(1)
+      .map((r) => r.querySelector('td')?.textContent)
+
+  it('sorts a number column high to low, then flips', () => {
+    render(<ComparisonSummaryTable {...props} sortable />)
+    expect(names()).toEqual(['Session A', 'Session B', 'Session C'])
+    fireEvent.click(screen.getByRole('button', { name: /^2026/ }))
+    expect(names()).toEqual(['Session B', 'Session C', 'Session A'])
+    fireEvent.click(screen.getByRole('button', { name: /^2026/ }))
+    expect(names()).toEqual(['Session A', 'Session C', 'Session B'])
+  })
+
+  it('adds Copy and Download CSV only when sortable', () => {
+    const { unmount } = render(<ComparisonSummaryTable {...props} sortable />)
+    expect(screen.getByRole('button', { name: /download csv/i })).toBeInTheDocument()
+    unmount()
+    render(<ComparisonSummaryTable {...props} />)
+    expect(screen.queryByRole('button', { name: /download csv/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^2026/ })).not.toBeInTheDocument()
   })
 })
