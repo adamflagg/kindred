@@ -3,6 +3,7 @@ import type { RetentionMetrics, RetentionRateBarItem } from '../types/metrics'
 import {
   SMALL_BASE_CAMPERS,
   changeArrow,
+  changeInk,
   describeRetentionBasis,
   firstSummerPairKeys,
   formatSignedPoints,
@@ -12,6 +13,7 @@ import {
   sessionPairKey,
   withPriorRates,
 } from './retentionCompare'
+import { DELTA_INK } from './deltaTokens'
 
 const bar = (name: string, rate: number, base = 100, id?: number): RetentionRateBarItem => ({
   name,
@@ -41,6 +43,16 @@ describe('the small-row rule (#91)', () => {
     expect(SMALL_BASE_CAMPERS).toBe(30)
     expect(isSmallBase(29)).toBe(true)
     expect(isSmallBase(30)).toBe(false)
+  })
+})
+
+describe('changeInk', () => {
+  it('judges the colour on the one-decimal change, as the arrow is judged', () => {
+    // "0.0" in green or red would say a change the figure does not show
+    expect(changeInk(0.03)).toBe(DELTA_INK.neutral)
+    expect(changeInk(-0.04)).toBe(DELTA_INK.neutral)
+    expect(changeInk(0.06)).toBe(DELTA_INK.good)
+    expect(changeInk(-0.06)).toBe(DELTA_INK.bad)
   })
 })
 

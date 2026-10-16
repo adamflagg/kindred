@@ -119,7 +119,7 @@ export default function RetentionOverview() {
   // #3207 PR 11 (decision 7): last year's retention, read at this season's registration day while
   // it is live and final after. A picked session maps onto last year's list by name.
   const priorFilter = useCompareYearFilter(currentYear, priorYear, filterOptions)
-  const { data: prior } = useRetentionMetrics(
+  const { data: prior, isPlaceholderData: priorPlaceholder } = useRetentionMetrics(
     priorYear - 1,
     priorYear,
     priorFilter,
@@ -227,7 +227,7 @@ export default function RetentionOverview() {
   const regionOutliers = computeRetentionOutliers(regionBars, data.overall_retention_rate)
 
   return (
-    <MetricsBusy busy={isPlaceholderData} what={String(currentYear)}>
+    <MetricsBusy busy={isPlaceholderData || priorPlaceholder === true} what={String(currentYear)}>
       <div className="space-y-6">
         {basis && <BasisSentence basis={basis} />}
 

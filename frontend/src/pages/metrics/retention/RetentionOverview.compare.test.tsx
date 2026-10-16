@@ -92,12 +92,19 @@ const priorFinal: RetentionMetrics = { ...priorLive, prior_basis: 'final' }
 delete priorFinal.as_of_date
 
 let prior: RetentionMetrics | undefined = priorLive
+let priorPlaceholder = false
 const useRetentionMetricsMock = vi.fn()
 vi.mock('../../../hooks/useMetrics', () => ({
   useRetentionMetrics: (...args: unknown[]) => {
     useRetentionMetricsMock(...args)
     const samePoint = args[4] as { samePointOf?: number } | undefined
-    if (samePoint?.samePointOf) return { data: prior, isLoading: prior === undefined, error: null }
+    if (samePoint?.samePointOf)
+      return {
+        data: prior,
+        isLoading: prior === undefined,
+        error: null,
+        isPlaceholderData: priorPlaceholder,
+      }
     return { data: current, isLoading: false, error: null }
   },
 }))
@@ -151,6 +158,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   charts.clear()
   prior = priorLive
+  priorPlaceholder = false
 })
 
 describe('while registration is live (#84, #86, #87, #88)', () => {
@@ -275,5 +283,12 @@ describe('while the comparison loads', () => {
     expect(screen.queryByText(/pts/)).not.toBeInTheDocument()
     expect(screen.queryByText('Good')).not.toBeInTheDocument()
     expect(charts.get('Retention by Grade')!.compare).toBeUndefined()
+  })
+
+  it("marks the page busy while last year's figures are still the previous selection's", () => {
+    // keepPreviousData holds the old comparison under the new season's label until it loads
+    priorPlaceholder = true
+    render(<RetentionOverview />)
+    expect(screen.getByText('Loading 2026…')).toBeInTheDocument()
   })
 })

@@ -4,11 +4,12 @@
  * the delta ink are one thing.
  */
 import { DefRef } from '../camperships/kit/DefinitionNotes'
-import { DELTA_INK, deltaInk } from '../../utils/deltaTokens'
+import { DELTA_INK } from '../../utils/deltaTokens'
 import { formatCount } from '../../utils/numberFormat'
 import { PRIORITY_DAY_PENDING, PRIORITY_DAY_PENDING_CLASS } from '../../utils/priorityDay'
 import {
   changeArrow,
+  changeInk,
   formatSignedPoints,
   formatSignedPointsBare,
   isSmallBase,
@@ -53,7 +54,7 @@ export function RetentionChange({
   if (small)
     return <span className={`${DELTA_INK.neutral} font-normal`}>{`${value}${count}${suffix}`}</span>
   return (
-    <span className={`${deltaInk(points, 'up-good')} font-medium`}>
+    <span className={`${changeInk(points)} font-medium`}>
       {`${changeArrow(points)}${value}${count}${suffix}`}
     </span>
   )

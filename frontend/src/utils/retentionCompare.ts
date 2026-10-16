@@ -9,6 +9,7 @@
 import type { DefinitionNote } from '../components/camperships/kit/DefinitionNotes'
 import type { RetentionByCity, RetentionMetrics, RetentionRateBarItem } from '../types/metrics'
 import { formatDay } from '../pages/metrics/registration/overviewCompareBasis'
+import { deltaInk } from './deltaTokens'
 import { formatCount } from './numberFormat'
 import { PRIORITY_DAY_NOTE, isPriorityDayOffset, readsThroughNextDay } from './priorityDay'
 import { resolveSessionAlias } from './sessionAliases'
@@ -53,6 +54,11 @@ export function formatSignedPointsBare(points: number): string {
 export function changeArrow(points: number): '▲ ' | '▼ ' | '' {
   const r = roundPoints(points)
   return r > 0 ? '▲ ' : r < 0 ? '▼ ' : ''
+}
+
+/** The ink for a change, judged on its one-decimal value as the arrow is: "0.0" is never green or red. */
+export function changeInk(points: number): string {
+  return deltaInk(roundPoints(points), 'up-good')
 }
 
 /** What the page says about the year it compares with (#86). */

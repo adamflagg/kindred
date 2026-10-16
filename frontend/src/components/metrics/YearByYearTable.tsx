@@ -198,7 +198,7 @@ export function YearByYearTable({
   return (
     <>
       <div data-tour="trends-table" className="card-lodge overflow-hidden">
-        <div className="border-border flex items-center justify-between gap-3 border-b px-1.5 py-3 first:pl-4 last:pr-4">
+        <div className="border-border flex items-center justify-between gap-3 border-b px-4 py-3">
           <h3 className="text-foreground text-base font-semibold">Year-by-Year Summary</h3>
           <TableExportButtons
             filename={csvFilename(newest, 'Trends year-by-year')}

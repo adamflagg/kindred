@@ -45,6 +45,13 @@ describe('RetentionChange', () => {
     expect(cell.className).toMatch(/text-forest-700/)
   })
 
+  it('a change that rounds to 0.0 reads grey, with no arrow', () => {
+    render(<RetentionChange rate={0.6663} priorRate={0.666} baseCount={1110} compare={live} />)
+    const cell = screen.getByText('0.0 pts')
+    expect(cell.className).toMatch(/text-muted-foreground/)
+    expect(cell.className).not.toMatch(/text-forest-700|text-red-700/)
+  })
+
   it('a fall reads red with the true minus', () => {
     render(<RetentionChange rate={0.584} priorRate={0.602} baseCount={166} compare={live} />)
     expect(screen.getByText('▼ −1.8 pts').className).toMatch(/text-red-700/)

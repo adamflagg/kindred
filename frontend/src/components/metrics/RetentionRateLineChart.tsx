@@ -24,12 +24,13 @@ import { formatCount, formatPercent } from '../../utils/numberFormat'
 import { calculateVerticalLayout } from './cssChartUtils'
 import {
   changeArrow,
+  changeInk,
   formatSignedPointsBare,
   isSmallBase,
   pointsBetween,
   type RetentionCompareView,
 } from '../../utils/retentionCompare'
-import { DELTA_INK, deltaInk } from '../../utils/deltaTokens'
+import { DELTA_INK } from '../../utils/deltaTokens'
 import { PRIORITY_DAY_PENDING } from '../../utils/priorityDay'
 import { RetentionCompareHeader, RetentionCompareLegend } from './RetentionChange'
 import { describeRowChange } from '../../utils/retentionCompare'
@@ -75,7 +76,7 @@ function changeLabel(
   }
   return {
     text: `${changeArrow(points)}${formatSignedPointsBare(points)}`,
-    ink: deltaInk(points, 'up-good'),
+    ink: changeInk(points),
   }
 }
 
