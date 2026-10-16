@@ -263,13 +263,13 @@ func TestAskHistory_MissingCollectionDoesNotFailTheSync(t *testing.T) {
 
 // ---- 6. Reconcile in the FA applications job ----
 
-func newAskReconcileApp(t *testing.T) (core.App, string, string) {
+func newAskReconcileApp(t *testing.T) (app core.App, caDef, wwDef string) {
 	t.Helper()
-	app := newFAApplicationsTestApp(t)
+	app = newFAApplicationsTestApp(t)
 	addAskHistoryCollection(t, app)
-	ca := faAddDef(t, app, cmIDCAFinancialAssistanceAmount, "CA-FinancialAssistanceAmount", true)
-	ww := faAddDef(t, app, cmIDWWFinancialAssistanceAmount, "WW-FA Amount", true)
-	return app, ca, ww
+	caDef = faAddDef(t, app, cmIDCAFinancialAssistanceAmount, "CA-FinancialAssistanceAmount", true)
+	wwDef = faAddDef(t, app, cmIDWWFinancialAssistanceAmount, "WW-FA Amount", true)
+	return app, caDef, wwDef
 }
 
 func TestAskHistory_ReconcileSeedsOneGenesisRowPerCurrentSlot(t *testing.T) {

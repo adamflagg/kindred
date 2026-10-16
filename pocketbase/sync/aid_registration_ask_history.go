@@ -139,7 +139,7 @@ func recordAskObservation(app core.App, obs *askObservation) error {
 }
 
 // logAskChange is the non-critical call-site wrapper: a failure is logged and the sync
-// carries on. DryRun is honoured structurally (both call sites sit after App.Save).
+// carries on. DryRun is honored structurally (both call sites sit after App.Save).
 func logAskChange(app core.App, obs *askObservation) {
 	if err := recordAskObservation(app, obs); err != nil {
 		slog.Warn("Failed to record registration ask",
