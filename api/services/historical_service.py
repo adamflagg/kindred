@@ -20,7 +20,7 @@ from api.utils.session_metrics import (
     filter_attendees_by_session,
     resolve_scope_ids,
 )
-from bunking.gender_identity import identity_sort_key
+from bunking.gender_identity import NOT_GIVEN, identity_sort_key
 from bunking.logging_config import get_logger
 
 from .breakdown_calculator import calculate_percentage, compute_registration_breakdown
@@ -160,7 +160,7 @@ class HistoricalService:
         total_enrolled = len(person_ids)
 
         # Gender breakdown from persons table
-        gender_stats = compute_registration_breakdown(person_ids, persons, extract_gender_identity)
+        gender_stats = compute_registration_breakdown(person_ids, persons, extract_gender_identity, missing=NOT_GIVEN)
         by_gender = [
             GenderBreakdown(gender=g, count=s.count, percentage=calculate_percentage(s.count, total_enrolled))
             for g, s in sorted(gender_stats.items(), key=lambda x: identity_sort_key(x[0]))

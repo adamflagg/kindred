@@ -31,7 +31,7 @@ from api.utils.session_metrics import (
     resolve_scope_ids,
 )
 from api.utils.session_swap import detect_session_swaps
-from bunking.gender_identity import identity_sort_key
+from bunking.gender_identity import NOT_GIVEN, identity_sort_key
 from bunking.logging_config import get_logger
 
 # Back-compat alias as an explicit module export (shared default lives in session_metrics).
@@ -324,19 +324,19 @@ class CancellationService:
 
         for pid in person_ids:
             person = persons.get(pid)
-            if not person:
-                continue
-            grade = extract_grade(person)
+            # A camper with no persons row still counts in the gender split, as "not given" (#2898)
             gender = extract_gender_identity(person)
+            grade = extract_grade(person) if person else None
 
-            if grade not in grade_split:
+            if person and grade not in grade_split:
                 grade_split[grade] = {**_zero}
             if gender not in gender_split:
                 gender_split[gender] = {**_zero}
 
             for cat in ("enrolled", "waitlisted", "applied", "other"):
                 if pid in prior_status_persons[cat]:
-                    grade_split[grade][cat] += 1
+                    if person:
+                        grade_split[grade][cat] += 1
                     gender_split[gender][cat] += 1
 
         grade_stats = compute_registration_breakdown(person_ids, persons, extract_grade)
@@ -353,7 +353,7 @@ class CancellationService:
             for g, s in sorted(grade_stats.items(), key=lambda x: (x[0] is None, x[0]))
         ]
 
-        gender_stats = compute_registration_breakdown(person_ids, persons, extract_gender_identity)
+        gender_stats = compute_registration_breakdown(person_ids, persons, extract_gender_identity, missing=NOT_GIVEN)
         by_gender = [
             GenderBreakdown(
                 gender=g,

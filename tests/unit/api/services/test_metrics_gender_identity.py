@@ -375,3 +375,112 @@ async def test_drilldown_rows_show_the_identity_label() -> None:
         year=2026, breakdown_type="session", breakdown_value="1000"
     )
     assert {r.person_id: r.gender for r in rows} == EXPECTED
+
+
+# ----------------------------------------------------------------------------
+# A camper with no persons row for the season still counts, as "not given", so every gender split adds up
+# to its total (2017-2022 in the dev DB were one camper short: enrolled, but persons held no row for those
+# seasons). Gender by grade leaves them out, as the grade chart does: there is no grade to put them under.
+# ----------------------------------------------------------------------------
+
+NO_ROW = 8  # enrolled, but persons holds no row for the season
+IDS_WITH_GAP = IDS | {NO_ROW}
+COUNTS_WITH_GAP = {**EXPECTED_COUNTS, NOT_GIVEN: EXPECTED_COUNTS[NOT_GIVEN] + 1}
+
+
+def test_registration_by_gender_counts_a_camper_with_no_persons_row_as_not_given() -> None:
+    rows = _registration()._compute_gender_breakdown(IDS_WITH_GAP, PERSONS, len(IDS_WITH_GAP))
+    assert {r.gender: r.count for r in rows} == COUNTS_WITH_GAP
+    assert sum(r.count for r in rows) == len(IDS_WITH_GAP)
+
+
+@pytest.mark.asyncio
+async def test_registration_gender_split_sums_to_total_enrolled() -> None:
+    from api.services.registration_service import RegistrationService
+
+    session = SimpleNamespace(
+        cm_id=1000, name="S1", session_type="main", parent_id=None, start_date="2026-06-15", end_date="2026-06-28"
+    )
+    repo = AsyncMock()
+    repo.fetch_attendees.return_value = [
+        SimpleNamespace(person_id=pid, status="enrolled", status_id=2, expand={"session": session})
+        for pid in IDS_WITH_GAP
+    ]
+    repo.fetch_persons.return_value = PERSONS
+    repo.fetch_sessions.return_value = {1000: session}
+    repo.fetch_summer_enrollment_history.return_value = []
+    repo.fetch_bunk_plans.return_value = []
+    repo.fetch_capacity_config.return_value = 12
+
+    result = await RegistrationService(repo).calculate_registration(2026)
+
+    assert result.total_enrolled == len(IDS_WITH_GAP)
+    assert sum(g.count for g in result.by_gender) == result.total_enrolled
+    assert result.gender_fallback_count == FALLBACKS  # a missing row is not a Gender-field fallback
+    assert sum(s.by_gender.get(NOT_GIVEN, 0) for s in result.by_gender_by_session_length) == 2
+    assert sum(s.total for s in result.by_gender_by_session_length) == result.total_enrolled
+    assert sum(g.total for g in result.by_gender_grade) == len(IDS)  # no grade, so not in gender by grade
+
+
+@pytest.mark.asyncio
+async def test_retention_gender_split_sums_to_the_base_year_total() -> None:
+    from api.services.retention_service import RetentionService
+
+    session = SimpleNamespace(cm_id=1000, name="S1", session_type="main", parent_id=None, start_date="", end_date="")
+    base = [SimpleNamespace(person_id=pid, year=2025, expand={"session": session}) for pid in IDS_WITH_GAP]
+    compare = [SimpleNamespace(person_id=pid, year=2026, expand={"session": session}) for pid in (1, 4, NO_ROW)]
+    repo = AsyncMock()
+    repo.fetch_attendees.side_effect = [base, compare]
+    repo.fetch_persons.return_value = PERSONS
+    repo.fetch_sessions.return_value = {1000: session}
+    repo.fetch_bunk_assignments.return_value = []
+    repo.fetch_summer_enrollment_history.return_value = []
+
+    result = await RetentionService(repo).calculate_retention(base_year=2025, compare_year=2026)
+
+    by = {r.gender: (r.base_count, r.returned_count) for r in result.by_gender}
+    assert by[NOT_GIVEN] == (2, 1)
+    assert sum(r.base_count for r in result.by_gender) == result.base_year_total
+    assert sum(r.returned_count for r in result.by_gender) == result.returned_count
+
+
+def test_retention_trends_gender_split_counts_a_camper_with_no_persons_row() -> None:
+    from api.services.retention_trends_service import RetentionTrendsService
+
+    rows = RetentionTrendsService(AsyncMock())._compute_gender_breakdown(IDS_WITH_GAP, {1, 4, NO_ROW}, PERSONS)
+    assert {r.gender: (r.base_count, r.returned_count) for r in rows}[NOT_GIVEN] == (2, 1)
+
+    years = RetentionTrendsService(AsyncMock())._compute_enrollment_by_year(
+        [2026], {2026: {"person_ids": IDS_WITH_GAP, "persons": PERSONS}}
+    )
+    # This view counts only campers with a persons row in its own total (it drops other programs' campers that way)
+    assert sum(g.count for g in years[0].by_gender) == years[0].total
+
+
+def test_historical_gender_split_sums_to_the_total() -> None:
+    from api.services.historical_service import HistoricalService
+
+    metrics = HistoricalService(AsyncMock())._compute_year_metrics(2026, IDS_WITH_GAP, PERSONS)
+    assert {g.gender: g.count for g in metrics.by_gender} == COUNTS_WITH_GAP
+    assert sum(g.count for g in metrics.by_gender) == metrics.total_enrolled
+
+
+def test_waitlist_gender_split_counts_a_camper_with_no_persons_row() -> None:
+    from api.services.waitlist_service import WaitlistService
+
+    _, by_gender = WaitlistService(AsyncMock())._compute_demographics(
+        IDS_WITH_GAP, PERSONS, enrolled_person_ids={1, NO_ROW}
+    )
+    by = {g.gender: (g.count, g.no_enrollment, g.has_enrollment) for g in by_gender}
+    assert by[NOT_GIVEN] == (2, 1, 1)
+    assert sum(g.count for g in by_gender) == len(IDS_WITH_GAP)
+
+
+def test_cancellations_gender_split_counts_a_camper_with_no_persons_row() -> None:
+    from api.services.cancellation_service import CancellationService
+
+    prior = {"enrolled": {1, 2, NO_ROW}, "waitlisted": {3}, "applied": {4, 6}, "other": {5, 7}}
+    _, by_gender = CancellationService(AsyncMock())._compute_demographics(IDS_WITH_GAP, PERSONS, prior)
+    by = {g.gender: g for g in by_gender}
+    assert (by[NOT_GIVEN].count, by[NOT_GIVEN].was_enrolled, by[NOT_GIVEN].was_applied) == (2, 1, 1)
+    assert sum(g.count for g in by_gender) == len(IDS_WITH_GAP)

@@ -29,7 +29,7 @@ from api.utils.session_metrics import (
     get_session_from_expand,
     resolve_scope_ids,
 )
-from bunking.gender_identity import identity_sort_key
+from bunking.gender_identity import NOT_GIVEN, identity_sort_key
 from bunking.logging_config import get_logger
 
 # Back-compat alias as an explicit module export (shared default lives in session_metrics).
@@ -318,14 +318,14 @@ class WaitlistService:
         if enrolled_person_ids is not None:
             for pid in person_ids:
                 person = persons.get(pid)
-                if not person:
-                    continue
-                grade = extract_grade(person)
+                # A camper with no persons row still counts in the gender split, as "not given" (#2898)
                 gender = extract_gender_identity(person)
                 has_enroll = pid in enrolled_person_ids
 
-                g_no, g_has = grade_enrollment.get(grade, (0, 0))
-                grade_enrollment[grade] = (g_no + (0 if has_enroll else 1), g_has + (1 if has_enroll else 0))
+                if person:
+                    grade = extract_grade(person)
+                    g_no, g_has = grade_enrollment.get(grade, (0, 0))
+                    grade_enrollment[grade] = (g_no + (0 if has_enroll else 1), g_has + (1 if has_enroll else 0))
 
                 gn_no, gn_has = gender_enrollment.get(gender, (0, 0))
                 gender_enrollment[gender] = (gn_no + (0 if has_enroll else 1), gn_has + (1 if has_enroll else 0))
@@ -342,7 +342,7 @@ class WaitlistService:
             for g, s in sorted(grade_stats.items(), key=lambda x: (x[0] is None, x[0]))
         ]
 
-        gender_stats = compute_registration_breakdown(person_ids, persons, extract_gender_identity)
+        gender_stats = compute_registration_breakdown(person_ids, persons, extract_gender_identity, missing=NOT_GIVEN)
         by_gender = [
             GenderBreakdown(
                 gender=g,

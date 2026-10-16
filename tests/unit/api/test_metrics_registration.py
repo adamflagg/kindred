@@ -2379,7 +2379,9 @@ class TestGenderBySessionLength:
         assert result == []
 
     def test_gender_by_session_length_missing_person(self) -> None:
-        """Attendees without matching person should be skipped."""
+        """An attendee with no persons row counts as "not given" (#2898), so the lengths add up to the enrolled total.
+
+        Spec change: this used to skip them, back when the split had only male/female columns to put them in."""
         from api.services.registration_service import RegistrationService
 
         session_2 = create_mock_session(2001, "Session 2", 2026, "main", "2026-06-15", "2026-07-05")
@@ -2401,8 +2403,9 @@ class TestGenderBySessionLength:
         result = service._compute_gender_by_session_length(attendees, sessions_dict, persons_dict)
 
         assert len(result) == 1
-        assert result[0].total == 1
+        assert result[0].total == 2
         assert result[0].by_gender.get("Girl/woman", 0) == 1
+        assert result[0].by_gender.get("not given", 0) == 1
         assert result[0].by_gender.get("Boy/man", 0) == 0
 
     def test_gender_by_session_length_ag_merged(self) -> None:

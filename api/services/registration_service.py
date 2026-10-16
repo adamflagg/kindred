@@ -43,7 +43,7 @@ from api.utils.session_metrics import (
     resolve_cohort_session_ids,
     resolve_duration_sessions,
 )
-from bunking.gender_identity import identity_sort_key
+from bunking.gender_identity import NOT_GIVEN, identity_sort_key
 from bunking.logging_config import get_logger
 
 from .breakdown_calculator import calculate_percentage, compute_registration_breakdown
@@ -314,7 +314,7 @@ class RegistrationService:
         self, person_ids: set[int], persons: dict[int, Any], total: int
     ) -> list[GenderBreakdown]:
         """Compute gender breakdown."""
-        stats = compute_registration_breakdown(person_ids, persons, extract_gender_identity)
+        stats = compute_registration_breakdown(person_ids, persons, extract_gender_identity, missing=NOT_GIVEN)
         return [
             GenderBreakdown(gender=g, count=s.count, percentage=calculate_percentage(s.count, total))
             for g, s in sorted(stats.items(), key=lambda x: identity_sort_key(x[0]))
@@ -773,7 +773,8 @@ class RegistrationService:
         # Count gender identities per length category (#2898)
         result = []
         for length, person_ids in sorted(length_persons.items(), key=lambda x: SESSION_LENGTH_ORDER.get(x[0], 5)):
-            counts = Counter(extract_gender_identity(persons[pid]) for pid in person_ids if persons.get(pid))
+            # a camper with no persons row counts as "not given", so the lengths add up to the enrolled total
+            counts = Counter(extract_gender_identity(persons.get(pid)) for pid in person_ids)
             if counts:
                 result.append(
                     GenderBySessionLengthBreakdown(

@@ -31,7 +31,7 @@ from api.utils.session_metrics import (
     filter_attendees_by_session,
     resolve_scope_ids,
 )
-from bunking.gender_identity import identity_sort_key
+from bunking.gender_identity import NOT_GIVEN, identity_sort_key
 
 from .breakdown_calculator import compute_breakdown, compute_registration_breakdown, safe_rate
 from .extractors import (
@@ -273,7 +273,7 @@ class RetentionTrendsService:
         persons: dict[int, Any],
     ) -> list[RetentionByGender]:
         """Compute gender breakdown for retention."""
-        stats = compute_breakdown(base_person_ids, returned_ids, persons, extract_gender_identity)
+        stats = compute_breakdown(base_person_ids, returned_ids, persons, extract_gender_identity, missing=NOT_GIVEN)
         return [
             RetentionByGender(
                 gender=g, base_count=s.base_count, returned_count=s.returned_count, retention_rate=s.retention_rate

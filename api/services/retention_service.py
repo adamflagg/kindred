@@ -36,7 +36,7 @@ from api.utils.session_metrics import (
     resolve_cohort_session_ids,
     resolve_duration_sessions,
 )
-from bunking.gender_identity import identity_sort_key
+from bunking.gender_identity import NOT_GIVEN, identity_sort_key
 
 from .breakdown_calculator import compute_breakdown, safe_rate
 from .extractors import (
@@ -217,6 +217,7 @@ class RetentionService:
             RetentionByGender,
             "gender",
             sort_key=lambda r: identity_sort_key(r.gender),
+            missing=NOT_GIVEN,
         )
 
         by_grade = self._build_retention_breakdown(
@@ -477,6 +478,7 @@ class RetentionService:
         sort_key: Any | None = None,
         filter_empty: bool = False,
         filter_none: bool = False,
+        missing: Any = None,
     ) -> list[M]:
         """Build retention breakdown using generic calculator.
 
@@ -490,11 +492,12 @@ class RetentionService:
             sort_key: Optional sorting function.
             filter_empty: If True, filter out empty string values.
             filter_none: If True, filter out None values.
+            missing: Where a base-year camper with no persons row counts; None leaves them out.
 
         Returns:
             List of breakdown models.
         """
-        stats = compute_breakdown(person_ids, returned_ids, persons, extractor)
+        stats = compute_breakdown(person_ids, returned_ids, persons, extractor, missing=missing)
 
         # Filter if needed
         if filter_empty:
