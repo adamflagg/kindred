@@ -1,5 +1,7 @@
 # Kindred
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/adamflagg/kindred)
+
 **Kindred finds campers who belong together and places them in the right cabins** — and gives camps the analytics to understand their enrollment, retention, and community at a depth spreadsheets can't reach.
 
 A relationship-first cabin assignment platform for summer camps, built on a constraint solver, a CampMinder data integration, and a full analytics suite.
