@@ -153,7 +153,7 @@ describe('Trends › gender identity (#2898)', () => {
     ])
 
     const row2018 = [...table.querySelectorAll('tbody tr')].find((tr) =>
-      tr.textContent?.startsWith('2018')
+      tr.textContent.startsWith('2018')
     )
     expect(row2018?.querySelector('td')?.textContent).toBe('20184')
     expect(row2018?.textContent).toContain('596548205') // girl/woman, boy/man, non-binary, another identity

@@ -1,5 +1,5 @@
 import type { YearMetrics } from '../../types/metrics'
-import { groupCounts } from './genderIdentityNotes'
+import { groupCounts } from './genderNotes'
 
 /** The live season's comparison, read at the same registration day last year (decision 7, ruling #66). */
 export interface LiveCompare {

@@ -35,8 +35,8 @@ import { useCompareYearFilter } from '../../../hooks/useCompareYearFilter'
 import {
   AnotherIdentityLine,
   GenderFallbackSeasonsLine,
-  groupCounts,
 } from '../../../components/metrics/genderIdentityNotes'
+import { groupCounts } from '../../../components/metrics/genderNotes'
 import { genderGroupSegments } from '../../../components/metrics/genderColors'
 import { MetricsBusy, MetricsLoadError } from '../../../components/metrics/MetricsQueryGuard'
 

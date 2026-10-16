@@ -13,7 +13,7 @@ import {
   genderHatched,
   genderIdentityColor,
 } from '../camperships/kit/genderIdentity'
-import { groupCounts } from './genderIdentityNotes'
+import { groupCounts } from './genderNotes'
 import type { VerticalStackedSegment } from './CssVerticalStackedBarChart'
 
 /** A label's colour (F and M, the Gender field, wear Girl/woman's and Boy/man's). */
@@ -35,7 +35,7 @@ export function genderGroupSegments(
   rows: ReadonlyArray<Readonly<Record<string, unknown>>>
 ): VerticalStackedSegment[] {
   return GENDER_IDENTITY_GROUPS.filter((group) =>
-    rows.some((row) => typeof row[group] === 'number' && (row[group] as number) > 0)
+    rows.some((row) => typeof row[group] === 'number' && row[group] > 0)
   ).map((group) => ({
     key: group,
     label: genderDisplayName(group),

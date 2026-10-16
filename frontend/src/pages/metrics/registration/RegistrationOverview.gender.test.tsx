@@ -118,7 +118,7 @@ describe('Registration › gender identity (#2898)', () => {
     expect(within(grade).getByText('No answer', { selector: 'span' })).toBeInTheDocument()
     expect(within(grade).queryByText('Transgender boy/man', { selector: 'span' })).toBeNull()
     const groupLine = [...grade.querySelectorAll('p')].find((p) =>
-      p.textContent?.startsWith('Another identity =')
+      p.textContent.startsWith('Another identity =')
     )
     expect(groupLine?.textContent).toContain('Another identity = Transgender boy/man 2.')
     expect(within(grade).getByText(/counted by the Gender field/).textContent).toContain(

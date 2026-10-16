@@ -53,8 +53,8 @@ import {
   AnotherIdentityLine,
   GenderFallbackLine,
   GenderFallbackPairLine,
-  genderNote,
 } from '../../../components/metrics/genderIdentityNotes'
+import { genderNote } from '../../../components/metrics/genderNotes'
 import { Loader2 } from 'lucide-react'
 import { DefinitionNotes, DefRef } from '../../../components/camperships/kit/DefinitionNotes'
 import { PRIORITY_DAY_PENDING } from '../../../utils/priorityDay'
@@ -741,8 +741,8 @@ export default function RegistrationOverview() {
                       segments={genderGroupSegments(compGenderByLengthData)}
                       footer={
                         <>
-                          {groupLine(compData?.by_gender_by_session_length)}
-                          {fallbackLine(compData?.gender_fallback_count)}
+                          {groupLine(compData.by_gender_by_session_length)}
+                          {fallbackLine(compData.gender_fallback_count)}
                         </>
                       }
                       showTotalLabel

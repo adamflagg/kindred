@@ -58,7 +58,7 @@ export interface TrendDisplay {
 /** Gender identity labels (#2898) in the fixed order (#76 a), shown as staff read them, drilled by the raw label. */
 export function transformGenderData(data: GenderBreakdown[] | undefined): ChartDataPoint[] {
   if (!data?.length) return []
-  return sortByIdentityOrder(data, (g) => g.gender ?? '').map((g) => ({
+  return sortByIdentityOrder(data, (g) => g.gender).map((g) => ({
     name: g.gender ? genderDisplayName(g.gender) : 'Unknown',
     value: g.count,
     percentage: g.percentage,

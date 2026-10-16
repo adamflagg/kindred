@@ -26,7 +26,7 @@ import {
   genderHatched,
   genderIdentityColor,
 } from '../camperships/kit/genderIdentity'
-import { groupCounts } from './genderIdentityNotes'
+import { groupCounts } from './genderNotes'
 
 const COLORS = {
   total: 'hsl(160, 100%, 35%)', // Primary green

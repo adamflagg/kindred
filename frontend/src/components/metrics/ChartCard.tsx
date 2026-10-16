@@ -49,7 +49,7 @@ export function ChartCard({
   if (isEmpty) {
     return (
       <div className={`card-lodge p-4 ${className}`}>
-        {(title || headerRight) && (
+        {(Boolean(title) || headerRight) && (
           <div className="mb-2 flex items-center justify-between gap-2">
             {title && <h3 className="text-foreground text-base font-semibold">{title}</h3>}
             {headerRight}
@@ -66,7 +66,7 @@ export function ChartCard({
 
   return (
     <div className={`card-lodge flex flex-col px-4 pt-4 pb-4 ${className}`}>
-      {(title || headerRight) && (
+      {(Boolean(title) || headerRight) && (
         <div className="mb-2 flex items-center justify-between gap-2">
           {title && <h3 className="text-foreground text-base font-semibold">{title}</h3>}
           {headerRight}

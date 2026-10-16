@@ -6,13 +6,15 @@ import {
   GenderFallbackLine,
   GenderFallbackPairLine,
   GenderFallbackSeasonsLine,
+  ReadWithCareLine,
+} from './genderIdentityNotes'
+import {
   READ_WITH_CARE_ON,
   READ_WITH_CARE_SHARE,
-  ReadWithCareLine,
   genderNote,
   groupCounts,
   needsReadWithCare,
-} from './genderIdentityNotes'
+} from './genderNotes'
 
 describe('groupCounts (#75 a)', () => {
   it('folds every label into the five groups', () => {

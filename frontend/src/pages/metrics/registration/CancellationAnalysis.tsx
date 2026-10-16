@@ -32,6 +32,12 @@ import {
 } from '../../../components/metrics/CssStackedHorizontalBarChart'
 import { SESSION_LABEL_WIDTH } from '../../../components/metrics/cssChartUtils'
 import { transformGenderData } from '../../../utils/metricsTransforms'
+import { GENDER_DISPLAY_COLORS } from '../../../components/metrics/genderColors'
+import {
+  GenderFallbackLine,
+  GenderFallbackPairLine,
+} from '../../../components/metrics/genderIdentityNotes'
+import { genderNote, shownFallbackSeasons } from '../../../components/metrics/genderNotes'
 import { SESSION_NAME_ALIASES, resolveSessionAlias } from '../../../utils/sessionAliases'
 import { ComparisonSummaryTable } from '../../../components/metrics/ComparisonSummaryTable'
 import {
@@ -144,6 +150,19 @@ export default function CancellationAnalysis() {
   // as well: its label must not sit over the last compare year's numbers (D-UNCOVERED, #3207).
   const busy = isPlaceholderData || comparison?.isPlaceholderData === true
   const busyYear = isPlaceholderData || compareYear === null ? currentYear : compareYear
+
+  // #2898 ruling 58: campers with no identity answer count by the Gender field; a visible line under each
+  // gender chart and a page-foot note say how many, only when a season shown has any (#73 a).
+  const fallbackSeasons = shownFallbackSeasons(currentYear, data, compareYear, compData)
+  const genderNoteN = fallbackSeasons.some((s) => s.count > 0)
+    ? CANCELLATIONS_NOTES.length + 1
+    : undefined
+  const pageNotes = [
+    ...CANCELLATIONS_NOTES,
+    ...(genderNoteN !== undefined ? [genderNote(genderNoteN, fallbackSeasons)] : []),
+  ]
+  const fallbackLine = (count: number | undefined) =>
+    genderNoteN !== undefined && <GenderFallbackLine n={genderNoteN} count={count ?? 0} />
 
   const { setFilter, DrilldownModal } = useDrilldown({
     year: currentYear,
@@ -552,11 +571,13 @@ export default function CancellationAnalysis() {
                         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                           <CancellationGenderChart
                             data={data.by_gender}
+                            footer={fallbackLine(data.gender_fallback_count)}
                             onSegmentClick={setFilter}
                             title={`${currentYear} Gender Distribution`}
                           />
                           <CancellationGenderChart
                             data={compData.by_gender}
+                            footer={fallbackLine(compData.gender_fallback_count)}
                             title={`${compareYear} Gender Distribution`}
                           />
                         </div>
@@ -567,6 +588,13 @@ export default function CancellationAnalysis() {
                           compareYear={compareYear}
                           primaryData={transformGenderData(data.by_gender)}
                           compareData={transformGenderData(compData.by_gender)}
+                          categoryLabel="Gender"
+                          colorMap={GENDER_DISPLAY_COLORS}
+                          footer={
+                            genderNoteN !== undefined && (
+                              <GenderFallbackPairLine n={genderNoteN} seasons={fallbackSeasons} />
+                            )
+                          }
                         />
                       </>
                     )}
@@ -596,6 +624,7 @@ export default function CancellationAnalysis() {
                     {data.by_gender.length > 0 && (
                       <CancellationGenderChart
                         data={data.by_gender}
+                        footer={fallbackLine(data.gender_fallback_count)}
                         onSegmentClick={setFilter}
                         title="Gender Distribution"
                       />
@@ -766,7 +795,7 @@ export default function CancellationAnalysis() {
               </div>
             )}
 
-            <DefinitionNotes notes={CANCELLATIONS_NOTES} />
+            <DefinitionNotes notes={pageNotes} />
             <DrilldownModal />
           </div>
         )
