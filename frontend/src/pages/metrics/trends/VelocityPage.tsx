@@ -13,6 +13,7 @@
  * - Week-over-week delta table with prior-year columns
  */
 
+import { csvFilename } from '../../../components/metrics/exportFilename'
 import { formatCount, formatSignedCount } from '../../../utils/numberFormat'
 import { Fragment, useMemo, useState } from 'react'
 import {
@@ -295,6 +296,7 @@ export default function VelocityPage() {
   const sessionColumns: SessionColumnDef[] = [
     {
       header: 'Session',
+      value: (session) => session.session_name ?? `Session ${String(session.session_cm_id)}`,
       accessor: (session) => session.session_name ?? `Session ${session.session_cm_id}`,
       className: 'text-left',
     },
@@ -302,6 +304,10 @@ export default function VelocityPage() {
       ? [
           {
             header: 'Boys',
+            value: (session) =>
+              (session.session_cm_id
+                ? genderBreakdownMap.get(session.session_cm_id)?.boys_enrolled
+                : null) ?? null,
             accessor: (session) => {
               const genderData = session.session_cm_id
                 ? genderBreakdownMap.get(session.session_cm_id)
@@ -316,6 +322,10 @@ export default function VelocityPage() {
           } satisfies SessionColumnDef,
           {
             header: 'Girls',
+            value: (session) =>
+              (session.session_cm_id
+                ? genderBreakdownMap.get(session.session_cm_id)?.girls_enrolled
+                : null) ?? null,
             accessor: (session) => {
               const genderData = session.session_cm_id
                 ? genderBreakdownMap.get(session.session_cm_id)
@@ -332,6 +342,7 @@ export default function VelocityPage() {
       : []),
     {
       header: controls.splitByGender ? 'Total' : 'Latest Enrolled',
+      value: (session) => session.weekly.at(-1)?.enrolled ?? 0,
       accessor: (session) => {
         const lastPoint = session.weekly.at(-1)
         return formatCount(lastPoint?.enrolled ?? 0)
@@ -342,6 +353,7 @@ export default function VelocityPage() {
       ? [
           {
             header: `${priorLabel ?? 'Prior Yr'}${summaryCards ? ` (Wk ${summaryCards.currentWeekNumber})` : ''}`,
+            value: (_session, priorSession) => priorSession?.enrolled_at_current_week ?? null,
             accessor: (_session, priorSession) => (
               <span className="text-muted-foreground">
                 {formatCount(priorSession?.enrolled_at_current_week)}
@@ -351,6 +363,7 @@ export default function VelocityPage() {
           } satisfies SessionColumnDef,
           {
             header: `${priorLabel ?? 'Prior Yr'} Final`,
+            value: (_session, priorSession) => priorSession?.final_enrolled ?? null,
             accessor: (_session, priorSession) => (
               <span className="text-muted-foreground">
                 {formatCount(priorSession?.final_enrolled)}
@@ -360,6 +373,11 @@ export default function VelocityPage() {
           } satisfies SessionColumnDef,
           {
             header: priorLabel ? `vs ${priorLabel}` : 'vs Prior',
+            value: (session, priorSession) =>
+              vsPriorSamePoint(
+                session.weekly.at(-1)?.enrolled,
+                priorSession?.enrolled_at_current_week
+              ) ?? null,
             accessor: (session, priorSession) => {
               // A session the comparison year has no match for is new, not missing data
               if (!priorSession && comparisonYear != null) {
@@ -385,6 +403,7 @@ export default function VelocityPage() {
       : []),
     {
       header: 'Weeks Tracked',
+      value: (session) => session.weekly.length,
       accessor: (session) => <span className="text-muted-foreground">{session.weekly.length}</span>,
       className: 'text-right',
     },
@@ -394,6 +413,7 @@ export default function VelocityPage() {
   const deltaColumns: DeltaColumnDef[] = [
     {
       header: 'New',
+      value: (week) => week.weekly_new,
       accessor: (week) => (
         <span className={DELTA_INK.good}>{formatSignedCount(week.weekly_new)}</span>
       ),
@@ -401,6 +421,7 @@ export default function VelocityPage() {
     },
     {
       header: 'Cancelled',
+      value: (week) => week.weekly_cancelled ?? 0,
       accessor: (week) => (
         <span className="text-red-600 dark:text-red-400">
           {formatCount(week.weekly_cancelled ?? 0)}
@@ -410,6 +431,7 @@ export default function VelocityPage() {
     },
     {
       header: 'Net Change',
+      value: (week) => week.delta,
       accessor: (week) => (
         <span className={deltaColorClass(week.delta)}>{formatSignedCount(week.delta)}</span>
       ),
@@ -417,11 +439,13 @@ export default function VelocityPage() {
     },
     {
       header: 'Net Cumulative',
+      value: (week) => week.enrolled,
       accessor: (week) => <span className="text-foreground">{formatCount(week.enrolled)}</span>,
       className: 'text-right',
     },
     {
       header: 'Gross Cumulative',
+      value: (week) => week.gross_enrolled,
       accessor: (week) => (
         <span className="text-foreground">{formatCount(week.gross_enrolled)}</span>
       ),
@@ -431,6 +455,8 @@ export default function VelocityPage() {
       ? [
           {
             header: priorLabel ?? 'Prior Year',
+            value: (_week: WeeklyDataPoint, priorPoint?: WeeklyDataPoint) =>
+              priorPoint?.enrolled ?? null,
             accessor: (_week: WeeklyDataPoint, priorPoint?: WeeklyDataPoint) => (
               <span className="text-muted-foreground">{formatCount(priorPoint?.enrolled)}</span>
             ),
@@ -438,6 +464,8 @@ export default function VelocityPage() {
           } satisfies DeltaColumnDef,
           {
             header: priorLabel ? `${priorLabel} Delta` : 'Prior Delta',
+            value: (_week: WeeklyDataPoint, priorPoint?: WeeklyDataPoint) =>
+              priorPoint?.delta ?? null,
             accessor: (_week: WeeklyDataPoint, priorPoint?: WeeklyDataPoint) => (
               <span className={deltaColorClass(priorPoint?.delta ?? null)}>
                 {priorPoint ? formatSignedCount(priorPoint.delta) : '—'}
@@ -1155,6 +1183,7 @@ export default function VelocityPage() {
               sortedBySession={chartData.sortedBySession}
               priorSessionMap={chartData.priorSessionMap}
               columns={sessionColumns}
+              exportFile={csvFilename(currentYear, 'Trends velocity by session')}
             />
           </div>
         )}
@@ -1170,6 +1199,7 @@ export default function VelocityPage() {
             weeks={data.combined.weekly}
             priorWeekMap={chartData.priorWeekMap}
             columns={deltaColumns}
+            exportFile={csvFilename(currentYear, 'Trends velocity weekly')}
             phaseByWeek={phaseByWeek}
           />
         </div>

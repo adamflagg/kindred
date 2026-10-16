@@ -28,10 +28,7 @@ import { getYearColor, YEAR_PALETTE } from '../../../utils/yearColors'
 import { trendDirection } from '../../../utils/trendDirection'
 import { firstSummerYearLabel } from '../../../utils/metricsTransforms'
 import type { YearEnrollment } from '../../../types/metrics'
-import {
-  formatSignedCount,
-  formatSignedPercent,
-} from '../../../utils/numberFormat'
+import { formatSignedCount, formatSignedPercent } from '../../../utils/numberFormat'
 import { YearByYearTable, type LiveCompare } from '../../../components/metrics/YearByYearTable'
 import { useCompareYearFilter } from '../../../hooks/useCompareYearFilter'
 import { MetricsBusy, MetricsLoadError } from '../../../components/metrics/MetricsQueryGuard'

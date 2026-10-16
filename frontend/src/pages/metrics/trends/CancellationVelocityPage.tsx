@@ -12,6 +12,7 @@
  * - Phase marker bands (ReferenceArea) on daily chart; falls back to weekly on no daily data
  */
 
+import { csvFilename } from '../../../components/metrics/exportFilename'
 import { formatCount, formatPercent, formatSignedCount } from '../../../utils/numberFormat'
 import { Fragment, useMemo } from 'react'
 import {
@@ -212,6 +213,7 @@ export default function CancellationVelocityPage() {
   const sessionColumns: SessionColumnDef[] = [
     {
       header: 'Session',
+      value: (session) => session.session_name ?? `Session ${String(session.session_cm_id)}`,
       accessor: (session) => session.session_name ?? `Session ${session.session_cm_id}`,
       className: 'text-left',
     },
@@ -219,6 +221,10 @@ export default function CancellationVelocityPage() {
       ? [
           {
             header: 'Boys',
+            value: (session) =>
+              (session.session_cm_id
+                ? genderBreakdownMap.get(session.session_cm_id)?.boys_enrolled
+                : null) ?? null,
             accessor: (session) => {
               const genderData = session.session_cm_id
                 ? genderBreakdownMap.get(session.session_cm_id)
@@ -233,6 +239,10 @@ export default function CancellationVelocityPage() {
           } satisfies SessionColumnDef,
           {
             header: 'Girls',
+            value: (session) =>
+              (session.session_cm_id
+                ? genderBreakdownMap.get(session.session_cm_id)?.girls_enrolled
+                : null) ?? null,
             accessor: (session) => {
               const genderData = session.session_cm_id
                 ? genderBreakdownMap.get(session.session_cm_id)
@@ -249,6 +259,7 @@ export default function CancellationVelocityPage() {
       : []),
     {
       header: controls.splitByGender ? 'Total' : 'Total Cancelled',
+      value: (session) => session.weekly.at(-1)?.enrolled ?? 0,
       accessor: (session) => {
         const lastPoint = session.weekly.at(-1)
         return (
@@ -263,6 +274,7 @@ export default function CancellationVelocityPage() {
       ? [
           {
             header: `${priorLabel ?? 'Prior Yr'}${summaryCards ? ` (Wk ${summaryCards.currentWeekNumber})` : ''}`,
+            value: (_session, priorSession) => priorSession?.enrolled_at_current_week ?? null,
             accessor: (_session, priorSession) => (
               <span className="text-muted-foreground">
                 {formatCount(priorSession?.enrolled_at_current_week)}
@@ -272,6 +284,7 @@ export default function CancellationVelocityPage() {
           } satisfies SessionColumnDef,
           {
             header: `${priorLabel ?? 'Prior Yr'} Final`,
+            value: (_session, priorSession) => priorSession?.final_enrolled ?? null,
             accessor: (_session, priorSession) => (
               <span className="text-muted-foreground">
                 {formatCount(priorSession?.final_enrolled)}
@@ -281,6 +294,11 @@ export default function CancellationVelocityPage() {
           } satisfies SessionColumnDef,
           {
             header: priorLabel ? `vs ${priorLabel}` : 'vs Prior',
+            value: (session, priorSession) =>
+              vsPriorSamePoint(
+                session.weekly.at(-1)?.enrolled,
+                priorSession?.enrolled_at_current_week
+              ) ?? null,
             accessor: (session, priorSession) => {
               // A session the comparison year has no match for is new, not missing data. A year
               // with no status history has no sessions to match, so its rows read '—' (ruling 6).
@@ -308,6 +326,7 @@ export default function CancellationVelocityPage() {
       : []),
     {
       header: 'Weeks Tracked',
+      value: (session) => session.weekly.length,
       accessor: (session) => <span className="text-muted-foreground">{session.weekly.length}</span>,
       className: 'text-right',
     },
@@ -317,6 +336,7 @@ export default function CancellationVelocityPage() {
   const deltaColumns: DeltaColumnDef[] = [
     {
       header: 'Change',
+      value: (week) => week.delta,
       accessor: (week) => (
         <span className={invertedDeltaColorClass(week.delta)}>{formatSignedCount(week.delta)}</span>
       ),
@@ -324,6 +344,7 @@ export default function CancellationVelocityPage() {
     },
     {
       header: 'Cumulative',
+      value: (week) => week.enrolled,
       accessor: (week) => (
         <span className="text-red-600 dark:text-red-400">{formatCount(week.enrolled)}</span>
       ),
@@ -333,6 +354,8 @@ export default function CancellationVelocityPage() {
       ? [
           {
             header: priorLabel ?? 'Prior Year',
+            value: (_week: WeeklyDataPoint, priorPoint?: WeeklyDataPoint) =>
+              priorPoint?.enrolled ?? null,
             accessor: (_week: WeeklyDataPoint, priorPoint?: WeeklyDataPoint) => (
               <span className="text-muted-foreground">{formatCount(priorPoint?.enrolled)}</span>
             ),
@@ -340,6 +363,8 @@ export default function CancellationVelocityPage() {
           } satisfies DeltaColumnDef,
           {
             header: priorLabel ? `${priorLabel} Delta` : 'Prior Delta',
+            value: (_week: WeeklyDataPoint, priorPoint?: WeeklyDataPoint) =>
+              priorPoint?.delta ?? null,
             accessor: (_week: WeeklyDataPoint, priorPoint?: WeeklyDataPoint) => (
               <span className="text-muted-foreground">
                 {priorPoint ? formatSignedCount(priorPoint.delta) : '—'}
@@ -351,6 +376,7 @@ export default function CancellationVelocityPage() {
       : []),
     {
       header: 'Source',
+      value: (week) => week.data_source,
       accessor: (week) => (
         <span className="text-muted-foreground text-xs capitalize">{week.data_source}</span>
       ),
@@ -970,6 +996,7 @@ export default function CancellationVelocityPage() {
               sortedBySession={chartData.sortedBySession}
               priorSessionMap={chartData.priorSessionMap}
               columns={sessionColumns}
+              exportFile={csvFilename(currentYear, 'Trends cancellation velocity by session')}
             />
           </div>
         )}
@@ -985,6 +1012,7 @@ export default function CancellationVelocityPage() {
             weeks={data.combined.weekly}
             priorWeekMap={chartData.priorWeekMap}
             columns={deltaColumns}
+            exportFile={csvFilename(currentYear, 'Trends cancellation velocity weekly')}
           />
         </div>
       </div>
