@@ -1531,6 +1531,14 @@ class DrilldownService:
             self.repo.fetch_persons(year),
         )
 
+        # A by-session bar opens cancellation_total with its session as the value (as waitlist_total does)
+        if breakdown_type == "cancellation_total" and breakdown_value != "all":
+            try:
+                session_cm_id = int(breakdown_value)
+                ag_session_ids = find_ag_sessions_for_parent(sessions, session_cm_id)
+            except ValueError:
+                pass
+
         # Filter cancelled by session
         cancelled_attendees = filter_attendees_by_session(
             cancelled_attendees,

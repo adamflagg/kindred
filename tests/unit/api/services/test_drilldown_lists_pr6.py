@@ -341,3 +341,20 @@ class TestOverviewTotalCancelled:
 
         assert [a.person_id for a in overview] == [4]
         assert sorted(a.person_id for a in page) == [4, 8]
+
+
+class TestCancellationsBySessionBar:
+    """The Cancellations page's by-session bars open cancellation_total with the bar's session as the
+    value, as the waitlist bars do; the list ignored it and showed every cancelled camper."""
+
+    @pytest.mark.asyncio
+    async def test_the_bars_session_scopes_the_list(self) -> None:
+        persons = {4: Person(4), 5: Person(5)}
+        cancelled = [_att(4, MAIN, "cancelled"), _att(5, MAIN_B, "cancelled")]
+        service = DrilldownService(_repo({"cancelled": cancelled}, persons))
+
+        result = await service.get_attendees_for_breakdown(
+            YEAR, "cancellation_total", str(MAIN_B.cm_id), session_types=ALL_SUMMER, status_filter=["cancelled"]
+        )
+
+        assert [a.person_id for a in result] == [5]

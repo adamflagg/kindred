@@ -325,11 +325,11 @@ export default function RegistrationOverview() {
             sentiment="muted"
             subtitle="On waitlist"
             onClick={() =>
+              // The Waitlist page's Total list: waitlist columns, Enrolled In (decision 43)
               setFilter({
-                type: 'status',
-                value: 'waitlisted',
-                label: 'Waitlisted Campers',
-                statusOverride: ['waitlisted'],
+                type: 'waitlist_total',
+                value: 'all',
+                label: 'Total Waitlisted',
               })
             }
           />
@@ -343,10 +343,12 @@ export default function RegistrationOverview() {
             sentiment="inverse"
             subtitle="Cancellations"
             onClick={() =>
+              // The Cancellations page's Total list (decision 43), scoped to the status this card
+              // counts: Cancelled only, where the page also counts withdrawn and dismissed
               setFilter({
-                type: 'status',
-                value: 'cancelled',
-                label: 'Cancelled Campers',
+                type: 'cancellation_total',
+                value: 'all',
+                label: 'Total Cancelled',
                 statusOverride: ['cancelled'],
               })
             }

@@ -6,6 +6,10 @@
  * - Search input to filter displayed results
  * - Sortable columns
  * - CSV export
+ * - Rows: Campers | Enrollments (decision 8, #3207): one row per camper, or one per enrollment,
+ *   newest first by the list's own date
+ * - Enrolled on (decision 37) on lists of enrolled campers; the CSV adds Zip and Caregivers
+ *   (decisions 13, 44), never as modal columns
  */
 
 import { formatCount } from '../../utils/numberFormat'
@@ -21,7 +25,10 @@ import { useDrilldownAttendees } from '../../hooks/useDrilldownAttendees'
 import { sessionName } from '../../utils/sessionName'
 import { buildCsvContent, downloadCsv as triggerCsvDownload } from '../../utils/csvExport'
 import { campToday, formatLongDate } from '../camperships/kit/dates'
-import type { DrilldownAttendee, DrilldownFilter } from '../../types/metrics'
+import { AidSegmented } from '../camperships/kit/Segmented'
+import { DefinitionNotes, DefRef, type DefinitionNote } from '../camperships/kit/DefinitionNotes'
+import { CS_FLABEL } from '../camperships/kit/csType'
+import type { DrilldownAttendee, DrilldownFilter, DrilldownSession } from '../../types/metrics'
 
 /** Get display session name: comma-joined if multi-session, fallback to single session_name. */
 function getSessionDisplay(a: DrilldownAttendee): string {
@@ -57,25 +64,103 @@ function formatCampDay(value: string | undefined | null): string {
   return formatLongDate(campToday(at))
 }
 
-/** Get the best registration date: effective_date if available, fallback to enrollment_date. */
-function getRegistrationDate(a: DrilldownAttendee): string | undefined {
-  return a.effective_date ?? a.enrollment_date
-}
-
 /** The registration date as shown: each source keeps its own reading (see formatDay, formatCampDay). */
 function formatRegistrationDate(a: DrilldownAttendee): string {
   return a.effective_date ? formatDay(a.effective_date) : formatCampDay(a.enrollment_date)
 }
 
-/** "<season>-<view>-<camp-time date>.csv", e.g. "2026-total-cancelled-2026-10-15.csv". */
-function csvFilename(year: number, label: string | undefined): string {
+/** Registered as shown. Beside Enrolled on it is effective_date alone, never the status date a
+ *  second time; elsewhere it falls back to the status date (formatRegistrationDate). */
+function formatRegisteredBeside(a: DrilldownAttendee, besideEnrolledOn: boolean): string {
+  return besideEnrolledOn ? formatDay(a.effective_date) : formatRegistrationDate(a)
+}
+
+/** Registered's sortable day, read the way formatRegisteredBeside shows it. */
+function registeredKey(a: DrilldownAttendee, besideEnrolledOn: boolean): string {
+  return besideEnrolledOn || a.effective_date
+    ? dayKey(a.effective_date)
+    : campDayKey(a.enrollment_date)
+}
+
+/** A calendar date's sortable day: its YYYY-MM-DD part (see formatDay). */
+function dayKey(value: string | undefined | null): string {
+  return value ? value.slice(0, 10) : ''
+}
+
+/** An instant's sortable day: its camp-time YYYY-MM-DD (see formatCampDay). */
+function campDayKey(value: string | undefined | null): string {
+  if (!value) return ''
+  const at = new Date(value.replace(' ', 'T'))
+  return Number.isNaN(at.getTime()) ? value : campToday(at)
+}
+
+type RowsMode = 'campers' | 'enrollments'
+
+const ROWS_OPTIONS = [
+  { value: 'campers', label: 'Campers' },
+  { value: 'enrollments', label: 'Enrollments' },
+] as const
+
+/** "<season>-<view>[-enrollments]-<camp-time date>.csv", e.g. "2026-total-cancelled-2026-10-15.csv". */
+function csvFilename(year: number, label: string | undefined, mode: RowsMode): string {
   const view =
     (label ?? '')
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '') || 'campers'
-  return `${String(year)}-${view}-${campToday()}.csv`
+  const rows = mode === 'enrollments' ? '-enrollments' : ''
+  return `${String(year)}-${view}${rows}-${campToday()}.csv`
 }
+
+function earliest(values: ReadonlyArray<string | null | undefined>): string | undefined {
+  let first: string | undefined
+  for (const value of values) if (value && (first === undefined || value < first)) first = value
+  return first
+}
+
+/** `a` with its two dates replaced (a missing one stays missing). */
+function withDates(
+  a: DrilldownAttendee,
+  effective: string | null | undefined,
+  enrolled: string | null | undefined
+): DrilldownAttendee {
+  const row: DrilldownAttendee = { ...a }
+  delete row.effective_date
+  delete row.enrollment_date
+  if (effective) row.effective_date = effective
+  if (enrolled) row.enrollment_date = enrolled
+  return row
+}
+
+/** Campers mode: one row per camper. With two or more enrollments, both sessions share the
+ *  Session cell (as today) and each date is the earliest of them. */
+function camperRow(a: DrilldownAttendee): DrilldownAttendee {
+  const sessions = a.sessions ?? []
+  if (sessions.length < 2) return a
+  return withDates(
+    a,
+    earliest(sessions.map((s) => s.effective_date)) ?? a.effective_date,
+    earliest(sessions.map((s) => s.enrollment_date)) ?? a.enrollment_date
+  )
+}
+
+/** Enrollments mode: one row per session in the camper's Session cell, each with its own dates. */
+function enrollmentRows(a: DrilldownAttendee): DrilldownAttendee[] {
+  const sessions = a.sessions ?? []
+  if (sessions.length < 2) return [a]
+  return sessions.map((s: DrilldownSession) => ({
+    ...withDates(a, s.effective_date, s.enrollment_date),
+    session_name: s.session_name,
+    session_cm_id: s.session_cm_id,
+    sessions: [s],
+  }))
+}
+
+/** The kit's footnote mark (CS_SUP), in the primary button's own ink. */
+const BUTTON_SUP =
+  'static ml-px align-super text-[0.72em] leading-[0] font-medium tabular-nums opacity-75'
+
+type CsvColumn = readonly [header: string, cell: (a: DrilldownAttendee) => string | number]
 
 interface DrillDownModalProps {
   year: number
@@ -98,6 +183,7 @@ type SortField =
   | 'enrolled'
   | 'enrolled_current'
   | 'registration'
+  | 'enrolled_on'
   | 'cancelled'
 type SortDirection = 'asc' | 'desc'
 
@@ -110,8 +196,10 @@ export function DrillDownModal({
   duration,
   onClose,
 }: DrillDownModalProps) {
+  // `??` never reached waitlistContext (startsWith returns a boolean), so the Waitlist page's grade
+  // bars and gender rings opened the default columns (decision 43).
   const isWaitlistDrilldown =
-    filter?.type.startsWith('waitlist_') ?? filter?.waitlistContext ?? false
+    (filter?.type.startsWith('waitlist_') ?? false) || filter?.waitlistContext === true
 
   const [searchTerm, setSearchTerm] = useState('')
   const [sortField, setSortField] = useState<SortField>(
@@ -123,8 +211,37 @@ export function DrillDownModal({
   // These cancellation types use default layout (School + Session columns)
   const isCancellationDefaultLayout =
     filter?.type === 'cancellation_no_other_sessions' || filter?.type === 'cancellation_re_enrolled'
-  // Show special cancellation columns (Cancelled Session + Current Session)
+  // Show special cancellation columns (Cancelled Session + Enrolled In)
   const isCancellationSpecial = isCancellationDrilldown && !isCancellationDefaultLayout
+  const isDefaultLayout = !isWaitlistDrilldown && !isRetentionDrilldown && !isCancellationSpecial
+  // "Enrolled on" only on lists of enrolled campers (owner Q-EN): on a cancelled or waitlisted row
+  // enrollment_date is the date of that status, not of an enrollment.
+  const showEnrolledOn =
+    filter?.type === 'cancellation_re_enrolled' ||
+    (isDefaultLayout &&
+      !isCancellationDrilldown &&
+      (filter?.statusOverride ?? statusFilter ?? ['enrolled']).every((s) => s === 'enrolled'))
+  // A retention list asks whether a person came back, so it stays one row per camper.
+  const showRowsSwitch = !isRetentionDrilldown
+  const [rowsMode, setRowsMode] = useState<RowsMode>('campers')
+  const mode: RowsMode = showRowsSwitch ? rowsMode : 'campers'
+  // "Newest first" reads each list's own date (mock, small proposals).
+  const newestField: SortField = isWaitlistDrilldown
+    ? 'registration'
+    : isCancellationSpecial
+      ? 'cancelled'
+      : showEnrolledOn
+        ? 'enrolled_on'
+        : 'registration'
+
+  const changeRowsMode = (next: RowsMode) => {
+    setRowsMode(next)
+    setSortField(
+      next === 'enrollments' ? newestField : isWaitlistDrilldown ? 'registration' : 'name'
+    )
+    setSortDirection(next === 'enrollments' ? 'desc' : 'asc')
+  }
+  const formatRegistered = (a: DrilldownAttendee) => formatRegisteredBeside(a, showEnrolledOn)
 
   const {
     data: attendees = [],
@@ -158,13 +275,19 @@ export function DrillDownModal({
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [filter, onClose])
 
-  // Filter attendees by search term
+  // One row per camper, or one per enrollment
+  const rows = useMemo(
+    () => (mode === 'enrollments' ? attendees.flatMap(enrollmentRows) : attendees.map(camperRow)),
+    [attendees, mode]
+  )
+
+  // Filter rows by search term
   const filteredAttendees = useMemo(() => {
     if (!searchTerm.trim()) {
-      return attendees
+      return rows
     }
     const term = searchTerm.toLowerCase()
-    return attendees.filter(
+    return rows.filter(
       (a) =>
         a.first_name.toLowerCase().includes(term) ||
         a.last_name.toLowerCase().includes(term) ||
@@ -180,7 +303,7 @@ export function DrillDownModal({
         (isRetentionDrilldown && getEnrolledDisplay(a).toLowerCase().includes(term)) ||
         (isCancellationSpecial && getEnrolledDisplay(a).toLowerCase().includes(term))
     )
-  }, [attendees, searchTerm, isWaitlistDrilldown, isRetentionDrilldown, isCancellationSpecial])
+  }, [rows, searchTerm, isWaitlistDrilldown, isRetentionDrilldown, isCancellationSpecial])
 
   // Sort attendees
   const sortedAttendees = useMemo(() => {
@@ -227,26 +350,34 @@ export function DrillDownModal({
           bVal = getEnrolledDisplay(b).toLowerCase()
           break
         case 'registration':
-          aVal = getRegistrationDate(a) ?? ''
-          bVal = getRegistrationDate(b) ?? ''
+          aVal = registeredKey(a, showEnrolledOn)
+          bVal = registeredKey(b, showEnrolledOn)
           break
+        case 'enrolled_on':
         case 'cancelled':
-          aVal = a.enrollment_date ?? ''
-          bVal = b.enrollment_date ?? ''
+          aVal = campDayKey(a.enrollment_date)
+          bVal = campDayKey(b.enrollment_date)
           break
       }
 
       // Nulls/empty last for date sorts
-      if (sortField === 'registration' || sortField === 'cancelled') {
+      if (
+        sortField === 'registration' ||
+        sortField === 'cancelled' ||
+        sortField === 'enrolled_on'
+      ) {
         if (!aVal && bVal) return 1
         if (aVal && !bVal) return -1
       }
       if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1
       if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1
-      return 0
+      // Ties read by name, A to Z, whichever way the column runs
+      const aName = `${a.last_name} ${a.first_name}`.toLowerCase()
+      const bName = `${b.last_name} ${b.first_name}`.toLowerCase()
+      return aName < bName ? -1 : aName > bName ? 1 : 0
     })
     return sorted
-  }, [filteredAttendees, sortField, sortDirection])
+  }, [filteredAttendees, sortField, sortDirection, showEnrolledOn])
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -274,166 +405,104 @@ export function DrillDownModal({
   )
 
   const downloadCsv = () => {
-    const headers = isWaitlistDrilldown
+    const name = (a: DrilldownAttendee) => `${a.preferred_name ?? a.first_name} ${a.last_name}`
+    // Zip and Caregivers are CSV-only (decisions 13, 44); Age is the server's season-year rule.
+    const lead: CsvColumn[] = [
+      ['CampMinder ID', (a) => a.person_id],
+      ['Name', name],
+      ['Grade', (a) => a.grade ?? ''],
+      ['Gender', (a) => a.gender ?? ''],
+      ['Age', (a) => a.age ?? ''],
+      ['School', (a) => a.school ?? ''],
+      ['City', (a) => a.city ?? ''],
+      ['State', (a) => a.state ?? ''],
+      ['Zip', (a) => a.zip ?? ''],
+    ]
+    const middle: CsvColumn[] = isWaitlistDrilldown
       ? [
-          'CampMinder ID',
-          'Name',
-          'Grade',
-          'Gender',
-          'Age',
-          'School',
-          'City',
-          'State',
-          'Waitlisted For',
-          'Enrolled In',
-          'Applied',
-          'Years at Camp',
-          'Status',
-          'Returning',
+          ['Waitlisted For', getSessionDisplay],
+          ['Enrolled In', getEnrolledDisplay],
+          ['Applied', formatRegistrationDate],
         ]
       : isRetentionDrilldown
         ? [
-            'CampMinder ID',
-            'Name',
-            'Grade',
-            'Gender',
-            'Age',
-            'School',
-            'City',
-            'State',
-            'Prior Session',
-            'Session',
-            'Years at Camp',
-            'Status',
-            'Returning',
+            ['Prior Session', getSessionDisplay],
+            ['Session', getEnrolledDisplay],
           ]
         : isCancellationSpecial
           ? [
-              'CampMinder ID',
-              'Name',
-              'Grade',
-              'Gender',
-              'Age',
-              'School',
-              'City',
-              'State',
-              'Cancelled Session',
-              'Current Session',
-              'Registered',
-              'Cancelled',
-              'Years at Camp',
-              'Status',
-              'Returning',
+              ['Cancelled Session', getSessionDisplay],
+              ['Enrolled In', getEnrolledDisplay],
+              ['Registered', (a) => formatDay(a.effective_date)],
+              ['Cancelled', (a) => formatCampDay(a.enrollment_date)],
             ]
           : [
-              'CampMinder ID',
-              'Name',
-              'Grade',
-              'Gender',
-              'Age',
-              'School',
-              'City',
-              'State',
-              'Session',
-              'Registered',
-              'Years at Camp',
-              'Status',
-              'Returning',
+              ['Session', getSessionDisplay],
+              ['Registered', formatRegistered],
+              ...(showEnrolledOn
+                ? [
+                    [
+                      'Enrolled on',
+                      (a: DrilldownAttendee) => formatCampDay(a.enrollment_date),
+                    ] as const,
+                  ]
+                : []),
             ]
+    const tail: CsvColumn[] = [
+      ['Years at Camp', (a) => a.years_at_camp ?? ''],
+      ['Status', (a) => a.status],
+      ['Returning', (a) => (a.is_returning ? 'Yes' : isRetentionDrilldown ? 'DNR' : 'No')],
+      ['Caregivers', (a) => (a.caregivers ?? []).join('; ')],
+    ]
+    const columns = [...lead, ...middle, ...tail]
 
-    const rows = sortedAttendees.map((a) =>
-      isWaitlistDrilldown
-        ? [
-            a.person_id,
-            `${a.preferred_name ?? a.first_name} ${a.last_name}`,
-            a.grade ?? '',
-            a.gender ?? '',
-            a.age ?? '',
-            a.school ?? '',
-            a.city ?? '',
-            a.state ?? '',
-            getSessionDisplay(a),
-            getEnrolledDisplay(a),
-            formatRegistrationDate(a),
-            a.years_at_camp ?? '',
-            a.status,
-            a.is_returning ? 'Yes' : 'No',
-          ]
-        : isRetentionDrilldown
-          ? [
-              a.person_id,
-              `${a.preferred_name ?? a.first_name} ${a.last_name}`,
-              a.grade ?? '',
-              a.gender ?? '',
-              a.age ?? '',
-              a.school ?? '',
-              a.city ?? '',
-              a.state ?? '',
-              getSessionDisplay(a),
-              getEnrolledDisplay(a),
-              a.years_at_camp ?? '',
-              a.status,
-              a.is_returning ? 'Yes' : 'DNR',
-            ]
-          : isCancellationSpecial
-            ? [
-                a.person_id,
-                `${a.preferred_name ?? a.first_name} ${a.last_name}`,
-                a.grade ?? '',
-                a.gender ?? '',
-                a.age ?? '',
-                a.school ?? '',
-                a.city ?? '',
-                a.state ?? '',
-                getSessionDisplay(a),
-                getEnrolledDisplay(a),
-                formatDay(a.effective_date),
-                formatCampDay(a.enrollment_date),
-                a.years_at_camp ?? '',
-                a.status,
-                a.is_returning ? 'Yes' : 'No',
-              ]
-            : [
-                a.person_id,
-                `${a.preferred_name ?? a.first_name} ${a.last_name}`,
-                a.grade ?? '',
-                a.gender ?? '',
-                a.age ?? '',
-                a.school ?? '',
-                a.city ?? '',
-                a.state ?? '',
-                getSessionDisplay(a),
-                formatRegistrationDate(a),
-                a.years_at_camp ?? '',
-                a.status,
-                a.is_returning ? 'Yes' : 'No',
-              ]
-    )
-
-    const stringRows = rows.map((row) => row.map((cell) => String(cell)))
+    // The CSV follows the switch: one row per camper or per enrollment, in the list's order.
+    const headers = columns.map(([header]) => header)
+    const stringRows = sortedAttendees.map((a) => columns.map(([, cell]) => String(cell(a))))
     const csv = buildCsvContent(headers, stringRows)
-    const filename = csvFilename(year, filter?.label)
-    triggerCsvDownload(csv, filename)
+    triggerCsvDownload(csv, csvFilename(year, filter?.label, mode))
   }
+
+  // Numbered notes, never hover (owner Q-NOTE): what Enrolled on means, and what the CSV adds.
+  const csvNote = showEnrolledOn ? 2 : 1
+  const notes: DefinitionNote[] = [
+    ...(showEnrolledOn
+      ? [
+          {
+            n: 1,
+            text: 'Enrolled on is the day the camper became enrolled, on camp time (Pacific). Registered is the day they registered. A priority-day sign-up is often enrolled the next morning.',
+            alsoBold: ['Enrolled on', 'Registered'],
+          },
+        ]
+      : []),
+    {
+      n: csvNote,
+      text: `The CSV also has each camper's zip and caregivers (in the household's mailing-title order), and Age = ${String(year)} − birth year, the rule CampMinder uses (blank with no birth date).`,
+    },
+  ]
+  const noun = mode === 'enrollments' ? 'enrollment' : 'camper'
+  const shownCampers = new Set(sortedAttendees.map((a) => a.person_id)).size
 
   if (!filter) return null
 
   return (
     <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/50">
-      <div className="bg-card border-border flex max-h-[85vh] w-full max-w-5xl flex-col rounded-lg border shadow-xl">
+      <div className="bg-card border-border flex max-h-[85vh] w-full max-w-7xl flex-col rounded-lg border shadow-xl">
         {/* Header */}
         <div className="border-border flex items-center justify-between border-b px-6 py-4">
           <div>
             <h2 className="text-foreground text-lg font-semibold">
               {filter.titleFormat === 'adjective'
-                ? `${formatCount(sortedAttendees.length)} ${filter.label} Camper${sortedAttendees.length !== 1 ? 's' : ''}`
-                : `${formatCount(sortedAttendees.length)} camper${sortedAttendees.length !== 1 ? 's' : ''} in ${filter.label}`}
+                ? `${formatCount(sortedAttendees.length)} ${filter.label} ${noun === 'camper' ? 'Camper' : 'Enrollment'}${sortedAttendees.length !== 1 ? 's' : ''}`
+                : `${formatCount(sortedAttendees.length)} ${noun}${sortedAttendees.length !== 1 ? 's' : ''} in ${filter.label}`}
             </h2>
             <p className="text-muted-foreground text-sm">
               {isRetentionDrilldown
                 ? `${filter.retentionContext?.baseYear} → ${filter.retentionContext?.compareYear} retention data`
                 : `${year} enrollment data`}
-              {searchTerm && ` (filtered from ${formatCount(attendees.length)})`}
+              {mode === 'enrollments' &&
+                ` · ${formatCount(shownCampers)} camper${shownCampers !== 1 ? 's' : ''}`}
+              {searchTerm && ` (filtered from ${formatCount(rows.length)})`}
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -443,7 +512,9 @@ export function DrillDownModal({
               className="bg-primary text-primary-foreground hover:bg-primary/90 flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Download className="h-4 w-4" />
-              Download CSV
+              <span>
+                Download CSV<sup className={BUTTON_SUP}>{csvNote}</sup>
+              </span>
             </button>
             <button
               onClick={onClose}
@@ -454,9 +525,9 @@ export function DrillDownModal({
           </div>
         </div>
 
-        {/* Search */}
-        <div className="border-border border-b px-6 py-3">
-          <div className="relative">
+        {/* Search, and the Rows switch */}
+        <div className="border-border flex items-center gap-3 border-b px-6 py-3">
+          <div className="relative flex-1">
             <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
             <input
               type="text"
@@ -474,6 +545,17 @@ export function DrillDownModal({
               className="bg-background border-input focus:ring-ring w-full rounded-md border py-2 pr-4 pl-10 text-sm focus:ring-2 focus:outline-none"
             />
           </div>
+          {showRowsSwitch && (
+            <>
+              <span className={CS_FLABEL}>Rows</span>
+              <AidSegmented
+                label="Rows"
+                value={mode}
+                options={ROWS_OPTIONS}
+                onChange={changeRowsMode}
+              />
+            </>
+          )}
         </div>
 
         {/* Table */}
@@ -563,7 +645,7 @@ export function DrillDownModal({
                 {isCancellationSpecial && (
                   <>
                     <SortableColumnHeader
-                      label="Current Session"
+                      label="Enrolled In"
                       direction={headerDirection('enrolled')}
                       onSort={() => handleSort('enrolled')}
                       indicator={headerIndicator('enrolled')}
@@ -585,12 +667,26 @@ export function DrillDownModal({
                     />
                   </>
                 )}
-                {!isWaitlistDrilldown && !isRetentionDrilldown && !isCancellationSpecial && (
+                {isDefaultLayout && (
                   <SortableColumnHeader
                     label="Registered"
                     direction={headerDirection('registration')}
                     onSort={() => handleSort('registration')}
                     indicator={headerIndicator('registration')}
+                    buttonClassName="text-muted-foreground hover:text-foreground px-4 py-3 text-left font-medium"
+                  />
+                )}
+                {showEnrolledOn && (
+                  <SortableColumnHeader
+                    label="Enrolled on"
+                    direction={headerDirection('enrolled_on')}
+                    onSort={() => handleSort('enrolled_on')}
+                    indicator={
+                      <>
+                        <DefRef n={1} />
+                        {headerIndicator('enrolled_on')}
+                      </>
+                    }
                     buttonClassName="text-muted-foreground hover:text-foreground px-4 py-3 text-left font-medium"
                   />
                 )}
@@ -721,9 +817,14 @@ export function DrillDownModal({
                         </td>
                       </>
                     )}
-                    {!isWaitlistDrilldown && !isRetentionDrilldown && !isCancellationSpecial && (
+                    {isDefaultLayout && (
                       <td className="text-foreground px-4 py-3 whitespace-nowrap">
-                        {formatRegistrationDate(attendee)}
+                        {formatRegistered(attendee)}
+                      </td>
+                    )}
+                    {showEnrolledOn && (
+                      <td className="text-foreground px-4 py-3 whitespace-nowrap">
+                        {formatCampDay(attendee.enrollment_date)}
                       </td>
                     )}
                     <td className="text-foreground px-4 py-3 text-center whitespace-nowrap">
@@ -734,6 +835,11 @@ export function DrillDownModal({
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Numbered notes */}
+        <div className="border-border border-t px-6 pb-2">
+          <DefinitionNotes notes={notes} />
         </div>
       </div>
     </div>
