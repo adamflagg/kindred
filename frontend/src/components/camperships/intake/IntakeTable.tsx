@@ -11,10 +11,10 @@ import { AidHouseholdChip, AidNameWithChip } from '../kit/NameChips'
 import { OriginMark, StatusPill } from '../kit/Pills'
 import { aidActionColumn, type AidRowActionSpec } from '../kit/RowAction'
 import { formatMoney } from '../kit/money'
-import { programLabel } from '../requests/programLabel'
 import { AddRequestEditor } from './AddRequestEditor'
 import {
   amberAid,
+  answerProgram,
   askedParts,
   askedTitle,
   becameAside,
@@ -26,7 +26,7 @@ import {
   footerWords,
   fullName,
   householdHref,
-  wordsOr,
+  INTAKE_WORDS,
   originOf,
   originTitle,
   targetFromRow,
@@ -104,8 +104,10 @@ function BecameCell({ row, names }: { row: FormIntakeRowOut; names: SessionIndex
             <StatusPill tone={status.tone} title={becameTitle(b, names)}>
               {status.words}
             </StatusPill>
-            <span className="mr-1">{becameSession(b, names)}</span>
-            {origin !== null && <OriginMark origin={origin} title={originTitle(b)} />}
+            {becameSession(b, names) !== '' && (
+              <span className="mr-1">{becameSession(b, names)}</span>
+            )}
+            {origin !== null && <OriginMark origin={origin} title={originTitle(b, INTAKE_WORDS)} />}
             {aside !== null && <span className={MUTED}>{aside}</span>}
           </span>
         )
@@ -187,7 +189,7 @@ function IntakeDetail({
           ? ' · names no program for this camper'
           : answers.map((a) => (
               <span key={`${a.program_key}:${a.option_text}`}>
-                {` · ${programLabel(programs, a.program_key)} “${(a.named_session_cm_id ?? 0) > 0 ? fullName(a.named_session_cm_id ?? 0, names) : a.option_text}” `}
+                {` · ${answerProgram(a, names, programs)} “${(a.named_session_cm_id ?? 0) > 0 ? fullName(a.named_session_cm_id ?? 0, names) : a.option_text}” `}
                 <b>{formatMoney(a.ask)}</b>
               </span>
             ))}
@@ -223,7 +225,7 @@ function IntakeDetail({
   const requests = (row.became ?? []).map((b) => {
     const source =
       b.origin === 'added'
-        ? `added by ${wordsOr(b.added_by, 'staff')}${b.added_at ? `, ${formatShortDate(b.added_at)}` : ''}${b.round1_posted != null ? `; Round 1 ${formatMoney(b.round1_posted)} posted` : ''}`
+        ? `added by ${b.added_by ? INTAKE_WORDS.who(b.added_by) : 'staff'}${b.added_at ? `, ${INTAKE_WORDS.day(b.added_at)}` : ''}${b.round1_posted != null ? `; Round 1 ${formatMoney(b.round1_posted)} posted` : ''}`
         : b.origin === 'registration_ask'
           ? 'from the registration ask'
           : b.status === 'withdrawn'
@@ -323,6 +325,8 @@ export function IntakeTable({
         key: 'camper',
         header: 'Camper',
         width: 300,
+        // The search finds a camper by their own name (and, through searchExtra, their household's).
+        searchable: true,
         value: camperLabel,
         title: camperTitle,
         render: (r) => <CamperCell row={r} view={view} />,

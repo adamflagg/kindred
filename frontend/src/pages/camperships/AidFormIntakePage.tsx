@@ -11,6 +11,7 @@ import {
 } from '../../components/camperships/intake/IntakeTable'
 import {
   camperLabel,
+  fullName,
   inChip,
   inSegment,
   readSegment,
@@ -153,7 +154,7 @@ function IntakeBody({ data, view }: { data: FormIntakeResponse; view: AidView })
       if (r.can_add === true && (r.gap_sessions ?? []).length > 0)
         return {
           label: 'Add a Request…',
-          title: `Add a request for ${camperLabel(r)}`,
+          title: `Add a request for ${camperLabel(r)}: ${(r.gap_sessions ?? []).map((g) => fullName(g.session_cm_id, names)).join(' or ')}`,
           onClick: () => {
             setStatus(null)
             setAdding(r.key)
@@ -183,7 +184,7 @@ function IntakeBody({ data, view }: { data: FormIntakeResponse; view: AidView })
         },
       }
     }
-  }, [canWork, review, view.year, keep])
+  }, [canWork, review, view.year, keep, names])
 
   const lead = (
     <>

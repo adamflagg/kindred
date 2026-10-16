@@ -29,7 +29,11 @@ import {
   addedStatus,
   amberAid,
   askedWords,
+  becameAside,
+  becameSession,
   becameStatus,
+  becameTitle,
+  INTAKE_WORDS,
   enrolledWords,
   footerWords,
   inSegment,
@@ -261,5 +265,54 @@ describe('Remove… (the household card)', () => {
   it('reads S2 as the tiny form', () => {
     // A guard on the fixture's session table, which the cells read.
     expect(names.get(S2)?.name).toBe('Session 2')
+  })
+})
+
+describe('the visual audit (2026-10-15)', () => {
+  it("names an answer by its session's program family, as the Requests grid does (Teen Programs, Quests)", () => {
+    const withFamily = sessionIndex(
+      SESSIONS.map((s) => ({ ...s, program_family: s.session_cm_id === TLI ? 'teen' : 'summer' }))
+    )
+    const words = { summer: 'At Camp', teen: 'Teen Programs', quest: 'Quests' }
+    expect(askedWords(EMMA, withFamily, words)).toMatch(
+      /^Teen Programs: Teen Leadership Institute · \$4,000/
+    )
+    // An answer that names no session keeps its program's word.
+    expect(askedWords(OLIVIA, withFamily, words)).toBe('At Camp: Session 2 or Taste 2 · $3,500')
+  })
+
+  it('words a form request whose camper is enrolled in nothing it could be: no empty session, no broken title', () => {
+    const notEnrolled = became({
+      session_cm_id: 0,
+      status: 'session_unclear',
+      candidate_session_cm_ids: [],
+      why: 'not_enrolled',
+    })
+    expect(becameSession(notEnrolled, names)).toBe('')
+    expect(becameAside(notEnrolled)).toBe('not enrolled')
+    expect(becameTitle(notEnrolled, names)).toBe(
+      'Session unclear: the camper is enrolled in no session the answer could be (status 2). It settles once they enroll.'
+    )
+    // A request that lost its enrollment still reads "no longer enrolled".
+    expect(becameAside(became({ status: 'active', why: 'not_enrolled' }))).toBe(
+      'no longer enrolled'
+    )
+  })
+
+  it('names who added a request from their email and the day at camp', () => {
+    const added = became({
+      origin: 'added',
+      added_by: 'pat.garcia@example.com',
+      added_at: '2027-03-04 02:00:00.000Z',
+      added_reason: 'Assessed by phone',
+    })
+    expect(originTitle(added, INTAKE_WORDS)).toBe('Added by Pat, Mar 3: “Assessed by phone”')
+  })
+
+  it('draws "No aid form: a blank application is made" as a plain line, not a bold lead', () => {
+    const draft = { session: S3, ask: '2500', reason: '', recordRound1: true }
+    const effects = addEffects(targetFromRow(RILEY), draft, names, 'Camp & Quest')
+    const blank = effects.find((e) => `${e.lead}${e.rest}`.startsWith('No aid form'))
+    expect(blank).toMatchObject({ lead: '', rest: 'No aid form: a blank application is made' })
   })
 })

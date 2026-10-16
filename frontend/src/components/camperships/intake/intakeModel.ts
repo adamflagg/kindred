@@ -4,10 +4,11 @@
  */
 import type { PillTone } from '../kit/kitStyles'
 import { aidHref, type AidView } from '../kit/asOf'
-import { formatShortDate } from '../kit/dates'
+import { formatCampDateTime, formatShortDate } from '../kit/dates'
 import { formatMoney } from '../kit/money'
 import { aidSessionName, aidTinyName } from '../kit/sessionShort'
 import type { RequestOrigin } from '../kit/words'
+import { whoWords } from '../household/historyWords'
 import { programLabel } from '../requests/programLabel'
 import type {
   AdditionCreateIn,
@@ -121,6 +122,17 @@ export const householdHref = (view: AidView, householdCmId: number): string =>
 
 const regDate = (ask: RegistrationAskOut): string => (ask.on ? ` (${formatShortDate(ask.on)})` : '')
 
+/** An answer's program in words: by the family of the session it names (Teen Programs, Quests, as the Requests grid
+ * names them), else by its program (At Camp for an answer that names no session). */
+export function answerProgram(
+  a: { readonly program_key: string; readonly named_session_cm_id?: number | null | undefined },
+  names: SessionIndex,
+  programs: Readonly<Record<string, string>>
+): string {
+  const family = names.get(a.named_session_cm_id ?? 0)?.program_family ?? ''
+  return programLabel(programs, family !== '' && family !== 'other' ? family : a.program_key)
+}
+
 /** Form asked, in two parts: what the form (or registration form) asked, and a registration ask beside a filed form. */
 export function askedParts(
   row: FormIntakeRowOut,
@@ -145,7 +157,7 @@ export function askedParts(
     .map((a) => {
       const named = a.named_session_cm_id ?? 0
       const what = named > 0 ? shortName(named, names) : a.option_text
-      return `${programLabel(programs, a.program_key)}: ${what} · ${formatMoney(a.ask)}`
+      return `${answerProgram(a, names, programs)}: ${what} · ${formatMoney(a.ask)}`
     })
     .join('; ')
   return { main, reg: reg === null ? null : `reg. ask ${formatMoney(reg.amount)}`, muted: false }
@@ -178,7 +190,7 @@ export function askedTitle(
     .map((a) => {
       const named = a.named_session_cm_id ?? 0
       const what = named > 0 ? fullName(named, names) : a.option_text
-      return `${programLabel(programs, a.program_key)}: ${what} · ${formatMoney(a.ask)}`
+      return `${answerProgram(a, names, programs)}: ${what} · ${formatMoney(a.ask)}`
     })
     .join('; ')
   return reg === null
@@ -213,12 +225,16 @@ export function becameSession(b: BecameOut, names: SessionIndex): string {
   const candidates = b.candidate_session_cm_ids ?? []
   if (b.session_cm_id === 0 && candidates.length > 0)
     return candidates.map((id) => tinyName(id, names)).join(' or ')
-  return b.session_cm_id === 0 ? 'session unclear' : tinyName(b.session_cm_id, names)
+  // No candidates: the camper is enrolled in nothing the answer could be; the aside says so ("not enrolled").
+  return b.session_cm_id === 0 ? '' : tinyName(b.session_cm_id, names)
 }
 
 /** The muted words after a withdrawn request's session ("no longer enrolled"). */
 export function becameAside(b: BecameOut): string | null {
-  if (b.why === 'not_enrolled') return 'no longer enrolled'
+  if (b.why === 'not_enrolled')
+    return b.status === 'session_unclear' && b.session_cm_id === 0
+      ? 'not enrolled'
+      : 'no longer enrolled'
   if (b.why === 'answer_edited') return 'answer changed'
   if (b.why === 'removed') return 'removed'
   return null
@@ -227,6 +243,8 @@ export function becameAside(b: BecameOut): string | null {
 /** The pill's title: the whole sentence. */
 export function becameTitle(b: BecameOut, names: SessionIndex): string {
   const candidates = b.candidate_session_cm_ids ?? []
+  if (b.status === 'session_unclear' && candidates.length === 0)
+    return 'Session unclear: the camper is enrolled in no session the answer could be (status 2). It settles once they enroll.'
   if (b.status === 'session_unclear')
     return `Session unclear: enrolled in ${candidates.map((id) => fullName(id, names)).join(' and ')}, and the answer could be either. Settle Session… on the household.`
   const full = b.session_cm_id === 0 ? 'session unclear' : fullName(b.session_cm_id, names)
@@ -333,6 +351,20 @@ export interface OriginWords {
   readonly day: (iso: string) => string
 }
 const PLAIN_WORDS: OriginWords = { who: (actor) => actor, day: formatShortDate }
+
+/** "Mar 3": a stored time's day at camp (a UTC stamp read at camp); a bare day (YYYY-MM-DD) as it is written. */
+export function campDayOf(iso: string): string {
+  return /^\d{4}-\d{2}-\d{2}$/.test(iso.trim())
+    ? formatShortDate(iso)
+    : formatCampDateTime(iso).split(' ').slice(0, 2).join(' ')
+}
+
+const NO_NAMES: ReadonlyMap<string, string> = new Map()
+/** Form intake's words for who and when: staff named from their email (no history to name them by), the day at camp. */
+export const INTAKE_WORDS: OriginWords = {
+  who: (actor) => whoWords(actor, NO_NAMES),
+  day: campDayOf,
+}
 
 /** "Added by Pat Garcia, Mar 3: “…”", the mark's title and the household card's line. */
 export function addedByWords(b: OriginFacts, words: OriginWords = PLAIN_WORDS): string {
@@ -616,8 +648,8 @@ export function addEffects(
   if (target.noForm)
     effects.push({
       sym: 'hand',
-      lead: 'No aid form: a blank application is made',
-      rest: '',
+      lead: '',
+      rest: 'No aid form: a blank application is made',
       then: '→ type income later with Income correction… on the household',
     })
   effects.push({

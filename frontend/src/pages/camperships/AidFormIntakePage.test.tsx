@@ -400,4 +400,53 @@ describe('Requests › Form intake', () => {
     ).toBeInTheDocument()
     expect(screen.queryByTestId('find-unlisted')).toBeNull()
   })
+
+  describe('the visual audit (2026-10-15)', () => {
+    it("finds a camper by their own name, not only by their household's", async () => {
+      renderAt('/aid/requests/intake?year=2027&show=all')
+      await screen.findByText('Emma Johnson')
+      await userEvent.type(screen.getByPlaceholderText('Find a camper…'), 'Olivia')
+      await waitFor(() => expect(names()).toEqual([ROWS_2027[1]!.key]))
+    })
+
+    it('names the session Add a Request… adds in its title', async () => {
+      renderAt()
+      await screen.findByText('Emma Johnson')
+      expect(
+        within(rowOf('Emma Johnson')).getByRole('button', { name: 'Add a Request…' })
+      ).toHaveAttribute('title', 'Add a request for Emma Johnson: Teen Winter Retreat')
+    })
+
+    it('says who added a request by name and on the day at camp, never an email or a UTC day', async () => {
+      const added = intakeRow({
+        key: '1000009:1000091',
+        household_cm_id: 1000009,
+        household_label: 'Pat & Sam Rivera',
+        person_cm_id: 1000091,
+        camper_name: 'Noah Rivera',
+        enrolled_session_cm_ids: [S1],
+        became: [
+          became({
+            request_id: 'reqnoahriv00001',
+            origin: 'added',
+            addition_id: 'addnoahriv00001',
+            added_by: 'pat.garcia@example.com',
+            // 02:00 UTC on Mar 4 is the evening of Mar 3 at camp.
+            added_at: '2027-03-04 02:00:00.000Z',
+            added_reason: 'Assessed by phone',
+          }),
+        ],
+      })
+      forms = formsRead([...ROWS_2027, added])
+      renderAt('/aid/requests/intake?year=2027&show=all')
+      await screen.findByText('Noah Rivera')
+      // Open the row from a plain cell (the name is a link to the household).
+      await userEvent.click(within(rowOf('Noah Rivera')).getAllByRole('cell')[2]!)
+      expect(within(rowOf('Noah Rivera')).getByText('added')).toHaveAttribute(
+        'title',
+        'Added by Pat, Mar 3: “Assessed by phone”'
+      )
+      expect(await screen.findByText(/S1 \(added by Pat, Mar 3\)/)).toBeInTheDocument()
+    })
+  })
 })

@@ -279,6 +279,17 @@ export function RequestCard({
           {addition.added_at ? `, ${costDay(addition.added_at)}` : ''}: “{addition.added_reason}”
         </p>
       )}
+      {addition !== null && !addition.live && (
+        // Mock step 17: who removed it, when and why; the request is withdrawn and keeps its decisions.
+        <p data-testid="removed-by" className={HH_NOTE}>
+          Removed by{' '}
+          <b className="text-foreground font-medium">
+            {addition.retired_by ? whoWords(addition.retired_by, names) : 'staff'}
+          </b>
+          {addition.retired_at ? `, ${costDay(addition.retired_at)}` : ''}: “
+          {addition.retire_reason ?? ''}” · its decisions are kept
+        </p>
+      )}
       {row.cancellation && (
         <div>
           <StatusPill tone="stone">{cancellationWords(row.cancellation)}</StatusPill>

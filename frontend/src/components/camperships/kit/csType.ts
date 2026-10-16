@@ -164,7 +164,7 @@ export const CS_PICKER_FIELD = `${FIELD_FACE} ${CTL_FOCUS} inline-flex cursor-po
 export const CS_PICKER_OPTIONS =
   'bg-card text-foreground border-border absolute top-[calc(100%+4px)] left-0 z-[70] max-h-[260px] w-max max-w-[320px] min-w-full overflow-auto rounded-[10px] border p-1 shadow-lg transition duration-200 ease-out focus:outline-none data-[closed]:-translate-y-1 data-[closed]:opacity-0'
 export const CS_PICKER_OPTION =
-  'relative flex cursor-pointer items-center gap-1.5 rounded-md py-1 pr-2.5 pl-[22px] text-[12.5px] leading-[18px] whitespace-nowrap data-[focus]:bg-muted data-[selected]:font-semibold'
+  'relative flex cursor-pointer items-center gap-1.5 rounded-md py-1 pr-2.5 pl-[22px] text-[12.5px] leading-[18px] whitespace-nowrap data-[focus]:bg-muted data-[selected]:font-semibold data-[disabled]:text-muted-foreground data-[disabled]:cursor-default'
 /** A group heading inside the popover (programs under their pool). */
 export const CS_PICKER_GROUP =
   'text-muted-foreground px-2.5 pt-1.5 pb-0.5 text-[11px] font-bold tracking-[.05em] uppercase'

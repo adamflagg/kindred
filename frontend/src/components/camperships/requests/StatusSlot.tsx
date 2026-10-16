@@ -1,10 +1,17 @@
 import { CS_TOOLBAR_STATUS } from '../kit/csType'
 import type { RequestsStatus } from './requestsStatus'
 
+// A tone REPLACES the slot's muted ink: with both on the element, the muted one won and a result read grey.
 const TONE = {
-  muted: '',
-  ok: 'text-forest-700 dark:text-forest-300 font-semibold',
-  warn: 'text-amber-700 dark:text-amber-300 font-semibold',
+  muted: CS_TOOLBAR_STATUS,
+  ok: CS_TOOLBAR_STATUS.replace(
+    'text-muted-foreground',
+    'text-forest-700 dark:text-forest-300 font-semibold'
+  ),
+  warn: CS_TOOLBAR_STATUS.replace(
+    'text-muted-foreground',
+    'text-amber-700 dark:text-amber-300 font-semibold'
+  ),
 } as const
 
 /**
@@ -23,7 +30,7 @@ export function StatusSlot({
   const dismiss = status.dismiss
   return (
     <span className="flex min-w-0 items-center gap-1.5">
-      <span className={`${CS_TOOLBAR_STATUS} ${TONE[status.tone]}`} title={status.title}>
+      <span className={TONE[status.tone]} title={status.title}>
         {status.text}
       </span>
       {dismiss !== undefined && (

@@ -481,6 +481,11 @@ const REASON_WORDS: Readonly<Record<string, string>> = {
   r1: 'R1',
   r2: 'R2',
   r3: 'R3',
+  // Form intake's Needs a look reasons (PR 3)
+  campminder_aid: 'CM aid on no request',
+  enrolled_no_request: 'enrolled, no request',
+  session_unclear: 'session unclear',
+  registration_ask_unreviewed: 'reg. ask to review',
 }
 const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1)
 

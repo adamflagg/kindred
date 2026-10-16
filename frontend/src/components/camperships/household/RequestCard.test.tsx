@@ -800,6 +800,29 @@ describe('a C1 round on the decision panel', () => {
       expect(screen.queryByTestId('added-by')).toBeNull()
     })
 
+    it('says who removed an added request, when and why, and that its decisions are kept (mock step 17)', () => {
+      renderCard(
+        householdRequest(ROW_EMMA, {
+          addition: {
+            ...added,
+            live: false,
+            retired_by: 'registrar@example.com',
+            retired_at: '2027-03-04 02:00:00.000Z',
+            retire_reason: 'Family is not attending TWR after all',
+          },
+        })
+      )
+      expect(screen.getByTestId('removed-by')).toHaveTextContent(
+        'Removed by Registrar, Mar 3: “Family is not attending TWR after all” · its decisions are kept'
+      )
+      expect(screen.getByTestId('added-by')).toBeInTheDocument()
+    })
+
+    it('draws no Removed by line on a live added request', () => {
+      renderCard(householdRequest(ROW_EMMA, { addition: added }))
+      expect(screen.queryByTestId('removed-by')).toBeNull()
+    })
+
     it('draws no mark on a request the form made', () => {
       renderCard(householdRequest(ROW_EMMA, { addition: null }))
       expect(screen.queryByText('added')).toBeNull()
