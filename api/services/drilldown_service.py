@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 from api.schemas.metrics import DrilldownAttendee, DrilldownSession
 from api.services.cancellation_service import CANCELLED_STATUSES
 from api.services.extractors import (
+    extract_age_band,
     extract_years_at_camp,
     filter_aged_out_attendees,
     is_new_camper,
@@ -47,6 +48,7 @@ PERSON_LEVEL_BREAKDOWNS = frozenset(
     {
         "gender",
         "grade",
+        "age_band",
         "years_at_camp",
         "returning_status",
         "school",
@@ -441,6 +443,7 @@ class DrilldownService:
             breakdown_type,
             breakdown_value,
             first_year_by_person,
+            season_year=year,
         )
 
         # Deduplicate for person-level breakdowns
@@ -552,6 +555,7 @@ class DrilldownService:
         breakdown_type: str,
         breakdown_value: str,
         first_year_by_person: dict[int, int] | None = None,
+        season_year: int | None = None,
     ) -> list[Any]:
         """Filter attendees by the specific breakdown criteria.
 
@@ -563,6 +567,7 @@ class DrilldownService:
             breakdown_value: Value to match.
             first_year_by_person: Pre-computed first summer year by person_id
                 (only populated for first_summer_year breakdown).
+            season_year: The drilled season, which age_band reads ages in.
 
         Returns:
             Filtered list of attendees.
@@ -592,6 +597,11 @@ class DrilldownService:
                             filtered.append(a)
                     except ValueError:
                         pass
+
+            elif breakdown_type == "age_band":
+                # The bar's own rule (season year minus birth year), so the list matches its count.
+                if person and season_year is not None and extract_age_band(person, season_year) == breakdown_value:
+                    filtered.append(a)
 
             elif breakdown_type == "session":
                 attendee_session_cm_id = getattr(session, "cm_id", None) if session else None
@@ -1466,7 +1476,7 @@ class DrilldownService:
 
         # Filter by breakdown criteria (grade, gender, etc.)
         filtered_waitlisted = self._filter_by_breakdown(
-            filtered_waitlisted, persons, sessions, breakdown_type, breakdown_value
+            filtered_waitlisted, persons, sessions, breakdown_type, breakdown_value, season_year=year
         )
 
         # Deduplicate by person

@@ -327,6 +327,32 @@ export type AdditionRetire = {
 }
 
 /**
+ * AgeBandBreakdown
+ *
+ * Campers in one age band: the season year minus the birth year (D-UNCOVERED).
+ */
+export type AgeBandBreakdown = {
+  /**
+   * Band
+   *
+   * Age band key: "5-7", "8-10", "11-13", "14-16", "17+", or "none" (no birthdate)
+   */
+  band: string
+  /**
+   * Count
+   *
+   * Number of distinct campers
+   */
+  count: number
+  /**
+   * Percentage
+   *
+   * Percentage of total enrolled
+   */
+  percentage: number
+}
+
+/**
  * AidLikeOutside
  */
 export type AidLikeOutside = {
@@ -13401,6 +13427,12 @@ export type RegistrationMetricsResponse = {
    * Same-point reads: the last day (YYYY-MM-DD) this year was read through. On a phase date it is the day after the matching day (decision 45)
    */
   as_of_date?: string | null
+  /**
+   * By Age
+   *
+   * Enrollment by age band (season year minus birth year), every band in order, zeros included
+   */
+  by_age?: Array<AgeBandBreakdown>
 }
 
 /**
@@ -22791,7 +22823,7 @@ export type GetDrilldownAttendeesApiMetricsDrilldownGetData = {
     /**
      * Breakdown Type
      *
-     * Type of breakdown: session, gender, grade, school, years_at_camp, status, waitlist_no_enrollment, waitlist_has_enrollment, waitlist_accepted, waitlist_declined
+     * Type of breakdown: session, gender, grade, age_band, school, years_at_camp, status, waitlist_no_enrollment, waitlist_has_enrollment, waitlist_accepted, waitlist_declined
      */
     breakdown_type: string
     /**

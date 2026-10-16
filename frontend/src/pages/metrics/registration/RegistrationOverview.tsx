@@ -4,6 +4,7 @@
  * This is the main registration metrics view showing:
  * - Summary cards (enrolled, waitlisted, cancelled, new/returning)
  * - Gender breakdown and gender by grade charts
+ * - Campers by age (season year minus birth year)
  * - Session and session length breakdowns
  * - Years at camp analysis
  * - Session details table
@@ -35,6 +36,7 @@ import {
   compareByDateCampThenQuest,
 } from '../../../utils/sessionUtils'
 import {
+  transformAgeData,
   transformGenderData,
   transformGradeData,
   transformSessionData,
@@ -50,6 +52,8 @@ import { describeCompareBasis } from './overviewCompareBasis'
 import { AverageSummersLine } from '../../../components/metrics/AverageSummersLine'
 import { TENURE_NOTES } from '../../../components/metrics/tenureNotes'
 import { OVERVIEW_NOTES } from '../cancelledNotes'
+import { AgeChart } from '../../../components/metrics/AgeChart'
+import { AGE_NOTES } from '../../../components/metrics/ageNotes'
 import type { DrilldownFilter, SessionLengthBySessionBreakdown } from '../../../types/metrics'
 import type { SessionDateLookup, SessionTypeLookup } from '../../../utils/sessionUtils'
 import { MetricsBusy, MetricsLoadError } from '../../../components/metrics/MetricsQueryGuard'
@@ -262,6 +266,7 @@ export default function RegistrationOverview() {
   // it exists, then the compare notes while Compare is on.
   const pageNotes = [
     ...OVERVIEW_NOTES,
+    ...(transformAgeData(data.by_age).length > 0 ? AGE_NOTES : []),
     ...(data.average_summers_at_camp != null ? TENURE_NOTES : []),
   ]
   const compareBasis = describeCompareBasis(compareYear, compData, pageNotes.length + 1)
@@ -521,6 +526,17 @@ export default function RegistrationOverview() {
               primaryData={gradeChartData}
               compareData={transformGradeData(compData.by_grade)}
             />
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+              <AgeChart title={`${currentYear} Age`} data={data.by_age} onBarClick={setFilter} />
+              <AgeChart title={`${compareYear} Age`} data={compData.by_age} />
+            </div>
+            <ComparisonSummaryTable
+              title="Age Comparison"
+              primaryYear={currentYear}
+              compareYear={compareYear}
+              primaryData={transformAgeData(data.by_age)}
+              compareData={transformAgeData(compData.by_age)}
+            />
           </>
         ) : (
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -538,6 +554,12 @@ export default function RegistrationOverview() {
               data={gradeChartData}
               height={300}
               breakdownType="grade"
+              onBarClick={setFilter}
+            />
+            <AgeChart
+              key={`age-${selectedSessionCmId ?? 'all'}`}
+              title="Enrollment by Age"
+              data={data.by_age}
               onBarClick={setFilter}
             />
           </div>

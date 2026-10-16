@@ -69,6 +69,33 @@ def extract_years_at_camp(person: Any) -> int:
     return years if years is not None else 0
 
 
+# Registration's "campers by age" bars, youngest first, then campers with no birthdate
+# (epic #3207, owner ruling D-UNCOVERED). The keys travel as drill-down values.
+AGE_BAND_KEYS = ("5-7", "8-10", "11-13", "14-16", "17+", "none")
+NO_BIRTHDATE_BAND = "none"
+# Upper age of each band but the last; anything older is "17+".
+_AGE_BAND_CEILINGS = ((7, "5-7"), (10, "8-10"), (13, "11-13"), (16, "14-16"))
+
+
+def extract_age_band(person: Any, season_year: int) -> str:
+    """The camper's age band in `season_year`: the season year minus the birth year.
+
+    Never `persons.age`, a stored snapshot that drifts from the season (wrong for
+    319 of 1,291 campers in 2026). So a camper born in late 2016 is 10 all of 2026.
+    No readable birth year reads "none". An age under 5 folds into "5-7": none was
+    enrolled in 2025 or 2026, so the youngest bar is "7 and under" in practice.
+    """
+    birthdate = str(getattr(person, "birthdate", None) or "").strip()
+    year_text = birthdate[:4]
+    if len(year_text) != 4 or not year_text.isdigit():
+        return NO_BIRTHDATE_BAND
+    age = season_year - int(year_text)
+    for ceiling, band in _AGE_BAND_CEILINGS:
+        if age <= ceiling:
+            return band
+    return "17+"
+
+
 def summers_at_camp_by_person(person_ids: set[int], persons: dict[int, Any]) -> dict[int, int]:
     """Each camper's "Summers at Camp": CampMinder's Years At Camp in the season of `persons`.
 
