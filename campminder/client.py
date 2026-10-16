@@ -8,11 +8,12 @@ import re
 import time
 import traceback
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from typing import Any, cast
 
 import requests
 from dotenv import load_dotenv
+
+from api.services.camp_calendar import default_season_year
 
 # Load environment variables
 load_dotenv()
@@ -20,9 +21,8 @@ load_dotenv()
 
 # Default function for current season
 def get_current_season() -> int:
-    """Get current season from environment or default to current year."""
-    season_id = os.getenv("CAMPMINDER_SEASON_ID")
-    return int(season_id) if season_id else datetime.now(tz=UTC).year
+    """Current season: CAMPMINDER_SEASON_ID if set, else the Oct 15 Pacific rule (never the calendar year)."""
+    return default_season_year()
 
 
 @dataclass
@@ -646,7 +646,7 @@ def load_config_from_env() -> CampMinderConfig | None:
         api_key=api_key,
         subscription_key=subscription_key,
         client_id=int(client_id),
-        season_id=int(season_id) if season_id else datetime.now(tz=UTC).year,
+        season_id=int(season_id) if season_id else get_current_season(),
     )
 
 

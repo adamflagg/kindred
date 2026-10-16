@@ -38,9 +38,10 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlparse
+from zoneinfo import ZoneInfo
 
 import requests
 
@@ -90,6 +91,20 @@ def _units(base: str, token: str, year: int) -> list[dict[str, Any]]:
     return out
 
 
+def _utcnow() -> datetime:
+    """The clock the season rule reads; a seam for tests."""
+    return datetime.now(tz=UTC)
+
+
+def _season_from_clock() -> int:
+    """The Oct 15 (Pacific) season rule. MIRRORS api/services/camp_calendar.primary_season_year.
+
+    Inlined because this script runs standalone, without the api package on its path.
+    """
+    pacific = _utcnow().astimezone(ZoneInfo("America/Los_Angeles"))
+    return pacific.year + 1 if (pacific.month, pacific.day) >= (10, 15) else pacific.year
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--url", default=os.environ.get("POCKETBASE_URL", "http://127.0.0.1:8090"))
@@ -102,9 +117,9 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="required for a non-loopback URL; confirming cabins nobody checked is a lie to staff",
     )
-    # Compute default year: use CAMPMINDER_SEASON_ID if it's numeric, else fall back to calendar year
+    # Default year: CAMPMINDER_SEASON_ID if it's numeric, else the season rule (never the calendar year).
     season_id = os.getenv("CAMPMINDER_SEASON_ID", "")
-    default_year = int(season_id) if season_id.isdigit() else datetime.now().year
+    default_year = int(season_id) if season_id.isdigit() else _season_from_clock()
     parser.add_argument(
         "--year",
         type=int,

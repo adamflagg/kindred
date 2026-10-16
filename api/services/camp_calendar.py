@@ -10,6 +10,7 @@ This module is the single source of truth for:
 - Computing day/week offsets from registration anchors
 """
 
+import os
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -64,6 +65,22 @@ def primary_season_year(utc_dt: datetime) -> int:
     if (pacific.month, pacific.day) >= (SEASON_ROLLOVER_MONTH, SEASON_ROLLOVER_DAY):
         return pacific.year + 1
     return pacific.year
+
+
+def _utcnow() -> datetime:
+    """The clock the season default reads; a seam for tests."""
+    return datetime.now(tz=UTC)
+
+
+def default_season_year() -> int:
+    """The season to use when a caller did not pick one, without asking PocketBase.
+
+    `CAMPMINDER_SEASON_ID` when it is a number (the same override the Go sync honours),
+    otherwise the Oct 15 rule. Never the calendar year: from the Oct 15 flip to Dec 31
+    the calendar is still last season.
+    """
+    season = os.environ.get("CAMPMINDER_SEASON_ID", "")
+    return int(season) if season.isdigit() else primary_season_year(_utcnow())
 
 
 def get_camp_today() -> date:

@@ -4,7 +4,6 @@ Social Graph Builder using NetworkX for advanced friend group detection
 
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from typing import Any, cast
 
 import networkx as nx
@@ -18,6 +17,7 @@ from api.constants.collections import (
     CAMP_SESSIONS,
     PERSONS,
 )
+from api.services.camp_calendar import default_season_year
 from api.utils.pb_filters import pb_escape
 from api.utils.session_metrics import get_person_from_expand, get_session_from_expand
 from bunking.graph._types import cast_person
@@ -182,7 +182,7 @@ class SocialGraphBuilder:
     def __init__(self, pb: PocketBase, random_seed: int | None = None):
         self.pb = pb
         self.graph = nx.MultiGraph()
-        self.current_year = datetime.now(tz=UTC).year
+        self.current_year = default_season_year()
         self.person_cache: dict[int, dict[str, Any]] = {}
         self.attendee_cache: dict[int, list[dict[str, Any]]] = {}
         self.random_seed = random_seed

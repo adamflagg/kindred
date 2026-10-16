@@ -8,8 +8,6 @@ campers enrolled in multiple sessions.
 from __future__ import annotations
 
 import asyncio
-import os
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from api.schemas.metrics import (
@@ -25,6 +23,7 @@ from api.utils.session_metrics import (
 from bunking.logging_config import get_logger
 
 from .breakdown_calculator import calculate_percentage, compute_registration_breakdown
+from .camp_calendar import default_season_year
 from .extractors import extract_gender, is_new_camper
 
 if TYPE_CHECKING:
@@ -63,8 +62,7 @@ class HistoricalService:
             HistoricalTrendsResponse with trend data.
         """
         if years is None:
-            season_id = os.environ.get("CAMPMINDER_SEASON_ID", "")
-            current_year = int(season_id) if season_id.isdigit() else datetime.now(tz=UTC).year
+            current_year = default_season_year()
             years = list(range(current_year - 4, current_year + 1))
 
         # Every year's sessions, with no type filter: the summer window that gates
