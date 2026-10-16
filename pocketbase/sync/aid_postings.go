@@ -453,7 +453,8 @@ func (s *AidPostingsSync) staleInputAsOf() (stale bool, asOf string) {
 	if err != nil || len(latest) == 0 || latest[0].GetString("status") == statusSuccess {
 		return false, ""
 	}
-	lastGood, err := s.App.FindRecordsByFilter(syncRunsCollection, "service = {:svc} && status = {:success} && dry_run = false",
+	lastGood, err := s.App.FindRecordsByFilter(syncRunsCollection,
+		"service = {:svc} && status = {:success} && dry_run = false",
 		"-started", 1, 0, dbx.Params{"svc": serviceNameFinancialTransactions, "success": statusSuccess})
 	if err != nil || len(lastGood) == 0 {
 		return true, ""

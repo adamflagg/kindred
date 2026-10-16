@@ -108,7 +108,7 @@ func (o *Orchestrator) recordSyncRun(completed *Status) {
 	// per-weekend freshness query reads as "this run covered you", not as a gap.
 	rec.Set("session", completed.Session)
 	rec.Set("batch_id", completed.BatchID)
-	// A dry run computes without writing. Labelled so Manage > Sync can say so and so no
+	// A dry run computes without writing. Labeled so Manage > Sync can say so and so no
 	// freshness reader (LastRecordedRuns, the aid stale-input checks, FastAPI's) counts it.
 	rec.Set("dry_run", completed.DryRun)
 	rec.Set("created_count", stats.Created)

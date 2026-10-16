@@ -911,7 +911,7 @@ type runOrigin struct {
 	// See Status.Session.
 	session string
 	// dryRun marks a run that computed without writing. Persisted to sync_runs.dry_run so the
-	// row is labelled and never counted as a fresh sync.
+	// row is labeled and never counted as a fresh sync.
 	dryRun bool
 }
 
