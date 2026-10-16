@@ -1,4 +1,5 @@
 import type { YearMetrics } from '../../types/metrics'
+import { groupCounts } from './genderIdentityNotes'
 
 /** The live season's comparison, read at the same registration day last year (decision 7, ruling #66). */
 export interface LiveCompare {
@@ -24,8 +25,8 @@ export interface YearRow {
   newCount: number
   returning: number
   newPct: number
-  male: number
-  female: number
+  /** Campers per gender identity group (#2898), Gender field filling in where no answer was given. */
+  groups: Record<string, number>
   cancelled: number | null
   cancelPct: number | null
 }
@@ -49,8 +50,7 @@ export function buildYearRows(years: readonly YearMetrics[], live: LiveCompare |
       newCount: year.new_vs_returning.new_count,
       returning: year.new_vs_returning.returning_count,
       newPct: year.new_vs_returning.new_percentage,
-      male: year.by_gender.find((g) => g.gender === 'M')?.count ?? 0,
-      female: year.by_gender.find((g) => g.gender === 'F')?.count ?? 0,
+      groups: groupCounts(Object.fromEntries(year.by_gender.map((g) => [g.gender, g.count]))),
       cancelled: hasCancel ? (year.total_cancelled ?? 0) : null,
       cancelPct: hasCancel ? (year.cancellation_rate ?? 0) : null,
     }

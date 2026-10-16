@@ -29,9 +29,15 @@ import { trendDirection } from '../../../utils/trendDirection'
 import { firstSummerYearLabel } from '../../../utils/metricsTransforms'
 import type { YearEnrollment } from '../../../types/metrics'
 import { formatSignedCount, formatSignedPercent } from '../../../utils/numberFormat'
-import { YearByYearTable } from '../../../components/metrics/YearByYearTable'
+import { YearByYearTable, yearNoteCount } from '../../../components/metrics/YearByYearTable'
 import type { LiveCompare } from '../../../components/metrics/yearByYearRows'
 import { useCompareYearFilter } from '../../../hooks/useCompareYearFilter'
+import {
+  AnotherIdentityLine,
+  GenderFallbackSeasonsLine,
+  groupCounts,
+} from '../../../components/metrics/genderIdentityNotes'
+import { genderGroupSegments } from '../../../components/metrics/genderColors'
 import { MetricsBusy, MetricsLoadError } from '../../../components/metrics/MetricsQueryGuard'
 
 interface GroupedChartItem {
@@ -241,6 +247,33 @@ export default function TrendsOverview() {
   }
 
   // Calculate summary metrics
+  // #2898: gender identity in the five groups (#75 a); ruling 58's Gender field count is note 3, per season
+  // above 0 (#74 a), under each gender card and table and at the page foot.
+  const byGender = (rows: ReadonlyArray<{ gender: string; count: number }>) =>
+    Object.fromEntries(rows.map((g) => [g.gender, g.count]))
+  const fallbackSeasons = data.years.map((y) => ({
+    season: y.year,
+    count: y.gender_fallback_count ?? 0,
+    of: y.total_enrolled,
+  }))
+  // The Year-by-Year table owns the notes, so the Gender note follows its column notes (and the live row's).
+  const genderNoteN = fallbackSeasons.some((s) => s.count > 0) ? yearNoteCount(live) + 1 : undefined
+  const genderFooter = (counts: ReadonlyArray<Record<string, number>>) => (
+    <>
+      <AnotherIdentityLine counts={counts} />
+      {genderNoteN !== undefined && (
+        <GenderFallbackSeasonsLine n={genderNoteN} seasons={fallbackSeasons} />
+      )}
+    </>
+  )
+  const compositionRows = enrollmentData.map((y) => {
+    const groups = groupCounts(byGender(y.by_gender))
+    return {
+      name: String(y.year),
+      total: Object.values(groups).reduce((a, b) => a + b, 0),
+      ...groups,
+    }
+  })
   const latestYear = data.years.at(-1)
   const earliestYear = data.years[0]
 
@@ -314,18 +347,13 @@ export default function TrendsOverview() {
             data={data.years}
             metric="gender"
             height={300}
+            footer={genderFooter(data.years.map((y) => byGender(y.by_gender)))}
           />
           {enrollmentData.length > 0 && (
             <CssVerticalStackedBarChart
-              data={enrollmentData.map((y) => {
-                const male = y.by_gender.find((g) => g.gender === 'M')?.count ?? 0
-                const female = y.by_gender.find((g) => g.gender === 'F')?.count ?? 0
-                return { name: String(y.year), total: male + female, male, female }
-              })}
-              segments={[
-                { key: 'female', label: 'Female', color: 'hsl(340, 70%, 50%)' },
-                { key: 'male', label: 'Male', color: 'hsl(200, 70%, 50%)' },
-              ]}
+              data={compositionRows}
+              segments={genderGroupSegments(compositionRows)}
+              footer={genderFooter(enrollmentData.map((y) => byGender(y.by_gender)))}
               title={`Gender Composition (${numYearsDisplay}-Year Comparison)`}
               percentMode
               height={300}
