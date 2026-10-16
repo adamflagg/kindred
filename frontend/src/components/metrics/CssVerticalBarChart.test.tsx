@@ -386,3 +386,21 @@ describe('CssVerticalRetentionBarChart wrapper', () => {
     }
   })
 })
+
+// ---------------------------------------------------------------------------
+// Axis label (P-20 option B): a shorter axis text, the full name everywhere else
+// ---------------------------------------------------------------------------
+describe('CssVerticalBarChart axisLabel', () => {
+  it('writes axisLabel on the axis instead of the name', () => {
+    render(
+      <CssVerticalBarChart data={[{ name: 'Harbor School', axisLabel: 'Harbor', value: 40 }]} />
+    )
+    expect(screen.getByText('Harbor')).toBeInTheDocument()
+    expect(screen.queryByText('Harbor School')).not.toBeInTheDocument()
+  })
+
+  it('falls back to the name when there is no axisLabel', () => {
+    render(<CssVerticalBarChart data={[{ name: 'Fairview', value: 40 }]} />)
+    expect(screen.getByText('Fairview')).toBeInTheDocument()
+  })
+})
