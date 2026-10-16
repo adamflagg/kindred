@@ -1,3 +1,5 @@
+import { formatCount, formatPercent } from './numberFormat'
+
 /**
  * Shared constants and utilities used by both VelocityPage and CancellationVelocityPage.
  */
@@ -16,11 +18,11 @@ export const GENDER_COLORS = {
 }
 
 /**
- * Format a Recharts <LabelList> value as a localized integer.
+ * Format a Recharts <LabelList> value as a separated count.
  * Recharts passes `value` as `unknown` (number | string | undefined depending on data shape).
  */
 export function formatLabelListValue(value: unknown): string {
-  if (typeof value === 'number') return value.toLocaleString()
+  if (typeof value === 'number') return formatCount(value)
   return String(value ?? '')
 }
 
@@ -29,7 +31,7 @@ export function formatLabelListValue(value: unknown): string {
  * Returns the raw stringified value when not numeric (matches prior fallback).
  */
 export function formatLabelListPercent(value: unknown): string {
-  if (typeof value === 'number') return `${value.toFixed(1)}%`
+  if (typeof value === 'number') return formatPercent(value)
   return String(value ?? '')
 }
 

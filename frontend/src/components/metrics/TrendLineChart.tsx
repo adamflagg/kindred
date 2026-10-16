@@ -4,6 +4,7 @@
  * Recharts handles only the SVG content (lines, dots, grid).
  */
 
+import { formatCount, formatPercent } from '../../utils/numberFormat'
 import {
   LineChart,
   Line,
@@ -82,10 +83,10 @@ export function TrendLineChart({
     [data, metric]
   )
 
-  // #2443 -- greyed band(s) behind years with no attendee_status_history
-  // coverage, scoped to the cancellation-rate metric (the only one with a
-  // coverage concept -- enrollment/gender/new-vs-returning are always
-  // measured).
+  // #2443 -- greyed band(s) behind years whose cancellation count was not
+  // measured (the cancelled-attendee fetch failed), scoped to the
+  // cancellation-rate metric (the only one with a coverage concept --
+  // enrollment/gender/new-vs-returning are always measured).
   const coverageBands = useMemo(
     () =>
       metric === 'cancellation_rate'
@@ -145,7 +146,12 @@ export function TrendLineChart({
           <p className="text-foreground mb-2 font-medium">{label}</p>
           {payload.map((entry, index) => (
             <p key={index} className="text-sm" style={{ color: entry.color }}>
-              {entry.name}: <span className="font-semibold">{entry.value.toLocaleString()}</span>
+              {entry.name}:{' '}
+              <span className="font-semibold">
+                {metric === 'cancellation_rate'
+                  ? formatPercent(entry.value)
+                  : formatCount(entry.value)}
+              </span>
             </p>
           ))}
         </div>
@@ -305,7 +311,7 @@ export function TrendLineChart({
             <Line
               type="monotone"
               dataKey="cancellation_rate"
-              name="Cancellation Rate %"
+              name="Cancellation Rate"
               stroke={COLORS.cancellation_rate}
               strokeWidth={2}
               strokeLinecap="round"

@@ -22,6 +22,7 @@ import {
   VerticalTooltipShell,
 } from './cssChartUtils'
 import { ChartLegend } from './ChartLegend'
+import { formatCount, formatPercent } from '../../utils/numberFormat'
 
 export interface VerticalStackedSegment {
   key: string
@@ -169,7 +170,7 @@ export function CssVerticalStackedBarChart({
               const barHeightPx = percentMode
                 ? drawingHeight
                 : (item.total / axisMax) * drawingHeight
-              const label = labelFormat ? labelFormat(item) : String(item.total)
+              const label = labelFormat ? labelFormat(item) : formatCount(item.total)
 
               const sparseHoverClass =
                 columnSizing.mode === 'sparse'
@@ -310,18 +311,21 @@ export function CssVerticalStackedBarChart({
                     .map((s) => {
                       const raw = ttItem[s.key]
                       const val = typeof raw === 'number' ? raw : 0
-                      const pct = ttItem.total > 0 ? ((val / ttItem.total) * 100).toFixed(0) : '0'
+                      const pct = formatPercent(ttItem.total > 0 ? (val / ttItem.total) * 100 : 0)
                       return (
                         <p key={s.key} className="text-muted-foreground text-sm">
                           <span style={{ color: s.color }}>{s.label}:</span>{' '}
                           <span className="text-foreground font-semibold">
-                            {val} ({pct}%)
+                            {formatCount(val)} ({pct})
                           </span>
                         </p>
                       )
                     })}
                   <p className="text-muted-foreground border-border mt-1 border-t pt-1 text-sm">
-                    Total: <span className="text-foreground font-semibold">{ttItem.total}</span>
+                    Total:{' '}
+                    <span className="text-foreground font-semibold">
+                      {formatCount(ttItem.total)}
+                    </span>
                   </p>
                 </>
               )}

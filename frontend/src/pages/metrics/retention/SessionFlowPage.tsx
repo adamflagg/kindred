@@ -46,7 +46,7 @@ export default function SessionFlowPage() {
     [sessions, priorSessions]
   )
 
-  const { data, isLoading, error } = useRetentionMetrics(
+  const { data, isLoading, error, refetch, isPlaceholderData } = useRetentionMetrics(
     priorYear,
     currentYear,
     filterOptions,
@@ -56,6 +56,9 @@ export default function SessionFlowPage() {
   return (
     <div className="space-y-4">
       <MetricsQueryGuard
+        onRetry={() => void refetch()}
+        isPlaceholderData={isPlaceholderData}
+        loadingLabel={String(currentYear)}
         isLoading={isLoading || priorLoading}
         error={error}
         data={data}

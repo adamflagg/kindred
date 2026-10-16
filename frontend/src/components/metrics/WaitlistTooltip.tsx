@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { formatCount } from '../../utils/numberFormat'
 import { createPortal } from 'react-dom'
 import type { WaitlistedPerson } from '../../hooks/useSessionAvailability'
 
@@ -62,8 +63,8 @@ export function WaitlistTooltip({
   const remaining = totalCount - persons.length
   const suffix = gradeSuffix ? ` ${gradeSuffix}` : ''
   const headerText = gender
-    ? `${totalCount} ${gender} waitlisted${suffix}`
-    : `${totalCount} waitlisted${suffix}`
+    ? `${formatCount(totalCount)} ${gender} waitlisted${suffix}`
+    : `${formatCount(totalCount)} waitlisted${suffix}`
 
   return createPortal(
     <div
@@ -93,7 +94,7 @@ export function WaitlistTooltip({
           </div>
           {remaining > 0 && (
             <div className="text-muted-foreground mt-2 border-t pt-1.5 text-center text-[10px]">
-              + {remaining} more
+              + {formatCount(remaining)} more
             </div>
           )}
         </>

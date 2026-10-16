@@ -42,6 +42,9 @@ import {
 import type { CancellationSessionBreakdown } from '../../../types/metrics'
 import { sessionName } from '../../../utils/sessionName'
 import { MetricsQueryGuard } from '../../../components/metrics/MetricsQueryGuard'
+import { DefinitionNotes, DefRef } from '../../../components/camperships/kit/DefinitionNotes'
+import { formatCount, formatPercent, formatSignedCount } from '../../../utils/numberFormat'
+import { CANCELLATIONS_NOTES } from '../cancelledNotes'
 
 const CANCEL_SEGMENTS: StackedSegment[] = [
   { key: 'was_enrolled', label: 'Was Enrolled', color: 'hsl(200, 70%, 50%)' },
@@ -134,8 +137,12 @@ export default function CancellationAnalysis() {
     compareYear,
     filterOptions
   )
-  const { data, isLoading, error } = primary
+  const { data, isLoading, error, refetch, isPlaceholderData } = primary
   const compData = comparison?.data
+  // The compare query keeps its previous result too, so a new compare year gets the busy cue
+  // as well: its label must not sit over the last compare year's numbers (D-UNCOVERED, #3207).
+  const busy = isPlaceholderData || comparison?.isPlaceholderData === true
+  const busyYear = isPlaceholderData || compareYear === null ? currentYear : compareYear
 
   const { setFilter, DrilldownModal } = useDrilldown({
     year: currentYear,
@@ -167,7 +174,15 @@ export default function CancellationAnalysis() {
   )
 
   return (
-    <MetricsQueryGuard isLoading={isLoading} error={error} data={data} label="cancellations">
+    <MetricsQueryGuard
+      onRetry={() => void refetch()}
+      isPlaceholderData={busy}
+      loadingLabel={String(busyYear)}
+      isLoading={isLoading}
+      error={error}
+      data={data}
+      label="cancellations"
+    >
       {(data) => {
         return (
           <div className="space-y-6">
@@ -178,6 +193,7 @@ export default function CancellationAnalysis() {
             >
               <MetricCard
                 title="Total Cancelled"
+                note={1}
                 value={data.total_cancelled}
                 className="border-red-200 dark:border-red-800"
                 compareValue={compData?.total_cancelled}
@@ -308,9 +324,10 @@ export default function CancellationAnalysis() {
                     <div className="text-muted-foreground mb-1 flex items-center gap-1.5 text-xs font-medium">
                       <ArrowLeftRight className="h-3.5 w-3.5" />
                       Session Swaps
+                      <DefRef n={2} />
                     </div>
-                    <div className="text-foreground text-2xl font-bold">
-                      {data.session_swap_count}
+                    <div className="text-foreground text-2xl font-bold tabular-nums">
+                      {formatCount(data.session_swap_count)}
                     </div>
                     <p className="text-muted-foreground mt-1 text-xs">
                       Cancelled one session, enrolled in another
@@ -322,9 +339,10 @@ export default function CancellationAnalysis() {
                     <div className="text-muted-foreground mb-1 flex items-center gap-1.5 text-xs font-medium">
                       <UserMinus className="h-3.5 w-3.5" />
                       True Departures
+                      <DefRef n={2} />
                     </div>
-                    <div className="text-foreground text-2xl font-bold">
-                      {data.true_departure_count}
+                    <div className="text-foreground text-2xl font-bold tabular-nums">
+                      {formatCount(data.true_departure_count)}
                     </div>
                     <p className="text-muted-foreground mt-1 text-xs">Left camp entirely</p>
                   </div>
@@ -336,7 +354,7 @@ export default function CancellationAnalysis() {
                       Avg Time to Cancel
                     </div>
                     <div className="text-foreground text-2xl font-bold">
-                      {Math.round(data.avg_days_to_cancellation)} days
+                      {formatCount(Math.round(data.avg_days_to_cancellation))} days
                     </div>
                     <p className="text-muted-foreground mt-1 text-xs">
                       From registration to cancellation
@@ -350,7 +368,7 @@ export default function CancellationAnalysis() {
                       Median Time to Cancel
                     </div>
                     <div className="text-foreground text-2xl font-bold">
-                      {Math.round(data.median_days_to_cancellation)} days
+                      {formatCount(Math.round(data.median_days_to_cancellation))} days
                     </div>
                     <p className="text-muted-foreground mt-1 text-xs">
                       Middle value, less affected by outliers
@@ -383,7 +401,7 @@ export default function CancellationAnalysis() {
                               />
                             </div>
                             <span className="text-foreground w-16 text-right text-xs font-medium">
-                              {bucket.count} ({bucket.percentage}%)
+                              {formatCount(bucket.count)} ({formatPercent(bucket.percentage)})
                             </span>
                           </div>
                         ))}
@@ -407,7 +425,7 @@ export default function CancellationAnalysis() {
                             />
                           </div>
                           <span className="text-foreground w-16 text-right text-xs font-medium">
-                            {item.count} ({item.percentage}%)
+                            {formatCount(item.count)} ({formatPercent(item.percentage)})
                           </span>
                         </div>
                       ))}
@@ -659,26 +677,28 @@ export default function CancellationAnalysis() {
                               })()}
                           </td>
                           <td className="px-4 py-2 text-right text-blue-600 dark:text-blue-400">
-                            {session.was_enrolled}
+                            {formatCount(session.was_enrolled)}
                           </td>
                           <td className="px-4 py-2 text-right text-amber-600 dark:text-amber-400">
-                            {session.was_waitlisted}
+                            {formatCount(session.was_waitlisted)}
                           </td>
                           <td className="px-4 py-2 text-right text-purple-600 dark:text-purple-400">
-                            {session.was_applied ?? 0}
+                            {formatCount(session.was_applied ?? 0)}
                           </td>
                           <td className="text-muted-foreground px-4 py-2 text-right">
-                            {session.other_prior_status ?? 0}
+                            {formatCount(session.other_prior_status ?? 0)}
                           </td>
                           <td className="text-muted-foreground px-4 py-2 text-right">
-                            {session.total_cancelled -
-                              session.was_enrolled -
-                              session.was_waitlisted -
-                              (session.was_applied ?? 0) -
-                              (session.other_prior_status ?? 0)}
+                            {formatCount(
+                              session.total_cancelled -
+                                session.was_enrolled -
+                                session.was_waitlisted -
+                                (session.was_applied ?? 0) -
+                                (session.other_prior_status ?? 0)
+                            )}
                           </td>
                           <td className="border-border border-l px-4 py-2 text-right text-emerald-600 dark:text-emerald-400">
-                            {session.has_other_sessions}
+                            {formatCount(session.has_other_sessions)}
                           </td>
                           <td className="px-4 py-2 text-right">
                             <span
@@ -688,11 +708,11 @@ export default function CancellationAnalysis() {
                                   : ''
                               }
                             >
-                              {session.no_other_sessions}
+                              {formatCount(session.no_other_sessions)}
                             </span>
                           </td>
                           <td className="border-border border-l px-4 py-2 text-right font-medium">
-                            {session.total_cancelled}
+                            {formatCount(session.total_cancelled)}
                           </td>
                           {isComparing &&
                             compData &&
@@ -708,12 +728,12 @@ export default function CancellationAnalysis() {
                               return (
                                 <>
                                   <td className="px-4 py-2 text-right">
-                                    {compSession?.total_cancelled ?? '\u2014'}
+                                    {formatCount(compSession?.total_cancelled)}
                                   </td>
                                   <td
                                     className={`px-4 py-2 text-right ${delta && delta > 0 ? 'text-red-600 dark:text-red-400' : delta && delta < 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`}
                                   >
-                                    {delta !== null ? (delta > 0 ? `+${delta}` : delta) : '\u2014'}
+                                    {delta !== null ? formatSignedCount(delta) : '\u2014'}
                                   </td>
                                 </>
                               )
@@ -741,6 +761,7 @@ export default function CancellationAnalysis() {
               </div>
             )}
 
+            <DefinitionNotes notes={CANCELLATIONS_NOTES} />
             <DrilldownModal />
           </div>
         )

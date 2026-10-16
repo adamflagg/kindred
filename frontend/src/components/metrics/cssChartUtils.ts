@@ -6,6 +6,7 @@
  * other vertical/horizontal CSS charts.
  */
 
+import { formatCount } from '../../utils/numberFormat'
 import {
   type MouseEvent,
   type RefObject,
@@ -38,8 +39,9 @@ export function getYAxisMarginLeft(width: YAxisWidth = 'w-8'): string {
 }
 
 /**
- * #2443 -- compute greyed-band extents for contiguous runs of years without
- * attendee_status_history coverage (has_cancellation_data === false).
+ * #2443 -- compute greyed-band extents for contiguous runs of years whose
+ * cancellation count was not measured (has_cancellation_data === false: the
+ * cancelled-attendee fetch failed, since Trends counts final status for every year).
  *
  * A recharts `ReferenceArea` was tried first and rejected: `TrendLineChart`'s
  * x-axis is a categorical `point` scale with zero bandwidth (recharts
@@ -383,7 +385,7 @@ export function VerticalYAxis({
   drawingHeight,
   barsHeight,
   width = 'w-8',
-  formatTick = String,
+  formatTick = formatCount,
 }: VerticalYAxisProps) {
   return createElement(
     'div',

@@ -7,6 +7,7 @@
  * Supports collapsible header with optional controlled mode.
  */
 
+import { formatCount, formatSignedCount } from '../../../utils/numberFormat'
 import { useState } from 'react'
 import { TrendingUp, TrendingDown, Minus, ChevronDown, ChevronRight } from 'lucide-react'
 import { mergeDataForComparison } from '../../../utils/comparisonUtils'
@@ -137,10 +138,10 @@ export function GeoComparisonDetailList({
                     >
                       <td className="text-foreground px-4 py-2">{row.name}</td>
                       <td className="text-foreground px-4 py-2 text-right font-medium">
-                        {row.primaryValue || '\u2014'}
+                        {formatCount(row.primaryValue || null)}
                       </td>
                       <td className="text-foreground px-4 py-2 text-right font-medium">
-                        {row.compareValue || '\u2014'}
+                        {formatCount(row.compareValue || null)}
                       </td>
                       <td className={`px-4 py-2 text-right ${changeClass}`}>
                         <span className="flex items-center justify-end gap-1">
@@ -155,8 +156,7 @@ export function GeoComparisonDetailList({
                           ) : (
                             <>
                               <Icon className="h-3.5 w-3.5" />
-                              {row.change > 0 ? '+' : ''}
-                              {row.change}
+                              {formatSignedCount(row.change)}
                             </>
                           )}
                         </span>

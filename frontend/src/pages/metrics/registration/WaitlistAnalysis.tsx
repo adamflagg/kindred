@@ -8,6 +8,7 @@
  * 4. Previously waitlisted, declined (cancelled/withdrawn/dismissed)
  */
 
+import { formatCount, formatSignedCount } from '../../../utils/numberFormat'
 import { useMemo } from 'react'
 import { AlertTriangle, CheckCircle, XCircle, Users, Clock } from 'lucide-react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
@@ -132,8 +133,12 @@ export default function WaitlistAnalysis() {
   const sessionTypeLookup = useMemo(() => buildSessionTypeLookup(sessions), [sessions])
 
   const { primary, comparison } = useComparisonWaitlistData(currentYear, compareYear, filterOptions)
-  const { data, isLoading, error } = primary
+  const { data, isLoading, error, refetch, isPlaceholderData } = primary
   const compData = comparison?.data
+  // The compare query keeps its previous result too, so a new compare year gets the busy cue
+  // as well: its label must not sit over the last compare year's numbers (D-UNCOVERED, #3207).
+  const busy = isPlaceholderData || comparison?.isPlaceholderData === true
+  const busyYear = isPlaceholderData || compareYear === null ? currentYear : compareYear
 
   const { setFilter, DrilldownModal } = useDrilldown({
     year: currentYear,
@@ -168,7 +173,15 @@ export default function WaitlistAnalysis() {
   )
 
   return (
-    <MetricsQueryGuard isLoading={isLoading} error={error} data={data} label="waitlist">
+    <MetricsQueryGuard
+      onRetry={() => void refetch()}
+      isPlaceholderData={busy}
+      loadingLabel={String(busyYear)}
+      isLoading={isLoading}
+      error={error}
+      data={data}
+      label="waitlist"
+    >
       {(data) => {
         return (
           <div className="space-y-6">
@@ -269,7 +282,7 @@ export default function WaitlistAnalysis() {
                       Avg Wait to Accept
                     </div>
                     <div className="mt-1 text-2xl font-bold text-green-700 dark:text-green-400">
-                      {Math.round(data.avg_days_to_acceptance)} days
+                      {formatCount(Math.round(data.avg_days_to_acceptance))} days
                     </div>
                   </div>
                 )}
@@ -280,7 +293,7 @@ export default function WaitlistAnalysis() {
                       Median Wait to Accept
                     </div>
                     <div className="mt-1 text-2xl font-bold text-green-700 dark:text-green-400">
-                      {Math.round(data.median_days_to_acceptance)} days
+                      {formatCount(Math.round(data.median_days_to_acceptance))} days
                     </div>
                   </div>
                 )}
@@ -291,7 +304,7 @@ export default function WaitlistAnalysis() {
                       Avg Time to Decline
                     </div>
                     <div className="mt-1 text-2xl font-bold text-red-700 dark:text-red-400">
-                      {Math.round(data.avg_days_to_decline)} days
+                      {formatCount(Math.round(data.avg_days_to_decline))} days
                     </div>
                   </div>
                 )}
@@ -302,7 +315,7 @@ export default function WaitlistAnalysis() {
                       Median Time to Decline
                     </div>
                     <div className="mt-1 text-2xl font-bold text-red-700 dark:text-red-400">
-                      {Math.round(data.median_days_to_decline)} days
+                      {formatCount(Math.round(data.median_days_to_decline))} days
                     </div>
                   </div>
                 )}
@@ -553,18 +566,20 @@ export default function WaitlistAnalysis() {
                                   : ''
                               }
                             >
-                              {session.no_enrollment}
+                              {formatCount(session.no_enrollment)}
                             </span>
                           </td>
-                          <td className="px-4 py-2 text-right">{session.has_enrollment}</td>
+                          <td className="px-4 py-2 text-right">
+                            {formatCount(session.has_enrollment)}
+                          </td>
                           <td className="border-border border-l px-4 py-2 text-right text-emerald-600 dark:text-emerald-400">
-                            {session.accepted}
+                            {formatCount(session.accepted)}
                           </td>
                           <td className="px-4 py-2 text-right text-red-600 dark:text-red-400">
-                            {session.declined}
+                            {formatCount(session.declined)}
                           </td>
                           <td className="border-border border-l px-4 py-2 text-right font-medium">
-                            {session.waitlisted}
+                            {formatCount(session.waitlisted)}
                           </td>
                           {isComparing &&
                             compData &&
@@ -580,12 +595,12 @@ export default function WaitlistAnalysis() {
                               return (
                                 <>
                                   <td className="px-4 py-2 text-right">
-                                    {compSession?.waitlisted ?? '\u2014'}
+                                    {formatCount(compSession?.waitlisted)}
                                   </td>
                                   <td
                                     className={`px-4 py-2 text-right ${delta && delta > 0 ? 'text-emerald-600 dark:text-emerald-400' : delta && delta < 0 ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}
                                   >
-                                    {delta !== null ? (delta > 0 ? `+${delta}` : delta) : '\u2014'}
+                                    {delta !== null ? formatSignedCount(delta) : '\u2014'}
                                   </td>
                                 </>
                               )

@@ -14,6 +14,7 @@
  * data using ComparisonSummaryTable for delta details.
  */
 
+import { formatPercent } from '../../../utils/numberFormat'
 import { useCallback, useMemo } from 'react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useComparisonRegistrationData } from '../../../hooks/useComparisonRegistrationData'
@@ -42,12 +43,14 @@ import {
   transformNewVsReturningData,
 } from '../../../utils/metricsTransforms'
 import { GENDER_COLORS, GENDER_SEGMENTS } from '../../../components/metrics/genderColors'
-import { Loader2, AlertCircle } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { DefinitionNotes } from '../../../components/camperships/kit/DefinitionNotes'
 import { AverageSummersLine } from '../../../components/metrics/AverageSummersLine'
 import { TENURE_NOTES } from '../../../components/metrics/tenureNotes'
+import { OVERVIEW_NOTES } from '../cancelledNotes'
 import type { DrilldownFilter, SessionLengthBySessionBreakdown } from '../../../types/metrics'
 import type { SessionDateLookup, SessionTypeLookup } from '../../../utils/sessionUtils'
+import { MetricsBusy, MetricsLoadError } from '../../../components/metrics/MetricsQueryGuard'
 
 // Color palette for session length stacked bars
 const SESSION_COLORS = [
@@ -182,8 +185,12 @@ export default function RegistrationOverview() {
     ...filterOptions,
     statuses: statusesParam,
   })
-  const { data, isLoading, error } = primary
+  const { data, isLoading, error, refetch, isPlaceholderData } = primary
   const compData = comparison?.data
+  // The compare query keeps its previous result too, so a new compare year gets the busy cue
+  // as well: its label must not sit over the last compare year's numbers (D-UNCOVERED, #3207).
+  const busy = isPlaceholderData || comparison?.isPlaceholderData === true
+  const busyYear = isPlaceholderData || compareYear === null ? currentYear : compareYear
 
   if (isLoading) {
     return (
@@ -195,12 +202,7 @@ export default function RegistrationOverview() {
   }
 
   if (error) {
-    return (
-      <div className="flex items-center justify-center py-12 text-red-600 dark:text-red-400">
-        <AlertCircle className="mr-2 h-6 w-6" />
-        <span>Failed to load registration data: {error.message}</span>
-      </div>
-    )
+    return <MetricsLoadError label="registration" error={error} onRetry={() => void refetch()} />
   }
 
   if (!data) {
@@ -255,98 +257,154 @@ export default function RegistrationOverview() {
   )
 
   return (
-    <div className="space-y-6">
-      {/* Summary Cards */}
-      <div
-        className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5"
-        data-tour="reg-overview-summary"
-      >
-        <MetricCard
-          title="Total Enrolled"
-          value={data.total_enrolled}
-          compareValue={compData?.total_enrolled}
-          compareYear={compareYear ?? undefined}
-          subtitle={
-            selectedSessionCmId ? 'In selected session' : `Active enrollments for ${currentYear}`
-          }
-          onClick={() =>
-            setFilter({
-              type: 'status',
-              value: 'enrolled',
-              label: 'Enrolled Campers',
-            })
-          }
-        />
-        <MetricCard
-          title="Total Waitlisted"
-          value={data.total_waitlisted}
-          compareValue={compData?.total_waitlisted}
-          compareYear={compareYear ?? undefined}
-          sentiment="muted"
-          subtitle="On waitlist"
-          onClick={() =>
-            setFilter({
-              type: 'status',
-              value: 'waitlisted',
-              label: 'Waitlisted Campers',
-              statusOverride: ['waitlisted'],
-            })
-          }
-        />
-        <MetricCard
-          title="Total Cancelled"
-          value={data.total_cancelled}
-          compareValue={compData?.total_cancelled}
-          compareYear={compareYear ?? undefined}
-          sentiment="inverse"
-          subtitle="Cancellations"
-          onClick={() =>
-            setFilter({
-              type: 'status',
-              value: 'cancelled',
-              label: 'Cancelled Campers',
-              statusOverride: ['cancelled'],
-            })
-          }
-        />
-        <MetricCard
-          title="New Campers"
-          value={data.new_vs_returning.new_count}
-          compareValue={compData?.new_vs_returning.new_count}
-          compareYear={compareYear ?? undefined}
-          sentiment="neutral"
-          subtitle={`${data.new_vs_returning.new_percentage.toFixed(1)}% of enrolled`}
-          onClick={() =>
-            setFilter({
-              type: 'returning_status',
-              value: 'new',
-              label: 'New Campers',
-            })
-          }
-        />
-        <MetricCard
-          title="Returning Campers"
-          value={data.new_vs_returning.returning_count}
-          compareValue={compData?.new_vs_returning.returning_count}
-          compareYear={compareYear ?? undefined}
-          subtitle={`${data.new_vs_returning.returning_percentage.toFixed(1)}% of enrolled`}
-          onClick={() =>
-            setFilter({
-              type: 'returning_status',
-              value: 'returning',
-              label: 'Returning Campers',
-            })
-          }
-        />
-      </div>
+    <MetricsBusy busy={busy} what={String(busyYear)}>
+      <div className="space-y-6">
+        {/* Summary Cards */}
+        <div
+          className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5"
+          data-tour="reg-overview-summary"
+        >
+          <MetricCard
+            title="Total Enrolled"
+            value={data.total_enrolled}
+            compareValue={compData?.total_enrolled}
+            compareYear={compareYear ?? undefined}
+            subtitle={
+              selectedSessionCmId ? 'In selected session' : `Active enrollments for ${currentYear}`
+            }
+            onClick={() =>
+              setFilter({
+                type: 'status',
+                value: 'enrolled',
+                label: 'Enrolled Campers',
+              })
+            }
+          />
+          <MetricCard
+            title="Total Waitlisted"
+            value={data.total_waitlisted}
+            compareValue={compData?.total_waitlisted}
+            compareYear={compareYear ?? undefined}
+            sentiment="muted"
+            subtitle="On waitlist"
+            onClick={() =>
+              setFilter({
+                type: 'status',
+                value: 'waitlisted',
+                label: 'Waitlisted Campers',
+                statusOverride: ['waitlisted'],
+              })
+            }
+          />
+          <MetricCard
+            title="Total Cancelled"
+            note={1}
+            value={data.total_cancelled}
+            compareValue={compData?.total_cancelled}
+            compareYear={compareYear ?? undefined}
+            sentiment="inverse"
+            subtitle="Cancellations"
+            onClick={() =>
+              setFilter({
+                type: 'status',
+                value: 'cancelled',
+                label: 'Cancelled Campers',
+                statusOverride: ['cancelled'],
+              })
+            }
+          />
+          <MetricCard
+            title="New Campers"
+            value={data.new_vs_returning.new_count}
+            compareValue={compData?.new_vs_returning.new_count}
+            compareYear={compareYear ?? undefined}
+            sentiment="neutral"
+            subtitle={`${formatPercent(data.new_vs_returning.new_percentage)} of enrolled`}
+            onClick={() =>
+              setFilter({
+                type: 'returning_status',
+                value: 'new',
+                label: 'New Campers',
+              })
+            }
+          />
+          <MetricCard
+            title="Returning Campers"
+            value={data.new_vs_returning.returning_count}
+            compareValue={compData?.new_vs_returning.returning_count}
+            compareYear={compareYear ?? undefined}
+            subtitle={`${formatPercent(data.new_vs_returning.returning_percentage)} of enrolled`}
+            onClick={() =>
+              setFilter({
+                type: 'returning_status',
+                value: 'returning',
+                label: 'Returning Campers',
+              })
+            }
+          />
+        </div>
 
-      {/* Charts Row 1: Gender + Gender by Grade */}
-      <div className="space-y-6" data-tour="reg-overview-demographics">
-        {compareYear !== null && compData ? (
-          <>
+        {/* Charts Row 1: Gender + Gender by Grade */}
+        <div className="space-y-6" data-tour="reg-overview-demographics">
+          {compareYear !== null && compData ? (
+            <>
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                <BreakdownChart
+                  title={`${currentYear} Gender`}
+                  data={genderChartData}
+                  showPercentage
+                  height={250}
+                  breakdownType="gender"
+                  onSegmentClick={setFilter}
+                  colorMap={GENDER_COLORS}
+                />
+                <BreakdownChart
+                  title={`${compareYear} Gender`}
+                  data={transformGenderData(compData.by_gender)}
+                  showPercentage
+                  height={250}
+                  colorMap={GENDER_COLORS}
+                />
+              </div>
+              <ComparisonSummaryTable
+                title="Gender Comparison"
+                primaryYear={currentYear}
+                compareYear={compareYear}
+                primaryData={genderChartData}
+                compareData={transformGenderData(compData.by_gender)}
+              />
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                <CssVerticalStackedBarChart
+                  key={`gender-grade-${selectedSessionCmId ?? 'all'}`}
+                  title={`${currentYear} Gender by Grade`}
+                  data={transformGenderByGrade(data.by_gender_grade)}
+                  segments={[
+                    { key: 'female_count', label: 'Female', color: 'hsl(350, 70%, 50%)' },
+                    { key: 'male_count', label: 'Male', color: 'hsl(200, 70%, 50%)' },
+                  ]}
+                  height={250}
+                  onBarClick={(item) => {
+                    const grade = item['grade']
+                    const value = grade !== null ? String(grade) : 'null'
+                    const label = grade !== null ? `Grade ${String(grade)}` : 'Unknown'
+                    setFilter({ type: 'grade', value, label })
+                  }}
+                />
+                <CssVerticalStackedBarChart
+                  title={`${compareYear} Gender by Grade`}
+                  data={transformGenderByGrade(compData.by_gender_grade)}
+                  segments={[
+                    { key: 'female_count', label: 'Female', color: 'hsl(350, 70%, 50%)' },
+                    { key: 'male_count', label: 'Male', color: 'hsl(200, 70%, 50%)' },
+                  ]}
+                  height={250}
+                />
+              </div>
+            </>
+          ) : (
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
               <BreakdownChart
-                title={`${currentYear} Gender`}
+                title="Enrollment by Gender"
                 data={genderChartData}
                 showPercentage
                 height={250}
@@ -354,25 +412,9 @@ export default function RegistrationOverview() {
                 onSegmentClick={setFilter}
                 colorMap={GENDER_COLORS}
               />
-              <BreakdownChart
-                title={`${compareYear} Gender`}
-                data={transformGenderData(compData.by_gender)}
-                showPercentage
-                height={250}
-                colorMap={GENDER_COLORS}
-              />
-            </div>
-            <ComparisonSummaryTable
-              title="Gender Comparison"
-              primaryYear={currentYear}
-              compareYear={compareYear}
-              primaryData={genderChartData}
-              compareData={transformGenderData(compData.by_gender)}
-            />
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
               <CssVerticalStackedBarChart
                 key={`gender-grade-${selectedSessionCmId ?? 'all'}`}
-                title={`${currentYear} Gender by Grade`}
+                title="Gender by Grade"
                 data={transformGenderByGrade(data.by_gender_grade)}
                 segments={[
                   { key: 'female_count', label: 'Female', color: 'hsl(350, 70%, 50%)' },
@@ -386,125 +428,212 @@ export default function RegistrationOverview() {
                   setFilter({ type: 'grade', value, label })
                 }}
               />
-              <CssVerticalStackedBarChart
-                title={`${compareYear} Gender by Grade`}
-                data={transformGenderByGrade(compData.by_gender_grade)}
-                segments={[
-                  { key: 'female_count', label: 'Female', color: 'hsl(350, 70%, 50%)' },
-                  { key: 'male_count', label: 'Male', color: 'hsl(200, 70%, 50%)' },
-                ]}
+            </div>
+          )}
+        </div>
+
+        {/* Charts Row 2: New vs Returning + Grade */}
+        {compareYear !== null && compData ? (
+          <>
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+              <BreakdownChart
+                title={`${currentYear} New vs Returning`}
+                data={newVsReturningData}
+                showPercentage
+                height={250}
+                breakdownType="returning_status"
+                onSegmentClick={handleNewVsReturningClick}
+              />
+              <BreakdownChart
+                title={`${compareYear} New vs Returning`}
+                data={transformNewVsReturningData(compData.new_vs_returning)}
+                showPercentage
                 height={250}
               />
             </div>
+            <ComparisonSummaryTable
+              title="New vs Returning Comparison"
+              primaryYear={currentYear}
+              compareYear={compareYear}
+              primaryData={newVsReturningData}
+              compareData={transformNewVsReturningData(compData.new_vs_returning)}
+            />
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+              <CssHorizontalBarChart
+                title={`${currentYear} Grade`}
+                data={gradeChartData}
+                height={300}
+                breakdownType="grade"
+                onBarClick={setFilter}
+              />
+              <CssHorizontalBarChart
+                title={`${compareYear} Grade`}
+                data={transformGradeData(compData.by_grade)}
+                height={300}
+              />
+            </div>
+            <ComparisonSummaryTable
+              title="Grade Comparison"
+              primaryYear={currentYear}
+              compareYear={compareYear}
+              primaryData={gradeChartData}
+              compareData={transformGradeData(compData.by_grade)}
+            />
           </>
         ) : (
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <BreakdownChart
-              title="Enrollment by Gender"
-              data={genderChartData}
-              showPercentage
-              height={250}
-              breakdownType="gender"
-              onSegmentClick={setFilter}
-              colorMap={GENDER_COLORS}
-            />
-            <CssVerticalStackedBarChart
-              key={`gender-grade-${selectedSessionCmId ?? 'all'}`}
-              title="Gender by Grade"
-              data={transformGenderByGrade(data.by_gender_grade)}
-              segments={[
-                { key: 'female_count', label: 'Female', color: 'hsl(350, 70%, 50%)' },
-                { key: 'male_count', label: 'Male', color: 'hsl(200, 70%, 50%)' },
-              ]}
-              height={250}
-              onBarClick={(item) => {
-                const grade = item['grade']
-                const value = grade !== null ? String(grade) : 'null'
-                const label = grade !== null ? `Grade ${String(grade)}` : 'Unknown'
-                setFilter({ type: 'grade', value, label })
-              }}
-            />
-          </div>
-        )}
-      </div>
-
-      {/* Charts Row 2: New vs Returning + Grade */}
-      {compareYear !== null && compData ? (
-        <>
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <BreakdownChart
-              title={`${currentYear} New vs Returning`}
+              title="New vs Returning Campers"
               data={newVsReturningData}
               showPercentage
               height={250}
               breakdownType="returning_status"
               onSegmentClick={handleNewVsReturningClick}
             />
-            <BreakdownChart
-              title={`${compareYear} New vs Returning`}
-              data={transformNewVsReturningData(compData.new_vs_returning)}
-              showPercentage
-              height={250}
-            />
-          </div>
-          <ComparisonSummaryTable
-            title="New vs Returning Comparison"
-            primaryYear={currentYear}
-            compareYear={compareYear}
-            primaryData={newVsReturningData}
-            compareData={transformNewVsReturningData(compData.new_vs_returning)}
-          />
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <CssHorizontalBarChart
-              title={`${currentYear} Grade`}
+              key={`grade-${selectedSessionCmId ?? 'all'}`}
+              title="Enrollment by Grade"
               data={gradeChartData}
               height={300}
               breakdownType="grade"
               onBarClick={setFilter}
             />
-            <CssHorizontalBarChart
-              title={`${compareYear} Grade`}
-              data={transformGradeData(compData.by_grade)}
-              height={300}
-            />
           </div>
-          <ComparisonSummaryTable
-            title="Grade Comparison"
-            primaryYear={currentYear}
-            compareYear={compareYear}
-            primaryData={gradeChartData}
-            compareData={transformGradeData(compData.by_grade)}
-          />
-        </>
-      ) : (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <BreakdownChart
-            title="New vs Returning Campers"
-            data={newVsReturningData}
-            showPercentage
-            height={250}
-            breakdownType="returning_status"
-            onSegmentClick={handleNewVsReturningClick}
-          />
-          <CssHorizontalBarChart
-            key={`grade-${selectedSessionCmId ?? 'all'}`}
-            title="Enrollment by Grade"
-            data={gradeChartData}
-            height={300}
-            breakdownType="grade"
-            onBarClick={setFilter}
-          />
-        </div>
-      )}
+        )}
 
-      {/* Charts Row 3: Session + Session Length (hidden when single session selected) */}
-      {!selectedSessionCmId && (
-        <>
-          {compareYear !== null && compData ? (
-            <>
+        {/* Charts Row 3: Session + Session Length (hidden when single session selected) */}
+        {!selectedSessionCmId && (
+          <>
+            {compareYear !== null && compData ? (
+              <>
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                  <CssHorizontalBarChart
+                    title={`${currentYear} Session`}
+                    data={sessionChartData}
+                    height={300}
+                    labelWidth={SESSION_LABEL_WIDTH}
+                    breakdownType="session"
+                    onBarClick={setFilter}
+                    percentageLabel="Capacity"
+                  />
+                  <CssHorizontalBarChart
+                    title={`${compareYear} Session`}
+                    data={transformSessionData(
+                      compData.by_session,
+                      sessionDateLookup,
+                      sessionTypeLookup
+                    )}
+                    height={300}
+                    labelWidth={SESSION_LABEL_WIDTH}
+                    percentageLabel="Capacity"
+                  />
+                </div>
+                <ComparisonSummaryTable
+                  title="Session Enrollment Comparison"
+                  primaryYear={currentYear}
+                  compareYear={compareYear}
+                  {...buildSessionComparisonData(
+                    data.by_session,
+                    compData.by_session,
+                    sessionDateLookup,
+                    sessionTypeLookup
+                  )}
+                  matchKey="pairKey"
+                  categoryLabel="Session"
+                />
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                  {(() => {
+                    const result = buildSessionLengthCssData(
+                      data.by_session_length_by_session ?? [],
+                      sessionDateLookup,
+                      sessionTypeLookup
+                    )
+                    if (!result) return null
+                    return (
+                      <CssVerticalStackedBarChart
+                        data={result.chartData}
+                        segments={result.segments}
+                        title={`${currentYear} Session Length`}
+                        showTotalLabel
+                        rotateLabels={result.chartData.length > 3}
+                        height={300}
+                        onBarClick={(item) =>
+                          setFilter({
+                            type: 'session_length',
+                            value: String(item['name'] ?? ''),
+                            label: `${String(item['name'] ?? '')} Sessions`,
+                          })
+                        }
+                      />
+                    )
+                  })()}
+                  {(() => {
+                    const result = buildSessionLengthCssData(
+                      compData.by_session_length_by_session ?? [],
+                      sessionDateLookup,
+                      sessionTypeLookup
+                    )
+                    if (!result) return null
+                    return (
+                      <CssVerticalStackedBarChart
+                        data={result.chartData}
+                        segments={result.segments}
+                        title={`${compareYear} Session Length`}
+                        showTotalLabel
+                        rotateLabels={result.chartData.length > 3}
+                        height={300}
+                      />
+                    )
+                  })()}
+                </div>
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                  {genderByLengthData.length > 0 && (
+                    <CssVerticalStackedBarChart
+                      title={`${currentYear} Gender by Session Length`}
+                      data={genderByLengthData}
+                      segments={GENDER_SEGMENTS}
+                      showTotalLabel
+                      height={300}
+                      onBarClick={(item) =>
+                        setFilter({
+                          type: 'session_length',
+                          value: String(item['name'] ?? ''),
+                          label: `${String(item['name'] ?? '')} Sessions`,
+                        })
+                      }
+                    />
+                  )}
+                  {compGenderByLengthData.length > 0 && (
+                    <CssVerticalStackedBarChart
+                      title={`${compareYear} Gender by Session Length`}
+                      data={compGenderByLengthData}
+                      segments={GENDER_SEGMENTS}
+                      showTotalLabel
+                      height={300}
+                    />
+                  )}
+                </div>
+                {genderByLengthData.length > 0 && (
+                  <ComparisonSummaryTable
+                    title="Gender by Session Length Comparison"
+                    primaryYear={currentYear}
+                    compareYear={compareYear}
+                    primaryData={genderByLengthData.map((g) => ({
+                      name: g.name,
+                      value: g.total,
+                    }))}
+                    compareData={compGenderByLengthData.map((g) => ({
+                      name: g.name,
+                      value: g.total,
+                    }))}
+                  />
+                )}
+              </>
+            ) : (
               <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                 <CssHorizontalBarChart
-                  title={`${currentYear} Session`}
+                  key={`session-${selectedSessionCmId ?? 'all'}`}
+                  title="Enrollment by Session"
                   data={sessionChartData}
                   height={300}
                   labelWidth={SESSION_LABEL_WIDTH}
@@ -512,32 +641,6 @@ export default function RegistrationOverview() {
                   onBarClick={setFilter}
                   percentageLabel="Capacity"
                 />
-                <CssHorizontalBarChart
-                  title={`${compareYear} Session`}
-                  data={transformSessionData(
-                    compData.by_session,
-                    sessionDateLookup,
-                    sessionTypeLookup
-                  )}
-                  height={300}
-                  labelWidth={SESSION_LABEL_WIDTH}
-                  percentageLabel="Capacity"
-                />
-              </div>
-              <ComparisonSummaryTable
-                title="Session Enrollment Comparison"
-                primaryYear={currentYear}
-                compareYear={compareYear}
-                {...buildSessionComparisonData(
-                  data.by_session,
-                  compData.by_session,
-                  sessionDateLookup,
-                  sessionTypeLookup
-                )}
-                matchKey="pairKey"
-                categoryLabel="Session"
-              />
-              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                 {(() => {
                   const result = buildSessionLengthCssData(
                     data.by_session_length_by_session ?? [],
@@ -549,7 +652,7 @@ export default function RegistrationOverview() {
                     <CssVerticalStackedBarChart
                       data={result.chartData}
                       segments={result.segments}
-                      title={`${currentYear} Session Length`}
+                      title="Enrollment by Session Length"
                       showTotalLabel
                       rotateLabels={result.chartData.length > 3}
                       height={300}
@@ -563,29 +666,10 @@ export default function RegistrationOverview() {
                     />
                   )
                 })()}
-                {(() => {
-                  const result = buildSessionLengthCssData(
-                    compData.by_session_length_by_session ?? [],
-                    sessionDateLookup,
-                    sessionTypeLookup
-                  )
-                  if (!result) return null
-                  return (
-                    <CssVerticalStackedBarChart
-                      data={result.chartData}
-                      segments={result.segments}
-                      title={`${compareYear} Session Length`}
-                      showTotalLabel
-                      rotateLabels={result.chartData.length > 3}
-                      height={300}
-                    />
-                  )
-                })()}
-              </div>
-              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                 {genderByLengthData.length > 0 && (
                   <CssVerticalStackedBarChart
-                    title={`${currentYear} Gender by Session Length`}
+                    key={`gender-session-length-${selectedSessionCmId ?? 'all'}`}
+                    title="Gender by Session Length"
                     data={genderByLengthData}
                     segments={GENDER_SEGMENTS}
                     showTotalLabel
@@ -599,106 +683,44 @@ export default function RegistrationOverview() {
                     }
                   />
                 )}
-                {compGenderByLengthData.length > 0 && (
-                  <CssVerticalStackedBarChart
-                    title={`${compareYear} Gender by Session Length`}
-                    data={compGenderByLengthData}
-                    segments={GENDER_SEGMENTS}
-                    showTotalLabel
-                    height={300}
-                  />
-                )}
               </div>
-              {genderByLengthData.length > 0 && (
-                <ComparisonSummaryTable
-                  title="Gender by Session Length Comparison"
-                  primaryYear={currentYear}
-                  compareYear={compareYear}
-                  primaryData={genderByLengthData.map((g) => ({
-                    name: g.name,
-                    value: g.total,
-                  }))}
-                  compareData={compGenderByLengthData.map((g) => ({
-                    name: g.name,
-                    value: g.total,
-                  }))}
-                />
-              )}
-            </>
-          ) : (
+            )}
+          </>
+        )}
+
+        {/* Charts Row 4: Years at Camp + First Summer Year */}
+        {compareYear !== null && compData ? (
+          <>
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
               <CssHorizontalBarChart
-                key={`session-${selectedSessionCmId ?? 'all'}`}
-                title="Enrollment by Session"
-                data={sessionChartData}
+                title={`${currentYear} ${summerYearsData.length > 0 ? 'Summers at Camp' : 'Years at Camp'}`}
+                data={yearsChartData}
                 height={300}
-                labelWidth={SESSION_LABEL_WIDTH}
-                breakdownType="session"
+                breakdownType="years_at_camp"
                 onBarClick={setFilter}
-                percentageLabel="Capacity"
+                footer={<AverageSummersLine average={data.average_summers_at_camp} />}
               />
-              {(() => {
-                const result = buildSessionLengthCssData(
-                  data.by_session_length_by_session ?? [],
-                  sessionDateLookup,
-                  sessionTypeLookup
-                )
-                if (!result) return null
-                return (
-                  <CssVerticalStackedBarChart
-                    data={result.chartData}
-                    segments={result.segments}
-                    title="Enrollment by Session Length"
-                    showTotalLabel
-                    rotateLabels={result.chartData.length > 3}
-                    height={300}
-                    onBarClick={(item) =>
-                      setFilter({
-                        type: 'session_length',
-                        value: String(item['name'] ?? ''),
-                        label: `${String(item['name'] ?? '')} Sessions`,
-                      })
-                    }
-                  />
-                )
-              })()}
-              {genderByLengthData.length > 0 && (
-                <CssVerticalStackedBarChart
-                  key={`gender-session-length-${selectedSessionCmId ?? 'all'}`}
-                  title="Gender by Session Length"
-                  data={genderByLengthData}
-                  segments={GENDER_SEGMENTS}
-                  showTotalLabel
-                  height={300}
-                  onBarClick={(item) =>
-                    setFilter({
-                      type: 'session_length',
-                      value: String(item['name'] ?? ''),
-                      label: `${String(item['name'] ?? '')} Sessions`,
-                    })
-                  }
-                />
-              )}
+              <CssHorizontalBarChart
+                title={`${compareYear} ${(compData.by_summer_years?.length ?? 0) > 0 ? 'Summers at Camp' : 'Years at Camp'}`}
+                data={
+                  (compData.by_summer_years?.length ?? 0) > 0
+                    ? transformSummerYearsData(compData.by_summer_years ?? [])
+                    : compData.by_years_at_camp.map((y) => ({
+                        name: y.years === 1 ? '1 year' : `${y.years} years`,
+                        value: y.count,
+                        percentage: y.percentage,
+                      }))
+                }
+                height={300}
+                footer={<AverageSummersLine average={compData.average_summers_at_camp} />}
+              />
             </div>
-          )}
-        </>
-      )}
-
-      {/* Charts Row 4: Years at Camp + First Summer Year */}
-      {compareYear !== null && compData ? (
-        <>
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <CssHorizontalBarChart
-              title={`${currentYear} ${summerYearsData.length > 0 ? 'Summers at Camp' : 'Years at Camp'}`}
-              data={yearsChartData}
-              height={300}
-              breakdownType="years_at_camp"
-              onBarClick={setFilter}
-              footer={<AverageSummersLine average={data.average_summers_at_camp} />}
-            />
-            <CssHorizontalBarChart
-              title={`${compareYear} ${(compData.by_summer_years?.length ?? 0) > 0 ? 'Summers at Camp' : 'Years at Camp'}`}
-              data={
+            <ComparisonSummaryTable
+              title="Summers at Camp Comparison"
+              primaryYear={currentYear}
+              compareYear={compareYear}
+              primaryData={yearsChartData}
+              compareData={
                 (compData.by_summer_years?.length ?? 0) > 0
                   ? transformSummerYearsData(compData.by_summer_years ?? [])
                   : compData.by_years_at_camp.map((y) => ({
@@ -707,99 +729,88 @@ export default function RegistrationOverview() {
                       percentage: y.percentage,
                     }))
               }
+            />
+            {firstSummerYearData.length > 0 && (
+              <>
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                  <CssHorizontalBarChart
+                    title={`${currentYear} First Summer Year`}
+                    data={firstSummerYearData}
+                    height={300}
+                    breakdownType="first_summer_year"
+                    onBarClick={handleFirstSummerYearClick}
+                  />
+                  <CssHorizontalBarChart
+                    title={`${compareYear} First Summer Year`}
+                    data={transformFirstSummerYearData(compData.by_first_summer_year)}
+                    height={300}
+                  />
+                </div>
+                <ComparisonSummaryTable
+                  title="First Summer Year Comparison"
+                  primaryYear={currentYear}
+                  compareYear={compareYear}
+                  primaryData={firstSummerYearData}
+                  compareData={transformFirstSummerYearData(compData.by_first_summer_year)}
+                />
+              </>
+            )}
+          </>
+        ) : (
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <CssHorizontalBarChart
+              key={`years-${selectedSessionCmId ?? 'all'}`}
+              title={
+                summerYearsData.length > 0
+                  ? 'Enrollment by Summers at Camp'
+                  : 'Enrollment by Years at Camp'
+              }
+              data={yearsChartData}
               height={300}
-              footer={<AverageSummersLine average={compData.average_summers_at_camp} />}
+              breakdownType="years_at_camp"
+              onBarClick={setFilter}
+              footer={<AverageSummersLine average={data.average_summers_at_camp} />}
+            />
+            {firstSummerYearData.length > 0 && (
+              <CssHorizontalBarChart
+                key={`first-year-${selectedSessionCmId ?? 'all'}`}
+                title="Enrollment by First Summer Year"
+                data={firstSummerYearData}
+                height={300}
+                breakdownType="first_summer_year"
+                onBarClick={handleFirstSummerYearClick}
+              />
+            )}
+          </div>
+        )}
+
+        {/* Session Details Table */}
+        <div className="card-lodge overflow-hidden" data-tour="reg-overview-session-table">
+          <div className="border-border border-b px-4 py-3">
+            <h3 className="text-foreground text-base font-semibold">Session Details</h3>
+          </div>
+          <div className="overflow-x-auto">
+            <SessionDetailsTable
+              current={sortedBySession}
+              prior={compData?.by_session}
+              isComparing={isComparing}
+              currentYear={currentYear}
+              compareYear={compareYear}
             />
           </div>
-          <ComparisonSummaryTable
-            title="Summers at Camp Comparison"
-            primaryYear={currentYear}
-            compareYear={compareYear}
-            primaryData={yearsChartData}
-            compareData={
-              (compData.by_summer_years?.length ?? 0) > 0
-                ? transformSummerYearsData(compData.by_summer_years ?? [])
-                : compData.by_years_at_camp.map((y) => ({
-                    name: y.years === 1 ? '1 year' : `${y.years} years`,
-                    value: y.count,
-                    percentage: y.percentage,
-                  }))
-            }
-          />
-          {firstSummerYearData.length > 0 && (
-            <>
-              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                <CssHorizontalBarChart
-                  title={`${currentYear} First Summer Year`}
-                  data={firstSummerYearData}
-                  height={300}
-                  breakdownType="first_summer_year"
-                  onBarClick={handleFirstSummerYearClick}
-                />
-                <CssHorizontalBarChart
-                  title={`${compareYear} First Summer Year`}
-                  data={transformFirstSummerYearData(compData.by_first_summer_year)}
-                  height={300}
-                />
-              </div>
-              <ComparisonSummaryTable
-                title="First Summer Year Comparison"
-                primaryYear={currentYear}
-                compareYear={compareYear}
-                primaryData={firstSummerYearData}
-                compareData={transformFirstSummerYearData(compData.by_first_summer_year)}
-              />
-            </>
-          )}
-        </>
-      ) : (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <CssHorizontalBarChart
-            key={`years-${selectedSessionCmId ?? 'all'}`}
-            title={
-              summerYearsData.length > 0
-                ? 'Enrollment by Summers at Camp'
-                : 'Enrollment by Years at Camp'
-            }
-            data={yearsChartData}
-            height={300}
-            breakdownType="years_at_camp"
-            onBarClick={setFilter}
-            footer={<AverageSummersLine average={data.average_summers_at_camp} />}
-          />
-          {firstSummerYearData.length > 0 && (
-            <CssHorizontalBarChart
-              key={`first-year-${selectedSessionCmId ?? 'all'}`}
-              title="Enrollment by First Summer Year"
-              data={firstSummerYearData}
-              height={300}
-              breakdownType="first_summer_year"
-              onBarClick={handleFirstSummerYearClick}
-            />
-          )}
         </div>
-      )}
 
-      {/* Session Details Table */}
-      <div className="card-lodge overflow-hidden" data-tour="reg-overview-session-table">
-        <div className="border-border border-b px-4 py-3">
-          <h3 className="text-foreground text-base font-semibold">Session Details</h3>
-        </div>
-        <div className="overflow-x-auto">
-          <SessionDetailsTable
-            current={sortedBySession}
-            prior={compData?.by_session}
-            isComparing={isComparing}
-            currentYear={currentYear}
-            compareYear={compareYear}
-          />
-        </div>
+        <DefinitionNotes
+          notes={
+            data.average_summers_at_camp != null
+              ? [...OVERVIEW_NOTES, ...TENURE_NOTES]
+              : OVERVIEW_NOTES
+          }
+        />
+
+        {/* Drill-down Modal */}
+        <DrilldownModal />
       </div>
-
-      {data.average_summers_at_camp != null && <DefinitionNotes notes={TENURE_NOTES} />}
-
-      {/* Drill-down Modal */}
-      <DrilldownModal />
-    </div>
+    </MetricsBusy>
   )
 }

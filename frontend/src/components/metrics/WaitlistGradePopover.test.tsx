@@ -104,4 +104,20 @@ describe('WaitlistGradePopover', () => {
     )
     expect(screen.getByText(/Liz S\./)).toBeInTheDocument()
   })
+
+  it('separates a large waitlist count in the header and the partial-list footer', () => {
+    render(
+      <WaitlistGradePopover
+        isOpen={true}
+        anchorRect={{ top: 100, left: 100, width: 50, height: 30 }}
+        grade={4}
+        genderLabel="girls"
+        persons={persons}
+        totalGradeCount={1293}
+        onClose={vi.fn()}
+      />
+    )
+    expect(screen.getByText(/1,293 waitlisted 4th-grade girls/)).toBeInTheDocument()
+    expect(screen.getByText(/Showing 2 of 1,293/)).toBeInTheDocument()
+  })
 })

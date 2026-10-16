@@ -2,7 +2,7 @@
 Unit tests for cancellation timing and session swap detection.
 
 Tests verify:
-- Session swap detection (cancel Session A, enroll in Session B within 1 day)
+- Session swap detection (cancel Session A, enrolled anywhere in the season, no time window: decision 46)
 - True departure detection (cancel with no other enrollment)
 - Time-to-cancellation calculation (days between effective_date and enrollment_date)
 - Time-to-cancellation distribution buckets
@@ -198,6 +198,82 @@ class TestSessionSwapDetection:
 
         assert result.session_swap_count == 0
         assert result.true_departure_count == 1
+
+    @pytest.mark.asyncio
+    async def test_a_late_re_enrollment_is_a_swap_not_a_departure(
+        self, cancellation_service, mock_repository, sample_sessions, sample_persons
+    ):
+        """Decision 46 (#3207): no time window. Cancelling Session 1 and enrolling in
+        Session 2 thirty days later is a swap: the camper is still coming this summer."""
+        session1 = sample_sessions[1001]
+        session2 = sample_sessions[1002]
+        cancelled = [
+            create_mock_attendee(
+                101,
+                session_cm_id=session1.cm_id,
+                session=session1,
+                status="cancelled",
+                enrollment_date="2026-02-15",
+                effective_date="2025-11-10",
+            ),
+        ]
+        enrolled = [
+            create_mock_attendee(
+                101,
+                session_cm_id=session2.cm_id,
+                session=session2,
+                status="enrolled",
+                enrollment_date="2026-03-17",
+                effective_date="2025-11-10",
+            ),
+        ]
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = sample_persons
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: (
+                cancelled if status_filter == ["cancelled", "withdrawn", "dismissed"] else enrolled
+            )
+        )
+
+        result = await cancellation_service.calculate_cancellations(year=2026)
+
+        assert result.session_swap_count == 1
+        assert result.true_departure_count == 0
+
+    @pytest.mark.asyncio
+    async def test_swaps_and_departures_split_exactly_like_still_enrolled(
+        self, cancellation_service, mock_repository, sample_sessions, sample_persons
+    ):
+        """A swap is any cancelled camper with an enrolled record in the season, even one
+        whose dates are missing, so swaps == still enrolled and departures == not enrolled."""
+        s1, s2, s3 = sample_sessions[1001], sample_sessions[1002], sample_sessions[1003]
+        cancelled = [
+            create_mock_attendee(101, session_cm_id=s1.cm_id, session=s1, status="cancelled", enrollment_date=None),
+            create_mock_attendee(
+                102, session_cm_id=s1.cm_id, session=s1, status="withdrawn", enrollment_date="2026-01-05"
+            ),
+            create_mock_attendee(
+                103, session_cm_id=s2.cm_id, session=s2, status="cancelled", enrollment_date="2026-04-01"
+            ),
+        ]
+        enrolled = [
+            create_mock_attendee(101, session_cm_id=s2.cm_id, session=s2, status="enrolled", enrollment_date=None),
+            create_mock_attendee(
+                102, session_cm_id=s3.cm_id, session=s3, status="enrolled", enrollment_date="2026-05-30"
+            ),
+        ]
+        mock_repository.fetch_sessions.return_value = sample_sessions
+        mock_repository.fetch_persons.return_value = sample_persons
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: (
+                cancelled if status_filter == ["cancelled", "withdrawn", "dismissed"] else enrolled
+            )
+        )
+
+        result = await cancellation_service.calculate_cancellations(year=2026)
+
+        assert result.session_swap_count == result.has_other_sessions == 2
+        assert result.true_departure_count == result.no_other_sessions == 1
 
 
 # ============================================================================

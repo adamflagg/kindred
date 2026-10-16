@@ -20035,7 +20035,7 @@ export type YearMetrics = {
   /**
    * Total Cancelled
    *
-   * Total cancelled campers for this year
+   * Campers whose final status is cancelled this year (same count as Overview)
    */
   total_cancelled?: number
   /**
@@ -20047,7 +20047,7 @@ export type YearMetrics = {
   /**
    * Has Cancellation Data
    *
-   * Whether attendee_status_history holds any rows for this year at all. attendee_status_history only began being written in 2026, so prior years have no coverage and total_cancelled/cancellation_rate are unmeasured, not zero -- consumers should render 'no data' rather than the fabricated 0/0.0%.
+   * Whether this year's cancellations were measured. total_cancelled counts campers whose final status is cancelled (decision 10), which every season has, so this is false only when the fetch failed -- consumers render 'no data', never a fabricated 0/0.0%.
    */
   has_cancellation_data?: boolean
 }

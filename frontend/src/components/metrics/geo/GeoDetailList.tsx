@@ -2,6 +2,7 @@
  * GeoDetailList - Scrollable list of locations with counts.
  */
 
+import { formatCount, formatPercent } from '../../../utils/numberFormat'
 import { useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import type { GeoDataItem } from './GeoMap'
@@ -71,7 +72,7 @@ export function GeoDetailList({
             <ChevronRight className="text-muted-foreground h-4 w-4" />
           )}
           <span className="text-foreground font-semibold">{CATEGORY_PLURALS[category]}</span>
-          <span className="text-muted-foreground text-sm">({data.length})</span>
+          <span className="text-muted-foreground text-sm">({formatCount(data.length)})</span>
         </div>
       </button>
 
@@ -141,10 +142,10 @@ export function GeoDetailList({
                         )}
                       </td>
                       <td className="text-foreground px-4 py-2 text-right font-medium">
-                        {item.count}
+                        {formatCount(item.count)}
                       </td>
                       <td className="text-muted-foreground px-4 py-2 text-right">
-                        {item.percentage.toFixed(1)}%
+                        {formatPercent(item.percentage)}
                       </td>
                     </tr>
                   )
@@ -162,7 +163,7 @@ export function GeoDetailList({
               >
                 {showAll
                   ? 'Show less'
-                  : `Show all ${data.length} ${CATEGORY_PLURALS[category].toLowerCase()}`}
+                  : `Show all ${formatCount(data.length)} ${CATEGORY_PLURALS[category].toLowerCase()}`}
               </button>
             </div>
           )}

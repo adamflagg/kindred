@@ -20,6 +20,7 @@ import {
 import { sortRetentionBarData } from '../../utils/retentionTransforms'
 import type { RetentionRateBarItem } from '../../types/metrics'
 import { ChartCard } from './ChartCard'
+import { formatCount, formatPercent } from '../../utils/numberFormat'
 import { calculateVerticalLayout } from './cssChartUtils'
 
 interface RetentionRateLineChartProps {
@@ -50,7 +51,7 @@ export function RetentionRateLineChart({
 
   const chartData: ChartItem[] = sorted.map((d) => ({
     name: d.name,
-    rate: Math.round(d.retentionRate * 100),
+    rate: d.retentionRate * 100,
     baseCount: d.baseCount,
     returnedCount: d.returnedCount,
     id: d.id,
@@ -86,10 +87,11 @@ export function RetentionRateLineChart({
             {tooltipLabelPrefix ? `${tooltipLabelPrefix}${item.name}` : item.name}
           </p>
           <p className="text-muted-foreground text-sm">
-            Retention: <span className="text-primary font-semibold">{item.rate}%</span>
+            Retention:{' '}
+            <span className="text-primary font-semibold">{formatPercent(item.rate)}</span>
           </p>
           <p className="text-muted-foreground text-sm">
-            {item.returnedCount} of {item.baseCount} returned
+            {formatCount(item.returnedCount)} of {formatCount(item.baseCount)} returned
           </p>
         </div>
       )
@@ -141,7 +143,7 @@ export function RetentionRateLineChart({
               position="top"
               className="text-xs"
               fill="hsl(var(--muted-foreground))"
-              formatter={(value) => `${value}%`}
+              formatter={(value) => formatPercent(Number(value))}
             />
           </Line>
         </LineChart>

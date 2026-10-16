@@ -8,6 +8,7 @@
 
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react'
 import { mergeDataForComparison } from '../../utils/comparisonUtils'
+import { formatCount, formatSignedCount, formatSignedPercent } from '../../utils/numberFormat'
 
 interface DataItem {
   name: string
@@ -124,8 +125,12 @@ export function ComparisonSummaryTable({
                       </span>
                     )}
                   </td>
-                  <td className="text-foreground px-4 py-3 text-right">{row.primaryValue}</td>
-                  <td className="text-foreground px-4 py-3 text-right">{row.compareValue}</td>
+                  <td className="text-foreground px-4 py-3 text-right">
+                    {formatCount(row.primaryValue)}
+                  </td>
+                  <td className="text-foreground px-4 py-3 text-right">
+                    {formatCount(row.compareValue)}
+                  </td>
                   <td className={`px-4 py-3 text-right ${changeClass}`}>
                     <span className="flex items-center justify-end gap-1">
                       {isNew ? (
@@ -139,12 +144,10 @@ export function ComparisonSummaryTable({
                       ) : (
                         <>
                           <Icon className="h-4 w-4" />
-                          {row.change > 0 ? '+' : ''}
-                          {row.change}
+                          {formatSignedCount(row.change)}
                           {row.changePercent !== null && (
                             <span className="text-muted-foreground ml-0.5 text-xs">
-                              ({row.changePercent > 0 ? '+' : ''}
-                              {row.changePercent.toFixed(1)}%)
+                              ({formatSignedPercent(row.changePercent)})
                             </span>
                           )}
                         </>

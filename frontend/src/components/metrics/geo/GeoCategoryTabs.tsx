@@ -2,6 +2,7 @@
  * GeoCategoryTabs - Tab selector for City/School/Synagogue views.
  */
 
+import { formatCount } from '../../../utils/numberFormat'
 import clsx from 'clsx'
 import { MapPin, Building2, Heart } from 'lucide-react'
 
@@ -57,7 +58,7 @@ export function GeoCategoryTabs({
                 isActive ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
               )}
             >
-              {count}
+              {formatCount(count)}
             </span>
           </button>
         )

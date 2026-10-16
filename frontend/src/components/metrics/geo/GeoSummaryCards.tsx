@@ -2,6 +2,7 @@
  * GeoSummaryCards - Summary statistics for geographic distribution.
  */
 
+import { formatCount, formatPercent } from '../../../utils/numberFormat'
 import { MapPin, Building2, Heart, TrendingUp } from 'lucide-react'
 
 interface GeoSummaryCardsProps {
@@ -33,7 +34,7 @@ export function GeoSummaryCards({
             <MapPin className="h-5 w-5 text-blue-500" />
           </div>
           <div>
-            <div className="text-foreground text-2xl font-bold">{cityCount}</div>
+            <div className="text-foreground text-2xl font-bold">{formatCount(cityCount)}</div>
             <div className="text-muted-foreground text-sm">Cities</div>
           </div>
         </div>
@@ -46,7 +47,7 @@ export function GeoSummaryCards({
             <Building2 className="h-5 w-5 text-emerald-500" />
           </div>
           <div>
-            <div className="text-foreground text-2xl font-bold">{schoolCount}</div>
+            <div className="text-foreground text-2xl font-bold">{formatCount(schoolCount)}</div>
             <div className="text-muted-foreground text-sm">Schools</div>
           </div>
         </div>
@@ -59,7 +60,7 @@ export function GeoSummaryCards({
             <Heart className="h-5 w-5 text-amber-500" />
           </div>
           <div>
-            <div className="text-foreground text-2xl font-bold">{synagogueCount}</div>
+            <div className="text-foreground text-2xl font-bold">{formatCount(synagogueCount)}</div>
             <div className="text-muted-foreground text-sm">Synagogues</div>
           </div>
         </div>
@@ -77,7 +78,7 @@ export function GeoSummaryCards({
                 {topLocation.name}
               </div>
               <div className="text-muted-foreground text-sm">
-                {topLocation.percentage.toFixed(0)}% of campers
+                {formatPercent(topLocation.percentage)} of campers
               </div>
             </div>
           </div>

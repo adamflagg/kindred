@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo } from 'react'
+import { formatCount } from '../../../utils/numberFormat'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import {
@@ -122,7 +123,7 @@ function SessionRow({
           >
             {wlCount > 0 && (
               <span className="text-[10px] font-bold text-amber-800 dark:text-amber-400">
-                {wlCount}
+                {formatCount(wlCount)}
               </span>
             )}
           </td>
@@ -149,7 +150,7 @@ function SessionRow({
               )
             }
           >
-            {genderData.waitlisted}
+            {formatCount(genderData.waitlisted)}
           </button>
         ) : (
           <span className="text-muted-foreground">&mdash;</span>
@@ -205,7 +206,7 @@ function AGSessionRow({
           >
             {wlCount > 0 && (
               <span className="text-[10px] font-bold text-amber-800 dark:text-amber-400">
-                {wlCount}
+                {formatCount(wlCount)}
               </span>
             )}
           </td>
@@ -224,7 +225,7 @@ function AGSessionRow({
               onCellClick?.(session.session_cm_id, session.session_name, '', '', session.waitlisted)
             }
           >
-            {session.waitlisted}
+            {formatCount(session.waitlisted)}
           </button>
         ) : (
           <span className="text-muted-foreground">&mdash;</span>
@@ -274,7 +275,7 @@ function TeenSessionRow({
           >
             {wlCount > 0 && (
               <span className="text-[10px] font-bold text-amber-800 dark:text-amber-400">
-                {wlCount}
+                {formatCount(wlCount)}
               </span>
             )}
           </td>
@@ -291,7 +292,7 @@ function TeenSessionRow({
             onMouseLeave={() => onLeave?.()}
             onClick={() => onTeenCellClick?.(session.session_type, session.session_name)}
           >
-            {session.waitlisted}
+            {formatCount(session.waitlisted)}
           </button>
         ) : (
           <span className="text-muted-foreground">&mdash;</span>
@@ -415,7 +416,7 @@ export default function SessionAvailability() {
   const { currentYear } = useCurrentYear()
   const { selectedSessionCmId, sessionTypesParam, activeSessionTypes, durationParam } =
     useMetricsSession()
-  const { data, isLoading, error } = useSessionAvailability(
+  const { data, isLoading, error, refetch, isPlaceholderData } = useSessionAvailability(
     currentYear,
     sessionTypesParam,
     selectedSessionCmId ?? undefined,
@@ -529,6 +530,9 @@ export default function SessionAvailability() {
 
   return (
     <MetricsQueryGuard
+      onRetry={() => void refetch()}
+      isPlaceholderData={isPlaceholderData}
+      loadingLabel={String(currentYear)}
       isLoading={isLoading}
       error={error}
       data={data}

@@ -6,6 +6,7 @@
  * Uses OpenStreetMap tiles with CartoDB Positron styling for a clean look.
  */
 
+import { formatCount, formatPercent } from '../../../utils/numberFormat'
 import { useEffect, useRef, useMemo } from 'react'
 import { MapContainer, TileLayer, CircleMarker, Tooltip, useMap } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -204,8 +205,8 @@ export function GeoMap({
                   <Tooltip direction="top" offset={[0, -radius]} opacity={0.95}>
                     <div className="text-sm font-medium">{item.name}</div>
                     <div className="text-xs text-gray-600">
-                      {item.count} camper{item.count !== 1 ? 's' : ''} ({item.percentage.toFixed(1)}
-                      %)
+                      {formatCount(item.count)} camper{item.count !== 1 ? 's' : ''} (
+                      {formatPercent(item.percentage)})
                     </div>
                   </Tooltip>
                 </CircleMarker>

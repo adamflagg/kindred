@@ -3,6 +3,7 @@
  */
 
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { formatCount, formatSignedCount, formatSignedPercent } from '../../utils/numberFormat'
 
 interface ComparisonRow {
   label: string
@@ -40,10 +41,9 @@ export function ComparisonTable({
 
   const formatChange = (change: number | undefined, percent?: number) => {
     if (change === undefined) return ''
-    const sign = change > 0 ? '+' : ''
-    const changeStr = `${sign}${change}`
+    const changeStr = formatSignedCount(change)
     if (percent !== undefined) {
-      return `${changeStr} (${sign}${percent.toFixed(1)}%)`
+      return `${changeStr} (${formatSignedPercent(percent)})`
     }
     return changeStr
   }
@@ -79,8 +79,8 @@ export function ComparisonTable({
                 className="border-border hover:bg-muted/20 border-b transition-colors last:border-0"
               >
                 <td className="text-foreground px-4 py-3 font-medium">{row.label}</td>
-                <td className="text-foreground px-4 py-3 text-right">{row.yearA}</td>
-                <td className="text-foreground px-4 py-3 text-right">{row.yearB}</td>
+                <td className="text-foreground px-4 py-3 text-right">{formatCount(row.yearA)}</td>
+                <td className="text-foreground px-4 py-3 text-right">{formatCount(row.yearB)}</td>
                 <td className={`px-4 py-3 text-right ${getChangeClass(row.change)}`}>
                   <span className="flex items-center justify-end gap-1">
                     {getTrendIcon(row.change)}

@@ -222,4 +222,15 @@ describe('GeoMap multi-layer', () => {
     const markers = screen.queryAllByTestId('circle-marker')
     expect(markers).toHaveLength(0)
   })
+
+  it('writes the marker tooltip count with a separator and the share to one decimal', () => {
+    render(
+      <GeoMap
+        layers={[
+          { category: 'city', data: [{ name: 'San Francisco', count: 1293, percentage: 67.94 }] },
+        ]}
+      />
+    )
+    expect(screen.getByText(/1,293 campers/)).toHaveTextContent('1,293 campers (67.9%)')
+  })
 })

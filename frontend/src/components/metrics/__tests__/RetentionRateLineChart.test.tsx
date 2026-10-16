@@ -1,11 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import { cloneElement, type ReactElement } from 'react'
 import { RetentionRateLineChart } from '../RetentionRateLineChart'
 import type { RetentionRateBarItem } from '../../../types/metrics'
 
 // Capture activeDot click handler
 let capturedActiveDotClick: ((props: unknown) => void) | undefined
 let capturedStrokeLinecap: string | undefined
+let capturedLabelFormatter: ((v: unknown) => string) | undefined
 
 // Mock recharts to avoid canvas/SVG rendering in jsdom
 vi.mock('recharts', () => ({
@@ -18,9 +20,11 @@ vi.mock('recharts', () => ({
   Line: ({
     activeDot,
     strokeLinecap,
+    children,
   }: {
     activeDot?: { onClick?: (props: unknown) => void }
     strokeLinecap?: string
+    children?: React.ReactNode
   }) => {
     capturedActiveDotClick = activeDot?.onClick
     capturedStrokeLinecap = strokeLinecap
@@ -35,17 +39,26 @@ vi.mock('recharts', () => ({
             payload: { name: 'Grade 5', rate: 75, baseCount: 80, returnedCount: 60 },
           })
         }
-      />
+      >
+        {children}
+      </button>
     ) : (
-      <div data-testid="line-dot" />
+      <div data-testid="line-dot">{children}</div>
     )
   },
   XAxis: () => null,
   YAxis: () => null,
   CartesianGrid: () => null,
-  Tooltip: () => null,
+  Tooltip: ({ content }: { content: ReactElement }) =>
+    cloneElement(content as ReactElement<Record<string, unknown>>, {
+      active: true,
+      payload: [{ payload: { name: 'Grade 5', rate: 67.9, baseCount: 1293, returnedCount: 878 } }],
+    }),
   ReferenceLine: () => null,
-  LabelList: () => null,
+  LabelList: ({ formatter }: { formatter?: (v: unknown) => string }) => {
+    capturedLabelFormatter = formatter
+    return null
+  },
 }))
 
 const sampleData: RetentionRateBarItem[] = [
@@ -59,6 +72,7 @@ describe('RetentionRateLineChart', () => {
   beforeEach(() => {
     capturedActiveDotClick = undefined
     capturedStrokeLinecap = undefined
+    capturedLabelFormatter = undefined
   })
 
   it('renders the title', () => {
@@ -110,6 +124,23 @@ describe('RetentionRateLineChart', () => {
     it('passes strokeLinecap="round" to Line for flicker prevention', () => {
       render(<RetentionRateLineChart data={sampleData} title="Animation Test" />)
       expect(capturedStrokeLinecap).toBe('round')
+    })
+  })
+
+  describe('number format', () => {
+    const precise: RetentionRateBarItem[] = [
+      { name: 'Grade 5', retentionRate: 0.679, baseCount: 1293, returnedCount: 878 },
+    ]
+
+    it('writes the tooltip rate to one decimal and the counts with separators', () => {
+      render(<RetentionRateLineChart data={precise} title="Number format" />)
+      expect(screen.getByText('67.9%')).toBeInTheDocument()
+      expect(screen.getByText('878 of 1,293 returned')).toBeInTheDocument()
+    })
+
+    it('labels each dot with the rate to one decimal', () => {
+      render(<RetentionRateLineChart data={precise} title="Number format" />)
+      expect(capturedLabelFormatter?.(67.94)).toBe('67.9%')
     })
   })
 })

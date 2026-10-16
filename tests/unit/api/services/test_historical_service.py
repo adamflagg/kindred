@@ -98,6 +98,24 @@ def _make_repo_with_defaults() -> MagicMock:
     return repo
 
 
+def _route_attendees(
+    repo: MagicMock,
+    enrolled_by_year: dict[int, list[Any]],
+    cancelled_by_year: dict[int, list[Any]],
+) -> None:
+    """fetch_attendees answers by status: "cancelled" gets the cancelled list, else enrolled."""
+
+    async def fetch_attendees(year: int, status_filter: Any = None, **_: Any) -> list[Any]:
+        source = cancelled_by_year if status_filter == "cancelled" else enrolled_by_year
+        return source.get(year, [])
+
+    repo.fetch_attendees = AsyncMock(side_effect=fetch_attendees)
+
+
+def _calls(repo: MagicMock) -> list[Any]:
+    return list(repo.fetch_attendees.call_args_list)
+
+
 # ============================================================================
 # TestHistoricalServiceFromAttendees - Core: uses attendees+persons, NOT camper_history
 # ============================================================================
@@ -269,22 +287,21 @@ class TestHistoricalServiceFromAttendees:
         assert result.years[0].total_enrolled == 1
 
     @pytest.mark.asyncio
-    async def test_cancellation_rate_from_status_transitions(self, mock_repository: MagicMock) -> None:
-        """Cancellation count is derived from fetch_status_transitions, distinct persons."""
+    async def test_cancelled_count_is_final_status_not_status_history(self, mock_repository: MagicMock) -> None:
+        """Decision 10 (#3207): Trends counts campers whose FINAL status is cancelled,
+        matching Overview. Status-history transitions are not the source any more."""
         from api.services.historical_service import HistoricalService
 
-        attendees = [make_mock_attendee(1001, 5001)]
-        persons = {1001: make_mock_person(1001, "M")}
         sessions = {5001: make_mock_session(5001, "Session 1")}
-        transitions = [make_mock_transition(2001 + i, 5001) for i in range(5)]
-
-        mock_repository.fetch_attendees = AsyncMock(return_value=attendees)
-        mock_repository.fetch_persons = AsyncMock(return_value=persons)
+        enrolled = [make_mock_attendee(1001, 5001)]
+        cancelled = [make_mock_attendee(2001 + i, 5001) for i in range(5)]
+        _route_attendees(mock_repository, {2025: enrolled}, {2025: cancelled})
+        mock_repository.fetch_persons = AsyncMock(return_value={1001: make_mock_person(1001, "M")})
         mock_repository.fetch_sessions = AsyncMock(return_value=sessions)
-        mock_repository.fetch_status_transitions = AsyncMock(return_value=transitions)
+        # A status history that disagrees must not move the number.
+        mock_repository.fetch_status_transitions = AsyncMock(return_value=[make_mock_transition(3001, 5001)])
 
-        service = HistoricalService(mock_repository)
-        result = await service.calculate_historical_trends(years=[2025])
+        result = await HistoricalService(mock_repository).calculate_historical_trends(years=[2025])
 
         year_metric = result.years[0]
         assert year_metric.total_cancelled == 5
@@ -292,89 +309,50 @@ class TestHistoricalServiceFromAttendees:
         assert abs(year_metric.cancellation_rate - 83.33) < 0.01
 
     @pytest.mark.asyncio
-    async def test_cancellation_count_dedupes_by_person_not_rows(self, mock_repository: MagicMock) -> None:
-        """A person with two cancellation transition rows in a year counts once.
-
-        Regression test for #2434 grain mismatch: the fallback used to return
-        len(transitions) (rows), inflating the count above the distinct-person
-        denominator it was divided against.
-        """
+    async def test_cancelled_reads_the_cancelled_status_only_like_overview(self, mock_repository: MagicMock) -> None:
+        """Overview's Total Cancelled fetches status "cancelled" alone (withdrawn and
+        dismissed are not in it), so Trends asks the repository for the same."""
         from api.services.historical_service import HistoricalService
 
-        attendees = [make_mock_attendee(1001, 5001)]
-        persons = {1001: make_mock_person(1001, "M")}
-        sessions = {5001: make_mock_session(5001, "Session 1")}
-        # Person 3001 cancelled out of two different sessions the same year —
-        # two rows, one person.
-        transitions = [
-            make_mock_transition(3001, 5001),
-            make_mock_transition(3001, 5002),
-        ]
+        mock_repository.fetch_sessions = AsyncMock(return_value={5001: make_mock_session(5001, "Session 1")})
+        _route_attendees(mock_repository, {2025: []}, {2025: [make_mock_attendee(7, 5001)]})
 
-        mock_repository.fetch_attendees = AsyncMock(return_value=attendees)
-        mock_repository.fetch_persons = AsyncMock(return_value=persons)
+        await HistoricalService(mock_repository).calculate_historical_trends(years=[2025])
+
+        statuses = [c.args[1] if len(c.args) > 1 else c.kwargs.get("status_filter") for c in _calls(mock_repository)]
+        assert "cancelled" in statuses
+        assert not any(isinstance(s, list) for s in statuses)
+
+    @pytest.mark.asyncio
+    async def test_cancellation_count_dedupes_by_person_not_rows(self, mock_repository: MagicMock) -> None:
+        """A camper cancelled out of two sessions in a year counts once (#2434 grain)."""
+        from api.services.historical_service import HistoricalService
+
+        sessions = {5001: make_mock_session(5001, "Session 1"), 5002: make_mock_session(5002, "Session 2")}
+        cancelled = [make_mock_attendee(3001, 5001), make_mock_attendee(3001, 5002, "Session 2")]
+        _route_attendees(mock_repository, {2025: [make_mock_attendee(1001, 5001)]}, {2025: cancelled})
         mock_repository.fetch_sessions = AsyncMock(return_value=sessions)
-        mock_repository.fetch_status_transitions = AsyncMock(return_value=transitions)
 
-        service = HistoricalService(mock_repository)
-        result = await service.calculate_historical_trends(years=[2025])
+        result = await HistoricalService(mock_repository).calculate_historical_trends(years=[2025])
 
         assert result.years[0].total_cancelled == 1
 
     @pytest.mark.asyncio
     async def test_cancellation_count_scoped_to_session_types(self, mock_repository: MagicMock) -> None:
-        """Cancellations outside the requested session_types are excluded.
-
-        Regression test for #2434 scope mismatch: the fallback counted every
-        cancellation regardless of session_types, against a denominator that
-        was already type-scoped.
-        """
+        """Cancellations outside the requested session_types are excluded (#2434 scope)."""
         from api.services.historical_service import HistoricalService
 
-        attendees = [make_mock_attendee(1001, 5001, "Session 1", "main")]
-        persons = {1001: make_mock_person(1001, "M")}
-        sessions = {5001: make_mock_session(5001, "Session 1", "main")}
-        transitions = [
-            make_mock_transition(3001, 5001, session_type="main"),
-            make_mock_transition(3002, 5002, session_type="family"),  # out of scope
-        ]
-
-        mock_repository.fetch_attendees = AsyncMock(return_value=attendees)
-        mock_repository.fetch_persons = AsyncMock(return_value=persons)
+        sessions = {
+            5001: make_mock_session(5001, "Session 1", "main"),
+            5002: make_mock_session(5002, "Family Camp 1", "family"),
+        }
+        cancelled = [make_mock_attendee(3001, 5001), make_mock_attendee(3002, 5002, "Family Camp 1", "family")]
+        _route_attendees(mock_repository, {2025: [make_mock_attendee(1001, 5001)]}, {2025: cancelled})
         mock_repository.fetch_sessions = AsyncMock(return_value=sessions)
-        mock_repository.fetch_status_transitions = AsyncMock(return_value=transitions)
 
-        service = HistoricalService(mock_repository)
-        result = await service.calculate_historical_trends(years=[2025], session_types=["main"])
-
-        assert result.years[0].total_cancelled == 1
-
-    @pytest.mark.asyncio
-    async def test_phantom_fetch_cancellation_count_is_ignored(self, mock_repository: MagicMock) -> None:
-        """A repo that also happens to define fetch_cancellation_count is not consulted.
-
-        Regression test for #2434: the service used to hasattr()-probe for a
-        method no repository implementation defines, so the branch was dead in
-        production and only ever exercised by a test double. That probe/branch
-        must be gone — fetch_status_transitions is the only path now.
-        """
-        from api.services.historical_service import HistoricalService
-
-        attendees = [make_mock_attendee(1001, 5001)]
-        persons = {1001: make_mock_person(1001, "M")}
-        sessions = {5001: make_mock_session(5001, "Session 1")}
-        transitions = [make_mock_transition(3001, 5001)]
-
-        mock_repository.fetch_attendees = AsyncMock(return_value=attendees)
-        mock_repository.fetch_persons = AsyncMock(return_value=persons)
-        mock_repository.fetch_sessions = AsyncMock(return_value=sessions)
-        mock_repository.fetch_status_transitions = AsyncMock(return_value=transitions)
-        # If the service still probed for this, it would use 999 instead of
-        # the real status-transitions count of 1.
-        mock_repository.fetch_cancellation_count = AsyncMock(return_value=999)
-
-        service = HistoricalService(mock_repository)
-        result = await service.calculate_historical_trends(years=[2025])
+        result = await HistoricalService(mock_repository).calculate_historical_trends(
+            years=[2025], session_types=["main"]
+        )
 
         assert result.years[0].total_cancelled == 1
 
@@ -819,126 +797,87 @@ class TestHistoricalServiceSessionFiltering:
 
 
 # ============================================================================
-# TestCancellationDataCoverage - #2443: distinguish no-coverage years from
-# measured-zero years. attendee_status_history holds rows for only one year
-# in production; other years in the trend window must be flagged as
-# uncovered rather than rendering a fabricated 0 / 0.0%.
+# TestCancellationDataCoverage - every year is measured now (decision 10). The
+# final status exists for every season, so a year is uncovered only when the
+# cancelled fetch itself failed (#2443: never report a failure as a measured 0).
 # ============================================================================
 
 
 class TestCancellationDataCoverage:
-    """has_cancellation_data reflects whether attendee_status_history has ANY
-    rows for that year -- not filtered by session_types or status, because
-    coverage is a year-level fact (per the issue's suggested fix)."""
-
     @pytest.fixture
     def mock_repository(self) -> MagicMock:
         return _make_repo_with_defaults()
 
     @pytest.mark.asyncio
-    async def test_has_cancellation_data_false_when_no_history_rows(self, mock_repository: MagicMock) -> None:
-        """A year with zero attendee_status_history rows is uncovered, not zero."""
-        from api.services.historical_service import HistoricalService
-
-        mock_repository.fetch_status_history = AsyncMock(return_value=[])
-
-        service = HistoricalService(mock_repository)
-        result = await service.calculate_historical_trends(years=[2022])
-
-        assert result.years[0].has_cancellation_data is False
-
-    @pytest.mark.asyncio
-    async def test_has_cancellation_data_true_when_history_rows_exist(self, mock_repository: MagicMock) -> None:
-        """A year with any attendee_status_history rows is covered, even if
-        none of those rows are cancellations -- coverage != cancellation count."""
-        from api.services.historical_service import HistoricalService
-
-        # Only an "enrolled" transition -- no cancellations at all this year,
-        # but the table DOES have rows, so this is a measured zero, not a gap.
-        history_row = make_mock_transition(9001, 5001, new_status="enrolled")
-
-        mock_repository.fetch_status_history = AsyncMock(return_value=[history_row])
-        mock_repository.fetch_status_transitions = AsyncMock(return_value=[])
-
-        service = HistoricalService(mock_repository)
-        result = await service.calculate_historical_trends(years=[2026])
-
-        assert result.years[0].has_cancellation_data is True
-        assert result.years[0].total_cancelled == 0
-
-    @pytest.mark.asyncio
-    async def test_coverage_probe_called_per_year_unfiltered(self, mock_repository: MagicMock) -> None:
-        """fetch_status_history is called with the year alone (both status
-        filters left at their defaults) -- the year-level coverage question,
-        not a filtered one. Do NOT add a new repository method (see #2443)."""
-        from api.services.historical_service import HistoricalService
-
-        mock_repository.fetch_status_history = AsyncMock(return_value=[])
-
-        service = HistoricalService(mock_repository)
-        await service.calculate_historical_trends(years=[2023, 2024])
-
-        calls = mock_repository.fetch_status_history.call_args_list
-        called_years = {c.args[0] if c.args else c.kwargs.get("year") for c in calls}
-        assert called_years == {2023, 2024}
-        for c in calls:
-            # No positional/keyword status filters -- year alone.
-            assert len(c.args) <= 1
-            assert "old_status" not in c.kwargs
-            assert "new_statuses" not in c.kwargs
-
-    @pytest.mark.asyncio
-    async def test_coverage_independent_per_year(self, mock_repository: MagicMock) -> None:
-        """Each year's coverage flag is independent -- 2026 covered, 2022 not."""
-        from api.services.historical_service import HistoricalService
-
-        async def mock_fetch_status_history(year: int, old_status: Any = None, new_statuses: Any = None) -> list[Any]:
-            return [make_mock_transition(9001, 5001)] if year == 2026 else []
-
-        mock_repository.fetch_status_history = AsyncMock(side_effect=mock_fetch_status_history)
-
-        service = HistoricalService(mock_repository)
-        result = await service.calculate_historical_trends(years=[2022, 2026])
-
-        year_dict = {y.year: y for y in result.years}
-        assert year_dict[2022].has_cancellation_data is False
-        assert year_dict[2026].has_cancellation_data is True
-
-    @pytest.mark.asyncio
-    async def test_coverage_false_when_cancellation_fetch_fails_even_if_history_probe_succeeds(
+    async def test_a_year_with_no_status_history_still_counts_its_cancellations(
         self, mock_repository: MagicMock
     ) -> None:
-        """A failed fetch_status_transitions must NOT be reported as a
-        confidently-measured zero cancellation count.
-
-        Regression test (scan-it finding on #2443's own PR): coverage was
-        wired to a separate probe (fetch_status_history) from the count
-        (fetch_status_transitions). A repository fetch error was already
-        swallowed to total_cancelled=0 (pre-existing) -- but adding
-        has_cancellation_data without tying it to that same failure makes
-        the wrong number look MORE trustworthy, not less: has_cancellation_data
-        would read True (the unrelated history probe succeeded) while the
-        cancellation count itself was never actually measured this call.
-        """
+        """Status history starts in 2026; 2022's cancellations still read from final status."""
         from api.services.historical_service import HistoricalService
 
-        async def failing_fetch_status_transitions(year: int, statuses: Any) -> list[Any]:
-            raise RuntimeError("simulated repository failure")
-
-        mock_repository.fetch_status_transitions = AsyncMock(side_effect=failing_fetch_status_transitions)
-        # The unrelated year-level coverage probe succeeds and has rows.
-        mock_repository.fetch_status_history = AsyncMock(
-            return_value=[make_mock_transition(9001, 5001, new_status="enrolled")]
+        mock_repository.fetch_sessions = AsyncMock(return_value={5001: make_mock_session(5001, "Session 1")})
+        _route_attendees(
+            mock_repository,
+            {2022: [make_mock_attendee(1, 5001)], 2026: [make_mock_attendee(1, 5001)]},
+            {2022: [make_mock_attendee(2, 5001), make_mock_attendee(3, 5001)], 2026: [make_mock_attendee(4, 5001)]},
         )
+        mock_repository.fetch_status_history = AsyncMock(return_value=[])
 
-        service = HistoricalService(mock_repository)
-        result = await service.calculate_historical_trends(years=[2026])
+        result = await HistoricalService(mock_repository).calculate_historical_trends(years=[2022, 2026])
+
+        by_year = {y.year: y for y in result.years}
+        assert by_year[2022].total_cancelled == 2
+        assert by_year[2022].has_cancellation_data is True
+        assert by_year[2026].total_cancelled == 1
+        assert by_year[2026].has_cancellation_data is True
+
+    @pytest.mark.asyncio
+    async def test_coverage_false_when_the_cancelled_fetch_fails(self, mock_repository: MagicMock) -> None:
+        """A failed fetch must not be reported as a confidently-measured zero."""
+        from api.services.historical_service import HistoricalService
+
+        enrolled = [make_mock_attendee(1, 5001)]
+
+        async def fetch_attendees(year: int, status_filter: Any = None, **_: Any) -> list[Any]:
+            if status_filter == "cancelled":
+                raise RuntimeError("PocketBase unavailable")
+            return enrolled
+
+        mock_repository.fetch_sessions = AsyncMock(return_value={5001: make_mock_session(5001, "Session 1")})
+        mock_repository.fetch_attendees = AsyncMock(side_effect=fetch_attendees)
+
+        result = await HistoricalService(mock_repository).calculate_historical_trends(years=[2025])
 
         year_metric = result.years[0]
-        # The cancellation count was never actually measured this call --
-        # the flag must say so, not present total_cancelled=0 as trustworthy.
         assert year_metric.has_cancellation_data is False
         assert year_metric.total_cancelled == 0
+        assert year_metric.total_enrolled == 1
+
+    @pytest.mark.asyncio
+    async def test_a_failed_cancelled_fetch_is_logged(
+        self, mock_repository: MagicMock, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """The unmeasured year must leave a trace: the repository does not log the failure itself."""
+        import logging
+
+        from api.services.historical_service import HistoricalService
+
+        async def fetch_attendees(year: int, status_filter: Any = None, **_: Any) -> list[Any]:
+            if status_filter == "cancelled":
+                raise RuntimeError("PocketBase unavailable")
+            return [make_mock_attendee(1, 5001)]
+
+        mock_repository.fetch_sessions = AsyncMock(return_value={5001: make_mock_session(5001, "Session 1")})
+        mock_repository.fetch_attendees = AsyncMock(side_effect=fetch_attendees)
+
+        with caplog.at_level(logging.WARNING, logger="api.services.historical_service"):
+            await HistoricalService(mock_repository).calculate_historical_trends(years=[2025])
+
+        failures = [r for r in caplog.records if r.name == "api.services.historical_service"]
+        assert len(failures) == 1
+        assert failures[0].levelno == logging.WARNING
+        assert "2025" in failures[0].getMessage()
+        assert failures[0].exc_info is not None
 
 
 # ============================================================================
@@ -949,9 +888,9 @@ class TestCancellationDataCoverage:
 def _year_repo(
     sessions_by_year: dict[int, dict[int, Any]],
     attendees_by_year: dict[int, list[Any]],
-    transitions_by_year: dict[int, list[Any]] | None = None,
+    cancelled_by_year: dict[int, list[Any]] | None = None,
 ) -> MagicMock:
-    """Repo whose per-year data is keyed by the requested year."""
+    """Repo whose per-year data is keyed by the requested year; cancelled = final status."""
     repo = _make_repo_with_defaults()
     all_persons = {i: make_mock_person(i, "M") for i in range(1, 400)}
 
@@ -961,13 +900,9 @@ def _year_repo(
             return sessions
         return {k: v for k, v in sessions.items() if v.session_type in session_types}
 
-    async def fetch_transitions(year: int, statuses: Any = None) -> list[Any]:
-        return (transitions_by_year or {}).get(year, [])
-
     repo.fetch_sessions = AsyncMock(side_effect=fetch_sessions)
-    repo.fetch_attendees = AsyncMock(side_effect=lambda y, *a, **k: attendees_by_year.get(y, []))
+    _route_attendees(repo, attendees_by_year, cancelled_by_year or {})
     repo.fetch_persons = AsyncMock(return_value=all_persons)
-    repo.fetch_status_transitions = AsyncMock(side_effect=fetch_transitions)
     return repo
 
 
@@ -1014,9 +949,8 @@ class TestHistoricalSessionResolver:
                 2026: {1000802: make_mock_session(1000802, "Taste of Camp 1")},
             },
             {2025: [make_mock_attendee(1, 1000103, "Taste of Camp")], 2026: []},
-            {2025: [make_mock_transition(10, 1000103), make_mock_transition(11, 1000101)]},
+            {2025: [make_mock_attendee(10, 1000103, "Taste of Camp"), make_mock_attendee(11, 1000101)]},
         )
-        repo.fetch_status_history = AsyncMock(return_value=[make_mock_transition(10, 1000103)])
 
         result = await HistoricalService(repo).calculate_historical_trends(
             years=[2025, 2026], session_types=["main"], session_cm_id=1000802
@@ -1097,11 +1031,11 @@ class TestHistoricalSessionResolver:
             make_mock_attendee(4, 4, "B'nai Mitzvah", "bmitzvah"),
             make_mock_attendee(5, 5, "Hebrew", "hebrew"),
         ]
-        transitions = [make_mock_transition(2, 2, "family"), make_mock_transition(1, 1)]
+        cancelled = [make_mock_attendee(2, 2, "Family Camp", "family"), make_mock_attendee(1, 1)]
 
         for kwargs in ({}, {"session_types": ["main", "family", "adult"]}, {"session_cm_id": 2}):
-            clean = _year_repo({2025: sessions}, {2025: summer_only}, {2025: [make_mock_transition(1, 1)]})
-            dirty = _year_repo({2025: sessions}, {2025: summer_only + extras}, {2025: transitions})
+            clean = _year_repo({2025: sessions}, {2025: summer_only}, {2025: [make_mock_attendee(1, 1)]})
+            dirty = _year_repo({2025: sessions}, {2025: summer_only + extras}, {2025: cancelled})
             a = await HistoricalService(clean).calculate_historical_trends(years=[2025], **kwargs)
             b = await HistoricalService(dirty).calculate_historical_trends(years=[2025], **kwargs)
             assert a.years[0].total_enrolled == b.years[0].total_enrolled, kwargs

@@ -22,7 +22,10 @@ export default function BunkRetentionPage() {
   const priorYear = currentYear - 1
 
   // No session filter params — always unfiltered
-  const { data, isLoading, error } = useRetentionMetrics(priorYear, currentYear)
+  const { data, isLoading, error, refetch, isPlaceholderData } = useRetentionMetrics(
+    priorYear,
+    currentYear
+  )
 
   const { data: bunkStaffData } = useBunkStaff(priorYear)
   const sessionDateLookup = useMemo(() => buildSessionDateLookup(campSessions), [campSessions])
@@ -43,6 +46,9 @@ export default function BunkRetentionPage() {
       </div>
 
       <MetricsQueryGuard
+        onRetry={() => void refetch()}
+        isPlaceholderData={isPlaceholderData}
+        loadingLabel={String(currentYear)}
         isLoading={isLoading}
         error={error}
         data={data}

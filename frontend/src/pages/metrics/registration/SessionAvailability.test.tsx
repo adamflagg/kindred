@@ -1074,4 +1074,27 @@ describe('SessionAvailability', () => {
     expect(agWrapper).toHaveClass('lg:col-span-3')
     expect(screen.queryByText(/teen programs/i)).not.toBeInTheDocument()
   })
+
+  it('separates large waitlist counts in the grade cell and the WL pill (decision 43)', async () => {
+    const [first, second] = mockAvailabilityResponse.sessions
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        ...mockAvailabilityResponse,
+        sessions: [
+          first,
+          {
+            ...second,
+            girls: { ...second!.girls, waitlisted: 1234, waitlisted_by_grade: { 5: 1234 } },
+          },
+        ],
+      }),
+    })
+
+    renderWithProviders(<SessionAvailability />)
+
+    await waitFor(() => {
+      expect(screen.getAllByText('1,234')).toHaveLength(2)
+    })
+  })
 })

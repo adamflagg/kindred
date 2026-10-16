@@ -299,3 +299,43 @@ describe('TrendsOverview — First Summer Year earliest bucket (#3207 36b)', () 
     expect(screen.queryByText(/^2017$/)).toBeNull()
   })
 })
+
+describe('TrendsOverview — numbered notes and number formatting (decisions 11, 43)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockMetricsSession.includeTeenPipeline = false
+    vi.mocked(useRetentionTrends).mockReturnValue(
+      mockRetentionTrends as unknown as ReturnType<typeof useRetentionTrends>
+    )
+    vi.mocked(useHistoricalTrends).mockReturnValue({
+      data: {
+        years: [
+          { ...mockHistoricalYear, year: 2025, total_enrolled: 2390, total_cancelled: 1208 },
+          { ...mockHistoricalYear, year: 2026, total_enrolled: 1134, total_cancelled: 172 },
+        ],
+      },
+      isLoading: false,
+      error: null,
+    } as unknown as ReturnType<typeof useHistoricalTrends>)
+  })
+
+  it('marks Cancelled and Cancel % with numbered notes listed at the foot, no hover text', () => {
+    renderWithClient()
+    const table = screen.getByRole('table')
+    const headers = Array.from(table.querySelectorAll('th'))
+    const cancelled = headers.find((th) => th.textContent.startsWith('Cancelled'))
+    const rate = headers.find((th) => th.textContent.startsWith('Cancel %'))
+    expect(cancelled?.querySelector('sup')?.textContent).toBe('1')
+    expect(rate?.querySelector('sup')?.textContent).toBe('2')
+    expect(table.querySelector('[title]')).toBeNull()
+    expect(screen.getByText(/whose status in CampMinder is Cancelled now/)).toBeInTheDocument()
+    expect(screen.getByText(/cancelled ÷ \(enrolled \+ cancelled\)/)).toBeInTheDocument()
+  })
+
+  it('writes the total change with the true minus and separators', () => {
+    renderWithClient()
+    // Total Change and Avg. Annual Growth both read it over two years.
+    expect(screen.getAllByText('\u22121,256')).toHaveLength(2)
+    expect(screen.getByText('1,208')).toBeInTheDocument()
+  })
+})

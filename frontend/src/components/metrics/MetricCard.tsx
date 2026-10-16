@@ -4,9 +4,15 @@
  * Supports two modes for showing change:
  * 1. Manual mode: Pass trend ('up'/'down'/'neutral') and trendValue string
  * 2. Auto mode: Pass compareValue and compareYear for automatic delta calculation
+ *
+ * A number is shown with thousands separators and a change with the true minus sign, through
+ * the app-wide `utils/numberFormat` (decision 43). `note` marks the title with a numbered note
+ * the page lists at its foot (decision 11): never a hover tooltip.
  */
 
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { DefRef } from '../camperships/kit/DefinitionNotes'
+import { formatSignedCount, formatValue } from '../../utils/numberFormat'
 
 interface MetricCardProps {
   title: string
@@ -29,6 +35,8 @@ interface MetricCardProps {
   sentiment?: 'default' | 'inverse' | 'neutral' | 'muted' | undefined
   /** Click handler for drilldown functionality */
   onClick?: (() => void) | undefined
+  /** The number of the page's numbered note that defines this figure. */
+  note?: number | undefined
 }
 
 export function MetricCard({
@@ -42,6 +50,7 @@ export function MetricCard({
   className = '',
   sentiment,
   onClick,
+  note,
 }: MetricCardProps) {
   const trendColors =
     sentiment === 'muted'
@@ -74,16 +83,8 @@ export function MetricCard({
 
   if (compareValue !== undefined && typeof value === 'number') {
     const delta = value - compareValue
-    if (delta > 0) {
-      autoTrend = 'up'
-      autoTrendValue = `+${delta}`
-    } else if (delta < 0) {
-      autoTrend = 'down'
-      autoTrendValue = `${delta}`
-    } else {
-      autoTrend = 'neutral'
-      autoTrendValue = '0'
-    }
+    autoTrend = delta > 0 ? 'up' : delta < 0 ? 'down' : 'neutral'
+    autoTrendValue = formatSignedCount(delta)
     if (compareYear) {
       autoTrendValue += ` vs ${compareYear}`
     }
@@ -128,9 +129,12 @@ export function MetricCard({
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
     >
-      <p className="text-muted-foreground text-sm font-medium">{title}</p>
+      <p className="text-muted-foreground text-sm font-medium">
+        {title}
+        {note !== undefined && <DefRef n={note} />}
+      </p>
       <div className="mt-2 flex items-baseline gap-2">
-        <p className="text-foreground text-2xl font-bold">{value}</p>
+        <p className="text-foreground text-2xl font-bold tabular-nums">{formatValue(value)}</p>
         {displayTrend && displayTrendValue && (
           <span
             className={`flex items-center gap-0.5 text-sm font-medium ${trendColors[displayTrend]}`}

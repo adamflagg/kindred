@@ -54,7 +54,7 @@ describe('BunkCellTooltip', () => {
       />
     )
     expect(screen.getByText(/8 of 10 returned/)).toBeInTheDocument()
-    expect(screen.getByText(/80%/)).toBeInTheDocument()
+    expect(screen.getByText(/80.0%/)).toBeInTheDocument()
   })
 
   it('shows staff names when staff provided', () => {

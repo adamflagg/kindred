@@ -366,7 +366,7 @@ describe('VelocityPage compares with one year at the same point (#3209)', () => 
 
     const unmatched = screen.getByText('Session 2').closest('tr')!
     expect(within(unmatched).getByText('new')).toBeInTheDocument()
-    expect(within(unmatched).getAllByText('-')).toHaveLength(2)
+    expect(within(unmatched).getAllByText('—')).toHaveLength(2)
   })
 
   it('draws a TODAY line at the day offset on the daily chart while live', () => {
@@ -475,5 +475,78 @@ describe('VelocityPage priority-day note (decision 45)', () => {
       expect(cardValue('vs 2025')).toBe('+5')
       expect(screen.queryByText('updates tomorrow')).not.toBeInTheDocument()
     })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Decision 43 (#3207): one number format
+// ---------------------------------------------------------------------------
+describe('VelocityPage number format', () => {
+  const bigData: VelocityResponse = {
+    ...comparedData,
+    combined: {
+      ...comparedData.combined,
+      weekly: [
+        wk({
+          enrolled: 1293,
+          gross_enrolled: 1300,
+          delta: -1200,
+          weekly_new: 1234,
+          weekly_cancelled: 2345,
+        }),
+      ],
+    },
+    prior_years: [
+      {
+        year: 2025,
+        daily: [],
+        weekly: [wk({ enrolled: 1543, gross_enrolled: 1600, delta: -56 })],
+        at_current_point: 1543,
+      },
+    ],
+  }
+
+  afterEach(() => {
+    mockControls.selectedPriorYears = []
+    mockChart.comparisonYear = null
+    mockChart.priorWeekMap = null
+    mockState.data = mockVelocityData
+  })
+
+  it('separates the card counts and writes the delta with a true minus', () => {
+    mockControls.selectedPriorYears = [2025]
+    mockChart.comparisonYear = 2025
+    mockState.data = bigData
+    render(<VelocityPage />)
+    expect(cardValue('Enrolled (2026, Wk 1)')).toBe('1,293')
+    expect(cardValue('2025 at Wk 1')).toBe('1,543')
+    expect(cardValue('vs 2025')).toBe('−250')
+  })
+
+  it('separates the legend totals', () => {
+    mockControls.selectedPriorYears = [2025]
+    mockChart.comparisonYear = 2025
+    mockState.data = bigData
+    render(<VelocityPage />)
+    expect(screen.getByTestId('legend')).toHaveTextContent('2026 (1,293 at Wk 1)')
+    expect(screen.getByTestId('legend')).toHaveTextContent('2025 (1,543 final)')
+  })
+
+  it('writes the weekly delta table counts with separators and true minus signs', () => {
+    mockControls.selectedPriorYears = [2025]
+    mockChart.comparisonYear = 2025
+    mockChart.priorWeekMap = new Map([
+      [1, wk({ enrolled: 1543, gross_enrolled: 1600, delta: -56 })],
+    ])
+    mockState.data = bigData
+    render(<VelocityPage />)
+    const row = screen.getByText('+1,234').closest('tr')!
+    expect(
+      within(row)
+        .getAllByRole('cell')
+        .map((c) => c.textContent)
+    ).toEqual(
+      expect.arrayContaining(['+1,234', '2,345', '−1,200', '1,293', '1,300', '1,543', '−56'])
+    )
   })
 })

@@ -217,16 +217,16 @@ describe('StaffCabinAnalysisPage', () => {
     it('renders retention percentages in cells', () => {
       renderWithData()
 
-      expect(screen.getByText('80%')).toBeInTheDocument()
-      expect(screen.getByText('60%')).toBeInTheDocument()
-      expect(screen.getByText('30%')).toBeInTheDocument()
+      expect(screen.getByText('80.0%')).toBeInTheDocument()
+      expect(screen.getByText('60.0%')).toBeInTheDocument()
+      expect(screen.getByText('30.0%')).toBeInTheDocument()
     })
 
     it('renders overall retention percentages', () => {
       renderWithData()
 
-      expect(screen.getByText('70%')).toBeInTheDocument()
-      expect(screen.getByText('35%')).toBeInTheDocument()
+      expect(screen.getByText('70.0%')).toBeInTheDocument()
+      expect(screen.getByText('35.0%')).toBeInTheDocument()
     })
 
     it('renders "---" for missing session data', () => {

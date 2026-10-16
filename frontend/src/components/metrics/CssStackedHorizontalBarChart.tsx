@@ -13,6 +13,7 @@
 import { useState, useMemo } from 'react'
 import { getNiceTicks, useChartTooltip, calculateBarSizing } from './cssChartUtils'
 import { ChartLegend } from './ChartLegend'
+import { formatCount, formatPercent } from '../../utils/numberFormat'
 
 export interface StackedSegment {
   key: string
@@ -146,7 +147,7 @@ export function CssStackedHorizontalBarChart({
                   className="text-muted-foreground shrink-0 text-center text-sm tabular-nums"
                   style={{ width: valueWidth }}
                 >
-                  {item.total}
+                  {formatCount(item.total)}
                 </span>
               </>
             )
@@ -195,7 +196,7 @@ export function CssStackedHorizontalBarChart({
                   transform: 'translateX(-50%)',
                 }}
               >
-                {tick}
+                {formatCount(tick)}
               </span>
             ))}
           </div>
@@ -226,19 +227,23 @@ export function CssStackedHorizontalBarChart({
                   )
                   .map((seg) => {
                     const value = (tooltipItem[seg.key] as number) || 0
-                    const pct =
-                      tooltipItem.total > 0 ? ((value / tooltipItem.total) * 100).toFixed(0) : '0'
+                    const pct = formatPercent(
+                      tooltipItem.total > 0 ? (value / tooltipItem.total) * 100 : 0
+                    )
                     return (
                       <p key={seg.key} className="text-muted-foreground text-sm">
                         <span style={{ color: seg.color }}>{seg.label}:</span>{' '}
                         <span className="text-foreground font-semibold">
-                          {value} ({pct}%)
+                          {formatCount(value)} ({pct})
                         </span>
                       </p>
                     )
                   })}
                 <p className="text-muted-foreground border-border mt-1 border-t pt-1 text-sm">
-                  Total: <span className="text-foreground font-semibold">{tooltipItem.total}</span>
+                  Total:{' '}
+                  <span className="text-foreground font-semibold">
+                    {formatCount(tooltipItem.total)}
+                  </span>
                 </p>
               </div>
             )

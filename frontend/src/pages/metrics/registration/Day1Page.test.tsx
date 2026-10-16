@@ -251,7 +251,7 @@ describe('Day1Page', () => {
 
       renderPage()
 
-      expect(screen.getByText(/vs 2025/)).toHaveTextContent('-28 vs 2025')
+      expect(screen.getByText(/vs 2025/)).toHaveTextContent('\u221228 vs 2025')
       expect(screen.queryByText('updates tomorrow')).not.toBeInTheDocument()
     })
   })

@@ -145,7 +145,7 @@ describe('ComparisonSummaryTable', () => {
       )
 
       const changeCells = container.querySelectorAll('td')
-      const changeCell = Array.from(changeCells).find((td) => td.textContent.includes('-10'))
+      const changeCell = Array.from(changeCells).find((td) => td.textContent.includes('\u221210'))
       expect(changeCell).toHaveClass('text-emerald-600')
     })
 

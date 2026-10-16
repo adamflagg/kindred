@@ -19,6 +19,7 @@ import {
 } from 'recharts'
 import type { RetentionTrendYear } from '../../types/metrics'
 import { ChartCard } from './ChartCard'
+import { formatCount, formatPercent } from '../../utils/numberFormat'
 import { calculateVerticalLayout } from './cssChartUtils'
 
 interface RetentionRateLineProps {
@@ -48,7 +49,7 @@ export function RetentionRateLine({
   const chartData: ChartDataItem[] = data.map((year) => ({
     name: year.from_year.toString(),
     transition: `${year.from_year} → ${year.to_year}`,
-    retentionRate: Math.round(year.retention_rate * 100),
+    retentionRate: year.retention_rate * 100,
     baseCount: year.base_count,
     returnedCount: year.returned_count,
   }))
@@ -71,10 +72,10 @@ export function RetentionRateLine({
           <p className="text-foreground mb-1 font-medium">{item.transition}</p>
           <p className="text-muted-foreground text-sm">
             Retention Rate:{' '}
-            <span className="text-primary font-semibold">{item.retentionRate}%</span>
+            <span className="text-primary font-semibold">{formatPercent(item.retentionRate)}</span>
           </p>
           <p className="text-muted-foreground text-sm">
-            Returned: {item.returnedCount} of {item.baseCount}
+            Returned: {formatCount(item.returnedCount)} of {formatCount(item.baseCount)}
           </p>
         </div>
       )
@@ -117,7 +118,7 @@ export function RetentionRateLine({
               position="top"
               className="text-xs"
               fill="hsl(var(--muted-foreground))"
-              formatter={(value) => `${value}%`}
+              formatter={(value) => formatPercent(Number(value))}
             />
           </Line>
         </LineChart>

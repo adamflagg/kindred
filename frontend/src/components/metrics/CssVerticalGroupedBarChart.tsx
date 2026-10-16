@@ -21,6 +21,7 @@ import {
   VerticalTooltipShell,
 } from './cssChartUtils'
 import { ChartLegend } from './ChartLegend'
+import { formatCount } from '../../utils/numberFormat'
 
 export interface GroupedBarSeries {
   key: string
@@ -279,7 +280,7 @@ export function CssVerticalGroupedBarChart({
                         <p key={s.key} className="text-muted-foreground text-sm">
                           <span style={{ color: s.color }}>{s.label}:</span>{' '}
                           <span className="text-foreground font-semibold">
-                            {typeof v === 'number' ? v : 0}
+                            {formatCount(typeof v === 'number' ? v : 0)}
                           </span>
                         </p>
                       )

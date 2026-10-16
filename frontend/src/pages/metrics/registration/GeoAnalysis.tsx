@@ -66,8 +66,12 @@ export default function GeoAnalysis() {
     ...filterOptions,
     statuses: 'enrolled',
   })
-  const { data, isLoading, error } = primary
+  const { data, isLoading, error, refetch, isPlaceholderData } = primary
   const compData = comparison?.data
+  // The compare query keeps its previous result too, so a new compare year gets the busy cue
+  // as well: its label must not sit over the last compare year's numbers (D-UNCOVERED, #3207).
+  const busy = isPlaceholderData || comparison?.isPlaceholderData === true
+  const busyYear = isPlaceholderData || compareYear === null ? currentYear : compareYear
 
   // Transform data for display
   const geoData = useMemo(() => {
@@ -221,7 +225,15 @@ export default function GeoAnalysis() {
         <p className="text-muted-foreground mt-1">Explore where your campers come from</p>
       </div>
 
-      <MetricsQueryGuard isLoading={isLoading} error={error} data={data} label="geographic">
+      <MetricsQueryGuard
+        onRetry={() => void refetch()}
+        isPlaceholderData={busy}
+        loadingLabel={String(busyYear)}
+        isLoading={isLoading}
+        error={error}
+        data={data}
+        label="geographic"
+      >
         {(_queryData) => {
           const anyData =
             geoData.city.length > 0 || geoData.school.length > 0 || geoData.synagogue.length > 0
