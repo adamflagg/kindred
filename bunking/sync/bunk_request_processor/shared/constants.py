@@ -20,7 +20,7 @@ from re import Pattern
 # CampMinder attendee status IDs — used in session enrollment filtering
 ENROLLED_STATUS_ID = 2  # Active enrolled attendee
 
-# All CampMinder attendee StatusID values (from docs/api/external/campminder/specs/sessions.yaml)
+# All CampMinder attendee StatusID values (from docs/api/external/campminder/specs/sessions.yaml, local-only via kindred-local)
 # Used by EnrollmentInfo for disposition decisions
 STATUS_NONE = 1
 STATUS_ENROLLED = 2
