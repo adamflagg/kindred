@@ -70,3 +70,20 @@ describe('describeCompareBasis', () => {
     expect(describeCompareBasis(2025, undefined)).toBeNull()
   })
 })
+
+describe('describeCompareBasis note numbers', () => {
+  it('numbers its notes from the first free number on the page', () => {
+    const basis = describeCompareBasis(
+      2025,
+      {
+        prior_basis: 'same_point',
+        day_offset: 0,
+        prior_day_offset: 1,
+        as_of_date: '2024-11-13',
+        total_waitlisted: null,
+      },
+      3
+    )
+    expect(basis?.notes.map((n) => n.n)).toEqual([3, 4])
+  })
+})

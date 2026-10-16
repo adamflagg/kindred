@@ -5,6 +5,7 @@
 import { render, screen } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
 import GeoAnalysis from './GeoAnalysis'
+import { useComparisonRegistrationData } from '../../../hooks/useComparisonRegistrationData'
 
 const emptyGeo = { year: 2026, by_city: [], by_school: [], by_synagogue: [] }
 
@@ -58,5 +59,14 @@ describe('GeoAnalysis — busy cue (D-UNCOVERED)', () => {
     render(<GeoAnalysis />)
     expect(screen.getByText('Loading 2024…')).toBeInTheDocument()
     expect(screen.getByText('No Geographic Data').closest('[inert]')).not.toBeNull()
+  })
+})
+
+describe('GeoAnalysis — compare basis (decision 7 covers Overview only)', () => {
+  it("compares with the compare year's final, never the same point", () => {
+    render(<GeoAnalysis />)
+    const calls = vi.mocked(useComparisonRegistrationData).mock.calls
+    expect(calls.length).toBeGreaterThan(0)
+    for (const call of calls) expect(call[3]?.samePoint).not.toBe(true)
   })
 })

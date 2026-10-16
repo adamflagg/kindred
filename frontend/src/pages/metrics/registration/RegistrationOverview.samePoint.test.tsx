@@ -49,9 +49,12 @@ vi.mock('../../../hooks/useMetricsSession', () => ({
   })),
 }))
 
-function withComparison(comparison: RegistrationMetrics) {
+function withComparison(
+  comparison: RegistrationMetrics,
+  primary: RegistrationMetrics = metrics(2026)
+) {
   vi.mocked(useComparisonRegistrationData).mockReturnValue({
-    primary: { data: metrics(2026), isLoading: false, error: null },
+    primary: { data: primary, isLoading: false, error: null },
     comparison: { data: comparison },
     isComparing: true,
   } as unknown as ReturnType<typeof useComparisonRegistrationData>)
@@ -132,5 +135,63 @@ describe('RegistrationOverview — same point last year (decision 7)', () => {
     expect(screen.getByText("Compared with 2025's final numbers.")).toBeInTheDocument()
     expect(card('Total Waitlisted').textContent).toMatch(/10 vs 2025/)
     expect(screen.queryByText(/rebuilt from each camper's registration date/)).toBeNull()
+  })
+
+  it('opts in to the same-point compare', () => {
+    withComparison(metrics(2025, SAME_POINT))
+    render(<RegistrationOverview />)
+    expect(vi.mocked(useComparisonRegistrationData)).toHaveBeenCalledWith(
+      2026,
+      2025,
+      expect.anything(),
+      { samePoint: true }
+    )
+  })
+})
+
+describe('RegistrationOverview — one note list with the compare notes last (decisions 7, 11, 12)', () => {
+  beforeEach(() => vi.mocked(useComparisonRegistrationData).mockReset())
+
+  const footNotes = (container: HTMLElement) =>
+    Array.from(container.querySelectorAll('ol li')).map((li) => li.textContent)
+
+  it('numbers Cancelled 1, the average 2, then the compare notes 3 and 4', () => {
+    withComparison(
+      metrics(2025, {
+        ...SAME_POINT,
+        day_offset: 0,
+        prior_day_offset: 1,
+        as_of_date: '2024-11-13',
+      }),
+      metrics(2026, { average_summers_at_camp: 2.6 })
+    )
+    const { container } = render(<RegistrationOverview />)
+    expect(container.querySelectorAll('ol')).toHaveLength(1)
+    const notes = footNotes(container)
+    expect(notes).toHaveLength(4)
+    expect(notes[0]).toMatch(/^1\..*Cancelled now/)
+    expect(notes[1]).toMatch(/^2\..*Years at Camp/)
+    expect(notes[2]).toMatch(/^3\..*rebuilt from each camper's registration date/)
+    expect(notes[3]).toMatch(/^4\..*opening day and the next day/)
+    const line = screen.getByText('vs same point').closest('p') as HTMLElement
+    expect(Array.from(line.querySelectorAll('sup')).map((s) => s.textContent)).toEqual(['3', '4'])
+  })
+
+  it('numbers the compare note 2 when there is no average', () => {
+    withComparison(metrics(2025, SAME_POINT))
+    const { container } = render(<RegistrationOverview />)
+    const notes = footNotes(container)
+    expect(notes).toHaveLength(2)
+    expect(notes[1]).toMatch(/^2\..*rebuilt from each camper's registration date/)
+  })
+
+  it('lists only Cancelled when Compare is off', () => {
+    vi.mocked(useComparisonRegistrationData).mockReturnValue({
+      primary: { data: metrics(2026), isLoading: false, error: null },
+      comparison: null,
+      isComparing: false,
+    } as unknown as ReturnType<typeof useComparisonRegistrationData>)
+    const { container } = render(<RegistrationOverview />)
+    expect(footNotes(container)).toHaveLength(1)
   })
 })

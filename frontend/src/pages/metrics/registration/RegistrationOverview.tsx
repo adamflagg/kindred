@@ -183,10 +183,15 @@ export default function RegistrationOverview() {
   const sessionTypeLookup = useMemo(() => buildSessionTypeLookup(sessions), [sessions])
 
   // Fetch registration data with optional comparison year
-  const { primary, comparison } = useComparisonRegistrationData(currentYear, compareYear, {
-    ...filterOptions,
-    statuses: statusesParam,
-  })
+  const { primary, comparison } = useComparisonRegistrationData(
+    currentYear,
+    compareYear,
+    {
+      ...filterOptions,
+      statuses: statusesParam,
+    },
+    { samePoint: true }
+  )
   const { data, isLoading, error, refetch, isPlaceholderData } = primary
   const compData = comparison?.data
   // The compare query keeps its previous result too, so a new compare year gets the busy cue
@@ -253,7 +258,13 @@ export default function RegistrationOverview() {
 
   // Decision 7: the compare year is read at the same point while this season is live, at its final
   // after. On the priority date itself the card deltas wait a day (ruling 9).
-  const compareBasis = describeCompareBasis(compareYear, compData)
+  // One note list in page order (decision 11): Total Cancelled, the Summers at Camp average when
+  // it exists, then the compare notes while Compare is on.
+  const pageNotes = [
+    ...OVERVIEW_NOTES,
+    ...(data.average_summers_at_camp != null ? TENURE_NOTES : []),
+  ]
+  const compareBasis = describeCompareBasis(compareYear, compData, pageNotes.length + 1)
   const pending = compareBasis?.pending ?? false
   const vsCompare = (value: number | null | undefined) =>
     pending || value == null ? undefined : value
@@ -829,13 +840,7 @@ export default function RegistrationOverview() {
           </div>
         </div>
 
-        <DefinitionNotes
-          notes={[
-            ...OVERVIEW_NOTES,
-            ...(data.average_summers_at_camp != null ? TENURE_NOTES : []),
-            ...(compareBasis?.notes ?? []),
-          ]}
-        />
+        <DefinitionNotes notes={[...pageNotes, ...(compareBasis?.notes ?? [])]} />
 
         {/* Drill-down Modal */}
         <DrilldownModal />

@@ -7,7 +7,7 @@ export interface CompareBasis {
   label: 'vs same point' | 'vs final'
   /** One sentence under the label, ending where the page's numbered notes are marked. */
   text: string
-  /** The page's numbered notes for this comparison, numbered from 1. */
+  /** The page's numbered notes for this comparison, numbered from `firstNote`. */
   notes: DefinitionNote[]
   /** On the priority date itself the compare waits a day (ruling 9): deltas read "updates tomorrow". */
   pending: boolean
@@ -39,7 +39,9 @@ function formatDay(isoDate: string): string {
  */
 export function describeCompareBasis(
   compareYear: number | null,
-  comparison: BasisFields | undefined
+  comparison: BasisFields | undefined,
+  /** The first note number free on the page: these notes follow the page's own (decision 11). */
+  firstNote = 1
 ): CompareBasis | null {
   if (compareYear === null || !comparison?.prior_basis) return null
 
@@ -56,7 +58,7 @@ export function describeCompareBasis(
   const day = formatDay(comparison.as_of_date)
   const notes: DefinitionNote[] = [
     {
-      n: 1,
+      n: firstNote,
       text: `${compareYear} is rebuilt from each camper's registration date: campers registered by ${day} and not cancelled by then. This season's numbers are today's. A waitlist can't be rebuilt, so Total Waitlisted has no comparison.`,
     },
   ]
@@ -64,7 +66,7 @@ export function describeCompareBasis(
     comparison.prior_day_offset != null &&
     comparison.day_offset != null &&
     comparison.prior_day_offset !== comparison.day_offset
-  if (throughNextDay) notes.push({ n: 2, text: PRIORITY_DAY_NOTE })
+  if (throughNextDay) notes.push({ n: firstNote + 1, text: PRIORITY_DAY_NOTE })
 
   return {
     label: 'vs same point',
