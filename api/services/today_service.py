@@ -8,9 +8,12 @@ registration day while the season is live (decision 7):
 
 - a session matches by ``match_session_in_year`` (CampMinder id, then alias group, then exact name), with
   its all-gender cabins riding along; teen programs (SCIT, TLI) match by program;
-- the figure is ``prior_figure_for_session``: the matched session's own count, never anything folded in.
-  Ruling #15's "embedded add" (a prior embedded session with no match folded into the main session whose
-  dates contain it) is PR 8b and slots in there.
+- the figure is ``prior_figure_for_session``: the matched session's own count, plus ruling #15's "embedded
+  add" (PR 8b): a prior-year embedded session with no match this year is added to the prior-year main
+  session whose dates contain it (``fold_embedded_sessions``), and the figure carries its breakdown for the
+  tooltip (#50). Today only: Metrics pages never fold. With one session picked, the headline's prior counts
+  that session's and the folded sessions' campers once each (#51, ``headline_prior_campers``), and Pace's
+  prior curve covers the same sessions the fill total compares (``build_pace_prior``).
 
 Recent sign-ups (decisions 37, 40): enrollments whose Enrolled on day (``enrollment_date`` as a camp-time
 day) falls in the last 7 days, one line per camper per day, newest first, at most 6 lines.
@@ -19,7 +22,7 @@ day) falls in the last 7 days, one line per camper per day, newest first, at mos
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Literal
@@ -28,13 +31,15 @@ from api.schemas.session_availability import SessionAvailabilityResponse
 from api.schemas.today import (
     RecentSignupLine,
     RecentSignupsResponse,
+    TodayPacePoint,
+    TodayPriorPart,
     TodaySessionPart,
     TodaySessionRow,
     TodaySessionsResponse,
 )
-from api.services.camp_calendar import CAMP_TZ, get_camp_today
+from api.services.camp_calendar import CAMP_TZ, SEASON_WEEKS, get_camp_today
 from api.services.extractors import is_new_camper
-from api.services.reconstruction import attendees_at_cutoff
+from api.services.reconstruction import attendees_at_cutoff, reconstruct_daily_multi, registered_day
 from api.services.same_point import live_same_point, registration_anchor
 from api.services.session_availability_service import SessionAvailabilityService
 from api.utils.session_metrics import (
@@ -114,26 +119,137 @@ def _count(counts: Mapping[tuple[int, str], int], sid: int, gender: str | None =
     return sum(n for (s, _g), n in counts.items() if s == sid)
 
 
+def _session_day(session: Any, field: str) -> date | None:
+    raw = str(getattr(session, field, "") or "").split("T")[0].split(" ")[0]
+    try:
+        return date.fromisoformat(raw) if raw else None
+    except ValueError:
+        return None
+
+
+def fold_embedded_sessions(prior_sessions: Mapping[int, Any], matched_prior_ids: set[int]) -> dict[int, list[int]]:
+    """Ruling #15's embedded add: prior main session → the unmatched prior embedded sessions it contains.
+
+    An embedded session folds when nothing this year matched it and a main session's dates contain it: its
+    start and end fall within the main's, a shared start or end included. Pure dates, read each time. When
+    more than one main contains it, the shortest one does (the tightest fit). Each host's list is in date
+    order. A session missing a date never folds.
+    """
+    mains: list[tuple[int, date, date]] = []
+    for sid, session in prior_sessions.items():
+        start, end = _session_day(session, "start_date"), _session_day(session, "end_date")
+        if getattr(session, "session_type", "") == "main" and start is not None and end is not None:
+            mains.append((int(sid), start, end))
+
+    folds: dict[int, list[tuple[date, int]]] = {}
+    for sid, session in prior_sessions.items():
+        if getattr(session, "session_type", "") != "embedded" or int(sid) in matched_prior_ids:
+            continue
+        start, end = _session_day(session, "start_date"), _session_day(session, "end_date")
+        if start is None or end is None:
+            continue
+        hosts = [(m_end - m_start, m_sid) for m_sid, m_start, m_end in mains if m_start <= start and end <= m_end]
+        if hosts:
+            folds.setdefault(min(hosts)[1], []).append((start, int(sid)))
+    return {host: [sid for _start, sid in sorted(items)] for host, items in folds.items()}
+
+
+def _own_figure(
+    cm_id: int,
+    prior_sessions: Mapping[int, Any],
+    prior_counts: Mapping[tuple[int, str], int],
+    part: Literal["F", "M", "AG"] | None,
+) -> int:
+    """One prior session's figure: its own campers (of one gender for a part) and, with no part, its AG cabins."""
+    ag = _ag_children(prior_sessions, cm_id)
+    if part == "AG":
+        return sum(_count(prior_counts, a) for a in ag)
+    if part is not None:
+        return _count(prior_counts, cm_id, part)
+    return _count(prior_counts, cm_id) + sum(_count(prior_counts, a) for a in ag)
+
+
 def prior_figure_for_session(
     prior_cm_id: int | None,
     prior_sessions: Mapping[int, Any],
     prior_counts: Mapping[tuple[int, str], int],
     part: Literal["F", "M", "AG"] | None = None,
+    folded: Sequence[int] = (),
 ) -> int | None:
-    """Last year's figure for one matched session (ruling #15): its own enrolled plus its AG cabins.
+    """Last year's figure for one matched session (ruling #15): its own enrolled plus its AG cabins, plus
+    the embedded sessions folded into it (``fold_embedded_sessions``), each with its own AG cabins.
 
     None when the session has no match last year. ``part`` reads one cabin group: "F" or "M" the
-    session's own campers of that gender, "AG" its all-gender cabins. Nothing else is folded in:
-    PR 8b's embedded add belongs here.
+    campers of that gender, "AG" the all-gender cabins, in the session and in each folded one.
     """
     if prior_cm_id is None:
         return None
-    ag = _ag_children(prior_sessions, prior_cm_id)
-    if part == "AG":
-        return sum(_count(prior_counts, a) for a in ag)
-    if part is not None:
-        return _count(prior_counts, prior_cm_id, part)
-    return _count(prior_counts, prior_cm_id) + sum(_count(prior_counts, a) for a in ag)
+    return sum(_own_figure(sid, prior_sessions, prior_counts, part) for sid in (prior_cm_id, *folded))
+
+
+def prior_breakdown(
+    prior_cm_id: int | None,
+    folded: Sequence[int],
+    prior_sessions: Mapping[int, Any],
+    prior_counts: Mapping[tuple[int, str], int],
+    part: Literal["F", "M", "AG"] | None = None,
+) -> list[TodayPriorPart] | None:
+    """A folded figure's breakdown for its tooltip (#50): the main session first, then each folded session
+    that adds to it. None when nothing folded adds anything, so the figure reads as a plain one."""
+    if prior_cm_id is None:
+        return None
+    added = [(sid, n) for sid in folded if (n := _own_figure(sid, prior_sessions, prior_counts, part)) > 0]
+    if not added:
+        return None
+
+    def name(sid: int) -> str:
+        return str(getattr(prior_sessions.get(sid), "name", "") or "")
+
+    own = _own_figure(prior_cm_id, prior_sessions, prior_counts, part)
+    return [TodayPriorPart(name=name(prior_cm_id), prior=own)] + [
+        TodayPriorPart(name=name(sid), prior=n) for sid, n in added
+    ]
+
+
+def _with_ag(prior_sessions: Mapping[int, Any], ids: Iterable[int]) -> set[int]:
+    out: set[int] = set()
+    for sid in ids:
+        out.add(sid)
+        out.update(_ag_children(prior_sessions, sid))
+    return out
+
+
+def headline_prior_campers(attendees: Iterable[Any], session_ids: set[int]) -> int:
+    """#51: the campers enrolled in any of ``session_ids``, each counted once."""
+    people: set[int] = set()
+    for att in attendees:
+        session = get_session_from_expand(att)
+        sid = _as_int(getattr(session, "cm_id", None)) if session is not None else None
+        if sid is None:
+            sid = _as_int(getattr(att, "session_cm_id", None))
+        pid = _as_int(getattr(att, "person_id", None))
+        if sid in session_ids and pid is not None:
+            people.add(pid)
+    return len(people)
+
+
+def build_pace_prior(attendees: Iterable[Any], anchor: date, session_ids: set[int]) -> list[TodayPacePoint]:
+    """Last year's Pace curve over ``session_ids`` (the sessions the fill total compares).
+
+    Velocity's rebuild (registered by the day and not cancelled by it), from a week before the anchor
+    when anyone registered earlier, through the season's last day.
+    """
+    dated = [a for a in attendees if _as_int(getattr(get_session_from_expand(a), "cm_id", None)) in session_ids]
+    week0 = any((day := registered_day(a)) is not None and day < anchor for a in dated)
+    sessions = {sid: sid for sid in session_ids}
+    daily, _per_session = reconstruct_daily_multi(
+        attendees=dated,
+        season_start=anchor,
+        sessions=sessions,
+        end_date=anchor + timedelta(days=SEASON_WEEKS * 7 - 1),
+        week0=week0,
+    )
+    return [TodayPacePoint(day_offset=p.day_offset, enrolled=p.enrolled) for p in daily]
 
 
 def prior_figure_for_program(
@@ -212,8 +328,18 @@ def build_session_fill_rows(
     prior_sessions: Mapping[int, Any],
     prior_counts: Mapping[tuple[int, str], int],
 ) -> list[TodaySessionRow]:
-    """This year's Session fill rows, in session order, each with its own match last year."""
+    """This year's Session fill rows, in session order, each with its own match last year and the
+    unmatched embedded sessions folded into it (#15)."""
     matched = match_prior_sessions(current_sessions, prior_sessions)
+    folds = fold_embedded_sessions(prior_sessions, set(matched.values()))
+
+    def prior_of(prior_sid: int | None, part: Literal["F", "M", "AG"] | None = None) -> dict[str, Any]:
+        folded = folds.get(prior_sid, []) if prior_sid is not None else []
+        return {
+            "prior": prior_figure_for_session(prior_sid, prior_sessions, prior_counts, part, folded),
+            "prior_parts": prior_breakdown(prior_sid, folded, prior_sessions, prior_counts, part),
+        }
+
     ag_by_parent: dict[int, list[Any]] = {}
     for ag in availability.ag_sessions:
         parent = _as_int(getattr(current_sessions.get(ag.session_cm_id), "parent_id", None))
@@ -231,7 +357,7 @@ def build_session_fill_rows(
                     enrolled=s.girls.enrolled + s.boys.enrolled,
                     waitlisted=s.girls.waitlisted + s.boys.waitlisted,
                     beds=_sum_beds(s.girls.capacity, s.boys.capacity),
-                    prior=prior_figure_for_session(prior_sid, prior_sessions, prior_counts),
+                    **prior_of(prior_sid),
                 )
             ]
         else:
@@ -242,14 +368,14 @@ def build_session_fill_rows(
                     enrolled=s.girls.enrolled,
                     waitlisted=s.girls.waitlisted,
                     beds=s.girls.capacity,
-                    prior=prior_figure_for_session(prior_sid, prior_sessions, prior_counts, part="F"),
+                    **prior_of(prior_sid, "F"),
                 ),
                 TodaySessionPart(
                     label="Boys",
                     enrolled=s.boys.enrolled,
                     waitlisted=s.boys.waitlisted,
                     beds=s.boys.capacity,
-                    prior=prior_figure_for_session(prior_sid, prior_sessions, prior_counts, part="M"),
+                    **prior_of(prior_sid, "M"),
                 ),
             ]
             if ags:
@@ -259,7 +385,7 @@ def build_session_fill_rows(
                         enrolled=sum(a.enrolled for a in ags),
                         waitlisted=sum(a.waitlisted for a in ags),
                         beds=_sum_beds(*(a.capacity for a in ags)),
-                        prior=prior_figure_for_session(prior_sid, prior_sessions, prior_counts, part="AG"),
+                        **prior_of(prior_sid, "AG"),
                     )
                 )
         order = (
@@ -278,7 +404,7 @@ def build_session_fill_rows(
                     waitlisted=sum(p.waitlisted for p in parts),
                     beds=_sum_beds(*(p.beds for p in parts)),
                     goal=_goal(goals, s.session_cm_id),
-                    prior=prior_figure_for_session(prior_sid, prior_sessions, prior_counts),
+                    **prior_of(prior_sid),
                     parts=parts,
                 ),
             )
@@ -319,6 +445,24 @@ def build_session_fill_rows(
 
     rank = session_rank(order for order, _row in rows)
     return [row for order, row in sorted(rows, key=lambda pair: rank.get(pair[0].cm_id, len(rank)))]
+
+
+def compared_prior_ids(
+    availability: SessionAvailabilityResponse,
+    prior_sessions: Mapping[int, Any],
+    matched: Mapping[int, int],
+    folds: Mapping[int, list[int]],
+) -> set[int]:
+    """The prior-year sessions the fill total compares: each row's match with its AG cabins and the
+    embedded sessions folded into it, and each teen program's sessions. Pace's prior reads the same."""
+    ids: set[int] = set()
+    for s in availability.sessions:
+        prior_sid = matched.get(s.session_cm_id)
+        if prior_sid is not None:
+            ids |= _with_ag(prior_sessions, [prior_sid, *folds.get(prior_sid, [])])
+    for teen in availability.teen_sessions:
+        ids |= resolve_cohort_session_ids(dict(prior_sessions), [teen.session_type])
+    return ids
 
 
 # ---------------------------------------------------------------------------
@@ -438,14 +582,13 @@ class TodayService:
         )
 
         cutoff: date | None = None
-        if point is not None:
-            anchor = await self._anchor(prior_year)
-            if anchor is not None:
-                cutoff = anchor + timedelta(days=point.prior_offset)
+        anchor = await self._anchor(prior_year)
+        if point is not None and anchor is not None:
+            cutoff = anchor + timedelta(days=point.prior_offset)
 
+        dated = list(await self.repo.fetch_attendees_with_dates(prior_year, expand_person=True)) if anchor else []
         if cutoff is not None:
-            dated = await self.repo.fetch_attendees_with_dates(prior_year, expand_person=True)
-            prior_enrolled, _left = attendees_at_cutoff(list(dated), cutoff)
+            prior_enrolled, _left = attendees_at_cutoff(dated, cutoff)
         else:
             prior_enrolled = await self.repo.fetch_attendees(prior_year, "enrolled", expand_person=True)
 
@@ -456,6 +599,20 @@ class TodayService:
             prior_sessions=prior_sessions,
             prior_counts=count_prior_by_session(prior_enrolled),
         )
+
+        matched = match_prior_sessions(current_sessions, prior_sessions)
+        folds = fold_embedded_sessions(prior_sessions, set(matched.values()))
+        headline_prior: int | None = None
+        host = matched.get(session_cm_id) if session_cm_id is not None else None
+        if host is not None and folds.get(host):
+            # #51: one session picked, embedded sessions folded into it: its campers and theirs, once each
+            headline_prior = headline_prior_campers(prior_enrolled, _with_ag(prior_sessions, [host, *folds[host]]))
+
+        pace_prior = (
+            build_pace_prior(dated, anchor, compared_prior_ids(availability, prior_sessions, matched, folds))
+            if anchor is not None
+            else None
+        )
         return TodaySessionsResponse(
             year=year,
             prior_year=prior_year,
@@ -465,6 +622,8 @@ class TodayService:
             day_offset=point.day_offset if cutoff is not None and point is not None else None,
             prior_day_offset=point.prior_offset if cutoff is not None and point is not None else None,
             as_of_date=cutoff.isoformat() if cutoff is not None else None,
+            headline_prior=headline_prior,
+            pace_prior=pace_prior,
         )
 
     async def _anchor(self, year: int) -> date | None:

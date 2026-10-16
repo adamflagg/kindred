@@ -193,3 +193,25 @@ class TestRegistrationSamePoint:
             await service.calculate_registration(
                 PRIOR, status_filter=["waitlisted"], same_point_of=CURRENT, today=date(2026, 3, 2)
             )
+
+
+class TestMetricsDoesNotFold:
+    """#15: the embedded add is Today only. Overview's one-session read keeps the session's own campers."""
+
+    @pytest.mark.asyncio
+    async def test_a_picked_session_does_not_add_the_embedded_sessions_it_contains(self) -> None:
+        main = _Session(1000, "Session 2", start_date="2025-06-22", end_date="2025-07-12")
+        embedded = _Session(1001, "Session 2b", session_type="embedded", start_date="2025-07-06", end_date="2025-07-12")
+        in_main = _att(1, "enrolled", "2024-11-12")
+        in_main.expand = {"session": main}
+        in_embedded = _att(2, "enrolled", "2024-11-12")
+        in_embedded.expand = {"session": embedded}
+        repo = _repo([in_main, in_embedded])
+        repo.fetch_sessions.return_value = {1000: main, 1001: embedded}
+        service = RegistrationService(repo)
+
+        result = await service.calculate_registration(
+            PRIOR, session_cm_id=1000, same_point_of=CURRENT, today=date(2026, 3, 2)
+        )
+
+        assert result.total_enrolled == 1

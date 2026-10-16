@@ -3,6 +3,11 @@
  * last year's, from Velocity's own read (its numbers and their meaning are Velocity's). The kit's burn-up
  * grammar (AidBurnUp) for counts: forest line over a light forest area, last year dashed in stone, with
  * the dark-mode ink the shared chart now carries.
+ *
+ * PR 8b: last year's line compares what Session fill's total compares (matched sessions plus the embedded
+ * sessions folded into them, #15), not Velocity's whole scope, so "{year}: N" reads the total's own figure
+ * and, when anything folded in, opens the same breakdown. If Session fill failed to load, Pace falls back to
+ * Velocity's own prior rather than going blank.
  */
 import { Link, useLocation } from 'react-router'
 import { DefRef } from '../../../components/camperships/kit/DefinitionNotes'
@@ -15,7 +20,8 @@ import {
 } from '../../../components/camperships/kit/csType'
 import { formatCount } from '../../../utils/numberFormat'
 import type { VelocityResponse } from '../../../types/velocity'
-import { analyticsHref } from './todayModel'
+import { analyticsHref, type PacePrior } from './todayModel'
+import { FoldedFigure } from './todayParts'
 
 const W = 300
 const H = 150
@@ -27,6 +33,7 @@ const PRIOR = 'var(--color-stone-400)'
 const RULE = 'var(--color-border)'
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const DAY_MS = 86_400_000
+const LABEL_W = 110
 
 interface Point {
   day_offset: number
@@ -44,22 +51,27 @@ function PaceChart({
   data,
   year,
   priorYear,
+  fold,
 }: {
   data: VelocityResponse
   year: number
   priorYear: number
+  fold: PacePrior | null
 }) {
   const current = [...data.combined.daily].sort((a, b) => a.day_offset - b.day_offset)
-  const prior = [...(data.prior_years.find((p) => p.year === priorYear)?.daily ?? [])].sort(
-    (a, b) => a.day_offset - b.day_offset
-  )
+  const priorSource = fold
+    ? fold.now == null
+      ? []
+      : fold.curve
+    : (data.prior_years.find((p) => p.year === priorYear)?.daily ?? [])
+  const prior = [...priorSource].sort((a, b) => a.day_offset - b.day_offset)
   const last = current.at(-1)
   if (!last) return <div className={CS_EMPTY}>No sign-ups to draw yet.</div>
 
   const nowDay = data.current_day_offset ?? last.day_offset
   const now = atDay(current, nowDay)?.enrolled ?? 0
   const priorDay = data.prior_day_offset ?? nowDay
-  const priorNow = atDay(prior, priorDay)?.enrolled ?? null
+  const priorNow = fold ? fold.now : (atDay(prior, priorDay)?.enrolled ?? null)
   const priorFinal = prior.at(-1)?.enrolled ?? null
 
   const x0 = Math.min(0, current[0]?.day_offset ?? 0)
@@ -173,11 +185,34 @@ function PaceChart({
         <text x={lx} y={ly} textAnchor={anchor} fontSize={FONT} fontWeight={700} fill={STRONG}>
           {formatCount(now)} today
         </text>
-        {priorNow != null && (
-          <text x={lx} y={ly + 12} textAnchor={anchor} fontSize={FONT} fill={INK}>
-            {String(priorYear)}: {formatCount(priorNow)}
-          </text>
-        )}
+        {priorNow != null &&
+          (fold?.parts ? (
+            // The tooltip trigger is a button, which SVG cannot hold: a foreignObject on the label's line
+            <foreignObject
+              x={anchor === 'start' ? lx : lx - LABEL_W}
+              y={ly + 12 - FONT}
+              width={LABEL_W}
+              height={FONT + 4}
+              overflow="visible"
+            >
+              <div
+                style={{
+                  fontSize: FONT,
+                  lineHeight: `${String(FONT + 2)}px`,
+                  color: INK,
+                  textAlign: anchor === 'start' ? 'left' : 'right',
+                }}
+              >
+                <FoldedFigure parts={fold.parts} priorYear={priorYear}>
+                  {String(priorYear)}: {formatCount(priorNow)}
+                </FoldedFigure>
+              </div>
+            </foreignObject>
+          ) : (
+            <text x={lx} y={ly + 12} textAnchor={anchor} fontSize={FONT} fill={INK}>
+              {String(priorYear)}: {formatCount(priorNow)}
+            </text>
+          ))}
       </svg>
       <div className="text-muted-foreground mt-0.5 flex flex-wrap gap-x-3.5 text-[12px] leading-4">
         <span className="whitespace-nowrap">
@@ -193,8 +228,16 @@ function PaceChart({
   )
 }
 
-export function PaceCard({ data, year }: { data: VelocityResponse; year: number }) {
-  return <PaceChart data={data} year={year} priorYear={year - 1} />
+export function PaceCard({
+  data,
+  year,
+  fold,
+}: {
+  data: VelocityResponse
+  year: number
+  fold: PacePrior | null
+}) {
+  return <PaceChart data={data} year={year} priorYear={year - 1} fold={fold} />
 }
 
 export function PaceHead({ sessionsNote }: { sessionsNote: number | undefined }) {

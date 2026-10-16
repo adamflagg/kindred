@@ -2,15 +2,18 @@
  * Analytics › Today (#3207 PR 8): the page's pure model. Owner rulings: session order, always "vs same
  * point last year", no started pills, the Fill switch, "goal not set yet", Cancelled red when it rises
  * (2026-10-14); #14 unoffered sessions are not drawn, #15 the fill total counts only matched sessions
- * (2026-10-15).
+ * (2026-10-15). PR 8b: #15's embedded add, #50's tooltip breakdown (wording A) and #51's fold by people.
  */
 import { describe, expect, it } from 'vitest'
-import type { ApiTodaySessionRow } from '../../../types/api-types'
+import type { ApiTodaySessionRow, ApiTodaySessions } from '../../../types/api-types'
 import {
   basisWords,
   fillGroups,
   fillTotal,
+  foldName,
+  foldedLine,
   openPlaces,
+  pacePrior,
   registrationDayWords,
   scopeRows,
   todayNotes,
@@ -242,5 +245,131 @@ describe('todayNotes', () => {
     }).find((n) => n.key === 'same')
     expect(same?.text).toMatch(/today is day 91/)
     expect(same?.text).toMatch(/not offered this year is not counted/)
+  })
+})
+
+// PR 8b: 2026's Taste of Camp 2 (58) and Session 2b (66) fold into 2026 Session 2 (268), as the signed-off mock
+const S2_FOLDED = row({
+  prior: 392,
+  prior_parts: [
+    { name: 'Session 2', prior: 268 },
+    { name: 'Taste of Camp 2', prior: 58 },
+    { name: 'Session 2b', prior: 66 },
+  ],
+  parts: [
+    {
+      label: 'Girls',
+      enrolled: 134,
+      waitlisted: 10,
+      beds: 138,
+      prior: 193,
+      prior_parts: [
+        { name: 'Session 2', prior: 130 },
+        { name: 'Taste of Camp 2', prior: 30 },
+        { name: 'Session 2b', prior: 33 },
+      ],
+    },
+    {
+      label: 'Boys',
+      enrolled: 131,
+      waitlisted: 16,
+      beds: 138,
+      prior: 187,
+      prior_parts: [
+        { name: 'Session 2', prior: 126 },
+        { name: 'Taste of Camp 2', prior: 28 },
+        { name: 'Session 2b', prior: 33 },
+      ],
+    },
+    { label: 'AG', enrolled: 12, waitlisted: 2, beds: 12, prior: 12 },
+  ],
+})
+
+describe('the embedded add (#15, #50)', () => {
+  it('a row and its cabin groups carry their breakdowns', () => {
+    expect(scopeRows([S2_FOLDED], false)[0]?.priorParts?.map((p) => p.prior)).toEqual([268, 58, 66])
+    expect(scopeRows([S2_FOLDED], true).map((r) => r.priorParts?.length ?? 0)).toEqual([3, 3, 0])
+    expect(scopeRows([TOC], false)[0]?.priorParts).toBeNull()
+  })
+
+  it('the total breaks down into the matched sessions, then each folded one', () => {
+    const total = fillTotal(scopeRows([TOC, S2_FOLDED, NEW_SESSION], false))
+    expect(total.prior).toBe(104 + 392)
+    expect(total.priorParts).toEqual([
+      { name: '2 matched sessions', prior: 104 + 268 },
+      { name: 'Taste of Camp 2', prior: 58 },
+      { name: 'Session 2b', prior: 66 },
+    ])
+  })
+
+  it("one session's total names the session and adds up its cabin groups' folds", () => {
+    const total = fillTotal(scopeRows([S2_FOLDED], true))
+    expect(total.prior).toBe(193 + 187 + 12)
+    expect(total.priorParts).toEqual([
+      { name: 'Session 2', prior: 130 + 126 + 12 },
+      { name: 'Taste of Camp 2', prior: 58 },
+      { name: 'Session 2b', prior: 66 },
+    ])
+  })
+
+  it('a total with nothing folded has no breakdown', () => {
+    expect(fillTotal(scopeRows([TOC, S2], false)).priorParts).toBeNull()
+  })
+
+  it('one matched session reads in the singular', () => {
+    expect(fillTotal(scopeRows([S2_FOLDED], false)).priorParts?.[0]?.name).toBe('1 matched session')
+  })
+
+  it('a folded session drops a leading "Session " (wording A: "2b"); the main session keeps its name', () => {
+    expect(foldName('Session 2b')).toBe('2b')
+    expect(foldName('Taste of Camp 2')).toBe('Taste of Camp 2')
+    expect(foldedLine(S2_FOLDED.prior_parts ?? [])).toEqual([
+      ['Session 2', 268],
+      ['Taste of Camp 2', 58],
+      ['2b', 66],
+    ])
+  })
+})
+
+describe('pacePrior (Pace compares what the fill total compares)', () => {
+  const data: ApiTodaySessions = {
+    year: 2027,
+    prior_year: 2026,
+    limited_threshold: 95,
+    prior_basis: 'same_point',
+    rows: [TOC, S2_FOLDED],
+    pace_prior: [
+      { day_offset: 0, enrolled: 300 },
+      { day_offset: 90, enrolled: 495 },
+      { day_offset: 286, enrolled: 540 },
+    ],
+  }
+
+  it("reads last year's curve from the fill's sessions and its point from the fill total", () => {
+    const pace = pacePrior(data, false)
+    expect(pace?.curve.map((p) => p.enrolled)).toEqual([300, 495, 540])
+    expect(pace?.now).toBe(104 + 392)
+    expect(pace?.parts?.[0]).toEqual({ name: '2 matched sessions', prior: 104 + 268 })
+  })
+
+  it("is null without a curve, so Pace keeps Velocity's own prior", () => {
+    expect(pacePrior({ ...data, pace_prior: null }, false)).toBeNull()
+  })
+})
+
+describe('todayNotes (PR 8b)', () => {
+  it('the same-point note says embedded sessions with no match are added to the session containing them', () => {
+    const same = todayNotes({
+      basis: 'same_point',
+      dayOffset: 90,
+      priorYear: 2026,
+      throughNextDay: false,
+      dash: false,
+      fill: 'plan',
+      recent: false,
+    }).find((n) => n.key === 'same')
+    expect(same?.text).toMatch(
+      /A 2026 embedded session with no 2027 match is added to the 2026 figure of the session whose dates contain it/
+    )
   })
 })

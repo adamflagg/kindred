@@ -19,7 +19,7 @@ import {
 } from '../../../components/camperships/kit/reportStyles'
 import { formatCount } from '../../../utils/numberFormat'
 import type { ApiTodaySessions } from '../../../types/api-types'
-import { Change } from './todayParts'
+import { Change, FoldedFigure } from './todayParts'
 import {
   analyticsHref,
   basisWords,
@@ -165,11 +165,21 @@ export function SessionFillTable({
     return null
   }
 
-  const sameCell = (now: number, prior: number | null, isNew: boolean) => (
+  const sameCell = (
+    now: number,
+    prior: number | null,
+    isNew: boolean,
+    priorParts: FillRow['priorParts']
+  ) => (
     <>
       <Change now={now} prior={prior} pending={pending} />
       {prior != null && !pending && (
-        <span className="text-muted-foreground font-normal"> · {formatCount(prior)}</span>
+        <span className="text-muted-foreground font-normal">
+          {' · '}
+          <FoldedFigure parts={priorParts} priorYear={data.prior_year}>
+            {formatCount(prior)}
+          </FoldedFigure>
+        </span>
       )}
       {isNew && <span className="text-muted-foreground text-xs font-normal"> new this year</span>}
     </>
@@ -212,7 +222,9 @@ export function SessionFillTable({
           </td>
         )}
         <td className={`${TD_NUMBER} text-muted-foreground`}>{formatCount(r.waitlisted)}</td>
-        <td className={TD_NUMBER}>{sameCell(r.enrolled, r.prior, r.prior == null)}</td>
+        <td className={TD_NUMBER}>
+          {sameCell(r.enrolled, r.prior, r.prior == null, r.priorParts)}
+        </td>
       </tr>
     )
   }
@@ -301,7 +313,9 @@ export function SessionFillTable({
               ))}
             {hasPills && <td className={TD_BASE_MID} />}
             <td className={TD_NUMBER}>{formatCount(total.waitlisted)}</td>
-            <td className={TD_NUMBER}>{sameCell(total.matchedEnrolled, total.prior, false)}</td>
+            <td className={TD_NUMBER}>
+              {sameCell(total.matchedEnrolled, total.prior, false, total.priorParts)}
+            </td>
           </tr>
         </tbody>
       </table>

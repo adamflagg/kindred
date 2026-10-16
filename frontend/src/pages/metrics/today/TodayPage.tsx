@@ -41,6 +41,7 @@ import {
   analyticsHref,
   basisWords,
   noteNumber,
+  pacePrior,
   registrationDayWords,
   todayNotes,
   type FillBasis,
@@ -150,6 +151,7 @@ function Hero({
   dayWords,
   current,
   prior,
+  headlinePrior,
   applied,
   incomplete,
   basis,
@@ -162,6 +164,8 @@ function Hero({
   dayWords: string | null
   current: RegistrationMetrics
   prior: RegistrationMetrics | undefined
+  /** #51: one session picked with embedded sessions folded in, its and their campers once each. */
+  headlinePrior: number | null
   applied: number
   incomplete: number
   basis: PriorBasis
@@ -173,7 +177,7 @@ function Hero({
   const vs = basisWords(basis, priorYear)
   const point = vs.replace(/^vs /, '')
   const enrolled = current.total_enrolled
-  const priorEnrolled = prior?.total_enrolled ?? null
+  const priorEnrolled = headlinePrior ?? prior?.total_enrolled ?? null
   const behind = priorEnrolled != null && priorEnrolled > enrolled ? priorEnrolled - enrolled : 0
   const segments: HeroSegment[] = [
     {
@@ -375,6 +379,11 @@ export default function TodayPage() {
     recent: noteNumber(notes, 'recent'),
   }
 
+  const oneSession = selectedSession?.name ?? null
+  // #51: only a one-session scope folds the headline; whole-scope views keep Overview's own figure
+  const headlinePrior = oneSession !== null ? (sessions.data?.headline_prior ?? null) : null
+  // Pace compares what the fill total compares (PR 8b); Velocity's own prior if Session fill failed
+  const paceFold = sessions.data ? pacePrior(sessions.data, oneSession !== null) : null
   const title = selectedSession
     ? `${selectedSession.name}, ${String(year)}`
     : `Summer ${String(year)}`
@@ -394,9 +403,13 @@ export default function TodayPage() {
           label="enrollment"
           query={{
             data: primary.data,
-            isLoading: primary.isLoading,
+            isLoading: primary.isLoading || (oneSession !== null && sessions.isLoading),
             error: primary.error ?? comparison?.error ?? null,
-            isPlaceholderData: primary.isPlaceholderData || comparison?.isPlaceholderData === true,
+            // #51's headline reads Session fill, which may still hold the previous session's figure
+            isPlaceholderData:
+              primary.isPlaceholderData ||
+              comparison?.isPlaceholderData === true ||
+              (oneSession !== null && sessions.isPlaceholderData),
           }}
           onRetry={retryHero}
           busyWhat={busyWhat}
@@ -407,6 +420,7 @@ export default function TodayPage() {
               dayWords={registrationDayWords(prior?.day_offset, priorityLabel)}
               current={current}
               prior={prior}
+              headlinePrior={headlinePrior}
               applied={appliedCount}
               incomplete={incompleteCount}
               basis={basis}
@@ -437,14 +451,14 @@ export default function TodayPage() {
               <>
                 <SessionFillHead
                   data={data}
-                  oneSession={selectedSession?.name ?? null}
+                  oneSession={oneSession}
                   basis={fill}
                   onBasis={setFill}
                   notes={n}
                 />
                 <SessionFillTable
                   data={data}
-                  oneSession={selectedSession?.name ?? null}
+                  oneSession={oneSession}
                   basis={fill}
                   pending={pending}
                   notes={n}
@@ -463,11 +477,16 @@ export default function TodayPage() {
             <div className="pt-1.5 pr-2.5 pb-2 pl-3.5">
               <CardState
                 label="pace"
-                query={velocity}
+                query={{
+                  data: velocity.data,
+                  isLoading: velocity.isLoading || sessions.isLoading,
+                  error: velocity.error,
+                  isPlaceholderData: velocity.isPlaceholderData || sessions.isPlaceholderData,
+                }}
                 onRetry={() => void velocity.refetch()}
                 busyWhat={busyWhat}
               >
-                {(data) => <PaceCard data={data} year={year} />}
+                {(data) => <PaceCard data={data} year={year} fold={paceFold} />}
               </CardState>
             </div>
           </section>

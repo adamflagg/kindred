@@ -251,6 +251,8 @@ import type {
   RecentSignupLine,
   RecentSignupsResponse,
   TodaySessionPart,
+  TodayPriorPart,
+  TodayPacePoint,
   TodaySessionRow,
   TodaySessionsResponse,
 } from './api-generated'
@@ -660,5 +662,7 @@ export type ApiAidZipGroup = ZipGroupOut
 export type ApiTodaySessions = TodaySessionsResponse
 export type ApiTodaySessionRow = TodaySessionRow
 export type ApiTodaySessionPart = TodaySessionPart
+export type ApiTodayPriorPart = TodayPriorPart
+export type ApiTodayPacePoint = TodayPacePoint
 export type ApiRecentSignups = RecentSignupsResponse
 export type ApiRecentSignupLine = RecentSignupLine

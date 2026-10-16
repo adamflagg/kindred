@@ -1660,6 +1660,8 @@ export type {
   TodayFlagsOut,
   TodayLineOut,
   TodayNextUpOut,
+  TodayPacePoint,
+  TodayPriorPart,
   TodayReasonOut,
   TodayResponse,
   TodaySessionPart,
