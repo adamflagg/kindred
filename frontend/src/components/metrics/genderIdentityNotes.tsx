@@ -12,12 +12,17 @@ import {
   sortByIdentityOrder,
 } from '../camperships/kit/genderIdentity'
 import { formatCount } from '../../utils/numberFormat'
-import { WHAT, campers, needsReadWithCare, seasonsText, type SeasonFallback } from './genderNotes'
+import {
+  LINE,
+  STRONG,
+  WHAT,
+  campers,
+  needsReadWithCare,
+  seasonsText,
+  type SeasonFallback,
+} from './genderNotes'
 
 export type { SeasonFallback } from './genderNotes'
-
-const LINE = 'text-muted-foreground border-border mt-3 border-t pt-2 text-xs leading-[17px]'
-const STRONG = 'text-foreground font-semibold'
 
 function Sup({ n }: { n: number }) {
   return <sup className="text-[0.8em]">{n}</sup>

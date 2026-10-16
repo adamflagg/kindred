@@ -14,7 +14,7 @@
 
 import { csvFilename } from '../../../components/metrics/exportFilename'
 import { formatCount, formatPercent, formatSignedCount } from '../../../utils/numberFormat'
-import { Fragment, useMemo } from 'react'
+import { useMemo } from 'react'
 import {
   LineChart,
   Line,
@@ -47,7 +47,11 @@ import {
   buildLegendLabels,
 } from '../../../components/velocity'
 import type { WeeklyDataPoint } from '../../../types/velocity'
-import { DefinitionNotes, DefRef } from '../../../components/camperships/kit/DefinitionNotes'
+import {
+  DefinitionNotes,
+  DefRef,
+  type DefinitionNote,
+} from '../../../components/camperships/kit/DefinitionNotes'
 import {
   PRIORITY_DAY_NOTE,
   PRIORITY_DAY_NOTES,
@@ -59,11 +63,17 @@ import {
 import { PHASE_COLORS } from './phaseColors'
 import {
   PRIOR_YEAR_COLORS,
-  GENDER_COLORS,
   formatDateShort,
   priorYearDailyDateLabel,
 } from '../../../utils/chartFormatters'
 import PartialWeekDot from './PartialWeekDot'
+import {
+  sessionGenderCount,
+  velocityFallbackSeasons,
+  velocityGenderSeries,
+} from '../../../components/velocity/velocityGenderSeries'
+import { VelocityGenderNotes } from '../../../components/velocity/VelocityGenderNotes'
+import { genderNote } from '../../../components/metrics/genderNotes'
 import { MetricsBusy, MetricsLoadError } from '../../../components/metrics/MetricsQueryGuard'
 import { deltaInk } from '../../../utils/deltaTokens'
 
@@ -95,6 +105,7 @@ export default function CancellationVelocityPage() {
     compareYears: controls.selectedPriorYears,
     sessionTypes: sessionTypesParam,
     splitByGender: controls.splitByGender,
+    genderBasis: controls.genderBasis,
     metric: 'cancellation',
     duration: durationParam,
   })
@@ -170,6 +181,11 @@ export default function CancellationVelocityPage() {
 
   // Build gender breakdown lookup for session table
   const genderBreakdownMap = new Map(data.session_gender_breakdown.map((b) => [b.session_cm_id, b]))
+  // #2898 answer #78: Boys / Girls on the Gender field, one line and column per identity group on identity,
+  // as the response was built (never ahead of it while a new basis loads).
+  const genderSeries = velocityGenderSeries(data)
+  const genderBasis = data.gender_basis ?? 'field'
+  const fallbackSeasons = velocityFallbackSeasons(data)
 
   const hasPriorYear = controls.selectedPriorYears.length > 0
   // Headers name the comparison year (#3209 row 20)
@@ -180,6 +196,18 @@ export default function CancellationVelocityPage() {
   const priorityDayMark = readsThroughNextDay(data.current_day_offset, data.prior_day_offset) ? (
     <DefRef n={1} title={PRIORITY_DAY_NOTE} />
   ) : null
+  const priorityDayNotes = summaryCards && hasPriorYear && priorityDayMark ? PRIORITY_DAY_NOTES : []
+  // Ruling 58: on gender identity, campers with no answer count by the Gender field; say how many (never at 0).
+  const genderNoteN =
+    controls.splitByGender &&
+    genderBasis === 'identity' &&
+    fallbackSeasons.some((season) => season.count > 0)
+      ? priorityDayNotes.length + 1
+      : undefined
+  const pageNotes: readonly DefinitionNote[] = [
+    ...priorityDayNotes,
+    ...(genderNoteN !== undefined ? [genderNote(genderNoteN, fallbackSeasons)] : []),
+  ]
   // Ruling 9: only the priority date itself waits a day for this year's data.
   const deltaPending = isPriorityDayOffset(data.current_day_offset)
   const todayLine = (x: number) => (
@@ -218,44 +246,30 @@ export default function CancellationVelocityPage() {
       className: 'text-left',
     },
     ...(controls.splitByGender
-      ? [
-          {
-            header: 'Boys',
-            value: (session) =>
-              (session.session_cm_id
-                ? genderBreakdownMap.get(session.session_cm_id)?.boys_enrolled
-                : null) ?? null,
-            accessor: (session) => {
-              const genderData = session.session_cm_id
-                ? genderBreakdownMap.get(session.session_cm_id)
-                : undefined
-              return (
-                <span style={{ color: GENDER_COLORS.boys }}>
-                  {formatCount(genderData?.boys_enrolled)}
+      ? genderSeries.map(
+          (series) =>
+            ({
+              header: series.label,
+              value: (session) =>
+                sessionGenderCount(
+                  session.session_cm_id ? genderBreakdownMap.get(session.session_cm_id) : undefined,
+                  series
+                ) ?? null,
+              accessor: (session) => (
+                <span style={{ color: series.color }}>
+                  {formatCount(
+                    sessionGenderCount(
+                      session.session_cm_id
+                        ? genderBreakdownMap.get(session.session_cm_id)
+                        : undefined,
+                      series
+                    )
+                  )}
                 </span>
-              )
-            },
-            className: 'text-right',
-          } satisfies SessionColumnDef,
-          {
-            header: 'Girls',
-            value: (session) =>
-              (session.session_cm_id
-                ? genderBreakdownMap.get(session.session_cm_id)?.girls_enrolled
-                : null) ?? null,
-            accessor: (session) => {
-              const genderData = session.session_cm_id
-                ? genderBreakdownMap.get(session.session_cm_id)
-                : undefined
-              return (
-                <span style={{ color: GENDER_COLORS.girls }}>
-                  {formatCount(genderData?.girls_enrolled)}
-                </span>
-              )
-            },
-            className: 'text-right',
-          } satisfies SessionColumnDef,
-        ]
+              ),
+              className: 'text-right',
+            }) satisfies SessionColumnDef
+        )
       : []),
     {
       header: controls.splitByGender ? 'Total' : 'Total Cancelled',
@@ -401,6 +415,8 @@ export default function CancellationVelocityPage() {
             splitByGender={controls.splitByGender}
             onTogglePriorYear={controls.togglePriorYear}
             onToggleGender={controls.handleGenderToggle}
+            genderBasis={controls.genderBasis}
+            onGenderBasisChange={controls.setGenderBasis}
           />
         </div>
 
@@ -454,9 +470,7 @@ export default function CancellationVelocityPage() {
           </div>
         )}
 
-        {summaryCards && hasPriorYear && priorityDayMark && (
-          <DefinitionNotes notes={PRIORITY_DAY_NOTES} />
-        )}
+        {pageNotes.length > 0 && <DefinitionNotes notes={pageNotes} />}
 
         {/* Session Swap Annotation */}
         {data.session_swap_count != null &&
@@ -481,6 +495,7 @@ export default function CancellationVelocityPage() {
         <div data-tour="cancel-velocity-chart" className="card-lodge p-4">
           <h3 className="text-foreground mb-2 text-base font-semibold">
             Cancellation Velocity - {currentYear}
+            {genderNoteN !== undefined && <DefRef n={genderNoteN} />}
           </h3>
 
           {/* Phase marker legend */}
@@ -722,52 +737,39 @@ export default function CancellationVelocityPage() {
 
                 {controls.splitByGender ? (
                   <>
-                    <Line
-                      type="monotone"
-                      dataKey="cancelled_boys"
-                      name={`Boys ${currentYear}`}
-                      stroke={GENDER_COLORS.boys}
-                      strokeWidth={3}
-                      dot={false}
-                      activeDot={{ r: 4 }}
-                      connectNulls={false}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="cancelled_girls"
-                      name={`Girls ${currentYear}`}
-                      stroke={GENDER_COLORS.girls}
-                      strokeWidth={3}
-                      dot={false}
-                      activeDot={{ r: 4 }}
-                      connectNulls={false}
-                    />
-                    {controls.selectedPriorYears.slice(0, 1).map((year) => (
-                      <Fragment key={year}>
-                        <Line
-                          type="monotone"
-                          dataKey={`cancelled_boys_${year}`}
-                          name={`Boys ${year}`}
-                          stroke={GENDER_COLORS.boys}
-                          strokeWidth={2}
-                          strokeDasharray="5 5"
-                          dot={false}
-                          opacity={0.6}
-                          connectNulls={false}
-                        />
-                        <Line
-                          type="monotone"
-                          dataKey={`cancelled_girls_${year}`}
-                          name={`Girls ${year}`}
-                          stroke={GENDER_COLORS.girls}
-                          strokeWidth={2}
-                          strokeDasharray="5 5"
-                          dot={false}
-                          opacity={0.6}
-                          connectNulls={false}
-                        />
-                      </Fragment>
+                    {/* One line per gender (#78); Another identity dashed */}
+                    {genderSeries.map((series) => (
+                      <Line
+                        key={series.key}
+                        type="monotone"
+                        dataKey={`cancelled_${series.key}`}
+                        name={`${series.label} ${currentYear}`}
+                        stroke={series.color}
+                        strokeWidth={3}
+                        {...(series.dashed ? { strokeDasharray: '2 3' } : {})}
+                        dot={false}
+                        activeDot={{ r: 4 }}
+                        connectNulls={false}
+                      />
                     ))}
+                    {controls.selectedPriorYears
+                      .slice(0, 1)
+                      .map((year) =>
+                        genderSeries.map((series) => (
+                          <Line
+                            key={`${year}-${series.key}`}
+                            type="monotone"
+                            dataKey={`cancelled_${series.key}_${year}`}
+                            name={`${series.label} ${year}`}
+                            stroke={series.color}
+                            strokeWidth={2}
+                            strokeDasharray="5 5"
+                            dot={false}
+                            opacity={0.6}
+                            connectNulls={false}
+                          />
+                        ))
+                      )}
                   </>
                 ) : (
                   <>
@@ -907,52 +909,39 @@ export default function CancellationVelocityPage() {
 
                 {controls.splitByGender ? (
                   <>
-                    <Line
-                      type="monotone"
-                      dataKey="cancelled_boys"
-                      name={`Boys ${currentYear}`}
-                      stroke={GENDER_COLORS.boys}
-                      strokeWidth={3}
-                      dot={<PartialWeekDot />}
-                      activeDot={{ r: 4 }}
-                      connectNulls={false}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="cancelled_girls"
-                      name={`Girls ${currentYear}`}
-                      stroke={GENDER_COLORS.girls}
-                      strokeWidth={3}
-                      dot={<PartialWeekDot />}
-                      activeDot={{ r: 4 }}
-                      connectNulls={false}
-                    />
-                    {controls.selectedPriorYears.slice(0, 1).map((year) => (
-                      <Fragment key={year}>
-                        <Line
-                          type="monotone"
-                          dataKey={`cancelled_boys_${year}`}
-                          name={`Boys ${year}`}
-                          stroke={GENDER_COLORS.boys}
-                          strokeWidth={2}
-                          strokeDasharray="5 5"
-                          dot={false}
-                          opacity={0.6}
-                          connectNulls={false}
-                        />
-                        <Line
-                          type="monotone"
-                          dataKey={`cancelled_girls_${year}`}
-                          name={`Girls ${year}`}
-                          stroke={GENDER_COLORS.girls}
-                          strokeWidth={2}
-                          strokeDasharray="5 5"
-                          dot={false}
-                          opacity={0.6}
-                          connectNulls={false}
-                        />
-                      </Fragment>
+                    {/* One line per gender (#78); Another identity dashed */}
+                    {genderSeries.map((series) => (
+                      <Line
+                        key={series.key}
+                        type="monotone"
+                        dataKey={`cancelled_${series.key}`}
+                        name={`${series.label} ${currentYear}`}
+                        stroke={series.color}
+                        strokeWidth={3}
+                        {...(series.dashed ? { strokeDasharray: '2 3' } : {})}
+                        dot={<PartialWeekDot />}
+                        activeDot={{ r: 4 }}
+                        connectNulls={false}
+                      />
                     ))}
+                    {controls.selectedPriorYears
+                      .slice(0, 1)
+                      .map((year) =>
+                        genderSeries.map((series) => (
+                          <Line
+                            key={`${year}-${series.key}`}
+                            type="monotone"
+                            dataKey={`cancelled_${series.key}_${year}`}
+                            name={`${series.label} ${year}`}
+                            stroke={series.color}
+                            strokeWidth={2}
+                            strokeDasharray="5 5"
+                            dot={false}
+                            opacity={0.6}
+                            connectNulls={false}
+                          />
+                        ))
+                      )}
                   </>
                 ) : (
                   <>
@@ -987,6 +976,14 @@ export default function CancellationVelocityPage() {
               </LineChart>
             )}
           </ResponsiveContainer>
+          {controls.splitByGender && (
+            <VelocityGenderNotes
+              basis={genderBasis}
+              metric="cancellation"
+              noteN={genderNoteN}
+              seasons={fallbackSeasons}
+            />
+          )}
         </div>
 
         {/* Per-Session Cancellation Breakdown */}

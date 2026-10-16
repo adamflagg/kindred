@@ -35,6 +35,7 @@ vi.mock('../lib/pocketbase', () => ({
 }))
 
 import { useVelocity } from './useVelocity'
+import { queryKeys } from '../utils/queryKeys'
 
 describe('useVelocity auth loading guard (#512)', () => {
   it('disables query while auth is loading', () => {
@@ -69,5 +70,39 @@ describe('useVelocity auth loading guard (#512)', () => {
     })
 
     expect(result.current.fetchStatus).toBe('idle')
+  })
+})
+
+describe('useVelocity gender basis (#2898 owner answer #78)', () => {
+  async function requested(params: Parameters<typeof useVelocity>[1]): Promise<string> {
+    mockIsLoading = false
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }))
+    renderHook(() => useVelocity(2026, params), { wrapper: createWrapper() })
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalled())
+    const url = String(fetchSpy.mock.calls[0]?.[0])
+    fetchSpy.mockRestore()
+    return url
+  }
+
+  it('asks for gender identity only when the split is on and the picker says identity', async () => {
+    expect(await requested({ splitByGender: true, genderBasis: 'identity' })).toContain(
+      'gender_basis=identity'
+    )
+    expect(await requested({ splitByGender: true, genderBasis: 'field' })).not.toContain(
+      'gender_basis'
+    )
+    expect(await requested({ splitByGender: false, genderBasis: 'identity' })).not.toContain(
+      'gender_basis'
+    )
+  })
+
+  it('caches the two bases apart', () => {
+    expect(
+      queryKeys.velocity(2026, undefined, '', '', true, 'enrollment', undefined, 'identity')
+    ).not.toEqual(
+      queryKeys.velocity(2026, undefined, '', '', true, 'enrollment', undefined, 'field')
+    )
   })
 })

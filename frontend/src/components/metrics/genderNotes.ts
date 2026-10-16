@@ -9,6 +9,10 @@ import { formatCount } from '../../utils/numberFormat'
 
 export const WHAT = 'with no gender identity answer'
 
+/** A visible note line under a chart or table, and its bold run. */
+export const LINE = 'text-muted-foreground border-border mt-3 border-t pt-2 text-xs leading-[17px]'
+export const STRONG = 'text-foreground font-semibold'
+
 export function campers(n: number): string {
   return n === 1 ? 'camper' : 'campers'
 }

@@ -155,4 +155,28 @@ describe('useVelocityControls', () => {
     rerender()
     expect(result.current.selectedPriorYears).toBe(first)
   })
+
+  describe('gender basis (#2898 owner answer #78)', () => {
+    it('defaults to the Gender field, with nothing in the link', () => {
+      const { result } = renderControls(NONE)
+      expect(result.current.genderBasis).toBe('field')
+      expect(new URLSearchParams(result.current.search).has('gender')).toBe(false)
+    })
+
+    it('reads gender=identity from the link', () => {
+      const { result } = renderControls('/?priors=&gender=identity')
+      expect(result.current.genderBasis).toBe('identity')
+    })
+
+    it('writes identity into the link and removes it again for the Gender field', () => {
+      const { result } = renderControls('/?priors=2025')
+      act(() => result.current.setGenderBasis('identity'))
+      expect(result.current.genderBasis).toBe('identity')
+      expect(new URLSearchParams(result.current.search).get('gender')).toBe('identity')
+      expect(new URLSearchParams(result.current.search).get('priors')).toBe('2025')
+      act(() => result.current.setGenderBasis('field'))
+      expect(result.current.genderBasis).toBe('field')
+      expect(new URLSearchParams(result.current.search).has('gender')).toBe(false)
+    })
+  })
 })

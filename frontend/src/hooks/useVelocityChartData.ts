@@ -8,6 +8,7 @@ import {
 } from '../utils/sessionUtils'
 import { formatDateShort } from '../utils/chartFormatters'
 import { pickComparisonYear } from '../components/velocity/velocityCompare'
+import { velocityGenderSeries } from '../components/velocity/velocityGenderSeries'
 
 export interface VelocityChartConfig {
   metric: 'enrollment' | 'cancellation'
@@ -23,6 +24,9 @@ export function useVelocityChartData(
   config: VelocityChartConfig
 ) {
   const { metric, splitByGender, selectedPriorYears } = config
+
+  // #2898 answer #78: Boys / Girls on the Gender field, one line per identity group on gender identity.
+  const genderSeries = useMemo(() => velocityGenderSeries(data), [data])
 
   // The one prior year the cards, By Session and the delta table all compare with (#3209 row 20)
   const comparisonYear = useMemo(
@@ -48,23 +52,17 @@ export function useVelocityChartData(
       (py) => new Map(py.weekly.map((d) => [d.week_number, d]))
     )
 
-    // Build gender maps
-    const mCurve = data.by_gender.find((c) => c.gender === 'M')
-    const fCurve = data.by_gender.find((c) => c.gender === 'F')
-    const mMap = mCurve ? new Map(mCurve.weekly.map((d) => [d.week_number, d])) : new Map()
-    const fMap = fCurve ? new Map(fCurve.weekly.map((d) => [d.week_number, d])) : new Map()
-
-    // Build prior year gender maps
-    const priorMGender = data.prior_year_by_gender.filter((c) => c.gender === 'M')
-    const priorFGender = data.prior_year_by_gender.filter((c) => c.gender === 'F')
-    const priorMGenderMaps = priorMGender.map((c) => ({
-      year: c.year,
-      map: new Map(c.weekly.map((d) => [d.week_number, d])),
-    }))
-    const priorFGenderMaps = priorFGender.map((c) => ({
-      year: c.year,
-      map: new Map(c.weekly.map((d) => [d.week_number, d])),
-    }))
+    // One weekly map per gender line, this year and each prior year
+    const genderMaps = genderSeries.map((series) => {
+      const curve = data.by_gender.find((c) => c.gender === series.gender)
+      return {
+        key: series.key,
+        map: new Map(curve?.weekly.map((d) => [d.week_number, d])),
+        priors: data.prior_year_by_gender
+          .filter((c) => c.gender === series.gender)
+          .map((c) => ({ year: c.year, map: new Map(c.weekly.map((d) => [d.week_number, d])) })),
+      }
+    })
 
     // Collect all week_numbers across all years and gender curves
     const allWeekNumbers = new Set<number>()
@@ -72,13 +70,9 @@ export function useVelocityChartData(
     for (const pm of priorMaps) {
       for (const wn of pm.keys()) allWeekNumbers.add(wn)
     }
-    for (const wn of mMap.keys()) allWeekNumbers.add(wn)
-    for (const wn of fMap.keys()) allWeekNumbers.add(wn)
-    for (const { map } of priorMGenderMaps) {
+    for (const { map, priors } of genderMaps) {
       for (const wn of map.keys()) allWeekNumbers.add(wn)
-    }
-    for (const { map } of priorFGenderMaps) {
-      for (const wn of map.keys()) allWeekNumbers.add(wn)
+      for (const prior of priors) for (const wn of prior.map.keys()) allWeekNumbers.add(wn)
     }
 
     const sorted = [...allWeekNumbers].sort((a, b) => a - b)
@@ -133,46 +127,34 @@ export function useVelocityChartData(
 
       // Gender lines
       if (splitByGender) {
-        if (metric === 'enrollment') {
-          row['enrolled_boys'] = mMap.get(wn)?.enrolled ?? null
-          row['enrolled_girls'] = fMap.get(wn)?.enrolled ?? null
-          row['gross_enrolled_boys'] = mMap.get(wn)?.gross_enrolled ?? null
-          row['gross_enrolled_girls'] = fMap.get(wn)?.gross_enrolled ?? null
-          // Gender delta keys for Weekly Delta view
-          row['weekly_new_boys'] = mMap.get(wn)?.weekly_new ?? null
-          row['weekly_new_girls'] = fMap.get(wn)?.weekly_new ?? null
-          row['weekly_cancelled_boys'] = mMap.get(wn)?.weekly_cancelled ?? null
-          row['weekly_cancelled_girls'] = fMap.get(wn)?.weekly_cancelled ?? null
-
-          for (const { year, map } of priorMGenderMaps) {
-            row[`enrolled_boys_${year}`] = map.get(wn)?.enrolled ?? null
-            row[`gross_enrolled_boys_${year}`] = map.get(wn)?.gross_enrolled ?? null
-            row[`weekly_new_boys_${year}`] = map.get(wn)?.weekly_new ?? null
-            row[`weekly_cancelled_boys_${year}`] = map.get(wn)?.weekly_cancelled ?? null
-          }
-          for (const { year, map } of priorFGenderMaps) {
-            row[`enrolled_girls_${year}`] = map.get(wn)?.enrolled ?? null
-            row[`gross_enrolled_girls_${year}`] = map.get(wn)?.gross_enrolled ?? null
-            row[`weekly_new_girls_${year}`] = map.get(wn)?.weekly_new ?? null
-            row[`weekly_cancelled_girls_${year}`] = map.get(wn)?.weekly_cancelled ?? null
-          }
-        } else {
-          // cancellation: gender maps from enrolled value
-          row['cancelled_boys'] = mMap.get(wn)?.enrolled ?? null
-          row['cancelled_girls'] = fMap.get(wn)?.enrolled ?? null
-
-          for (const { year, map } of priorMGenderMaps) {
-            row[`cancelled_boys_${year}`] = map.get(wn)?.enrolled ?? null
-          }
-          for (const { year, map } of priorFGenderMaps) {
-            row[`cancelled_girls_${year}`] = map.get(wn)?.enrolled ?? null
+        for (const { key, map, priors } of genderMaps) {
+          const point = map.get(wn)
+          if (metric === 'enrollment') {
+            row[`enrolled_${key}`] = point?.enrolled ?? null
+            row[`gross_enrolled_${key}`] = point?.gross_enrolled ?? null
+            // Gender delta keys for Weekly Delta view
+            row[`weekly_new_${key}`] = point?.weekly_new ?? null
+            row[`weekly_cancelled_${key}`] = point?.weekly_cancelled ?? null
+            for (const { year, map: prior } of priors) {
+              const p = prior.get(wn)
+              row[`enrolled_${key}_${year}`] = p?.enrolled ?? null
+              row[`gross_enrolled_${key}_${year}`] = p?.gross_enrolled ?? null
+              row[`weekly_new_${key}_${year}`] = p?.weekly_new ?? null
+              row[`weekly_cancelled_${key}_${year}`] = p?.weekly_cancelled ?? null
+            }
+          } else {
+            // cancellation: gender maps from enrolled value
+            row[`cancelled_${key}`] = point?.enrolled ?? null
+            for (const { year, map: prior } of priors) {
+              row[`cancelled_${key}_${year}`] = prior.get(wn)?.enrolled ?? null
+            }
           }
         }
       }
 
       return row
     })
-  }, [data, splitByGender, metric])
+  }, [data, splitByGender, metric, genderSeries])
 
   // Build daily chart data aligned by day_offset
   const dailyChartData = useMemo(() => {
@@ -184,23 +166,25 @@ export function useVelocityChartData(
     // Build day_offset -> data maps for each prior year
     const priorMaps = data.prior_years.map((py) => new Map(py.daily.map((d) => [d.day_offset, d])))
 
-    // Build gender maps from by_gender daily data
-    const mCurve = data.by_gender.find((c) => c.gender === 'M')
-    const fCurve = data.by_gender.find((c) => c.gender === 'F')
-    const mMap = mCurve ? new Map(mCurve.daily.map((d) => [d.day_offset, d])) : new Map()
-    const fMap = fCurve ? new Map(fCurve.daily.map((d) => [d.day_offset, d])) : new Map()
-
-    // Build prior year gender daily maps
-    const priorMGender = data.prior_year_by_gender.filter((c) => c.gender === 'M')
-    const priorFGender = data.prior_year_by_gender.filter((c) => c.gender === 'F')
-    const priorMGenderMaps = priorMGender.map((c) => ({
-      year: c.year,
-      map: new Map(c.daily.map((d) => [d.day_offset, d])),
-    }))
-    const priorFGenderMaps = priorFGender.map((c) => ({
-      year: c.year,
-      map: new Map(c.daily.map((d) => [d.day_offset, d])),
-    }))
+    // One daily map per gender line, this year and each prior year
+    const genderMaps = genderSeries.map((series) => {
+      const curve = data.by_gender.find((c) => c.gender === series.gender)
+      return {
+        key: series.key,
+        // Cancellation's Gender field daily point carries its count in enrolled_boys / enrolled_girls;
+        // an identity group's in enrolled.
+        cancelField:
+          series.gender === 'M'
+            ? ('enrolled_boys' as const)
+            : series.gender === 'F'
+              ? ('enrolled_girls' as const)
+              : ('enrolled' as const),
+        map: new Map(curve?.daily.map((d) => [d.day_offset, d])),
+        priors: data.prior_year_by_gender
+          .filter((c) => c.gender === series.gender)
+          .map((c) => ({ year: c.year, map: new Map(c.daily.map((d) => [d.day_offset, d])) })),
+      }
+    })
 
     // Collect all day_offsets across all years
     const allDayOffsets = new Set<number>()
@@ -208,13 +192,9 @@ export function useVelocityChartData(
     for (const pm of priorMaps) {
       for (const offset of pm.keys()) allDayOffsets.add(offset)
     }
-    for (const offset of mMap.keys()) allDayOffsets.add(offset)
-    for (const offset of fMap.keys()) allDayOffsets.add(offset)
-    for (const { map } of priorMGenderMaps) {
+    for (const { map, priors } of genderMaps) {
       for (const offset of map.keys()) allDayOffsets.add(offset)
-    }
-    for (const { map } of priorFGenderMaps) {
-      for (const offset of map.keys()) allDayOffsets.add(offset)
+      for (const prior of priors) for (const offset of prior.map.keys()) allDayOffsets.add(offset)
     }
 
     const sorted = [...allDayOffsets].sort((a, b) => a - b)
@@ -248,37 +228,27 @@ export function useVelocityChartData(
 
       // Gender lines
       if (splitByGender) {
-        if (metric === 'enrollment') {
-          row['enrolled_boys'] = mMap.get(dayOffset)?.enrolled ?? null
-          row['enrolled_girls'] = fMap.get(dayOffset)?.enrolled ?? null
-          row['gross_enrolled_boys'] = mMap.get(dayOffset)?.gross_enrolled ?? null
-          row['gross_enrolled_girls'] = fMap.get(dayOffset)?.gross_enrolled ?? null
-
-          for (const { year, map } of priorMGenderMaps) {
-            row[`enrolled_boys_${year}`] = map.get(dayOffset)?.enrolled ?? null
-            row[`gross_enrolled_boys_${year}`] = map.get(dayOffset)?.gross_enrolled ?? null
-          }
-          for (const { year, map } of priorFGenderMaps) {
-            row[`enrolled_girls_${year}`] = map.get(dayOffset)?.enrolled ?? null
-            row[`gross_enrolled_girls_${year}`] = map.get(dayOffset)?.gross_enrolled ?? null
-          }
-        } else {
-          // cancellation daily gender: use enrolled_boys/enrolled_girls from daily data point
-          row['cancelled_boys'] = mMap.get(dayOffset)?.enrolled_boys ?? null
-          row['cancelled_girls'] = fMap.get(dayOffset)?.enrolled_girls ?? null
-
-          for (const { year, map } of priorMGenderMaps) {
-            row[`cancelled_boys_${year}`] = map.get(dayOffset)?.enrolled_boys ?? null
-          }
-          for (const { year, map } of priorFGenderMaps) {
-            row[`cancelled_girls_${year}`] = map.get(dayOffset)?.enrolled_girls ?? null
+        for (const { key, cancelField, map, priors } of genderMaps) {
+          const point = map.get(dayOffset)
+          if (metric === 'enrollment') {
+            row[`enrolled_${key}`] = point?.enrolled ?? null
+            row[`gross_enrolled_${key}`] = point?.gross_enrolled ?? null
+            for (const { year, map: prior } of priors) {
+              row[`enrolled_${key}_${year}`] = prior.get(dayOffset)?.enrolled ?? null
+              row[`gross_enrolled_${key}_${year}`] = prior.get(dayOffset)?.gross_enrolled ?? null
+            }
+          } else {
+            row[`cancelled_${key}`] = point?.[cancelField] ?? null
+            for (const { year, map: prior } of priors) {
+              row[`cancelled_${key}_${year}`] = prior.get(dayOffset)?.[cancelField] ?? null
+            }
           }
         }
       }
 
       return row
     })
-  }, [data, splitByGender, metric])
+  }, [data, splitByGender, metric, genderSeries])
 
   // Sort by-session table using camp-then-quest ordering
   const sortedBySession = useMemo(() => {
@@ -412,5 +382,6 @@ export function useVelocityChartData(
     priorSessionMap,
     priorWeekMap,
     comparisonYear,
+    genderSeries,
   }
 }

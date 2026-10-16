@@ -200,7 +200,6 @@ vi.mock('./phaseColors', () => ({
 
 vi.mock('../../../utils/chartFormatters', () => ({
   PRIOR_YEAR_COLORS: ['#aaa'],
-  GENDER_COLORS: { boys: '#00f', girls: '#f0f' },
   formatDateShort: (s: string) => s,
   priorYearDailyDateLabel: () => null,
 }))

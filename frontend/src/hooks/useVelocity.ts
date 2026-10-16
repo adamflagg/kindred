@@ -5,7 +5,7 @@
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { useApiWithAuth } from './useApiWithAuth'
 import { queryKeys, syncDataOptions } from '../utils/queryKeys'
-import type { VelocityResponse } from '../types/velocity'
+import type { GenderBasis, VelocityResponse } from '../types/velocity'
 
 export function useVelocity(
   year: number,
@@ -14,6 +14,8 @@ export function useVelocity(
     compareYears?: number[]
     sessionTypes?: string
     splitByGender?: boolean
+    /** #2898 answer #78: what the split reads; only sent while the split is on. */
+    genderBasis?: GenderBasis
     metric?: 'enrollment' | 'cancellation'
     duration?: string | null | undefined
   } = {}
@@ -25,6 +27,8 @@ export function useVelocity(
   if (params.compareYears?.length) searchParams.set('compare_years', params.compareYears.join(','))
   if (params.sessionTypes) searchParams.set('session_types', params.sessionTypes)
   if (params.splitByGender) searchParams.set('split_by_gender', 'true')
+  const genderBasis = params.splitByGender ? (params.genderBasis ?? 'field') : undefined
+  if (genderBasis === 'identity') searchParams.set('gender_basis', genderBasis)
   if (params.metric && params.metric !== 'enrollment') searchParams.set('metric', params.metric)
   if (params.duration) searchParams.set('duration', params.duration)
 
@@ -36,7 +40,8 @@ export function useVelocity(
       params.sessionTypes,
       params.splitByGender,
       params.metric,
-      params.duration ?? undefined
+      params.duration ?? undefined,
+      genderBasis
     ),
     queryFn: async (): Promise<VelocityResponse> => {
       const response = await fetchWithAuth(`/api/metrics/velocity?${searchParams}`)
