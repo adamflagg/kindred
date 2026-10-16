@@ -74,6 +74,37 @@ FLAG_DUPLICATE_SURVIVOR_WITHDRAWN: Final = "duplicate_survivor_withdrawn"
 
 RequestKey = tuple[int, int, str, str]
 
+# aid_request_additions.source: who made the addition. A request built from one is keyed by its source's prefix and
+# its session ("added:<session_cm_id>"), never by the session's name: a winter retreat's name IS the aid form's option
+# text, so a name key would collide with the form's own request within one build (and a later form answer naming the
+# same session must become a second, duplicate_pending request, not the same one).
+ADDITION_SOURCE_STAFF: Final = "staff"
+ADDITION_SOURCE_REGISTRATION_ASK: Final = "registration_ask"
+ADDITION_KEY_PREFIXES: Final[Mapping[str, str]] = {
+    ADDITION_SOURCE_STAFF: "added",
+    ADDITION_SOURCE_REGISTRATION_ASK: "registration_ask",
+}
+# RequestOut.origin: where a request came from, read from its key's prefix.
+ORIGIN_FORM: Final = "form"
+ORIGIN_ADDED: Final = "added"
+ORIGIN_REGISTRATION_ASK: Final = "registration_ask"
+
+
+def addition_option_key(source: str, session_cm_id: int) -> str:
+    return f"{ADDITION_KEY_PREFIXES[source]}:{int(session_cm_id)}"
+
+
+def request_origin(program_option_key: str) -> str:
+    """form | added | registration_ask, from a request's intake key. A form answer's key is its normalised option
+    text, which never holds a colon followed by digits alone after one of these prefixes."""
+    prefix, sep, rest = program_option_key.partition(":")
+    if sep and rest.isdigit():
+        if prefix == ADDITION_KEY_PREFIXES[ADDITION_SOURCE_STAFF]:
+            return ORIGIN_ADDED
+        if prefix == ADDITION_KEY_PREFIXES[ADDITION_SOURCE_REGISTRATION_ASK]:
+            return ORIGIN_REGISTRATION_ASK
+    return ORIGIN_FORM
+
 
 @dataclass(frozen=True)
 class Flag:
@@ -213,6 +244,39 @@ class RequestRecord:
     @property
     def key(self) -> RequestKey:
         return (self.household_cm_id, self.person_cm_id, self.program_key, self.program_option_key)
+
+
+@dataclass(frozen=True)
+class AdditionRecord:
+    """One aid_request_additions row: a request staff (or, 2027 on, the registration-ask rule) added that the aid
+    form never named. Intake makes one request from every LIVE row (retired_at empty)."""
+
+    id: str
+    year: int
+    household_cm_id: int
+    person_cm_id: int  # 0 = a Family Camp household request
+    program_key: str
+    session_cm_id: int
+    ask: float
+    source: str
+    reason: str
+    actor: str
+    created: str = ""
+    retired_at: str = ""
+    retired_by: str = ""
+    retire_reason: str = ""
+
+    @property
+    def live(self) -> bool:
+        return not self.retired_at
+
+    @property
+    def option_key(self) -> str:
+        return addition_option_key(self.source, self.session_cm_id)
+
+    @property
+    def request_key(self) -> RequestKey:
+        return (self.household_cm_id, self.person_cm_id, self.program_key, self.option_key)
 
 
 @dataclass(frozen=True)

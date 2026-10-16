@@ -14,6 +14,8 @@ RequestStatus = Literal["active", "unmatched_session", "duplicate_pending", "dup
 PayerShareStatus = Literal["", "complete", "incomplete"]
 # Request flags the queue can narrow to (Task 12): the rules-dependent states of owner ruling Q4.
 RequestFlagFilter = Literal["awaiting_approved_rules", "no_program_for_session"]
+# Where a request came from: the aid form, a staff addition, or (2027 on) a dated registration ask.
+RequestOrigin = Literal["form", "added", "registration_ask"]
 
 
 class FlagOut(BaseModel):
@@ -81,6 +83,7 @@ class RequestOut(BaseModel):
     payer_shares: list[PayerShareOut] = Field(default_factory=list)
     payer_share_status: PayerShareStatus = ""
     issues: list[IssueOut] = Field(default_factory=list)
+    origin: RequestOrigin = "form"
 
 
 class ApplicationSummaryOut(BaseModel):
@@ -185,3 +188,75 @@ class HouseholdShareSet(BaseModel):
 
     share_pct: Decimal = Field(gt=0, le=100, decimal_places=4)
     reason: str = Field(min_length=1, max_length=2000)
+
+
+class AdditionCreate(BaseModel):
+    """One staff-added request: a camper (person_cm_id) or, for Family Camp, a household (person_cm_id 0) and an
+    enrolled session. The program follows the session. The ask must be above $0 and the reason non-blank; the
+    service refuses either with a message, as it does every other guard."""
+
+    household_cm_id: int = Field(gt=0)
+    person_cm_id: int = Field(ge=0)
+    session_cm_id: int = Field(gt=0)
+    ask: float = Field(ge=0, le=1_000_000)
+    reason: str = Field(default="", max_length=2000)
+
+
+class AdditionBulkCreate(BaseModel):
+    """A load of additions, all or nothing. `reason` is the operation's, and stands in for an item left blank."""
+
+    reason: str = Field(min_length=1, max_length=2000)
+    dry_run: bool = False
+    items: list[AdditionCreate] = Field(min_length=1, max_length=200)
+
+
+class AdditionRetire(BaseModel):
+    reason: str = Field(min_length=1, max_length=2000)
+
+
+class AdditionOut(BaseModel):
+    id: str
+    year: int
+    household_cm_id: int
+    person_cm_id: int
+    program_key: str
+    session_cm_id: int
+    ask: float
+    source: str
+    reason: str
+    actor: str
+    retired_at: str
+    retired_by: str
+    retire_reason: str
+    request_id: str  # the request it stands for; "" when none exists
+
+
+class AddedRequestOut(BaseModel):
+    addition: AdditionOut
+    request: RequestOut
+
+
+class AdditionItemReport(BaseModel):
+    """One item of a bulk load: what it would add (dry run) or added, or why it was refused."""
+
+    index: int
+    household_cm_id: int
+    person_cm_id: int
+    session_cm_id: int
+    ask: float
+    program_key: str  # "" when the session names no program
+    ok: bool
+    error: str = ""
+    holder_id: str = ""  # the live request already holding the slot, when that is why
+    addition_id: str = ""
+    request_id: str = ""
+
+
+class AdditionBulkResult(BaseModel):
+    """`written` is true only when every item passed and the load committed, as one aid_change_log operation."""
+
+    year: int
+    dry_run: bool
+    written: bool
+    operation_id: str | None = None
+    items: list[AdditionItemReport]

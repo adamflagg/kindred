@@ -20,10 +20,12 @@ from api.constants.collections import (
     AID_APPLICATION_CORRECTIONS,
     AID_APPLICATIONS,
     AID_PAYER_SHARES,
+    AID_REQUEST_ADDITIONS,
     AID_REQUESTS,
 )
 from api.services.financial_aid_intake_repository import _exact_pct
 from api.services.financial_aid_intake_types import (
+    AdditionRecord,
     ApplicationRecord,
     AttendeeRow,
     BillingLine,
@@ -131,7 +133,7 @@ def _request_changes(changes: Mapping[str, Any]) -> dict[str, Any]:
 
 
 # Everything a batch can change; a failed batch restores all of it.
-_TABLES = ("applications", "requests", "payer_shares", "corrections", "change_log", "writes")
+_TABLES = ("applications", "requests", "payer_shares", "corrections", "additions", "change_log", "writes")
 
 
 class _BatchStore(Protocol):
@@ -190,6 +192,7 @@ class FakeAidStore:
         self.requests: dict[str, RequestRecord] = {}
         self.payer_shares: dict[str, PayerShareRecord] = {}
         self.corrections: list[CorrectionRecord] = []
+        self.additions: dict[str, AdditionRecord] = {}  # aid_request_additions, retired rows included
         self.decision_events: list[DecisionEvent] = []  # aid_decisions rows, for the casework swap's posted check
         self.equity: dict[int, EquityAnswers] = {}
         self.birthdates: dict[int, str] = {}
@@ -271,6 +274,13 @@ class FakeAidStore:
             if r.year == year and same_subject and r.session_cm_id == session_cm_id and r.status == "active":
                 return r
         return None
+
+    async def fetch_request_additions(self, year: int) -> list[AdditionRecord]:
+        await self._read(year)
+        return [a for a in self.additions.values() if a.year == year]
+
+    async def fetch_request_addition(self, record_id: str) -> AdditionRecord | None:
+        return self.additions.get(record_id)
 
     async def fetch_corrections(self, year: int, application_id: str | None) -> list[CorrectionRecord]:
         return [
@@ -413,6 +423,24 @@ class FakeAidStore:
         elif collection == AID_PAYER_SHARES:
             del self.payer_shares[rid]
             return None
+        elif collection == AID_REQUEST_ADDITIONS and method == "POST":
+            self.additions[rid] = AdditionRecord(
+                id=rid,
+                year=body["year"],
+                household_cm_id=body["household_cm_id"],
+                person_cm_id=body.get("person_cm_id", 0),
+                program_key=body["program_key"],
+                session_cm_id=body["session_cm_id"],
+                ask=body["ask"],
+                source=body["source"],
+                reason=body["reason"],
+                actor=body["actor"],
+                retired_at=body.get("retired_at", ""),
+                retired_by=body.get("retired_by", ""),
+                retire_reason=body.get("retire_reason", ""),
+            )
+        elif collection == AID_REQUEST_ADDITIONS and method == "PATCH":
+            self.additions[rid] = replace(self.additions[rid], **body)
         elif collection == AID_APPLICATION_CORRECTIONS:
             created = f"2027-01-01 00:00:{len(self.corrections):02d}.000Z"
             self.corrections.append(
@@ -476,6 +504,18 @@ class FakeAidStore:
             for share in shares:
                 if share.request_id not in self.requests:
                     raise ValueError(f"aid_payer_shares.request {share.request_id!r} does not exist")
+        elif collection == AID_REQUEST_ADDITIONS:
+            additions = list(self.additions.values())
+            # idx_aid_request_additions_live: one LIVE row per (year, household, person, session).
+            _unique(
+                "idx_aid_request_additions_live",
+                [(a.year, a.household_cm_id, a.person_cm_id, a.session_cm_id) for a in additions if not a.retired_at],
+            )
+            for a in additions:
+                if a.ask <= 0:
+                    raise ValueError(f"aid_request_additions.ask {a.ask} is required and above 0")
+                if not a.reason.strip():
+                    raise ValueError("aid_request_additions.reason is required")
         elif collection == AID_APPLICATION_CORRECTIONS:
             for c in self.corrections:
                 if c.application_id not in self.applications or (c.request_id and c.request_id not in self.requests):

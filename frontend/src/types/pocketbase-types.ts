@@ -29,6 +29,7 @@ export const Collections = {
   AidPostings: 'aid_postings',
   AidReportDefinitions: 'aid_report_definitions',
   AidReportedHistory: 'aid_reported_history',
+  AidRequestAdditions: 'aid_request_additions',
   AidRequests: 'aid_requests',
   AidRules: 'aid_rules',
   AidScenarioOptions: 'aid_scenario_options',
@@ -700,6 +701,39 @@ export type AidReportedHistoryRecord = {
   updated: IsoAutoDateString
   value?: number
   view: AidReportedHistoryViewOptions
+  year: number
+}
+
+export const AidRequestAdditionsProgramKeyOptions = {
+  summer: 'summer',
+  family_camp: 'family_camp',
+  bmitzvah: 'bmitzvah',
+  adult_weekend: 'adult_weekend',
+} as const
+export type AidRequestAdditionsProgramKeyOptions =
+  (typeof AidRequestAdditionsProgramKeyOptions)[keyof typeof AidRequestAdditionsProgramKeyOptions]
+
+export const AidRequestAdditionsSourceOptions = {
+  staff: 'staff',
+  registration_ask: 'registration_ask',
+} as const
+export type AidRequestAdditionsSourceOptions =
+  (typeof AidRequestAdditionsSourceOptions)[keyof typeof AidRequestAdditionsSourceOptions]
+export type AidRequestAdditionsRecord = {
+  actor: string
+  ask: number
+  created: IsoAutoDateString
+  household_cm_id: number
+  id: string
+  person_cm_id?: number
+  program_key: AidRequestAdditionsProgramKeyOptions
+  reason: string
+  retire_reason?: string
+  retired_at?: IsoDateString
+  retired_by?: string
+  session_cm_id: number
+  source: AidRequestAdditionsSourceOptions
+  updated: IsoAutoDateString
   year: number
 }
 
@@ -2715,6 +2749,8 @@ export type AidReportDefinitionsResponse<Tcolumns = unknown, Texpand = unknown> 
   BaseSystemFields<Texpand>
 export type AidReportedHistoryResponse<Texpand = unknown> = Required<AidReportedHistoryRecord> &
   BaseSystemFields<Texpand>
+export type AidRequestAdditionsResponse<Texpand = unknown> = Required<AidRequestAdditionsRecord> &
+  BaseSystemFields<Texpand>
 export type AidRequestsResponse<Tequity = unknown, Tflags = unknown, Texpand = unknown> = Required<
   AidRequestsRecord<Tequity, Tflags>
 > &
@@ -2992,6 +3028,7 @@ export type CollectionRecords = {
   aid_postings: AidPostingsRecord
   aid_report_definitions: AidReportDefinitionsRecord
   aid_reported_history: AidReportedHistoryRecord
+  aid_request_additions: AidRequestAdditionsRecord
   aid_requests: AidRequestsRecord
   aid_rules: AidRulesRecord
   aid_scenario_options: AidScenarioOptionsRecord
@@ -3101,6 +3138,7 @@ export type CollectionResponses = {
   aid_postings: AidPostingsResponse
   aid_report_definitions: AidReportDefinitionsResponse
   aid_reported_history: AidReportedHistoryResponse
+  aid_request_additions: AidRequestAdditionsResponse
   aid_requests: AidRequestsResponse
   aid_rules: AidRulesResponse
   aid_scenario_options: AidScenarioOptionsResponse

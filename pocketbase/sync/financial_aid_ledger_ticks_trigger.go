@@ -25,8 +25,9 @@ func TriggerFinancialAidLedgerTicks(ctx context.Context, year int) error {
 }
 
 func postFinancialAidLedgerTicks(ctx context.Context, apiURL string, year int) error {
-	return postFinancialAidSeason(ctx, financialAidLedgerTicksClient, apiURL+financialAidLedgerTicksPath,
+	_, err := postFinancialAidSeason(ctx, financialAidLedgerTicksClient, apiURL+financialAidLedgerTicksPath,
 		"ledger tick", year)
+	return err
 }
 
 // runLedgerTickTrigger ticks each season the ledger wrote. A failure does not fail the ledger, which

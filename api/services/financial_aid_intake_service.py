@@ -1,7 +1,8 @@
 """Campership intake: rebuild one season's applications and requests
 (sub-project 5; spec 9.1-9.2).
 
-`build(year)` reads the FA mirror, sessions, registrations, billing,
+`build(year)` reads the FA mirror, staff's added requests (aid_request_additions, a
+second spec source: a request the form never named), sessions, registrations, billing,
 the season's approved rules (a session's program) and what aid_* already holds; plans
 (financial_aid_intake_plan); and commits the plan as ONE operation through
 sub-project 4a's commit_aid_writes (spec 14.4): each write and its
@@ -37,7 +38,7 @@ from datetime import date
 from typing import Any, Final, Protocol
 
 from api.constants.collections import AID_APPLICATIONS, AID_PAYER_SHARES, AID_REQUESTS
-from api.services.financial_aid_billing import AgeRule, billed_headcounts
+from api.services.financial_aid_billing import AgeRule, BilledHeadcount, billed_headcounts
 from api.services.financial_aid_household import build_request_specs, choose_household_answers
 from api.services.financial_aid_intake_plan import (
     HouseholdIntake,
@@ -58,6 +59,7 @@ from api.services.financial_aid_intake_types import (
     STATUS_DUPLICATE_PENDING,
     STATUS_UNMATCHED,
     STATUS_WITHDRAWN,
+    AdditionRecord,
     ApplicationRecord,
     AttendeeRow,
     BillingLine,
@@ -106,6 +108,7 @@ class IntakeStore(Protocol):
     ) -> list[PayerShareRecord]: ...
     async def fetch_birthdates(self, year: int, person_cm_ids: Sequence[int]) -> dict[int, str]: ...
     async def fetch_equity_answers(self, year: int, person_cm_ids: Sequence[int]) -> dict[int, EquityAnswers]: ...
+    async def fetch_request_additions(self, year: int) -> list[AdditionRecord]: ...
     async def load_intake_rules(self, year: int) -> AidRules | None: ...
     async def load_equity_rules(self, year: int) -> AidRules | None: ...
     async def commit(
@@ -265,6 +268,42 @@ def _rules_check(rules: AidRules | None, sessions: Sequence[SessionRow]) -> Rule
     return check
 
 
+async def billed_for(
+    store: _BillingStore,
+    year: int,
+    sessions: Sequence[SessionRow],
+    households: Sequence[int],
+    billing: Sequence[BillingLine] | None = None,
+) -> dict[tuple[int, int], BilledHeadcount]:
+    """The billed family-camp headcount per (household, session) for `households`, as intake prices a household
+    request: billing lines counted under the infant rule (under 2 on the session's first day; Task 4, owner
+    2026-10-08). Shared with casework's add, so an added Family Camp request carries the headcount intake would."""
+    if billing is None:
+        if not households:
+            return {}
+        billing = await store.fetch_family_camp_billing(year)
+    first_days = {s.cm_id: _day(s.start_date) for s in sessions}
+    people = [line.person_cm_id for line in billing if line.person_cm_id > 0]
+    births = {p: _day(text) for p, text in (await store.fetch_birthdates(year, people)).items()}
+
+    def infant(person_cm_id: int, session_cm_id: int) -> bool | None:
+        return is_infant(births.get(person_cm_id), first_days.get(session_cm_id))
+
+    rule: AgeRule = infant
+    return dict(billed_headcounts(billing, households, rule))
+
+
+class _BillingStore(Protocol):
+    async def fetch_family_camp_billing(self, year: int) -> list[BillingLine]: ...
+    async def fetch_birthdates(self, year: int, person_cm_ids: Sequence[int]) -> dict[int, str]: ...
+
+
+def rules_check_for(rules: AidRules | None, sessions: Sequence[SessionRow]) -> RulesCheck:
+    """The flags the season's approved programs raise for a resolved session (see _rules_check); public for
+    casework's add, which plans its request exactly as intake would."""
+    return _rules_check(rules, sessions)
+
+
 def _day(text: str) -> date | None:
     """A PocketBase date or date-time string ("2027-08-20 00:00:00.000Z"), or None."""
     try:
@@ -345,18 +384,6 @@ class FinancialAidIntakeService:
         async with season_lock(year):
             return await self._build(year)
 
-    async def _age_rule(self, year: int, sessions: Sequence[SessionRow], billing: Sequence[BillingLine]) -> AgeRule:
-        """Infant or not on each session's first day: under 2 (Task 4; owner 2026-10-08, a fixed fact, so it holds
-        before the season's rules are approved too). An unknown date answers None, and billing's label stands."""
-        first_days = {s.cm_id: _day(s.start_date) for s in sessions}
-        people = [line.person_cm_id for line in billing if line.person_cm_id > 0]
-        births = {p: _day(text) for p, text in (await self._store.fetch_birthdates(year, people)).items()}
-
-        def rule(person_cm_id: int, session_cm_id: int) -> bool | None:
-            return is_infant(births.get(person_cm_id), first_days.get(session_cm_id))
-
-        return rule
-
     async def _build(self, year: int) -> IntakeReport:
         store = self._store
         # Two gathers, not one: typeshed types asyncio.gather precisely for at most six
@@ -368,11 +395,12 @@ class FinancialAidIntakeService:
             store.fetch_family_camp_billing(year),
             store.load_intake_rules(year),
         )
-        applications, requests, shares, equity_rules = await asyncio.gather(
+        applications, requests, shares, equity_rules, additions = await asyncio.gather(
             store.fetch_applications(year),
             store.fetch_requests(year),
             store.fetch_payer_shares(year),
             store.load_equity_rules(year),
+            store.fetch_request_additions(year),
         )
         by_household: dict[int, list[FaRow]] = defaultdict(list)
         without_household = 0
@@ -387,13 +415,22 @@ class FinancialAidIntakeService:
             attendees_by_household[attendee.household_cm_id].append(attendee)
             attendees_by_person[attendee.person_cm_id].append(attendee)
 
+        # Staff's additions are the second spec source. A household with one and no form row (registration only, or
+        # no CampMinder form at all) still gets an application, with blank answers staff fill by correction.
+        additions_by_household: dict[int, list[AdditionRecord]] = defaultdict(list)
+        for addition in additions:
+            if addition.live:
+                additions_by_household[addition.household_cm_id].append(addition)
+
         households: list[HouseholdIntake] = []
         without_request = 0
-        for household_cm_id, rows in sorted(by_household.items()):
+        for household_cm_id in sorted({*by_household, *additions_by_household}):
+            rows = by_household.get(household_cm_id, [])
+            added = additions_by_household.get(household_cm_id, [])
             relevant = {id(a): a for a in attendees_by_household[household_cm_id]}
-            for row in rows:
-                relevant.update({id(a): a for a in attendees_by_person[row.person_cm_id]})
-            specs = build_request_specs(household_cm_id, rows, sessions, list(relevant.values()))
+            for person_cm_id in {*(row.person_cm_id for row in rows), *(a.person_cm_id for a in added)}:
+                relevant.update({id(a): a for a in attendees_by_person[person_cm_id]})
+            specs = build_request_specs(household_cm_id, rows, sessions, list(relevant.values()), added)
             if not specs:
                 without_request += len(rows)
                 continue
@@ -402,7 +439,7 @@ class FinancialAidIntakeService:
             households.append(HouseholdIntake(household_cm_id, members, answers, flags, specs))
 
         family_households = [h.household_cm_id for h in households if any(s.person_cm_id == 0 for s in h.requests)]
-        billed = billed_headcounts(billing, family_households, await self._age_rule(year, sessions, billing))
+        billed = await billed_for(store, year, sessions, family_households, billing)
         # 3c-2: each camper-level request records its camper's equity answers, so a past date can price
         # them as they stood. Live pricing keeps reading the synced answers (owner ruling 2026-09-30).
         people = sorted({s.person_cm_id for h in households for s in h.requests if s.person_cm_id > 0})
@@ -438,7 +475,7 @@ class FinancialAidIntakeService:
             logger.warning("Financial-aid intake season warning year=%s %s", year, warning)
         logger.info(
             "Financial-aid intake built year=%s households=%s created=%s updated=%s unmatched=%s pending=%s "
-            "awaiting_approved_rules=%s operation_id=%s",
+            "awaiting_approved_rules=%s rows_without_request=%s rows_without_household=%s operation_id=%s",
             year,
             report.households,
             report.requests_created,
@@ -446,6 +483,8 @@ class FinancialAidIntakeService:
             report.unmatched_sessions,
             report.duplicates_pending,
             report.awaiting_approved_rules,
+            report.rows_without_request,
+            report.rows_without_household,
             report.operation_id,
         )
         return report

@@ -35,6 +35,7 @@ from api.constants.collections import (
     AID_POSTINGS,
     AID_REPORT_DEFINITIONS,
     AID_REPORTED_HISTORY,
+    AID_REQUEST_ADDITIONS,
     AID_REQUESTS,
     AID_RULES,
     AID_SCENARIO_OPTIONS,
@@ -81,6 +82,7 @@ ENTITY_KINDS: Final[Mapping[str, HistoryKind]] = {
     AID_DECISIONS: "offers",
     AID_CANCELLATIONS: "offers",
     AID_REQUESTS: "offers",
+    AID_REQUEST_ADDITIONS: "offers",  # a staff-added request: written in one operation with the request it makes
     AID_HOLD_EVENTS: "holds",
     AID_GRANTS: "grants",
     AID_GRANT_PLACEMENTS: "grants",
