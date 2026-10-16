@@ -56,17 +56,21 @@ Where Camperships deliberately differs from summer, the reason is stated at that
 | 6 | No sentence row that comes and goes | `AidFilterChip`, toolbar status, column `help` |
 | 7 | Grids: card-white cells, a rule on every column, headers on one line | `TD`, `TH`, `CS_RULE`, `CS_RULE_GROUP` |
 | 8 | One green band for every section row and total row | `CS_BAND`, `CS_BAND_WARN`, `TFOOT_CELL`, `ROW_TOTAL` |
-| 9 | Chips are one line, 11.5px/600, in sentence case | `StatusPill`, `PILL` |
+| 9 | Chips are one line, 11.5px/600, in sentence case. A request's origin is one mark: "added", "reg. ask", or amber "reg. ask · review" | `StatusPill`, `PILL`, `OriginMark` |
 | 10 | Footnote marks are 0.72em. At most 6 notes, each with its term in bold | `DefRef`, `DefinitionNotes`, `NOTES_CAP`, `notesCap.guard.test.ts` |
 | 11 | Every truncated text carries a native `title` | `Cut`, `AidColumn.title` |
 | 12 | A single-choice view filter is the segmented well. Only the Requests pipeline uses the stage strip | `AidSegmented`; `CS_STRIP` |
 | 13 | A scroll box is a bounded card in the page flow, never sticky to the window | `bounded`, `scrollBox`, `CS_BOUNDED`, `useFitToViewport` |
-| 14 | Editors are wide and short. Dependent choices are shown switched off, never hidden. The card is white on a surface that is not white, and band-tinted on a white one | `EditorForm` (`onWhite`), `EditorGrid`, `EditorField`, `EditorActions` |
+| 14 | Editors are wide and short. Dependent choices are shown switched off, never hidden. The card is white on a surface that is not white, and band-tinted on a white one. A checkbox is a field too: one 30px row | `EditorForm` (`onWhite`), `EditorGrid`, `EditorField`, `EditorCheck`, `EditorActions` |
 | 15 | Page chrome: the band is 80px, 4px to the tabs, 10px to the toolbar | `AidPageHead`, `AidPageBand`, `AidTabNav` |
 | 16 | Figures sit in figure cards | `AidFoldCard`, `AidCards`, `AidMeter` |
 | 17 | Session names use the ruled tiny, short and full forms | `aidSessionName`, `aidTinyName`, `aidCellShortName` |
 | 18 | Staff words: "the dashboard", Title Case actions, sentence-case pills, no internal ids | `Does`, `Effects`, `sentenceCase` |
 | 19 | Today's one bold element is the hero bar: a 34px segmented bar with its key row, a 16px title and a 24px figure. Only Today uses it | `AidHeroCard`, `AidHeroBar`, `AidHeroKeys`, `CS_HERO_TITLE`, `CS_HERO_FIG` |
+| 20 | A row's own action is the 20px row button, so the row stays the grid's 30px | `CS_ROW_BTN`, `AidRowAction`, `aidActionColumn` |
+| 21 | A camper's household in a grid cell is ONE chip that never drops, beside a name that cuts. No household is a dashed chip that is not a link | `AidHouseholdChip`, `AidNameWithChip` |
+| 22 | A row an action moved out of the filter stays where it was, opened, until the filter changes. It is never counted | `useKeptRows`, `keepInView`, `AidTable keptKeys` |
+| 23 | A fold line opens in place onto a kit table whose rows carry their own actions. Never a modal | `AidFoldToggle`, `AidFoldPanel`, `CS_FOLD_PANEL` |
 
 ---
 
@@ -123,6 +127,7 @@ A line that **replaces** the table (loading, failed, empty) is allowed. So is a 
 - **Buttons are 26px, 12.5/600, radius 8, and Title Case:** `CS_BTN` (primary) and `CS_BTN2` (secondary).
 - **Download CSV is `AidCsvButton`**, the same small button on every page and always the **last control on its row**. With `menu`, it becomes a split button with a 22px caret (Requests › Needs an offer › R1: the March File).
 - **Copy is `AidCopyButton`**: the same button at a fixed 80px, so "✓ Copied" doesn't move its neighbours.
+- **A row's own action is the row button (rule 20).** Inside a grid cell (Form intake's Add a Request… and Mark Reviewed, Season's fold-line rows) a 26px button makes its row taller than its neighbours. Use `CS_ROW_BTN` instead: 20px, border-box, 12/16 600 in forest ink, the household card's Set Cost… grammar, so the row stays 5px · 20px · 5px. `aidActionColumn` (`kit/RowAction.tsx`) is the column that holds it: no header words, no sort (`AidColumn.sortable` false), no CSV, and an empty cell, never a dash, on a row with nothing to do. A click on it is also a click on the row, so the row opens and the editor goes in its detail line (§11: an editor opened from a row takes the whole opened row).
 - No white box around a group of controls. The tinted segmented well is the only container allowed. Requests' stage strip is the exception and is card white.
 
 ## 5. Grids
@@ -135,6 +140,8 @@ A line that **replaces** the table (loading, failed, empty) is allowed. So is a 
 - **Positive states are forest, not emerald** (`CS_OK_BG`, `CS_OK_INK`, `PILL.ok`). Emerald is retired in Camperships.
 - **Total rows are bold and in the band.** They stick inside a bounded box, and their label never spills. Use `footerSpan` to span the identity columns. Keep the label short ("16 grants · 3 not counted"), with the full sentence in `footerTitle`. A note about one figure goes in that column's own `footerNote`. Report end rows ("No ZIP on file") are muted italic (`ROW_END`).
 - **The opened row stays amber** (`ROW_HIGHLIGHT`, `HIGHLIGHT_EDGE`), and the header fill stays `bg-muted`.
+- **A row an action changed stays in view (rule 22).** After Add a Request… a Needs a look row no longer needs a look. It does not vanish under staff's hand: it stays where it was, opened, so they see what the action did. The page records it with `useKeptRows(scope)`'s `keep(key)` once the save succeeds, draws `keepInView(rows, filter, kept, rowKey)`, and passes the same set to `AidTable keptKeys`. A kept row is display only, as the search's kept row is: the totals, the footer label, a group's count, the checks and the CSV are of the rows that match, so the segment's count and the footer agree. The search still applies to it, except while it is the opened row. It leaves when the scope changes (another segment, view or season) or the page reloads.
+- **A fold line opens in place (rule 23).** A line in a ruled table that counts several families (Season › Shown, not counted's "CampMinder aid on no request") opens under itself, as the budget table's pool rows open into their rounds: `AidFoldToggle` in the line's first cell (the muted caret and the bold label), then, while open, `AidFoldPanel` as the next row, one cell across the table in the opened row's cream (`CS_FOLD_PANEL`), holding an `AidTable` with `hideToolbar` whose rows carry their own actions (`aidActionColumn`). The section's head row keeps Download CSV. Camperships has no drill-down modal.
 
 ## 6. Chips and marks
 
@@ -143,6 +150,8 @@ A line that **replaces** the table (loading, failed, empty) is allowed. So is a 
 - **Words are short and in sentence case.** In chips, "CM" stands for CampMinder: `Committed · not in CM`, `✓ in CM · Apr 3`, `split · 2`. Sentences say CampMinder in full.
 - **A mark that must never be cut sits before text that may be cut.** For example, a cancellation is `CancelMark` (a muted ⊘ before the name), never a chip at the end of the row.
 - **Next-up names are `AidNameChips`, and they never truncate. They drop.** A name that would be cut is hidden, and a muted "+N" counts everyone not shown (`fitChips`). That is the opposite of a status chip, which truncates with a title. A list of names reads wrong when one is half shown.
+- **One household chip in a grid cell never drops (rule 21).** Where a row names a camper and the household it belongs to (Form intake's Camper cell), the household is ONE `AidHouseholdChip` (`kit/NameChips.tsx`): the name-chip dress, ⌂ and the household's label (§6's adults' names), linking to the household. `AidNameWithChip` lays it out: the name cuts with an ellipsis, the chip keeps its width, and the cell's title carries both. A camper CampMinder links to no household gets the dashed, muted "no household" chip, which is not a link and says why in its title.
+- **A request's origin is `OriginMark`** (`kit/Pills.tsx`, words in `ORIGIN_WORDS`, `kit/words.ts`). "added" (staff made it with Add a Request…) and "reg. ask" (the dashboard made it from a registration ask) are outlined, `line`. "reg. ask · review" (made from one, and no one has reviewed it) is amber. Requests, the household card and Form intake draw this one mark, and its title says who, when and why.
 - **A household-level request** shows ⌂ and the household label (`HouseholdLabelText`, `household/HouseholdLabel.tsx`), never "Household request".
 - **Household chips** (`HOUSEHOLD_CHIP`) are sky, purple and plain forest (`CS_OK_BG` / `CS_OK_INK`) for the first three households, and neutral after. Each household card's stripe matches its chip.
 
@@ -184,6 +193,7 @@ A line that **replaces** the table (loading, failed, empty) is allowed. So is a 
 - **Dependent choices go in the right column**, beside what they depend on (3 : 2, with a dashed rule between).
 - **A dependent choice is shown switched off, never hidden**, while its parent is unchecked (`EditorField off`). The editor never changes height.
 - **A typed reason or note takes the rest of its row** (`EditorField wide`). **A typed box's caption is a real label** (`EditorField htmlFor`, the box's id), so a click on it focuses the box. A picker's caption never is, because its options inside a label would hand every click back to its button.
+- **A checkbox is a field (rule 14).** `EditorCheck` puts its caption in the label column, then the box and its sentence on one 30px row at 13.5px, taking the rest of the row ("Round 1 · ☑ Record CampMinder's $2,258 as Round 1, posted (Mar 9)"). Both the caption and the sentence are its labels. Switched off, it stays on screen, disabled and dimmed.
 - **Payer Shares draws its own five columns**, Household · Share · %, so the % is never covered (`EditorGrid columns="payer"`, `CS_FGRID_PAYER`).
 - **Inside a `@container` under 40rem, the right column stacks under the fields**, ruled above (`CS_FORM2`, `CS_FORM2_SIDE`, `CS_FORM2_MAIN`). Every household editor's form is such a container. An editor outside a container never stacks.
 - **Buttons sit on one row, in Title Case** ("Save Funder", "Back"). The required-field reason or the logged-with-who line sits on that same row (`EditorActions`). Any other sentence goes in the footer row, not a row of its own.
