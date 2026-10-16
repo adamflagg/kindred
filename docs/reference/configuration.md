@@ -208,7 +208,7 @@ See `docs/architecture/bunk-request-pipeline.md` for how the pipeline uses them.
 Three compose files:
 
 - `docker-compose.yml`: production. Four containers (pocketbase, init, api, caddy) from `ghcr.io/adamflagg/kindred-*:${IMAGE_TAG:-latest}` images; Caddy carries the Traefik labels and listens on 8080 behind the proxy network.
-- `docker-compose.local.yml`: builds from the local Dockerfiles under `docker/` and publishes Caddy on port 8080. It defaults `AUTH_MODE` to `bypass` and `CAMPMINDER_SEASON_ID` to `2026`.
+- `docker-compose.local.yml`: builds from the local Dockerfiles under `docker/` and publishes Caddy on port 8080. It defaults `AUTH_MODE` to `bypass` and leaves `CAMPMINDER_SEASON_ID` blank, so the season follows the Oct 15 rule.
 - `docker-compose.ci.yml`: an override used with the production file in CI (`SKIP_CAMPMINDER=true`, `AUTH_MODE=bypass`, Caddy published on 8080).
 
 ```bash

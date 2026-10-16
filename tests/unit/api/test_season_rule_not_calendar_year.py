@@ -118,3 +118,59 @@ async def test_historical_trends_default_window_ends_on_the_season() -> None:
     with pytest.raises(RuntimeError):
         await HistoricalService(repo).calculate_historical_trends()
     assert sorted(set(asked)) == [2023, 2024, 2025, 2026, 2027]
+
+
+# Instants either side of the Oct 15 Pacific flip and the Dec 31 / Jan 1 turn of the year (UTC).
+BOUNDARIES = [
+    (datetime(2026, 10, 15, 6, 59, tzinfo=UTC), 2026),  # Oct 14 23:59 PDT
+    (datetime(2026, 10, 15, 7, 0, tzinfo=UTC), 2027),  # Oct 15 00:00 PDT
+    (datetime(2026, 12, 31, 23, 59, tzinfo=UTC), 2027),  # Dec 31 15:59 PST
+    (datetime(2027, 1, 1, 5, 0, tzinfo=UTC), 2027),  # Dec 31 21:00 PST
+    (datetime(2027, 1, 1, 12, 0, tzinfo=UTC), 2027),  # Jan 1 04:00 PST
+]
+
+
+@pytest.mark.parametrize(("instant", "season"), BOUNDARIES)
+def test_default_season_year_at_the_boundaries(monkeypatch: pytest.MonkeyPatch, instant: datetime, season: int) -> None:
+    from api.services.camp_calendar import default_season_year
+
+    monkeypatch.setattr("api.services.camp_calendar._utcnow", lambda: instant)
+    assert default_season_year() == season
+
+
+@pytest.mark.parametrize(("instant", "season"), BOUNDARIES)
+@pytest.mark.parametrize("script", ["confirm_lodging_units", "apply_lodging_inventory"])
+def test_inlined_script_copies_of_the_rule_agree_at_the_boundaries(
+    monkeypatch: pytest.MonkeyPatch, script: str, instant: datetime, season: int
+) -> None:
+    """The scripts run standalone and carry a copy of the rule; this is what stops the copy drifting."""
+    import importlib
+
+    module = importlib.import_module(f"scripts.dev.{script}")
+    monkeypatch.setattr(module, "_utcnow", lambda: instant)
+    assert module._season_from_clock() == season
+
+
+@pytest.mark.asyncio
+async def test_apply_solver_results_without_a_run_year_uses_the_season() -> None:
+    """A run that recorded no year lands in the current season, not the calendar year."""
+    from fastapi import HTTPException
+
+    from api.routers import solver
+
+    seen: list[int] = []
+
+    async def stop_at_context(_session_cm_id: int, year: int, _pb: Any) -> Any:
+        seen.append(year)
+        raise HTTPException(status_code=418, detail="stop after the year is chosen")
+
+    run = {"status": "completed", "results": {"assignments": {}}, "session_cm_id": 1001, "scenario": "s1", "config": {}}
+    with (
+        patch.dict("api.routers.solver.solver_runs", {"run-x": run}),
+        patch("api.routers.solver.build_session_context", stop_at_context),
+        patch("api.routers.solver.IDLookupCache"),
+        patch("api.routers.solver.pb", MagicMock()),
+        pytest.raises(HTTPException),
+    ):
+        await solver.apply_solver_results("run-x", user=_admin())
+    assert seen == [2027]
