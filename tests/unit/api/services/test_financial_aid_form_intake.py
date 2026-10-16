@@ -15,6 +15,7 @@ from typing import Any
 import pytest
 
 from api.schemas.financial_aid_form_intake import FormIntakeResponse, FormIntakeRowOut
+from api.services.financial_aid_addition_view import addition_view, additions_by_request_key
 from api.services.financial_aid_campminder_money import aid_on_no_request
 from api.services.financial_aid_cancellations import CancelEvent
 from api.services.financial_aid_casework_service import FinancialAidCaseworkService
@@ -479,3 +480,56 @@ async def test_today_reads_form_intake_only_for_casework() -> None:
     assert _line(out.casework, "form_intake").items == 2
     await service().read(YEAR, casework=False, finance=True)
     assert calls == [YEAR]
+
+
+# -- the audit's fixes (form-intake visual audit, 2026-10-15) -----------------------------------------------------------
+
+FAMILY_CAMP_3 = 1000201
+
+
+@pytest.mark.asyncio
+async def test_the_d170_lines_name_every_session_their_add_editor_offers() -> None:
+    """A Family Camp household's line offers every Family Camp weekend it is in (its gap sessions), not only the one the
+    posting suggests: the read names them all, so the session picker never reads "a session"."""
+    store = await intake(
+        attendees=enrolled(1000061, OKAFOR, FAMILY_CAMP_3, FAMILY_CAMP_6),
+        lines=[camp(59000002, OKAFOR, "458", session=FAMILY_CAMP_6)],
+    )
+    out = await FormIntakeService(store).aid_on_no_request(YEAR)
+    (line,) = out.lines
+    assert {g.session_cm_id for g in line.gap_sessions} == {FAMILY_CAMP_3, FAMILY_CAMP_6}
+    assert {s.session_cm_id for s in out.sessions} >= {FAMILY_CAMP_3, FAMILY_CAMP_6}
+
+
+@pytest.mark.asyncio
+async def test_every_session_carries_its_program_family_so_a_teen_answer_reads_teen_programs() -> None:
+    """Form asked names an answer's program by the family of the session it names (the Requests grid's words: At Camp,
+    Quests, Teen Programs), so the read sends each session's family beside the program that can name it."""
+    store = await intake(
+        fa_row(EMMA, JOHNSON, summer="Session 2", summer_ask=3000.0),
+        attendees=enrolled(EMMA, JOHNSON, SESSION_2, 1000106, WINTER),
+    )
+    out = await forms(store)
+    family = {s.session_cm_id: (s.program_key, s.program_family) for s in out.sessions}
+    assert family[SESSION_2] == ("summer", "summer")
+    assert family[1000106] == ("summer", "quest")
+    assert family[WINTER] == ("summer", "teen")
+
+
+@pytest.mark.asyncio
+async def test_a_removed_addition_says_who_removed_it_when_and_why() -> None:
+    """The household card's "Removed by Pat, Mar 3: “…” · its decisions are kept" (mock step 17): the addition view
+    carries who retired it, when and why, as it carries who added it."""
+    store = await intake(
+        fa_row(EMMA, JOHNSON, summer="Session 2", summer_ask=3000.0),
+        attendees=enrolled(EMMA, JOHNSON, SESSION_2, WINTER),
+    )
+    added = await FinancialAidCaseworkService(store).add_request(
+        YEAR, JOHNSON, EMMA, WINTER, 290.0, "Asked at TWR registration", ACTOR
+    )
+    await FinancialAidCaseworkService(store).retire_addition(YEAR, added.addition.id, "Not attending after all", ACTOR)
+    request = store.requests[added.request.id]
+    view = addition_view(request, additions_by_request_key(store.additions.values()), {})
+    assert view is not None
+    assert (view.live, view.retired_by, view.retire_reason) == (False, ACTOR, "Not attending after all")
+    assert view.retired_at != ""

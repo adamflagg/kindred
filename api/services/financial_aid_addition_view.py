@@ -49,4 +49,7 @@ def addition_view(
         reviewed_at=addition.reviewed_at,
         posted_rounds=posted_rounds(rounds),
         live=addition.live,
+        retired_by=addition.retired_by,
+        retired_at=addition.retired_at,
+        retire_reason=addition.retire_reason,
     )

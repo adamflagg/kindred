@@ -57,6 +57,10 @@ class RequestAdditionOut(BaseModel):
     reviewed_at: str = ""
     posted_rounds: list[int] = Field(default_factory=list)
     live: bool = True  # False once Remove… retired it
+    # Who removed it, when and why ("Removed by …" on the household card); blank while it is live.
+    retired_by: str = ""
+    retired_at: str = ""
+    retire_reason: str = ""
 
 
 class BecameOut(BaseModel):
@@ -132,6 +136,9 @@ class IntakeSessionOut(BaseModel):
     name: str
     session_type: str
     program_key: str  # the program whose requests can name it; "" when none
+    # The program family its session type belongs to (summer, quest, teen, bmitzvah, family_camp, adult_weekend, ...):
+    # Form asked names an answer by it, in the Requests grid's words (At Camp, Quests, Teen Programs).
+    program_family: str = ""
 
 
 class FormIntakeResponse(BaseModel):

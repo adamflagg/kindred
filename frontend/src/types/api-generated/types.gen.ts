@@ -8574,6 +8574,10 @@ export type IntakeSessionOut = {
    * Program Key
    */
   program_key: string
+  /**
+   * Program Family
+   */
+  program_family?: string
 }
 
 /**
@@ -14315,6 +14319,18 @@ export type RequestAdditionOut = {
    * Live
    */
   live?: boolean
+  /**
+   * Retired By
+   */
+  retired_by?: string
+  /**
+   * Retired At
+   */
+  retired_at?: string
+  /**
+   * Retire Reason
+   */
+  retire_reason?: string
 }
 
 /**

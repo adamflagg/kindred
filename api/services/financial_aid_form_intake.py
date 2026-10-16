@@ -55,6 +55,7 @@ from api.services.financial_aid_campminder_money import NoRequestAid, aid_on_no_
 from api.services.financial_aid_cancellations import CancelEvent, fold_cancellations
 from api.services.financial_aid_casework_service import _program_for
 from api.services.financial_aid_decisions_service import session_pools
+from api.services.financial_aid_grants_register import program_family_for_session_type
 from api.services.financial_aid_household import enrolled_for
 from api.services.financial_aid_household_page import HouseholdLabeler
 from api.services.financial_aid_intake_types import (
@@ -539,6 +540,7 @@ class FormIntakeService:
                 name=season.by_id[sid].name,
                 session_type=season.by_id[sid].session_type,
                 program_key=_program_for(season.by_id[sid]) or "",
+                program_family=program_family_for_session_type(season.by_id[sid].session_type),
             )
             for sid in sorted(set(ids), key=key)
             if sid in season.by_id
@@ -620,7 +622,10 @@ class FormIntakeService:
             total=float(sum((a.line.amount for a in season.no_request), Decimal(0))),
             families=len({a.line.household_cm_id for a in season.no_request}),
             lines=lines,
-            sessions=self._sessions(season, (line.session_cm_id for line in lines)),
+            # Every session a line's row names (its gaps above all): the Add a Request… picker offers them by name.
+            sessions=self._sessions(
+                season, {line.session_cm_id for line in lines} | _referenced(by_key[line.row_key] for line in lines)
+            ),
         )
 
     async def unlisted(self, year: int, query: str) -> UnlistedResponse:
