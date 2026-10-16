@@ -259,12 +259,14 @@ export default function TrendsOverview() {
   }))
   // The Year-by-Year table owns the notes, so the Gender note follows its column notes (and the live row's).
   const genderNoteN = fallbackSeasons.some((s) => s.count > 0) ? yearNoteCount(live) + 1 : undefined
-  const genderFooter = (counts: ReadonlyArray<Record<string, number>>) => (
+  // Each card's line lists only the seasons it draws (#72 a: the chart's own count)
+  const genderFooter = (
+    counts: ReadonlyArray<Record<string, number>>,
+    seasons: typeof fallbackSeasons = fallbackSeasons
+  ) => (
     <>
       <AnotherIdentityLine counts={counts} />
-      {genderNoteN !== undefined && (
-        <GenderFallbackSeasonsLine n={genderNoteN} seasons={fallbackSeasons} />
-      )}
+      {genderNoteN !== undefined && <GenderFallbackSeasonsLine n={genderNoteN} seasons={seasons} />}
     </>
   )
   const compositionRows = enrollmentData.map((y) => {
@@ -354,7 +356,10 @@ export default function TrendsOverview() {
             <CssVerticalStackedBarChart
               data={compositionRows}
               segments={genderGroupSegments(compositionRows)}
-              footer={genderFooter(enrollmentData.map((y) => byGender(y.by_gender)))}
+              footer={genderFooter(
+                enrollmentData.map((y) => byGender(y.by_gender)),
+                fallbackSeasons.filter((s) => enrollmentData.some((y) => y.year === s.season))
+              )}
               title={`Gender Composition (${numYearsDisplay}-Year Comparison)`}
               percentMode
               height={300}

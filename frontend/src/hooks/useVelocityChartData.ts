@@ -171,14 +171,7 @@ export function useVelocityChartData(
       const curve = data.by_gender.find((c) => c.gender === series.gender)
       return {
         key: series.key,
-        // Cancellation's Gender field daily point carries its count in enrolled_boys / enrolled_girls;
-        // an identity group's in enrolled.
-        cancelField:
-          series.gender === 'M'
-            ? ('enrolled_boys' as const)
-            : series.gender === 'F'
-              ? ('enrolled_girls' as const)
-              : ('enrolled' as const),
+        // A cancellation gender curve's daily point carries its running count in enrolled, as the combined one does
         map: new Map(curve?.daily.map((d) => [d.day_offset, d])),
         priors: data.prior_year_by_gender
           .filter((c) => c.gender === series.gender)
@@ -228,7 +221,7 @@ export function useVelocityChartData(
 
       // Gender lines
       if (splitByGender) {
-        for (const { key, cancelField, map, priors } of genderMaps) {
+        for (const { key, map, priors } of genderMaps) {
           const point = map.get(dayOffset)
           if (metric === 'enrollment') {
             row[`enrolled_${key}`] = point?.enrolled ?? null
@@ -238,9 +231,9 @@ export function useVelocityChartData(
               row[`gross_enrolled_${key}_${year}`] = prior.get(dayOffset)?.gross_enrolled ?? null
             }
           } else {
-            row[`cancelled_${key}`] = point?.[cancelField] ?? null
+            row[`cancelled_${key}`] = point?.enrolled ?? null
             for (const { year, map: prior } of priors) {
-              row[`cancelled_${key}_${year}`] = prior.get(dayOffset)?.[cancelField] ?? null
+              row[`cancelled_${key}_${year}`] = prior.get(dayOffset)?.enrolled ?? null
             }
           }
         }

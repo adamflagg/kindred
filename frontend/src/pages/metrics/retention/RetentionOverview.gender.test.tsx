@@ -99,6 +99,16 @@ describe('Retention › gender identity (#2898)', () => {
     )
   })
 
+  it("states the returning pie's own count under it: the campers who returned (#72 a)", () => {
+    show(base)
+    const pie = screen
+      .getByRole('heading', { name: /Returning Campers by Gender/ })
+      .closest('.card-lodge') as HTMLElement
+    expect(pie.textContent).toContain(
+      '224 campers with no gender identity answer are counted by the Gender field (2017 campers who returned).'
+    )
+  })
+
   it('reads with care when more than a quarter of the base season has no answer (#82 a)', () => {
     show(base)
     expect(table().textContent).toContain(

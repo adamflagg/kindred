@@ -418,14 +418,16 @@ describe('useVelocityChartData', () => {
       expect(row).not.toHaveProperty('gross_enrolled')
     })
 
-    it('cancellation daily gender: maps from enrolled_boys/enrolled_girls on daily point', () => {
+    it('cancellation daily gender: maps from enrolled on each gender curve daily point', () => {
+      // The API's cancellation gender curves carry their running count in `enrolled`, as the combined
+      // curve's daily points do (#3273 scan); enrolled_boys / enrolled_girls stay null on them.
       const mCurve = makeVelocityCurve({
         gender: 'M',
-        daily: [makeDailyPoint({ day_offset: 0, enrolled_boys: 15, enrolled: 15 })],
+        daily: [makeDailyPoint({ day_offset: 0, enrolled: 15 })],
       })
       const fCurve = makeVelocityCurve({
         gender: 'F',
-        daily: [makeDailyPoint({ day_offset: 0, enrolled_girls: 10, enrolled: 10 })],
+        daily: [makeDailyPoint({ day_offset: 0, enrolled: 10 })],
       })
       const data = makeResponse({
         daily: [makeDailyPoint({ day_offset: 0, enrolled: 25 })],
@@ -436,8 +438,8 @@ describe('useVelocityChartData', () => {
       const { result } = renderHook(() => useVelocityChartData(data, defaultSessions, config))
 
       const row = result.current.dailyChartData[0]!
-      expect(row['cancelled_boys']).toBe(15) // from enrolled_boys on daily point
-      expect(row['cancelled_girls']).toBe(10) // from enrolled_girls on daily point
+      expect(row['cancelled_boys']).toBe(15)
+      expect(row['cancelled_girls']).toBe(10)
     })
 
     it('enrollment daily gender: maps from enrolled on gender curve daily point', () => {

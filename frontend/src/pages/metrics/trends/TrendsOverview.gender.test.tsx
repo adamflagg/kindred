@@ -7,6 +7,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { describe, expect, it, vi } from 'vitest'
 
 import TrendsOverview from './TrendsOverview'
+import { useHistoricalTrends } from '../../../hooks/useMetrics'
+import { useRetentionTrends } from '../../../hooks/useRetentionTrends'
 
 vi.mock('../../../hooks/useMetricsSession', () => ({
   useMetricsSession: () => ({
@@ -157,6 +159,54 @@ describe('Trends › gender identity (#2898)', () => {
     )
     expect(row2018?.querySelector('td')?.textContent).toBe('20184')
     expect(row2018?.textContent).toContain('596548205') // girl/woman, boy/man, non-binary, another identity
+  })
+
+  it('lists only the seasons the Gender Composition card draws under it', () => {
+    // Five seasons on the page, the last three on the composition card (#3273 scan, ruling #72's own count).
+    const five = [
+      year(2014, 400, [['Girl/woman', 500]]),
+      year(2015, 0, [['Girl/woman', 500]]),
+      year(2016, 0, [['Girl/woman', 500]]),
+      year(2017, 0, [['Girl/woman', 500]]),
+      year(2018, 30, [['Girl/woman', 500]]),
+    ]
+    const historical = vi.mocked(useHistoricalTrends)
+    const retention = vi.mocked(useRetentionTrends)
+    const historicalBefore = historical.getMockImplementation()
+    const retentionBefore = retention.getMockImplementation()
+    historical.mockImplementation(
+      () => ({ data: { years: five }, isLoading: false, error: null }) as never
+    )
+    retention.mockImplementation(
+      () =>
+        ({
+          data: {
+            years: [],
+            enrollment_by_year: five.map((y) => ({
+              year: y.year,
+              total: y.total_enrolled,
+              gender_fallback_count: y.gender_fallback_count,
+              by_gender: y.by_gender.map(({ gender, count }) => ({ gender, count })),
+              by_grade: [],
+              by_city: [],
+            })),
+          },
+          isLoading: false,
+          error: null,
+        }) as never
+    )
+    try {
+      renderPage()
+      expect(card('Enrollment by Gender').textContent).toContain(
+        '2014: 400 of 500 · 2018: 30 of 500.'
+      )
+      const composition = card(/Gender Composition/).textContent
+      expect(composition).toContain('counted by the Gender field: 2018: 30 of 500.')
+      expect(composition).not.toContain('2014')
+    } finally {
+      historical.mockImplementation(historicalBefore!)
+      retention.mockImplementation(retentionBefore!)
+    }
   })
 
   it('adds the Gender note as note 4 under the table', () => {

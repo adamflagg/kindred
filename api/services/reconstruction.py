@@ -16,6 +16,8 @@ Data flow:
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -38,6 +40,8 @@ def compress_pre_anchor_events(
     daily_events: dict[str, dict[str, int]],
     anchor: date,
     window: int = 7,
+    *,
+    earliest: date | None = None,
 ) -> dict[str, dict[str, int]]:
     """Proportionally compress pre-anchor events into a fixed display window.
 
@@ -48,6 +52,9 @@ def compress_pre_anchor_events(
     anchor preserving their relative gaps.  If the span exceeds ``window``, events
     are proportionally compressed with totals preserved (multiple real days may
     merge into one display day).
+
+    ``earliest`` fixes the start of the real span instead of this dict's own first pre-anchor day, so several
+    subsets of one set of events (Velocity's gender identity groups) squeeze onto the same display days as the whole.
 
     Returns a **new** dict — the input is not mutated.
     """
@@ -65,7 +72,8 @@ def compress_pre_anchor_events(
         return dict(daily_events)
 
     sorted_keys = sorted(pre.keys())
-    earliest = date.fromisoformat(sorted_keys[0])
+    if earliest is None:
+        earliest = date.fromisoformat(sorted_keys[0])
     real_span = (anchor - earliest).days  # calendar days, exclusive of anchor
 
     result: dict[str, dict[str, int]] = {}
@@ -371,43 +379,38 @@ def _build_daily_points(
     return result
 
 
-def reconstruct_daily_multi(
-    *,
+@dataclass
+class _EventBuckets:
+    """Daily event buckets from one pass over attendees: combined, per session, and per group when asked."""
+
+    combined: dict[str, dict[str, int]]
+    per_session: dict[int, dict[str, dict[str, int]]]
+    combined_has_gender: bool
+    per_session_has_gender: dict[int, bool]
+    by_group: dict[str, dict[str, dict[str, int]]]
+    by_session_group: dict[tuple[int, str], dict[str, dict[str, int]]]
+
+
+def _bucket_events(
     attendees: list[Any],
-    season_start: date,
     sessions: dict[int, Any],
-    end_date: date,
-    ag_parent_map: dict[int, int] | None = None,
-    session_cm_id: int | None = None,
-    session_ids: list[int] | None = None,
-    week0: bool = False,
-) -> tuple[list[DailyDataPoint], dict[int, list[DailyDataPoint]]]:
-    """Reconstruct daily enrollment data for combined and per-session in a single pass.
-
-    Iterates attendees once and buckets events into both combined and per-session
-    event dicts simultaneously.
-
-    Args:
-        attendees: List of attendee records with expand.session and expand.person.
-        season_start: Start date of the enrollment season.
-        sessions: Dict of session cm_id -> session object.
-        end_date: Last date to include in output.
-        ag_parent_map: Optional AG child -> parent session mapping.
-        session_cm_id: Optional session filter for the combined output.
-        session_ids: Session IDs to include in per-session output. None = all.
-
-    Returns:
-        Tuple of (combined_daily, per_session_daily) where per_session_daily
-        maps session cm_id to its daily data points.
-    """
+    end_iso: str,
+    ag_parent_map: dict[int, int] | None,
+    session_cm_id: int | None,
+    session_ids: list[int] | None,
+    group_of: Callable[[Any], str] | None = None,
+) -> _EventBuckets:
+    """Bucket attendees' registration and cancellation days: combined (``session_cm_id``), per session
+    (``session_ids``), and, with ``group_of``, per group of the combined attendees."""
     # Build daily event buckets: one for combined, one per session
     combined_events: dict[str, dict[str, int]] = {}
+    group_events: dict[str, dict[str, dict[str, int]]] = {}
+    session_group_events: dict[tuple[int, str], dict[str, dict[str, int]]] = {}
     per_session_events: dict[int, dict[str, dict[str, int]]] = {}
     combined_has_gender = False
     per_session_has_gender: dict[int, bool] = {}
 
     _empty_bucket: dict[str, int] = dict.fromkeys(_BUCKET_FIELDS, 0)
-    end_iso = end_date.isoformat()
 
     for att in attendees:
         session = get_session_from_expand(att)
@@ -433,6 +436,7 @@ def reconstruct_daily_multi(
 
         # Determine if this attendee passes the combined filter
         include_in_combined = session_cm_id is None or sid == session_cm_id
+        group = group_of(att) if group_of is not None and include_in_combined else None
 
         # Determine if this attendee should go into a per-session bucket
         include_in_per_session = session_ids is None or sid in session_ids
@@ -457,6 +461,10 @@ def reconstruct_daily_multi(
                     bucket["new_boys"] += 1
                 elif gender == "F":
                     bucket["new_girls"] += 1
+                if group is not None:
+                    group_events.setdefault(group, {}).setdefault(enroll_day, dict(_empty_bucket))["new"] += 1
+                    session_group = session_group_events.setdefault((sid, group), {})
+                    session_group.setdefault(enroll_day, dict(_empty_bucket))["new"] += 1
 
             if include_in_per_session:
                 sid_events = per_session_events.setdefault(sid, {})
@@ -486,6 +494,11 @@ def reconstruct_daily_multi(
                         bucket["canc_boys"] += 1
                     elif gender == "F":
                         bucket["canc_girls"] += 1
+                    if group is not None:
+                        group_bucket = group_events.setdefault(group, {}).setdefault(canc_day, dict(_empty_bucket))
+                        group_bucket["cancelled"] += 1
+                        session_group = session_group_events.setdefault((sid, group), {})
+                        session_group.setdefault(canc_day, dict(_empty_bucket))["cancelled"] += 1
 
                 if include_in_per_session:
                     sid_events = per_session_events.setdefault(sid, {})
@@ -495,6 +508,51 @@ def reconstruct_daily_multi(
                         bucket["canc_boys"] += 1
                     elif gender == "F":
                         bucket["canc_girls"] += 1
+
+    return _EventBuckets(
+        combined_events,
+        per_session_events,
+        combined_has_gender,
+        per_session_has_gender,
+        group_events,
+        session_group_events,
+    )
+
+
+def reconstruct_daily_multi(
+    *,
+    attendees: list[Any],
+    season_start: date,
+    sessions: dict[int, Any],
+    end_date: date,
+    ag_parent_map: dict[int, int] | None = None,
+    session_cm_id: int | None = None,
+    session_ids: list[int] | None = None,
+    week0: bool = False,
+) -> tuple[list[DailyDataPoint], dict[int, list[DailyDataPoint]]]:
+    """Reconstruct daily enrollment data for combined and per-session in a single pass.
+
+    Iterates attendees once and buckets events into both combined and per-session
+    event dicts simultaneously.
+
+    Args:
+        attendees: List of attendee records with expand.session and expand.person.
+        season_start: Start date of the enrollment season.
+        sessions: Dict of session cm_id -> session object.
+        end_date: Last date to include in output.
+        ag_parent_map: Optional AG child -> parent session mapping.
+        session_cm_id: Optional session filter for the combined output.
+        session_ids: Session IDs to include in per-session output. None = all.
+
+    Returns:
+        Tuple of (combined_daily, per_session_daily) where per_session_daily
+        maps session cm_id to its daily data points.
+    """
+    b = _bucket_events(attendees, sessions, end_date.isoformat(), ag_parent_map, session_cm_id, session_ids)
+    combined_events = b.combined
+    per_session_events = b.per_session
+    combined_has_gender = b.combined_has_gender
+    per_session_has_gender = b.per_session_has_gender
 
     # Proportionally compress pre-anchor events into the Week 0 display window
     if week0:
@@ -514,3 +572,62 @@ def reconstruct_daily_multi(
             per_session_daily[sid] = points
 
     return combined, per_session_daily
+
+
+def reconstruct_daily_by_group(
+    *,
+    attendees: list[Any],
+    group_of: Callable[[Any], str],
+    season_start: date,
+    sessions: dict[int, Any],
+    end_date: date,
+    ag_parent_map: dict[int, int] | None = None,
+    session_cm_id: int | None = None,
+    week0: bool = False,
+    squeeze_per_session: bool = False,
+) -> dict[str, list[DailyDataPoint]]:
+    """Daily curves per group (Velocity's gender identity groups, #2898 answer #78) from ONE pass, squeezing the
+    pre-season week the way the total it sits beside was squeezed, so the groups add up to it on every day: from
+    the whole set's first day (``reconstruct_daily_multi``'s combined curve), or with ``squeeze_per_session`` from
+    each session's own first day (Velocity's hybrid total, summed from per-session rebuilds). A group with no events
+    is left out."""
+    b = _bucket_events(attendees, sessions, end_date.isoformat(), ag_parent_map, session_cm_id, [], group_of)
+    if not week0:
+        return {
+            group: _build_daily_points(events, False, season_start, end_date) for group, events in b.by_group.items()
+        }
+    anchor_iso = season_start.isoformat()
+    if not squeeze_per_session:
+        pre_days = [day for day in b.combined if day < anchor_iso]
+        earliest = date.fromisoformat(min(pre_days)) if pre_days else None
+        return {
+            group: _build_daily_points(
+                compress_pre_anchor_events(events, season_start, earliest=earliest),
+                False,
+                season_start,
+                end_date,
+                week0=True,
+            )
+            for group, events in b.by_group.items()
+        }
+    session_earliest: dict[int, str] = {}
+    for (sid, _group), events in b.by_session_group.items():
+        for day in events:
+            if day < anchor_iso and (sid not in session_earliest or day < session_earliest[sid]):
+                session_earliest[sid] = day
+    squeezed_by_group: dict[str, dict[str, dict[str, int]]] = {}
+    for (sid, group), events in b.by_session_group.items():
+        earliest_day = session_earliest.get(sid)
+        squeezed = compress_pre_anchor_events(
+            events, season_start, earliest=date.fromisoformat(earliest_day) if earliest_day else None
+        )
+        merged = squeezed_by_group.setdefault(group, {})
+        for day, bucket in squeezed.items():
+            if day in merged:
+                _merge_buckets(merged[day], bucket)
+            else:
+                merged[day] = dict(bucket)
+    return {
+        group: _build_daily_points(events, False, season_start, end_date, week0=True)
+        for group, events in squeezed_by_group.items()
+    }

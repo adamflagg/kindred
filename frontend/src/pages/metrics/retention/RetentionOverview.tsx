@@ -279,10 +279,11 @@ export default function RetentionOverview() {
               colorMap={GENDER_DISPLAY_COLORS}
               footer={
                 genderNoteN !== undefined && (
+                  // The pie holds the campers who returned, so its line counts them (#72 a)
                   <GenderFallbackLine
                     n={genderNoteN}
-                    count={fallback}
-                    season={`${priorYear} campers`}
+                    count={data.gender_fallback_returned_count ?? 0}
+                    season={`${priorYear} campers who returned`}
                   />
                 )
               }

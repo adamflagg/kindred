@@ -9,6 +9,7 @@ five fixed groups (#75 a); a camper with no identity answer counts by the Gender
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 from unittest.mock import AsyncMock, Mock
 
@@ -228,3 +229,111 @@ class TestCancellationIdentityMode:
         assert {c.gender for c in result.by_gender} == {"M", "F"}
         assert next(c for c in result.by_gender if c.gender == "F").weekly[-1].enrolled == 1
         assert result.session_gender_breakdown[0].by_identity == {}
+
+
+def _by_day(curve: Any) -> dict[int, int]:
+    return {p.day_offset: int(p.enrolled) for p in curve.daily}
+
+
+class TestIdentityLinesSumToTheTotal:
+    """The identity lines add up to the total line on every day the chart draws (#3273 scan): the pre-season week is
+    squeezed once for everyone, not per group, and a camper with no persons row counts under No answer."""
+
+    @pytest.mark.asyncio
+    async def test_every_day_including_the_pre_season_week(
+        self, service: Any, mock_repository: Any, sessions: Any
+    ) -> None:
+        attendees = [
+            _att(1, 1001, "2025-08-01", "F", "Girl/woman"),  # long before priority registration
+            _att(2, 1001, "2025-10-20", "M", "Boy/man"),
+            _att(3, 1002, "2025-10-28", "F", "Non-binary"),
+            _att(4, 1002, "2025-11-04", "F", "Girl/woman"),
+            # No persons row at all: the expand carries no person.
+            create_mock_attendee_with_date(5, 1001, "2025-10-15", effective_date="2025-10-15"),
+        ]
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_attendees_with_dates.return_value = attendees
+        mock_repository.has_pre_anchor_enrollments = AsyncMock(return_value=True)
+
+        result = await service.get_velocity(year=2026, split_by_gender=True, gender_basis="identity")
+
+        total = _by_day(result.combined)
+        assert min(total) < 0  # the pre-season week is drawn
+        sums: dict[int, int] = {}
+        for curve in result.by_gender:
+            for day, n in _by_day(curve).items():
+                sums[day] = sums.get(day, 0) + n
+        assert sums == total
+        assert {c.gender: c for c in result.by_gender}["No answer"].daily[-1].enrolled == 1
+
+    @pytest.mark.asyncio
+    async def test_every_day_when_the_total_is_rebuilt_session_by_session(
+        self, service: Any, mock_repository: Any, sessions: Any
+    ) -> None:
+        # Snapshots that start after the season leave the total on the hybrid path, which rebuilds each session up
+        # to its own first snapshot and squeezes each session's pre-season week on its own.
+        attendees = [
+            _att(1, 1001, "2025-08-01", "F", "Girl/woman"),
+            _att(2, 1001, "2025-10-30", "M", "Boy/man"),
+            _att(3, 1002, "2025-10-20", "F", "Non-binary"),
+            _att(4, 1002, "2025-10-29", "F", "Girl/woman"),
+            _att(5, 1002, "2025-11-04", "M", "Boy/man"),
+        ]
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_attendees_with_dates.return_value = attendees
+        mock_repository.has_pre_anchor_enrollments = AsyncMock(return_value=True)
+        mock_repository.fetch_enrollment_snapshots.return_value = [
+            create_mock_snapshot("2026-09-01", 1001, 2026, 2),
+            create_mock_snapshot("2026-09-01", 1002, 2026, 3),
+        ]
+
+        result = await service.get_velocity(
+            year=2026, split_by_gender=True, gender_basis="identity", today=date(2026, 8, 1)
+        )
+
+        total = _by_day(result.combined)
+        assert min(total) < 0
+        sums: dict[int, int] = {}
+        for curve in result.by_gender:
+            for day, n in _by_day(curve).items():
+                sums[day] = sums.get(day, 0) + n
+        assert {d: sums.get(d, 0) for d in total} == total
+
+
+class TestCancellationDailyGenderLines:
+    """Cancellation Velocity's daily chart draws its gender lines (#3273 scan; owner answer #78): each gender curve
+    carries a daily cumulative count, one point per day, and the lines add up to the total on each day it marks."""
+
+    @staticmethod
+    def _cancels() -> list[Any]:
+        return [
+            _cancel(1, 1001, "2026-01-12", "F", "Girl/woman"),
+            _cancel(2, 1001, "2026-01-12", "M", ""),
+            _cancel(3, 1002, "2026-01-19", "F", "Agender"),
+            _cancel(4, 1002, "2026-02-02", "M", "Boy/man"),
+        ]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("basis", ["field", "identity"])
+    async def test_gender_curves_carry_daily(
+        self, service: Any, mock_repository: Any, sessions: Any, basis: str
+    ) -> None:
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_status_transitions.return_value = self._cancels()
+
+        result = await service.get_velocity(
+            year=2026, metric="cancellation", split_by_gender=True, gender_basis=basis, today=date(2026, 3, 1)
+        )
+
+        assert result.combined.daily
+        for curve in result.by_gender:
+            days = [p.day_offset for p in curve.daily]
+            assert days == list(range(days[0], days[0] + len(days)))  # one point per day
+        lines = [_by_day(c) for c in result.by_gender]
+        for point in result.combined.daily:
+            assert sum(line.get(point.day_offset, 0) for line in lines) == point.enrolled
+        last = {c.gender: c.daily[-1].enrolled for c in result.by_gender}
+        if basis == "field":
+            assert last == {"M": 2, "F": 2}
+        else:
+            assert last == {"Girl/woman": 1, "Boy/man": 2, "Another identity": 1}
