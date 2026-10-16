@@ -1641,6 +1641,14 @@ func TestSyncRunRecordsWhetherItWasADryRun(t *testing.T) {
 		if got := recs[0].GetBool("dry_run"); got != dry {
 			t.Errorf("dry_run = %v, want %v", got, dry)
 		}
+		// The row is written before the status is published, so wait for the publish.
+		deadline := time.Now().Add(10 * time.Second)
+		for o.GetStatus("svc") == nil || o.GetStatus("svc").EndTime == nil {
+			if time.Now().After(deadline) {
+				t.Fatal("timed out waiting for the published status")
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
 		if got := completedStatus(t, o, "svc"); got.DryRun != dry {
 			t.Errorf("published Status.DryRun = %v, want %v", got.DryRun, dry)
 		}
