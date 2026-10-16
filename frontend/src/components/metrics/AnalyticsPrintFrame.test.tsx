@@ -46,3 +46,17 @@ describe('AnalyticsPrintFrame', () => {
     expect(document.documentElement.classList.contains('dark')).toBe(true)
   })
 })
+
+describe('Analytics print CSS (#68)', () => {
+  it('keeps the app chrome off the paper with its own rule, beside print-alone', async () => {
+    const { readFileSync } = await import('node:fs')
+    const { resolve } = await import('node:path')
+    const css = readFileSync(resolve(__dirname, '../../index.css'), 'utf-8').replace(/\s+/g, ' ')
+    expect(css).toContain(
+      '@media print { body:has([data-print-analytics]) [data-app-chrome] { display: none !important; }'
+    )
+    expect(css).toContain(
+      '@media print { body:has([data-print-alone]) [data-app-chrome] { display: none !important; } }'
+    )
+  })
+})
