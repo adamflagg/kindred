@@ -9,10 +9,10 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from api.services.financial_aid_reported_recipients_service import ReportedRecipientNotFoundError
 from fastapi.testclient import TestClient
 
 from api.schemas.financial_aid_reports import ReportedRecipientsLoadOut, ReportedRecipientsResponse
+from api.services.financial_aid_reported_recipients_service import ReportedRecipientNotFoundError
 from api.services.financial_aid_reports_service import ReportsRefusedError
 from bunking.financial_aid.change_log import AidWriteConflictError
 from bunking.financial_aid.reports.recipients import ReportedRecipient

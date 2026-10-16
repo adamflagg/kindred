@@ -64,6 +64,7 @@ from api.services.financial_aid_decisions_service import (
 from api.services.financial_aid_development_repository import (
     AttendanceRecord,
     GrantorRecord,
+    OutsideCreditRecord,
     PersonRecord,
     SourceRecord,
     StoredColumns,
@@ -106,7 +107,7 @@ from bunking.financial_aid.reports.development import (
 )
 from bunking.financial_aid.reports.facts import ReportRequest, average
 from bunking.financial_aid.reports.history import ReportedFigure
-from bunking.financial_aid.reports.recipients import sheet_ages
+from bunking.financial_aid.reports.recipients import SUMMER_AID_FAMILIES, OutsideCredit, sheet_ages
 from bunking.financial_aid.reports.zips import HouseholdAddress, ZipRow, ZipTable, every_camper, with_aid
 from bunking.financial_aid.rules import AidRules, resolve_program
 from bunking.financial_aid.rules.schema import SectionName
@@ -198,6 +199,7 @@ class DevelopmentStore(Protocol):
     async def sources(self) -> list[SourceRecord]: ...
     async def grantors(self) -> list[GrantorRecord]: ...
     async def reported_recipients(self, year: int) -> list[StoredRecipient]: ...
+    async def outside_credits(self, year: int) -> list[OutsideCreditRecord]: ...
     async def source_lines(self, year: int) -> dict[str, tuple[int, Decimal]]: ...
     async def source_changes(self) -> dict[str, SourceChangeOut]: ...
     async def source(self, source_id: str) -> SourceRecord | None: ...
@@ -893,7 +895,7 @@ class FinancialAidDevelopmentService:
             built = replace(built, budget=budget)
         return _Native(built, grouping_, attended)
 
-    async def _sheet_ages(self, year: int) -> dict[str, int] | None:
+    async def _sheet_ages(self, year: int, sources: Sequence[SourceRecord] = ()) -> dict[str, int] | None:
         """An as-reported season's summer recipients by age, from that season's Campership sheet; None until it is
         loaded."""
         # RULED (owner 2026-10-16, CS-AGES25): "don't auto count all summer kids in a family if one kid in the family
@@ -905,17 +907,30 @@ class FinancialAidDevelopmentService:
         listed = [s.recipient for s in await self._development.reported_recipients(year)]
         if not listed:
             return None  # item 51 still holds: a season with nothing to count is blank, named once, never zero
-        summer = {r.person_cm_id for r in listed if r.program == "summer"}
+        # RULED (owner 2026-10-16, #55 = a): a family whose only aid was an outside credit, with no row on the sheet
+        # (2025's tool keeps outside grants in per-application columns, not a Grants tab), is a recipient family; its
+        # camper enters the age lines only when certain (bunking.financial_aid.reports.recipients._certain_camper),
+        # never fanned out to siblings. Past seasons' synced aid_requests are never read here (FIRST_REQUEST_SEASON).
+        summer_sources = {s.description_key for s in sources if SUMMER_AID_FAMILIES & set(s.implied_program_families)}
+        outside = [
+            OutsideCredit(
+                household_cm_id=c.household_cm_id,
+                person_cm_id=c.person_cm_id,
+                attributed_person_cm_id=c.attributed_person_cm_id,
+                attribution_level=c.attribution_level,
+                summer_source=c.source_key in summer_sources or c.program_family in SUMMER_AID_FAMILIES,
+            )
+            for c in await self._development.outside_credits(year)
+        ]
         stays = [
-            r
-            for r in await self._development.attendances(year)
-            if r.status_id == 2 and r.session_type in SUMMER_TYPES and r.person_cm_id in summer
+            r for r in await self._development.attendances(year) if r.status_id == 2 and r.session_type in SUMMER_TYPES
         ]
         people = await self._development.persons(year, {r.person_cm_id for r in stays})
         return sheet_ages(
             listed,
-            ((r.person_cm_id, r.start) for r in stays),
+            ((r.person_cm_id, r.household_cm_id, r.start) for r in stays),
             {p.person_cm_id: Person(p.person_cm_id, p.birthdate, "") for p in people},
+            outside,
         )
 
     async def _groups_from(self, year: int) -> tuple[int, AidRules] | None:
@@ -986,7 +1001,7 @@ class FinancialAidDevelopmentService:
             latest = grouping(own or (borrowed[1] if borrowed is not None else None), season.sessions.values())
         columns = _columns(typed, natives, today, dated, budgets, report_year=year)
         ages = {
-            season: await self._sheet_ages(season)
+            season: await self._sheet_ages(season, sources)
             for season in sorted({c.season for c, _ in columns if c.basis == "r"} - set(natives))
         }
         not_built = [NotBuiltOut(figure=k, reason=v) for k, v in NOT_BUILT.items()]

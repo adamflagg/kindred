@@ -9,6 +9,9 @@ sheet, loaded once into `aid_reported_recipients`: one row per camper, program a
 id. `source` is "camp" (an award on the sheet's aid calculator) or "outside" (a grant on its Grants tab, naming its
 funder); `match` says how the row was matched ("personal_id", or "household_birthdate" when the sheet had no id).
 CampMinder ids only, never a name.
+
+A family whose only aid was an outside grant often has no sheet row (2025's tool has no Grants tab: outside grants
+are per-application columns), so its camper is taken from the ledger, only when certain (#55, `_certain_camper`).
 """
 
 from __future__ import annotations
@@ -73,24 +76,69 @@ def recipient_entity(recipient: ReportedRecipient) -> str:
     return f"{recipient.year}:{recipient.person_cm_id}:{recipient.program}:{recipient.source}:{digest[:12]}"
 
 
+@dataclass(frozen=True)
+class OutsideCredit:
+    """A live outside or incentive ledger credit of the season (an aid_postings row): who CampMinder posted it to
+    (`person_cm_id`, 0 = the household), where the sync placed it (`attributed_person_cm_id` at
+    `attribution_level`), and whether its source implies summer aid (`summer_source`)."""
+
+    household_cm_id: int
+    person_cm_id: int
+    attributed_person_cm_id: int
+    attribution_level: str
+    summer_source: bool
+
+
+SUMMER_AID_FAMILIES: Final = frozenset({"summer", "quest", "teen"})  # aid program families that are summer aid
+# The sync's attribution levels that name one person for certain; "program_family", "ambiguous" and "none" don't.
+CERTAIN_LEVELS: Final = frozenset({"override", "decision", "session", "person"})
+
+
+def _certain_camper(credit: OutsideCredit, summer_homes: Mapping[int, set[int]]) -> int | None:
+    """RULED (owner 2026-10-16, #55 = a): an outside-only family's camper counts in the age lines only when the
+    camper is certain: CampMinder named the person on the line, or the sync placed it on a person (person or session
+    level, a staff override or a decision; never "ambiguous" or "program_family"), or the household had exactly
+    one enrolled summer camper that season and the line's source is summer aid. Never fanned out to siblings."""
+    if credit.person_cm_id > 0:
+        return credit.person_cm_id
+    if credit.attribution_level in CERTAIN_LEVELS and credit.attributed_person_cm_id > 0:
+        return credit.attributed_person_cm_id
+    campers = summer_homes.get(credit.household_cm_id, set())
+    if credit.summer_source and len(campers) == 1:
+        return next(iter(campers))
+    return None
+
+
 def sheet_ages(
     recipients: Iterable[ReportedRecipient],
-    stays: Iterable[tuple[int, date | None]],
+    stays: Iterable[tuple[int, int, date | None]],
     persons: Mapping[int, Person],
+    outside: Iterable[OutsideCredit] = (),
 ) -> dict[str, int]:
     """The summer age lines of an as-reported season: exactly the distinct summer recipients on the sheet (the camp's
-    award or an outside grant) who have an enrolled summer stay that season (`stays`: person, session start, enrolled
-    summer-type registrations only). A sibling the sheet doesn't list is never counted. Age is on the first day of
-    the camper's first summer session (D103), as in a dashboard column; no birthdate is age unknown."""
+    award or an outside grant), plus (#55) the certain camper of each family whose only aid was an outside credit
+    with no row on the sheet, who have an enrolled summer stay that season (`stays`: person, household, session
+    start, enrolled summer-type registrations only). A sibling nothing names is never counted. Age is on the first
+    day of the camper's first summer session (D103), as in a dashboard column; no birthdate is age unknown."""
+    listed = list(recipients)
     first: dict[int, date | None] = {}
-    for person, start in stays:
+    summer_homes: dict[int, set[int]] = {}
+    for person, household, start in stays:
+        summer_homes.setdefault(household, set()).add(person)
         if person not in first:
             first[person] = start
         elif start is not None:
             known = first[person]
             first[person] = start if known is None else min(known, start)
+    on_sheet = {r.household_cm_id for r in listed}
+    counted = {r.person_cm_id for r in listed if r.program == "summer"}
+    for credit in outside:
+        if credit.household_cm_id in on_sheet:
+            continue  # the sheet already says who this family's aid was for
+        if (camper := _certain_camper(credit, summer_homes)) is not None:
+            counted.add(camper)
     ages: dict[str, int] = {}
-    for person in {r.person_cm_id for r in recipients if r.program == "summer"} & first.keys():
+    for person in counted & first.keys():
         who = persons.get(person)
         band = age_band(age_on(who.birthdate if who is not None else None, first[person]))
         ages[band] = ages.get(band, 0) + 1

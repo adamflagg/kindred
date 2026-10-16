@@ -36,7 +36,13 @@ from api.constants.collections import AID_REPORT_DEFINITIONS, ATTENDEES, CAMP_SE
 from api.dependencies import development_history_cache
 from api.schemas.financial_aid import SourceChangeOut
 from api.services.financial_aid_grants_service import grantor_retired_at
-from api.services.financial_aid_ledger_service import last_changes, parse_pb_datetime, source_lines
+from api.services.financial_aid_ledger_service import (
+    GRANT_FUNDER_TYPES,
+    aid_dollars,
+    last_changes,
+    parse_pb_datetime,
+    source_lines,
+)
 from api.services.financial_aid_reported_recipients_repository import ReportedRecipientsRepository, StoredRecipient
 from api.services.financial_aid_repository import FinancialAidRepository
 from api.services.lodging_cache import cached_by_year
@@ -73,6 +79,19 @@ class AttendanceRecord:
     changed_on: date | None  # a cancelled row's day (CampMinder's PostDate); None otherwise
     year: int
     registered_on: date | None = None  # attendees.effective_date: the day the camper registered (Part C)
+
+
+@dataclass(frozen=True)
+class OutsideCreditRecord:
+    """A live outside or incentive credit of the season (aid_postings): who CampMinder posted it to (0 = the
+    household), where the sync placed it, and the description and program family that classify it."""
+
+    household_cm_id: int
+    person_cm_id: int
+    attributed_person_cm_id: int
+    attribution_level: str
+    source_key: str
+    program_family: str
 
 
 @dataclass(frozen=True)
@@ -293,6 +312,22 @@ class DevelopmentRepository:
     async def reported_recipients(self, year: int) -> list[StoredRecipient]:
         """A past season's Campership sheet, as loaded (owner ruling 2026-10-16): its summer age lines' only source."""
         return await ReportedRecipientsRepository(self.pb).reported_recipients(year)
+
+    async def outside_credits(self, year: int) -> list[OutsideCreditRecord]:
+        """The season's live outside and incentive credits (#55: an outside-only family's camper, when certain).
+        `aid_dollars > 0`: the column keeps CampMinder's sign, so a credit is negative there."""
+        return [
+            OutsideCreditRecord(
+                household_cm_id=int(p.household_cm_id or 0),
+                person_cm_id=int(p.person_cm_id or 0),
+                attributed_person_cm_id=int(p.attributed_person_cm_id or 0),
+                attribution_level=str(p.attribution_level or ""),
+                source_key=str(p.effective_source_key or p.source_key),
+                program_family=str(p.program_family or ""),
+            )
+            for p in await self._aid.fetch_postings(year)
+            if str(p.funder_type or "") in GRANT_FUNDER_TYPES and aid_dollars(p.amount) > 0
+        ]
 
     async def reported_recipient(self, record_id: str) -> StoredRecipient | None:
         return await ReportedRecipientsRepository(self.pb).reported_recipient(record_id)

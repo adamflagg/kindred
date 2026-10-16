@@ -17,6 +17,7 @@ from api.schemas.financial_aid import SourceChangeOut
 from api.services.financial_aid_development_repository import (
     AttendanceRecord,
     GrantorRecord,
+    OutsideCreditRecord,
     PersonRecord,
     SourceRecord,
     StoredColumns,
@@ -67,6 +68,7 @@ class FakeDevelopmentStore:
     # aid_reported_recipients: a past season's Campership sheet, as loaded (owner ruling 2026-10-16)
     recipient_rows: list[StoredRecipient] = field(default_factory=list)
     recipient_reads: list[int] = field(default_factory=list)
+    credit_rows: dict[int, list[OutsideCreditRecord]] = field(default_factory=dict)  # #55: by season
     columns: StoredColumns = field(default_factory=lambda: StoredColumns("", ()))
     log: list[dict[str, Any]] = field(default_factory=list)  # every aid_change_log row that committed
     operations: list[list[AidWrite]] = field(default_factory=list)  # every commit attempted
@@ -103,6 +105,9 @@ class FakeDevelopmentStore:
     async def reported_recipients(self, year: int) -> list[StoredRecipient]:
         self.recipient_reads.append(year)
         return [r for r in self.recipient_rows if r.recipient.year == year]
+
+    async def outside_credits(self, year: int) -> list[OutsideCreditRecord]:
+        return list(self.credit_rows.get(year, []))
 
     async def reported_recipient(self, record_id: str) -> StoredRecipient | None:
         return next((r for r in self.recipient_rows if r.id == record_id), None)

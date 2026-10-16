@@ -15,7 +15,12 @@ import pytest
 
 from api.schemas.financial_aid_reports import DatedColumn
 from api.services.financial_aid_cancellations import CANCEL_REASONS, CancelEvent
-from api.services.financial_aid_development_repository import GrantorRecord, PersonRecord, SourceRecord
+from api.services.financial_aid_development_repository import (
+    GrantorRecord,
+    OutsideCreditRecord,
+    PersonRecord,
+    SourceRecord,
+)
 from api.services.financial_aid_development_service import (
     AVERAGE_AWARD_DEFINITION,
     FIRST_TIME_FAMILY,
@@ -279,6 +284,69 @@ async def test_the_waiting_seasons_are_named_in_one_reason_and_a_loaded_one_is_n
     assert "2023, 2024" in gap.reason
     assert "2025" not in gap.reason
     assert "sheets are loaded" in gap.reason  # two seasons: their sheets
+
+
+SAMUEL, SAM_HOME = 1000022, 1000003  # Samuel and his brother Riley share household 1000003; Liam's is 1000002
+RILEY = 1000023
+SUMMER_GRANT = SourceRecord(
+    "src000000000011", "valley youth summer", "Valley Youth Fund", "outside", False, ("summer",)
+)
+
+
+def _credit(household: int, *, person: int = 0, attributed: int = 0, level: str = "none") -> OutsideCreditRecord:
+    return OutsideCreditRecord(household, person, attributed, level, SUMMER_GRANT.description_key, "")
+
+
+def _outside_only_2025(*credits: OutsideCreditRecord) -> FakeDevelopmentStore:
+    """2025's sheet lists Emma only. Liam's household has one 2025 summer camper; Samuel's has two (Samuel and
+    Riley). Neither household is on the sheet; their only aid is the outside credits given."""
+    development = _sisters_2025(_on_sheet(EMMA, 1000001))
+    for person, home, born in ((SAMUEL, SAM_HOME, date(2012, 2, 1)), (RILEY, SAM_HOME, date(2009, 2, 1))):
+        development.registrations.append(went(person, home, year=2025, start=date(2025, 6, 20)))
+        development.people.append(PersonRecord(person, home, born, "", ""))
+    development.source_rows = [REGIONAL, SUMMER_GRANT]
+    development.credit_rows = {2025: list(credits)}
+    return development
+
+
+async def test_an_outside_only_single_camper_household_counts_in_the_age_lines() -> None:
+    """#55 (owner 2026-10-16, "a"): Liam's household is on no sheet row, a summer-source outside grant sits on the
+    household, and Liam is its one enrolled summer camper: certain, so he counts (teen)."""
+    out = await _service(_outside_only_2025(_credit(1000002)), _backfilled_2025()).development(YEAR)
+    assert _row(out, "youth", "camp_pool").values[0] == 1.0  # Emma, from the sheet
+    assert _row(out, "teens", "camp_pool").values[0] == 1.0  # Liam
+
+
+async def test_an_outside_only_two_camper_household_is_not_counted_in_the_age_lines() -> None:
+    """#55: Samuel and Riley's household grant can't say whose it is, so neither is counted: never fanned out."""
+    out = await _service(_outside_only_2025(_credit(SAM_HOME)), _backfilled_2025()).development(YEAR)
+    assert _row(out, "teens", "camp_pool").values[0] == 0.0
+    assert _row(out, "adults", "camp_pool").values[0] == 0.0
+
+
+async def test_an_ambiguous_outside_line_is_not_counted_and_a_person_level_one_is() -> None:
+    """#55: the sync's guess at an "ambiguous" level isn't certain; its "person" level placement is."""
+    ambiguous = await _service(
+        _outside_only_2025(_credit(SAM_HOME, attributed=SAMUEL, level="ambiguous")), _backfilled_2025()
+    ).development(YEAR)
+    assert _row(ambiguous, "teens", "camp_pool").values[0] == 0.0
+    placed = await _service(
+        _outside_only_2025(_credit(SAM_HOME, attributed=SAMUEL, level="person")), _backfilled_2025()
+    ).development(YEAR)
+    assert _row(placed, "teens", "camp_pool").values[0] == 1.0  # Samuel, 13; never Riley
+
+
+async def test_the_families_cell_of_an_as_reported_column_stays_the_typed_figure() -> None:
+    """#55's Families clause is how the dashboard counts families where it computes them; an as-reported column's
+    Families cell stays what development typed, sheet loaded or not."""
+    history = _backfilled_2025()
+    history.seed(
+        ReportedFigure(
+            2025, "development", "families", "camp_pool", 0, 0, "season_end", date(2025, 9, 29), Decimal(450)
+        )
+    )
+    out = await _service(_outside_only_2025(_credit(1000002), _credit(SAM_HOME)), history).development(YEAR)
+    assert _row(out, "families", "camp_pool").values[0] == 450.0
 
 
 async def test_the_age_lines_never_build_a_past_seasons_grants_register() -> None:

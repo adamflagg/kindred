@@ -6,7 +6,10 @@ from __future__ import annotations
 from datetime import date
 from types import SimpleNamespace
 
+import pytest
+
 from api.services.financial_aid_development_repository import (
+    DevelopmentRepository,
     attendance_record,
     person_record,
     source_record,
@@ -89,3 +92,51 @@ def test_an_attendee_reads_the_day_it_registered() -> None:
     )
     assert attendance_record(record).registered_on == date(2026, 11, 20)
     assert attendance_record(SimpleNamespace(person_id=1, status_id=2, year=2027, expand={})).registered_on is None
+
+
+class _Postings:
+    def __init__(self, rows: list[SimpleNamespace]) -> None:
+        self.rows = rows
+
+    def collection(self, name: str) -> _Postings:
+        return self
+
+    def get_full_list(self, batch: int, query_params: dict[str, object]) -> list[SimpleNamespace]:
+        return self.rows
+
+
+def _posting(txn: int, funder_type: str, amount: float, **kw: object) -> SimpleNamespace:
+    base: dict[str, object] = {
+        "transaction_cm_id": txn,
+        "household_cm_id": 1000002,
+        "person_cm_id": 0,
+        "attributed_person_cm_id": 1000021,
+        "attribution_level": "person",
+        "source_key": "valley youth summer",
+        "effective_source_key": "",
+        "program_family": "summer",
+        "funder_type": funder_type,
+        "amount": amount,
+        "is_reversed": False,
+    }
+    base.update(kw)
+    return SimpleNamespace(**base)
+
+
+@pytest.mark.asyncio
+async def test_outside_credits_are_the_live_outside_and_incentive_credits_by_their_effective_source() -> None:
+    """#55: a credit is negative in CampMinder's sign; the camp's own lines and an unclassified one aren't outside."""
+    pb = _Postings(
+        [
+            _posting(1, "outside", -300.0),
+            _posting(2, "incentive", -100.0, effective_source_key="incentive fund"),
+            _posting(3, "outside", 300.0),  # a charge, not a credit
+            _posting(4, "camp", -900.0),
+            _posting(5, "unknown", -50.0),
+        ]
+    )
+    credits = await DevelopmentRepository(pb).outside_credits(2025)
+    assert [(c.source_key, c.attributed_person_cm_id, c.attribution_level) for c in credits] == [
+        ("valley youth summer", 1000021, "person"),
+        ("incentive fund", 1000021, "person"),
+    ]
