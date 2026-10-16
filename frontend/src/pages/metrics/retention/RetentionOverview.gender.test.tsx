@@ -51,6 +51,10 @@ vi.mock('../../../hooks/useMetricsSession', () => ({
     scopeHasTeens: false,
   }),
 }))
+// Last year's comparison maps the picked session onto its own list; no QueryClient here (#3207 PR 11)
+vi.mock('../../../hooks/useCompareYearFilter', () => ({
+  useCompareYearFilter: (_p: number, _c: number, options: unknown) => options,
+}))
 vi.mock('../../../hooks/useCurrentYear', () => ({ useCurrentYear: () => ({ currentYear: 2018 }) }))
 vi.mock('../../../hooks/useDrilldown', () => ({
   useDrilldown: () => ({ setFilter: vi.fn(), DrilldownModal: () => null }),

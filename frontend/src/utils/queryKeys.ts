@@ -217,7 +217,8 @@ export const queryKeys = {
     sessionTypes?: string,
     sessionCmId?: number,
     duration?: string,
-    includeTeenPipeline?: boolean
+    includeTeenPipeline?: boolean,
+    samePointOf?: number
   ) =>
     [
       'metrics',
@@ -227,6 +228,8 @@ export const queryKeys = {
       sessionTypes,
       sessionCmId,
       duration,
+      // A same-point read (#3207 PR 11) is its own entry; the teen flag stays last
+      samePointOf,
       includeTeenPipeline,
     ] as const,
   metricsSessions: (year: number) => ['metrics', 'sessions', year] as const,

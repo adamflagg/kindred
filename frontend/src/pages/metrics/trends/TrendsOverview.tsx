@@ -31,6 +31,15 @@ import type { YearEnrollment } from '../../../types/metrics'
 import { formatSignedCount, formatSignedPercent } from '../../../utils/numberFormat'
 import { YearByYearTable } from '../../../components/metrics/YearByYearTable'
 import { yearNoteCount, type LiveCompare } from '../../../components/metrics/yearByYearRows'
+import { readsThroughNextDay } from '../../../utils/priorityDay'
+
+const MONTH_DAY = new Intl.DateTimeFormat('en-US', {
+  month: 'short',
+  day: 'numeric',
+  timeZone: 'UTC',
+})
+/** "2025-10-16" → "Oct 16": a calendar date, formatted in UTC so it never shifts a day. */
+const formatMonthDay = (isoDate: string) => MONTH_DAY.format(new Date(`${isoDate}T00:00:00Z`))
 import { useCompareYearFilter } from '../../../hooks/useCompareYearFilter'
 import {
   AnotherIdentityLine,
@@ -258,7 +267,19 @@ export default function TrendsOverview() {
     of: y.total_enrolled,
   }))
   // The Year-by-Year table owns the notes, so the Gender note follows its column notes (and the live row's).
-  const genderNoteN = fallbackSeasons.some((s) => s.count > 0) ? yearNoteCount(live) + 1 : undefined
+  // #3207 PR 11 (#90): the table gains Retention when the transitions have loaded; its note follows Cancel %'s.
+  const retention = trendsData && trendsData.years.length > 0 ? trendsData : undefined
+  const tableNotes = yearNoteCount(live, retention !== undefined)
+  const genderNoteN = fallbackSeasons.some((s) => s.count > 0) ? tableNotes + 1 : undefined
+  // #89: while the newest season is live, the retention line's dashed same-day series takes the next note
+  const samePoint =
+    retention?.prior_basis === 'same_point' && retention.as_of_date
+      ? {
+          asOf: retention.as_of_date,
+          noteN: (genderNoteN ?? tableNotes) + 1,
+          throughNextDay: readsThroughNextDay(retention.day_offset, retention.prior_day_offset),
+        }
+      : undefined
   // Each card's line lists only the seasons it draws (#72 a: the chart's own count)
   const genderFooter = (
     counts: ReadonlyArray<Record<string, number>>,
@@ -368,8 +389,25 @@ export default function TrendsOverview() {
           )}
         </div>
 
+        {retention?.prior_basis && (
+          <p className="text-muted-foreground text-sm">
+            {samePoint ? (
+              <>
+                <b className="text-foreground font-semibold">vs same point last year.</b> The{' '}
+                {currentYear} retention point and the {currentYear} row are compared with each
+                earlier year at the same registration day ({formatMonthDay(samePoint.asOf)}).
+              </>
+            ) : (
+              <>
+                <b className="text-foreground font-semibold">vs last year&apos;s final.</b> Every
+                year&apos;s retention is final.
+              </>
+            )}
+          </p>
+        )}
+
         {/* Data Table */}
-        <YearByYearTable years={data.years} live={live} />
+        <YearByYearTable years={data.years} live={live} retention={retention} />
 
         {/* Retention Rate + Cancellation Rate side-by-side */}
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -378,6 +416,7 @@ export default function TrendsOverview() {
               data={retentionYears}
               title="Overall Retention Rate Trend"
               height={250}
+              samePoint={samePoint}
               headerRight={
                 scopeHasTeens ? (
                   <label

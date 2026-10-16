@@ -10,6 +10,7 @@
  * the page lists at its foot (decision 11): never a hover tooltip.
  */
 
+import type { ReactNode } from 'react'
 import { TrendingUp, TrendingDown, Minus, ChevronRight } from 'lucide-react'
 import { DefRef } from '../camperships/kit/DefinitionNotes'
 import { formatSignedCount, formatValue } from '../../utils/numberFormat'
@@ -39,6 +40,10 @@ interface MetricCardProps {
   onClick?: (() => void) | undefined
   /** The number of the page's numbered note that defines this figure. */
   note?: number | undefined
+  /** A change chip of the page's own, shown in place of the trend chip (Retention's "▲ +1.9 pts", #3207 PR 11). */
+  badge?: ReactNode
+  /** A muted line under the subtitle (Retention's "2025 had N by this day"). */
+  detail?: ReactNode
 }
 
 export function MetricCard({
@@ -53,6 +58,8 @@ export function MetricCard({
   sentiment,
   onClick,
   note,
+  badge,
+  detail,
 }: MetricCardProps) {
   // The app-wide delta tokens (#3207 PR 8, rulings #16, #17): 'neutral' and 'muted' are both grey now.
   const trendColors =
@@ -124,16 +131,21 @@ export function MetricCard({
       </p>
       <div className="mt-2 flex items-baseline gap-2">
         <p className="text-foreground text-2xl font-bold tabular-nums">{formatValue(value)}</p>
-        {displayTrend && displayTrendValue && (
-          <span
-            className={`flex items-center gap-0.5 text-sm font-medium ${trendColors[displayTrend]}`}
-          >
-            {(() => {
-              const Icon = TrendIcon[displayTrend]
-              return <Icon className="h-4 w-4" />
-            })()}
-            {displayTrendValue}
-          </span>
+        {badge ? (
+          <span className="flex items-center text-sm font-medium tabular-nums">{badge}</span>
+        ) : (
+          displayTrend &&
+          displayTrendValue && (
+            <span
+              className={`flex items-center gap-0.5 text-sm font-medium ${trendColors[displayTrend]}`}
+            >
+              {(() => {
+                const Icon = TrendIcon[displayTrend]
+                return <Icon className="h-4 w-4" />
+              })()}
+              {displayTrendValue}
+            </span>
+          )
         )}
         {onClick && (
           // D-CUE (owner, 2026-10-15): a card that opens a list says so, always; forest on hover.
@@ -141,6 +153,7 @@ export function MetricCard({
         )}
       </div>
       {subtitle && <p className="text-muted-foreground mt-1 text-sm">{subtitle}</p>}
+      {detail && <p className="text-muted-foreground mt-0.5 text-xs tabular-nums">{detail}</p>}
     </div>
   )
 }

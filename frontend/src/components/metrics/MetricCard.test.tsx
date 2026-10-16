@@ -267,3 +267,31 @@ describe('MetricCard onClick functionality', () => {
     })
   })
 })
+
+describe('MetricCard badge and detail slots (#3207 PR 11)', () => {
+  it('shows a badge in place of the trend chip', () => {
+    render(
+      <MetricCard
+        title="Overall Retention Rate"
+        value="65.5%"
+        trend="up"
+        trendValue="Good"
+        badge={<span>▲ +1.9 pts</span>}
+      />
+    )
+    expect(screen.getByText('▲ +1.9 pts')).toBeInTheDocument()
+    expect(screen.queryByText('Good')).not.toBeInTheDocument()
+  })
+
+  it('shows a detail line under the subtitle', () => {
+    render(
+      <MetricCard
+        title="Returned to 2026"
+        value={1220}
+        subtitle="65.5% retention so far"
+        detail="2025 had 1,145 by this day of 2025 (+75)"
+      />
+    )
+    expect(screen.getByText('2025 had 1,145 by this day of 2025 (+75)')).toBeInTheDocument()
+  })
+})

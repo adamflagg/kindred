@@ -1,4 +1,4 @@
-import type { YearMetrics } from '../../types/metrics'
+import type { RetentionTrendsResponse, YearMetrics } from '../../types/metrics'
 import { useTableSort } from '../../hooks/useTableSort'
 import { DELTA_INK, deltaInk } from '../../utils/deltaTokens'
 import {
@@ -13,7 +13,14 @@ import { CANCELLED_FINAL_NOTE, CANCEL_RATE_NOTE } from '../../pages/metrics/canc
 import { AnotherIdentityLine, GenderFallbackSeasonsLine } from './genderIdentityNotes'
 import { genderNote } from './genderNotes'
 import { GENDER_IDENTITY_GROUPS, genderDisplayName } from '../camperships/kit/genderIdentity'
-import { buildYearRows, yearNoteCount, type LiveCompare, type YearRow } from './yearByYearRows'
+import {
+  buildYearRows,
+  retentionByYear,
+  yearNoteCount,
+  type LiveCompare,
+  type YearRow,
+} from './yearByYearRows'
+import { changeArrow, formatSignedPoints } from '../../utils/retentionCompare'
 import { MetricSortHeader } from './MetricSortHeader'
 import { TableExportButtons } from './TableExportButtons'
 import { csvFilename } from './exportFilename'
@@ -28,6 +35,8 @@ type Field =
   | `g:${string}`
   | 'cancelled'
   | 'cancelPct'
+  | 'retention'
+  | 'retentionChange'
 
 const MONTH_DAY = new Intl.DateTimeFormat('en-US', {
   month: 'short',
@@ -38,32 +47,63 @@ const MONTH_DAY = new Intl.DateTimeFormat('en-US', {
 const VS_FINAL_NOTE =
   'Total against the year before, always, however the table is sorted. “Final” is that year’s end-of-season total, because families come off waitlists until the day before a session starts.'
 
-function liveNote(live: LiveCompare): string {
+const RETENTION_NOTE =
+  'Retention: of the campers enrolled the year before, the share enrolled this year. Not the Returning column, which counts campers by CampMinder years at camp. Retention change is in points, against the year before.'
+
+function liveNote(live: LiveCompare, retention?: RetentionTrendsResponse): string {
   const day = MONTH_DAY.format(new Date(`${live.asOf}T00:00:00Z`))
-  return `${String(live.year)} is still registering, so it is compared with ${String(live.priorYear)} at the same registration day (${day}). Earlier rows compare final to final.`
+  const base = `${String(live.year)} is still registering, so it is compared with ${String(live.priorYear)} at the same registration day (${day}). Earlier rows compare final to final.`
+  // #90: the live row's retention reads against the year before on that day, not its final
+  const before = retentionByYear(retention).get(live.priorYear)
+  if (retention?.prior_basis !== 'same_point' || before?.same_point_rate == null) return base
+  const p = String(live.priorYear)
+  return `${base} Its retention is today's, against ${p}'s on that day (${formatPercent(before.same_point_rate * 100)}) rather than ${p}'s final (${formatPercent(before.retention_rate * 100)}).`
 }
 
 const GENDER_AFTER =
   ' CampMinder holds few identity answers before 2023, so an early season’s split is mostly the Gender field.'
 
-/** Notes 1-3 are the column notes; the live row's follows them (ruling #66), then the Gender note (#2898). */
+/**
+ * Notes 1-3 are the column notes, then Retention's (#90) when the table has it; the live row's
+ * follows them (ruling #66), then the Gender note (#2898).
+ */
 function yearNotes(
   live: LiveCompare | null,
-  fallbackSeasons: ReadonlyArray<{ season: number; count: number; of: number }>
+  fallbackSeasons: ReadonlyArray<{ season: number; count: number; of: number }>,
+  retention: RetentionTrendsResponse | undefined
 ): DefinitionNote[] {
   const hasFallback = fallbackSeasons.some((s) => s.count > 0)
+  const hasRetention = retention !== undefined
   return [
     { n: 1, term: 'vs final', text: VS_FINAL_NOTE },
     { n: 2, term: 'Cancelled', text: CANCELLED_FINAL_NOTE },
     { n: 3, term: 'Cancel %', text: CANCEL_RATE_NOTE },
-    ...(live ? [{ n: 4, text: liveNote(live) }] : []),
-    ...(hasFallback ? [genderNote(yearNoteCount(live) + 1, fallbackSeasons, GENDER_AFTER)] : []),
+    ...(hasRetention ? [{ n: RETENTION_NOTE_N, term: 'Retention', text: RETENTION_NOTE }] : []),
+    ...(live ? [{ n: liveNoteN(hasRetention), text: liveNote(live, retention) }] : []),
+    ...(hasFallback
+      ? [genderNote(yearNoteCount(live, hasRetention) + 1, fallbackSeasons, GENDER_AFTER)]
+      : []),
   ]
 }
 
-const LIVE_NOTE_N = 4
+const RETENTION_NOTE_N = 4
+const liveNoteN = (hasRetention: boolean) => (hasRetention ? 5 : 4)
 
-function ChangeCell({ row }: { row: YearRow }) {
+function RetentionChangeCell({ row, liveN }: { row: YearRow; liveN: number }) {
+  if (row.retentionChange === null) return <span className="text-muted-foreground">—</span>
+  if (row.pending && row.retentionBasis === 'same point')
+    return <span className={PRIORITY_DAY_PENDING_CLASS}>{PRIORITY_DAY_PENDING}</span>
+  const ink = deltaInk(Math.round(row.retentionChange * 10) / 10, 'up-good')
+  return (
+    <span className={`tabular-nums ${ink}`}>
+      {changeArrow(row.retentionChange)}
+      {formatSignedPoints(row.retentionChange)}
+      {row.retentionBasis === 'same point' && <DefRef n={liveN} />}
+    </span>
+  )
+}
+
+function ChangeCell({ row, liveN }: { row: YearRow; liveN: number }) {
   if (row.change === null) return <span className="text-muted-foreground">—</span>
   if (row.pending) return <span className={PRIORITY_DAY_PENDING_CLASS}>{PRIORITY_DAY_PENDING}</span>
   const ink = row.change === 0 ? DELTA_INK.neutral : deltaInk(row.change, 'up-good')
@@ -72,7 +112,7 @@ function ChangeCell({ row }: { row: YearRow }) {
       {row.change > 0 ? '▲ ' : row.change < 0 ? '▼ ' : ''}
       {formatSignedCount(row.change)}
       {row.changePct !== null && <> ({formatSignedPercent(row.changePct)})</>}
-      {row.basis === 'same point' && <DefRef n={LIVE_NOTE_N} />}
+      {row.basis === 'same point' && <DefRef n={liveN} />}
     </span>
   )
 }
@@ -96,6 +136,11 @@ function sortValue(row: YearRow, field: Field) {
       return row.cancelled
     case 'cancelPct':
       return row.cancelPct
+    case 'retention':
+      return row.retention
+    case 'retentionChange':
+      // As the count change: on the priority date the live cell waits, so it sorts with the blanks.
+      return row.pending && row.retentionBasis === 'same point' ? null : row.retentionChange
     default:
       return row.groups[field.slice(2)] ?? 0
   }
@@ -110,17 +155,24 @@ const oneDecimal = (n: number | null) => (n === null ? null : Math.round(n * 10)
 export function YearByYearTable({
   years,
   live,
+  retention,
 }: {
   years: readonly YearMetrics[]
   live: LiveCompare | null
+  /** Trends' retention transitions (#3207 PR 11, ruling #90): adds Retention and Retention change. */
+  retention?: RetentionTrendsResponse | undefined
 }) {
-  const natural = buildYearRows(years, live)
+  const hasRetention = retention !== undefined
+  const liveN = liveNoteN(hasRetention)
+  const natural = buildYearRows(years, live, retention)
   const fallbackSeasons = years.map((y) => ({
     season: y.year,
     count: y.gender_fallback_count ?? 0,
     of: y.total_enrolled,
   }))
-  const genderN = fallbackSeasons.some((x) => x.count > 0) ? yearNoteCount(live) + 1 : undefined
+  const genderN = fallbackSeasons.some((x) => x.count > 0)
+    ? yearNoteCount(live, hasRetention) + 1
+    : undefined
   const tableGroups = GENDER_IDENTITY_GROUPS.filter((g) =>
     natural.some((r) => (r.groups[g] ?? 0) > 0)
   )
@@ -158,6 +210,7 @@ export function YearByYearTable({
               ...tableGroups.map((g) => genderDisplayName(g)),
               'Cancelled',
               'Cancel %',
+              ...(hasRetention ? ['Retention %', 'Retention change pts'] : []),
             ]}
             rows={rows.map((r) => [
               r.year,
@@ -171,6 +224,12 @@ export function YearByYearTable({
               ...tableGroups.map((g) => r.groups[g] ?? 0),
               r.cancelled,
               oneDecimal(r.cancelPct),
+              ...(hasRetention
+                ? [
+                    oneDecimal(r.retention),
+                    sortValue(r, 'retentionChange') === null ? null : oneDecimal(r.retentionChange),
+                  ]
+                : []),
             ])}
           />
         </div>
@@ -187,6 +246,8 @@ export function YearByYearTable({
                 {tableGroups.map((g) => h(genderDisplayName(g), `g:${g}`))}
                 {h('Cancelled', 'cancelled', 'right', 2)}
                 {h('Cancel %', 'cancelPct', 'right', 3)}
+                {hasRetention && h('Retention', 'retention', 'right', RETENTION_NOTE_N)}
+                {hasRetention && h('Retention change', 'retentionChange')}
               </tr>
             </thead>
             <tbody>
@@ -197,13 +258,18 @@ export function YearByYearTable({
                 >
                   <td className="text-foreground px-4 py-3 font-medium">
                     {r.year}
+                    {hasRetention && r.retentionBasis === 'same point' && (
+                      <span className="text-muted-foreground ml-1.5 text-xs font-normal">
+                        to date
+                      </span>
+                    )}
                     {genderN !== undefined && (fallbackByYear.get(r.year) ?? 0) > 0 && (
                       <DefRef n={genderN} />
                     )}
                   </td>
                   <td className="text-foreground px-4 py-3 text-right">{formatCount(r.total)}</td>
                   <td className="px-4 py-3 text-right">
-                    <ChangeCell row={r} />
+                    <ChangeCell row={r} liveN={liveN} />
                   </td>
                   <td className="text-foreground px-4 py-3 text-right">
                     {formatCount(r.newCount)}
@@ -225,6 +291,16 @@ export function YearByYearTable({
                   <td className="text-muted-foreground px-4 py-3 text-right">
                     {r.cancelPct === null ? '—' : formatPercent(r.cancelPct)}
                   </td>
+                  {hasRetention && (
+                    <td className="text-foreground px-4 py-3 text-right tabular-nums">
+                      {r.retention === null ? '—' : formatPercent(r.retention)}
+                    </td>
+                  )}
+                  {hasRetention && (
+                    <td className="px-4 py-3 text-right">
+                      <RetentionChangeCell row={r} liveN={liveN} />
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -237,7 +313,7 @@ export function YearByYearTable({
           )}
         </div>
       </div>
-      <DefinitionNotes notes={yearNotes(live, fallbackSeasons)} boldTerm />
+      <DefinitionNotes notes={yearNotes(live, fallbackSeasons, retention)} boldTerm />
     </>
   )
 }
