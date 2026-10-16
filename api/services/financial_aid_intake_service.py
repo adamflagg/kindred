@@ -177,9 +177,10 @@ def plan_writes(
     applications: Sequence[ApplicationRecord],
     requests: Sequence[RequestRecord],
     corrections: Sequence[CorrectionRecord] = (),
+    shares: Sequence[PayerShareRecord] = (),
 ) -> list[AidWrite]:
-    """The plan as sub-project 4a writes, in dependency order: applications, request
-    updates, request creates, then default payer shares. New records get their ids here, so
+    """The plan as sub-project 4a writes, in dependency order: applications, a re-home's moves,
+    request updates, request creates, then default payer shares. New records get their ids here, so
     a request names its new application, a pending duplicate its new holder and a share its
     new request, all in one operation.
 
@@ -200,9 +201,14 @@ def plan_writes(
     A re-home (plan.*_moves) writes each moved record once, logged "move_household" with only the
     household (and a request's application) as before/after: the application re-keyed in place first, then
     the request, its own corrections when its application changes (`corrections`: the request's old
-    application's, read by the service), its default share and its addition. A request moves onto its new
-    household's application, whichever it is after this run's creates and re-keys. None of these touches a
-    one-active slot (a camper's is per person), so they go before the run's other updates."""
+    application's, read by the service) and its default share, then the camper's additions. A request moves
+    onto its new household's application, whichever it is after this run's creates and re-keys. A payer
+    share is the exception to "once": its log key names its household (share_entity_id) and the as-of read
+    replays shares by that key, so its move is the old key's delete and the new key's create (`shares`: the
+    season's, for the fields the new row carries), as casework re-homes a share. None of these touches a
+    one-active slot (a camper's is per person), so they go before the run's other updates, and together:
+    a run over the batch limit is chunked, and a move split across chunks would strand what a later chunk
+    held, since the next run sees the request already moved."""
     application_ids = {a.household_cm_id: a.id for a in applications}
     applications_by_id = {a.id: a for a in applications}
     requests_by_id = {r.id: r for r in requests}
@@ -226,6 +232,10 @@ def plan_writes(
             del application_ids[move.from_household]
         application_ids[move.to_household] = move.record_id
         writes.append(_move_write(year, AID_APPLICATIONS, move))
+    shares_by_id = {s.id: s for s in shares}
+    share_moves: dict[str, list[Move]] = defaultdict(list)
+    for move in plan.share_moves:
+        share_moves[move.request_id].append(move)
     for move in plan.request_moves:
         record = requests_by_id[move.record_id]
         household_of[record.id] = move.to_household
@@ -259,6 +269,9 @@ def plan_writes(
                 for c in sorted(corrections, key=lambda c: c.id)
                 if c.request_id == record.id and c.application_id == record.application_id
             )
+        for share_move in share_moves.get(record.id, ()):
+            writes.extend(_share_move_writes(year, share_move, shares_by_id[share_move.record_id]))
+    writes.extend(_move_write(year, AID_REQUEST_ADDITIONS, move) for move in plan.addition_moves)
     for record_id, changes in plan.application_updates:
         writes.append(
             AidWrite(
@@ -293,11 +306,6 @@ def plan_writes(
             "application": application_ids[create.household_cm_id],
         }
         writes.append(AidWrite(collection=AID_REQUESTS, action="create", year=year, record_id=request_id, data=data))
-    writes.extend(
-        _move_write(year, AID_PAYER_SHARES, move, entity_id=share_entity_id(move.request_id, move.to_household))
-        for move in plan.share_moves
-    )
-    writes.extend(_move_write(year, AID_REQUEST_ADDITIONS, move) for move in plan.addition_moves)
     for ref in plan.share_creates:
         request_id = refs.get(ref, ref)
         household_cm_id = household_of[request_id]
@@ -322,7 +330,7 @@ def plan_writes(
     return writes
 
 
-def _move_write(year: int, collection: str, move: Move, entity_id: str | None = None) -> AidWrite:
+def _move_write(year: int, collection: str, move: Move) -> AidWrite:
     return AidWrite(
         collection=collection,
         action="update",
@@ -331,8 +339,40 @@ def _move_write(year: int, collection: str, move: Move, entity_id: str | None = 
         before={"household_cm_id": move.from_household},
         data={"household_cm_id": move.to_household},
         log_action=ACTION_MOVE_HOUSEHOLD,
-        entity_id=entity_id,
     )
+
+
+def _share_move_writes(year: int, move: Move, share: PayerShareRecord) -> list[AidWrite]:
+    """A default share's move: the old "<request>:<household>" key's delete, then the new key's create, so the as-of
+    read (_shares_as_of) replays the share on its new household from the move on (see plan_writes)."""
+    fields: dict[str, Any] = {
+        "year": share.year,
+        "request": share.request_id,
+        "household_cm_id": move.from_household,
+        "share_pct": f"{share.share_pct.normalize():f}",
+        "source": share.source,
+        "actor": share.actor,
+        "note": share.note,
+    }
+    return [
+        AidWrite(
+            collection=AID_PAYER_SHARES,
+            action="delete",
+            year=year,
+            record_id=share.id,
+            before=fields,
+            log_action=ACTION_MOVE_HOUSEHOLD,
+            entity_id=share_entity_id(move.request_id, move.from_household),
+        ),
+        AidWrite(
+            collection=AID_PAYER_SHARES,
+            action="create",
+            year=year,
+            data={**fields, "household_cm_id": move.to_household},
+            log_action=ACTION_MOVE_HOUSEHOLD,
+            entity_id=share_entity_id(move.request_id, move.to_household),
+        ),
+    ]
 
 
 def same_family_of(links: Sequence[Any]) -> SameFamily:
@@ -579,7 +619,7 @@ class FinancialAidIntakeService:
                 plan.unmoved_campers,
             )
         corrections = await self._moved_corrections(year, plan, requests)
-        operation_id = await self._commit(year, plan, applications, requests, corrections)
+        operation_id = await self._commit(year, plan, applications, requests, corrections, shares)
         statuses = _final_statuses(plan, requests)
         report = IntakeReport(
             year=year,
@@ -637,11 +677,12 @@ class FinancialAidIntakeService:
         applications: Sequence[ApplicationRecord],
         requests: Sequence[RequestRecord],
         corrections: Sequence[CorrectionRecord] = (),
+        shares: Sequence[PayerShareRecord] = (),
     ) -> str:
         """One run is one operation (spec 14.4). Chunking is allowed on purpose: a run over
         the batch limit is a first build of a whole season, and the next run finishes one
         left part-done. A run under the limit is still one atomic batch."""
-        writes = plan_writes(year, plan, applications, requests, corrections)
+        writes = plan_writes(year, plan, applications, requests, corrections, shares)
         if not writes:
             return ""
         result = await self._store.commit(writes, actor=INTAKE_ACTOR, reason=INTAKE_REASON, allow_chunking=True)

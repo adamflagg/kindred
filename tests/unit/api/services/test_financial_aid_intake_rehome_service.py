@@ -16,8 +16,18 @@ from typing import Any
 import pytest
 
 from api.services.financial_aid_casework_service import FinancialAidCaseworkService
-from api.services.financial_aid_intake_service import FinancialAidIntakeService, IntakeReport
-from api.services.financial_aid_intake_types import AdditionRecord, AttendeeRow, CorrectionRecord
+from api.services.financial_aid_decisions_service import _shares_as_of
+from api.services.financial_aid_intake_plan import IntakePlan, Move
+from api.services.financial_aid_intake_service import FinancialAidIntakeService, IntakeReport, plan_writes
+from api.services.financial_aid_intake_types import (
+    AdditionRecord,
+    ApplicationRecord,
+    AttendeeRow,
+    CorrectionRecord,
+    PayerShareRecord,
+    RequestRecord,
+)
+from bunking.financial_aid.change_replay import LogRow
 from bunking.financial_aid.decisions.rounds import DecisionEvent, fold_rounds
 from tests.unit.api.services.financial_aid_fakes import YEAR, FakeAidStore, fa_row, intake_rules
 
@@ -96,25 +106,134 @@ async def test_one_camper_moving_to_an_empty_household_of_the_family_keeps_its_p
         application.id,
     )
     assert store.applications[application.id].household_cm_id == NEW
-    assert store.payer_shares[share.id].household_cm_id == NEW
+    (moved_share,) = store.payer_shares.values()
+    assert (moved_share.request_id, moved_share.household_cm_id, moved_share.share_pct, moved_share.source) == (
+        request.id,
+        NEW,
+        share.share_pct,
+        share.source,
+    )
     assert fold_rounds(store.decision_events)[request.id][1].posted
     new_writes = store.writes[writes:]
+    # A payer share's log key names its household (share_entity_id), so its move is the old key's delete and the
+    # new key's create: an as-of read then replays it on NEW (test_a_moved_default_share_replays_...).
     assert sorted(new_writes) == sorted(
         [
             ("PATCH aid_requests", request.id),
             ("PATCH aid_applications", application.id),
-            ("PATCH aid_payer_shares", share.id),
+            ("DELETE aid_payer_shares", share.id),
+            ("POST aid_payer_shares", moved_share.id),
         ]
     )
     rows = rows_since(store, start)
     assert [(r["entity"], r["action"]) for r in rows if r["entity_id"] == request.id] == [("aid_requests", MOVE)]
     assert {r["action"] for r in rows} == {MOVE}
     assert (report.requests_moved, report.requests_created, report.applications_created) == (1, 0, 0)
-    assert "withdrawn" not in {r.get("after", {}).get("status") for r in rows}
+    assert "withdrawn" not in {(r.get("after") or {}).get("status") for r in rows}  # a delete row has no after
 
     writes = len(store.writes)
     again = await build(store)
     assert (len(store.writes), again.operation_id) == (writes, "")
+
+
+def share_log(store: FakeAidStore, instants: list[tuple[int, datetime]]) -> list[LogRow]:
+    """The fake's aid_payer_shares log rows as the as-of read takes them; rows from index i on carry instant t."""
+    rows: list[LogRow] = []
+    for index, row in enumerate(store.change_log):
+        if row["entity"] != "aid_payer_shares":
+            continue
+        created = max(t for start, t in instants if start <= index)
+        rows.append(
+            LogRow(f"log{index:012d}", row["entity"], row["entity_id"], row.get("before"), row.get("after"), created)
+        )
+    return rows
+
+
+@pytest.mark.asyncio
+async def test_a_moved_default_share_replays_on_its_new_household_as_of_after_the_move() -> None:
+    """Payer shares are replayed per "<request>:<household>" key (_shares_as_of). The move must close the old key and
+    open the new one, or an as-of read after it shows the share still on OLD and the request's share history as
+    unreplayable."""
+    store = FakeAidStore()
+    store.rules = intake_rules()
+    store.fa_rows = [fa_row(EMMA, OLD, summer="Session 2", summer_ask=3000.0, total_gross_income=60000.0)]
+    store.attendees = [AttendeeRow(EMMA, OLD, SESSION_2, 2)]
+    store.links = [link(OLD, "staff:family-1"), link(NEW, "staff:family-1")]
+    first = datetime(2027, 3, 1, tzinfo=UTC)
+    second = datetime(2027, 3, 10, tzinfo=UTC)
+    await build(store)
+    (request,) = store.requests.values()
+    moved_at = len(store.change_log)
+    move(store, EMMA, NEW)
+    await build(store)
+    log = share_log(store, [(0, first), (moved_at, second)])
+    current = list(store.payer_shares.values())
+
+    after, bad_requests, bad_households = _shares_as_of(current, log, datetime(2027, 3, 11, tzinfo=UTC))
+    assert (bad_requests, bad_households) == (frozenset(), frozenset())
+    assert [(s.household_cm_id, s.share_pct) for s in after[request.id]] == [(NEW, Decimal(100))]
+
+    before, bad_requests, _ = _shares_as_of(current, log, datetime(2027, 3, 5, tzinfo=UTC))
+    assert bad_requests == frozenset()
+    assert [(s.household_cm_id, s.share_pct) for s in before[request.id]] == [(OLD, Decimal(100))]
+
+
+def test_a_moves_records_are_written_together_ahead_of_the_runs_other_writes() -> None:
+    """A run over the batch limit is chunked, each chunk atomic. A move's records (request, its corrections, its default
+    share, the camper's addition) go together, before the run's other updates and creates, so a later chunk failing
+    can never strand a share or an addition on the household the request left (the next run would not see a move)."""
+    app_old = ApplicationRecord("app000000000001", YEAR, OLD, "active", {}, (EMMA, SAMUEL), ())
+    moved = RequestRecord(
+        id="req000000000001",
+        year=YEAR,
+        application_id=app_old.id,
+        household_cm_id=OLD,
+        person_cm_id=SAMUEL,
+        session_cm_id=SESSION_2,
+        program_key="summer",
+        program_option_text="Session 2",
+        program_option_key="session-2",
+        session_resolution="auto",
+        ask=1200.0,
+        headcount_non_infant=1,
+        headcount_infant=0,
+        headcount_source="billed",
+        status="active",
+        duplicate_of="",
+    )
+    stays = replace(moved, id="req000000000002", person_cm_id=EMMA)
+    share = PayerShareRecord("sh0000000000001", YEAR, moved.id, OLD, Decimal(100), "intake_default", "system:intake")
+    plan = IntakePlan(
+        application_updates=[(app_old.id, {"member_person_cm_ids": [EMMA]})],
+        request_updates=[(stays.id, {"ask": 1300.0})],
+        request_moves=[Move(moved.id, OLD, NEW)],
+        share_moves=[Move(share.id, OLD, NEW, moved.id)],
+        addition_moves=[Move("add000000000001", OLD, NEW)],
+    )
+    plan.application_creates.append(
+        (NEW, {"status": "active", "answers": {}, "member_person_cm_ids": [SAMUEL], "flags": []})
+    )
+    writes = plan_writes(YEAR, plan, [app_old], [moved, stays], shares=[share])
+    order = [(w.collection, w.action, w.log_action) for w in writes]
+    assert order == [
+        ("aid_applications", "create", None),
+        ("aid_requests", "update", MOVE),
+        ("aid_payer_shares", "delete", MOVE),
+        ("aid_payer_shares", "create", MOVE),
+        ("aid_request_additions", "update", MOVE),
+        ("aid_applications", "update", None),
+        ("aid_requests", "update", None),
+    ]
+    delete, create = writes[2], writes[3]
+    assert (delete.record_id, delete.entity_id) == (share.id, f"{moved.id}:{OLD}")
+    assert create.entity_id == f"{moved.id}:{NEW}"
+    assert create.data is not None
+    assert {k: create.data[k] for k in ("request", "household_cm_id", "source", "actor")} == {
+        "request": moved.id,
+        "household_cm_id": NEW,
+        "source": "intake_default",
+        "actor": "system:intake",
+    }
 
 
 @pytest.mark.asyncio
@@ -150,15 +269,14 @@ async def test_both_siblings_moving_within_one_family_keep_their_requests_applic
         }
     assert store.applications[application.id].household_cm_id == NEW
     assert len(store.applications) == 1
-    assert {s.request_id: (s.id, s.household_cm_id) for s in store.payer_shares.values()} == {
-        rid: (sid, NEW) for rid, sid in shares.items()
-    }
+    assert sorted((s.request_id, s.household_cm_id) for s in store.payer_shares.values()) == sorted(
+        (rid, NEW) for rid in shares
+    )
     rows = rows_since(store, start)
     assert {row["action"] for row in rows} == {MOVE}
     assert sorted(row["entity"] for row in rows) == [
         "aid_applications",
-        "aid_payer_shares",
-        "aid_payer_shares",
+        *["aid_payer_shares"] * 4,  # each share: the old key's delete, the new key's create
         "aid_requests",
         "aid_requests",
     ]
@@ -170,7 +288,8 @@ async def test_both_siblings_moving_within_one_family_keep_their_requests_applic
             "system:intake",
         )
     assert {row["operation_id"] for row in rows} == {report.operation_id}
-    assert all(not w[0].startswith("POST") for w in store.writes[writes:])  # no create, of anything
+    # No request or application is created; only the default shares are re-made on NEW.
+    assert {w[0] for w in store.writes[writes:] if w[0].startswith("POST")} == {"POST aid_payer_shares"}
     assert (report.requests_moved, report.requests_created, report.requests_updated) == (2, 0, 0)
 
     # Case 7: the next run on the same data writes nothing.

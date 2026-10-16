@@ -37,12 +37,14 @@ What a re-run may and may not change:
   billing only fills an unknown or `billed` one.
 * answers, ask, option text and flags are the builder's own copy and are
   refreshed every run. Staff corrections live in aid_application_corrections
-  and are not read or written here.
+  and are not read or written here, except a re-homed request's own
+  corrections, which follow it to its new application (below).
 * every `active` / `unmatched_session` request carries a payer share (spec
   9.2): one with none is listed in `share_creates`, and the service gives it
   the default (100% for its own household). The split itself is staff's.
 * `created` and a request's identity are never written by a rebuild: `created`
-  is the only "requested on" date (spec 5).
+  is the only "requested on" date (spec 5). The one exception is a re-home
+  (below), which rewrites a request's household and application in place.
 
 A camper whose household changes (coordinator ruling, owner agreed 2026-10-16). CampMinder can move a camper
 to another household id, the aid-form sync copies it onto the camper's form row, and the intake key would then
@@ -421,8 +423,8 @@ def _rekeyed_applications(
     requests: Sequence[RequestRecord],
     moved_to: Mapping[str, int],
 ) -> dict[int, ApplicationRecord]:
-    """The season's applications by household after this run's re-keys (case 1: every request on an application
-    the old household no longer needs moves to one household that has none)."""
+    """The season's applications by household after this run's re-keys (the module docstring's first rider: every
+    request on an application the old household no longer needs moves to one household that has none)."""
     by_household = {a.household_cm_id: a for a in existing}
     taken = set(by_household)
     for application in sorted(existing, key=lambda a: a.id):

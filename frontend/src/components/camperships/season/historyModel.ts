@@ -236,6 +236,9 @@ const GENERIC_ACTION_WORDS: Readonly<Record<string, string>> = {
   add_request: 'Request added',
   remove_added_request: 'Added request removed',
   review_added_request: 'Marked reviewed',
+  // Intake's re-home (a camper's household changed within one aid family) logs each record it moves under one
+  // action: the request, its application, default payer share, corrections and addition.
+  move_household: "Moved to the camper's new household",
 }
 
 export function actionWords(entity: string, action: string): string {
