@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from api.services.financial_aid_campminder_money import _line_group, aid_on_no_request, campminder_money
+from api.services.financial_aid_intake_types import AdditionRecord, RequestRecord
 from api.services.financial_aid_reconciliation import CampLine
 from bunking.financial_aid.decisions.budget import NO_POOL, TOTAL, OffRequestAid
 
@@ -251,3 +252,78 @@ def test_the_lines_on_no_request_name_their_family_x_session_and_sum_to_the_line
     ]
     total = on_no_request(lines, requests)[TOTAL]
     assert total == OffRequestAid(sum((a.line.amount for a in found), Decimal(0)), 3)  # three households
+
+
+# -- Follow-up A to PR 3: an added request staff removed (Remove…) no longer holds CampMinder's money -----------------
+# Owner's standing rule: aid CampMinder posted always shows. After Add a Request… → Undo Posted → Remove…, the request's
+# addition is retired and its request withdrawn; the money is on no request again, so it comes back to D170.
+
+
+def _record(household: int, person: int, session: int, *, status: str, option_key: str) -> RequestRecord:
+    return RequestRecord(
+        id=f"req{household}{person}{session}",
+        year=2027,
+        application_id="app000000000001",
+        household_cm_id=household,
+        person_cm_id=person,
+        session_cm_id=session,
+        program_key="summer",
+        program_option_text="",
+        program_option_key=option_key,
+        session_resolution="staff",
+        ask=2258.0,
+        headcount_non_infant=0,
+        headcount_infant=0,
+        headcount_source="",
+        status=status,
+        duplicate_of="",
+    )
+
+
+def _addition(household: int, person: int, session: int, *, retired: bool) -> AdditionRecord:
+    return AdditionRecord(
+        id=f"add{household}{person}{session}",
+        year=2027,
+        household_cm_id=household,
+        person_cm_id=person,
+        program_key="summer",
+        session_cm_id=session,
+        ask=2258.0,
+        source="staff",
+        reason="Assessed by phone",
+        actor="registrar@example.com",
+        retired_at="2027-03-01 18:00:00.000Z" if retired else "",
+    )
+
+
+def test_a_removed_added_request_holds_no_campminder_money() -> None:
+    from api.services.financial_aid_campminder_money import aid_on_no_request_lines, holding_requests
+
+    addition = _addition(1000001, 1000011, SUMMER, retired=True)
+    removed = _record(1000001, 1000011, SUMMER, status="withdrawn", option_key=addition.option_key)
+    money = [line(1, 1000001, "2258", session=SUMMER, person=1000011)]
+    assert aid_on_no_request_lines(money, [removed], []) == []  # D170 reads every status: the request still holds it
+    holding = holding_requests([removed], [addition])
+    assert holding == []
+    assert [a.line.transaction_cm_id for a in aid_on_no_request_lines(money, holding, [])] == [1]
+
+
+def test_only_a_removed_addition_lets_go_of_the_money() -> None:
+    from api.services.financial_aid_campminder_money import holding_requests
+
+    live = _addition(1000001, 1000011, SUMMER, retired=False)
+    added = _record(1000001, 1000011, SUMMER, status="active", option_key=live.option_key)
+    # A form-made request the form no longer produces, and a form-made request cancelled: both keep holding it, as
+    # D170 has always read them (a cancellation's money is a clawback's, not the no-request line's).
+    edited = _record(1000002, 1000021, SUMMER, status="withdrawn", option_key="session 2")
+    cancelled = _record(1000003, 1000031, SUMMER, status="active", option_key="session 2")
+    # A removed addition that was added again: the live addition's request holds the money once more.
+    again = _addition(1000004, 1000041, SUMMER, retired=False)
+    retired_before = _addition(1000004, 1000041, SUMMER, retired=True)
+    revived = _record(1000004, 1000041, SUMMER, status="active", option_key=again.option_key)
+    # A removed addition whose request is somehow still live (not yet withdrawn) still holds it: only a withdrawn one
+    # lets go.
+    unwithdrawn_addition = _addition(1000005, 1000051, SUMMER, retired=True)
+    unwithdrawn = _record(1000005, 1000051, SUMMER, status="active", option_key=unwithdrawn_addition.option_key)
+    requests = [added, edited, cancelled, revived, unwithdrawn]
+    assert holding_requests(requests, [live, retired_before, again, unwithdrawn_addition]) == requests

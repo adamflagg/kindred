@@ -211,14 +211,15 @@ async def test_a_bulk_load_records_round_1_per_item_and_never_twice_for_one_fami
     wrong = await casework.add_requests(YEAR, [replace(item, round1_campminder=1.0)], "sitting", ACTOR, dry_run=True)
     assert not wrong.items[0].ok
     assert "not $1.00" in wrong.items[0].error
-    # A sibling in the same session: CampMinder's money is the family x session's, recorded once (never split).
+    # A sibling in the same session (follow-up A, coordinator ruling): the money is credited to Liam, so it is his to
+    # record, never his sibling's.
     sibling = LIAM + 1
     store.attendees = [*store.attendees, *enrolled(sibling, LIAM_HOUSEHOLD, SESSION_2)]
     twice = await casework.add_requests(
         YEAR, [item, replace(item, person_cm_id=sibling)], "sitting", ACTOR, dry_run=True
     )
     assert [r.ok for r in twice.items] == [True, False]
-    assert "already recorded" in twice.items[1].error
+    assert "no aid on no request" in twice.items[1].error
 
     done = await casework.add_requests(YEAR, [item], "sitting", ACTOR, dry_run=False)
     assert done.written
@@ -313,3 +314,157 @@ async def test_recording_campminders_money_moves_it_from_the_d170_line_into_comm
     assert figure(after.total.total.posted) - figure(before.total.total.posted) == pytest.approx(2258.0)
     assert d170(pool_after) == 0.0
     assert d170(after.total) == 0.0
+
+
+# -- Follow-up A: Add a Request… → Undo Posted → Remove… gives the money back (owner's standing rule: posted aid always
+#    shows). Before, D170 took ANY request of the family x session to hold it, so the removed request kept it, and it
+#    showed nowhere: not in Posted (undone), not on D170, not in Form intake's amber cell. --------------------------
+
+
+@pytest.mark.asyncio
+async def test_after_undo_posted_and_remove_the_campminder_money_is_back_on_d170_and_form_intake(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import api.services.financial_aid_decisions_service as decisions_module
+    from api.schemas.financial_aid_decisions import BudgetResponse, PoolBudgetOut, UnpostIn
+    from api.services.financial_aid_form_intake import FormIntakeService
+    from tests.unit.api.services.decisions_fakes import EMMA as EMMA_REQUEST
+    from tests.unit.api.services.decisions_fakes import FakeDecisionsStore, seed_request
+    from tests.unit.api.services.test_financial_aid_decisions_service import _service
+
+    monkeypatch.setattr(decisions_module, "CAMPMINDER_AID_ON_NO_REQUEST_YEARS", frozenset({YEAR}))
+    casework_store = liam_store()
+    casework = FinancialAidCaseworkService(casework_store)
+    season = FakeDecisionsStore()
+    seed_request(season, EMMA_REQUEST)
+    season.camp_lines = list(casework_store.camp_lines)
+
+    def mirror() -> None:
+        """What the casework writes left, as the decisions service reads it back."""
+        for application in casework_store.applications.values():
+            if application not in season.applications:
+                season.applications.append(application)
+        season.requests.update(casework_store.requests)
+        season.shares.extend(s for s in casework_store.payer_shares.values() if s not in season.shares)
+        season.events.extend(e for e in casework_store.decision_events if e not in season.events)
+        season.additions = list(casework_store.additions.values())
+
+    def camp_pool(budget: BudgetResponse) -> PoolBudgetOut:
+        return next(p for p in budget.pools if p.pool == "camp_pool")
+
+    def d170(pool: PoolBudgetOut) -> float:
+        off = pool.below.campminder_aid_off_requests
+        return off.amount if off is not None else 0.0
+
+    async def form_intake() -> tuple[float, list[tuple[int, int, float]], list[float]]:
+        """D170's drill-in total and lines (family, session, amount), and Liam's amber Form intake money."""
+        service = FormIntakeService(casework_store)
+        drill = await service.aid_on_no_request(YEAR)
+        out = await service.forms(YEAR)
+        (liam,) = [r for r in out.rows if r.person_cm_id == LIAM]
+        amber = [a.amount for a in liam.campminder_aid if not a.on_request]
+        return drill.total, [(x.household_cm_id, x.session_cm_id, x.amount) for x in drill.lines], amber
+
+    before = await _service(season).budget(YEAR)
+    assert d170(camp_pool(before)) == 2258.0
+    assert await form_intake() == (2258.0, [(LIAM_HOUSEHOLD, SESSION_2, 2258.0)], [2258.0])
+
+    # 1. Add a Request… with the box ticked: the money counts in Posted and leaves D170.
+    out = await casework.add_request(
+        YEAR, LIAM_HOUSEHOLD, LIAM, SESSION_2, 2500.0, "Assessed by phone", ACTOR, round1_campminder=2258.0
+    )
+    mirror()
+    added = await _service(season).budget(YEAR)
+    assert camp_pool(added).total.posted == pytest.approx((camp_pool(before).total.posted or 0) + 2258.0)
+    assert (d170(camp_pool(added)), d170(added.total)) == (0.0, 0.0)
+    assert await form_intake() == (0.0, [], [])
+
+    # 2. Undo Posted, then 3. Remove…: the request is withdrawn and its addition retired.
+    await _service(season).undo_posted(YEAR, UnpostIn(request_id=out.request.id, round=1, reason="Wrong family"), ACTOR)
+    casework_store.decision_events.extend(e for e in season.events if e not in casework_store.decision_events)
+    await casework.retire_addition(YEAR, out.addition.id, "Entered in error", ACTOR)
+    assert casework_store.requests[out.request.id].status == "withdrawn"
+    mirror()
+
+    removed = await _service(season).budget(YEAR)
+    assert camp_pool(removed).total.posted == pytest.approx(camp_pool(before).total.posted or 0)
+    assert (d170(camp_pool(removed)), d170(removed.total)) == (2258.0, 2258.0)
+    assert await form_intake() == (2258.0, [(LIAM_HOUSEHOLD, SESSION_2, 2258.0)], [2258.0])
+
+    # And it can be added again, recording the money once more.
+    again = await casework.add_request(
+        YEAR, LIAM_HOUSEHOLD, LIAM, SESSION_2, 2500.0, "Assessed again", ACTOR, round1_campminder=2258.0
+    )
+    assert again.addition.round1_posted == 2258.0
+
+
+# -- Follow-up A (coordinator ruling): the guard takes the camper's own money, never the family x session's -----------
+
+
+def siblings_store(*lines: CampLine, sibling_enrolled: bool = True) -> FakeAidStore:
+    """Liam Garcia and his sibling are both enrolled in Session 2; neither family filed the form."""
+    sibling = LIAM + 1
+    store = make_store(
+        attendees=[
+            *enrolled(LIAM, LIAM_HOUSEHOLD, SESSION_2),
+            *enrolled(sibling, LIAM_HOUSEHOLD, SESSION_2, status=2 if sibling_enrolled else 4),
+        ]
+    )
+    store.camp_lines = list(lines)
+    return store
+
+
+def credited_siblings() -> FakeAidStore:
+    return siblings_store(
+        camp_line(59000011, LIAM_HOUSEHOLD, "1000", session=SESSION_2, person=LIAM),
+        camp_line(59000012, LIAM_HOUSEHOLD, "500", session=SESSION_2, person=LIAM + 1),
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_guard_takes_the_campers_own_credited_money_and_refuses_the_family_total() -> None:
+    store = credited_siblings()
+    casework = FinancialAidCaseworkService(store)
+    with pytest.raises(CaseworkValidationError, match=r"\$1,000\.00 on no request .*, not \$1,500\.00"):
+        await casework.add_request(
+            YEAR, LIAM_HOUSEHOLD, LIAM, SESSION_2, 1000.0, "Assessed by phone", ACTOR, round1_campminder=1500.0
+        )
+    assert store.operations == []
+    await casework.add_request(
+        YEAR, LIAM_HOUSEHOLD, LIAM, SESSION_2, 1000.0, "Assessed by phone", ACTOR, round1_campminder=1000.0
+    )
+    (event,) = store.decision_events
+    assert event.amount == Decimal(1000)
+
+    # The sibling, from the same start, records only their own.
+    store = credited_siblings()
+    await FinancialAidCaseworkService(store).add_request(
+        YEAR, LIAM_HOUSEHOLD, LIAM + 1, SESSION_2, 500.0, "Assessed by phone", ACTOR, round1_campminder=500.0
+    )
+    (event,) = store.decision_events
+    assert event.amount == Decimal(500)
+
+
+@pytest.mark.asyncio
+async def test_money_credited_to_no_camper_with_two_enrolled_siblings_is_recorded_for_neither() -> None:
+    store = siblings_store(camp_line(59000013, LIAM_HOUSEHOLD, "700", session=SESSION_2))
+    casework = FinancialAidCaseworkService(store)
+    for person in (LIAM, LIAM + 1):
+        with pytest.raises(CaseworkValidationError, match="no aid on no request"):
+            await casework.add_request(
+                YEAR, LIAM_HOUSEHOLD, person, SESSION_2, 700.0, "Assessed by phone", ACTOR, round1_campminder=700.0
+            )
+    assert store.operations == []
+    # Add a Request… without the box still works.
+    await casework.add_request(YEAR, LIAM_HOUSEHOLD, LIAM, SESSION_2, 700.0, "Assessed by phone", ACTOR)
+    assert store.decision_events == []
+
+
+@pytest.mark.asyncio
+async def test_money_credited_to_no_camper_is_recorded_for_the_one_enrolled_camper() -> None:
+    store = siblings_store(camp_line(59000014, LIAM_HOUSEHOLD, "700", session=SESSION_2), sibling_enrolled=False)
+    await FinancialAidCaseworkService(store).add_request(
+        YEAR, LIAM_HOUSEHOLD, LIAM, SESSION_2, 700.0, "Assessed by phone", ACTOR, round1_campminder=700.0
+    )
+    (event,) = store.decision_events
+    assert event.amount == Decimal(700)

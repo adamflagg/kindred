@@ -100,7 +100,8 @@ class GapSessionOut(BaseModel):
 
     session_cm_id: int
     program_key: str
-    # CampMinder's money on no request on this family x session: the Round 1 Add a Request… offers to record (Q5-A).
+    # This row's own CampMinder money on no request in this session (the camper's: d170_person; a household row's
+    # household x session): the Round 1 Add a Request… offers to record (Q5-A).
     campminder_amount: float | None = None
 
 
@@ -168,7 +169,8 @@ class AddPrefillOut(BaseModel):
 
 
 class AidOnNoRequestLineOut(BaseModel):
-    """Season's D170 line opened in place (owner Q4-A): one family x session."""
+    """Season's D170 line opened in place (owner Q4-A): one Form intake row x session (a camper's own money, or the
+    household's: a Family Camp weekend's, or money no one camper can take, which offers no Round 1)."""
 
     row_key: str  # the Form intake row it is on
     household_cm_id: int

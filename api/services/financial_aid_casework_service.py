@@ -55,7 +55,12 @@ from api.services.financial_aid_calc_inputs import (
     calculator_inputs,
     request_issues,
 )
-from api.services.financial_aid_campminder_money import NoRequestAid, aid_on_no_request_lines
+from api.services.financial_aid_campminder_money import (
+    NoRequestAid,
+    aid_on_no_request_lines,
+    d170_person,
+    holding_requests,
+)
 from api.services.financial_aid_corrections import (
     APPLICATION_CORRECTABLE,
     INCOME_OVERRIDE_FIELD,
@@ -430,10 +435,10 @@ class _AdditionContext:
     claimed: set[tuple[str, int, int]] = dataclass_field(default_factory=set)
     new_applications: dict[int, str] = dataclass_field(default_factory=dict)
     # Read only when an item records CampMinder's money as Round 1 (Q5-A): D170's lines and the season's links, and
-    # the family x sessions whose money this load has already recorded.
+    # the family x camper x sessions whose money this load has already recorded.
     no_request: list[NoRequestAid] | None = None
     links: list[Any] = dataclass_field(default_factory=list)
-    recorded: set[tuple[int, int]] = dataclass_field(default_factory=set)
+    recorded: set[tuple[int, int, int]] = dataclass_field(default_factory=set)
 
 
 def _cents(amount: Decimal) -> str:
@@ -1186,19 +1191,36 @@ class FinancialAidCaseworkService:
 
     async def _campminder_round1(
         self, ctx: _AdditionContext, item: AdditionItem
-    ) -> tuple[Decimal, list[CampLine], tuple[int, int]]:
+    ) -> tuple[Decimal, list[CampLine], tuple[int, int, int]]:
         """Owner Q5-A's guard: the Round 1 to record is, to the cent, CampMinder's live camp aid on this family x
-        session that no request holds (D170's own lines, so the money then leaves that line and counts in the pool).
-        The family is the household and the households linked to it, as D170 reads a line. Recorded once per family
-        x session in a load: CampMinder's money is the family x session's, never split."""
+        session that no request holds (D170's own lines, so the money then leaves that line and counts in the pool),
+        and that is this camper's (d170_person, coordinator ruling): the lines credited to the camper, plus lines
+        credited to no camper when the camper is the household's one camper enrolled in the session. A household
+        (Family Camp) request takes the household x session's. This is the amount Form intake offers on the row.
+        The family is the household and the households linked to it, as D170 reads a line. Recorded once per
+        family x camper x session in a load."""
         if ctx.no_request is None:
             lines = await self._store.fetch_camp_lines(ctx.year)
             ctx.links = list(await self._store.fetch_household_links(ctx.year))
-            ctx.no_request = aid_on_no_request_lines(lines, list(ctx.requests.values()), ctx.links)
-        hh, sid = item.household_cm_id, item.session_cm_id
+            holding = holding_requests(ctx.requests.values(), ctx.additions)
+            ctx.no_request = aid_on_no_request_lines(lines, holding, ctx.links)
+        hh, person, sid = item.household_cm_id, item.person_cm_id, item.session_cm_id
         family = set(family_household_set(ctx.links, hh) or [hh])
-        found = [a.line for a in ctx.no_request if a.group is not None and a.group[1] == sid and a.group[0] in family]
-        key = (min(family), sid)
+        by_id = {s.cm_id: s for s in ctx.sessions}
+
+        def family_camp(session_cm_id: int) -> bool:
+            session = by_id.get(session_cm_id)
+            return session is not None and _program_for(session) == PROGRAM_FAMILY_CAMP
+
+        found = [
+            a.line
+            for a in ctx.no_request
+            if a.group is not None
+            and a.group[1] == sid
+            and a.group[0] in family
+            and d170_person(a, family_camp, ctx.attendees) == person
+        ]
+        key = (min(family), person, sid)
         if key in ctx.recorded:
             raise CaseworkValidationError(
                 "CampMinder's money on that family and session is already recorded on another item in this load"

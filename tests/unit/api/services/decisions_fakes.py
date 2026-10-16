@@ -35,6 +35,7 @@ from api.services.financial_aid_grant_placements import PlacementRecord, placeme
 from api.services.financial_aid_grants_register import Placement, RegisterRow, RequestShare
 from api.services.financial_aid_intake_plan import application_fields, request_fields
 from api.services.financial_aid_intake_types import (
+    AdditionRecord,
     ApplicationRecord,
     CorrectionRecord,
     EquityAnswers,
@@ -93,6 +94,7 @@ class FakeDecisionsStore:
         self.camp_line_reads: list[bool] = []  # each fetch_camp_lines call's recorded_times, in order
         self.placements: dict[int, Placement] = {}
         self.links: list[Any] = []  # the season's aid_household_links rows (D26)
+        self.additions: list[AdditionRecord] = []  # aid_request_additions rows, retired ones included (D170 reads them)
         self.splits: dict[int, tuple[SplitPart, ...]] = {}  # lines a person split across requests (SP11-rest)
         self.synced_at: datetime | None = None  # the last successful ledger sync covering YEAR; None = never
         self.cancel_events: list[CancelEvent] = []
@@ -199,6 +201,9 @@ class FakeDecisionsStore:
 
     async def fetch_household_links(self, year: int) -> list[Any]:
         return list(self.links)
+
+    async def fetch_request_additions(self, year: int) -> list[AdditionRecord]:
+        return [a for a in self.additions if a.year == year]
 
     async def fetch_camp_lines(self, year: int, *, recorded_times: bool = False) -> list[CampLine]:
         """As the repository reads them: without the recorded times unless asked for (a past read)."""

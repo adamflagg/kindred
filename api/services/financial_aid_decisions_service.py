@@ -105,7 +105,7 @@ from api.services.financial_aid_calc_inputs import (
     request_issues,
     to_application_inputs,
 )
-from api.services.financial_aid_campminder_money import aid_on_no_request
+from api.services.financial_aid_campminder_money import aid_on_no_request, holding_requests
 from api.services.financial_aid_cancellations import (
     CANCEL_REASON_LABELS,
     TODO_CANCEL_REASON,
@@ -145,6 +145,7 @@ from api.services.financial_aid_intake_types import (
     STATUS_DUPLICATE,
     STATUS_UNMATCHED,
     STATUS_WITHDRAWN,
+    AdditionRecord,
     ApplicationRecord,
     CorrectionRecord,
     EquityAnswers,
@@ -370,6 +371,7 @@ class DecisionsStore(Protocol):
     async def fetch_decision_events(self, year: int) -> list[DecisionEvent]: ...
     async def fetch_request_events(self, request_id: str) -> list[DecisionEvent]: ...
     async def fetch_hold_events(self, year: int) -> list[HoldEvent]: ...
+    async def fetch_request_additions(self, year: int) -> list[AdditionRecord]: ...
     async def fetch_change_log(self, year: int, entity: str) -> list[LogRow]: ...
     async def fetch_request_hold_events(self, request_id: str) -> list[HoldEvent]: ...
     async def fetch_names(
@@ -2326,13 +2328,18 @@ class FinancialAidDecisionsService:
     async def _aid_on_no_request(self, season: Season) -> dict[str, OffRequestAid] | None:
         """D170: the live season's CampMinder aid on no request, for the seasons the line is shown for; None elsewhere
         and on a past date (a past read loads no live ledger). By the 2026 loader's own family x session rule, over
-        every request of the season, whatever its status, and the season's household links."""
+        every request of the season, whatever its status, but an added request staff removed (holding_requests),
+        and the season's household links."""
         if season.as_of is not None or season.year not in CAMPMINDER_AID_ON_NO_REQUEST_YEARS:
             return None
         links = await self._store.fetch_household_links(season.year)
+        additions = await self._store.fetch_request_additions(season.year)
         document = season.rules.document if season.rules is not None else None
         return aid_on_no_request(
-            season.camp_lines, list(season.requests.values()), links, _session_pools(season.sessions, document).get
+            season.camp_lines,
+            holding_requests(season.requests.values(), additions),
+            links,
+            _session_pools(season.sessions, document).get,
         )
 
     def _budget(

@@ -98,6 +98,18 @@ def test_a_tick_a_placement_made_never_waits_for_tonights_sync() -> None:
     assert _awaiting(ticked, synced) is True
 
 
+def test_a_round_1_recorded_at_campminders_amount_never_waits_for_tonights_sync() -> None:
+    """Add a Request… recording CampMinder's posted money as Round 1 (owner Q5-A, lock_source campminder_added): the
+    money is already in CampMinder, so its CM ✓ is at once, not "pending, awaiting tonight's sync"."""
+    late = datetime(2027, 3, 10, 18, 0, tzinfo=UTC)
+    synced = datetime(2027, 3, 9, 9, 0, tzinfo=UTC)
+    added = RoundState(
+        round=1, posted=True, locked_amount=Decimal(2258), locked_at=late, lock_source="campminder_added"
+    )
+    assert _awaiting(added, synced) is False
+    assert _awaiting(added, None) is False
+
+
 def test_the_public_totals_are_what_reconciliation_compares() -> None:
     """To place reads a request's locked total and placed live net through these (SP11-rest)."""
     assert locked_total(R1) == Decimal(1800)  # R1: Round 1 posted, locked at 1,800

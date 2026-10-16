@@ -16,6 +16,8 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Protocol
 
+from api.constants.filters import ACTIVE_ENROLLED_STATUS_ID
+from api.services.financial_aid_intake_types import STATUS_WITHDRAWN, AdditionRecord, AttendeeRow, RequestRecord
 from api.services.financial_aid_ledger_service import family_household_set
 from api.services.financial_aid_reconciliation import CampLine
 from bunking.financial_aid.decisions.budget import NO_POOL, TOTAL, OffRequestAid
@@ -100,6 +102,17 @@ def campminder_money(
     return dict(placed), dict(no_request), dict(unplaced)
 
 
+def holding_requests(requests: Iterable[RequestRecord], additions: Iterable[AdditionRecord]) -> list[RequestRecord]:
+    """The season's requests that hold CampMinder's money for D170: every request of any status (a cancelled or a
+    form-withdrawn one still holds its family x session), except an added request staff removed (Remove…: its
+    addition retired, its request withdrawn). That one asks for nothing any more, so the money it held is on no
+    request again and shows on D170 and in Form intake's amber cell (owner: aid CampMinder posted always shows).
+    A removed addition that was added again is live once more, and its request holds the money."""
+    live_keys = {a.request_key for a in additions if a.live}
+    removed_keys = {a.request_key for a in additions if not a.live} - live_keys
+    return [r for r in requests if not (r.status == STATUS_WITHDRAWN and r.key in removed_keys)]
+
+
 @dataclass(frozen=True)
 class NoRequestAid:
     """One live camp-aid line D170 counts: the family x session it is on (`group`), or None when no session can be told
@@ -107,6 +120,35 @@ class NoRequestAid:
 
     line: CampLine
     group: Group | None
+
+
+def d170_person(found: NoRequestAid, family_camp: Callable[[int], bool], attendees: Iterable[AttendeeRow]) -> int:
+    """Whose a D170 line's money is (coordinator ruling, follow-up A to PR 3): 0, the household's, on a Family Camp
+    session (its request is the household's); else the camper the line credits; else, for a line credited to no
+    camper, the household's ONE camper enrolled (status 2) in its session; else 0:
+    with two or more siblings there it is offered to none of them and stays on D170.
+
+    Form intake's amber cell, its gaps' campminder_amount, Season's D170 drill-in prefill and Add a Request…'s Round 1
+    guard all read this, so a camper is offered exactly the money shown on their row, never the family x session's."""
+    line = found.line
+    household = found.group[0] if found.group is not None else line.household_cm_id
+    session = found.group[1] if found.group is not None else 0
+    if session and family_camp(session):
+        return 0
+    camper = line.attributed_person_cm_id or line.person_cm_id
+    if camper:
+        return camper
+    if session:
+        members = {
+            a.person_cm_id
+            for a in attendees
+            if a.household_cm_id == household
+            and a.session_cm_id == session
+            and a.status_id == ACTIVE_ENROLLED_STATUS_ID
+        }
+        if len(members) == 1:
+            return members.pop()
+    return 0
 
 
 def aid_on_no_request_lines(

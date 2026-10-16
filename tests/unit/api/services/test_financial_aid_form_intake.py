@@ -558,3 +558,96 @@ async def test_a_household_rows_enrolled_lists_its_family_camp_weekends_only() -
         lines=[camp(59000002, OKAFOR, "458", session=FAMILY_CAMP_6)],
     )
     assert row(await forms(store), OKAFOR, 0).enrolled_session_cm_ids == [FAMILY_CAMP_6]
+
+
+# -- Follow-up A (coordinator ruling): siblings in one session. Form intake's amber cell, its gap's campminder_amount,
+#    the D170 drill-in line's prefill and Add a Request…'s guard all offer the SAME per-camper money: the lines credited
+#    to that camper, plus lines credited to no camper only when that camper is the household's one camper enrolled
+#    (status 2) in the session. A household (Family Camp) row keeps the household x session's money. ---------------
+
+
+async def _siblings(*lines: CampLine, samuel_enrolled: bool = True) -> FakeAidStore:
+    """Emma and Samuel Johnson asked at registration only, and are both enrolled in Taste of Camp 1 (unless not)."""
+    return await intake(
+        fa_row(EMMA, JOHNSON, registration_ask=1500.0),
+        fa_row(SAMUEL, JOHNSON, registration_ask=1500.0),
+        attendees=[
+            *enrolled(EMMA, JOHNSON, TASTE_1),
+            *enrolled(SAMUEL, JOHNSON, TASTE_1, status=2 if samuel_enrolled else 4),
+        ],
+        lines=lines,
+    )
+
+
+def _offered(r: FormIntakeRowOut) -> list[tuple[int, float | None]]:
+    return [(g.session_cm_id, g.campminder_amount) for g in r.gap_sessions]
+
+
+def _amber(r: FormIntakeRowOut) -> list[tuple[int, float]]:
+    return [(a.session_cm_id, a.amount) for a in r.campminder_aid if not a.on_request]
+
+
+@pytest.mark.asyncio
+async def test_two_credited_siblings_in_one_session_are_each_offered_their_own_money() -> None:
+    store = await _siblings(
+        camp(59000011, JOHNSON, "1000", session=TASTE_1, person=EMMA),
+        camp(59000012, JOHNSON, "500", session=TASTE_1, person=SAMUEL),
+    )
+    out = await forms(store)
+    emma, samuel = row(out, JOHNSON, EMMA), row(out, JOHNSON, SAMUEL)
+    assert (_amber(emma), _offered(emma)) == ([(TASTE_1, 1000.0)], [(TASTE_1, 1000.0)])
+    assert (_amber(samuel), _offered(samuel)) == ([(TASTE_1, 500.0)], [(TASTE_1, 500.0)])
+
+    drill = await FormIntakeService(store).aid_on_no_request(YEAR)
+    assert sorted(
+        (x.person_cm_id, x.session_cm_id, x.amount, x.prefill.person_cm_id, x.prefill.round1_campminder)
+        for x in drill.lines
+    ) == [(EMMA, TASTE_1, 1000.0, EMMA, 1000.0), (SAMUEL, TASTE_1, 500.0, SAMUEL, 500.0)]
+    assert (drill.total, drill.families) == (1500.0, 1)
+
+
+@pytest.mark.asyncio
+async def test_money_credited_to_no_camper_with_two_enrolled_siblings_is_offered_to_neither() -> None:
+    store = await _siblings(camp(59000013, JOHNSON, "700", session=TASTE_1))
+    out = await forms(store)
+    emma, samuel = row(out, JOHNSON, EMMA), row(out, JOHNSON, SAMUEL)
+    assert (_amber(emma), _offered(emma)) == ([], [(TASTE_1, None)])
+    assert (_amber(samuel), _offered(samuel)) == ([], [(TASTE_1, None)])
+    assert emma.can_add  # Add a Request… still works, with no Round 1 box
+    assert samuel.can_add
+
+    # It stays on D170: the line is the household's, and Add a Request… there offers no Round 1.
+    drill = await FormIntakeService(store).aid_on_no_request(YEAR)
+    (line,) = drill.lines
+    assert (line.person_cm_id, line.session_cm_id, line.amount, line.prefill.round1_campminder) == (
+        0,
+        TASTE_1,
+        700.0,
+        None,
+    )
+    assert drill.total == out.campminder_aid_on_no_request == 700.0
+
+
+@pytest.mark.asyncio
+async def test_money_credited_to_no_camper_is_offered_to_the_one_enrolled_camper() -> None:
+    store = await _siblings(camp(59000014, JOHNSON, "700", session=TASTE_1), samuel_enrolled=False)
+    emma = row(await forms(store), JOHNSON, EMMA)
+    assert (_amber(emma), _offered(emma)) == ([(TASTE_1, 700.0)], [(TASTE_1, 700.0)])
+    (line,) = (await FormIntakeService(store).aid_on_no_request(YEAR)).lines
+    assert (line.person_cm_id, line.prefill.person_cm_id, line.prefill.round1_campminder) == (EMMA, EMMA, 700.0)
+
+
+@pytest.mark.asyncio
+async def test_a_household_row_keeps_the_household_x_session_money() -> None:
+    # Family Camp: CampMinder's lines on the weekend, whichever member they credit, are the household's request's.
+    store = await intake(
+        attendees=[*enrolled(1000061, OKAFOR, FAMILY_CAMP_6), *enrolled(1000062, OKAFOR, FAMILY_CAMP_6)],
+        lines=[
+            camp(59000015, OKAFOR, "300", session=FAMILY_CAMP_6, person=1000061),
+            camp(59000016, OKAFOR, "158", session=FAMILY_CAMP_6),
+        ],
+    )
+    household = row(await forms(store), OKAFOR, 0)
+    assert (_amber(household), _offered(household)) == ([(FAMILY_CAMP_6, 458.0)], [(FAMILY_CAMP_6, 458.0)])
+    (line,) = (await FormIntakeService(store).aid_on_no_request(YEAR)).lines
+    assert (line.person_cm_id, line.amount, line.prefill.round1_campminder) == (0, 458.0, 458.0)

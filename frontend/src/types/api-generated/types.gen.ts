@@ -423,7 +423,8 @@ export type AidLikeOutside = {
 /**
  * AidOnNoRequestLineOut
  *
- * Season's D170 line opened in place (owner Q4-A): one family x session.
+ * Season's D170 line opened in place (owner Q4-A): one Form intake row x session (a camper's own money, or the
+ * household's: a Family Camp weekend's, or money no one camper can take, which offers no Round 1).
  */
 export type AidOnNoRequestLineOut = {
   /**

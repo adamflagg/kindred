@@ -51,7 +51,13 @@ from api.schemas.financial_aid_form_intake import (
 )
 from api.services.camp_calendar import CAMP_TZ
 from api.services.financial_aid_addition_view import addition_view, additions_by_request_key, posted_rounds
-from api.services.financial_aid_campminder_money import NoRequestAid, aid_on_no_request_lines, campminder_money
+from api.services.financial_aid_campminder_money import (
+    NoRequestAid,
+    aid_on_no_request_lines,
+    campminder_money,
+    d170_person,
+    holding_requests,
+)
 from api.services.financial_aid_cancellations import CancelEvent, fold_cancellations
 from api.services.financial_aid_casework_service import _program_for
 from api.services.financial_aid_decisions_service import session_pools
@@ -192,10 +198,6 @@ class _Explainer:
         self.aid_by_subject: dict[Subject, list[NoRequestAid]] = defaultdict(list)
         for found in season.no_request:
             self.aid_by_subject[self.d170_subject(found)].append(found)
-        self.family_d170: dict[tuple[int, int], Decimal] = defaultdict(Decimal)
-        for found in season.no_request:
-            if found.group is not None:
-                self.family_d170[found.group] += found.line.amount
 
     # -- who a row is for ----------------------------------------------------------------------------------------------
 
@@ -204,27 +206,13 @@ class _Explainer:
         return _program_for(session) if session is not None else None
 
     def d170_subject(self, found: NoRequestAid) -> Subject:
-        """The row a D170 line belongs on: a Family Camp session's is the household's; otherwise the line's camper,
-        or the household's one camper enrolled in that session; else the household's own row."""
-        line = found.line
-        household = found.group[0] if found.group is not None else line.household_cm_id
-        session = found.group[1] if found.group is not None else 0
-        camper = line.attributed_person_cm_id or line.person_cm_id
-        if session and self.program(session) == PROGRAM_FAMILY_CAMP:
-            return household, 0
-        if camper:
-            return household, camper
-        if session:
-            members = sorted(
-                {
-                    a.person_cm_id
-                    for a in self.s.attendees
-                    if a.household_cm_id == household and a.session_cm_id == session and a.status_id == _ENROLLED
-                }
-            )
-            if len(members) == 1:
-                return household, members[0]
-        return household, 0
+        """The row a D170 line belongs on: its household (the family x session's) and whose money it is
+        (d170_person: the household's own row on a Family Camp session, or for money no one camper can take)."""
+        household = found.group[0] if found.group is not None else found.line.household_cm_id
+        return household, d170_person(found, self.family_camp, self.s.attendees)
+
+    def family_camp(self, sid: int) -> bool:
+        return self.program(sid) == PROGRAM_FAMILY_CAMP
 
     def subjects(self) -> list[Subject]:
         found: set[Subject] = set()
@@ -352,7 +340,7 @@ class _Explainer:
         )
 
     def gaps(self, subject: Subject, requests: Sequence[RequestRecord], enrolled: Sequence[int]) -> list[GapSessionOut]:
-        household, person = subject
+        person = subject[1]
         held: set[int] = set()
         for r in requests:
             if r.status in _LIVE:
@@ -363,7 +351,15 @@ class _Explainer:
             program = self.program(sid)
             if program is None or sid in held or (program == PROGRAM_FAMILY_CAMP) != (person == 0):
                 continue
-            money = self.family_d170.get((household, sid))
+            # The camper's own D170 money there, as the amber cell shows it (d170_person), and the guard accepts.
+            money = sum(
+                (
+                    a.line.amount
+                    for a in self.aid_by_subject.get(subject, [])
+                    if a.group is not None and a.group[1] == sid
+                ),
+                Decimal(0),
+            )
             out.append(
                 GapSessionOut(session_cm_id=sid, program_key=program, campminder_amount=float(money) if money else None)
             )
@@ -509,7 +505,9 @@ class FormIntakeService:
             store.fetch_household_links(year),
             store.load_intake_rules(year),
         )
-        placed, _, _ = campminder_money(lines, requests, links)
+        # An added request staff removed holds no money (holding_requests): Season's D170 reads the same.
+        holding = holding_requests(requests, additions)
+        placed, _, _ = campminder_money(lines, holding, links)
         return _Season(
             year=year,
             fa_rows=fa_rows,
@@ -523,7 +521,7 @@ class FormIntakeService:
             links=list(links),
             rules=rules,
             by_id={s.cm_id: s for s in sessions},
-            no_request=aid_on_no_request_lines(lines, requests, links),
+            no_request=aid_on_no_request_lines(lines, holding, links),
             on_request=placed,
         )
 
@@ -600,15 +598,18 @@ class FormIntakeService:
         explainer = _Explainer(season)
         by_key = {r.key: r for r in await self._named(year, rows)}
         pools = session_pools(season.by_id, season.rules)
-        groups: dict[tuple[int, int], list[NoRequestAid]] = defaultdict(list)
+        # One line per row x session: a camper's own money (d170_person), so two credited siblings in one session are
+        # two lines, each offering its own amount; money no one camper can take is the household's line, offered to
+        # no camper (no Round 1 box), as on Form intake.
+        groups: dict[tuple[int, int, int], list[NoRequestAid]] = defaultdict(list)
         for found in season.no_request:
-            group = found.group if found.group is not None else (found.line.household_cm_id, 0)
-            groups[group].append(found)
+            household, person = explainer.d170_subject(found)
+            groups[(household, person, found.group[1] if found.group is not None else 0)].append(found)
         lines: list[AidOnNoRequestLineOut] = []
-        for (household, sid), items in groups.items():
-            household_of, person = explainer.d170_subject(items[0])
-            row = by_key[f"{household_of}:{person}"]
+        for (household, person, sid), items in groups.items():
+            row = by_key[f"{household}:{person}"]
             amount = float(sum((a.line.amount for a in items), Decimal(0)))
+            offered = bool(sid) and (bool(person) or explainer.family_camp(sid))
             lines.append(
                 AidOnNoRequestLineOut(
                     row_key=row.key,
@@ -626,7 +627,7 @@ class FormIntakeService:
                         person_cm_id=person,
                         session_cm_id=sid,
                         ask=amount,
-                        round1_campminder=amount if sid else None,
+                        round1_campminder=amount if offered else None,
                     ),
                     can_add=row.can_add,
                     gap_sessions=row.gap_sessions,
