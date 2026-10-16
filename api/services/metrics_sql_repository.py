@@ -210,6 +210,10 @@ class MetricsSQLRepository:
             if r["id"]
         }
 
+    # ------------------------------------------------------------------
+    # 3. fetch_sessions
+    # ------------------------------------------------------------------
+
     async def fetch_sessions(
         self,
         year: int,
