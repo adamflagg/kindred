@@ -18,6 +18,7 @@ from api.constants.collections import (
     AID_APPLICATIONS,
     AID_GRANTS,
     AID_HOUSEHOLD_LINKS,
+    AID_REQUEST_ADDITIONS,
     AID_REQUESTS,
     AID_RULES,
 )
@@ -39,6 +40,7 @@ _SUBJECT_FIELDS: Final = {
     AID_APPLICATION_CORRECTIONS: "id,application",
     AID_GRANTS: "id,household_cm_id",
     AID_HOUSEHOLD_LINKS: "id,household_cm_id",
+    AID_REQUEST_ADDITIONS: "id,household_cm_id,person_cm_id,session_cm_id",
 }
 _RECORDED_FIELDS: Final = "id,operation_id,entity,action,after"
 _RULES_VERSION_FIELDS: Final = "id,year,version,document,section_status"
@@ -160,13 +162,16 @@ async def _season_list(pb: Any, collection: str, year: int, fields: str) -> list
     return rows
 
 
-async def fetch_subject_records(pb: Any, year: int) -> tuple[list[Any], list[Any], list[Any], list[Any], list[Any]]:
+SubjectRecords = tuple[list[Any], list[Any], list[Any], list[Any], list[Any], list[Any]]
+
+
+async def fetch_subject_records(pb: Any, year: int) -> SubjectRecords:
     """Who the season's log rows are about (Season › History, H2): its requests, applications, casework corrections,
-    grants and household links, as five light reads with no JSON."""
-    requests, applications, corrections, grants, links = await asyncio.gather(
+    grants, household links and staff-added requests, as six light reads with no JSON."""
+    requests, applications, corrections, grants, links, additions = await asyncio.gather(
         *(_season_list(pb, collection, year, fields) for collection, fields in _SUBJECT_FIELDS.items())
     )
-    return requests, applications, corrections, grants, links
+    return requests, applications, corrections, grants, links, additions
 
 
 async def fetch_recorded(pb: Any, year: int, operation_ids: Collection[str], entities: Collection[str]) -> list[Any]:
@@ -224,7 +229,7 @@ class HistoryLogReads:
     async def fetch_operation(self, year: int, operation_id: str) -> list[Any]:
         return await fetch_operation(self.pb, year, operation_id)
 
-    async def fetch_subject_records(self, year: int) -> tuple[list[Any], list[Any], list[Any], list[Any], list[Any]]:
+    async def fetch_subject_records(self, year: int) -> SubjectRecords:
         return await fetch_subject_records(self.pb, year)
 
     async def fetch_recorded(self, year: int, operation_ids: Collection[str], entities: Collection[str]) -> list[Any]:
