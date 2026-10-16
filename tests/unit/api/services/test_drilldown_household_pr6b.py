@@ -18,10 +18,12 @@ import pytest
 
 from api.services.drilldown_service import DrilldownService
 from api.services.metrics_repository import DrilldownHousehold, MetricsRepository
-from tests.unit.api.services.test_drilldown_lists_pr6 import ALL_SUMMER, MAIN, YEAR, Person, _att, _repo
+from tests.unit.api.services.test_drilldown_lists_pr6 import ALL_SUMMER, MAIN, YEAR, Attendee, Person, _att, _repo
 
 
-def _households_repo(persons: dict[int, Person], households: dict[str, DrilldownHousehold], **lists: list) -> MagicMock:
+def _households_repo(
+    persons: dict[int, Person], households: dict[str, DrilldownHousehold], **lists: list[Attendee]
+) -> MagicMock:
     repo = _repo(lists or {"enrolled": [_att(pid, MAIN) for pid in persons]}, persons)
     repo.fetch_drilldown_households.return_value = households
     return repo
