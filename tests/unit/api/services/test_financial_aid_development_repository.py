@@ -6,7 +6,14 @@ from __future__ import annotations
 from datetime import date
 from types import SimpleNamespace
 
-from api.services.financial_aid_development_repository import attendance_record, person_record, source_record
+import pytest
+
+from api.services.financial_aid_development_repository import (
+    DevelopmentRepository,
+    attendance_record,
+    person_record,
+    source_record,
+)
 
 
 def test_an_attendee_reads_its_expanded_session_and_household() -> None:
@@ -85,3 +92,36 @@ def test_an_attendee_reads_the_day_it_registered() -> None:
     )
     assert attendance_record(record).registered_on == date(2026, 11, 20)
     assert attendance_record(SimpleNamespace(person_id=1, status_id=2, year=2027, expand={})).registered_on is None
+
+
+class _PostingsPage:
+    """aid_postings answering a one-row page: `rows` is what the filter found."""
+
+    def __init__(self, rows: list[SimpleNamespace]) -> None:
+        self.rows = rows
+        self.asked: list[tuple[str, int, int, dict[str, object]]] = []
+
+    def collection(self, name: str) -> _PostingsPage:
+        self.name = name
+        return self
+
+    def get_list(self, page: int, per_page: int, query_params: dict[str, object]) -> SimpleNamespace:
+        self.asked.append((self.name, page, per_page, dict(query_params)))
+        return SimpleNamespace(items=self.rows[:per_page])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("rows", "found"), [([SimpleNamespace(id="apo000000000001")], True), ([], False)])
+async def test_a_season_has_live_grant_lines_when_one_page_row_answers(
+    rows: list[SimpleNamespace], found: bool
+) -> None:
+    """The cheap "is there anything to rebuild?" read before a season's register: ONE row of aid_postings, filtered
+    to what the register would count as an outside grant (D158: live, positive, outside or incentive), no count."""
+    pb = _PostingsPage(rows)
+    assert await DevelopmentRepository(pb).has_live_grant_lines(2024) is found
+    [(collection, page, per_page, query)] = pb.asked
+    assert (collection, page, per_page) == ("aid_postings", 1, 1)
+    assert query["filter"] == (
+        "year = 2024 && (funder_type = 'outside' || funder_type = 'incentive') && is_reversed = false && amount > 0"
+    )
+    assert query["skipTotal"] is True

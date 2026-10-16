@@ -239,6 +239,42 @@ async def test_the_custom_values_read_expands_nothing() -> None:
 
 
 @pytest.mark.asyncio
+async def test_the_custom_values_read_is_ordered_by_the_year_and_field_index() -> None:
+    """`sort=id` made SQLite pick the (year, id) index and walk every custom value of the season (about 170k rows) to
+    fill each page with the two allowlisted fields: seconds a page, and a page over 5 s failed Development (2026-10-15).
+    Sorted by field_definition then id, the (year, field_definition) index serves it; id keeps the paging order total.
+    The (year, id) index stays, for the orphan sweep's read (#2266)."""
+    pb = parity_pb()
+    await aid_sync_inputs(pb, PARITY_YEAR)
+    ((params),) = [p for c, p in pb.calls if c == "person_custom_values"]
+    assert params["sort"] == "field_definition,id"
+
+
+@pytest.mark.asyncio
+async def test_each_persons_equity_values_stay_in_id_order_whatever_order_the_read_returns() -> None:
+    """The intake reader keeps a field's LAST answer in PocketBase-id order (fetch_equity_answers), so the field-ordered
+    read is put back in id order before it is grouped by person."""
+    person = SimpleNamespace(id="pp0000000000001", cm_id=1000001, year=YEAR, household_id=4000101, expand={})
+    camper_field, adult_field = "fd0000000000001", "fd0000000000002"
+    pb = RecordingPb(
+        {
+            "persons": [person],
+            "custom_field_defs": [
+                SimpleNamespace(id=camper_field, cm_id=CAMPER_POC_FIELD_CM_ID),
+                SimpleNamespace(id=adult_field, cm_id=ADULT_POC_FIELD_CM_ID),
+            ],
+            # As the field-ordered read returns them: the camper field's value first, though its id is the later one.
+            "person_custom_values": [
+                SimpleNamespace(id="pv0000000000002", person=person.id, field_definition=camper_field, value="Yes"),
+                SimpleNamespace(id="pv0000000000001", person=person.id, field_definition=adult_field, value="No"),
+            ],
+        }
+    )
+    inputs = await aid_sync_inputs(pb, YEAR)
+    assert [v.id for v in inputs.equity_values_by_person_cm_id[1000001]] == ["pv0000000000001", "pv0000000000002"]
+
+
+@pytest.mark.asyncio
 async def test_the_fa_mirror_is_held_whole_for_the_season_in_id_order() -> None:
     """Every row of the season, applicant or not, asking or not: the four readers filter in Python."""
     inputs = await aid_sync_inputs(parity_pb(), PARITY_YEAR)

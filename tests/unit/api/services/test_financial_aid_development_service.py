@@ -501,6 +501,75 @@ async def test_a_season_with_no_ledger_lines_leaves_its_ages_blank_and_names_why
     assert "2024" in gap.reason
 
 
+def _reported_2023_to_2025() -> FakeReportsStore:
+    history = FakeReportsStore()
+    for season in (2023, 2024, 2025):
+        history.seed(
+            ReportedFigure(
+                season,
+                "development",
+                "total_awards",
+                "camp_pool",
+                0,
+                0,
+                "season_end",
+                date(season, 9, 29),
+                Decimal(900),
+            )
+        )
+    return history
+
+
+def _register_reads(reads: list[int]) -> Any:
+    """2025's register holds an outside grant on Emma; every other past season's is empty. Records each read."""
+
+    async def rows(year: int) -> Sequence[RegisterRow]:
+        reads.append(year)
+        return [grant_row("reqemma00000001", "300")] if year == 2025 else []
+
+    return rows
+
+
+def _with_register(development: FakeDevelopmentStore, rows: Any) -> FinancialAidDevelopmentService:
+    return FinancialAidDevelopmentService(
+        report_season(),
+        FakeRules(approved(intake_rules())),
+        rows,
+        development,
+        _reported_2023_to_2025(),
+        clock=lambda: NOW,
+    )
+
+
+async def test_a_season_with_no_live_aid_line_is_blank_without_building_its_register() -> None:
+    """Item 51, without the cost: 2023 and 2024 have no camp line and no live grant line, so their ages are blank and
+    named, and their registers are never built. A register is a full-season load (persons, households, registrations,
+    custom values, FA rows); paying it for every as-reported season made Development time out (2026-10-15)."""
+    reads: list[int] = []
+    development = _stayed_2025()
+    development.grant_line_seasons = {2025}
+    out = await _with_register(development, _register_reads(reads)).development(YEAR)
+    assert [(c.season, c.basis) for c in out.columns] == [(2023, "r"), (2024, "r"), (2025, "r"), (2027, "P")]
+    assert 2023 not in reads
+    assert 2024 not in reads
+    assert 2025 in reads  # a season with a live grant line still rebuilds from its register
+    assert _row(out, "youth", "camp_pool").values[:3] == [None, None, 1.0]
+    gap = next(n for n in out.not_built if n.figure == "ages_before_backfill")
+    assert "2023, 2024" in gap.reason
+    assert "2025" not in gap.reason
+
+
+async def test_skipping_the_empty_seasons_registers_changes_no_figure() -> None:
+    """The short cut answers exactly what building every register answered: the same report, figure for figure."""
+    reads: list[int] = []
+    shortcut = _stayed_2025()
+    shortcut.grant_line_seasons = {2025}
+    every_register = _stayed_2025()  # grant_line_seasons None: every season may have lines, so each register is read
+    fast = await _with_register(shortcut, _register_reads(reads)).development(YEAR)
+    full = await _with_register(every_register, _register_reads([])).development(YEAR)
+    assert fast.model_dump() == full.model_dump()
+
+
 async def test_a_family_groups_first_time_label_says_any_earlier_family_or_adult_session_counts() -> None:
     """The label matches the code: an earlier weekend of either kind (family or adult) makes a household returning,
     not only an earlier season in the same group's programs."""

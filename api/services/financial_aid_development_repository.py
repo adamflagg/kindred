@@ -32,7 +32,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any, Final
 
-from api.constants.collections import AID_REPORT_DEFINITIONS, ATTENDEES, CAMP_SESSIONS, PERSONS
+from api.constants.collections import AID_POSTINGS, AID_REPORT_DEFINITIONS, ATTENDEES, CAMP_SESSIONS, PERSONS
 from api.dependencies import development_history_cache
 from api.schemas.financial_aid import SourceChangeOut
 from api.services.financial_aid_grants_service import grantor_retired_at
@@ -288,6 +288,25 @@ class DevelopmentRepository:
     async def source(self, source_id: str) -> SourceRecord | None:
         row = await self._aid.get_source(source_id)
         return source_record(row) if row is not None else None
+
+    async def has_live_grant_lines(self, year: int) -> bool:
+        """Whether the season has any line the rebuilt ages could count as an outside grant: live, positive, outside
+        or incentive (the grants register's own rows come from these postings, so a False here means its rows hold
+        none). One row, no count: the question before paying for the season's register, a full-season load."""
+        page = await pb_read(
+            self.pb.collection(AID_POSTINGS).get_list,
+            1,
+            1,
+            {
+                "filter": (
+                    f"year = {int(year)} && (funder_type = 'outside' || funder_type = 'incentive')"
+                    " && is_reversed = false && amount > 0"
+                ),
+                "fields": "id",
+                "skipTotal": True,
+            },
+        )
+        return bool(page.items)
 
     async def source_lines(self, year: int) -> dict[str, tuple[int, Decimal]]:
         """Each description's live lines this season and their net, by the description that classifies them now

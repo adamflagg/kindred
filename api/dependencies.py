@@ -41,6 +41,12 @@ logger = get_logger(__name__)
 _settings = get_settings()
 pb_url = _settings.pocketbase_url
 
+# Every request the API's PocketBase clients make waits this long. The SDK builds `httpx.Client(**kwargs)`, so a
+# client built without `timeout` got httpx's 5 s default, and one slow page of a full-season read (aid_sync_inputs,
+# under PB_READ_CONCURRENCY parallel reads) failed the whole request as a 500: Reports > Development, 2026-10-15.
+# Tens of seconds, not unbounded: a hung PocketBase must still free the worker thread.
+PB_REQUEST_TIMEOUT_SECONDS: float = 30
+
 
 def _superuser_credentials() -> tuple[str, str]:
     settings = get_settings()
@@ -54,7 +60,9 @@ def _superuser_credentials() -> tuple[str, str]:
 # send(), and does its own resend-once via reauthenticate_if_stale. Not covered:
 # ConfigLoader and the sync ConnectionManager keep their own clients (they
 # re-auth on an interval instead).
-pb: SuperuserPocketBase = SuperuserPocketBase(pb_url, credentials=_superuser_credentials)
+pb: SuperuserPocketBase = SuperuserPocketBase(
+    pb_url, credentials=_superuser_credentials, timeout=PB_REQUEST_TIMEOUT_SECONDS
+)
 
 # How often the global client's token is checked. PocketBase answers a dead
 # token as a guest's request -- 200 with no items on an auth-ruled list -- which
@@ -113,7 +121,7 @@ async def get_pb_client() -> PocketBase:
 
 def create_task_pb_client() -> SuperuserPocketBase:
     """Create a fresh PocketBase client for background tasks."""
-    return SuperuserPocketBase(pb_url, credentials=_superuser_credentials)
+    return SuperuserPocketBase(pb_url, credentials=_superuser_credentials, timeout=PB_REQUEST_TIMEOUT_SECONDS)
 
 
 async def authenticate_task_pb(task_pb: SuperuserPocketBase) -> None:
