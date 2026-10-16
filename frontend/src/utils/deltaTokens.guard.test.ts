@@ -69,4 +69,17 @@ describe('Analytics change figures use the shared delta tokens', () => {
     expect(src).not.toContain("diff > 0 ? 'text-emerald-300'")
     expect(src).toContain("diff > 0 ? 'text-forest-300' : 'text-red-300'")
   })
+
+  it.each([
+    ['pages/metrics/registration/CancellationAnalysis.tsx', 'inverse'],
+    ['pages/metrics/registration/WaitlistAnalysis.tsx', 'neutral'],
+  ])('%s passes sentiment="%s" to every comparison table', (path, sentiment) => {
+    const src = read(path)
+    const tables = src.split('<ComparisonSummaryTable').slice(1)
+    expect(tables).toHaveLength(3)
+    for (const table of tables) {
+      const props = table.slice(0, table.indexOf('/>'))
+      expect(props).toContain(`sentiment="${sentiment}"`)
+    }
+  })
 })

@@ -477,6 +477,7 @@ export default function CancellationAnalysis() {
                 {compareYear !== null && compSessionData && (
                   <ComparisonSummaryTable
                     title="Cancellations by Session Comparison"
+                    sentiment="inverse"
                     primaryYear={currentYear}
                     compareYear={compareYear}
                     primaryData={primarySession.sorted.map((s) => ({
@@ -531,6 +532,7 @@ export default function CancellationAnalysis() {
                         </div>
                         <ComparisonSummaryTable
                           title="Grade Distribution Comparison"
+                          sentiment="inverse"
                           primaryYear={currentYear}
                           compareYear={compareYear}
                           primaryData={data.by_grade.map((g) => ({
@@ -559,6 +561,7 @@ export default function CancellationAnalysis() {
                         </div>
                         <ComparisonSummaryTable
                           title="Gender Distribution Comparison"
+                          sentiment="inverse"
                           primaryYear={currentYear}
                           compareYear={compareYear}
                           primaryData={transformGenderData(data.by_gender)}

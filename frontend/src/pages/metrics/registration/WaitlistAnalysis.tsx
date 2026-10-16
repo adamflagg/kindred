@@ -360,6 +360,7 @@ export default function WaitlistAnalysis() {
                 {compareYear !== null && compSession && (
                   <ComparisonSummaryTable
                     title="Waitlist by Session Comparison"
+                    sentiment="neutral"
                     primaryYear={currentYear}
                     compareYear={compareYear}
                     primaryData={primarySession.sorted.map((s) => ({
@@ -415,6 +416,7 @@ export default function WaitlistAnalysis() {
                         </div>
                         <ComparisonSummaryTable
                           title="Grade Distribution Comparison"
+                          sentiment="neutral"
                           primaryYear={currentYear}
                           compareYear={compareYear}
                           primaryData={data.by_grade.map((g) => ({
@@ -443,6 +445,7 @@ export default function WaitlistAnalysis() {
                         </div>
                         <ComparisonSummaryTable
                           title="Gender Distribution Comparison"
+                          sentiment="neutral"
                           primaryYear={currentYear}
                           compareYear={compareYear}
                           primaryData={transformGenderData(data.by_gender)}
