@@ -202,6 +202,7 @@ class FakeAidStore:
         self.camp_lines: list[CampLine] = []  # aid_postings' camp-aid lines (D170, Add a Request…'s Round 1 guard)
         self.links: list[Any] = []  # aid_household_links rows (D26)
         self.cancel_events: list[Any] = []  # aid_cancellations rows (CancelEvent)
+        self.enrollments: list[Any] = []  # EnrollmentState rows: CampMinder's own cancelled / enrolled registrations
         self.equity: dict[int, EquityAnswers] = {}
         self.birthdates: dict[int, str] = {}
         self.rules: AidRules | None = None
@@ -315,6 +316,11 @@ class FakeAidStore:
 
     async def fetch_request_cancellations(self, request_id: str) -> list[Any]:
         return [e for e in self.cancel_events if e.request_id == request_id]
+
+    async def fetch_enrollment_states(
+        self, year: int, person_cm_ids: Collection[int], household_cm_ids: Collection[int]
+    ) -> list[Any]:
+        return [e for e in self.enrollments if e.person_cm_id in person_cm_ids or e.household_cm_id in household_cm_ids]
 
     async def fetch_names(
         self, year: int, household_cm_ids: Collection[int], person_cm_ids: Collection[int]

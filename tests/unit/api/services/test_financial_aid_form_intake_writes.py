@@ -10,12 +10,14 @@ from typing import Any
 
 import pytest
 
+from api.services.financial_aid_cancellations import CancelEvent, EnrollmentState, cancellations_by_request
 from api.services.financial_aid_casework_service import (
     AdditionItem,
     CaseworkNotFoundError,
     CaseworkValidationError,
     FinancialAidCaseworkService,
 )
+from api.services.financial_aid_household_page import _cancelled_in_kindred
 from api.services.financial_aid_intake_service import FinancialAidIntakeService
 from api.services.financial_aid_intake_types import AdditionRecord
 from api.services.financial_aid_reconciliation import CampLine
@@ -538,8 +540,6 @@ CANCELLED_WORDS = "The request is cancelled: Reopen… it first (the cancellatio
 
 @pytest.mark.asyncio
 async def test_remove_refuses_an_added_request_cancelled_in_kindred_and_writes_nothing() -> None:
-    from api.services.financial_aid_cancellations import CancelEvent
-
     store = liam_store()
     casework = FinancialAidCaseworkService(store)
     out = await casework.add_request(YEAR, LIAM_HOUSEHOLD, LIAM, SESSION_2, 2500.0, "Assessed by phone", ACTOR)
@@ -567,3 +567,55 @@ async def test_remove_refuses_an_added_request_cancelled_in_kindred_and_writes_n
     ]
     await casework.retire_addition(YEAR, out.addition.id, "Entered in error", ACTOR)
     assert not store.additions[out.addition.id].live
+
+
+# -- Remove… and the card decide "cancelled" alike: only Kindred's own cancellation stands in the way. Once CampMinder
+#    cancels the enrollment too it wins (cancellations_by_request), the request is no longer cancelled in Kindred,
+#    and Reopen… is refused, so Remove… must not wait on it. --
+
+
+def _kindred_cancel(request_id: str) -> CancelEvent:
+    return CancelEvent(
+        id="can000000000031",
+        request_id=request_id,
+        kind="cancel",
+        created=datetime(YEAR, 3, 1, tzinfo=UTC),
+        reason="schedule",
+        in_kindred=True,
+    )
+
+
+@pytest.mark.parametrize(
+    ("in_kindred", "in_campminder", "refused"),
+    [
+        (True, False, True),  # Kindred's own cancellation stands: Reopen… first
+        (False, True, False),  # CampMinder's alone follows the enrollment: no record to reopen
+        (True, True, False),  # CampMinder won: the card shows no Kindred cancellation, Reopen… is refused
+        (False, False, False),
+    ],
+)
+@pytest.mark.asyncio
+async def test_remove_waits_only_for_kindreds_own_cancellation_as_the_card_does(
+    in_kindred: bool, in_campminder: bool, refused: bool
+) -> None:
+    store = liam_store()
+    casework = FinancialAidCaseworkService(store)
+    out = await casework.add_request(YEAR, LIAM_HOUSEHOLD, LIAM, SESSION_2, 2500.0, "Assessed by phone", ACTOR)
+    if in_kindred:
+        store.cancel_events = [_kindred_cancel(out.request.id)]
+    if in_campminder:
+        store.enrollments = [EnrollmentState(LIAM, LIAM_HOUSEHOLD, SESSION_2, 32, date(YEAR, 3, 5))]
+
+    request = store.requests[out.request.id]
+    card = cancellations_by_request(
+        [request], store.cancel_events, store.enrollments, await store.fetch_sessions(YEAR)
+    ).get(request.id)
+    assert _cancelled_in_kindred(card) is refused  # the card's own pre-check
+
+    if refused:
+        with pytest.raises(CaseworkValidationError, match=r"^The request is cancelled: Reopen… it first"):
+            await casework.retire_addition(YEAR, out.addition.id, "Entered in error", ACTOR)
+        assert store.additions[out.addition.id].live
+    else:
+        await casework.retire_addition(YEAR, out.addition.id, "Entered in error", ACTOR)
+        assert not store.additions[out.addition.id].live

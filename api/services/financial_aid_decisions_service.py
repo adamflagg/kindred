@@ -782,7 +782,7 @@ def _confirmation_out(c: Confirmation) -> ConfirmationOut:
     )
 
 
-def _enrollment_scope(requests: Iterable[RequestRecord]) -> tuple[set[int], set[int]]:
+def enrollment_scope(requests: Iterable[RequestRecord]) -> tuple[set[int], set[int]]:
     """Whose registrations a cancellation reads (SP10b-2): the camper of each live or withdrawn
     camper-level request, and the household of each household-level (Family Camp) one."""
     wanted = [r for r in requests if r.status in _LIVE or r.status == STATUS_WITHDRAWN]
@@ -1613,7 +1613,7 @@ class FinancialAidDecisionsService:
         households = {r.household_cm_id for r in requests}
         equity, enrollments, found = await asyncio.gather(
             self._store.fetch_equity_answers(year, people),
-            self._store.fetch_enrollment_states(year, *_enrollment_scope(requests)),
+            self._store.fetch_enrollment_states(year, *enrollment_scope(requests)),
             self._store.fetch_names(year, households, people) if names else _no_names(),
         )
         return _RequestSide(rules, applications, requests, corrections, equity, enrollments, found)
@@ -2749,7 +2749,7 @@ class FinancialAidDecisionsService:
         events, cancels, enrollments, sessions = await asyncio.gather(
             self._store.fetch_request_events(request.id),
             self._store.fetch_request_cancellations(request.id),
-            self._store.fetch_enrollment_states(request.year, *_enrollment_scope([request])),
+            self._store.fetch_enrollment_states(request.year, *enrollment_scope([request])),
             self._store.fetch_sessions(request.year),
         )
         # "Reopen it first" only while Kindred's cancellation stands: once CampMinder cancels the enrollment too it
@@ -3126,7 +3126,7 @@ class FinancialAidDecisionsService:
             raise DecisionRefusedError(f"a {request.status} request can't be cancelled or reopened")
         events, enrollments, sessions = await asyncio.gather(
             self._store.fetch_request_cancellations(request.id),
-            self._store.fetch_enrollment_states(request.year, *_enrollment_scope([request])),
+            self._store.fetch_enrollment_states(request.year, *enrollment_scope([request])),
             self._store.fetch_sessions(request.year),
         )
         state = fold_cancellations(events).get(request.id, CancelState())
@@ -3173,7 +3173,7 @@ class FinancialAidDecisionsService:
             self._store.fetch_decision_events(year),
             self._store.fetch_cancellations(year),
             self._store.fetch_sessions(year),
-            self._store.fetch_enrollment_states(year, *_enrollment_scope(ticked)),
+            self._store.fetch_enrollment_states(year, *enrollment_scope(ticked)),
         )
         rounds = fold_rounds(events)
         cancelled = cancellations_by_request(ticked, cancel_events, enrollments, sessions)

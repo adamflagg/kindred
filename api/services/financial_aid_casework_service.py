@@ -16,8 +16,9 @@ read before. Corrections are not intake's and do not wait.
 
 from __future__ import annotations
 
+import asyncio
 from collections import Counter, defaultdict
-from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Collection, Mapping, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, replace
 from dataclasses import field as dataclass_field
@@ -62,7 +63,11 @@ from api.services.financial_aid_campminder_money import (
     d170_person,
     family_camp_sessions,
 )
-from api.services.financial_aid_cancellations import CancelEvent, fold_cancellations
+from api.services.financial_aid_cancellations import (
+    CancelEvent,
+    EnrollmentState,
+    cancellations_by_request,
+)
 from api.services.financial_aid_corrections import (
     APPLICATION_CORRECTABLE,
     INCOME_OVERRIDE_FIELD,
@@ -74,7 +79,7 @@ from api.services.financial_aid_corrections import (
     effective_values,
     parse_new_value,
 )
-from api.services.financial_aid_decisions_service import decision_write
+from api.services.financial_aid_decisions_service import decision_write, enrollment_scope
 from api.services.financial_aid_household import (
     HOUSEHOLD_ANSWER_FIELDS,
     TEXT_FIELDS,
@@ -177,6 +182,9 @@ class CaseworkStore(Protocol):
     async def fetch_camp_lines(self, year: int, *, recorded_times: bool = False) -> list[CampLine]: ...
     async def fetch_household_links(self, year: int) -> list[Any]: ...
     async def fetch_request_cancellations(self, request_id: str) -> list[CancelEvent]: ...
+    async def fetch_enrollment_states(
+        self, year: int, person_cm_ids: Collection[int], household_cm_ids: Collection[int]
+    ) -> list[EnrollmentState]: ...
     async def commit(
         self,
         writes: Sequence[AidWrite],
@@ -1384,10 +1392,16 @@ class FinancialAidCaseworkService:
                     if state.posted:
                         raise CaseworkValidationError(f"Round {n} is posted: undo Posted first, then remove it")
                 # Scan row 3 (coordinator ruling): retiring a request cancelled in Kindred would leave the cancellation
-                # on it (a re-add would come back cancelled), so it is reopened first. CampMinder's own cancellation
-                # is not a record here: it follows the enrollment.
-                cancel = fold_cancellations(await self._store.fetch_request_cancellations(request.id)).get(request.id)
-                if cancel is not None and cancel.in_kindred:
+                # on it (a re-add would come back cancelled), so it is reopened first. Decided as the card decides it
+                # (cancellations_by_request): once CampMinder cancels the enrollment too it wins, nothing is left to
+                # reopen, and Remove… does not wait.
+                cancels, enrollments, sessions = await asyncio.gather(
+                    self._store.fetch_request_cancellations(request.id),
+                    self._store.fetch_enrollment_states(year, *enrollment_scope([request])),
+                    self._store.fetch_sessions(year),
+                )
+                cancel = cancellations_by_request([request], cancels, enrollments, sessions).get(request.id)
+                if cancel is not None and cancel.by == "kindred":
                     raise CaseworkValidationError(REMOVE_CANCELLED_REFUSAL)
             updated = replace(
                 addition,
