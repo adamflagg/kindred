@@ -34,6 +34,7 @@ from decimal import ROUND_DOWN, Decimal
 from typing import Final, Literal
 
 from api.constants.filters import ACTIVE_ENROLLED_STATUS_ID
+from api.services.camp_calendar import CAMP_TZ
 from api.services.financial_aid_intake_types import PROGRAM_FAMILY_CAMP, STATUS_ACTIVE, STATUS_UNMATCHED
 from api.services.financial_aid_ledger_service import parse_pb_datetime
 from bunking.financial_aid.calculator import GrantInput
@@ -70,6 +71,20 @@ CAMPER_PROGRAM_FAMILIES: Final = frozenset({"summer", "quest", "teen", "bmitzvah
 # "sole_camper": tied by rule, not by a person (D142) -- a never-applied household's one camper the
 # grant can pay for. "placed" stays a staff (or 2026 sheet) placement.
 CamperBasis = Literal["ledger", "placed", "sole_camper", "commitment", "household", "none"]
+
+
+def camp_day(stamp: str) -> str:
+    """A posting's day as YYYY-MM-DD on the camp's calendar (Pacific). post_date and reversal_date are true UTC
+    (main spec §6.2), so the first ten characters read an evening posting a day late. A value with no time (a bare
+    date) is already a day; one that doesn't parse keeps its first ten characters."""
+    text = str(stamp or "").strip()
+    if len(text) <= 10:
+        return text
+    try:
+        moment = parse_pb_datetime(text)
+    except ValueError:
+        return text[:10]
+    return moment.astimezone(CAMP_TZ).date().isoformat() if moment is not None else ""
 
 
 def program_family_for_session_type(session_type: str) -> str:
@@ -326,7 +341,7 @@ def _fulfilments(
             and not (
                 commitment.session_cm_id and camper.session_cm_id and camper.session_cm_id != commitment.session_cm_id
             )
-            and line.post_date[:10] >= committed_on
+            and camp_day(line.post_date) >= committed_on
         ]
         if candidates:
             best, _ = min(
@@ -477,7 +492,7 @@ def build_register(inputs: RegisterInputs) -> list[RegisterRow]:
                 source_family=line.source_family,
                 funder_type=line.funder_type,
                 amount=line.amount,
-                recorded_on=line.post_date[:10],
+                recorded_on=camp_day(line.post_date),
                 recorded_at=recorded_at,
                 is_reversed=line.is_reversed,
                 reversal_date=line.reversal_date,

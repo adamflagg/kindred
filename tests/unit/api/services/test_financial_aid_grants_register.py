@@ -1046,3 +1046,33 @@ def test_a_kind_two_grantors_share_has_no_name() -> None:
 def test_a_retired_grantor_names_nothing() -> None:
     """The caller passes only active grantors' names; a family carried only by a retired one has no name."""
     assert expected_display_names({"old_fund": frozenset({"one_happy_camper"})}, {}) == {}
+
+
+# --- a posting's day is its camp-time (Pacific) day, never its UTC date (main spec §6.2) ----------------------------
+
+NEW_YEARS_EVE_EVENING = "2032-01-01 03:30:00.000Z"  # 7:30 pm on December 31, 2031, Pacific
+
+
+def test_an_evening_pacific_posting_is_recorded_on_its_camp_day() -> None:
+    """post_date is true UTC: an evening posting on December 31 is already January 1 in UTC, and the first ten
+    characters read it a day (and here a year) late."""
+    line = _line(person_cm_id=EMMA, post_date=NEW_YEARS_EVE_EVENING)
+    (row,) = build_register(_inputs(lines=(line,)))
+    assert row.recorded_on == "2031-12-31"
+
+
+def test_a_line_posted_the_camp_day_before_a_commitment_never_fulfils_it() -> None:
+    """Owner ruling 2026-09-29 (item D6), on the camp's calendar: committed January 1, posted the evening of
+    December 31 Pacific (January 1 in UTC), so the line is an earlier grant and the commitment still counts."""
+    line = _line(person_cm_id=EMMA, post_date=NEW_YEARS_EVE_EVENING)
+    commitment = _commitment(committed_on=date(2032, 1, 1))
+    rows = build_register(_inputs(lines=(line,), commitments=(commitment,)))
+    assert _one(rows, kind="ledger").fulfils_commitment_id == ""
+    assert _one(rows, kind="commitment").counts is True
+
+
+def test_a_line_posted_on_the_commitments_camp_day_fulfils_it() -> None:
+    line = _line(person_cm_id=EMMA, post_date=NEW_YEARS_EVE_EVENING)
+    rows = build_register(_inputs(lines=(line,), commitments=(_commitment(committed_on=date(2031, 12, 31)),)))
+    assert [r.kind for r in rows] == ["ledger"]
+    assert rows[0].fulfils_commitment_id == "com000000000001"
