@@ -413,7 +413,7 @@ class BelowTheLineOut(BaseModel):
     outside_budget_posted: float | None
     # Decision 13: the requests the outside grants offset (masked with outside_grants on a past date).
     outside_grants_requests: CountOut | None = None
-    # D170: 2026's CampMinder aid on no request in this scope; None for any other season and on a past date.
+    # D170: the CampMinder aid on no request in this scope (2026 and every season from 2027); None before 2026 and on a past date.
     campminder_aid_off_requests: AidOnNoRequestOut | None = None
 
 

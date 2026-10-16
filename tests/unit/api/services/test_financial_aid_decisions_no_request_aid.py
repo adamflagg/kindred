@@ -1,4 +1,4 @@
-"""D170: Rounds & budget's "CampMinder aid on no request" line, 2026 only. Fictional throughout."""
+"""D170: Rounds & budget's "CampMinder aid on no request" line, 2026 and every season from 2027. Fictional throughout."""
 
 from __future__ import annotations
 
@@ -25,16 +25,18 @@ class Link:
 
 @pytest.fixture
 def d170_season(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The fixture season stands in for 2026, the one season D170 shows the line for."""
-    monkeypatch.setattr(service_module, "CAMPMINDER_AID_ON_NO_REQUEST_YEARS", frozenset({YEAR}))
+    """The fixture season stands in for a season D170 shows the line for."""
+    monkeypatch.setattr(service_module, "shows_aid_on_no_request", lambda year: year == YEAR)
 
 
 def camp(budget: BudgetResponse) -> AidOnNoRequestOut | None:
     return next(p for p in budget.pools if p.pool == "camp_pool").below.campminder_aid_off_requests
 
 
-def test_the_line_is_for_2026_only() -> None:
-    assert frozenset({2026}) == service_module.CAMPMINDER_AID_ON_NO_REQUEST_YEARS
+def test_the_line_is_for_2026_and_every_season_from_2027() -> None:
+    """Owner #48 (2026-10-15): 2026 stays, every later season shows it, nothing before 2026."""
+    shows = service_module.shows_aid_on_no_request
+    assert [shows(y) for y in (2024, 2025, 2026, 2027, 2030)] == [False, False, True, True, True]
 
 
 @pytest.mark.asyncio
@@ -73,13 +75,15 @@ async def test_a_linked_households_request_takes_the_money() -> None:
 
 
 @pytest.mark.asyncio
-async def test_another_season_has_no_line() -> None:
+async def test_a_2027_season_has_the_line_without_any_patching() -> None:
+    """Owner #48: the fixture season is 2027, and the real rule shows it."""
+    assert YEAR == 2027
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
     seed_line(store, 59000001, "900", household=1000002, person=0, session=SUMMER)
     budget = await _service(store).budget(YEAR)
-    assert budget.total.below.campminder_aid_off_requests is None
-    assert camp(budget) is None
+    assert camp(budget) == AidOnNoRequestOut(amount=900.0, families=1)
+    assert budget.total.below.campminder_aid_off_requests == AidOnNoRequestOut(amount=900.0, families=1)
 
 
 @pytest.mark.asyncio
