@@ -36,7 +36,8 @@ export function historyGapNotes(
   firstN: number
 ): HistoryGapNotes {
   const seasons = gaps ?? []
-  const named = seasons.length > 1
+  // Name a season only when more than one season has words to show.
+  const named = seasons.filter((g) => g.no_history || g.unseen_count > 0).length > 1
   const notes: DefinitionNote[] = []
   const noHistory: string[] = []
   for (const gap of seasons) {

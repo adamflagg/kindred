@@ -208,6 +208,16 @@ describe.each(['field', 'identity'] as const)(
       expect(screen.getByText(`2025: ${NO_HISTORY}`)).toBeInTheDocument()
     })
 
+    it('leaves the season unnamed when only one drawn season has words', () => {
+      state.priorYears = [2025]
+      state.data = withGaps(basis, [
+        { year: 2026, unseen_count: 75, no_history: false },
+        { year: 2025, unseen_count: 0, no_history: false },
+      ])
+      show()
+      expect(screen.getByText(GAP(75))).toBeInTheDocument()
+    })
+
     it('shows nothing while the split is off', () => {
       state.splitByGender = false
       state.data = withGaps(basis, [{ year: 2026, unseen_count: 75, no_history: false }])
