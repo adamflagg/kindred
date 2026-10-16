@@ -35,6 +35,7 @@ from api.constants.collections import (
     AID_POSTINGS,
     AID_REPORT_DEFINITIONS,
     AID_REPORTED_HISTORY,
+    AID_REPORTED_RECIPIENTS,
     AID_REQUEST_ADDITIONS,
     AID_REQUESTS,
     AID_RULES,
@@ -94,6 +95,7 @@ ENTITY_KINDS: Final[Mapping[str, HistoryKind]] = {
     AID_HOUSEHOLD_LINKS: "money",
     AID_SOURCES: "money",
     AID_REPORTED_HISTORY: "money",
+    AID_REPORTED_RECIPIENTS: "money",  # a past season's Campership sheet, as loaded (owner ruling 2026-10-16)
     AID_REPORT_DEFINITIONS: "money",  # Development's saved dated columns (Decision 8: every other aid_* is money)
     AID_POSTINGS: "money",
     AID_FLAG_DISPOSITIONS: "money",

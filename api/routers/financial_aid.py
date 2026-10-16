@@ -145,6 +145,9 @@ from api.schemas.financial_aid_reports import (
     ReportedHistoryResponse,
     ReportedLoadIn,
     ReportedLoadOut,
+    ReportedRecipientsLoadIn,
+    ReportedRecipientsLoadOut,
+    ReportedRecipientsResponse,
     ReportRequestIdsOut,
     StatisticsBasis,
     StatisticsResponse,
@@ -279,6 +282,10 @@ from api.services.financial_aid_money_ledger_service import MoneyLedgerService
 from api.services.financial_aid_payer_shares import ShareSpec
 from api.services.financial_aid_program_labels import program_labels, section_words
 from api.services.financial_aid_reconciliation import split_placed
+from api.services.financial_aid_reported_recipients_service import (
+    ReportedRecipientNotFoundError,
+    ReportedRecipientsService,
+)
 from api.services.financial_aid_reports_repository import ReportedFigureTakenError, ReportsRepository
 from api.services.financial_aid_reports_service import (
     FinancialAidReportsService,
@@ -345,6 +352,7 @@ from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.money import ZERO
 from bunking.financial_aid.reports.history import ReportedFigure
 from bunking.financial_aid.reports.programs import ProgramsCount, ProgramsPart
+from bunking.financial_aid.reports.recipients import ReportedRecipient
 from bunking.financial_aid.reports.statistics import OutcomeKind, RoundChip, StatisticsCount, TierAppealsCount
 from bunking.financial_aid.rules import AidRules, SectionName, ValidationReport
 from bunking.financial_aid.scenarios import (
@@ -2277,7 +2285,10 @@ def _reports() -> FinancialAidReportsService:
 
 
 def _reports_http(exc: FinancialAidError) -> HTTPException:
-    if isinstance(exc, (ReportedFigureNotFoundError, FundingSourceNotFoundError, FunderNotFoundError)):
+    if isinstance(
+        exc,
+        (ReportedFigureNotFoundError, ReportedRecipientNotFoundError, FundingSourceNotFoundError, FunderNotFoundError),
+    ):
         return HTTPException(status_code=404, detail=str(exc))
     if isinstance(exc, (ReportedFigureTakenError, AidWriteConflictError)):
         return HTTPException(status_code=409, detail=str(exc))
@@ -2476,6 +2487,57 @@ async def delete_reported_figure(record_id: _RecordIdPath, reason: _Reason, user
     """Remove a typed figure (one keyed wrongly); the reason is logged."""
     try:
         await _reports().delete_reported(record_id, reason=reason, actor=user.email)
+    except FinancialAidError as exc:
+        raise _reports_http(exc) from exc
+    return Response(status_code=204)
+
+
+# --- A past season's Campership sheet, as "as reported" recipients (owner ruling 2026-10-16, CS-AGES25) -----------
+
+
+def _recipients() -> ReportedRecipientsService:
+    return ReportedRecipientsService(DevelopmentRepository(pb))
+
+
+@router.get("/reports/{year}/reported-recipients", response_model=ReportedRecipientsResponse)
+async def get_reported_recipients(year: _Year, user: AuthUser = _RULES) -> ReportedRecipientsResponse:
+    """The season's loaded sheet rows (CampMinder ids only), for checking a load."""
+    return await _recipients().listed(year)
+
+
+@router.post("/reports/reported-recipients/bulk", response_model=ReportedRecipientsLoadOut)
+async def load_reported_recipients(
+    body: ReportedRecipientsLoadIn, user: AuthUser = _RULES
+) -> ReportedRecipientsLoadOut:
+    """Load a past season's sheet: adds recipients, corrects stored ones by their natural key (season, person,
+    program, source, funder), skips the unchanged. All or nothing; one logged operation; `dry_run` only counts. A
+    row whose person had no registration that season refuses the load, named."""
+    recipients = [
+        ReportedRecipient(
+            year=r.year,
+            person_cm_id=r.person_cm_id,
+            household_cm_id=r.household_cm_id,
+            program=r.program,
+            source=r.source,
+            funder=r.funder,
+            amount=r.amount,
+            sheet_tab=r.sheet_tab,
+            sheet_row=r.sheet_row,
+            match=r.match,
+        )
+        for r in body.recipients
+    ]
+    try:
+        return await _recipients().load(recipients, actor=user.email, dry_run=body.dry_run)
+    except FinancialAidError as exc:
+        raise _reports_http(exc) from exc
+
+
+@router.delete("/reports/reported-recipients/{record_id}", status_code=204, response_class=Response)
+async def delete_reported_recipient(record_id: _RecordIdPath, reason: _Reason, user: AuthUser = _RULES) -> Response:
+    """Remove one sheet row (one matched wrongly); the reason is logged."""
+    try:
+        await _recipients().delete(record_id, reason=reason, actor=user.email)
     except FinancialAidError as exc:
         raise _reports_http(exc) from exc
     return Response(status_code=204)

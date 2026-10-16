@@ -30,6 +30,7 @@ export const Collections = {
   AidRegistrationAskHistory: 'aid_registration_ask_history',
   AidReportDefinitions: 'aid_report_definitions',
   AidReportedHistory: 'aid_reported_history',
+  AidReportedRecipients: 'aid_reported_recipients',
   AidRequestAdditions: 'aid_request_additions',
   AidRequests: 'aid_requests',
   AidRules: 'aid_rules',
@@ -718,6 +719,45 @@ export type AidReportedHistoryRecord = {
   updated: IsoAutoDateString
   value?: number
   view: AidReportedHistoryViewOptions
+  year: number
+}
+
+export const AidReportedRecipientsProgramOptions = {
+  summer: 'summer',
+  family_camp: 'family_camp',
+  bmitzvah: 'bmitzvah',
+  weekend: 'weekend',
+  other: 'other',
+} as const
+export type AidReportedRecipientsProgramOptions =
+  (typeof AidReportedRecipientsProgramOptions)[keyof typeof AidReportedRecipientsProgramOptions]
+
+export const AidReportedRecipientsSourceOptions = {
+  camp: 'camp',
+  outside: 'outside',
+} as const
+export type AidReportedRecipientsSourceOptions =
+  (typeof AidReportedRecipientsSourceOptions)[keyof typeof AidReportedRecipientsSourceOptions]
+
+export const AidReportedRecipientsMatchOptions = {
+  personal_id: 'personal_id',
+  household_birthdate: 'household_birthdate',
+} as const
+export type AidReportedRecipientsMatchOptions =
+  (typeof AidReportedRecipientsMatchOptions)[keyof typeof AidReportedRecipientsMatchOptions]
+export type AidReportedRecipientsRecord = {
+  amount: number
+  created: IsoAutoDateString
+  funder?: string
+  household_cm_id: number
+  id: string
+  match: AidReportedRecipientsMatchOptions
+  person_cm_id: number
+  program: AidReportedRecipientsProgramOptions
+  sheet_row: number
+  sheet_tab: string
+  source: AidReportedRecipientsSourceOptions
+  updated: IsoAutoDateString
   year: number
 }
 
@@ -2770,6 +2810,8 @@ export type AidReportDefinitionsResponse<Tcolumns = unknown, Texpand = unknown> 
   BaseSystemFields<Texpand>
 export type AidReportedHistoryResponse<Texpand = unknown> = Required<AidReportedHistoryRecord> &
   BaseSystemFields<Texpand>
+export type AidReportedRecipientsResponse<Texpand = unknown> =
+  Required<AidReportedRecipientsRecord> & BaseSystemFields<Texpand>
 export type AidRequestAdditionsResponse<Texpand = unknown> = Required<AidRequestAdditionsRecord> &
   BaseSystemFields<Texpand>
 export type AidRequestsResponse<Tequity = unknown, Tflags = unknown, Texpand = unknown> = Required<
@@ -3050,6 +3092,7 @@ export type CollectionRecords = {
   aid_registration_ask_history: AidRegistrationAskHistoryRecord
   aid_report_definitions: AidReportDefinitionsRecord
   aid_reported_history: AidReportedHistoryRecord
+  aid_reported_recipients: AidReportedRecipientsRecord
   aid_request_additions: AidRequestAdditionsRecord
   aid_requests: AidRequestsRecord
   aid_rules: AidRulesRecord
@@ -3161,6 +3204,7 @@ export type CollectionResponses = {
   aid_registration_ask_history: AidRegistrationAskHistoryResponse
   aid_report_definitions: AidReportDefinitionsResponse
   aid_reported_history: AidReportedHistoryResponse
+  aid_reported_recipients: AidReportedRecipientsResponse
   aid_request_additions: AidRequestAdditionsResponse
   aid_requests: AidRequestsResponse
   aid_rules: AidRulesResponse

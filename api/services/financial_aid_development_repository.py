@@ -4,8 +4,10 @@ earlier seasons' attendance (first-time), aid families
 (aid_household_links) and the sources with their incentive flag (D88). Its one write (Part C) is a Funding sources
 edit, through 4a.
 
-Development never reads the raw person_custom_values table (§10) and never aid_postings.attributed_* (the grants
-register places outside lines; the camp's money comes from the decisions season).
+Development never reads the raw person_custom_values table (§10) and, but for one carve-out, never
+aid_postings.attributed_* (the grants register places outside lines; the camp's money comes from the decisions
+season). The carve-out is `outside_credits`: an as-reported season's outside-only family's camper counts only where
+the sync placed the line on one person (owner ruling 2026-10-16, #55), and that season's register is never built.
 
 THE PAST SEASONS ARE ONE CACHED WINDOW. `earlier_attendance` used to filter attendees by the campers and
 households it was asked about, 50 ids to a filter, households through `person.household_id` -- a join through a
@@ -32,11 +34,18 @@ from datetime import date
 from decimal import Decimal
 from typing import Any, Final
 
-from api.constants.collections import AID_POSTINGS, AID_REPORT_DEFINITIONS, ATTENDEES, CAMP_SESSIONS, PERSONS
+from api.constants.collections import AID_REPORT_DEFINITIONS, ATTENDEES, CAMP_SESSIONS, PERSONS
 from api.dependencies import development_history_cache
 from api.schemas.financial_aid import SourceChangeOut
 from api.services.financial_aid_grants_service import grantor_retired_at
-from api.services.financial_aid_ledger_service import last_changes, parse_pb_datetime, source_lines
+from api.services.financial_aid_ledger_service import (
+    GRANT_FUNDER_TYPES,
+    aid_dollars,
+    last_changes,
+    parse_pb_datetime,
+    source_lines,
+)
+from api.services.financial_aid_reported_recipients_repository import ReportedRecipientsRepository, StoredRecipient
 from api.services.financial_aid_repository import FinancialAidRepository
 from api.services.lodging_cache import cached_by_year
 from api.services.pb_read import pb_read
@@ -72,6 +81,19 @@ class AttendanceRecord:
     changed_on: date | None  # a cancelled row's day (CampMinder's PostDate); None otherwise
     year: int
     registered_on: date | None = None  # attendees.effective_date: the day the camper registered (Part C)
+
+
+@dataclass(frozen=True)
+class OutsideCreditRecord:
+    """A live outside or incentive credit of the season (aid_postings): who CampMinder posted it to (0 = the
+    household), where the sync placed it, and the description and program family that classify it."""
+
+    household_cm_id: int
+    person_cm_id: int
+    attributed_person_cm_id: int
+    attribution_level: str
+    source_key: str
+    program_family: str
 
 
 @dataclass(frozen=True)
@@ -224,6 +246,12 @@ class DevelopmentRepository:
         )
         return [attendance_record(row) for row in rows]
 
+    async def registrants(self, year: int) -> set[int]:
+        """Everyone with a registration that season, of ANY status (a camper who left early, 16, or was waitlisted,
+        8, too): a Campership sheet row loads only for one of them. One read, the person id only."""
+        rows = await self._page({"filter": f"year = {int(year)}", "fields": "person_id"})
+        return {pid for row in rows if (pid := int(getattr(row, "person_id", 0) or 0)) > 0}
+
     async def earlier_attendance(
         self, year: int, person_cm_ids: Collection[int], household_cm_ids: Collection[int]
     ) -> list[AttendanceRecord]:
@@ -289,26 +317,28 @@ class DevelopmentRepository:
         row = await self._aid.get_source(source_id)
         return source_record(row) if row is not None else None
 
-    async def has_live_grant_lines(self, year: int) -> bool:
-        """Whether the season has any line the rebuilt ages could count as an outside grant: live, outside or
-        incentive, and a credit (the grants register's own rows come from these postings, so a False here means its
-        rows hold none). One row, no count: the question before paying for the season's register, a full-season load.
-        `amount < 0`: the column keeps CampMinder's sign, and the register's `amount > 0` is in aid dollars
-        (aid_dollars flips it), so a credit is negative here."""
-        page = await pb_read(
-            self.pb.collection(AID_POSTINGS).get_list,
-            1,
-            1,
-            {
-                "filter": (
-                    f"year = {int(year)} && (funder_type = 'outside' || funder_type = 'incentive')"
-                    " && is_reversed = false && amount < 0"
-                ),
-                "fields": "id",
-                "skipTotal": True,
-            },
-        )
-        return bool(page.items)
+    async def reported_recipients(self, year: int) -> list[StoredRecipient]:
+        """A past season's Campership sheet, as loaded (owner ruling 2026-10-16): its summer age lines' only source."""
+        return await ReportedRecipientsRepository(self.pb).reported_recipients(year)
+
+    async def outside_credits(self, year: int) -> list[OutsideCreditRecord]:
+        """The season's live outside and incentive credits (#55: an outside-only family's camper, when certain).
+        `aid_dollars > 0`: the column keeps CampMinder's sign, so a credit is negative there."""
+        return [
+            OutsideCreditRecord(
+                household_cm_id=int(p.household_cm_id or 0),
+                person_cm_id=int(p.person_cm_id or 0),
+                attributed_person_cm_id=int(p.attributed_person_cm_id or 0),
+                attribution_level=str(p.attribution_level or ""),
+                source_key=str(p.effective_source_key or p.source_key),
+                program_family=str(p.program_family or ""),
+            )
+            for p in await self._aid.fetch_postings(year)
+            if str(p.funder_type or "") in GRANT_FUNDER_TYPES and aid_dollars(p.amount) > 0
+        ]
+
+    async def reported_recipient(self, record_id: str) -> StoredRecipient | None:
+        return await ReportedRecipientsRepository(self.pb).reported_recipient(record_id)
 
     async def source_lines(self, year: int) -> dict[str, tuple[int, Decimal]]:
         """Each description's live lines this season and their net, by the description that classifies them now

@@ -351,6 +351,64 @@ class ReportedHistoryResponse(BaseModel):
     figures: list[ReportedFigureOut]
 
 
+# --- A past season's Campership sheet, as "as reported" recipients (owner ruling 2026-10-16, CS-AGES25) ------------
+
+
+class ReportedRecipientIn(BaseModel):
+    """One sheet row matched to CampMinder: ids only, never a name (extra fields are refused)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    year: int = Field(ge=2017, le=2100)
+    person_cm_id: int = Field(ge=1)
+    household_cm_id: int = Field(ge=1)
+    program: Literal["summer", "family_camp", "bmitzvah", "weekend", "other"]
+    source: Literal["camp", "outside"] = Field(
+        description="camp: an award on the sheet's aid calculator; outside: a grant on its Grants tab"
+    )
+    funder: str = Field(default="", max_length=200, description="An outside grant's funder; empty for the camp's")
+    amount: Decimal = Field(gt=0, max_digits=12, decimal_places=2)
+    sheet_tab: str = Field(min_length=1, max_length=100)
+    sheet_row: int = Field(ge=1)
+    match: Literal["personal_id", "household_birthdate"] = Field(
+        description="How the row was matched: the sheet's CampMinder id, or its household and birthdate"
+    )
+
+
+class ReportedRecipientsLoadIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # A load is one logged batch: each write and its change-log row, under the batch API's 2,000 requests.
+    recipients: list[ReportedRecipientIn] = Field(min_length=1, max_length=1000)
+    dry_run: bool = False
+
+
+class ReportedRecipientOut(BaseModel):
+    id: str
+    year: int
+    person_cm_id: int
+    household_cm_id: int
+    program: Literal["summer", "family_camp", "bmitzvah", "weekend", "other"]
+    source: Literal["camp", "outside"]
+    funder: str
+    amount: float
+    sheet_tab: str
+    sheet_row: int
+    match: Literal["personal_id", "household_birthdate"]
+
+
+class ReportedRecipientsResponse(BaseModel):
+    year: int
+    recipients: list[ReportedRecipientOut]
+
+
+class ReportedRecipientsLoadOut(BaseModel):
+    created: int
+    updated: int
+    unchanged: int
+    dry_run: bool = Field(description="True: nothing was written; the counts are what the load would do")
+
+
 # --- Development (§9.4; Part B) ----------------------------------------------------------------------------------
 # Aggregates only (D65, D66, D90): no field here names or identifies a family, a camper or a request. A test walks
 # every model below and fails on one that could (the summary containment test, main spec §14.3).

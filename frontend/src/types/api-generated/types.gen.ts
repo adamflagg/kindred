@@ -14284,6 +14284,162 @@ export type ReportedLoadOut = {
 }
 
 /**
+ * ReportedRecipientIn
+ *
+ * One sheet row matched to CampMinder: ids only, never a name (extra fields are refused).
+ */
+export type ReportedRecipientIn = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Person Cm Id
+   */
+  person_cm_id: number
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Program
+   */
+  program: 'summer' | 'family_camp' | 'bmitzvah' | 'weekend' | 'other'
+  /**
+   * Source
+   *
+   * camp: an award on the sheet's aid calculator; outside: a grant on its Grants tab
+   */
+  source: 'camp' | 'outside'
+  /**
+   * Funder
+   *
+   * An outside grant's funder; empty for the camp's
+   */
+  funder?: string
+  /**
+   * Amount
+   */
+  amount: number | string
+  /**
+   * Sheet Tab
+   */
+  sheet_tab: string
+  /**
+   * Sheet Row
+   */
+  sheet_row: number
+  /**
+   * Match
+   *
+   * How the row was matched: the sheet's CampMinder id, or its household and birthdate
+   */
+  match: 'personal_id' | 'household_birthdate'
+}
+
+/**
+ * ReportedRecipientOut
+ */
+export type ReportedRecipientOut = {
+  /**
+   * Id
+   */
+  id: string
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Person Cm Id
+   */
+  person_cm_id: number
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Program
+   */
+  program: 'summer' | 'family_camp' | 'bmitzvah' | 'weekend' | 'other'
+  /**
+   * Source
+   */
+  source: 'camp' | 'outside'
+  /**
+   * Funder
+   */
+  funder: string
+  /**
+   * Amount
+   */
+  amount: number
+  /**
+   * Sheet Tab
+   */
+  sheet_tab: string
+  /**
+   * Sheet Row
+   */
+  sheet_row: number
+  /**
+   * Match
+   */
+  match: 'personal_id' | 'household_birthdate'
+}
+
+/**
+ * ReportedRecipientsLoadIn
+ */
+export type ReportedRecipientsLoadIn = {
+  /**
+   * Recipients
+   */
+  recipients: Array<ReportedRecipientIn>
+  /**
+   * Dry Run
+   */
+  dry_run?: boolean
+}
+
+/**
+ * ReportedRecipientsLoadOut
+ */
+export type ReportedRecipientsLoadOut = {
+  /**
+   * Created
+   */
+  created: number
+  /**
+   * Updated
+   */
+  updated: number
+  /**
+   * Unchanged
+   */
+  unchanged: number
+  /**
+   * Dry Run
+   *
+   * True: nothing was written; the counts are what the load would do
+   */
+  dry_run: boolean
+}
+
+/**
+ * ReportedRecipientsResponse
+ */
+export type ReportedRecipientsResponse = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Recipients
+   */
+  recipients: Array<ReportedRecipientOut>
+}
+
+/**
  * RequestAdditionOut
  *
  * The addition behind an added or rule-made request (Form intake's Became and the household request card share
@@ -28722,6 +28878,103 @@ export type DeleteReportedFigureApiFinancialAidReportsReportedHistoryRecordIdDel
 
 export type DeleteReportedFigureApiFinancialAidReportsReportedHistoryRecordIdDeleteResponse =
   DeleteReportedFigureApiFinancialAidReportsReportedHistoryRecordIdDeleteResponses[keyof DeleteReportedFigureApiFinancialAidReportsReportedHistoryRecordIdDeleteResponses]
+
+export type GetReportedRecipientsApiFinancialAidReportsYearReportedRecipientsGetData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: never
+  url: '/api/financial-aid/reports/{year}/reported-recipients'
+}
+
+export type GetReportedRecipientsApiFinancialAidReportsYearReportedRecipientsGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetReportedRecipientsApiFinancialAidReportsYearReportedRecipientsGetError =
+  GetReportedRecipientsApiFinancialAidReportsYearReportedRecipientsGetErrors[keyof GetReportedRecipientsApiFinancialAidReportsYearReportedRecipientsGetErrors]
+
+export type GetReportedRecipientsApiFinancialAidReportsYearReportedRecipientsGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: ReportedRecipientsResponse
+}
+
+export type GetReportedRecipientsApiFinancialAidReportsYearReportedRecipientsGetResponse =
+  GetReportedRecipientsApiFinancialAidReportsYearReportedRecipientsGetResponses[keyof GetReportedRecipientsApiFinancialAidReportsYearReportedRecipientsGetResponses]
+
+export type LoadReportedRecipientsApiFinancialAidReportsReportedRecipientsBulkPostData = {
+  body: ReportedRecipientsLoadIn
+  path?: never
+  query?: never
+  url: '/api/financial-aid/reports/reported-recipients/bulk'
+}
+
+export type LoadReportedRecipientsApiFinancialAidReportsReportedRecipientsBulkPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type LoadReportedRecipientsApiFinancialAidReportsReportedRecipientsBulkPostError =
+  LoadReportedRecipientsApiFinancialAidReportsReportedRecipientsBulkPostErrors[keyof LoadReportedRecipientsApiFinancialAidReportsReportedRecipientsBulkPostErrors]
+
+export type LoadReportedRecipientsApiFinancialAidReportsReportedRecipientsBulkPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: ReportedRecipientsLoadOut
+}
+
+export type LoadReportedRecipientsApiFinancialAidReportsReportedRecipientsBulkPostResponse =
+  LoadReportedRecipientsApiFinancialAidReportsReportedRecipientsBulkPostResponses[keyof LoadReportedRecipientsApiFinancialAidReportsReportedRecipientsBulkPostResponses]
+
+export type DeleteReportedRecipientApiFinancialAidReportsReportedRecipientsRecordIdDeleteData = {
+  body?: never
+  path: {
+    /**
+     * Record Id
+     */
+    record_id: string
+  }
+  query: {
+    /**
+     * Reason
+     */
+    reason: string
+  }
+  url: '/api/financial-aid/reports/reported-recipients/{record_id}'
+}
+
+export type DeleteReportedRecipientApiFinancialAidReportsReportedRecipientsRecordIdDeleteErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type DeleteReportedRecipientApiFinancialAidReportsReportedRecipientsRecordIdDeleteError =
+  DeleteReportedRecipientApiFinancialAidReportsReportedRecipientsRecordIdDeleteErrors[keyof DeleteReportedRecipientApiFinancialAidReportsReportedRecipientsRecordIdDeleteErrors]
+
+export type DeleteReportedRecipientApiFinancialAidReportsReportedRecipientsRecordIdDeleteResponses =
+  {
+    /**
+     * Successful Response
+     */
+    204: void
+  }
+
+export type DeleteReportedRecipientApiFinancialAidReportsReportedRecipientsRecordIdDeleteResponse =
+  DeleteReportedRecipientApiFinancialAidReportsReportedRecipientsRecordIdDeleteResponses[keyof DeleteReportedRecipientApiFinancialAidReportsReportedRecipientsRecordIdDeleteResponses]
 
 export type GetReportDevelopmentApiFinancialAidReportsYearDevelopmentGetData = {
   body?: never

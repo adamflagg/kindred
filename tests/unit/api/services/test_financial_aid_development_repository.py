@@ -3,10 +3,7 @@ sources) to plain types. Fictional records only."""
 
 from __future__ import annotations
 
-import operator
-import re
 from datetime import date
-from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
@@ -17,7 +14,6 @@ from api.services.financial_aid_development_repository import (
     person_record,
     source_record,
 )
-from api.services.financial_aid_ledger_service import aid_dollars
 
 
 def test_an_attendee_reads_its_expanded_session_and_household() -> None:
@@ -98,57 +94,49 @@ def test_an_attendee_reads_the_day_it_registered() -> None:
     assert attendance_record(SimpleNamespace(person_id=1, status_id=2, year=2027, expand={})).registered_on is None
 
 
-class _PostingsPage:
-    """aid_postings answering a one-row page: `rows` is what the filter found."""
-
+class _Postings:
     def __init__(self, rows: list[SimpleNamespace]) -> None:
         self.rows = rows
-        self.asked: list[tuple[str, int, int, dict[str, object]]] = []
 
-    def collection(self, name: str) -> _PostingsPage:
-        self.name = name
+    def collection(self, name: str) -> _Postings:
         return self
 
-    def get_list(self, page: int, per_page: int, query_params: dict[str, object]) -> SimpleNamespace:
-        self.asked.append((self.name, page, per_page, dict(query_params)))
-        return SimpleNamespace(items=self.rows[:per_page])
+    def get_full_list(self, batch: int, query_params: dict[str, object]) -> list[SimpleNamespace]:
+        return self.rows
+
+
+def _posting(txn: int, funder_type: str, amount: float, **kw: object) -> SimpleNamespace:
+    base: dict[str, object] = {
+        "transaction_cm_id": txn,
+        "household_cm_id": 1000002,
+        "person_cm_id": 0,
+        "attributed_person_cm_id": 1000021,
+        "attribution_level": "person",
+        "source_key": "valley youth summer",
+        "effective_source_key": "",
+        "program_family": "summer",
+        "funder_type": funder_type,
+        "amount": amount,
+        "is_reversed": False,
+    }
+    base.update(kw)
+    return SimpleNamespace(**base)
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(("rows", "found"), [([SimpleNamespace(id="apo000000000001")], True), ([], False)])
-async def test_a_season_has_live_grant_lines_when_one_page_row_answers(
-    rows: list[SimpleNamespace], found: bool
-) -> None:
-    """The cheap "is there anything to rebuild?" read before a season's register: ONE row of aid_postings, filtered
-    to what the register would count as an outside grant (D158: live, a credit, outside or incentive), no count."""
-    pb = _PostingsPage(rows)
-    assert await DevelopmentRepository(pb).has_live_grant_lines(2024) is found
-    [(collection, page, per_page, query)] = pb.asked
-    assert (collection, page, per_page) == ("aid_postings", 1, 1)
-    assert query["filter"] == (
-        "year = 2024 && (funder_type = 'outside' || funder_type = 'incentive') && is_reversed = false && amount < 0"
+async def test_outside_credits_are_the_live_outside_and_incentive_credits_by_their_effective_source() -> None:
+    """#55: a credit is negative in CampMinder's sign; the camp's own lines and an unclassified one aren't outside."""
+    pb = _Postings(
+        [
+            _posting(1, "outside", -300.0),
+            _posting(2, "incentive", -100.0, effective_source_key="incentive fund"),
+            _posting(3, "outside", 300.0),  # a charge, not a credit
+            _posting(4, "camp", -900.0),
+            _posting(5, "unknown", -50.0),
+        ]
     )
-    assert query["skipTotal"] is True
-
-
-class _SignedPostings(_PostingsPage):
-    """aid_postings in CampMinder's sign, applying the filter's `amount` comparison to each row, as PocketBase does."""
-
-    def get_list(self, page: int, per_page: int, query_params: dict[str, object]) -> SimpleNamespace:
-        self.asked.append((self.name, page, per_page, dict(query_params)))
-        match = re.search(r"amount\s*(<=|>=|<|>)\s*(-?\d+)", str(query_params["filter"]))
-        assert match is not None, query_params["filter"]
-        compare = {"<": operator.lt, ">": operator.gt, "<=": operator.le, ">=": operator.ge}[match[1]]
-        found = [r for r in self.rows if compare(Decimal(str(r.amount)), Decimal(match[2]))]
-        return SimpleNamespace(items=found[:per_page])
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("amount", [-250.0, 250.0])
-async def test_the_grant_line_probe_finds_exactly_the_lines_the_register_counts(amount: float) -> None:
-    """aid_postings keeps CampMinder's sign (a grant credit is negative) and the register flips it (aid_dollars), then
-    counts `amount > 0`. The probe reads the raw column, so it must ask for `amount < 0`: asking `> 0` finds no real
-    grant line, and a season with grants but no camp line would lose its rebuilt ages."""
-    posting = SimpleNamespace(id="apo000000000002", amount=amount)
-    counted_by_register = aid_dollars(posting.amount) > 0
-    assert await DevelopmentRepository(_SignedPostings([posting])).has_live_grant_lines(2024) is counted_by_register
+    credits = await DevelopmentRepository(pb).outside_credits(2025)
+    assert [(c.source_key, c.attributed_person_cm_id, c.attribution_level) for c in credits] == [
+        ("valley youth summer", 1000021, "person"),
+        ("incentive fund", 1000021, "person"),
+    ]
