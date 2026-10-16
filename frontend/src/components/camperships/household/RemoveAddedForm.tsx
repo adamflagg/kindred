@@ -4,8 +4,9 @@ import { ReasonForm } from './ReasonForm'
 
 /**
  * Remove… on an added request's card (the form-intake mock, steps 16–17): a reason, then the addition retired and its
- * request withdrawn, decisions kept. The card offers it only while no round is posted (`removeBlock`); a refusal the
- * server still makes shows on the form. Its own component, so the write's hook mounts only while the form is open.
+ * request withdrawn, decisions kept. The card offers it only while no round is posted and the request is not cancelled
+ * in Kindred (`removeBlock`); a refusal the server still makes shows on the form. Its own component, so the write's
+ * hook mounts only while the form is open.
  */
 export function RemoveAddedForm({
   year,

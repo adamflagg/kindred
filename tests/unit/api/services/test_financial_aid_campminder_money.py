@@ -2,11 +2,20 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
+from typing import Any
 
-from api.services.financial_aid_campminder_money import _line_group, aid_on_no_request, campminder_money
-from api.services.financial_aid_intake_types import AdditionRecord, RequestRecord
+from api.services.financial_aid_campminder_money import (
+    D170Reads,
+    _line_group,
+    aid_on_no_request,
+    aid_on_no_request_lines,
+    aid_on_request,
+    campminder_money,
+)
+from api.services.financial_aid_intake_types import AdditionRecord, AttendeeRow, RequestKey, RequestRecord
 from api.services.financial_aid_reconciliation import CampLine
 from bunking.financial_aid.decisions.budget import NO_POOL, TOTAL, OffRequestAid
 
@@ -21,6 +30,10 @@ class Req:
     person_cm_id: int
     session_cm_id: int
     status: str = "active"
+
+    @property
+    def key(self) -> RequestKey:
+        return (self.household_cm_id, self.person_cm_id, "summer", self.id)
 
 
 @dataclass(frozen=True)
@@ -54,10 +67,20 @@ def line(
     )
 
 
+def reads(
+    requests: Sequence[Any],
+    links: Sequence[Any] = (),
+    *,
+    additions: Sequence[AdditionRecord] = (),
+    attendees: Sequence[AttendeeRow] = (),
+) -> D170Reads:
+    return D170Reads(requests, additions, links, family_camp=lambda s: s == WEEKEND, attendees=attendees)
+
+
 def on_no_request(
     lines: list[CampLine], requests: list[Req], links: list[Link] | None = None
 ) -> dict[str, OffRequestAid]:
-    return aid_on_no_request(lines, requests, links or [], POOLS.get)
+    return aid_on_no_request(lines, reads(requests, links or []), POOLS.get)
 
 
 def test_a_family_with_no_request_counts_in_its_sessions_pool_and_the_total() -> None:
@@ -183,7 +206,7 @@ def test_a_go_person_level_line_is_not_narrowed_to_the_campers_one_request() -> 
     credit = line(1, HH, "250", person=CAMPER, level="person")
     requests = [Req("r1", HH, CAMPER, SUMMER)]
     assert _line_group(credit, requests) == (None, "unplaced")
-    placed, _, unplaced = campminder_money([credit], requests)
+    placed, _, unplaced = campminder_money([credit], requests, additions=())
     assert (placed, unplaced) == ({}, {HH: Decimal(250)})
 
 
@@ -223,7 +246,7 @@ def test_a_person_level_line_left_unplaced_on_a_family_that_asked_is_not_on_no_r
 def test_a_pinned_twr_line_with_no_twr_request_counts_on_no_request_in_its_pool() -> None:
     pools = {**POOLS, TWR: "twr_pool"}
     pinned = line(1, HH, "250", person=CAMPER, session=TWR, level="override")
-    out = aid_on_no_request([pinned], [Req("r1", HH, CAMPER, SUMMER)], [], pools.get)
+    out = aid_on_no_request([pinned], reads([Req("r1", HH, CAMPER, SUMMER)]), pools.get)
     assert out["twr_pool"] == OffRequestAid(Decimal(250), 1)
     assert out[TOTAL] == OffRequestAid(Decimal(250), 1)
 
@@ -232,8 +255,6 @@ def test_a_pinned_twr_line_with_no_twr_request_counts_on_no_request_in_its_pool(
 
 
 def test_the_lines_on_no_request_name_their_family_x_session_and_sum_to_the_line() -> None:
-    from api.services.financial_aid_campminder_money import aid_on_no_request_lines
-
     lines = [
         line(1, 1000001, "2258", session=SUMMER, person=1000011),
         line(2, 1000001, "100", session=SUMMER, person=1000012),  # a sibling's money joins the family x session
@@ -243,7 +264,7 @@ def test_the_lines_on_no_request_name_their_family_x_session_and_sum_to_the_line
         line(6, 1000005, "40", session=SUMMER, reversed_=True),
     ]
     requests = [Req("r1", 1000004, 1000041, SUMMER)]
-    found = aid_on_no_request_lines(lines, requests, [])
+    found = aid_on_no_request_lines(lines, reads(requests))
     assert [(a.line.transaction_cm_id, a.group) for a in found] == [
         (1, (1000001, SUMMER)),
         (2, (1000001, SUMMER)),
@@ -297,15 +318,17 @@ def _addition(household: int, person: int, session: int, *, retired: bool) -> Ad
 
 
 def test_a_removed_added_request_holds_no_campminder_money() -> None:
-    from api.services.financial_aid_campminder_money import aid_on_no_request_lines, holding_requests
+    from api.services.financial_aid_campminder_money import holding_requests
 
     addition = _addition(1000001, 1000011, SUMMER, retired=True)
     removed = _record(1000001, 1000011, SUMMER, status="withdrawn", option_key=addition.option_key)
     money = [line(1, 1000001, "2258", session=SUMMER, person=1000011)]
-    assert aid_on_no_request_lines(money, [removed], []) == []  # D170 reads every status: the request still holds it
-    holding = holding_requests([removed], [addition])
-    assert holding == []
-    assert [a.line.transaction_cm_id for a in aid_on_no_request_lines(money, holding, [])] == [1]
+    assert aid_on_no_request_lines(money, reads([removed])) == []  # D170 reads every status: the request holds it
+    assert holding_requests([removed], [addition]) == []
+    # The D170 functions apply that filter themselves, from the raw requests and the additions.
+    found = aid_on_no_request_lines(money, reads([removed], additions=[addition]))
+    assert [a.line.transaction_cm_id for a in found] == [1]
+    assert campminder_money(money, [removed], additions=[addition])[1] == {(1000001, SUMMER): Decimal(2258)}
 
 
 def test_only_a_removed_addition_lets_go_of_the_money() -> None:
@@ -327,3 +350,53 @@ def test_only_a_removed_addition_lets_go_of_the_money() -> None:
     unwithdrawn = _record(1000005, 1000051, SUMMER, status="active", option_key=unwithdrawn_addition.option_key)
     requests = [added, edited, cancelled, revived, unwithdrawn]
     assert holding_requests(requests, [live, retired_before, again, unwithdrawn_addition]) == requests
+
+
+# -- #49 (owner ruling: PER CAMPER): a request holds only its own camper's money (d170_person) -----------------------
+HOME, KID_A, KID_B = 1000001, 1000011, 1000012
+
+
+def _kids_enrolled(*kids: int, session: int = SUMMER) -> list[AttendeeRow]:
+    return [AttendeeRow(kid, HOME, session, 2) for kid in kids]
+
+
+def test_a_request_holds_only_its_own_campers_credited_money() -> None:
+    lines = [line(1, HOME, "1000", session=SUMMER, person=KID_A), line(2, HOME, "500", session=SUMMER, person=KID_B)]
+    d170 = reads([Req("r1", HOME, KID_A, SUMMER)], attendees=_kids_enrolled(KID_A, KID_B))
+    found = aid_on_no_request_lines(lines, d170)
+    assert [(a.line.transaction_cm_id, a.group) for a in found] == [(2, (HOME, SUMMER))]
+    assert aid_on_no_request(lines, d170, POOLS.get)[TOTAL] == OffRequestAid(Decimal(500), 1)
+    assert aid_on_request(lines, d170) == {(HOME, KID_A, SUMMER): Decimal(1000)}
+
+
+def test_money_credited_to_no_camper_with_two_enrolled_is_held_by_either_siblings_request() -> None:
+    money = [line(1, HOME, "700", session=SUMMER)]
+    for kid in (KID_A, KID_B):
+        d170 = reads([Req("r1", HOME, kid, SUMMER)], attendees=_kids_enrolled(KID_A, KID_B))
+        assert aid_on_no_request_lines(money, d170) == []
+        assert aid_on_request(money, d170) == {(HOME, 0, SUMMER): Decimal(700)}  # the household's, no one camper's
+
+
+def test_money_credited_to_no_camper_with_one_enrolled_is_held_only_by_that_campers_request() -> None:
+    money = [line(1, HOME, "700", session=SUMMER)]
+    sibling = reads([Req("r1", HOME, KID_B, SUMMER)], attendees=_kids_enrolled(KID_A))
+    assert [a.group for a in aid_on_no_request_lines(money, sibling)] == [(HOME, SUMMER)]
+    own = reads([Req("r1", HOME, KID_A, SUMMER)], attendees=_kids_enrolled(KID_A))
+    assert aid_on_no_request_lines(money, own) == []
+    assert aid_on_request(money, own) == {(HOME, KID_A, SUMMER): Decimal(700)}
+
+
+def test_a_family_camp_household_request_holds_every_line_on_its_weekend() -> None:
+    money = [line(1, HOME, "300", session=WEEKEND, person=KID_A), line(2, HOME, "158", session=WEEKEND)]
+    d170 = reads([Req("r1", HOME, 0, WEEKEND)], attendees=_kids_enrolled(KID_A, KID_B, session=WEEKEND))
+    assert aid_on_no_request_lines(money, d170) == []
+    assert aid_on_request(money, d170) == {(HOME, 0, WEEKEND): Decimal(458)}
+
+
+def test_a_siblings_unmatched_request_still_takes_a_credited_campers_money_only_if_it_is_theirs() -> None:
+    """The loader's sheet-session rule, per camper: an unmatched request may be the camper's own at that session."""
+    money = [line(1, HOME, "500", session=SUMMER, person=KID_B)]
+    others = [Req("r1", HOME, KID_A, SUMMER)]
+    assert aid_on_no_request_lines(money, reads([*others, Req("r2", HOME, KID_B, 0, "unmatched_session")])) == []
+    found = aid_on_no_request_lines(money, reads([*others, Req("r2", HOME, KID_A, 0, "unmatched_session")]))
+    assert [a.line.transaction_cm_id for a in found] == [1]

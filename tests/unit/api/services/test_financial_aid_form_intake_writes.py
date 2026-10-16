@@ -469,3 +469,101 @@ async def test_money_credited_to_no_camper_is_recorded_for_the_one_enrolled_camp
     )
     (event,) = store.decision_events
     assert event.amount == Decimal(700)
+
+
+# -- #49 (owner ruling: PER CAMPER): a request holds only its own camper's D170 money, so a bulk load and the same adds
+#    one at a time agree, and Season's D170 figure and its drill-in stay one number. -------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_bulk_load_and_one_at_a_time_adds_record_each_siblings_own_money_alike() -> None:
+    items = [
+        AdditionItem(LIAM_HOUSEHOLD, LIAM, SESSION_2, 1000.0, "", round1_campminder=1000.0),
+        AdditionItem(LIAM_HOUSEHOLD, LIAM + 1, SESSION_2, 500.0, "", round1_campminder=500.0),
+    ]
+    bulk = credited_siblings()
+    done = await FinancialAidCaseworkService(bulk).add_requests(YEAR, items, "sitting", ACTOR, dry_run=False)
+    assert [r.ok for r in done.items] == [True, True]
+
+    one_by_one = credited_siblings()
+    casework = FinancialAidCaseworkService(one_by_one)
+    for item in items:
+        await casework.add_request(
+            YEAR, item.household_cm_id, item.person_cm_id, item.session_cm_id, item.ask, "By phone", ACTOR,
+            round1_campminder=item.round1_campminder,
+        )  # fmt: skip
+    amounts = sorted(e.amount or Decimal(0) for e in bulk.decision_events)
+    assert (
+        amounts == sorted(e.amount or Decimal(0) for e in one_by_one.decision_events) == [Decimal(500), Decimal(1000)]
+    )
+
+
+@pytest.mark.asyncio
+async def test_seasons_d170_and_the_drill_in_agree_when_one_sibling_is_recorded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import api.services.financial_aid_decisions_service as decisions_module
+    from api.services.financial_aid_form_intake import FormIntakeService
+    from tests.unit.api.services.decisions_fakes import EMMA as EMMA_REQUEST
+    from tests.unit.api.services.decisions_fakes import FakeDecisionsStore, seed_request
+    from tests.unit.api.services.test_financial_aid_decisions_service import _service
+
+    monkeypatch.setattr(decisions_module, "CAMPMINDER_AID_ON_NO_REQUEST_YEARS", frozenset({YEAR}))
+    casework_store = credited_siblings()
+    out = await FinancialAidCaseworkService(casework_store).add_request(
+        YEAR, LIAM_HOUSEHOLD, LIAM, SESSION_2, 1000.0, "By phone", ACTOR, round1_campminder=1000.0
+    )
+    season = FakeDecisionsStore()
+    seed_request(season, EMMA_REQUEST)
+    season.camp_lines = list(casework_store.camp_lines)
+    season.attendees = list(casework_store.attendees)
+    season.applications.extend(casework_store.applications.values())
+    season.requests[out.request.id] = casework_store.requests[out.request.id]
+    season.shares.extend(s for s in casework_store.payer_shares.values() if s.request_id == out.request.id)
+    season.events.extend(casework_store.decision_events)
+    season.additions = list(casework_store.additions.values())
+
+    budget = await _service(season).budget(YEAR)
+    off = budget.total.below.campminder_aid_off_requests
+    assert off is not None
+    drill = await FormIntakeService(casework_store).aid_on_no_request(YEAR)
+    assert off.amount == drill.total == 500.0  # the sibling's own money, still on D170
+
+
+# -- Scan row 3 (coordinator ruling, option a): Remove… refuses on a request cancelled in Kindred. Retiring it would
+#    withdraw the request but leave the cancellation on it (a re-add would come back cancelled), so Reopen… it first. --
+
+CANCELLED_WORDS = "The request is cancelled: Reopen… it first (the cancellation would stay), then remove it"
+
+
+@pytest.mark.asyncio
+async def test_remove_refuses_an_added_request_cancelled_in_kindred_and_writes_nothing() -> None:
+    from api.services.financial_aid_cancellations import CancelEvent
+
+    store = liam_store()
+    casework = FinancialAidCaseworkService(store)
+    out = await casework.add_request(YEAR, LIAM_HOUSEHOLD, LIAM, SESSION_2, 2500.0, "Assessed by phone", ACTOR)
+    cancel = CancelEvent(
+        id="can000000000011",
+        request_id=out.request.id,
+        kind="cancel",
+        created=datetime(YEAR, 3, 1, tzinfo=UTC),
+        reason="schedule",
+        in_kindred=True,
+    )
+    store.cancel_events = [cancel]
+    operations = len(store.operations)
+    with pytest.raises(CaseworkValidationError, match=r"^The request is cancelled: Reopen… it first"):
+        await casework.retire_addition(YEAR, out.addition.id, "Entered in error", ACTOR)
+    assert len(store.operations) == operations
+    assert store.additions[out.addition.id].live
+
+    # Reopened, it can be removed.
+    store.cancel_events = [
+        cancel,
+        CancelEvent(
+            id="can000000000012", request_id=out.request.id, kind="reopen", created=datetime(YEAR, 3, 2, tzinfo=UTC)
+        ),
+    ]
+    await casework.retire_addition(YEAR, out.addition.id, "Entered in error", ACTOR)
+    assert not store.additions[out.addition.id].live

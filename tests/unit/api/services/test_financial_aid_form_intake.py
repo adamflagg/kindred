@@ -16,7 +16,7 @@ import pytest
 
 from api.schemas.financial_aid_form_intake import FormIntakeResponse, FormIntakeRowOut
 from api.services.financial_aid_addition_view import addition_view, additions_by_request_key
-from api.services.financial_aid_campminder_money import aid_on_no_request
+from api.services.financial_aid_campminder_money import D170Reads, aid_on_no_request, family_camp_sessions
 from api.services.financial_aid_cancellations import CancelEvent
 from api.services.financial_aid_casework_service import FinancialAidCaseworkService
 from api.services.financial_aid_form_intake import FormIntakeService
@@ -342,7 +342,10 @@ async def test_the_d170_lines_are_one_per_family_x_session_with_the_add_prefill_
         True,
         "camp_pool",
     )
-    season = aid_on_no_request(store.camp_lines, list(store.requests.values()), [], lambda s: None)
+    reads = D170Reads(
+        list(store.requests.values()), [], [], family_camp_sessions(store.sessions), list(store.attendees)
+    )
+    season = aid_on_no_request(store.camp_lines, reads, lambda s: None)
     assert out.total == float(season[TOTAL].amount) == 2758.0
     assert out.families == season[TOTAL].families == 2
     assert (await forms(store)).campminder_aid_on_no_request == out.total
@@ -651,6 +654,124 @@ async def test_a_household_row_keeps_the_household_x_session_money() -> None:
     assert (_amber(household), _offered(household)) == ([(FAMILY_CAMP_6, 458.0)], [(FAMILY_CAMP_6, 458.0)])
     (line,) = (await FormIntakeService(store).aid_on_no_request(YEAR)).lines
     assert (line.person_cm_id, line.amount, line.prefill.round1_campminder) == (0, 458.0, 458.0)
+
+
+# -- #49 (owner ruling: PER CAMPER). A request holds only its own camper's D170 money (d170_person). A sibling's credited
+#    money stays on D170 until the sibling's own request exists, and their row keeps offering it. Money credited to no
+#    camper is the household's: any request on the family x session holds it, unless the household's one enrolled
+#    camper is the only one it can be, when only that camper's request does. ---------------------------------------
+
+
+def _on_request(r: FormIntakeRowOut) -> list[tuple[int, float]]:
+    return [(a.session_cm_id, a.amount) for a in r.campminder_aid if a.on_request]
+
+
+async def _drill(store: FakeAidStore) -> tuple[float, list[tuple[int, int, float]]]:
+    out = await FormIntakeService(store).aid_on_no_request(YEAR)
+    return out.total, sorted((x.person_cm_id, x.session_cm_id, x.amount) for x in out.lines)
+
+
+@pytest.mark.asyncio
+async def test_a_siblings_credited_money_stays_on_d170_once_the_other_sibling_has_a_request() -> None:
+    store = await _siblings(
+        camp(59000021, JOHNSON, "1000", session=TASTE_1, person=EMMA),
+        camp(59000022, JOHNSON, "500", session=TASTE_1, person=SAMUEL),
+    )
+    await FinancialAidCaseworkService(store).add_request(YEAR, JOHNSON, EMMA, TASTE_1, 1000.0, "By phone", ACTOR)
+
+    out = await forms(store)
+    emma, samuel = row(out, JOHNSON, EMMA), row(out, JOHNSON, SAMUEL)
+    assert (_amber(emma), _on_request(emma)) == ([], [(TASTE_1, 1000.0)])  # only her own money is on her request
+    assert (_amber(samuel), _offered(samuel)) == ([(TASTE_1, 500.0)], [(TASTE_1, 500.0)])
+    assert await _drill(store) == (500.0, [(SAMUEL, TASTE_1, 500.0)])
+    assert out.campminder_aid_on_no_request == 500.0
+
+
+@pytest.mark.asyncio
+async def test_a_siblings_credited_money_stays_on_d170_after_q5_records_the_other_siblings_round_1() -> None:
+    store = await _siblings(
+        camp(59000023, JOHNSON, "1000", session=TASTE_1, person=EMMA),
+        camp(59000024, JOHNSON, "500", session=TASTE_1, person=SAMUEL),
+    )
+    casework = FinancialAidCaseworkService(store)
+    await casework.add_request(YEAR, JOHNSON, EMMA, TASTE_1, 1000.0, "By phone", ACTOR, round1_campminder=1000.0)
+
+    samuel = row(await forms(store), JOHNSON, SAMUEL)
+    assert (_amber(samuel), _offered(samuel)) == ([(TASTE_1, 500.0)], [(TASTE_1, 500.0)])
+    assert await _drill(store) == (500.0, [(SAMUEL, TASTE_1, 500.0)])
+    # Samuel's own money can still be recorded, and then D170 is empty.
+    await casework.add_request(YEAR, JOHNSON, SAMUEL, TASTE_1, 500.0, "By phone", ACTOR, round1_campminder=500.0)
+    assert await _drill(store) == (0.0, [])
+
+
+@pytest.mark.asyncio
+async def test_money_credited_to_no_camper_with_two_enrolled_siblings_is_held_once_either_has_a_request() -> None:
+    for person in (EMMA, SAMUEL):
+        store = await _siblings(camp(59000025, JOHNSON, "700", session=TASTE_1))
+        await FinancialAidCaseworkService(store).add_request(YEAR, JOHNSON, person, TASTE_1, 700.0, "By phone", ACTOR)
+        out = await forms(store)
+        assert [_amber(row(out, JOHNSON, p)) for p in (EMMA, SAMUEL)] == [[], []]
+        assert await _drill(store) == (0.0, [])
+
+
+@pytest.mark.asyncio
+async def test_money_credited_to_no_camper_with_one_enrolled_camper_is_held_only_by_that_campers_request() -> None:
+    from dataclasses import replace
+
+    store = await _siblings(camp(59000026, JOHNSON, "700", session=TASTE_1), samuel_enrolled=False)
+    await FinancialAidCaseworkService(store).add_request(YEAR, JOHNSON, EMMA, TASTE_1, 700.0, "By phone", ACTOR)
+    (emmas,) = store.requests.values()
+    # Samuel (not enrolled there) holding a request on that session does not take Emma's money.
+    store.requests = {"req0000000000s1": replace(emmas, id="req0000000000s1", person_cm_id=SAMUEL)}
+    assert await _drill(store) == (700.0, [(EMMA, TASTE_1, 700.0)])
+    assert _amber(row(await forms(store), JOHNSON, EMMA)) == [(TASTE_1, 700.0)]
+    # Emma's own request does.
+    store.requests[emmas.id] = emmas
+    assert await _drill(store) == (0.0, [])
+    assert _on_request(row(await forms(store), JOHNSON, EMMA)) == [(TASTE_1, 700.0)]
+
+
+@pytest.mark.asyncio
+async def test_a_family_camp_household_request_still_holds_the_household_x_session_money() -> None:
+    store = await intake(
+        attendees=[*enrolled(1000061, OKAFOR, FAMILY_CAMP_6), *enrolled(1000062, OKAFOR, FAMILY_CAMP_6)],
+        lines=[
+            camp(59000027, OKAFOR, "300", session=FAMILY_CAMP_6, person=1000061),
+            camp(59000028, OKAFOR, "158", session=FAMILY_CAMP_6),
+        ],
+    )
+    await FinancialAidCaseworkService(store).add_request(YEAR, OKAFOR, 0, FAMILY_CAMP_6, 458.0, "By phone", ACTOR)
+    household = row(await forms(store), OKAFOR, 0)
+    assert (_amber(household), _on_request(household)) == ([], [(FAMILY_CAMP_6, 458.0)])
+    assert await _drill(store) == (0.0, [])
+
+
+# -- Scan row 2 (coordinator ruling): a camper is offered their own money across the linked family (aid_household_links),
+#    exactly what Add a Request…'s guard accepts. -------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_camper_is_offered_their_money_across_the_linked_family_and_the_guard_accepts_it() -> None:
+    from api.services.financial_aid_to_place import LinkRow
+
+    linked = 1000009  # CampMinder's second household id for the Johnsons
+    store = await _siblings(
+        camp(59000029, JOHNSON, "1000", session=TASTE_1, person=EMMA),
+        camp(59000030, linked, "258", session=TASTE_1, person=EMMA),
+    )
+    store.links = [LinkRow(JOHNSON, "fam-johnson", False, None), LinkRow(linked, "fam-johnson", False, None)]
+    out = await forms(store)
+    emma = row(out, JOHNSON, EMMA)
+    assert (_amber(emma), _offered(emma)) == ([(TASTE_1, 1258.0)], [(TASTE_1, 1258.0)])
+    assert [r.key for r in out.rows if r.person_cm_id == EMMA] == [emma.key]  # one row, not one per household id
+    (line,) = (await FormIntakeService(store).aid_on_no_request(YEAR)).lines
+    assert (line.row_key, line.amount, line.prefill.round1_campminder) == (emma.key, 1258.0, 1258.0)
+
+    added = await FinancialAidCaseworkService(store).add_request(
+        YEAR, JOHNSON, EMMA, TASTE_1, 1258.0, "By phone", ACTOR, round1_campminder=1258.0
+    )
+    assert added.addition.round1_posted == 1258.0
+    assert await _drill(store) == (0.0, [])
 
 
 # -- Follow-up A (approved polish): the Became cell lists live requests first, then closed ones, each in date order ----

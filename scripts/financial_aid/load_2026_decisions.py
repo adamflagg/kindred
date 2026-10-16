@@ -80,7 +80,7 @@ from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError, model_
 
 from api.services.financial_aid_campminder_money import Group, campminder_money
 from api.services.financial_aid_decisions_repository import FinancialAidDecisionsRepository
-from api.services.financial_aid_intake_types import STATUS_ACTIVE, STATUS_UNMATCHED
+from api.services.financial_aid_intake_types import STATUS_ACTIVE, STATUS_UNMATCHED, AdditionRecord, RequestKey
 from api.services.financial_aid_reconciliation import CampLine
 from api.services.financial_aid_repository import FinancialAidRepository
 from api.services.financial_aid_rules_service import PRICING_SECTIONS, AidRulesRepository, FinancialAidRulesService
@@ -176,6 +176,13 @@ class LoadRequest:
     person_cm_id: int
     session_cm_id: int
     status: str
+    program_key: str = ""
+    program_option_key: str = ""
+
+    @property
+    def key(self) -> RequestKey:
+        """The request's key, as an aid_request_additions row names it (holding_requests reads it)."""
+        return (self.household_cm_id, self.person_cm_id, self.program_key, self.program_option_key)
 
 
 # --- the owner's overrides ---------------------------------------------------------------------------------------------
@@ -622,6 +629,7 @@ def plan_load(
     trackers: Mapping[int, str],
     overrides: Sequence[LoadOverride] = (),
     links: Iterable[Any] = (),
+    additions: Iterable[AdditionRecord],  # required: the D170 holding rule reads them (holding_requests)
 ) -> LoadPlan:
     plan = LoadPlan()
 
@@ -694,7 +702,8 @@ def plan_load(
         if not by_id[rid].session_cm_id and (chosen := applied.get(award.row)) is not None:
             by_id[rid] = replace(by_id[rid], session_cm_id=chosen.sheet_session or 0)
     requests = list(by_id.values())
-    money, no_request, unplaced = campminder_money(lines, requests, links)
+    # An added request staff removed holds no money (holding_requests, applied inside), as D170 reads it.
+    money, no_request, unplaced = campminder_money(lines, requests, links, additions=additions)
     plan.campminder_total = sum((line.amount for line in lines if line.live()), ZERO)
     plan.campminder_unplaced = sum(unplaced.values(), ZERO)
     for household, amount in sorted(unplaced.items()):
@@ -968,6 +977,7 @@ class LoadStore(Protocol):
     async def events_of(self, year: int) -> list[DecisionEvent]: ...
     async def camp_lines(self, year: int) -> list[CampLine]: ...
     async def links(self, year: int) -> list[Any]: ...
+    async def additions(self, year: int) -> list[AdditionRecord]: ...
     async def commit(self, writes: Sequence[AidWrite]) -> None: ...
 
 
@@ -986,7 +996,9 @@ class PocketBaseStore:
 
     async def requests(self, year: int) -> list[LoadRequest]:
         return [
-            LoadRequest(r.id, r.household_cm_id, r.person_cm_id, r.session_cm_id, r.status)
+            LoadRequest(
+                r.id, r.household_cm_id, r.person_cm_id, r.session_cm_id, r.status, r.program_key, r.program_option_key
+            )
             for r in await self._repo.fetch_requests(year)
         ]
 
@@ -998,6 +1010,9 @@ class PocketBaseStore:
 
     async def links(self, year: int) -> list[Any]:
         return await self._links.fetch_links(year)
+
+    async def additions(self, year: int) -> list[AdditionRecord]:
+        return await self._repo.fetch_request_additions(year)
 
     async def commit(self, writes: Sequence[AidWrite]) -> None:
         await self._repo.commit(writes, actor=LOADER, reason=REASON, allow_chunking=True)
@@ -1112,8 +1127,12 @@ async def _run(args: argparse.Namespace, store: LoadStore) -> int:
     trackers: dict[int, str] = {}
     if args.trackers is not None:
         trackers = {int(k): str(v) for k, v in json.loads(args.trackers.read_text(encoding="utf-8")).items()}
-    requests, existing, lines, links = await asyncio.gather(
-        store.requests(args.year), store.events_of(args.year), store.camp_lines(args.year), store.links(args.year)
+    requests, existing, lines, links, additions = await asyncio.gather(
+        store.requests(args.year),
+        store.events_of(args.year),
+        store.camp_lines(args.year),
+        store.links(args.year),
+        store.additions(args.year),
     )
     try:
         plan = plan_load(
@@ -1126,6 +1145,7 @@ async def _run(args: argparse.Namespace, store: LoadStore) -> int:
             trackers=trackers,
             overrides=overrides,
             links=links,
+            additions=additions,
         )
     except OverrideError as exc:  # ids only, as the person fixing the local file needs them
         print(f"{exc}. Nothing was written.", file=sys.stderr)

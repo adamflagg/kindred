@@ -263,6 +263,17 @@ describe('Remove… (the household card)', () => {
     expect(removeBlock(CHEN_HH.became![0]!)).toBeNull()
   })
 
+  it('refuses up front on a request cancelled in Kindred: reopen it first, or the cancellation stays', () => {
+    const refusal =
+      'The request is cancelled: Reopen… it first (the cancellation would stay), then remove it'
+    expect(removeBlock({ posted_rounds: [], cancelled: true })).toBe(refusal)
+    expect(removeBlock({ posted_rounds: [], cancelled: false })).toBeNull()
+    // A posted round is named first: Undo Posted is the first step either way.
+    expect(removeBlock({ posted_rounds: [1], cancelled: true })).toBe(
+      'Round 1 is posted: undo Posted first'
+    )
+  })
+
   it('reads S2 as the tiny form', () => {
     // A guard on the fixture's session table, which the cells read.
     expect(names.get(S2)?.name).toBe('Session 2')

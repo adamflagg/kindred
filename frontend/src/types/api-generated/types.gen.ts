@@ -14445,7 +14445,8 @@ export type ReportedRecipientsResponse = {
  *
  * The addition behind an added or rule-made request (Form intake's Became and the household request card share
  * it): who added it, when and why; a rule-made one's Mark Reviewed; and the rounds posted on its request, so Remove…
- * can say "Round N is posted: undo Posted first" before it is refused.
+ * can say "Round N is posted: undo Posted first" before it is refused, and whether it is cancelled in Kindred (Remove…
+ * is refused then too: Reopen… it first).
  */
 export type RequestAdditionOut = {
   /**
@@ -14484,6 +14485,10 @@ export type RequestAdditionOut = {
    * Posted Rounds
    */
   posted_rounds?: Array<number>
+  /**
+   * Cancelled
+   */
+  cancelled?: boolean
   /**
    * Live
    */

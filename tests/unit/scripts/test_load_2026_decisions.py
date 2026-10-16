@@ -17,6 +17,7 @@ from typing import Any
 import pytest
 from openpyxl import Workbook
 
+from api.services.financial_aid_intake_types import AdditionRecord
 from api.services.financial_aid_reconciliation import CampLine
 from api.services.financial_aid_to_place import LinkRow
 from bunking.financial_aid.calculator import GrantInput
@@ -105,6 +106,7 @@ def _plan(
     trackers: dict[int, str] | None = None,
     overrides: Sequence[loader.LoadOverride] = (),
     links: Sequence[LinkRow] = (),
+    additions: Sequence[AdditionRecord] = (),
 ) -> loader.LoadPlan:
     return plan_load(
         awards,
@@ -116,6 +118,7 @@ def _plan(
         trackers=trackers or {},
         overrides=overrides,
         links=links,
+        additions=additions,
     )
 
 
@@ -885,17 +888,24 @@ class _Store:
         *,
         lines: list[CampLine] | None = None,
         links: list[LinkRow] | None = None,
+        requests: list[LoadRequest] | None = None,
+        additions: list[AdditionRecord] | None = None,
     ) -> None:
         self.events = existing or []
         self.commits: list[list[AidWrite]] = []
         self.lines = lines if lines is not None else [_line("3400")]
         self.household_links = links or []
+        self.request_rows = requests or [_request()]
+        self.addition_rows = additions or []
 
     async def rules(self, year: int) -> tuple[AidRules, int] | None:
         return RULES, 3
 
     async def requests(self, year: int) -> list[LoadRequest]:
-        return [_request()]
+        return self.request_rows
+
+    async def additions(self, year: int) -> list[AdditionRecord]:
+        return self.addition_rows
 
     async def events_of(self, year: int) -> list[DecisionEvent]:
         return self.events
@@ -950,6 +960,42 @@ def test_the_run_reads_the_seasons_household_links(tmp_path: Path, monkeypatch: 
     assert _run(tmp_path, store, monkeypatch=monkeypatch) == 0
     report = (tmp_path / "r.csv").read_text()
     assert "campminder_without_load" not in report
+    assert "campminder_differs" in report  # CampMinder's 3,400 reached the request
+
+
+# Scan row 4: an added request staff removed (Remove…: addition retired, request withdrawn) holds no CampMinder money in
+# the loader either, the same holding_requests rule D170 reads (owner: aid CampMinder posted always shows).
+
+
+def _removed_sibling() -> tuple[LoadRequest, AdditionRecord]:
+    addition = AdditionRecord(
+        id="add000000000001", year=2031, household_cm_id=1000001, person_cm_id=1000003, program_key="summer",
+        session_cm_id=1000104, ask=500.0, source="staff", reason="Entered in error", actor="registrar@example.com",
+        retired_at="2031-03-01 18:00:00.000Z",
+    )  # fmt: skip
+    removed = LoadRequest(
+        id=LIAM, household_cm_id=1000001, person_cm_id=1000003, session_cm_id=1000104, status="withdrawn",
+        program_key="summer", program_option_key=addition.option_key,
+    )  # fmt: skip
+    return removed, addition
+
+
+def test_a_removed_added_request_does_not_split_a_household_line_away_from_the_loaded_request() -> None:
+    removed, addition = _removed_sibling()
+    household_line = _line("3000", person=0, session=0)
+    before = _plan([_award()], [_request(), removed], [household_line])  # no additions read: two sessions to choose
+    assert "campminder_unplaced" in _kinds(before)
+    plan = _plan([_award()], [_request(), removed], [household_line], additions=[addition])
+    assert _posts(plan) == {1: Decimal(3000)}
+    assert plan.report == []
+
+
+def test_the_run_reads_the_seasons_additions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    removed, addition = _removed_sibling()
+    store = _Store(lines=[_line("3400", person=0, session=0)], requests=[_request(), removed], additions=[addition])
+    assert _run(tmp_path, store, monkeypatch=monkeypatch) == 0
+    report = (tmp_path / "r.csv").read_text()
+    assert "campminder_unplaced" not in report
     assert "campminder_differs" in report  # CampMinder's 3,400 reached the request
 
 

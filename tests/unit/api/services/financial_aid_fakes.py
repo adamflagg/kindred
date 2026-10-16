@@ -313,6 +313,9 @@ class FakeAidStore:
     async def fetch_cancellations(self, year: int) -> list[Any]:
         return list(self.cancel_events)
 
+    async def fetch_request_cancellations(self, request_id: str) -> list[Any]:
+        return [e for e in self.cancel_events if e.request_id == request_id]
+
     async def fetch_names(
         self, year: int, household_cm_ids: Collection[int], person_cm_ids: Collection[int]
     ) -> tuple[dict[int, str], dict[int, str]]:

@@ -1061,6 +1061,17 @@ describe('WorkingRequestCard: a duplicate pair (item 11)', () => {
       expect(button).toHaveAttribute('title', 'Round 1 is posted: undo Posted first')
     })
 
+    it('says up front that a request cancelled in Kindred must be reopened first', () => {
+      additionFor = { [ROW_EMMA.request_id]: added({ cancelled: true }) }
+      renderCards([ROW_EMMA])
+      const button = screen.getByRole('button', { name: 'Remove…' })
+      expect(button).toBeDisabled()
+      expect(button).toHaveAttribute(
+        'title',
+        'The request is cancelled: Reopen… it first (the cancellation would stay), then remove it'
+      )
+    })
+
     it('asks for a reason, says what removing does, and retires the addition', async () => {
       additionFor = { [ROW_EMMA.request_id]: added() }
       renderCards([ROW_EMMA])

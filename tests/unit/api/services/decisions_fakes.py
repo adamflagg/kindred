@@ -37,6 +37,7 @@ from api.services.financial_aid_intake_plan import application_fields, request_f
 from api.services.financial_aid_intake_types import (
     AdditionRecord,
     ApplicationRecord,
+    AttendeeRow,
     CorrectionRecord,
     EquityAnswers,
     PayerShareRecord,
@@ -94,6 +95,7 @@ class FakeDecisionsStore:
         self.camp_line_reads: list[bool] = []  # each fetch_camp_lines call's recorded_times, in order
         self.placements: dict[int, Placement] = {}
         self.links: list[Any] = []  # the season's aid_household_links rows (D26)
+        self.attendees: list[AttendeeRow] = []  # registered attendees: whose D170 money a line is (d170_person)
         self.additions: list[AdditionRecord] = []  # aid_request_additions rows, retired ones included (D170 reads them)
         self.splits: dict[int, tuple[SplitPart, ...]] = {}  # lines a person split across requests (SP11-rest)
         self.synced_at: datetime | None = None  # the last successful ledger sync covering YEAR; None = never
@@ -201,6 +203,9 @@ class FakeDecisionsStore:
 
     async def fetch_household_links(self, year: int) -> list[Any]:
         return list(self.links)
+
+    async def fetch_registered_attendees(self, year: int) -> list[AttendeeRow]:
+        return list(self.attendees)
 
     async def fetch_request_additions(self, year: int) -> list[AdditionRecord]:
         return [a for a in self.additions if a.year == year]

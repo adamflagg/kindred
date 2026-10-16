@@ -56,11 +56,13 @@ from api.services.financial_aid_calc_inputs import (
     request_issues,
 )
 from api.services.financial_aid_campminder_money import (
+    D170Reads,
     NoRequestAid,
     aid_on_no_request_lines,
     d170_person,
-    holding_requests,
+    family_camp_sessions,
 )
+from api.services.financial_aid_cancellations import CancelEvent, fold_cancellations
 from api.services.financial_aid_corrections import (
     APPLICATION_CORRECTABLE,
     INCOME_OVERRIDE_FIELD,
@@ -174,6 +176,7 @@ class CaseworkStore(Protocol):
     # Add a Request…'s Round 1 at CampMinder's money (owner Q5-A): D170's own reads.
     async def fetch_camp_lines(self, year: int, *, recorded_times: bool = False) -> list[CampLine]: ...
     async def fetch_household_links(self, year: int) -> list[Any]: ...
+    async def fetch_request_cancellations(self, request_id: str) -> list[CancelEvent]: ...
     async def commit(
         self,
         writes: Sequence[AidWrite],
@@ -366,6 +369,12 @@ class AdditionItem:
     # Owner Q5-A: record CampMinder's posted money on this family x session as Round 1, posted, in the same operation.
     # The amount the screen showed; refused unless it is CampMinder's to the cent. None: the request only.
     round1_campminder: float | None = None
+
+
+# Remove… on a request cancelled in Kindred (scan row 3, coordinator ruling): staff-safe, and the page says it up front.
+REMOVE_CANCELLED_REFUSAL: Final = (
+    "The request is cancelled: Reopen… it first (the cancellation would stay), then remove it"
+)
 
 
 def _program_for(session: SessionRow) -> str | None:
@@ -1193,7 +1202,8 @@ class FinancialAidCaseworkService:
         self, ctx: _AdditionContext, item: AdditionItem
     ) -> tuple[Decimal, list[CampLine], tuple[int, int, int]]:
         """Owner Q5-A's guard: the Round 1 to record is, to the cent, CampMinder's live camp aid on this family x
-        session that no request holds (D170's own lines, so the money then leaves that line and counts in the pool),
+        session that no request holds (D170's own lines, so the money then leaves that line and counts in the pool;
+        since #49 a sibling's request does not hold this camper's money),
         and that is this camper's (d170_person, coordinator ruling): the lines credited to the camper, plus lines
         credited to no camper when the camper is the household's one camper enrolled in the session. A household
         (Family Camp) request takes the household x session's. This is the amount Form intake offers on the row.
@@ -1202,16 +1212,20 @@ class FinancialAidCaseworkService:
         if ctx.no_request is None:
             lines = await self._store.fetch_camp_lines(ctx.year)
             ctx.links = list(await self._store.fetch_household_links(ctx.year))
-            holding = holding_requests(ctx.requests.values(), ctx.additions)
-            ctx.no_request = aid_on_no_request_lines(lines, holding, ctx.links)
+            # D170's own read: the raw requests and additions (an added request staff removed holds no money), and
+            # #49's per-camper holding. Read once per load from the state before it, so a bulk load and the same adds
+            # one at a time agree (a camper's money is held only by their own request, never a sibling's).
+            reads = D170Reads(
+                list(ctx.requests.values()),
+                list(ctx.additions),
+                ctx.links,
+                family_camp_sessions(ctx.sessions),
+                list(ctx.attendees),
+            )
+            ctx.no_request = aid_on_no_request_lines(lines, reads)
         hh, person, sid = item.household_cm_id, item.person_cm_id, item.session_cm_id
         family = set(family_household_set(ctx.links, hh) or [hh])
-        by_id = {s.cm_id: s for s in ctx.sessions}
-
-        def family_camp(session_cm_id: int) -> bool:
-            session = by_id.get(session_cm_id)
-            return session is not None and _program_for(session) == PROGRAM_FAMILY_CAMP
-
+        family_camp = family_camp_sessions(ctx.sessions)
         found = [
             a.line
             for a in ctx.no_request
@@ -1369,6 +1383,12 @@ class FinancialAidCaseworkService:
                 for n, state in sorted(rounds.items()):
                     if state.posted:
                         raise CaseworkValidationError(f"Round {n} is posted: undo Posted first, then remove it")
+                # Scan row 3 (coordinator ruling): retiring a request cancelled in Kindred would leave the cancellation
+                # on it (a re-add would come back cancelled), so it is reopened first. CampMinder's own cancellation
+                # is not a record here: it follows the enrollment.
+                cancel = fold_cancellations(await self._store.fetch_request_cancellations(request.id)).get(request.id)
+                if cancel is not None and cancel.in_kindred:
+                    raise CaseworkValidationError(REMOVE_CANCELLED_REFUSAL)
             updated = replace(
                 addition,
                 retired_at=datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S.000Z"),

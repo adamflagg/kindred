@@ -48,6 +48,7 @@ from api.schemas.financial_aid_household_page import (
 from api.schemas.financial_aid_intake import ApplicationDetailResponse
 from api.services.aid_season_cache import AidSeasonCache
 from api.services.financial_aid_addition_view import addition_view, additions_by_request_key
+from api.services.financial_aid_cancellations import Cancellation
 from api.services.financial_aid_casework_service import CaseworkNotFoundError, disagreeing_fields
 from api.services.financial_aid_change_log_reads import log_detail
 from api.services.financial_aid_decisions_service import (
@@ -88,6 +89,11 @@ from bunking.geo_normalizer.zip_counties import county_for_postal_code
 _ZERO = Decimal(0)
 # The round states whose amount isn't decided yet (Decision 2): a held round's amount is unknown (D44).
 _UNDECIDED: Final = frozenset({"held", "not_decided", "pending_approval"})
+
+
+def _cancelled_in_kindred(cancellation: Cancellation | None) -> bool:
+    """A request cancelled in Kindred (Cancel Request…): its Remove… is refused until Reopen… (casework's retire)."""
+    return cancellation is not None and cancellation.by == "kindred"
 
 
 def _share_state(
@@ -861,7 +867,10 @@ class HouseholdPageService:
                 grants_beyond_owed=money(beyond) if beyond is not None else None,
                 duplicates_waiting=[waiting_out(r) for r in waiting.get(row.request_id, ())],
                 addition=addition_view(
-                    season.requests[row.request_id], additions, season.rounds.get(row.request_id, {})
+                    season.requests[row.request_id],
+                    additions,
+                    season.rounds.get(row.request_id, {}),
+                    cancelled=_cancelled_in_kindred(season.cancellations.get(row.request_id)),
                 ),
             )
 

@@ -45,7 +45,8 @@ class RegistrationAskOut(BaseModel):
 class RequestAdditionOut(BaseModel):
     """The addition behind an added or rule-made request (Form intake's Became and the household request card share
     it): who added it, when and why; a rule-made one's Mark Reviewed; and the rounds posted on its request, so Remove…
-    can say "Round N is posted: undo Posted first" before it is refused."""
+    can say "Round N is posted: undo Posted first" before it is refused, and whether it is cancelled in Kindred (Remove…
+    is refused then too: Reopen… it first)."""
 
     addition_id: str
     origin: RequestOrigin
@@ -56,6 +57,8 @@ class RequestAdditionOut(BaseModel):
     reviewed_by: str = ""
     reviewed_at: str = ""
     posted_rounds: list[int] = Field(default_factory=list)
+    # Cancelled in Kindred (Cancel Request…): Remove… is refused until Reopen…, or the cancellation would stay on it.
+    cancelled: bool = False
     live: bool = True  # False once Remove… retired it
     # Who removed it, when and why ("Removed by …" on the household card); blank while it is live.
     retired_by: str = ""

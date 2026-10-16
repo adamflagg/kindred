@@ -396,13 +396,20 @@ export const unreviewed = (row: FormIntakeRowOut): BecameOut | undefined =>
 
 // ── Remove… (the household card) ───────────────────────────────────────────────────────────────
 
-/** Retiring an addition with a posted round is refused (PR 1's guard): say so before the save. */
+/**
+ * Retiring an addition is refused (casework's retire) while a round is posted (PR 1's guard), and on a request
+ * cancelled in Kindred, whose cancellation would stay on it (scan row 3): say so before the save.
+ */
 export function removeBlock(b: {
   readonly posted_rounds?: readonly number[] | undefined
+  readonly cancelled?: boolean | undefined
 }): string | null {
   const posted = b.posted_rounds ?? []
-  if (posted.length === 0) return null
-  return `Round ${String(Math.max(...posted))} is posted: undo Posted first`
+  if (posted.length > 0) return `Round ${String(Math.max(...posted))} is posted: undo Posted first`
+  if (b.cancelled === true) {
+    return 'The request is cancelled: Reopen… it first (the cancellation would stay), then remove it'
+  }
+  return null
 }
 
 // ── Add a Request… ─────────────────────────────────────────────────────────────────────────────

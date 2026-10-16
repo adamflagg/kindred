@@ -182,7 +182,8 @@ export function WorkingRequestCard({
       {pair && <OtherRequestLink pair={pair} view={view} beforeLeave={exits?.beforeLeave} />}
       {offers.headcount && button('Number of People…', { kind: 'headcount' })}
       {removable && (
-        // Retiring an addition while a round is posted is refused (PR 1's guard): say so before the save.
+        // Retiring an addition is refused while a round is posted (PR 1's guard) or the request is cancelled in
+        // Kindred (scan row 3): say so before the save.
         <button
           type="button"
           className={HH_BUTTON}

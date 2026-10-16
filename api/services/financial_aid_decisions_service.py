@@ -105,7 +105,7 @@ from api.services.financial_aid_calc_inputs import (
     request_issues,
     to_application_inputs,
 )
-from api.services.financial_aid_campminder_money import aid_on_no_request, holding_requests
+from api.services.financial_aid_campminder_money import D170Reads, aid_on_no_request, family_camp_sessions
 from api.services.financial_aid_cancellations import (
     CANCEL_REASON_LABELS,
     TODO_CANCEL_REASON,
@@ -147,6 +147,7 @@ from api.services.financial_aid_intake_types import (
     STATUS_WITHDRAWN,
     AdditionRecord,
     ApplicationRecord,
+    AttendeeRow,
     CorrectionRecord,
     EquityAnswers,
     PayerShareRecord,
@@ -381,6 +382,7 @@ class DecisionsStore(Protocol):
     async def fetch_fa_contacts(self, year: int) -> list[FaContact]: ...
     async def fetch_camp_lines(self, year: int, *, recorded_times: bool = False) -> list[CampLine]: ...
     async def fetch_household_links(self, year: int) -> list[Any]: ...
+    async def fetch_registered_attendees(self, year: int) -> list[AttendeeRow]: ...
     async def fetch_line_placements(self, year: int) -> dict[int, Placement]: ...
     async def fetch_line_splits(self, year: int) -> dict[int, tuple[SplitPart, ...]]: ...
     async def fetch_changed_since(self, year: int, floor: datetime, *, persons: bool) -> SinceRecords: ...
@@ -2327,21 +2329,26 @@ class FinancialAidDecisionsService:
 
     async def _aid_on_no_request(self, season: Season) -> dict[str, OffRequestAid] | None:
         """D170: the live season's CampMinder aid on no request, for the seasons the line is shown for; None elsewhere
-        and on a past date (a past read loads no live ledger). By the 2026 loader's own family x session rule, over
-        every request of the season, whatever its status, but an added request staff removed (holding_requests),
-        and the season's household links."""
+        and on a past date (a past read loads no live ledger). D170Reads' one read, as Form intake's drill-in and Add a
+        Request…'s guard make it: the 2026 loader's family x session rule over every request of the season, whatever
+        its status, but an added request staff removed; the season's household links; and #49's per-camper holding
+        (a request holds only its own camper's money: d170_person, from the registered attendees)."""
         if season.as_of is not None or season.year not in CAMPMINDER_AID_ON_NO_REQUEST_YEARS:
             return None
-        links, additions = await asyncio.gather(
-            self._store.fetch_household_links(season.year), self._store.fetch_request_additions(season.year)
+        links, additions, attendees = await asyncio.gather(
+            self._store.fetch_household_links(season.year),
+            self._store.fetch_request_additions(season.year),
+            self._store.fetch_registered_attendees(season.year),
         )
         document = season.rules.document if season.rules is not None else None
-        return aid_on_no_request(
-            season.camp_lines,
-            holding_requests(season.requests.values(), additions),
+        reads = D170Reads(
+            list(season.requests.values()),
+            additions,
             links,
-            _session_pools(season.sessions, document).get,
+            family_camp_sessions(season.sessions.values()),
+            attendees,
         )
+        return aid_on_no_request(season.camp_lines, reads, _session_pools(season.sessions, document).get)
 
     def _budget(
         self,

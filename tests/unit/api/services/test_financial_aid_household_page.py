@@ -2114,3 +2114,49 @@ async def test_an_added_request_card_carries_its_addition_and_a_form_request_non
     )
     assert (found.reviewed, found.posted_rounds) == (None, [1])
     assert cards[LIAM].addition is None
+
+
+@pytest.mark.asyncio
+async def test_an_added_request_cancelled_in_kindred_says_so_on_its_addition() -> None:
+    """Scan row 3 (coordinator ruling): Remove… is refused on a request cancelled in Kindred, so the card's addition
+    says so, and the page disables Remove… with the reason up front (as it does for a posted round)."""
+    from dataclasses import replace as _replace
+
+    from api.services.financial_aid_cancellations import CancelEvent
+    from api.services.financial_aid_intake_types import AdditionRecord
+
+    store = _family()
+    added = store.requests[EMMA] = _replace(store.requests[EMMA], program_option_key="added:1000101")
+    store.cancel_events.append(
+        CancelEvent(id="can000000000021", request_id=EMMA, kind="cancel", created=T0, reason="medical", in_kindred=True)
+    )
+    addition = AdditionRecord(
+        id="addemma00000002",
+        year=YEAR,
+        household_cm_id=added.household_cm_id,
+        person_cm_id=added.person_cm_id,
+        program_key=added.program_key,
+        session_cm_id=1000101,
+        ask=800.0,
+        source="staff",
+        reason="Called in before the form opened",
+        actor="registrar@example.com",
+    )
+
+    async def additions(year: int) -> list[AdditionRecord]:
+        return [addition]
+
+    service = HouseholdPageService(
+        store=store,
+        pricing=FakeRules(approved()),
+        grants=_Grants(),
+        casework=_Casework(store),
+        ledger=_Ledger(),
+        history=_History(),
+        additions=additions,
+        clock=lambda: T0,
+    )
+    cards = {card.row.request_id: card for card in (await service.read(YEAR, JOHNSON)).requests}
+    found = cards[EMMA].addition
+    assert found is not None
+    assert found.cancelled is True
