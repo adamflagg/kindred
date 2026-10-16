@@ -700,7 +700,7 @@ class DrilldownService:
             sessions: Base year sessions dict.
             session_types: Session type filter.
             status_filter: Status filter for attendees.
-            scope_session_ids: The list's session scope: summer-window-gated (``_scope_session_ids``), narrowed by duration when given.
+            scope_session_ids: The list's session scope: summer-window-gated (``_cohort_session_ids``), narrowed by duration when given.
             effective_pipeline: include_teen_pipeline AND the scope has teens; credits
                 the grade-10 -> teen bridge (mirrors the retention card).
 
@@ -793,7 +793,7 @@ class DrilldownService:
             sessions: Base year sessions dict.
             session_types: Session type filter.
             status_filter: Status filter for attendees.
-            scope_session_ids: The list's session scope: summer-window-gated (``_scope_session_ids``), narrowed by duration when given.
+            scope_session_ids: The list's session scope: summer-window-gated (``_cohort_session_ids``), narrowed by duration when given.
             effective_pipeline: include_teen_pipeline AND the scope has teens; credits
                 the grade-10 -> teen bridge (mirrors the retention card).
 
@@ -996,7 +996,7 @@ class DrilldownService:
             session_cm_id: Optional session filter.
             session_types: Optional session type filter.
             ag_session_ids: AG sessions for the filtered parent session.
-            scope_session_ids: The list's session scope: summer-window-gated (``_scope_session_ids``), narrowed by duration when given.
+            scope_session_ids: The list's session scope: summer-window-gated (``_cohort_session_ids``), narrowed by duration when given.
 
         Returns:
             List of DrilldownAttendee records.
@@ -1523,7 +1523,8 @@ class DrilldownService:
 
         # The Overview's Total Cancelled card counts status "cancelled" only and the Cancellations
         # page counts withdrawn and dismissed too; a status filter naming cancelled statuses
-        # narrows the list to its card's (the page sends its enrolled default, so keeps all three).
+        # narrows the list to its card's (the page names all three, and a filter naming none of
+        # them, or no filter, keeps all three). It can only narrow, never widen past these three.
         cancelled_statuses = [s for s in CANCELLED_STATUSES if s in (status_filter or [])] or CANCELLED_STATUSES
         cancelled_attendees, enrolled_attendees, persons = await asyncio.gather(
             self.repo.fetch_attendees(year, cancelled_statuses),
