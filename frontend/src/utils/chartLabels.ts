@@ -49,20 +49,20 @@ function keepIfEmpty(name: string, short: string): string {
  */
 export function chartAxisLabels(names: string[], shorten: (name: string) => string): string[] {
   const labels = names.map(shorten)
-  for (;;) {
+  let changed = true
+  while (changed) {
     const owners = new Map<string, Set<string>>()
     labels.forEach((label, i) => {
-      const set = owners.get(label) ?? new Set<string>()
-      set.add(names[i]!)
-      owners.set(label, set)
+      owners.set(label, (owners.get(label) ?? new Set<string>()).add(names[i] ?? label))
     })
-    let changed = false
+    changed = false
     labels.forEach((label, i) => {
-      if (owners.get(label)!.size > 1 && label !== names[i]) {
-        labels[i] = names[i]!
+      const full = names[i] ?? label
+      if ((owners.get(label)?.size ?? 0) > 1 && label !== full) {
+        labels[i] = full
         changed = true
       }
     })
-    if (!changed) return labels
   }
+  return labels
 }
