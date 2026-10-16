@@ -9,7 +9,7 @@ B*Mitzvah, or a summer session for a sibling the form did not name. Pure: intake
 why a session got no request.
 
 THE MATCH (design §3). For each history row H of the camper with an ask above $0 and a time that parses, S(H) is the
-camper's registrations this season, ANY status, whose registration day (`effective_date`, never overwritten) is
+camper's registrations this season, ANY status, whose registration day (`effective_date`, kept by a status change) is
 within one day of H's UTC date, or whose status date (`enrollment_date`) is within 24 hours of H. An AG or embedded
 session and the main session it sits under (`parent_cm_id`) count as one registration. Then:
   - S(H) is one registration: H is ATTRIBUTED to it; of several rows attributed to one session, the latest wins;
@@ -99,8 +99,8 @@ class AskHistoryRow:
 @dataclass(frozen=True)
 class AttendeeDates:
     """One attendees row of the season, ANY status, with its two dates (PocketBase strings, "" when unknown):
-    `effective_date` the registration day (CampMinder's EffectiveDate, never overwritten), `enrollment_date` the date
-    the status last changed (PostDate)."""
+    `effective_date` the registration day (CampMinder's EffectiveDate: a status change keeps it, a CampMinder bulk
+    action can re-date it), `enrollment_date` the date the status last changed (PostDate)."""
 
     person_cm_id: int
     household_cm_id: int
@@ -285,13 +285,19 @@ def registration_ask_additions(
             continue
         attributed: dict[int, _Ask] = {}
         unclear: set[int] = set()
+        # Sessions of a registration an ask was tied to: one registration is one request, so an AG (or embedded)
+        # session and its parent are one slot. Held or taken on either side closes both (else run 2 would make the
+        # parent's request beside the AG's), and the member that is not the target is no "unattributed" gap.
+        covered: set[int] = set()
+        closed = held.get(person, set()) | {sid for p, sid in taken if p == person}
         for found in asks[person]:
             units = _registrations({r.session_cm_id for r in rows if _matches(found.at, r)}, by_id)
             if len(units) > 1:
                 unclear.update(sid for unit in units.values() for sid in unit)
                 continue
             for unit in units.values():
-                target = _unit_target(unit, open_targets, by_id)
+                covered.update(unit)
+                target = 0 if unit & closed else _unit_target(unit, open_targets, by_id)
                 best = attributed.get(target) if target else None
                 if target and (best is None or (found.at, found.order) > (best.at, best.order)):
                     attributed[target] = found
@@ -313,6 +319,8 @@ def registration_ask_additions(
                         actor=REGISTRATION_ASK_ACTOR,
                     )
                 )
+            elif sid in covered:
+                continue
             elif sid in unclear:
                 ambiguous.append(AskFact(household, person, sid, newest.amount))
             else:

@@ -538,7 +538,9 @@ class FinancialAidIntakeRepository:
         return await FinancialAidRepository(self.pb).fetch_links(year)
 
     async def fetch_request_additions(self, year: int) -> list[AdditionRecord]:
-        """The season's staff-added requests, retired ones included (aid_request_additions; no sync writes it)."""
+        """The season's added requests, staff-added and (2027 on) rule-made, retired ones included
+        (aid_request_additions; no sync writes it). Keep the retired ones: the registration-ask rule never re-makes a
+        slot any addition held."""
         rows = await self._page(AID_REQUEST_ADDITIONS, {"filter": f"year = {int(year)}", "sort": STABLE_SORT})
         return [_addition(r) for r in rows]
 

@@ -25,6 +25,7 @@ from api.services.financial_aid_intake_types import (
     AdditionRecord,
     AttendeeRow,
     FaRow,
+    RequestRecord,
     SessionRow,
 )
 from api.services.financial_aid_registration_ask import (
@@ -256,6 +257,21 @@ async def test_row_4_a_bmitzvah_ask_typed_the_next_utc_day_fires_with_its_amount
     assert addition.reason == "CampMinder registration ask $5,000, typed 2027-07-27 at this session's registration"
 
 
+def test_row_4_the_next_utc_day_matches_on_the_registration_day_alone() -> None:
+    """Scan of #3270: the same shape with the status date weeks away, so only the ±1-day registration-day window can
+    tie the ask (the test above also matches on the status date's 24 hours)."""
+    result = registration_ask_additions(
+        YEAR,
+        fa_rows=[summer(EMMA, JOHNSON, "Session 2")],
+        sessions=SEASON_SESSIONS,
+        attendees=[AttendeeDates(EMMA, JOHNSON, BMITZVAH, 2, "2027-07-27 00:00:00.000Z", "2027-08-20 19:00:00.000Z")],
+        history=[AskHistoryRow(EMMA, 5000.0, "2027-07-28T05:40:00.000+00:00")],
+        additions=[],
+        requests=[],
+    )
+    assert [(a.person_cm_id, a.session_cm_id, a.ask) for a in result.additions] == [(EMMA, BMITZVAH, 5000.0)]
+
+
 # -- row 5: the household filed no form ----------------------------------------------------------------------------------
 
 
@@ -347,6 +363,62 @@ def test_row_8_an_ask_typed_outside_any_registration_is_unattributed_without_the
     )
     assert result.additions == ()
     assert [(f.person_cm_id, f.session_cm_id, f.predates) for f in result.unattributed] == [(EMMA, BMITZVAH, False)]
+
+
+def test_row_8_an_ask_two_days_from_the_registration_is_not_tied_to_it() -> None:
+    """Scan of #3270: the window is one day. An ask typed two days after the registration day, with the status date
+    weeks away, is unattributed, not a request."""
+    result = registration_ask_additions(
+        YEAR,
+        fa_rows=[summer(EMMA, JOHNSON, "Session 2")],
+        sessions=SEASON_SESSIONS,
+        attendees=[AttendeeDates(EMMA, JOHNSON, BMITZVAH, 2, "2027-02-19 00:00:00.000Z", "2027-03-20 19:00:00.000Z")],
+        history=[AskHistoryRow(EMMA, 3000.0, "2027-02-21T18:00:00.000+00:00")],
+        additions=[],
+        requests=[],
+    )
+    assert result.additions == ()
+    assert [(f.person_cm_id, f.session_cm_id, f.predates) for f in result.unattributed] == [(EMMA, BMITZVAH, False)]
+
+
+def _request(person: int, session: int, status: str) -> RequestRecord:
+    """A request of the camper's on a session, as intake reads it back (form-made: its key is the option text)."""
+    return RequestRecord(
+        id=f"req{person}{session}",
+        year=YEAR,
+        application_id="app1",
+        household_cm_id=JOHNSON,
+        person_cm_id=person,
+        session_cm_id=session,
+        program_key="summer",
+        program_option_text="Session 2",
+        program_option_key="session 2",
+        session_resolution="enrollment",
+        ask=3000.0,
+        headcount_non_infant=1,
+        headcount_infant=0,
+        headcount_source="form",
+        status=status,
+        duplicate_of="",
+    )
+
+
+def test_a_withdrawn_request_does_not_hold_its_session() -> None:
+    """Scan of #3270, design §4.2: a request holds its session in any status BUT withdrawn."""
+
+    def on_twr(status: str) -> tuple[AdditionRecord, ...]:
+        return registration_ask_additions(
+            YEAR,
+            fa_rows=[summer(EMMA, JOHNSON, "Session 2")],
+            sessions=SEASON_SESSIONS,
+            attendees=[AttendeeDates(EMMA, JOHNSON, TWR, 2, "2027-09-30 00:00:00.000Z", "2027-09-30 19:00:00.000Z")],
+            history=[AskHistoryRow(EMMA, 290.0, "2027-09-30T21:00:00.000+00:00")],
+            additions=[],
+            requests=[_request(EMMA, TWR, status)],
+        ).additions
+
+    assert [(a.person_cm_id, a.session_cm_id) for a in on_twr("withdrawn")] == [(EMMA, TWR)]
+    assert on_twr("cancelled") == ()
 
 
 # -- row 9: a camper the form didn't name ---------------------------------------------------------------------------------
@@ -556,6 +628,41 @@ async def test_row_20_an_ag_session_and_its_parent_registered_together_are_one_r
     report = await build(store)
     assert made(store) == [(NOAH, AG_2, "summer", 2000.0)]
     assert report.registration_ask_ambiguous == 0
+
+
+@pytest.mark.asyncio
+async def test_row_20_an_ag_session_and_its_parent_both_enrolled_get_one_request_however_many_runs() -> None:
+    """Scan of #3270: one registration is one request. The AG session and its parent both at status 2 make the AG's
+    request, the parent is not reported unattributed, and the next run never makes a second one on the parent."""
+    store = make_store()
+    store.fa_rows = [summer(EMMA, JOHNSON, "Taste of Camp 1"), fa_row(NOAH, JOHNSON, registration_ask=2000.0)]
+    register(store, EMMA, JOHNSON, TASTE_1, day="2026-11-12")
+    register(store, NOAH, JOHNSON, SESSION_2, day="2026-11-13")
+    register(store, NOAH, JOHNSON, AG_2, day="2026-11-13")
+    ask(store, NOAH, 2000.0, "2026-11-13T18:00:00.000+00:00")
+    first = await build(store)
+    second = await build(store)
+    assert made(store) == [(NOAH, AG_2, "summer", 2000.0)]
+    assert (first.registration_ask_added, second.registration_ask_added) == (1, 0)
+    assert (first.registration_ask_unattributed, first.registration_ask_ambiguous) == (0, 0)
+
+
+def test_row_20_a_request_on_the_parent_holds_its_ag_session_too() -> None:
+    """Scan of #3270: the parent session already has the camper's request (a form-made one), so the AG session
+    registered with it that day is the same registration and the rule makes no second request on it."""
+    result = registration_ask_additions(
+        YEAR,
+        fa_rows=[summer(NOAH, JOHNSON, "Session 2")],
+        sessions=SEASON_SESSIONS,
+        attendees=[
+            AttendeeDates(NOAH, JOHNSON, SESSION_2, 2, "2026-11-13 00:00:00.000Z", "2026-11-13 19:00:00.000Z"),
+            AttendeeDates(NOAH, JOHNSON, AG_2, 2, "2026-11-13 00:00:00.000Z", "2026-11-13 19:00:00.000Z"),
+        ],
+        history=[AskHistoryRow(NOAH, 2000.0, "2026-11-13T18:00:00.000+00:00")],
+        additions=[],
+        requests=[_request(NOAH, SESSION_2, "active")],
+    )
+    assert (result.additions, result.ambiguous, result.unattributed) == ((), (), ())
 
 
 # -- row 21: the same shapes in 2026 write nothing ----------------------------------------------------------------------------
