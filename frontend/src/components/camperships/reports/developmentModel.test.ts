@@ -11,6 +11,7 @@ import {
 import {
   asOfChipWords,
   cappedWords,
+  groupsFromWords,
   columnHead,
   developmentTable,
   datedSeasons,
@@ -581,5 +582,22 @@ describe('the capped-requests line (Rule M)', () => {
   it('is null when every column is 0 or missing', () => {
     expect(cappedWords(withCapped([0, 0, 0, 0]))).toBeNull()
     expect(cappedWords(withCapped([undefined, undefined, undefined, undefined]))).toBeNull()
+  })
+})
+
+describe('the groups-from line (#53: a report year with no approved rules follows the newest approved groups)', () => {
+  it("is the server's sentence, with its period, when the read names groups_from", () => {
+    const dev = {
+      ...DEVELOPMENT,
+      not_built: [
+        ...DEVELOPMENT.not_built,
+        { figure: 'groups_from', reason: "Groups follow 2026's rules until 2027's are approved" },
+      ],
+    }
+    expect(groupsFromWords(dev)).toBe("Groups follow 2026's rules until 2027's are approved.")
+  })
+
+  it('is null when the report year has its own approved groups', () => {
+    expect(groupsFromWords(DEVELOPMENT)).toBeNull()
   })
 })

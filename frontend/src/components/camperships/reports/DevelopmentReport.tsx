@@ -23,6 +23,7 @@ import {
   developmentCsvName,
   developmentHeading,
   developmentTable,
+  groupsFromWords,
   noFiguresWords,
   rebuildReason,
   SHOW_REBUILD_SWITCH,
@@ -36,7 +37,8 @@ const TITLE = 'Development report'
  * Reports › Development › Report (spec §9.4; D65, D66, D87–D94, D96, D99, D158; the approved final mock
  * reports-development): ONE toolbar row (the title · Show As Of a Date… | status · Copy · Download CSV),
  * then development's lines by group with seasons as columns, As reported and The dashboard in two groups,
- * all money, never a family; one muted line under the table when requests were capped, then six notes.
+ * all money, never a family; muted lines under the table when the groups follow an earlier season's rules
+ * (#53) or requests were capped, then six notes.
  * The rebuild switch is hidden until the backfill exists (`SHOW_REBUILD_SWITCH`); the as-of column is on
  * demand and saved nowhere (D68). Live only.
  */
@@ -141,6 +143,8 @@ export function DevelopmentReport({ view }: { view: AidView }) {
       >
         {(read) => {
           const capped = cappedWords(read)
+          const groupsFrom = groupsFromWords(read)
+          const lines = [groupsFrom, capped].filter((line): line is string => line !== null)
           return (
             <ReportTable
               showHeading={false}
@@ -151,7 +155,15 @@ export function DevelopmentReport({ view }: { view: AidView }) {
               csvFilename={developmentCsvName(view, 'report')}
               link={link}
               {...(emptyWords === null ? {} : { emptyBody: emptyWords })}
-              footnote={capped === null ? undefined : <p className={REPORT_NOTE}>{capped}</p>}
+              footnote={
+                lines.length === 0
+                  ? undefined
+                  : lines.map((line) => (
+                      <p key={line} className={REPORT_NOTE}>
+                        {line}
+                      </p>
+                    ))
+              }
             />
           )
         }}

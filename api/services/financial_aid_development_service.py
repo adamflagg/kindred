@@ -150,6 +150,7 @@ BUDGET_DEFINITION: Final = (
     "dashboard reads uses the season's first approved budget, which doesn't move with later revisions; an "
     "as-reported season uses the budget finance typed. A column as of a day before that first approval shows none"
 )
+GROUPS_FROM: Final = "groups_from"  # #53: the report year follows an earlier season's groups (the notice's key)
 REPORT: Final = "development"  # aid_report_definitions' key for development's saved columns
 NOT_BUILT: Final[Mapping[str, str]] = {
     "need_met_history": "% of need met before 2026 is as reported only: no per-round asks exist to rebuild it",
@@ -839,12 +840,14 @@ class FinancialAidDevelopmentService:
         as_of: date | None = None,
         register: Sequence[RegisterRow] | None = None,
         budget: Decimal | None = None,
+        borrowed: AidRules | None = None,
     ) -> _Native:
         """One P column: `season` priced now, or (a dated column) `season` as of the end of `as_of` (3c-1's past
-        read) with the live season's `register` cut to that day. `budget`: the Budget row's total."""
+        read) with the live season's `register` cut to that day. `budget`: the Budget row's total. `borrowed`: the
+        newest approved season's rules, whose groups a season with no approved rules of its own follows (#53)."""
         # Development's money is all money (the camp's awards plus every live outside grant line) on campers who
         # attended (D29, ruled as built: R2b).
-        document = season.rules.document if season.rules is not None else None
+        document = season.rules.document if season.rules is not None else borrowed
         records = await self._development.attendances(season.year)
         grouping_ = grouping(document, season.sessions.values())
         attended = attendance(records, grouping_, as_of=as_of)
@@ -919,6 +922,16 @@ class FinancialAidDevelopmentService:
             },
         )
 
+    async def _groups_from(self, year: int) -> tuple[int, AidRules] | None:
+        """RULED (owner 2026-10-16, #53, "go with a"): a report year whose rules aren't approved yet has no groups,
+        so its report would lose the program breakdown. It follows the newest approved season's groups instead,
+        until its own are approved. None: no earlier season has approved rules either."""
+        for earlier in range(year - 1, FIRST_REQUEST_SEASON - 1, -1):
+            found = await self._rules.latest_approved(earlier, ["programs", "budget"])
+            if found is not None:
+                return earlier, found.document
+        return None
+
     async def development(self, year: int, *, column: DatedColumn | None = None) -> DevelopmentResponse:
         """The report, with `column` (one season as of a past day) on demand beside the others: owner 10-08, "Show
         As Of a Date…", not saved and gone when staff leave. Saved columns are not read (the backend stays, unused)."""
@@ -935,6 +948,7 @@ class FinancialAidDevelopmentService:
         natives: dict[int, DevelopmentColumn] = {}
         dated: dict[tuple[int, date], DevelopmentColumn] = {}
         latest: Grouping | None = None
+        borrowed: tuple[int, AidRules] | None = None  # #53: the season whose groups the report year follows
         # Owner 10-09 Q5: the dashboard group is the live season and the last closed one; older ones show as reported.
         for season_year in range(max(FIRST_REQUEST_SEASON, year - 1), year + 1):
             season = await self._decisions.season(season_year)
@@ -947,14 +961,19 @@ class FinancialAidDevelopmentService:
             # when its day came before that first approval.
             first = await self._rules.first_approved(season_year, ["budget"])
             budget = first.document.budget.total if first is not None else None
-            native = await self._native(season, sources, budget=budget)
+            if season_year == year and season.rules is None:
+                borrowed = await self._groups_from(year)
+            document = borrowed[1] if borrowed is not None and season_year == year else None
+            native = await self._native(season, sources, budget=budget, borrowed=document)
             natives[season_year], latest = native.column, native.grouping
             if column is not None and column.season == season_year:
                 past = await self._decisions.past_season(season_year, column.as_of, "campminder")
                 # Final audit O10: before the board first passed the budget there was no approved budget that day.
                 passed = budget if _budget_passed_by(first, column.as_of) else None
                 dated[(season_year, column.as_of)] = (
-                    await self._native(past, sources, as_of=column.as_of, register=season.register, budget=passed)
+                    await self._native(
+                        past, sources, as_of=column.as_of, register=season.register, budget=passed, borrowed=document
+                    )
                 ).column
         reported = [
             s.figure for s in await self._history.reported() if FIRST_DEVELOPMENT_SEASON <= s.figure.year <= year
@@ -965,8 +984,10 @@ class FinancialAidDevelopmentService:
         budgets = sorted((f for f in reported if f.view == "finance" and f.metric == "budget"), key=lambda f: f.as_of)
         if latest is None:
             season = await self._decisions.season(year)
-            document = season.rules.document if season.rules is not None else None
-            latest = grouping(document, season.sessions.values())
+            if season.rules is None:
+                borrowed = await self._groups_from(year)
+            own = season.rules.document if season.rules is not None else None
+            latest = grouping(own or (borrowed[1] if borrowed is not None else None), season.sessions.values())
         columns = _columns(typed, natives, today, dated, budgets, report_year=year)
         ages = {
             season: await self._rebuilt_ages(season, sources)
@@ -975,6 +996,12 @@ class FinancialAidDevelopmentService:
         not_built = [NotBuiltOut(figure=k, reason=v) for k, v in NOT_BUILT.items()]
         if (note := _rebuild_note(year)) is not None:
             not_built.insert(0, NotBuiltOut(figure="rebuild", reason=note))
+        if borrowed is not None and latest.groups:
+            not_built.append(
+                NotBuiltOut(
+                    figure=GROUPS_FROM, reason=f"Groups follow {borrowed[0]}'s rules until {year}'s are approved"
+                )
+            )
         if waiting := sorted(season for season, found in ages.items() if found is None):
             not_built.append(
                 NotBuiltOut(
