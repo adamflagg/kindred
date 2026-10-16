@@ -2072,7 +2072,7 @@ async def test_an_added_request_card_carries_its_addition_and_a_form_request_non
     store = _family()
     added = store.requests[EMMA] = _replace(store.requests[EMMA], program_option_key="added:1000101")
     store.events.append(
-        DecisionEvent(id="ev0000000000099", request_id=EMMA, round=1, kind="post", created=T0, amount=Decimal("800"))
+        DecisionEvent(id="ev0000000000099", request_id=EMMA, round=1, kind="post", created=T0, amount=Decimal(800))
     )
     addition = AdditionRecord(
         id="addemma00000001",

@@ -17,7 +17,8 @@ func TestAidAdditionsReviewedMigrationAddsTheMarkReviewedFields(t *testing.T) {
 		`new Field({ type: "date", name: "reviewed_at"`,
 		`new Field({ type: "text", name: "reviewed_by"`,
 		`findCollectionByNameOrId("aid_decisions")`,
-		`getByName("lock_source").values = ["tick", "ledger", "placement", "reproduced", "campminder_only", "campminder_added"]`,
+		`getByName("lock_source").values = ["tick", "ledger", "placement", "reproduced", ` +
+			`"campminder_only", "campminder_added"]`,
 	} {
 		if !strings.Contains(up, want) {
 			t.Errorf("up must contain %q", want)
