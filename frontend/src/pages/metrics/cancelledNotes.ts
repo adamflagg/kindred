@@ -26,11 +26,6 @@ export const OVERVIEW_NOTES: readonly DefinitionNote[] = [
   { n: 1, term: 'Cancelled', text: CANCELLED_FINAL_NOTE },
 ]
 
-export const TRENDS_NOTES: readonly DefinitionNote[] = [
-  { n: 1, term: 'Cancelled', text: CANCELLED_FINAL_NOTE },
-  { n: 2, term: 'Cancel %', text: CANCEL_RATE_NOTE },
-]
-
 export const CANCELLATIONS_NOTES: readonly DefinitionNote[] = [
   { n: 1, term: 'Total Cancelled', text: CANCELLATIONS_TAB_NOTE },
   { n: 2, term: 'Session Swaps', text: SWAP_NOTE, alsoBold: ['True Departures'] },

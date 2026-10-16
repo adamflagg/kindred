@@ -86,6 +86,12 @@ vi.mock('../../../hooks/useMetrics', () => ({
     isLoading: false,
     error: null,
   })),
+  // The previous season read at this season's registration day (decision 7).
+  useRegistrationMetrics: vi.fn(() => ({ data: undefined })),
+}))
+
+vi.mock('../../../hooks/useCompareYearFilter', () => ({
+  useCompareYearFilter: (_p: number, _c: number | null, options: unknown) => options,
 }))
 
 // Stub out recharts to avoid ResizeObserver issues in jsdom
@@ -115,7 +121,7 @@ function renderWithClient() {
 // Import after mocks are set up
 import TrendsOverview from './TrendsOverview'
 import { useRetentionTrends } from '../../../hooks/useRetentionTrends'
-import { useHistoricalTrends } from '../../../hooks/useMetrics'
+import { useHistoricalTrends, useRegistrationMetrics } from '../../../hooks/useMetrics'
 
 describe('TrendsOverview — Camp → Teen checkbox', () => {
   beforeEach(() => {
@@ -325,8 +331,9 @@ describe('TrendsOverview — numbered notes and number formatting (decisions 11,
     const headers = Array.from(table.querySelectorAll('th'))
     const cancelled = headers.find((th) => th.textContent.startsWith('Cancelled'))
     const rate = headers.find((th) => th.textContent.startsWith('Cancel %'))
-    expect(cancelled?.querySelector('sup')?.textContent).toBe('1')
-    expect(rate?.querySelector('sup')?.textContent).toBe('2')
+    // "vs final" takes note 1 (#66), so the cancelled notes follow it as 2 and 3
+    expect(cancelled?.querySelector('sup')?.textContent).toBe('2')
+    expect(rate?.querySelector('sup')?.textContent).toBe('3')
     expect(table.querySelector('[title]')).toBeNull()
     expect(screen.getByText(/whose status in CampMinder is Cancelled now/)).toBeInTheDocument()
     expect(screen.getByText(/cancelled ÷ \(enrolled \+ cancelled\)/)).toBeInTheDocument()
@@ -337,5 +344,34 @@ describe('TrendsOverview — numbered notes and number formatting (decisions 11,
     // Total Change and Avg. Annual Growth both read it over two years.
     expect(screen.getAllByText('\u22121,256')).toHaveLength(2)
     expect(screen.getByText('1,208')).toBeInTheDocument()
+  })
+})
+
+describe('TrendsOverview — live season compares at the same registration day (#66)', () => {
+  it('reads the live row against last year at the same point, with the numbered note', () => {
+    vi.mocked(useHistoricalTrends).mockReturnValue({
+      data: {
+        years: [
+          { ...mockHistoricalYear, year: 2025, total_enrolled: 2079 },
+          { ...mockHistoricalYear, year: 2026, total_enrolled: 1927 },
+        ],
+      },
+      isLoading: false,
+      error: null,
+    } as unknown as ReturnType<typeof useHistoricalTrends>)
+    vi.mocked(useRegistrationMetrics).mockReturnValue({
+      data: {
+        prior_basis: 'same_point',
+        as_of_date: '2026-10-15',
+        day_offset: 120,
+        total_enrolled: 1965,
+      },
+    } as unknown as ReturnType<typeof useRegistrationMetrics>)
+    renderWithClient()
+    const row = screen.getByText('2026', { selector: 'td' }).closest('tr')!
+    expect(within(row).getByText(/▼ −38/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/compared with 2025 at the same registration day \(Oct 15\)/)
+    ).toBeInTheDocument()
   })
 })
