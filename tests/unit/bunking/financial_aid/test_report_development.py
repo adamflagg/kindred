@@ -29,7 +29,6 @@ from bunking.financial_aid.reports.development import (
     SourceLine,
     development_column,
     gender_label,
-    rebuilt_ages,
 )
 from bunking.financial_aid.reports.facts import is_capped, need
 from tests.unit.bunking.financial_aid.report_fixtures import req, rnd
@@ -373,28 +372,6 @@ def test_every_cancel_reason_counts_every_cancelled_request_attended_or_not() ->
     camp = _camp(column)
     assert camp.cancelled_by_reason == {"medical": 1, "aid_not_enough": 1, NOT_RECORDED_REASON: 1}
     assert camp.appeals.declined_insufficient_aid == 1  # the aid_not_enough line keeps its own count
-
-
-def test_rebuilt_ages_count_recipients_by_age_on_their_first_summer_session() -> None:
-    """D158 (B4c): a recipient is a camper a live line names, or a summer camper of a household a household-level camp
-    line names (RULED (owner 2026-10-02), item 50: every such camper counts); age is on the first day of the first summer
-    session (D103)."""
-    stays = [
-        (EMMA, 1000001, date(2025, 6, 20)),
-        (LIAM, 1000002, date(2025, 7, 10)),
-        (SAMUEL, 1000002, date(2025, 6, 20)),
-        (OLIVIA, 1000004, None),
-    ]
-    persons = {
-        EMMA: Person(EMMA, date(2015, 1, 1), ""),
-        LIAM: Person(LIAM, date(2012, 1, 1), ""),
-        SAMUEL: Person(SAMUEL, date(2007, 1, 1), ""),
-    }
-    ages = rebuilt_ages(stays, persons, money_people={EMMA, OLIVIA}, money_households={1000002})
-    assert ages == {YOUTH: 1, TEEN: 1, ADULT: 1, AGE_UNKNOWN: 1}  # Emma 10, Liam 13, Samuel 18, Olivia no birthdate
-
-
-# --- item 32: an award is a distinct attendee/session combo receiving any aid (owner rule 2026-10-02) ------------
 
 
 def test_camp_aid_and_an_outside_grant_on_the_same_camper_session_are_one_award() -> None:

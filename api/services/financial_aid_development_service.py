@@ -6,7 +6,9 @@ Rows are development's lines grouped Money · Counts · Appeals and cancellation
       carries `basis_unconfirmed` while D96's premise is contested (O-930-1);
   P   Kindred's figures for a season it priced (from 2027; 2026 once its decisions load, D67): all money, the
       camp's awarded (D80) plus every live outside grant line (D87), on campers who attended (D92).
-Kindred's approximate rebuild of 2022–2025 (≈) waits on the 2017–2024 backfill and is named in `not_built`.
+Kindred's approximate rebuild of 2022–2025 (≈) waits on the 2017–2024 backfill and is named in `not_built`. An r
+column's summer age lines are the dashboard's all the same, counted from that season's Campership sheet once it is
+loaded (aid_reported_recipients; owner ruling 2026-10-16), and blank until then.
 
 Groups are the season's budget pools (D100). Each money line finds its group: the camp's awards by their request's
 home pool; an outside line by its session's program, else by its program family's pool. A household-level line of a
@@ -75,6 +77,7 @@ from api.services.financial_aid_ledger_service import (
     needs_group,
     parse_pb_datetime,
 )
+from api.services.financial_aid_reported_recipients_repository import StoredRecipient
 from api.services.financial_aid_reports_facts import report_requests
 from api.services.financial_aid_reports_service import ReportsRefusedError, ReportsStore
 from api.services.financial_aid_rules_service import RulesVersion
@@ -100,10 +103,10 @@ from bunking.financial_aid.reports.development import (
     Person,
     development_column,
     gender_label,
-    rebuilt_ages,
 )
 from bunking.financial_aid.reports.facts import ReportRequest, average
 from bunking.financial_aid.reports.history import ReportedFigure
+from bunking.financial_aid.reports.recipients import sheet_ages
 from bunking.financial_aid.reports.zips import HouseholdAddress, ZipRow, ZipTable, every_camper, with_aid
 from bunking.financial_aid.rules import AidRules, resolve_program
 from bunking.financial_aid.rules.schema import SectionName
@@ -113,9 +116,6 @@ FIRST_REQUEST_SEASON: Final = 2026
 DEVELOPMENT_LOOKBACK_SEASONS: Final = 5  # owner 10-09 Q5: historical seasons shown as reported, counted by season
 LAST_UNCONFIRMED_SEASON: Final = 2025  # O-930-1: D96's premise (2022–2025's basis) is contested
 SUMMER_TYPES: Final = frozenset({"main", "embedded", "ag", "quest", "scit", "tli", "teen"})
-# The aid families whose camp aid a rebuilt age line counts (item 1): a source implying one of these is summer,
-# Quest or teen aid; Family Camp, adult-weekend and other families (or none) are not.
-SUMMER_AID_FAMILIES: Final = frozenset({"summer", "quest", "teen"})
 TEEN_PROGRAM_TYPES: Final = frozenset({"scit", "tli"})  # §5.11: "TLI + SCIT stays a program line"
 # Not camper programs development reports (queue "Known limits": B*Mitzvah is; Family School and "other" aren't).
 NOT_REPORTED_FAMILIES: Final = frozenset({"family_school", "other"})
@@ -157,6 +157,12 @@ NOT_BUILT: Final[Mapping[str, str]] = {
 }
 
 
+def _ages_need_sheet(seasons: Sequence[int]) -> str:
+    """Why an as-reported season's age lines are blank: its Campership sheet isn't loaded (owner 2026-10-16)."""
+    which = "that season's Campership sheet is" if len(seasons) == 1 else "those seasons' Campership sheets are"
+    return f"Teens, youth and the other age lines for {', '.join(map(str, seasons))} are blank until {which} loaded"
+
+
 def _rebuild_note(year: int) -> str | None:
     """The rebuild's range is the seasons still shown as reported that the backfill will rebuild (owner 10-09 Q5: the
     window rolls, so 2022 leaves the report in 2028); None once every one of them has rolled off."""
@@ -165,7 +171,7 @@ def _rebuild_note(year: int) -> str | None:
         return None
     return (
         f"The dashboard's approximate rebuild of {first}–{last} (≈) waits on the 2017–2024 ledger backfill; those "
-        "seasons show as reported, except their age lines, which are the dashboard's by age"
+        "seasons show as reported, except their age lines, which count that season's Campership sheet"
     )
 
 
@@ -191,7 +197,7 @@ class DevelopmentStore(Protocol):
     async def family_keys(self, year: int) -> dict[int, str]: ...
     async def sources(self) -> list[SourceRecord]: ...
     async def grantors(self) -> list[GrantorRecord]: ...
-    async def has_live_grant_lines(self, year: int) -> bool: ...
+    async def reported_recipients(self, year: int) -> list[StoredRecipient]: ...
     async def source_lines(self, year: int) -> dict[str, tuple[int, Decimal]]: ...
     async def source_changes(self) -> dict[str, SourceChangeOut]: ...
     async def source(self, source_id: str) -> SourceRecord | None: ...
@@ -510,8 +516,9 @@ _AGE_LINES: Final[Mapping[str, str]] = {"teens": TEEN, "youth": YOUTH, "adults":
 def _rebuilt_age(
     ages: Mapping[str, int] | None, key: str, scope: DevGroup | None, groups: Sequence[DevGroup]
 ) -> int | None:
-    """D158: an r column's age line is Kindred's rebuild by age, on the one summer group's row; None before the
-    backfill (no ledger lines) or when there isn't exactly one summer group to put it on."""
+    """D158: an r column's age line is the dashboard's count by age of that season's Campership sheet (owner
+    2026-10-16), on the one summer group's row; None until the sheet is loaded, or when there isn't exactly one
+    summer group to put it on."""
     summer = [g for g in groups if g.kind == "summer"]
     if ages is None or scope is None or len(summer) != 1 or scope.key != summer[0].key:
         return None
@@ -561,7 +568,6 @@ class FinancialAidDevelopmentService:
         self._store = store
         self._rules = rules
         self._development = development
-        self._register = register
         self._history = history
         self._clock: Callable[[], datetime] = clock or (lambda: datetime.now(UTC))
         self._decisions = FinancialAidDecisionsService(
@@ -887,39 +893,29 @@ class FinancialAidDevelopmentService:
             built = replace(built, budget=budget)
         return _Native(built, grouping_, attended)
 
-    async def _rebuilt_ages(self, year: int, sources: Sequence[SourceRecord] = ()) -> dict[str, int] | None:
-        """D158: the summer recipients of a season with no P column, by age, rebuilt from that season's ledger. None
-        when the season has no live aid line at all (2022-2024 until the 2017-2024 backfill)."""
-        # RULED (owner 2026-10-02), item 51: a season with no ledger lines yet is blank (named once in not_built), never zero.
-        camp = [line for line in await self._store.fetch_camp_lines(year) if line.live() and line.amount > 0]
-        # The register is a full-season load (aid_sync_inputs: persons, households, registrations, custom values, FA
-        # rows), and every as-reported season comes here; 2022-2024 have no line at all. Ask the ledger first, so a
-        # season with nothing to rebuild costs one row, not a load that pushed Development past its timeouts.
-        if not camp and not await self._development.has_live_grant_lines(year):
-            return None
-        outside = [
-            row
-            for row in await self._register(year)
-            if row.kind == "ledger" and not row.is_reversed and row.funder_type in GRANT_FUNDER_TYPES and row.amount > 0
-        ]
-        if not camp and not outside:
-            return None
-        # RULED (owner 2026-10-02), item 1: a household-level camp line counts only when its source implies summer aid.
-        summer_sources = {s.description_key for s in sources if SUMMER_AID_FAMILIES & set(s.implied_program_families)}
+    async def _sheet_ages(self, year: int) -> dict[str, int] | None:
+        """An as-reported season's summer recipients by age, from that season's Campership sheet; None until it is
+        loaded."""
+        # RULED (owner 2026-10-16, CS-AGES25): "don't auto count all summer kids in a family if one kid in the family
+        # (or the family got aid) automatically, it overcounts summer, and don't forget to include families who only
+        # got external aid, else you undercount families. the real answer is 'we need the google sheet' for each year
+        # back to 2022." So the age lines count exactly the sheet's summer recipients (the camp's award or an outside
+        # grant) who were enrolled at summer that season. This replaces the ledger rebuild: owner item 50's every
+        # summer camper of a household-level line's household, and D142's sole-camper tie, overcounted.
+        listed = [s.recipient for s in await self._development.reported_recipients(year)]
+        if not listed:
+            return None  # item 51 still holds: a season with nothing to count is blank, named once, never zero
+        summer = {r.person_cm_id for r in listed if r.program == "summer"}
         stays = [
-            r for r in await self._development.attendances(year) if r.status_id == 2 and r.session_type in SUMMER_TYPES
+            r
+            for r in await self._development.attendances(year)
+            if r.status_id == 2 and r.session_type in SUMMER_TYPES and r.person_cm_id in summer
         ]
         people = await self._development.persons(year, {r.person_cm_id for r in stays})
-        return rebuilt_ages(
-            ((r.person_cm_id, r.household_cm_id, r.start) for r in stays),
+        return sheet_ages(
+            listed,
+            ((r.person_cm_id, r.start) for r in stays),
             {p.person_cm_id: Person(p.person_cm_id, p.birthdate, "") for p in people},
-            {line.person_cm_id for line in camp if line.person_cm_id > 0}
-            | {row.person_cm_id for row in outside if row.person_cm_id > 0},
-            {
-                line.household_cm_id
-                for line in camp
-                if line.person_cm_id <= 0 and line.description_key in summer_sources
-            },
         )
 
     async def _groups_from(self, year: int) -> tuple[int, AidRules] | None:
@@ -990,7 +986,7 @@ class FinancialAidDevelopmentService:
             latest = grouping(own or (borrowed[1] if borrowed is not None else None), season.sessions.values())
         columns = _columns(typed, natives, today, dated, budgets, report_year=year)
         ages = {
-            season: await self._rebuilt_ages(season, sources)
+            season: await self._sheet_ages(season)
             for season in sorted({c.season for c, _ in columns if c.basis == "r"} - set(natives))
         }
         not_built = [NotBuiltOut(figure=k, reason=v) for k, v in NOT_BUILT.items()]
@@ -1003,16 +999,7 @@ class FinancialAidDevelopmentService:
                 )
             )
         if waiting := sorted(season for season, found in ages.items() if found is None):
-            not_built.append(
-                NotBuiltOut(
-                    figure="ages_before_backfill",
-                    reason=(
-                        f"Teens, youth and the other age lines for {', '.join(map(str, waiting))} are blank: "
-                        "the dashboard has no classified camp-aid lines for those seasons (the 2017–2024 ledger "
-                        "backfill is one cause; postings whose funder isn't classified yet are another)"
-                    ),
-                )
-            )
+            not_built.append(NotBuiltOut(figure="ages_need_sheet", reason=_ages_need_sheet(waiting)))
         rows = _rows(latest.groups, columns, ages)
         return DevelopmentResponse(
             year=year,

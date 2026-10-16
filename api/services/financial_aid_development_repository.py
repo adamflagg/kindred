@@ -32,11 +32,12 @@ from datetime import date
 from decimal import Decimal
 from typing import Any, Final
 
-from api.constants.collections import AID_POSTINGS, AID_REPORT_DEFINITIONS, ATTENDEES, CAMP_SESSIONS, PERSONS
+from api.constants.collections import AID_REPORT_DEFINITIONS, ATTENDEES, CAMP_SESSIONS, PERSONS
 from api.dependencies import development_history_cache
 from api.schemas.financial_aid import SourceChangeOut
 from api.services.financial_aid_grants_service import grantor_retired_at
 from api.services.financial_aid_ledger_service import last_changes, parse_pb_datetime, source_lines
+from api.services.financial_aid_reported_recipients_repository import ReportedRecipientsRepository, StoredRecipient
 from api.services.financial_aid_repository import FinancialAidRepository
 from api.services.lodging_cache import cached_by_year
 from api.services.pb_read import pb_read
@@ -289,26 +290,12 @@ class DevelopmentRepository:
         row = await self._aid.get_source(source_id)
         return source_record(row) if row is not None else None
 
-    async def has_live_grant_lines(self, year: int) -> bool:
-        """Whether the season has any line the rebuilt ages could count as an outside grant: live, outside or
-        incentive, and a credit (the grants register's own rows come from these postings, so a False here means its
-        rows hold none). One row, no count: the question before paying for the season's register, a full-season load.
-        `amount < 0`: the column keeps CampMinder's sign, and the register's `amount > 0` is in aid dollars
-        (aid_dollars flips it), so a credit is negative here."""
-        page = await pb_read(
-            self.pb.collection(AID_POSTINGS).get_list,
-            1,
-            1,
-            {
-                "filter": (
-                    f"year = {int(year)} && (funder_type = 'outside' || funder_type = 'incentive')"
-                    " && is_reversed = false && amount < 0"
-                ),
-                "fields": "id",
-                "skipTotal": True,
-            },
-        )
-        return bool(page.items)
+    async def reported_recipients(self, year: int) -> list[StoredRecipient]:
+        """A past season's Campership sheet, as loaded (owner ruling 2026-10-16): its summer age lines' only source."""
+        return await ReportedRecipientsRepository(self.pb).reported_recipients(year)
+
+    async def reported_recipient(self, record_id: str) -> StoredRecipient | None:
+        return await ReportedRecipientsRepository(self.pb).reported_recipient(record_id)
 
     async def source_lines(self, year: int) -> dict[str, tuple[int, Decimal]]:
         """Each description's live lines this season and their net, by the description that classifies them now

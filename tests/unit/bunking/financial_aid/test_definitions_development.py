@@ -76,3 +76,10 @@ def test_as_reported_says_the_rebuild_waits_on_the_backfill() -> None:
     assert "the figures already sent to funders, typed once" in text
     assert "may count the camp's own aid only" in text
     assert "2017–2024 ledger backfill" in text
+
+
+def test_as_reported_says_its_age_lines_come_from_that_seasons_campership_sheet() -> None:
+    """Owner ruling 2026-10-16 (CS-AGES25): an as-reported season's age lines count its Campership sheet, and are
+    blank until it is loaded; the note under the table is the one place staff read why."""
+    text = BY_KEY["basis_unconfirmed"].text
+    assert "age lines count that season's Campership sheet, blank until it is loaded" in text

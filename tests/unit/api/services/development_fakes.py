@@ -7,11 +7,12 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date
 from decimal import Decimal
+from types import SimpleNamespace
 from typing import Any, cast
 
 import httpx
 
-from api.constants.collections import AID_REPORT_DEFINITIONS, AID_SOURCES
+from api.constants.collections import AID_REPORT_DEFINITIONS, AID_REPORTED_RECIPIENTS, AID_SOURCES
 from api.schemas.financial_aid import SourceChangeOut
 from api.services.financial_aid_development_repository import (
     AttendanceRecord,
@@ -21,6 +22,11 @@ from api.services.financial_aid_development_repository import (
     StoredColumns,
 )
 from api.services.financial_aid_ledger_service import last_changes, source_lines
+from api.services.financial_aid_reported_recipients_repository import (
+    StoredRecipient,
+    recipient_fields,
+    recipient_from_record,
+)
 from bunking.financial_aid.change_log import COLLECTION, AidOperationResult, AidWrite, commit_aid_writes
 from bunking.financial_aid.reports.zips import HouseholdAddress
 from pocketbase import PocketBase
@@ -58,9 +64,9 @@ class FakeDevelopmentStore:
         default_factory=list
     )  # aid_change_log rows about aid_sources (the real last_changes reads them)
     earlier_reads: list[tuple[frozenset[int], frozenset[int]]] = field(default_factory=list)
-    # The seasons with a live grant line (has_live_grant_lines). None: every season may have one, so the service
-    # reads each season's register, as it did before it asked.
-    grant_line_seasons: set[int] | None = None
+    # aid_reported_recipients: a past season's Campership sheet, as loaded (owner ruling 2026-10-16)
+    recipient_rows: list[StoredRecipient] = field(default_factory=list)
+    recipient_reads: list[int] = field(default_factory=list)
     columns: StoredColumns = field(default_factory=lambda: StoredColumns("", ()))
     log: list[dict[str, Any]] = field(default_factory=list)  # every aid_change_log row that committed
     operations: list[list[AidWrite]] = field(default_factory=list)  # every commit attempted
@@ -94,8 +100,12 @@ class FakeDevelopmentStore:
     async def grantors(self) -> list[GrantorRecord]:
         return list(self.grantor_rows)
 
-    async def has_live_grant_lines(self, year: int) -> bool:
-        return self.grant_line_seasons is None or year in self.grant_line_seasons
+    async def reported_recipients(self, year: int) -> list[StoredRecipient]:
+        self.recipient_reads.append(year)
+        return [r for r in self.recipient_rows if r.recipient.year == year]
+
+    async def reported_recipient(self, record_id: str) -> StoredRecipient | None:
+        return next((r for r in self.recipient_rows if r.id == record_id), None)
 
     async def source_lines(self, year: int) -> dict[str, tuple[int, Decimal]]:
         return source_lines(self.posting_rows)
@@ -129,6 +139,8 @@ class FakeDevelopmentStore:
                     implied_program_families=tuple(families),
                     incentive=bool(body.get("incentive", current.incentive)),
                 )
+            elif collection == AID_REPORTED_RECIPIENTS:
+                self._write_recipient(item["method"], parts, body)
             elif collection == AID_REPORT_DEFINITIONS:
                 pairs = tuple((int(c["season"]), date.fromisoformat(c["as_of"])) for c in body["columns"])
                 self.columns = StoredColumns(self.columns.id or "rdf000000000001", pairs)
@@ -136,3 +148,20 @@ class FakeDevelopmentStore:
                 raise AssertionError(f"development must not write {collection} ({item['method']})")
             results.append({"status": 200, "body": {**body, "id": parts[-1]}})
         return httpx.Response(200, json=results)
+
+    def _write_recipient(self, method: str, parts: list[str], body: dict[str, Any]) -> None:
+        if method == "POST":
+            record_id = str(body.pop("id", "") or f"rrc{len(self.recipient_rows) + 1:012d}")
+            self.recipient_rows.append(recipient_from_record(SimpleNamespace(id=record_id, **body)))
+            return
+        at = next(i for i, r in enumerate(self.recipient_rows) if r.id == parts[4])
+        if method == "DELETE":
+            del self.recipient_rows[at]
+            return
+        current = self.recipient_rows[at]
+        merged = {**_recipient_body(current), **body}
+        self.recipient_rows[at] = recipient_from_record(SimpleNamespace(id=current.id, **merged))
+
+
+def _recipient_body(stored: StoredRecipient) -> dict[str, Any]:
+    return recipient_fields(stored.recipient)

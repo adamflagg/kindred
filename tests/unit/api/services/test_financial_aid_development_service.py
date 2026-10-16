@@ -26,9 +26,11 @@ from api.services.financial_aid_development_service import (
 )
 from api.services.financial_aid_grants_register import RegisterRow
 from api.services.financial_aid_intake_types import SessionRow
+from api.services.financial_aid_reported_recipients_repository import StoredRecipient
 from bunking.financial_aid.decisions import DecisionEvent
 from bunking.financial_aid.reports.development import NOT_REPORTED
 from bunking.financial_aid.reports.history import ReportedFigure
+from bunking.financial_aid.reports.recipients import ReportedRecipient
 from bunking.financial_aid.rules import AidRules
 from tests.unit.api.services.decisions_fakes import FakeDecisionsStore, FakeRules, approved, grant_row, seed_line
 from tests.unit.api.services.development_fakes import FakeDevelopmentStore, went
@@ -41,16 +43,6 @@ pytestmark = pytest.mark.asyncio
 NOW = datetime(2027, 4, 1, 17, 0, tzinfo=UTC)
 EMMA, LIAM = 1000011, 1000021
 REGIONAL = SourceRecord("src000000000001", "regional grant", "Regional Camp Fund", "outside", False, ("summer",))
-CAMP_SUMMER = SourceRecord("src000000000002", "camp fa summer", "Camp aid, summer", "camp", False, ("summer",))
-CAMP_QUEST = SourceRecord("src000000000003", "camp fa quest", "Camp aid, Quest", "camp", False, ("quest",))
-CAMP_TEEN = SourceRecord("src000000000004", "camp fa teen", "Camp aid, teen", "camp", False, ("teen",))
-CAMP_WEEKEND = SourceRecord(
-    "src000000000005", "camp fa family", "Camp aid, Family Camp", "camp", False, ("family_camp",)
-)
-CAMP_ADULT = SourceRecord(
-    "src000000000006", "camp fa adult", "Camp aid, adult weekend", "camp", False, ("adult_weekend",)
-)
-CAMP_NO_FAMILY = SourceRecord("src000000000007", "camp fa none", "Camp aid, unclassified", "camp", False, ())
 
 
 def _development(**change: Any) -> FakeDevelopmentStore:
@@ -192,44 +184,122 @@ def _stayed_2025() -> FakeDevelopmentStore:
     )
 
 
-async def test_the_rebuilt_ages_ignore_reversed_camp_lines() -> None:
-    """D158: Emma's reversed 2025 camp line isn't aid, so she isn't counted; Liam's live one is."""
-    store = report_season()
-    seed_line(store, 7001, "800", household=1000002, person=LIAM)
-    seed_line(store, 7002, "600", household=1000001, person=EMMA, reversed_at=datetime(2025, 8, 1, 18, 0, tzinfo=UTC))
-    out = await _service(_stayed_2025(), _backfilled_2025(), store=store).development(YEAR)
-    assert _row(out, "teens", "camp_pool").values[0] == 1.0  # Liam, 13
-    assert _row(out, "youth", "camp_pool").values[0] == 0.0  # not Emma
+# --- a past season's age lines come from that season's Campership sheet (owner ruling 2026-10-16, CS-AGES25) -------
+
+OLIVIA = 1000012  # Emma's sister, in Emma's household
 
 
-async def test_the_rebuilt_ages_count_only_attending_registrations() -> None:
-    """D158: Emma's 2025 registration was cancelled (status 32), so her 2025 aid line gives no youth to count."""
-    store = report_season()
-    seed_line(store, 7001, "800", household=1000002, person=LIAM)
-    seed_line(store, 7002, "600", household=1000001, person=EMMA)
-    development = _development(
-        registrations=[
-            went(EMMA, 1000001),
-            went(LIAM, 1000002),
-            went(EMMA, 1000001, year=2025, start=date(2025, 6, 20), status=32),
-            went(LIAM, 1000002, year=2025, start=date(2025, 6, 20)),
-        ]
+def _on_sheet(person: int, household: int, *, source: str = "camp", year: int = 2025) -> StoredRecipient:
+    return StoredRecipient(
+        f"rrc{person:012d}"[:15],
+        ReportedRecipient(
+            year=year,
+            person_cm_id=person,
+            household_cm_id=household,
+            program="summer",
+            source=source,  # type: ignore[arg-type]
+            funder="Regional Camp Fund" if source == "outside" else "",
+            amount=Decimal(1200),
+            sheet_tab="Grants" if source == "outside" else "Aid calculator",
+            sheet_row=7,
+            match="personal_id",
+        ),
     )
-    out = await _service(development, _backfilled_2025(), store=store).development(YEAR)
+
+
+def _sisters_2025(*listed: StoredRecipient) -> FakeDevelopmentStore:
+    development = _stayed_2025()
+    development.registrations.append(went(OLIVIA, 1000001, year=2025, start=date(2025, 6, 20)))
+    development.people.append(PersonRecord(OLIVIA, 1000001, date(2016, 3, 1), "", ""))
+    development.recipient_rows = list(listed)
+    return development
+
+
+async def test_a_loaded_sheet_gives_exactly_its_summer_recipients_by_age_an_outside_only_camper_included() -> None:
+    """Emma (10) has the camp's award; Liam (13) only an outside grant, and still counts (the ruling: "don't forget
+    to include families who only got external aid"). Nothing names the season as waiting."""
+    development = _sisters_2025(_on_sheet(EMMA, 1000001), _on_sheet(LIAM, 1000002, source="outside"))
+    out = await _service(development, _backfilled_2025()).development(YEAR)
+    assert _row(out, "youth", "camp_pool").values[0] == 1.0
     assert _row(out, "teens", "camp_pool").values[0] == 1.0
-    assert _row(out, "youth", "camp_pool").values[0] == 0.0
+    assert _row(out, "adults", "camp_pool").values[0] == 0.0
+    assert {n.figure for n in out.not_built} & {"ages_need_sheet", "ages_before_backfill"} == set()
 
 
-@pytest.mark.parametrize(("funder_type", "youth", "named"), [("outside", 1.0, False), ("unknown", None, True)])
-async def test_the_rebuilt_ages_count_only_classified_outside_grants(
-    funder_type: str, youth: float | None, named: bool
-) -> None:
-    """D158: with no camp lines, an outside grant on Emma rebuilds her age; a line whose funder is unclassified
-    ("unknown") isn't a grant, so the season stays blank and is named."""
-    line = grant_row("reqemma00000001", "300", funder_type=funder_type)
-    out = await _service(_stayed_2025(), _backfilled_2025(), past_register=[line]).development(YEAR)
-    assert _row(out, "youth", "camp_pool").values[0] == youth
-    assert ("ages_before_backfill" in {n.figure for n in out.not_built}) is named
+async def test_a_sibling_the_sheet_does_not_list_is_not_counted() -> None:
+    """Olivia attended 2025 in Emma's household, and only Emma is on the sheet: one youth, never the household's
+    every summer camper (the ruling: "it overcounts summer")."""
+    out = await _service(_sisters_2025(_on_sheet(EMMA, 1000001)), _backfilled_2025()).development(YEAR)
+    assert _row(out, "youth", "camp_pool").values[0] == 1.0
+    assert _row(out, "teens", "camp_pool").values[0] == 0.0
+
+
+async def test_a_listed_recipient_with_no_enrolled_summer_stay_is_not_counted() -> None:
+    """Liam is on 2025's sheet, but his 2025 registration was cancelled: he isn't a summer camper that season."""
+    development = _sisters_2025(_on_sheet(EMMA, 1000001), _on_sheet(LIAM, 1000002))
+    development.registrations = [
+        r if not (r.person_cm_id == LIAM and r.year == 2025) else replace(r, status_id=32)
+        for r in development.registrations
+    ]
+    out = await _service(development, _backfilled_2025()).development(YEAR)
+    assert _row(out, "teens", "camp_pool").values[0] == 0.0
+    assert _row(out, "youth", "camp_pool").values[0] == 1.0
+
+
+async def test_with_no_sheet_the_age_lines_are_blank_whatever_the_ledger_holds() -> None:
+    """The household fan-out (owner item 50) and the sole-camper tie (D142) are gone from the age lines: a 2025
+    camp line on Liam and an outside grant on Emma count nothing until 2025's sheet is loaded, and the season is
+    named once, by the sheet, never by the backfill."""
+    store = report_season()
+    seed_line(store, 7001, "800", household=1000002, person=LIAM)  # a live camp line on Liam
+    seed_line(store, 7002, "600", household=1000001, person=0)  # a household-level line on Emma's household
+    line = grant_row("reqemma00000001", "300")
+    out = await _service(_stayed_2025(), _backfilled_2025(), store=store, past_register=[line]).development(YEAR)
+    for key in ("teens", "youth", "adults", "age_unknown"):
+        assert _row(out, key, "camp_pool").values[0] is None, key
+    figures = [n.figure for n in out.not_built]
+    assert "ages_before_backfill" not in figures
+    assert figures.count("ages_need_sheet") == 1
+    gap = next(n for n in out.not_built if n.figure == "ages_need_sheet")
+    assert "2025" in gap.reason
+    assert "Campership sheet is loaded" in gap.reason
+
+
+async def test_the_waiting_seasons_are_named_in_one_reason_and_a_loaded_one_is_not() -> None:
+    history = FakeReportsStore()
+    for season in (2023, 2024, 2025):
+        history.seed(
+            ReportedFigure(
+                season, "development", "total_awards", "camp_pool", 0, 0, "season_end", date(season, 9, 29), Decimal(9)
+            )
+        )
+    out = await _service(_sisters_2025(_on_sheet(EMMA, 1000001)), history).development(YEAR)
+    assert _row(out, "youth", "camp_pool").values[:3] == [None, None, 1.0]
+    gap = next(n for n in out.not_built if n.figure == "ages_need_sheet")
+    assert "2023, 2024" in gap.reason
+    assert "2025" not in gap.reason
+    assert "sheets are loaded" in gap.reason  # two seasons: their sheets
+
+
+async def test_the_age_lines_never_build_a_past_seasons_grants_register() -> None:
+    """A register is a full-season load; the age lines read only the sheet's rows and the season's stays now."""
+    reads: list[int] = []
+
+    async def rows(year: int) -> Sequence[RegisterRow]:
+        reads.append(year)
+        return []
+
+    service = FinancialAidDevelopmentService(
+        report_season(),
+        FakeRules(approved(intake_rules())),
+        rows,
+        _sisters_2025(_on_sheet(EMMA, 1000001)),
+        _backfilled_2025(),
+        clock=lambda: NOW,
+    )
+    out = await service.development(YEAR)
+    assert _row(out, "youth", "camp_pool").values[0] == 1.0
+    assert 2025 not in reads
 
 
 async def test_first_time_states_its_definition_and_reads_earlier_seasons_for_recipients() -> None:
@@ -458,118 +528,6 @@ async def test_every_average_award_rounds_a_half_cent_up_as_the_group_rows_do() 
     assert _row(out, "average_award", "camp_pool").values[0] == 500.01  # the typed 2025 pair
 
 
-async def test_a_column_with_no_p_column_counts_its_ages_by_age_from_the_ledger() -> None:
-    """D158: 2025's "as reported" column shows teens and youth by age, rebuilt from 2025's ledger, with no mark."""
-    history = FakeReportsStore()
-    history.seed(
-        ReportedFigure(
-            2025, "development", "total_awards", "camp_pool", 0, 0, "season_end", date(2025, 9, 29), Decimal(900)
-        )
-    )
-    store = report_season()
-    seed_line(store, 7001, "800", household=1000002, person=LIAM)  # on Liam: 13 on June 20 2025
-    # Emma's household-level line, from a summer-aid source: 10 that day
-    seed_line(store, 7002, "600", household=1000001, person=0, description_key=CAMP_SUMMER.description_key)
-    development = _development(
-        source_rows=[REGIONAL, CAMP_SUMMER],
-        registrations=[
-            went(EMMA, 1000001),
-            went(LIAM, 1000002),
-            went(EMMA, 1000001, year=2025, start=date(2025, 6, 20)),
-            went(LIAM, 1000002, year=2025, start=date(2025, 6, 20)),
-        ],
-    )
-    out = await _service(development, history, store=store).development(YEAR)
-    assert [(c.season, c.basis) for c in out.columns] == [(2025, "r"), (2027, "P")]
-    assert _row(out, "teens", "camp_pool").values[0] == 1.0
-    assert _row(out, "youth", "camp_pool").values[0] == 1.0
-    assert "ages_before_backfill" not in {n.figure for n in out.not_built}
-
-
-async def test_a_season_with_no_ledger_lines_leaves_its_ages_blank_and_names_why() -> None:
-    """RULED (owner 2026-10-02), item 51: 2022-2024 wait on the 2017-2024 backfill; the cells are blank and the wait is named
-    once."""
-    history = FakeReportsStore()
-    history.seed(
-        ReportedFigure(
-            2024, "development", "total_awards", "camp_pool", 0, 0, "season_end", date(2024, 9, 29), Decimal(900)
-        )
-    )
-    out = await _service(_development(), history).development(YEAR)
-    assert _row(out, "teens", "camp_pool").values[0] is None
-    gap = next(n for n in out.not_built if n.figure == "ages_before_backfill")
-    assert "2024" in gap.reason
-
-
-def _reported_2023_to_2025() -> FakeReportsStore:
-    history = FakeReportsStore()
-    for season in (2023, 2024, 2025):
-        history.seed(
-            ReportedFigure(
-                season,
-                "development",
-                "total_awards",
-                "camp_pool",
-                0,
-                0,
-                "season_end",
-                date(season, 9, 29),
-                Decimal(900),
-            )
-        )
-    return history
-
-
-def _register_reads(reads: list[int]) -> Any:
-    """2025's register holds an outside grant on Emma; every other past season's is empty. Records each read."""
-
-    async def rows(year: int) -> Sequence[RegisterRow]:
-        reads.append(year)
-        return [grant_row("reqemma00000001", "300")] if year == 2025 else []
-
-    return rows
-
-
-def _with_register(development: FakeDevelopmentStore, rows: Any) -> FinancialAidDevelopmentService:
-    return FinancialAidDevelopmentService(
-        report_season(),
-        FakeRules(approved(intake_rules())),
-        rows,
-        development,
-        _reported_2023_to_2025(),
-        clock=lambda: NOW,
-    )
-
-
-async def test_a_season_with_no_live_aid_line_is_blank_without_building_its_register() -> None:
-    """Item 51, without the cost: 2023 and 2024 have no camp line and no live grant line, so their ages are blank and
-    named, and their registers are never built. A register is a full-season load (persons, households, registrations,
-    custom values, FA rows); paying it for every as-reported season made Development time out (2026-10-15)."""
-    reads: list[int] = []
-    development = _stayed_2025()
-    development.grant_line_seasons = {2025}
-    out = await _with_register(development, _register_reads(reads)).development(YEAR)
-    assert [(c.season, c.basis) for c in out.columns] == [(2023, "r"), (2024, "r"), (2025, "r"), (2027, "P")]
-    assert 2023 not in reads
-    assert 2024 not in reads
-    assert 2025 in reads  # a season with a live grant line still rebuilds from its register
-    assert _row(out, "youth", "camp_pool").values[:3] == [None, None, 1.0]
-    gap = next(n for n in out.not_built if n.figure == "ages_before_backfill")
-    assert "2023, 2024" in gap.reason
-    assert "2025" not in gap.reason
-
-
-async def test_skipping_the_empty_seasons_registers_changes_no_figure() -> None:
-    """The short cut answers exactly what building every register answered: the same report, figure for figure."""
-    reads: list[int] = []
-    shortcut = _stayed_2025()
-    shortcut.grant_line_seasons = {2025}
-    every_register = _stayed_2025()  # grant_line_seasons None: every season may have lines, so each register is read
-    fast = await _with_register(shortcut, _register_reads(reads)).development(YEAR)
-    full = await _with_register(every_register, _register_reads([])).development(YEAR)
-    assert fast.model_dump() == full.model_dump()
-
-
 async def test_a_family_groups_first_time_label_says_any_earlier_family_or_adult_session_counts() -> None:
     """The label matches the code: an earlier weekend of either kind (family or adult) makes a household returning,
     not only an earlier season in the same group's programs."""
@@ -578,55 +536,6 @@ async def test_a_family_groups_first_time_label_says_any_earlier_family_or_adult
     assert "first season in this group" not in FIRST_TIME_FAMILY
     out = await _service(_development()).development(YEAR)
     assert _row(out, "first_time", "weekend_pool").definition == FIRST_TIME_FAMILY
-
-
-async def test_the_blank_ages_reason_names_the_real_condition_not_only_the_backfill() -> None:
-    """A season whose camp lines are unclassified is blank too, so the reason is "no classified camp-aid lines",
-    the 2017–2024 backfill being one cause."""
-    line = grant_row("reqemma00000001", "300", funder_type="unknown")
-    out = await _service(_stayed_2025(), _backfilled_2025(), past_register=[line]).development(YEAR)
-    gap = next(n for n in out.not_built if n.figure == "ages_before_backfill")
-    assert "no classified camp-aid lines" in gap.reason
-    assert "2025" in gap.reason
-    assert "backfill" in gap.reason
-    assert "no aid lines in Kindred yet" not in gap.reason
-
-
-@pytest.mark.parametrize(
-    ("description_key", "counted"),
-    [
-        (CAMP_SUMMER.description_key, True),
-        (CAMP_QUEST.description_key, True),
-        (CAMP_TEEN.description_key, True),
-        (CAMP_WEEKEND.description_key, False),
-        (CAMP_ADULT.description_key, False),
-        (CAMP_NO_FAMILY.description_key, False),
-        ("camp fa no source row", False),
-        ("", False),
-    ],
-)
-async def test_the_rebuilt_ages_count_a_household_level_line_only_when_its_source_implies_summer_aid(
-    description_key: str, counted: bool
-) -> None:
-    """RULED (owner 2026-10-02), item 1: a household-level camp line counts its household's attended summer campers
-    only when its aid_sources row implies the summer, Quest or teen family; a Family Camp or adult-weekend line, a
-    source implying no family, and a line with no source row don't count a summer sibling."""
-    store = report_season()
-    seed_line(store, 7001, "800", household=1000002, person=LIAM)  # a camper line: always counts Liam (teen)
-    seed_line(store, 7002, "600", household=1000001, person=0, description_key=description_key)  # Emma's household
-    development = _stayed_2025()
-    development.source_rows = [
-        REGIONAL,
-        CAMP_SUMMER,
-        CAMP_QUEST,
-        CAMP_TEEN,
-        CAMP_WEEKEND,
-        CAMP_ADULT,
-        CAMP_NO_FAMILY,
-    ]
-    out = await _service(development, _backfilled_2025(), store=store).development(YEAR)
-    assert _row(out, "teens", "camp_pool").values[0] == 1.0  # Liam either way
-    assert _row(out, "youth", "camp_pool").values[0] == (1.0 if counted else 0.0)  # Emma only on a summer source
 
 
 BMITZVAH_KID, BMITZVAH_HOME = 1000031, 1000003

@@ -507,7 +507,8 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         term="As reported",
         text=(
             "As reported: the figures already sent to funders, typed once. They may count the camp's own aid only, so compare them with the dashboard's seasons with care. "
-            "The dashboard's own rebuild of these years waits on the 2017–2024 ledger backfill."
+            "The dashboard's own rebuild of these years waits on the 2017–2024 ledger backfill. Their age lines count "
+            "that season's Campership sheet, blank until it is loaded."
         ),
         spec="§5.7",
         rulings=("D96",),
