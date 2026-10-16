@@ -6247,6 +6247,33 @@ export type GenderEnrollment = {
 }
 
 /**
+ * GenderHistoryGap
+ *
+ * Cancellation Velocity, split by gender: how much of a season's total the gender lines cannot show.
+ *
+ * Campers already cancelled when the dashboard first saw them have no status history row, so they are in the
+ * snapshot total but never on a line.
+ */
+export type GenderHistoryGap = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Unseen Count
+   *
+   * The season's cancellation total minus the gender lines' sum (never below 0)
+   */
+  unseen_count: number
+  /**
+   * No History
+   *
+   * True when the season has no day-by-day cancellation history at all (the lines draw nothing)
+   */
+  no_history: boolean
+}
+
+/**
  * GeoCategory
  *
  * Valid categories for geographic normalization.
@@ -20246,6 +20273,12 @@ export type VelocityResponse = {
   prior_year_gender_fallback_counts?: {
     [key: string]: number
   }
+  /**
+   * Gender History Gaps
+   *
+   * Cancellation metric split by gender only: one entry for this season, then each compared prior season in request order, saying how many cancellations the gender lines cannot show
+   */
+  gender_history_gaps?: Array<GenderHistoryGap>
   /**
    * Prior Years
    */

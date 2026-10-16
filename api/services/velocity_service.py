@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 from api.schemas.velocity import (
     DailyDataPoint,
     GenderBasis,
+    GenderHistoryGap,
     PhaseMarker,
     PriorYearCancelledSummary,
     PriorYearSessionSummary,
@@ -337,6 +338,17 @@ class _CurveResult:
         self.by_session = by_session
         self.cancelled_to_date = cancelled_to_date
         self.by_session_daily = by_session_daily or {}
+
+
+def _gender_history_gap(year: int, total: int | None, gender_curves: list[VelocityCurve]) -> GenderHistoryGap:
+    """How many of a season's cancellations the gender lines cannot show: the total beside them (read from the
+    nightly snapshots) minus where the lines end (read from status history). A season whose lines draw nothing has no
+    day-by-day history at all."""
+    on_lines = sum(int(c.weekly[-1].enrolled) for c in gender_curves if c.weekly)
+    total = total or 0
+    if on_lines == 0:
+        return GenderHistoryGap(year=year, unseen_count=total, no_history=total > 0)
+    return GenderHistoryGap(year=year, unseen_count=max(total - on_lines, 0), no_history=False)
 
 
 def _cumulative_cancellation_daily(
@@ -743,6 +755,10 @@ class VelocityService:
                     snapshots=snapshots,
                 )
 
+        gender_history_gaps: list[GenderHistoryGap] = []
+        if split_by_gender and metric == "cancellation":
+            gender_history_gaps.append(_gender_history_gap(year, cancelled_to_date, by_gender))
+
         # Build prior year curves
         prior_years: list[PriorYearVelocity] = []
         prior_year_by_gender: list[VelocityCurve] = []
@@ -875,6 +891,10 @@ class VelocityService:
                             combined_daily=prior_result.combined.daily,
                         )
                     prior_year_by_gender.extend(prior_gender_curves)
+                if split_by_gender and metric == "cancellation":
+                    gender_history_gaps.append(
+                        _gender_history_gap(prior_year, prior_result.cancelled_to_date, prior_gender_curves)
+                    )
 
         # K13 (#3207): some points are rebuilt rather than read from the nightly snapshot. The page
         # labels which lines are which from each point's data_source; this says what a rebuild counts.
@@ -927,6 +947,7 @@ class VelocityService:
             by_gender=by_gender,
             gender_basis="identity" if identity else "field",
             gender_fallback_count=gender_fallback_count,
+            gender_history_gaps=gender_history_gaps,
             prior_year_gender_fallback_counts=prior_year_gender_fallback_counts,
             daily=combined.daily,
             weekly=combined.weekly,

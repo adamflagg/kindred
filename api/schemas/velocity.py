@@ -133,6 +133,20 @@ class PriorYearSessionSummary(BaseModel):
     final_enrolled: int = Field(description="Last enrollment value for this session in prior year")
 
 
+class GenderHistoryGap(BaseModel):
+    """Cancellation Velocity, split by gender: how much of a season's total the gender lines cannot show.
+
+    Campers already cancelled when the dashboard first saw them have no status history row, so they are in the
+    snapshot total but never on a line.
+    """
+
+    year: int
+    unseen_count: int = Field(description="The season's cancellation total minus the gender lines' sum (never below 0)")
+    no_history: bool = Field(
+        description="True when the season has no day-by-day cancellation history at all (the lines draw nothing)"
+    )
+
+
 class VelocityResponse(BaseModel):
     year: int
     season_start: str = Field(description="ISO date of season start (priority or early registration date)")
@@ -153,6 +167,13 @@ class VelocityResponse(BaseModel):
     prior_year_gender_fallback_counts: dict[int, int] = Field(
         default_factory=dict,
         description="The same count for each compared prior year above 0 (gender identity split only)",
+    )
+    gender_history_gaps: list[GenderHistoryGap] = Field(
+        default_factory=list,
+        description=(
+            "Cancellation metric split by gender only: one entry for this season, then each compared prior season "
+            "in request order, saying how many cancellations the gender lines cannot show"
+        ),
     )
     prior_years: list[PriorYearVelocity]
     prior_year_by_gender: list[VelocityCurve] = Field(default_factory=list, description="Prior year gender curves")

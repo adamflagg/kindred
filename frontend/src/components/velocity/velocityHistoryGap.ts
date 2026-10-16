@@ -1,0 +1,50 @@
+/**
+ * Cancellation Velocity split by gender: the words for what the gender lines cannot show. Campers already
+ * cancelled when the dashboard first saw them have no status history row, so they are in the season's total and
+ * on no line. N comes from the server (`gender_history_gaps`), never re-derived here.
+ */
+
+import type { DefinitionNote } from '../camperships/kit/DefinitionNotes'
+import type { GenderHistoryGap } from '../../types/velocity'
+import { formatCount } from '../../utils/numberFormat'
+
+export const NO_HISTORY_TEXT =
+  'No day-by-day cancellation history for this season: the dashboard first saw every cancellation already made.'
+
+export function gapText(unseen: number): string {
+  return (
+    'The gender lines count each cancellation on the day the dashboard first saw it. ' +
+    `${formatCount(unseen)} this season were already cancelled when the dashboard first saw them, so they're in ` +
+    'the total but not in these lines.'
+  )
+}
+
+/** A season's words are named ("2026: …") only when more than one season is drawn. */
+function worded(gap: GenderHistoryGap, text: string, named: boolean): string {
+  return named ? `${gap.year}: ${text}` : text
+}
+
+export interface HistoryGapNotes {
+  /** Numbered notes for seasons with history and a gap above 0, numbered from `firstN`. */
+  readonly notes: DefinitionNote[]
+  /** Plain lines for seasons with no history at all. */
+  readonly noHistory: string[]
+}
+
+export function historyGapNotes(
+  gaps: readonly GenderHistoryGap[] | undefined,
+  firstN: number
+): HistoryGapNotes {
+  const seasons = gaps ?? []
+  const named = seasons.length > 1
+  const notes: DefinitionNote[] = []
+  const noHistory: string[] = []
+  for (const gap of seasons) {
+    if (gap.no_history) {
+      noHistory.push(worded(gap, NO_HISTORY_TEXT, named))
+    } else if (gap.unseen_count > 0) {
+      notes.push({ n: firstN + notes.length, text: worded(gap, gapText(gap.unseen_count), named) })
+    }
+  }
+  return { notes, noHistory }
+}

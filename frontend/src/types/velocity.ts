@@ -99,6 +99,15 @@ export interface PriorYearVelocity {
   at_current_point?: number | null
 }
 
+/** Cancellation Velocity split by gender: how much of a season's total the gender lines cannot show. */
+export interface GenderHistoryGap {
+  year: number
+  /** The season's total minus the lines' sum: cancelled before the dashboard first saw them. */
+  unseen_count: number
+  /** The season has no day-by-day cancellation history at all. */
+  no_history: boolean
+}
+
 export interface VelocityResponse {
   year: number
   season_start: string
@@ -113,6 +122,8 @@ export interface VelocityResponse {
   gender_fallback_count?: number
   /** The same count for each compared prior year above 0. */
   prior_year_gender_fallback_counts?: Record<number, number>
+  /** Cancellation metric split by gender: this season first, then each compared season. */
+  gender_history_gaps?: GenderHistoryGap[]
   phase_markers: PhaseMarker[]
   session_gender_breakdown: SessionGenderBreakdown[]
   cancelled_to_date: number | null
