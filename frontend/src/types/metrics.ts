@@ -100,6 +100,13 @@ export interface SummerYearsBreakdown {
   percentage: number
 }
 
+/** Campers in one age band: season year minus birth year (D-UNCOVERED). `band` is the drill-down key. */
+export interface AgeBandBreakdown {
+  band: string
+  count: number
+  percentage: number
+}
+
 export interface FirstSummerYearBreakdown {
   first_summer_year: number
   count: number
@@ -251,6 +258,8 @@ export interface RegistrationMetrics {
   prior_day_offset?: number | null
   /** The last day (YYYY-MM-DD) this year was read through. */
   as_of_date?: string | null
+  /** Every age band in order ("5-7" … "17+", then "none"), zeros included. */
+  by_age?: AgeBandBreakdown[]
 }
 
 // Historical trends types
@@ -369,6 +378,7 @@ export interface DrilldownFilter {
     | 'session'
     | 'gender'
     | 'grade'
+    | 'age_band'
     | 'school'
     | 'city'
     | 'synagogue'

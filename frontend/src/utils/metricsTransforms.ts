@@ -6,6 +6,7 @@
  */
 
 import type {
+  AgeBandBreakdown,
   FirstSummerYearBreakdown,
   GenderBreakdown,
   GradeBreakdown,
@@ -72,6 +73,22 @@ export function transformGradeData(data: GradeBreakdown[] | undefined): ChartDat
     value: g.count,
     percentage: g.percentage,
     id: g.grade ?? 'null',
+  }))
+}
+
+/** An age band's chart label: en dashes for ranges, "None" for no birthdate. */
+export function ageBandLabel(band: string): string {
+  return band === 'none' ? 'None' : band.replace('-', '–')
+}
+
+/** Age bars in the server's order; empty when no camper is counted, so the chart says so. */
+export function transformAgeData(data: AgeBandBreakdown[] | undefined): ChartDataPoint[] {
+  if (!data?.some((b) => b.count > 0)) return []
+  return data.map((b) => ({
+    name: ageBandLabel(b.band),
+    value: b.count,
+    percentage: b.percentage,
+    id: b.band,
   }))
 }
 

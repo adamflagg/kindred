@@ -46,6 +46,8 @@ interface CssVerticalBarChartProps {
   /** Bar width as percentage of column (1-100). Default: 100 (full width). */
   barWidthPercent?: number | undefined
   className?: string
+  /** A line inside the card, below the bars (the age chart's camper count). */
+  footer?: ReactNode
 }
 
 const DEFAULT_COLOR = 'hsl(200, 70%, 50%)'
@@ -65,6 +67,7 @@ export function CssVerticalBarChart({
   onBarClick,
   barWidthPercent,
   className = '',
+  footer,
 }: CssVerticalBarChartProps) {
   const xAxisHeight = rotateLabels ? X_AXIS_HEIGHT_ROTATED : X_AXIS_HEIGHT_STRAIGHT
   const { barsHeight, drawingHeight } = calculateVerticalLayout(height, { xAxisHeight })
@@ -241,6 +244,7 @@ export function CssVerticalBarChart({
           </VerticalTooltipShell>
         )}
       </div>
+      {footer}
     </div>
   )
 }

@@ -4,15 +4,21 @@
  * decision 12 requires of any average-seasons figure, with a numbered note saying so.
  */
 import { DefRef } from '../camperships/kit/DefinitionNotes'
-import { TENURE_NOTE } from './tenureNotes'
 
-export function AverageSummersLine({ average }: { average: number | null | undefined }) {
+export function AverageSummersLine({
+  average,
+  note,
+}: {
+  average: number | null | undefined
+  /** The page's number for the Years at Camp note; no mark when the page lists none. */
+  note?: number | undefined
+}) {
   if (average == null) return null
   return (
     <p className="text-foreground pt-2 text-sm">
       Average <b className="font-semibold">{average.toFixed(1)}</b> summers per camper, this one
       included.
-      <DefRef n={TENURE_NOTE} />
+      {note !== undefined && <DefRef n={note} />}
     </p>
   )
 }

@@ -12,6 +12,7 @@ from statistics import mean
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 from api.schemas.metrics import (
+    AgeBandBreakdown,
     CityBreakdown,
     FirstSummerYearBreakdown,
     GenderBreakdown,
@@ -45,6 +46,8 @@ from bunking.logging_config import get_logger
 
 from .breakdown_calculator import calculate_percentage, compute_registration_breakdown
 from .extractors import (
+    AGE_BAND_KEYS,
+    extract_age_band,
     extract_city,
     extract_gender,
     extract_grade,
@@ -219,6 +222,7 @@ class RegistrationService:
         # Compute breakdowns
         by_gender = self._compute_gender_breakdown(enrolled_person_ids, persons, total_enrolled)
         by_grade = self._compute_grade_breakdown(enrolled_person_ids, persons, total_enrolled)
+        by_age = self._compute_age_breakdown(enrolled_person_ids, persons, total_enrolled, year)
         by_session = self._compute_session_breakdown(combined_attendees, sessions, bunk_plans, default_capacity)
         by_years_at_camp = self._compute_years_at_camp_breakdown(enrolled_person_ids, persons, total_enrolled)
         new_vs_returning = self._compute_new_vs_returning(enrolled_person_ids, persons, total_enrolled)
@@ -275,6 +279,7 @@ class RegistrationService:
             day_offset=day_offset,
             prior_day_offset=prior_day_offset,
             as_of_date=cutoff.isoformat() if cutoff is not None else None,
+            by_age=by_age,
         )
 
     async def _fetch_anchor(self, year: int) -> date | None:
@@ -314,6 +319,24 @@ class RegistrationService:
         return [
             GradeBreakdown(grade=g, count=s.count, percentage=calculate_percentage(s.count, total))
             for g, s in sorted(stats.items(), key=lambda x: (x[0] is None, x[0]))
+        ]
+
+    def _compute_age_breakdown(
+        self, person_ids: set[int], persons: dict[int, Any], total: int, season_year: int
+    ) -> list[AgeBandBreakdown]:
+        """Campers by age band in the season (D-UNCOVERED): every band in order, zeros included.
+
+        Same population as the grade chart, so a camper with no persons row is left out of both.
+        """
+        stats = compute_registration_breakdown(person_ids, persons, lambda p: extract_age_band(p, season_year))
+        counts = {band: s.count for band, s in stats.items()}
+        return [
+            AgeBandBreakdown(
+                band=band,
+                count=counts.get(band, 0),
+                percentage=calculate_percentage(counts.get(band, 0), total),
+            )
+            for band in AGE_BAND_KEYS
         ]
 
     def _compute_session_breakdown(

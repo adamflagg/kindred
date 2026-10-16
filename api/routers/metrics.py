@@ -435,7 +435,7 @@ async def get_drilldown_attendees(
     year: int = Query(..., description="Year to get attendees for", ge=2000, le=2100),
     breakdown_type: str = Query(
         ...,
-        description="Type of breakdown: session, gender, grade, school, years_at_camp, status, "
+        description="Type of breakdown: session, gender, grade, age_band, school, years_at_camp, status, "
         "waitlist_no_enrollment, waitlist_has_enrollment, waitlist_accepted, waitlist_declined",
     ),
     breakdown_value: str = Query(

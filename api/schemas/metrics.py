@@ -151,6 +151,14 @@ class SummerYearsBreakdown(BaseModel):
     percentage: float = Field(description="Percentage of total")
 
 
+class AgeBandBreakdown(BaseModel):
+    """Campers in one age band: the season year minus the birth year (D-UNCOVERED)."""
+
+    band: str = Field(description='Age band key: "5-7", "8-10", "11-13", "14-16", "17+", or "none" (no birthdate)')
+    count: int = Field(description="Number of distinct campers")
+    percentage: float = Field(description="Percentage of total enrolled")
+
+
 class FirstSummerYearBreakdown(BaseModel):
     """Breakdown by first summer year (cohort analysis).
 
@@ -406,6 +414,10 @@ class RegistrationMetricsResponse(BaseModel):
             "Same-point reads: the last day (YYYY-MM-DD) this year was read through. On a phase date it is the "
             "day after the matching day (decision 45)"
         ),
+    )
+    by_age: list[AgeBandBreakdown] = Field(
+        default_factory=list,
+        description="Enrollment by age band (season year minus birth year), every band in order, zeros included",
     )
 
 

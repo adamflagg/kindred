@@ -130,10 +130,15 @@ describe('RegistrationOverview — one numbered note list in page order (decisio
     )
   }
 
-  it('lists Cancelled as 1 and the Summers at Camp average as 2 in one list', () => {
+  it('lists Cancelled as 1, the age chart as 2 and the Summers at Camp average as 3 in one list', () => {
+    const by_age = ['5-7', '8-10', '11-13', '14-16', '17+', 'none'].map((band) => ({
+      band,
+      count: band === '8-10' ? 1134 : 0,
+      percentage: band === '8-10' ? 100 : 0,
+    }))
     vi.mocked(useComparisonRegistrationData).mockReturnValueOnce({
       primary: {
-        data: { ...mockData, average_summers_at_camp: 2.6 },
+        data: { ...mockData, average_summers_at_camp: 2.6, by_age },
         isLoading: false,
         error: null,
       },
@@ -142,9 +147,10 @@ describe('RegistrationOverview — one numbered note list in page order (decisio
     const { container } = render(<RegistrationOverview />)
     expect(container.querySelectorAll('ol')).toHaveLength(1)
     const notes = footNotes(container)
-    expect(notes).toHaveLength(2)
+    expect(notes).toHaveLength(3)
     expect(notes[0]).toMatch(/^1\..*Cancelled now/)
-    expect(notes[1]).toMatch(/^2\..*Years at Camp/)
+    expect(notes[1]).toMatch(/^2\..*season year minus the birth year/)
+    expect(notes[2]).toMatch(/^3\..*Years at Camp/)
   })
 
   it('leaves the average note out when there is no average', () => {

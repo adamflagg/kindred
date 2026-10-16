@@ -25,6 +25,7 @@ export type {
   AdditionItemReport,
   AdditionOut,
   AdditionRetire,
+  AgeBandBreakdown,
   AgSessionAvailability,
   AidLikeOutside,
   AidOnNoRequestOut,
