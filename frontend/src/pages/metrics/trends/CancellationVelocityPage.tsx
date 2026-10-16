@@ -391,7 +391,7 @@ export default function CancellationVelocityPage() {
     <MetricsBusy busy={isPlaceholderData} what={String(currentYear)}>
       <div className="space-y-6">
         {/* Controls — no extraControls (no viewMode toggle for cancellation) */}
-        <div data-tour="cancel-velocity-controls">
+        <div data-tour="cancel-velocity-controls" data-app-chrome>
           <VelocityControls
             priorYearOptions={controls.priorYearOptions}
             selectedPriorYears={controls.selectedPriorYears}

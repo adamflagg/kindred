@@ -443,11 +443,13 @@ export default function ForecastPage() {
                   deltaPending
                 )}
               />
-              <SnapshotDateSelector
-                dayOffset={dayOffset}
-                onOffsetChange={setDayOffset}
-                weekOptions={weekOptions}
-              />
+              <div data-app-chrome>
+                <SnapshotDateSelector
+                  dayOffset={dayOffset}
+                  onOffsetChange={setDayOffset}
+                  weekOptions={weekOptions}
+                />
+              </div>
             </div>
           </div>
           <p className="text-muted-foreground text-sm">

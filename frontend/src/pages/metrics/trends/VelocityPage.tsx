@@ -481,7 +481,7 @@ export default function VelocityPage() {
     <MetricsBusy busy={isPlaceholderData} what={String(currentYear)}>
       <div className="space-y-6">
         {/* Controls */}
-        <div data-tour="velocity-controls">
+        <div data-tour="velocity-controls" data-app-chrome>
           <VelocityControls
             priorYearOptions={controls.priorYearOptions}
             selectedPriorYears={controls.selectedPriorYears}
