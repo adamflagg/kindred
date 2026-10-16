@@ -169,7 +169,7 @@ async def test_the_last_ledger_sync_reads_the_seasons_window_of_successful_runs_
     pb.collection.assert_called_with("sync_runs")
     calls = pb.collection.return_value.get_list.call_args_list
     assert sorted(c.kwargs["query_params"]["filter"] for c in calls) == sorted(
-        f'service = "{service}" && status = "success" && year >= {YEAR - 1} && year <= {YEAR + 1}'
+        f'service = "{service}" && status = "success" && dry_run = false && year >= {YEAR - 1} && year <= {YEAR + 1}'
         for service in ("aid_postings", "financial_transactions")
     )
     for call in calls:

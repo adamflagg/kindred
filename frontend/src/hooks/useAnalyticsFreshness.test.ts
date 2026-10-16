@@ -73,6 +73,26 @@ describe('useAnalyticsFreshness', () => {
     expect(result.current).toEqual({ kind: 'synced', at: '2026-10-26T10:04:00Z', running: true })
   })
 
+  // A dry run stays in the slot (Manage > Sync shows it) but wrote nothing: the chip dates the
+  // enrollments by the last REAL run the backend attaches as last_real_run.
+  it('dates the enrollments by the last real run, never a dry run', () => {
+    scoped[2026] = {
+      attendees: {
+        ...job('success', '2026-10-27T17:00:00Z'),
+        dry_run: true,
+        last_real_run: job('success', '2026-10-26T10:04:00Z'),
+      },
+    }
+    const { result } = renderHook(() => useAnalyticsFreshness(2026))
+    expect(result.current).toEqual({ kind: 'synced', at: '2026-10-26T10:04:00Z', running: false })
+  })
+
+  it('says "never" for a season whose only attendees run is a dry run', () => {
+    scoped[2026] = { attendees: { ...job('success', '2026-10-27T17:00:00Z'), dry_run: true } }
+    const { result } = renderHook(() => useAnalyticsFreshness(2026))
+    expect(result.current).toEqual({ kind: 'never' })
+  })
+
   it('says "syncing" for a live run when no finished time has been seen, never "never"', () => {
     scoped[2027] = { attendees: job('running') }
     const { result } = renderHook(() => useAnalyticsFreshness(2027))

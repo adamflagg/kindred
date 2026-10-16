@@ -3,6 +3,8 @@ package sync
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -63,6 +65,7 @@ func newSyncRunsApp(t *testing.T) *tests.TestApp {
 	})
 	col.Fields.Add(&core.TextField{Name: "batch_id", Required: true, Max: 100})
 	col.Fields.Add(&core.TextField{Name: "session", Max: 100})
+	col.Fields.Add(&core.BoolField{Name: "dry_run"})
 	for _, name := range []string{
 		"created_count", "updated_count", "deleted_count", "skipped_count",
 		"errors_count", "rejected_count", "expanded_count", "already_processed_count",
@@ -1620,5 +1623,190 @@ func TestForSessionKeepsANonNumericSession(t *testing.T) {
 			t.Errorf("forSession(%q).session = %q, want it unchanged -- a numeric round-trip "+
 				"must not eat a summer session identifier", session, got)
 		}
+	}
+}
+
+// A dry run computes without writing, yet it used to be recorded exactly like a real run. The
+// row carries dry_run so Manage > Sync can label it and no freshness reader counts it.
+func TestSyncRunRecordsWhetherItWasADryRun(t *testing.T) {
+	t.Parallel()
+
+	for _, dry := range []bool{true, false} {
+		app := newSyncRunsApp(t)
+		o := NewOrchestrator(app)
+		svc := &MockService{name: "svc", stats: Stats{Created: 1}}
+		origin := newBatch(triggerManual).forDryRun(dry)
+		if err := o.RunSingleSyncWithService(context.Background(), "svc", svc, origin); err != nil {
+			t.Fatalf("RunSingleSyncWithService: %v", err)
+		}
+		recs := waitForSyncRuns(t, app, 1)
+		if got := recs[0].GetBool("dry_run"); got != dry {
+			t.Errorf("dry_run = %v, want %v", got, dry)
+		}
+		// The row is written before the status is published, so wait for the publish.
+		deadline := time.Now().Add(10 * time.Second)
+		for o.GetStatus("svc") == nil || o.GetStatus("svc").EndTime == nil {
+			if time.Now().After(deadline) {
+				t.Fatal("timed out waiting for the published status")
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+		if got := completedStatus(t, o, "svc"); got.DryRun != dry {
+			t.Errorf("published Status.DryRun = %v, want %v", got.DryRun, dry)
+		}
+	}
+}
+
+// A dry run's row must never stand in for the last real run: LastRecordedRuns feeds the
+// freshness lines after a restart, and only a run that wrote anything made data fresh.
+func TestLastRecordedRunsIgnoresDryRuns(t *testing.T) {
+	t.Parallel()
+
+	app := newSyncRunsApp(t)
+	col, err := app.FindCollectionByNameOrId(syncRunsCollection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, dry := range []bool{false, true} {
+		rec := core.NewRecord(col)
+		rec.Set("service", "attendees")
+		rec.Set("year", 2026)
+		rec.Set("status", statusSuccess)
+		rec.Set("trigger", triggerManual)
+		rec.Set("batch_id", "b")
+		rec.Set("dry_run", dry)
+		rec.Set("created_count", 10+i)
+		rec.Set("started", fmt.Sprintf("2026-10-1%dT10:00:00.000Z", 1+i))
+		rec.Set("ended", fmt.Sprintf("2026-10-1%dT10:05:00.000Z", 1+i))
+		if err := app.Save(rec); err != nil {
+			t.Fatalf("save: %v", err)
+		}
+	}
+
+	got, ok := NewOrchestrator(app).LastRecordedRuns()["attendees"]
+	if !ok {
+		t.Fatal("no entry for attendees: the real run was dropped")
+	}
+	if got.Summary.Created != 10 {
+		t.Errorf("Created = %d, want 10 (the real run), the later dry run won", got.Summary.Created)
+	}
+	if got.DryRun {
+		t.Error("a dry run was rehydrated as the last successful run")
+	}
+}
+
+// runAndPublish runs svc through RunSingleSyncWithService and waits until the run is both
+// recorded (want rows in sync_runs) and published to the status slot.
+func runAndPublish(t *testing.T, app core.App, o *Orchestrator, svc *MockService, origin runOrigin, want int) {
+	t.Helper()
+	if err := o.RunSingleSyncWithService(context.Background(), svc.name, svc, origin); err != nil {
+		t.Fatalf("RunSingleSyncWithService: %v", err)
+	}
+	waitForSyncRuns(t, app, want)
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		o.mu.RLock()
+		_, running := o.runningJobs[svc.name]
+		o.mu.RUnlock()
+		if !running {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting for the published status")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// A finished dry run stays in the status slot so Manage > Sync can show it with its chip, but
+// it wrote nothing, so it must not date anything: the shell's freshness lines ("Assignments
+// synced N ago") read the entry's last_real_run instead, which is the last REAL successful run.
+// Both payloads carry it: the any-season one the shell reads and the ?year= one Analytics reads.
+func TestTheStatusPayloadDatesFreshnessByTheLastRealRunNotADryRun(t *testing.T) {
+	t.Parallel()
+
+	app := newSyncRunsApp(t)
+	o := NewOrchestrator(app)
+	runAndPublish(t, app, o, &MockService{name: "svc", stats: Stats{Created: 1}},
+		newBatch(triggerManual).forYear(2025), 1)
+	runAndPublish(t, app, o, &MockService{name: "svc", stats: Stats{Created: 99}},
+		newBatch(triggerManual).forYear(2025).forDryRun(true), 2)
+
+	payloads := map[string]map[string]any{
+		"any season": resolveServiceStatuses(o, []string{"svc"}),
+		"?year=":     resolveServiceStatusesForSeason(o, []string{"svc"}, 2025, 2026),
+	}
+	for name, payload := range payloads {
+		got, ok := payload["svc"].(*Status)
+		if !ok {
+			t.Fatalf("%s: svc entry is %T, want *Status", name, payload["svc"])
+		}
+		if !got.DryRun || got.Summary.Created != 99 {
+			t.Errorf("%s: the card's entry must stay the dry run (DryRun=%v, Created=%d)",
+				name, got.DryRun, got.Summary.Created)
+		}
+		lastReal := got.LastRealRun
+		if lastReal == nil {
+			t.Fatalf("%s: a finished dry run carries no last_real_run, so freshness reads the dry run", name)
+		}
+		if lastReal.DryRun || lastReal.Summary.Created != 1 || lastReal.EndTime == nil {
+			t.Errorf("%s: last_real_run = %+v, want the real run (Created 1, with an end time)", name, lastReal)
+		}
+	}
+}
+
+// A real run's entry is its own freshness: it carries no last_real_run.
+func TestARealRunCarriesNoLastRealRun(t *testing.T) {
+	t.Parallel()
+
+	app := newSyncRunsApp(t)
+	o := NewOrchestrator(app)
+	runAndPublish(t, app, o, &MockService{name: "svc", stats: Stats{Created: 1}},
+		newBatch(triggerManual).forYear(2025), 1)
+
+	if got := resolveServiceStatuses(o, []string{"svc"})["svc"].(*Status); got.LastRealRun != nil {
+		t.Errorf("a real run's entry carries last_real_run %+v", got.LastRealRun)
+	}
+}
+
+// The five dedicated endpoints that take ?dry_run= of their own must record their dry runs as
+// dry runs too, not only the unified /sync/run endpoint: the 2017-2025 replay dry-runs
+// family_camp_derived per season, and a dry lodging_assignments row recorded as real would
+// date every weekend's housing freshness.
+func TestTheDedicatedDryRunEndpointsRecordTheirRunsAsDryRuns(t *testing.T) {
+	t.Parallel()
+
+	handlers := map[string]func(*core.RequestEvent, *Scheduler) error{
+		serviceNameFamilyCampDerived: handleFamilyCampDerivedSync,
+		"lodging_assignments":        handleLodgingAssignmentsSync,
+		"staff_skills":               handleStaffSkillsSync,
+		"financial_aid_applications": handleFinancialAidApplicationsSync,
+		"household_demographics":     handleHouseholdDemographicsSync,
+	}
+	for name, handler := range handlers {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := newSyncRunsApp(t)
+			scheduler := NewScheduler(app)
+
+			re := &core.RequestEvent{}
+			re.App = app
+			re.Request = httptest.NewRequest(http.MethodPost, "/?year=2025&dry_run=true", http.NoBody)
+			rec := httptest.NewRecorder()
+			re.Response = rec
+			if err := handler(re, scheduler); err != nil {
+				t.Fatalf("handler: %v", err)
+			}
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+			}
+
+			// The run may fail on this bare app; a failed run is still recorded, and its
+			// dry_run is what is being asserted.
+			recs := waitForSyncRuns(t, app, 1)
+			if !recs[0].GetBool("dry_run") {
+				t.Errorf("%s: a ?dry_run=true run was recorded with dry_run=false", name)
+			}
+		})
 	}
 }

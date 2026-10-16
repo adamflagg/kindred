@@ -1957,7 +1957,9 @@ class LodgingRepository:
         `ended` would be the same lie `Orchestrator.LastRecordedRuns` refuses
         in `pocketbase/sync/sync_runs.go`. The two must agree: that function
         feeds the weekend shell's "Housing synced ..." line and this feeds the
-        compare footer, and one screen may not date the mirror two ways.
+        compare footer, and one screen may not date the mirror two ways. For
+        the same reason a DRY run (`dry_run`) is skipped on both sides: it
+        computed without writing, so it refreshed nothing either.
 
         SORTED `-started,-id`, matching that function's
         `ROW_NUMBER() OVER (PARTITION BY service ORDER BY started DESC, id DESC)`
@@ -1978,7 +1980,7 @@ class LodgingRepository:
             1,
             1,
             query_params={
-                "filter": f'service = "{pb_escape(service)}" && status = "success"',
+                "filter": f'service = "{pb_escape(service)}" && status = "success" && dry_run = false',
                 "sort": "-started,-id",
                 "fields": "ended",
             },
@@ -2057,7 +2059,7 @@ class LodgingRepository:
         rows = await self._page(
             SYNC_RUNS,
             query_params={
-                "filter": f'service = "{pb_escape(service)}" && status = "success" && year = {year}',
+                "filter": f'service = "{pb_escape(service)}" && status = "success" && dry_run = false && year = {year}',
                 "sort": "-started,-id",
                 "fields": "session,ended",
             },

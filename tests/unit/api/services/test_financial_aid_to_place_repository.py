@@ -250,6 +250,7 @@ async def test_what_changed_since_is_read_once_per_collection_year_scoped_and_af
     assert "funder_type" not in queries["aid_postings"][0]["filter"]
     runs = queries["sync_runs"][0]["filter"]
     assert "deleted_count > 0" in runs
+    assert "dry_run = false" in runs  # a dry run's would-be deletions removed nothing
     for service in (
         "attendees",
         "persons",

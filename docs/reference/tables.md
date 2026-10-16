@@ -810,6 +810,7 @@ One row per completed sync run, written by the orchestrator's shared completion 
 | `status` | select | success/failed |
 | `trigger` | select | hourly/daily/weekly/custom_values/historical/manual |
 | `session` | text | Weekend the run was started for; **empty = every weekend** |
+| `dry_run` | bool | The run computed without writing; labelled in Manage > Sync and ignored by every freshness reader |
 | `batch_id` | text | Groups every job of one queue as a single run |
 | `created_count` | number | Records created |
 | `updated_count` | number | Records updated |

@@ -335,3 +335,24 @@ func TestAFailedManualRunForAnotherYearDoesNotSkipACoveredSeason(t *testing.T) {
 		t.Errorf("no season was stale, but the log skipped one: %s", skip)
 	}
 }
+
+// A failed DRY run of financial_transactions wrote nothing, so it says nothing about whether the
+// input aid_postings rebuilt from is stale: the tick must not be skipped over it.
+func TestAFailedDryRunDoesNotMakeTheInputStale(t *testing.T) {
+	t.Parallel()
+	s, ticked := ledgerTickRun(t, func(f *aidFixture) {
+		f.recordSeasonRun(serviceNameFinancialTransactions, statusSuccess, triggerDaily, 2026,
+			"2026-09-27T10:00:00.000Z", "2026-09-27T10:02:00.000Z")
+		saveRecord(f.t, f.app, syncRunsCollection, map[string]any{
+			"service": serviceNameFinancialTransactions, "status": statusFailed,
+			"trigger": triggerManual, "year": 2026, "dry_run": true,
+			"started": "2026-09-28T10:00:00.000Z", "ended": "2026-09-28T10:05:00.000Z",
+		})
+	})
+	if !slices.Equal(ticked, []int{2026}) {
+		t.Errorf("ticked %v, want [2026]: a dry run held the tick back", ticked)
+	}
+	if got := s.GetStats().AidLedgerWarnings; got != 0 {
+		t.Errorf("AidLedgerWarnings = %d, want 0", got)
+	}
+}

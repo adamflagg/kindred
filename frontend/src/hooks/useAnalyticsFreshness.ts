@@ -12,6 +12,7 @@
  * nothing rather than overstate.
  */
 
+import { freshnessRun } from '../utils/syncFreshness'
 import { useSyncStatusAPI, type SyncStatusResponse } from './useSyncStatusAPI'
 
 export type AnalyticsFreshness =
@@ -54,8 +55,9 @@ export function useAnalyticsFreshness(year: number): AnalyticsFreshness {
   if (!inSynced) return { kind: 'none' }
   if (!scoped) return { kind: 'loading' }
 
-  // A job that has never run for this season is absent from the payload.
-  const attendees = (scoped as Partial<SyncStatusResponse>).attendees
+  // A job that has never run for this season is absent from the payload. A dry run dates
+  // nothing: freshnessRun answers it with the last real run, or nothing.
+  const attendees = freshnessRun((scoped as Partial<SyncStatusResponse>).attendees)
   if (!attendees) return { kind: 'never' }
   const live = attendees.status === 'running' || attendees.status === 'pending'
   if (attendees.end_time && !live) {

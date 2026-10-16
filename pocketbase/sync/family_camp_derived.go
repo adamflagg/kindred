@@ -2580,19 +2580,19 @@ func (s *FamilyCampDerivedSync) reportDryRun(
 		// Stats.Deleted is deliberately NOT mirrored from WouldDelete.
 		//
 		// recordSyncRun writes Stats.Deleted straight into
-		// sync_runs.deleted_count with status=completed, and sync_runs carries
-		// no dry-run marker of any kind. Mirroring here would leave a completed
-		// run row asserting deletions that never happened -- nine of them once
-		// the planned 2017-2025 replay dry runs are done, and afterwards
-		// indistinguishable from nine real sweeps.
+		// sync_runs.deleted_count. The row now carries sync_runs.dry_run, so the
+		// freshness readers skip it, but deleted_count is also a count staff and
+		// operators read as "rows this run removed". Mirroring here would leave
+		// a row asserting deletions that never happened -- nine of them once the
+		// planned 2017-2025 replay dry runs are done -- told apart from nine
+		// real sweeps only by that one column.
 		//
 		// Deleted is singled out because it is the only one of the four that
 		// describes a DESTRUCTIVE act; an overstated created/updated/skipped is
 		// a harmless overcount and predates this. The would-be count is not
 		// lost -- it stays on DryRunDiff.WouldDelete and in the log line above,
-		// which is where a dry run's answer belongs. Recording it in sync_runs
-		// honestly would need a dry-run column or status there, which is a
-		// schema change and a separate decision.
+		// which is where a dry run's answer belongs. Whether to record it in
+		// sync_runs now that the row is labeled dry is a separate decision.
 	}
 }
 

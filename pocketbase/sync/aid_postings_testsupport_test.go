@@ -137,6 +137,7 @@ func newAidTestApp(t *testing.T) core.App {
 	runs.Fields.Add(&core.NumberField{Name: "year"})
 	runs.Fields.Add(&core.DateField{Name: "started"})
 	runs.Fields.Add(&core.DateField{Name: "ended"})
+	runs.Fields.Add(&core.BoolField{Name: "dry_run"})
 	saveCollection(t, app, runs)
 
 	return app

@@ -49,6 +49,13 @@ export interface SyncStatus {
   start_time?: string
   end_time?: string
   error?: string
+  /** The run computed without writing (`Status.DryRun`); its counts are what would have changed. */
+  dry_run?: boolean
+  /**
+   * On a dry run's entry only: the job's last REAL successful run (`Status.LastRealRun`), absent
+   * when there is none. Freshness lines read it through `freshnessRun` (utils/syncFreshness.ts).
+   */
+  last_real_run?: SyncStatus
   /**
    * The weekend this run was started FOR, absent when it covers everything
    * (kindred#2601, `Status.Session` in pocketbase/sync/orchestrator.go).

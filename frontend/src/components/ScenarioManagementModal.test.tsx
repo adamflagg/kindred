@@ -15,10 +15,11 @@ import { Toaster } from 'react-hot-toast'
 
 // Mock useSyncStatusAPI — modal uses it for the CampMinder "synced" line.
 const syncStatusOpts = vi.fn()
+let syncStatusData: unknown
 vi.mock('../hooks/useSyncStatusAPI', () => ({
   useSyncStatusAPI: (opts?: { enabled?: boolean }) => {
     syncStatusOpts(opts)
-    return { data: undefined }
+    return { data: syncStatusData }
   },
 }))
 
@@ -121,6 +122,36 @@ function renderModalWithOpen(ctx: ScenarioContextType, isOpen: boolean) {
 
 beforeEach(() => {
   newScenarioModalProps.mockReset()
+  syncStatusData = undefined
+})
+
+// The CampMinder card's "Synced N ago" reads bunk_assignments. A dry run stays in that slot
+// (Manage > Sync shows it) but wrote nothing, so the card dates production by the last REAL
+// run the backend attaches as last_real_run.
+describe('ScenarioManagementModal CampMinder freshness', () => {
+  it('dates production by the last real bunk_assignments run, never a dry run', () => {
+    syncStatusData = {
+      bunk_assignments: {
+        status: 'success',
+        end_time: new Date().toISOString(),
+        dry_run: true,
+        last_real_run: {
+          status: 'success',
+          end_time: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+        },
+      },
+    }
+    renderModal(makeContext({}))
+    expect(screen.getByText(/^Synced about 3 hours ago$/)).toBeInTheDocument()
+  })
+
+  it('falls back to the plain label when the only run is a dry run', () => {
+    syncStatusData = {
+      bunk_assignments: { status: 'success', end_time: new Date().toISOString(), dry_run: true },
+    }
+    renderModal(makeContext({}))
+    expect(screen.getByText('Production bunking assignments')).toBeInTheDocument()
+  })
 })
 
 describe('ScenarioManagementModal loading state', () => {
