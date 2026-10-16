@@ -36,6 +36,19 @@ func TestHistoricalSeasonsIsEveryOlderSeasonNewestFirst(t *testing.T) {
 	if want := []int{2024, 2023, 2022, 2021, 2020, 2019, 2018, 2017}; !slices.Equal(got, want) {
 		t.Errorf("before the rollover: got %v, want %v", got, want)
 	}
+
+	// The override's floor is syncYearMin: a primary of 2017 or 2018 leaves no older season,
+	// and must return an empty range rather than panic in the cron goroutine (scan on #3240).
+	for _, override := range []string{"2017", "2018"} {
+		t.Setenv("CAMPMINDER_SEASON_ID", override)
+		got, err = HistoricalSeasons(time.Date(2026, time.October, 1, 10, 0, 0, 0, time.UTC))
+		if err != nil {
+			t.Fatalf("override %s: %v", override, err)
+		}
+		if len(got) != 0 {
+			t.Errorf("override %s: got %v, want no seasons", override, got)
+		}
+	}
 }
 
 // TestKeepOrphansStopsEveryBaseSweep: a service told to keep orphans deletes nothing through any

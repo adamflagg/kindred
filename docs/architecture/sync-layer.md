@@ -395,8 +395,12 @@ Every other job in the pass keeps its orphans (`setKeepOrphans`), because those 
 history an older season never rebuilds. A `camp_sessions` row takes that season's `bunk_assignments`,
 `bunk_plans` and lodging rows with it, a `persons` row its `bunk_assignments` and aid applications, and a
 household its `family_camp_registrations` and `household_demographics`. Before each season it waits while
-any other queue runs (the nightly, the weekly globals, a staff full run or a replay). Its runs are filed
-as `historical`, under their own year.
+any other queue runs (the nightly, the weekly globals, a staff full run or a replay). The wait is a check,
+not a claim: a staff run that lands between two of the pass's jobs starts at once, and a collision on a job
+id refuses one side ("sync already in progress"), which is logged and retried the next Saturday. Its runs
+are filed as `historical`, under their own year. Each job it finishes clears FastAPI's caches as any sync
+does, scoped by job rather than season, so the live seasons' metrics, lodging and Camperships caches are
+cleared and re-warmed once per job, four a season and up to 36 each Saturday.
 
 `financial_transactions` and `aid_postings` run once, from the primary pass, over their own
 N−1..N+1 window. A staff-triggered run (`?year=`) runs the season being viewed when it is N or

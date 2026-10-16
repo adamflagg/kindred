@@ -31,9 +31,17 @@ import (
 //
 // When: Saturday 05:00 in the container's zone (scheduler.go). It also waits, before each
 // season, while any other queue runs (the nightly, the weekly globals, a staff full run or
-// replay), so it never holds a job id one of those needs. It costs CampMinder about what one
-// season of the nightly's source phase does, per season, run sequentially with the usual job
-// spacing; the client's own 429 handling applies.
+// replay), so it does not start a season under one of those. The wait is a check, not a claim:
+// the pass sets no flag the other queues or the API's admission checks read, so a staff run that
+// lands in a gap between this pass's jobs starts at once, and a collision on a job id refuses one
+// side with "sync already in progress" (runSeasonPass logs it; the next Saturday retries). It
+// costs CampMinder about what one season of the nightly's source phase does, per season, run
+// sequentially with the usual job spacing; the client's own 429 handling applies.
+//
+// Caches: every job it finishes asks FastAPI to clear the caches that job's tables feed, as any
+// sync run does (notifyRunCompleted). That clear is scoped by job, not by season, so each of the
+// pass's jobs clears the metrics, lodging, Camperships and social-graph caches of the live seasons
+// too, and the coalesced background warms follow: four jobs a season, up to 36 clears a Saturday.
 
 // allSeasonsResyncSchedule is Saturday 05:00. The nightly starts 03:00 and runs about an hour
 // for two seasons; Sunday holds the weekly globals (02:00) and the long custom-values pass
@@ -78,7 +86,9 @@ func HistoricalSeasons(now time.Time) ([]int, error) {
 		return nil, err
 	}
 	oldest := synced[len(synced)-1]
-	seasons := make([]int, 0, oldest-syncYearMin)
+	// max(0, …): an override of syncYearMin makes the oldest synced season syncYearMin-1, and
+	// a negative capacity would panic in the cron goroutine.
+	seasons := make([]int, 0, max(0, oldest-syncYearMin))
 	for year := oldest - 1; year >= syncYearMin; year-- {
 		seasons = append(seasons, year)
 	}

@@ -1188,9 +1188,16 @@ func TestClassify2021FamilyCampWeekendsWithNoGroupAreFamily(t *testing.T) {
 	for i, name := range names {
 		infos = append(infos, sessionInfo{cmID: 700 + i, name: name})
 	}
+	// Both fallbacks reach the name rules: no GroupID at all, and a GroupID Kindred holds no group
+	// for (#2114's unrecognized-group arm). Which one 2021's rows take depends on what CampMinder
+	// sends, so the pin covers both.
+	const unheldGroup = 999999
 	for _, info := range infos {
 		if got := s.classifySessionType(info, 0, infos); got != sessionTypeFamily {
 			t.Errorf("classifySessionType(%q, no group) = %q, want %q", info.name, got, sessionTypeFamily)
+		}
+		if got := s.classifySessionType(info, unheldGroup, infos); got != sessionTypeFamily {
+			t.Errorf("classifySessionType(%q, unheld group) = %q, want %q", info.name, got, sessionTypeFamily)
 		}
 	}
 }
