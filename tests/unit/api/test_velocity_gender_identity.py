@@ -32,13 +32,15 @@ def _with_identity(record: Any, gender: str, identity: str = "", write_in: str =
     return record
 
 
-def _att(pid: int, sid: int, day: str, gender: str, identity: str = "", *, status: str = "enrolled", year: int = 2026):
+def _att(
+    pid: int, sid: int, day: str, gender: str, identity: str = "", *, status: str = "enrolled", year: int = 2026
+) -> Any:
     return _with_identity(
         create_mock_attendee_with_date(pid, sid, day, year=year, status=status, effective_date=day), gender, identity
     )
 
 
-def _cancel(pid: int, sid: int, day: str, gender: str, identity: str = "", *, year: int = 2026):
+def _cancel(pid: int, sid: int, day: str, gender: str, identity: str = "", *, year: int = 2026) -> Any:
     return _with_identity(create_mock_status_transition(pid, sid, day, year=year), gender, identity)
 
 
@@ -86,12 +88,14 @@ def enrolled_2026() -> list[Any]:
 
 
 def _last(curve: Any) -> int:
-    return curve.weekly[-1].enrolled
+    return int(curve.weekly[-1].enrolled)
 
 
 class TestEnrollmentIdentityMode:
     @pytest.mark.asyncio
-    async def test_default_stays_on_the_gender_field(self, service, mock_repository, sessions, enrolled_2026) -> None:
+    async def test_default_stays_on_the_gender_field(
+        self, service: Any, mock_repository: Any, sessions: Any, enrolled_2026: Any
+    ) -> None:
         mock_repository.fetch_sessions.return_value = sessions
         mock_repository.fetch_attendees_with_dates.return_value = enrolled_2026
 
@@ -103,7 +107,7 @@ class TestEnrollmentIdentityMode:
 
     @pytest.mark.asyncio
     async def test_identity_lines_are_the_five_groups_rebuilt_from_attendees(
-        self, service, mock_repository, sessions, enrolled_2026
+        self, service: Any, mock_repository: Any, sessions: Any, enrolled_2026: Any
     ) -> None:
         mock_repository.fetch_sessions.return_value = sessions
         mock_repository.fetch_attendees_with_dates.return_value = enrolled_2026
@@ -129,7 +133,9 @@ class TestEnrollmentIdentityMode:
         assert result.gender_fallback_count == 1
 
     @pytest.mark.asyncio
-    async def test_identity_breakdown_per_session(self, service, mock_repository, sessions, enrolled_2026) -> None:
+    async def test_identity_breakdown_per_session(
+        self, service: Any, mock_repository: Any, sessions: Any, enrolled_2026: Any
+    ) -> None:
         mock_repository.fetch_sessions.return_value = sessions
         mock_repository.fetch_attendees_with_dates.return_value = enrolled_2026
 
@@ -140,7 +146,9 @@ class TestEnrollmentIdentityMode:
         assert rows[1002] == {"Boy/man": 1, "Non-binary": 1, "Another identity": 1}
 
     @pytest.mark.asyncio
-    async def test_prior_years_rebuilt_too_with_their_own_fallback_count(self, service, mock_repository) -> None:
+    async def test_prior_years_rebuilt_too_with_their_own_fallback_count(
+        self, service: Any, mock_repository: Any
+    ) -> None:
         s26 = {1001: create_mock_session(1001, "Session 1", year=2026)}
         s25 = {901: create_mock_session(901, "Session 1", year=2025)}
 
@@ -171,7 +179,9 @@ class TestEnrollmentIdentityMode:
         assert result.prior_year_gender_fallback_counts == {2025: 2}
 
     @pytest.mark.asyncio
-    async def test_no_split_ignores_the_basis(self, service, mock_repository, sessions, enrolled_2026) -> None:
+    async def test_no_split_ignores_the_basis(
+        self, service: Any, mock_repository: Any, sessions: Any, enrolled_2026: Any
+    ) -> None:
         mock_repository.fetch_sessions.return_value = sessions
         mock_repository.fetch_attendees_with_dates.return_value = enrolled_2026
 
@@ -183,7 +193,9 @@ class TestEnrollmentIdentityMode:
 
 class TestCancellationIdentityMode:
     @pytest.mark.asyncio
-    async def test_cancellation_identity_lines_and_breakdown(self, service, mock_repository, sessions) -> None:
+    async def test_cancellation_identity_lines_and_breakdown(
+        self, service: Any, mock_repository: Any, sessions: Any
+    ) -> None:
         mock_repository.fetch_sessions.return_value = sessions
         mock_repository.fetch_status_transitions.return_value = [
             _cancel(1, 1001, "2026-01-12", "F", "Girl/woman"),
@@ -207,7 +219,7 @@ class TestCancellationIdentityMode:
         assert result.gender_fallback_count == 1
 
     @pytest.mark.asyncio
-    async def test_cancellation_field_mode_unchanged(self, service, mock_repository, sessions) -> None:
+    async def test_cancellation_field_mode_unchanged(self, service: Any, mock_repository: Any, sessions: Any) -> None:
         mock_repository.fetch_sessions.return_value = sessions
         mock_repository.fetch_status_transitions.return_value = [_cancel(1, 1001, "2026-01-12", "F", "Agender")]
 

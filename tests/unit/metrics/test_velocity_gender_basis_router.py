@@ -42,7 +42,7 @@ def client_and_service(monkeypatch):
         yield TestClient(create_app(), raise_server_exceptions=False), get_velocity
 
 
-def test_default_is_the_gender_field(client_and_service) -> None:
+def test_default_is_the_gender_field(client_and_service: Any) -> None:
     client, get_velocity = client_and_service
     response = client.get("/api/metrics/velocity?year=2026&split_by_gender=true")
     assert response.status_code == 200, response.text[:300]
@@ -50,7 +50,7 @@ def test_default_is_the_gender_field(client_and_service) -> None:
     assert response.json()["gender_basis"] == "field"
 
 
-def test_identity_is_passed_through_and_cached_apart(client_and_service) -> None:
+def test_identity_is_passed_through_and_cached_apart(client_and_service: Any) -> None:
     client, get_velocity = client_and_service
     client.get("/api/metrics/velocity?year=2026&split_by_gender=true")
     response = client.get("/api/metrics/velocity?year=2026&split_by_gender=true&gender_basis=identity")
@@ -60,6 +60,6 @@ def test_identity_is_passed_through_and_cached_apart(client_and_service) -> None
     assert response.json()["gender_basis"] == "identity"
 
 
-def test_an_unknown_basis_is_rejected(client_and_service) -> None:
+def test_an_unknown_basis_is_rejected(client_and_service: Any) -> None:
     client, _ = client_and_service
     assert client.get("/api/metrics/velocity?year=2026&gender_basis=pronouns").status_code == 422

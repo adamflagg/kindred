@@ -15,11 +15,11 @@ from typing import TYPE_CHECKING, Any
 
 from api.schemas.velocity import (
     DailyDataPoint,
+    GenderBasis,
     PhaseMarker,
     PriorYearCancelledSummary,
     PriorYearSessionSummary,
     PriorYearVelocity,
-    GenderBasis,
     SessionGenderBreakdown,
     VelocityCurve,
     VelocityResponse,
