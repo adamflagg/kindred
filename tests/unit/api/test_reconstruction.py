@@ -656,3 +656,44 @@ class TestPreAnchorEnrollments:
             season_start=SEASON_START,
         )
         assert result.get(1000, 0) == 0
+
+
+# ============================================================================
+# attendees_at_cutoff: the record-level form of the same rule (Overview's same point, PR 7)
+# ============================================================================
+
+
+class TestAttendeesAtCutoff:
+    """Decision 7: enrolled at day N = registered by N and not cancelled by N."""
+
+    ATTENDEES = (
+        _make_attendee(1, 1000, 2, "2025-10-20", "2025-10-15"),  # registered day 0
+        _make_attendee(2, 1000, 2, "2025-11-30", "2025-11-30"),  # registered after the cutoff
+        _make_attendee(3, 1000, 32, "2025-11-20", "2025-10-16", status="cancelled"),  # cancelled after
+        _make_attendee(4, 1000, 32, "2025-10-25", "2025-10-16", status="cancelled"),  # cancelled by
+        _make_attendee(5, 1000, 256, "2025-10-26", "2025-10-16", status="withdrawn"),  # withdrawn by
+        _make_attendee(6, 1000, 8, "2025-10-16", "2025-10-16", status="waitlisted"),  # never counts
+        _make_attendee(7, 1000, 2, "2025-10-18"),  # no effective_date: enrollment_date is the day
+    )
+
+    def test_splits_enrolled_and_cancelled_by_the_cutoff(self) -> None:
+        from api.services.reconstruction import attendees_at_cutoff
+
+        enrolled, cancelled = attendees_at_cutoff(list(self.ATTENDEES), datetime(2025, 11, 1).date())
+
+        assert sorted(a.person_id for a in enrolled) == [1, 3, 7]
+        assert sorted(a.person_id for a in cancelled) == [4, 5]
+
+    @pytest.mark.asyncio
+    async def test_agrees_with_the_per_session_rebuild(self) -> None:
+        """Velocity and Forecast rebuild counts; Overview rebuilds the records. Same answer."""
+        from api.services.reconstruction import attendees_at_cutoff
+
+        repo = AsyncMock()
+        repo.fetch_attendees_with_dates.return_value = list(self.ATTENDEES)
+        sessions = {1000: SimpleNamespace(cm_id=1000, name="Session 1", session_type="main")}
+
+        counts = await reconstruct_enrollment_at_offset(repo, 2025, sessions, 17, SEASON_START, week0_window=False)
+        enrolled, _ = attendees_at_cutoff(list(self.ATTENDEES), datetime(2025, 11, 1).date())
+
+        assert counts[1000] == len(enrolled)

@@ -146,6 +146,13 @@ class VelocityResponse(BaseModel):
         None,
         description="ISO date of the earliest attendee_status_history row of any year; cancellation metric only",
     )
+    snapshots_start: str | None = Field(
+        None,
+        description=(
+            "ISO date of the first nightly enrollment snapshot of any year (enrollment metric). Every point "
+            "before it is rebuilt from registration dates, so every season before it is rebuilt (K13)"
+        ),
+    )
     session_swap_count: int = Field(0, description="Cancellations that are session changes, not true departures")
     daily: list[DailyDataPoint] = Field(default_factory=list, description="Combined daily data for cumulative charts")
     weekly: list[WeeklyDataPoint] = Field(

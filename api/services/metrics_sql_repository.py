@@ -498,6 +498,19 @@ class MetricsSQLRepository:
         value = rows[0]["first_seen"] if rows else None
         return str(value) if value else None
 
+    async def fetch_snapshots_start(self) -> str | None:
+        """Date of the first nightly enrollment snapshot of any year, or None (K13)."""
+        try:
+            rows = self._query(
+                "SELECT MIN(snapshot_datetime) AS first_seen FROM enrollment_snapshots"
+                " WHERE snapshot_datetime IS NOT NULL AND snapshot_datetime != ''"
+            )
+        except Exception as e:
+            logger.warning(f"Could not fetch snapshots start: {e}")
+            return None
+        value = rows[0]["first_seen"] if rows else None
+        return str(value)[:10] if value else None
+
     # ------------------------------------------------------------------
     # 10. fetch_status_history
     # ------------------------------------------------------------------

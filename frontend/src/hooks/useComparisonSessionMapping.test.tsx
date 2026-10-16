@@ -29,13 +29,15 @@ vi.mock('./useMetricsSessions', () => ({
   useMetricsSessions: (year: number) => ({ data: byYear[year] ?? [] }),
 }))
 
+// Registration reads its compare year at the same point only when the page opts in (decision 7
+// covers Overview, not Geo); by default every compare year is read at its final
 const cases = [
-  ['registration', useComparisonRegistrationData, reg],
-  ['waitlist', useComparisonWaitlistData, wait],
-  ['cancellation', useComparisonCancellationData, canc],
+  ['registration', useComparisonRegistrationData, reg, {}],
+  ['waitlist', useComparisonWaitlistData, wait, {}],
+  ['cancellation', useComparisonCancellationData, canc, {}],
 ] as const
 
-describe.each(cases)('useComparison %s data session mapping', (_n, useHook, spy) => {
+describe.each(cases)('useComparison %s data session mapping', (_n, useHook, spy, extra) => {
   beforeEach(() => spy.mockReset().mockReturnValue({}))
 
   it('sends the compare year its own mapped id', () => {
@@ -57,6 +59,31 @@ describe.each(cases)('useComparison %s data session mapping', (_n, useHook, spy)
   it('passes options through when no session is picked', () => {
     const opts = { sessionTypes: 'main' }
     renderHook(() => useHook(2026, 2025, opts))
-    expect(spy).toHaveBeenCalledWith(2025, opts)
+    expect(spy).toHaveBeenCalledWith(2025, { ...opts, ...extra })
+  })
+})
+
+describe('useComparisonRegistrationData same point (decision 7, PR 7)', () => {
+  beforeEach(() => reg.mockReset().mockReturnValue({}))
+
+  it('asks for the compare year at the same point of the primary season when the page opts in', () => {
+    renderHook(() =>
+      useComparisonRegistrationData(2026, 2025, { sessionTypes: 'main' }, { samePoint: true })
+    )
+    expect(reg).toHaveBeenCalledWith(2025, expect.objectContaining({ samePointOf: 2026 }))
+  })
+
+  it('reads the compare year at its final when the page does not opt in', () => {
+    renderHook(() => useComparisonRegistrationData(2026, 2025, { sessionTypes: 'main' }))
+    const compareCall = reg.mock.calls.find((c) => c[0] === 2025)
+    expect(compareCall?.[1]).not.toHaveProperty('samePointOf')
+  })
+
+  it('reads the primary year as it stands', () => {
+    renderHook(() =>
+      useComparisonRegistrationData(2026, 2025, { sessionTypes: 'main' }, { samePoint: true })
+    )
+    const primaryCall = reg.mock.calls.find((c) => c[0] === 2026)
+    expect(primaryCall?.[1]).not.toHaveProperty('samePointOf')
   })
 })

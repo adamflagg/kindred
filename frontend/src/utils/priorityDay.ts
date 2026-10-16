@@ -8,7 +8,10 @@ import type { DefinitionNote } from '../components/camperships/kit/DefinitionNot
 export const PRIORITY_DAY_NOTE =
   'Counts the opening day and the next day: in 2023 and 2025 CampMinder dated most opening-day sign-ups the following day.'
 
-/** The note as the kit's DefinitionNotes list takes it: the page's only note, so number 1. */
+/**
+ * The note as the kit's DefinitionNotes list takes it. Number 1: on every page that lists it, it
+ * comes first (Velocity's bases note follows it as 2).
+ */
 export const PRIORITY_DAY_NOTES: readonly DefinitionNote[] = [{ n: 1, text: PRIORITY_DAY_NOTE }]
 
 /**

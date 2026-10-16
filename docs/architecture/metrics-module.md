@@ -68,6 +68,35 @@ Three sections via `MetricsLayout.tsx` with sticky two-level navigation. Above e
 - **Session swaps** (`api/utils/session_swap.py`): a cancelled camper with any enrolled record in the season, no time window (decision 46). Swaps + true departures split the cancelled exactly as still-enrolled / not-enrolled do, on the caller's scope
 - **Number formatting** (frontend): every displayed number goes through `utils/numberFormat.ts` (separators, one-decimal percent, U+2212 minus; decision 43). Definitions are numbered notes via the kit's `DefinitionNotes`/`DefRef`, never hover text (decision 11)
 
+## Same Point Last Year (decision 7)
+
+While a season is live, a prior season is compared at **the same registration day**: enrolled at
+day N = registered by N (`effective_date`, else `enrollment_date`) and not cancelled by N (a
+cancelled or withdrawn record's `enrollment_date`). After the season, prior seasons are compared at
+their final. One rule, one place:
+
+- `api/services/same_point.py` `live_same_point(repo, year, today)` — the season's registration day
+  while it is live (from before the anchor through `SEASON_WEEKS` weeks after it), with the
+  prior-side read day clamped by `same_point_offset` (decision 45: on a priority, early or open date
+  the prior is read through the next day). None means "compare with finals".
+- **Forecast** live mode takes its prior read day (`prior_offset`, already clamped) and
+  `prior_basis` from it, and drops the Week-0 lower bound, since a negative day there is a real
+  "N days before the anchor". Week mode is always same point.
+- **Overview** (`/registration?same_point_of=<season>`): the compare year is read at that day with
+  `reconstruction.attendees_at_cutoff`, the record-level form of the rule `_reconstruct_core` counts per
+  session, so every breakdown can use it. The response says `prior_basis`, `day_offset`,
+  `prior_day_offset` and `as_of_date`. A past waitlist cannot be rebuilt, so `total_waitlisted` is
+  None on a same-point read. Cancelled counts the Cancelled status only, as Overview's final does.
+- **Velocity** compares each prior line at `same_point_offset(current_day_offset)`.
+
+**Two bases (K13).** Velocity's current season reads the nightly `enrollment_snapshots` from the
+first snapshot on (main, embedded and AG sessions only); everything else is rebuilt: every season
+before the first snapshot (`snapshots_start` on the response, 2026-03-02 in prod), the weeks before
+a season's first snapshot, and Quests and teen programs always. Each point says which in
+`data_source`; the page labels the lines with a numbered note when the lines on screen do not share
+one basis (`components/velocity/velocityBases.ts`). Overview's same-point compare is the same mix:
+this season's live count against a rebuilt prior, and its note says so.
+
 ## Week 0 (Pre-Registration Enrollment)
 
 Week 0 captures enrollments that occur before the registration anchor date (priority_reg_date or early_reg_date). These are typically staff/board early-access registrations.

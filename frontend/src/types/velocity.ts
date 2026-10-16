@@ -117,5 +117,7 @@ export interface VelocityResponse {
   today_day_offset?: number | null
   /** ISO date of the earliest status-history row (cancellation metric only). */
   status_history_start?: string | null
+  /** ISO date of the first nightly snapshot of any year (enrollment metric): every season before it is rebuilt (K13). */
+  snapshots_start?: string | null
   warnings: string[]
 }

@@ -634,6 +634,25 @@ class TestFetchStatusHistoryStart:
         assert await repo.fetch_status_history_start() is None
 
 
+class TestFetchSnapshotsStart:
+    """The first nightly snapshot of any year: before it, every Velocity point is rebuilt (K13)."""
+
+    @pytest.mark.asyncio
+    async def test_returns_earliest_snapshot_date_across_years(self, sql_db: sqlite3.Connection) -> None:
+        sql_db.execute(
+            "INSERT INTO enrollment_snapshots VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            ("snap_old", 2024, 1000001, "2024-03-02 00:00:00.000Z", 1, 0, 0, 1, 0, 0, 0, 0, 0),
+        )
+        repo = _make_repo(sql_db)
+        assert await repo.fetch_snapshots_start() == "2024-03-02"
+
+    @pytest.mark.asyncio
+    async def test_none_when_no_snapshots(self, sql_db: sqlite3.Connection) -> None:
+        sql_db.execute("DELETE FROM enrollment_snapshots")
+        repo = _make_repo(sql_db)
+        assert await repo.fetch_snapshots_start() is None
+
+
 # ============================================================================
 # Test: fetch_enrollment_snapshots
 # ============================================================================

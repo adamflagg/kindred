@@ -7,8 +7,9 @@ testable service that uses the MetricsRepository for data access.
 from __future__ import annotations
 
 import asyncio
+from datetime import date, timedelta
 from statistics import mean
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from api.schemas.metrics import (
     CityBreakdown,
@@ -40,6 +41,7 @@ from api.utils.session_metrics import (
     resolve_cohort_session_ids,
     resolve_duration_sessions,
 )
+from bunking.logging_config import get_logger
 
 from .breakdown_calculator import calculate_percentage, compute_registration_breakdown
 from .extractors import (
@@ -52,9 +54,13 @@ from .extractors import (
     is_new_camper,
     summers_at_camp_by_person,
 )
+from .reconstruction import attendees_at_cutoff
+from .same_point import live_same_point, registration_anchor
 
 if TYPE_CHECKING:
     from .metrics_repository import MetricsRepository
+
+logger = get_logger(__name__)
 
 
 class RegistrationService:
@@ -75,6 +81,8 @@ class RegistrationService:
         status_filter: list[str] | None = None,
         session_cm_id: int | None = None,
         duration: str | None = None,
+        same_point_of: int | None = None,
+        today: date | None = None,
     ) -> RegistrationMetricsResponse:
         """Calculate registration metrics for a year.
 
@@ -85,6 +93,11 @@ class RegistrationService:
             session_cm_id: Optional specific session ID to filter.
             duration: Optional duration category (e.g., "1-week", "2-week") to filter
                 sessions by length.
+            same_point_of: Read ``year`` as a comparison for this season (decision 7): while that
+                season is live, at the registration day it has reached (registered by then and not
+                cancelled by then, as Velocity and Forecast count it); after it, as ``year`` stands now.
+                Needs the enrolled status filter.
+            today: Override for the camp today (tests). Only a same-point read uses it.
 
         Returns:
             RegistrationMetricsResponse with all breakdown metrics.
@@ -92,6 +105,22 @@ class RegistrationService:
         # Default status filter
         if status_filter is None:
             status_filter = ["enrolled"]
+        if same_point_of is not None and status_filter != ["enrolled"]:
+            raise ValueError("A same-point read counts enrolled campers only: use the enrolled status filter")
+
+        prior_basis: Literal["same_point", "final"] | None = None
+        day_offset: int | None = None
+        prior_day_offset: int | None = None
+        cutoff: date | None = None
+        if same_point_of is not None:
+            prior_basis = "final"
+            point = await live_same_point(self.repo, same_point_of, today)
+            anchor = await self._fetch_anchor(year) if point is not None else None
+            if point is not None and anchor is not None:
+                prior_basis = "same_point"
+                day_offset = point.day_offset
+                prior_day_offset = point.prior_offset
+                cutoff = anchor + timedelta(days=point.prior_offset)
 
         # Fetch sessions first to find AG sessions with matching parent.
         # The type-filtered dict is used for breakdown display; the full dict is
@@ -114,24 +143,38 @@ class RegistrationService:
         else:
             restrict_ids = duration_session_ids
 
-        # Fetch data in parallel
-        results = await asyncio.gather(
-            self.repo.fetch_attendees(year, status_filter),
-            self.repo.fetch_attendees(year),  # Default: enrolled
-            self.repo.fetch_attendees(year, "waitlisted"),
-            self.repo.fetch_attendees(year, "cancelled"),
-            self.repo.fetch_persons(year),
-            self.repo.fetch_bunk_plans(year),
-            self.repo.fetch_capacity_config(),
-        )
-        # Type assertions for asyncio.gather results
-        requested_attendees = cast(list[Any], results[0])
-        enrolled_attendees = cast(list[Any], results[1])
-        waitlisted_attendees = cast(list[Any], results[2])
-        cancelled_attendees = cast(list[Any], results[3])
-        persons = cast(dict[int, Any], results[4])
-        bunk_plans = cast(list[Any], results[5])
-        default_capacity = cast(int, results[6])
+        if cutoff is not None:
+            # Same point: the records as they stood at the cutoff. Overview's Cancelled counts the
+            # Cancelled status only (withdrawn never), so it does here too.
+            dated, persons, bunk_plans, default_capacity = await asyncio.gather(
+                self.repo.fetch_attendees_with_dates(year),
+                self.repo.fetch_persons(year),
+                self.repo.fetch_bunk_plans(year),
+                self.repo.fetch_capacity_config(),
+            )
+            enrolled_attendees, left = attendees_at_cutoff(list(dated), cutoff)
+            requested_attendees = enrolled_attendees
+            waitlisted_attendees = []
+            cancelled_attendees = [a for a in left if getattr(a, "status", "") == "cancelled"]
+        else:
+            # Fetch data in parallel
+            results = await asyncio.gather(
+                self.repo.fetch_attendees(year, status_filter),
+                self.repo.fetch_attendees(year),  # Default: enrolled
+                self.repo.fetch_attendees(year, "waitlisted"),
+                self.repo.fetch_attendees(year, "cancelled"),
+                self.repo.fetch_persons(year),
+                self.repo.fetch_bunk_plans(year),
+                self.repo.fetch_capacity_config(),
+            )
+            # Type assertions for asyncio.gather results
+            requested_attendees = cast(list[Any], results[0])
+            enrolled_attendees = cast(list[Any], results[1])
+            waitlisted_attendees = cast(list[Any], results[2])
+            cancelled_attendees = cast(list[Any], results[3])
+            persons = cast(dict[int, Any], results[4])
+            bunk_plans = cast(list[Any], results[5])
+            default_capacity = cast(int, results[6])
 
         # Filter attendees by session (cohort-gated: off-season teens excluded)
         combined_attendees = filter_attendees_by_session(
@@ -169,7 +212,8 @@ class RegistrationService:
         cancelled_person_ids = self._get_person_ids(cancelled_attendees)
 
         total_enrolled = len(enrolled_person_ids)
-        total_waitlisted = len(waitlisted_person_ids)
+        # A past waitlist cannot be rebuilt from final records (as Forecast's week mode says)
+        total_waitlisted = len(waitlisted_person_ids) if cutoff is None else None
         total_cancelled = len(cancelled_person_ids)
 
         # Compute breakdowns
@@ -227,7 +271,19 @@ class RegistrationService:
             by_summer_years=by_summer_years,
             average_summers_at_camp=average_summers_at_camp,
             by_first_summer_year=by_first_summer_year,
+            prior_basis=prior_basis,
+            day_offset=day_offset,
+            prior_day_offset=prior_day_offset,
+            as_of_date=cutoff.isoformat() if cutoff is not None else None,
         )
+
+    async def _fetch_anchor(self, year: int) -> date | None:
+        """This year's registration anchor; None (read as it stands) when unset or unreadable."""
+        try:
+            return registration_anchor(await self.repo.fetch_registration_dates(year))
+        except Exception:
+            logger.warning("Failed to read the %d registration dates, reading it as it stands", year, exc_info=True)
+            return None
 
     def _get_person_ids(self, attendees: list[Any]) -> set[int]:
         """Extract unique person IDs from attendees.

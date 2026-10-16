@@ -13262,9 +13262,9 @@ export type RegistrationMetricsResponse = {
   /**
    * Total Waitlisted
    *
-   * Total waitlisted campers
+   * Total waitlisted campers. None on a same-point read: a past waitlist cannot be rebuilt
    */
-  total_waitlisted: number
+  total_waitlisted: number | null
   /**
    * Total Cancelled
    *
@@ -13353,6 +13353,30 @@ export type RegistrationMetricsResponse = {
    * Enrollment by first summer year (cohort analysis)
    */
   by_first_summer_year?: Array<FirstSummerYearBreakdown>
+  /**
+   * Prior Basis
+   *
+   * Set when same_point_of was asked: 'same_point' when this year was read at the registration day that season has reached (registered by then and not cancelled by then), 'final' when it was read as it stands now (that season is over, or a season has no registration anchor)
+   */
+  prior_basis?: 'same_point' | 'final' | null
+  /**
+   * Day Offset
+   *
+   * Same-point reads: the registration day (days from its anchor) the same_point_of season is on
+   */
+  day_offset?: number | null
+  /**
+   * Prior Day Offset
+   *
+   * Same-point reads: the registration day this year was read at. One more than day_offset on a priority, early or open date, where the prior year is read through the next day (decision 45)
+   */
+  prior_day_offset?: number | null
+  /**
+   * As Of Date
+   *
+   * Same-point reads: the last day (YYYY-MM-DD) this year was read through. On a phase date it is the day after the matching day (decision 45)
+   */
+  as_of_date?: string | null
 }
 
 /**
@@ -19152,6 +19176,12 @@ export type VelocityResponse = {
    */
   status_history_start?: string | null
   /**
+   * Snapshots Start
+   *
+   * ISO date of the first nightly enrollment snapshot of any year (enrollment metric). Every point before it is rebuilt from registration dates, so every season before it is rebuilt (K13)
+   */
+  snapshots_start?: string | null
+  /**
    * Session Swap Count
    *
    * Cancellations that are session changes, not true departures
@@ -22474,6 +22504,12 @@ export type GetRegistrationMetricsApiMetricsRegistrationGetData = {
      * Filter by session duration category (1-week, 2-week, 3-week, 4-week+)
      */
     duration?: '1-week' | '2-week' | '3-week' | '4-week+' | null
+    /**
+     * Same Point Of
+     *
+     * Read this year as a comparison for that season (decision 7): while it is live, at the same registration day (registered by then, not cancelled by then); after it, as this year stands now. The response's prior_basis says which. Enrolled status only
+     */
+    same_point_of?: number | null
   }
   url: '/api/metrics/registration'
 }

@@ -26,6 +26,7 @@ from api.services.reconstruction import (
     reconstruct_enrollment_at_offset,
     reconstruct_enrollment_with_gender,
 )
+from api.services.same_point import live_same_point
 from api.utils.session_aliases import resolve_session_alias
 from api.utils.session_metrics import (
     SUMMER_TEEN_TYPES,
@@ -258,27 +259,24 @@ class ForecastService:
         # How prior years are counted: at the same registration day ("same_point") or
         # at their final. Week mode is always same-point; live mode is same-point
         # while this year's season is live (including before the anchor).
+        # The live rule is shared with Overview (api/services/same_point.py); it reads the anchor
+        # only to pick the basis, and fails soft to "final".
         prior_offset: int | None = day_offset
         week0_window = True
         prior_basis: Literal["same_point", "final"] = "same_point" if day_offset is not None else "final"
-        if day_offset is None:
-            try:
-                live_anchor = await self._fetch_anchor(year)
-            except Exception:
-                # Live mode reads the anchor only to pick the basis: fail soft to "final"
-                logger.warning(
-                    "Failed to read the %d registration anchor, comparing with prior finals",
-                    year,
-                    exc_info=True,
-                )
-                live_anchor = None
-            if live_anchor is not None:
-                camp_today = today if today is not None else get_camp_today()
-                if camp_today <= live_anchor + timedelta(days=SEASON_WEEKS * 7 - 1):
-                    prior_offset = (camp_today - live_anchor).days
-                    # Negative N is a real "N days before the anchor": no Week-0 lower bound
-                    week0_window = False
-                    prior_basis = "same_point"
+        if day_offset is not None:
+            # Decision 45: prior registrations are dated the NEXT day, so the priority day (offset 0)
+            # reads the prior years through their second day too. Current-year side and buckets stay.
+            # Ruling 11: so do this season's early and open dates.
+            prior_offset = same_point_offset(day_offset, await self._fetch_phase_offsets(year))
+        else:
+            live_point = await live_same_point(self.repository, year, today)
+            if live_point is not None:
+                # Already clamped for the phase dates (decision 45, ruling 11)
+                prior_offset = live_point.prior_offset
+                # Negative N is a real "N days before the anchor": no Week-0 lower bound
+                week0_window = False
+                prior_basis = "same_point"
 
         # Historical day_offset mode: use reconstruction for enrollment counts
         reconstruction: dict[int, dict[str, int | None]] | None = None
@@ -309,12 +307,6 @@ class ForecastService:
                 self.repository.fetch_attendees(year, status_filter="waitlisted"),
                 self.repository.fetch_budget_config(year),
             )
-
-        # Decision 45: prior registrations are dated the NEXT day, so the priority day (offset 0)
-        # reads the prior years through their second day too. Current-year side and buckets stay.
-        # Ruling 11: so do this season's early and open dates.
-        if prior_offset is not None:
-            prior_offset = same_point_offset(prior_offset, await self._fetch_phase_offsets(year))
 
         # Fetch prior year comparison data
         prior_counts, two_year_counts = await self._fetch_prior_year_counts(

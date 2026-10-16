@@ -27,7 +27,14 @@ export type MetricsFilterOptions =
   | { sessionTypes?: string | undefined; sessionCmId?: undefined; duration: string }
   | { sessionTypes?: string | undefined; sessionCmId?: undefined; duration?: undefined }
 
-export type RegistrationFilterOptions = MetricsFilterOptions & { statuses?: string }
+export type RegistrationFilterOptions = MetricsFilterOptions & {
+  statuses?: string
+  /**
+   * Read the year as a comparison for this season (decision 7): at the same registration day while
+   * that season is live, at its final after. The response's `prior_basis` says which.
+   */
+  samePointOf?: number
+}
 
 export type HistoricalFilterOptions = MetricsFilterOptions & { years?: string }
 
@@ -117,7 +124,8 @@ export function useRegistrationMetrics(year: number, options?: RegistrationFilte
       options?.sessionTypes,
       options?.statuses,
       options?.sessionCmId,
-      options?.duration
+      options?.duration,
+      options?.samePointOf
     ),
     queryFn: async (): Promise<RegistrationMetrics> => {
       const params = new URLSearchParams({
@@ -134,6 +142,9 @@ export function useRegistrationMetrics(year: number, options?: RegistrationFilte
       }
       if (options?.duration) {
         params.set('duration', options.duration)
+      }
+      if (options?.samePointOf !== undefined) {
+        params.set('same_point_of', options.samePointOf.toString())
       }
 
       const response = await fetchWithAuth(`/api/metrics/registration?${params}`)

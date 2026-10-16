@@ -55,6 +55,9 @@ import {
   isPriorityDayOffset,
 } from '../../../utils/priorityDay'
 import { PHASE_COLORS } from './phaseColors'
+import { describeVelocityBases } from '../../../components/velocity/velocityBases'
+import type { DefinitionNote } from '../../../components/camperships/kit/DefinitionNotes'
+import { isQuestSession, isTeenProgram } from '../../../utils/sessionTypePredicates'
 import {
   PRIOR_YEAR_COLORS,
   GENDER_COLORS,
@@ -229,6 +232,38 @@ export default function VelocityPage() {
       return { year: py.year, final: viewMode === 'gross' ? last?.gross_enrolled : last?.enrolled }
     }),
   })
+
+  // K13 (#3207): the lines can be built two ways, the count stored each night or rebuilt from
+  // registration dates. Label them with a numbered note (never hover text), driven per point
+  // from data_source, and only when the lines on screen do not share one basis.
+  const sessionById = new Map(sessions.map((s) => [s.cm_id, s]))
+  const bases = hasPriorYear
+    ? describeVelocityBases({
+        lines: [
+          { year: currentYear, points: data.combined.daily },
+          ...data.prior_years.map((py) => ({ year: py.year, points: py.daily })),
+        ],
+        snapshotsStart: data.snapshots_start ?? null,
+        // Snapshots cover main, embedded and All-Gender sessions only
+        includesRebuiltPrograms: data.by_session.some((curve) => {
+          const session = curve.session_cm_id != null ? sessionById.get(curve.session_cm_id) : null
+          return session != null && (isQuestSession(session) || isTeenProgram(session))
+        }),
+      })
+    : null
+  const priorityDayNotes = summaryCards && priorityDayMark ? PRIORITY_DAY_NOTES : []
+  const basesNoteN = priorityDayNotes.length + 1
+  const basesMark = bases ? <DefRef n={basesNoteN} /> : null
+  if (bases) {
+    const sup = String(basesNoteN).replace(/\d/g, (d) => '⁰¹²³⁴⁵⁶⁷⁸⁹'[Number(d)] ?? d)
+    for (const year of bases.years) {
+      legendLabels[String(year)] = `${legendLabels[String(year)] ?? year}${sup}`
+    }
+  }
+  const pageNotes: readonly DefinitionNote[] = [
+    ...priorityDayNotes,
+    ...(bases ? [{ n: basesNoteN, text: bases.text }] : []),
+  ]
 
   // View mode toggle (passed as extraControls to VelocityControls)
   const viewModeToggle = (
@@ -445,6 +480,7 @@ export default function VelocityPage() {
               <p className="text-muted-foreground text-xs font-medium">
                 {summaryCards.priorYear} at Wk {summaryCards.currentWeekNumber}
                 {priorityDayMark}
+                {basesMark}
               </p>
               <p className="text-foreground text-xl font-bold">
                 {formatCount(summaryCards.priorAtWeek)}
@@ -453,6 +489,7 @@ export default function VelocityPage() {
             <div className="card-lodge p-3">
               <p className="text-muted-foreground text-xs font-medium">
                 vs {summaryCards.priorYear}
+                {basesMark}
               </p>
               <p className={`text-xl font-bold ${deltaColorClass(summaryCards.delta)}`}>
                 {priorityDayMark && summaryCards.delta != null ? (
@@ -490,8 +527,8 @@ export default function VelocityPage() {
           </div>
         )}
 
-        {summaryCards && hasPriorYear && priorityDayMark && (
-          <DefinitionNotes notes={PRIORITY_DAY_NOTES} />
+        {summaryCards && hasPriorYear && pageNotes.length > 0 && (
+          <DefinitionNotes notes={pageNotes} />
         )}
 
         {/* Enrollment Velocity Chart */}

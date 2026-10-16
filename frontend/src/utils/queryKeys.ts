@@ -237,8 +237,19 @@ export const queryKeys = {
     sessionTypes?: string,
     statuses?: string,
     sessionCmId?: number,
-    duration?: string
-  ) => ['metrics', 'registration', year, sessionTypes, statuses, sessionCmId, duration] as const,
+    duration?: string,
+    samePointOf?: number
+  ) =>
+    [
+      'metrics',
+      'registration',
+      year,
+      sessionTypes,
+      statuses,
+      sessionCmId,
+      duration,
+      samePointOf,
+    ] as const,
   historical: (years?: string, sessionTypes?: string, sessionCmId?: number, duration?: string) =>
     ['metrics', 'historical', years, sessionTypes, sessionCmId, duration] as const,
   retentionTrends: (
