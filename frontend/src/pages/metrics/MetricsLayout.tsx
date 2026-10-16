@@ -18,6 +18,7 @@ import { usePriorityRegDate } from '../../hooks/useRegistrationDates'
 import { useViewSeason } from '../../hooks/useViewSeason'
 import { useMetricsSession } from '../../hooks/useMetricsSession'
 import { scopeLine, scopeWords, SUMMER_ONLY } from './scopeLine'
+import { AnalyticsPrintFrame } from '../../components/metrics/AnalyticsPrintFrame'
 
 /**
  * The page title and, under it, what the page counts (PR 4, pick 1A, replacing the subtitle):
@@ -30,7 +31,7 @@ function MetricsHeader({ title }: { title: string }) {
   const session = useMetricsSession()
   const line = scopeLine(location.pathname, currentYear, scopeWords(session))
   return (
-    <div className="mb-4">
+    <div className="mb-4 print:hidden">
       <h1 className="text-foreground text-xl font-bold">{title}</h1>
       <p className="text-muted-foreground mt-0.5 text-sm" data-testid="metrics-scope-line">
         <span className="text-foreground font-medium">{line.head}</span>
@@ -38,6 +39,35 @@ function MetricsHeader({ title }: { title: string }) {
         {line.unit && ` · ${line.unit}`} · {SUMMER_ONLY}
       </p>
     </div>
+  )
+}
+
+/**
+ * Everything under the header, wrapped so Ctrl+P prints the page cleanly (PR 10). Inside the session
+ * provider because the header line carries what the page counts, which follows the session filter.
+ */
+function PrintableBody({
+  title,
+  subNavItems,
+  children,
+}: {
+  title: string
+  subNavItems: SubNavItem[]
+  children: React.ReactNode
+}) {
+  const location = useLocation()
+  const { currentYear } = useCurrentYear()
+  const session = useMetricsSession()
+  const line = scopeLine(location.pathname, currentYear, scopeWords(session))
+  const sub = subNavItems.find((item) => item.path === location.pathname) ?? subNavItems[0]
+  const path = ['Analytics', title, ...(sub ? [sub.label] : [])].join(' › ')
+  const scope = [line.head.replace(/^[\d–-]+ · /, ''), line.left, SUMMER_ONLY]
+    .filter(Boolean)
+    .join(' — ')
+  return (
+    <AnalyticsPrintFrame path={path} season={currentYear} scope={scope}>
+      {children}
+    </AnalyticsPrintFrame>
   )
 }
 
@@ -109,16 +139,18 @@ export default function MetricsLayout() {
         <div className="mx-auto max-w-7xl px-4 pt-4 pb-8 sm:px-6 lg:px-8">
           <MetricsHeader title={title} />
 
-          {/* Sticky Navigation */}
-          <div className="bg-background/95 sticky top-0 z-10 backdrop-blur-sm">
-            <MetricsTypeTabs />
-            {subNavItems.length > 0 && <MetricsSubNav items={subNavItems} />}
-          </div>
+          <PrintableBody title={title} subNavItems={subNavItems}>
+            {/* Sticky Navigation (tabs, filters: not on paper) */}
+            <div data-app-chrome className="bg-background/95 sticky top-0 z-10 backdrop-blur-sm">
+              <MetricsTypeTabs />
+              {subNavItems.length > 0 && <MetricsSubNav items={subNavItems} />}
+            </div>
 
-          {/* Page Content */}
-          <div className="mt-6">
-            <SeasonGatedOutlet />
-          </div>
+            {/* Page Content */}
+            <div className="mt-6">
+              <SeasonGatedOutlet />
+            </div>
+          </PrintableBody>
         </div>
       </div>
     </MetricsSessionProvider>

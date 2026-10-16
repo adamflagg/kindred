@@ -477,6 +477,7 @@ export default function CancellationAnalysis() {
                 {compareYear !== null && compSessionData && (
                   <ComparisonSummaryTable
                     title="Cancellations by Session Comparison"
+                    sortable
                     sentiment="inverse"
                     primaryYear={currentYear}
                     compareYear={compareYear}

@@ -24,6 +24,8 @@ import { BunkCellTooltip } from '../../../components/metrics/BunkStaffTooltip'
 import type { BunkStaffInfo } from '../../../hooks/useBunkStaff'
 import { getRetentionCellColor } from '../../../utils/retentionColors'
 import { buildSessionDateLookup, compareByDateThenName } from '../../../utils/sessionUtils'
+import { TableExportButtons } from '../../../components/metrics/TableExportButtons'
+import { csvFilename } from '../../../components/metrics/exportFilename'
 
 type SortField = 'name' | 'overall'
 type SortDir = 'asc' | 'desc'
@@ -171,6 +173,31 @@ export default function StaffCabinAnalysisPage() {
       >
         {() => (
           <div className="card-lodge p-4" data-tour="retention-staff-table">
+            <div className="mb-3 flex justify-end">
+              <TableExportButtons
+                filename={csvFilename(currentYear, 'Staff cabin analysis')}
+                headers={[
+                  'Staff',
+                  'Status',
+                  ...sortedSessions.flatMap((session) => [
+                    `${session} bunk`,
+                    `${session} retention %`,
+                  ]),
+                  'Overall retention %',
+                ]}
+                rows={sortedRows.map((row) => [
+                  row.name,
+                  row.status ?? '',
+                  ...sortedSessions.flatMap((session) => {
+                    const cell = row.sessionData.get(session)
+                    return cell
+                      ? [cell.bunkName, Math.round(cell.retentionRate * 1000) / 10]
+                      : [null, null]
+                  }),
+                  Math.round(row.overallRetention * 1000) / 10,
+                ])}
+              />
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full border-separate border-spacing-0 text-xs" role="table">
                 <thead>

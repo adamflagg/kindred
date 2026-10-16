@@ -112,6 +112,20 @@ const renderWithRouter = (initialPath: string, childText = 'Child Content') => {
   )
 }
 
+describe('MetricsLayout printing (#3207 PR 10, ruling #68)', () => {
+  it('keeps the tabs and filters off the paper and gives every sheet a header line', () => {
+    renderWithRouter('/analytics/registration/overview')
+
+    const chrome = screen.getByRole('link', { name: /trends/i }).closest('[data-app-chrome]')
+    expect(chrome).not.toBeNull()
+    const head = document.querySelector('[data-print-head]')!
+    expect(head).toHaveTextContent('Analytics › Registration › Overview')
+    expect(head).toHaveTextContent('Season 2026')
+    expect(head).toHaveTextContent('Printed')
+    expect(screen.getByTestId('child').closest('[data-app-chrome]')).toBeNull()
+  })
+})
+
 describe('MetricsLayout', () => {
   it('renders primary navigation tabs', () => {
     renderWithRouter('/analytics/registration/overview')

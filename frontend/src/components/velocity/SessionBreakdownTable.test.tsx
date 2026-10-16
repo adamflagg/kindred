@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { SessionBreakdownTable } from './SessionBreakdownTable'
 import type { VelocityCurve, PriorYearSessionSummary } from '../../types/velocity'
 
@@ -168,5 +168,62 @@ describe('SessionBreakdownTable', () => {
     render(<SessionBreakdownTable {...defaultProps} columns={columns} />)
     const cell = screen.getByText('42')
     expect(cell.closest('td')).toHaveClass('text-right')
+  })
+})
+
+describe('SessionBreakdownTable sort and CSV (#3207 PR 10)', () => {
+  const week = makeSession().weekly[0]!
+  const mk = (id: number, name: string, enrolled: number) =>
+    makeSession({
+      session_cm_id: id,
+      session_name: name,
+      weekly: [{ ...week, enrolled }],
+    })
+  const columns = [
+    {
+      header: 'Session',
+      accessor: (s: VelocityCurve) => s.session_name,
+      value: (s: VelocityCurve) => s.session_name,
+    },
+    {
+      header: 'Enrolled',
+      accessor: (s: VelocityCurve) => s.weekly.at(-1)?.enrolled,
+      value: (s: VelocityCurve) => s.weekly.at(-1)?.enrolled ?? null,
+      className: 'text-right',
+    },
+  ]
+  const sessions = [mk(1, 'Session A', 10), mk(2, 'Session B', 30), mk(3, 'Session C', 20)]
+  const names = () =>
+    screen
+      .getAllByRole('row')
+      .slice(1)
+      .map((r) => r.querySelector('td')?.textContent)
+
+  it('keeps date order until a click, then sorts a number column high to low and flips', () => {
+    render(
+      <SessionBreakdownTable
+        sortedBySession={sessions}
+        priorSessionMap={new Map()}
+        columns={columns}
+        exportFile="2026-x-2026-10-15.csv"
+      />
+    )
+    expect(names()).toEqual(['Session A', 'Session B', 'Session C'])
+    fireEvent.click(screen.getByRole('button', { name: /^Enrolled/ }))
+    expect(names()).toEqual(['Session B', 'Session C', 'Session A'])
+    fireEvent.click(screen.getByRole('button', { name: /^Enrolled/ }))
+    expect(names()).toEqual(['Session A', 'Session C', 'Session B'])
+    expect(screen.getByRole('button', { name: /download csv/i })).toBeInTheDocument()
+  })
+
+  it('has no sort or export without a file name', () => {
+    render(
+      <SessionBreakdownTable
+        sortedBySession={sessions}
+        priorSessionMap={new Map()}
+        columns={columns}
+      />
+    )
+    expect(screen.queryByRole('button', { name: /download csv/i })).not.toBeInTheDocument()
   })
 })

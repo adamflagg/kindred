@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -808,5 +808,54 @@ describe('ForecastPage number format (decision 43)', () => {
     expect(cells).toEqual(
       expect.arrayContaining(['1,500', '1,293', '1,000 / 293', '\u22121,207', '\u221256'])
     )
+  })
+})
+
+describe('ForecastPage sort headers (#3207 PR 10 scan)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockWeekOptions.data = []
+    mockUseMetricsSession.mockReturnValue(defaultMetricsSession())
+  })
+
+  const three = [
+    session({ session_cm_id: 1, session_name: 'Session 2', participants_vs_prior_year: 1 }),
+    session({ session_cm_id: 2, session_name: 'Session 3', participants_vs_prior_year: 20 }),
+    session({ session_cm_id: 3, session_name: 'Session 4', participants_vs_prior_year: -3 }),
+  ]
+  const order = () =>
+    screen
+      .getAllByRole('row')
+      .map((r) => r.querySelector('td')?.textContent ?? '')
+      .filter((t) => /^Session \d/.test(t))
+
+  it('keeps the revenue columns hidden only below lg, with their own padding', async () => {
+    setupMockFetch(mockResponse([session()]))
+    renderWithProviders(<ForecastPage />)
+    const header = (await screen.findByText('Budget Rev')).closest('th')!
+    const classes = header.className.split(/\s+/)
+    expect(classes).toEqual(expect.arrayContaining(['hidden', 'lg:table-cell', 'px-3']))
+  })
+
+  it('right-aligns a number header over its right-aligned column', async () => {
+    setupMockFetch(mockResponse([session()]))
+    renderWithProviders(<ForecastPage />)
+    const button = (await screen.findByText('Enrolled')).closest('button')!
+    expect(button.className).toContain('justify-end')
+    expect(screen.getByText('Session').closest('button')!.className).not.toContain('justify-center')
+  })
+
+  it('sorts the vs-prior column on a later day', async () => {
+    setupMockFetch(mockResponse(three, {}, { prior_basis: 'same_point', day_offset: 3 }))
+    renderWithProviders(<ForecastPage />)
+    fireEvent.click(await screen.findByRole('button', { name: /^vs same point/ }))
+    expect(order()).toEqual(['Session 3', 'Session 2', 'Session 4'])
+  })
+
+  it('on the priority date a vs-prior sort leaves the "updates tomorrow" rows in order', async () => {
+    setupMockFetch(mockResponse(three, {}, { prior_basis: 'same_point', day_offset: 0 }))
+    renderWithProviders(<ForecastPage />)
+    fireEvent.click(await screen.findByRole('button', { name: /^vs same point/ }))
+    expect(order()).toEqual(['Session 2', 'Session 3', 'Session 4'])
   })
 })

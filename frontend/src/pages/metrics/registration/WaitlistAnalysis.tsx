@@ -360,6 +360,7 @@ export default function WaitlistAnalysis() {
                 {compareYear !== null && compSession && (
                   <ComparisonSummaryTable
                     title="Waitlist by Session Comparison"
+                    sortable
                     sentiment="neutral"
                     primaryYear={currentYear}
                     compareYear={compareYear}

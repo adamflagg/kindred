@@ -138,3 +138,22 @@ describe('WeeklyDeltaTable', () => {
     expect(cell.closest('td')).toHaveClass('text-right')
   })
 })
+
+describe('WeeklyDeltaTable CSV (#3207 PR 10)', () => {
+  it('offers Copy and Download CSV when given a file name, and keeps the weeks in time order', () => {
+    render(
+      <WeeklyDeltaTable
+        weeks={[
+          makeWeek({ week_label: 'Wk 1' }),
+          makeWeek({ week_label: 'Wk 2', week_start: '2026-01-12' }),
+        ]}
+        priorWeekMap={null}
+        columns={[{ header: 'Change', accessor: (w) => w.delta, value: (w) => w.delta }]}
+        exportFile="2026-x-2026-10-15.csv"
+      />
+    )
+    expect(screen.getByRole('button', { name: /download csv/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^copy/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Change/ })).not.toBeInTheDocument()
+  })
+})

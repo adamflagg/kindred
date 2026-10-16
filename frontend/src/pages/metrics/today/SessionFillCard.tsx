@@ -107,7 +107,7 @@ export function SessionFillHead({
         {!plan && !goalsKnown && ' · goal not set yet'}
       </span>
       <span className="ml-auto flex flex-none items-center gap-3">
-        <span className="flex items-center gap-1.5">
+        <span data-app-chrome className="flex items-center gap-1.5">
           <span className={CS_SMALL}>Fill</span>
           <AidSegmented
             label="Fill"
@@ -121,6 +121,7 @@ export function SessionFillHead({
         </span>
         {plan ? (
           <Link
+            data-app-chrome
             className={`${CS_LINK_SM} whitespace-nowrap`}
             to={analyticsHref('/analytics/registration/availability', location.search)}
           >
@@ -128,6 +129,7 @@ export function SessionFillHead({
           </Link>
         ) : (
           <Link
+            data-app-chrome
             className={`${CS_LINK_SM} whitespace-nowrap`}
             to={analyticsHref('/analytics/registration/forecast', location.search)}
           >

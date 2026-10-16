@@ -75,6 +75,7 @@ export function RecentSignupsCard({
                   {name} · {line.sessions.join(', ')}{' '}
                   <button
                     type="button"
+                    data-app-chrome
                     className={`${CS_LINK_SM} cursor-pointer`}
                     onClick={() => toggle(key)}
                   >
@@ -111,7 +112,10 @@ export function RecentSignupsCard({
           )
         })}
       </ul>
-      <div className="border-border flex items-baseline gap-2 border-t px-3.5 py-1.5">
+      <div
+        data-app-chrome
+        className="border-border flex items-baseline gap-2 border-t px-3.5 py-1.5"
+      >
         <button
           type="button"
           className={`${CS_LINK_SM} ml-auto cursor-pointer whitespace-nowrap`}

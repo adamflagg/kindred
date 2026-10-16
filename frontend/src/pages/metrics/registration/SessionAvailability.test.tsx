@@ -157,6 +157,24 @@ describe('SessionAvailability', () => {
     })
   })
 
+  it('sorts the matrix by session name or waitlist, and offers Copy and Download CSV', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockAvailabilityResponse,
+    })
+
+    renderWithProviders(<SessionAvailability />)
+
+    await waitFor(() => expect(screen.getByText('Taste of Camp')).toBeInTheDocument())
+    expect(screen.getByRole('button', { name: /download csv/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^copy/i })).toBeInTheDocument()
+    const first = () =>
+      document.querySelector('[data-tour="reg-availability-heatmap"] tbody tr td')?.textContent
+    expect(first()).toBe('Taste of Camp')
+    fireEvent.click(screen.getByRole('button', { name: /^Session/ }))
+    expect(first()).toBe('Session 2')
+  })
+
   it('renders grade columns', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,

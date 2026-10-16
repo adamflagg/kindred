@@ -20,6 +20,11 @@ export interface SortableColumnHeaderProps {
   style?: CSSProperties | undefined
   /** A native title on the host cell (the full words behind a short header). */
   title?: string | undefined
+  /** A note mark or similar that rides after the label, inside the button. */
+  labelSuffix?: ReactNode
+  /** Spans, for a header over a grouped or two-row head (th only). */
+  colSpan?: number | undefined
+  rowSpan?: number | undefined
   /** Classes on the inner button — padding, hover, focus ring. */
   buttonClassName?: string
   /** The button's cross-axis alignment and gap; the default centres the arrow 4px off the label. */
@@ -48,6 +53,9 @@ export function SortableColumnHeader({
   className,
   style,
   title,
+  labelSuffix,
+  colSpan,
+  rowSpan,
   buttonClassName,
   layoutClassName = 'items-center gap-1',
 }: SortableColumnHeaderProps) {
@@ -61,6 +69,8 @@ export function SortableColumnHeader({
       className={className}
       style={style}
       title={title}
+      colSpan={colSpan}
+      rowSpan={rowSpan}
     >
       <button
         type="button"
@@ -68,6 +78,7 @@ export function SortableColumnHeader({
         className={`inline-flex w-full cursor-pointer ${layoutClassName} bg-transparent text-left ${buttonClassName ?? ''}`}
       >
         {label}
+        {labelSuffix}
         <span aria-hidden="true">{indicator ?? defaultIndicator}</span>
       </button>
     </Host>

@@ -14,6 +14,11 @@ import { sessionName } from '../../../utils/sessionName'
 import { MetricsQueryGuard } from '../../../components/metrics/MetricsQueryGuard'
 import { WaitlistTooltip } from '../../../components/metrics/WaitlistTooltip'
 import { useDrilldown } from '../../../hooks/useDrilldown'
+import { useTableSort } from '../../../hooks/useTableSort'
+import { MetricSortHeader } from '../../../components/metrics/MetricSortHeader'
+import { TableExportButtons } from '../../../components/metrics/TableExportButtons'
+import { csvFilename } from '../../../components/metrics/exportFilename'
+import type { SortValue } from '../../../utils/tableSort'
 
 const GRADES = [2, 3, 4, 5, 6, 7, 8, 9, 10]
 // Teen programs only serve rising-11th (TLI) and rising-12th (SCIT) graders,
@@ -52,6 +57,92 @@ function cellClass(status: Status): string {
     case 'na':
       return `${base} bg-neutral-200 dark:bg-neutral-700`
   }
+}
+
+type AvailField = 'name' | 'girlsOpen' | 'girlsWl' | 'boysOpen' | 'boysWl'
+
+/** Open spots in one gender's box, or null when the box has no capacity to count against. */
+function openSpots(g: { capacity: number | null; enrolled: number }): number | null {
+  return g.capacity === null ? null : g.capacity - g.enrolled
+}
+
+function availSortValue(session: SessionAvailabilityData, field: AvailField): SortValue {
+  switch (field) {
+    case 'name':
+      return session.session_name
+    case 'girlsOpen':
+      return openSpots(session.girls)
+    case 'girlsWl':
+      return session.girls.waitlisted
+    case 'boysOpen':
+      return openSpots(session.boys)
+    case 'boysWl':
+      return session.boys.waitlisted
+  }
+}
+
+interface AvailSort {
+  direction: (field: AvailField) => 'ascending' | 'descending' | null
+  toggle: (field: AvailField) => void
+}
+
+const AVAIL_HEADERS = [
+  'Session',
+  'Group',
+  'Gender',
+  'Enrolled',
+  'Capacity',
+  'Open spots',
+  'Status',
+  'Waitlisted',
+  ...GRADES.flatMap((g) => [`${gradeLabel(g)} status`, `${gradeLabel(g)} waitlisted`]),
+]
+
+/** The matrix as a file: one row per session and gender (AG and teen programs have one box, gender "All"). */
+function availabilityRows(
+  groups: ReadonlyArray<{ label: string; sessions: readonly SessionAvailabilityData[] }>,
+  ag: readonly AGSessionAvailabilityData[],
+  teen: readonly TeenSessionAvailabilityData[]
+): Array<Array<string | number | null>> {
+  const out: Array<Array<string | number | null>> = []
+  for (const group of groups) {
+    for (const session of group.sessions) {
+      for (const gender of ['girls', 'boys'] as const) {
+        const box = session[gender]
+        out.push([
+          session.session_name,
+          group.label,
+          gender === 'girls' ? 'Girls' : 'Boys',
+          box.enrolled,
+          box.capacity,
+          openSpots(box),
+          box.status,
+          box.waitlisted,
+          ...GRADES.flatMap((g) => [statusForGrade(box, g), box.waitlisted_by_grade[g] ?? 0]),
+        ])
+      }
+    }
+  }
+  const single = (
+    label: string,
+    s: AGSessionAvailabilityData | TeenSessionAvailabilityData,
+    grades: readonly number[]
+  ) => [
+    s.session_name,
+    label,
+    'All',
+    s.enrolled,
+    s.capacity,
+    openSpots(s),
+    s.status,
+    s.waitlisted,
+    ...GRADES.flatMap((g) =>
+      grades.includes(g) ? [statusForGrade(s, g), s.waitlisted_by_grade[g] ?? 0] : ['na', 0]
+    ),
+  ]
+  for (const s of ag) out.push(single('AG Sessions', s, GRADES))
+  for (const s of teen) out.push(single('Teen Programs', s, TEEN_GRADES))
+  return out
 }
 
 interface WaitlistHandlers {
@@ -341,34 +432,47 @@ function Legend() {
 function SessionsTable({
   sessions,
   handlers,
+  sort,
 }: {
   sessions: SessionAvailabilityData[]
   handlers: WaitlistHandlers
+  sort: AvailSort
 }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full border-separate border-spacing-0 text-xs">
         <thead>
           <tr>
-            <th
+            <MetricSortHeader
+              bare
               rowSpan={2}
+              label="Session"
+              align="left"
+              direction={sort.direction('name')}
+              onSort={() => sort.toggle('name')}
               className="bg-muted/50 text-muted-foreground border-border sticky left-0 z-10 border-r border-b px-3 py-2 text-left font-medium"
-            >
-              Session
-            </th>
-            <th
+            />
+            <MetricSortHeader
+              bare
               colSpan={GRADES.length + 1}
+              label="Girls' Availability"
+              align="center"
+              title="Sort by open spots"
+              direction={sort.direction('girlsOpen')}
+              onSort={() => sort.toggle('girlsOpen')}
               className="border-border border-r border-b bg-pink-50 px-2 py-2 text-center font-medium dark:bg-pink-950/30"
-            >
-              Girls&apos; Availability
-            </th>
+            />
             <th rowSpan={2} className="w-3 border-b" aria-hidden="true" />
-            <th
+            <MetricSortHeader
+              bare
               colSpan={GRADES.length + 1}
+              label="Boys' Availability"
+              align="center"
+              title="Sort by open spots"
+              direction={sort.direction('boysOpen')}
+              onSort={() => sort.toggle('boysOpen')}
               className="border-border border-b bg-blue-50 px-2 py-2 text-center font-medium dark:bg-blue-950/30"
-            >
-              Boys&apos; Availability
-            </th>
+            />
           </tr>
           <tr>
             {GRADES.map((g) => (
@@ -379,9 +483,15 @@ function SessionsTable({
                 {gradeLabel(g)}
               </th>
             ))}
-            <th className="text-muted-foreground border-border border-b bg-pink-50/50 px-2 py-2 text-center font-medium dark:bg-pink-950/20">
-              WL
-            </th>
+            <MetricSortHeader
+              bare
+              label="WL"
+              align="center"
+              title="Sort by waitlisted"
+              direction={sort.direction('girlsWl')}
+              onSort={() => sort.toggle('girlsWl')}
+              className="text-muted-foreground border-border border-b bg-pink-50/50 px-2 py-2 text-center font-medium dark:bg-pink-950/20"
+            />
             {GRADES.map((g) => (
               <th
                 key={`b-${g}`}
@@ -390,9 +500,15 @@ function SessionsTable({
                 {gradeLabel(g)}
               </th>
             ))}
-            <th className="text-muted-foreground border-border border-b bg-blue-50/50 px-2 py-2 text-center font-medium dark:bg-blue-950/20">
-              WL
-            </th>
+            <MetricSortHeader
+              bare
+              label="WL"
+              align="center"
+              title="Sort by waitlisted"
+              direction={sort.direction('boysWl')}
+              onSort={() => sort.toggle('boysWl')}
+              className="text-muted-foreground border-border border-b bg-blue-50/50 px-2 py-2 text-center font-medium dark:bg-blue-950/20"
+            />
           </tr>
         </thead>
         <tbody>
@@ -427,6 +543,10 @@ export default function SessionAvailability() {
     () => splitCampAndQuest(data?.sessions ?? []),
     [data?.sessions]
   )
+
+  const sort = useTableSort<AvailField>('name')
+  const sortSessions = (list: SessionAvailabilityData[]) =>
+    sort.apply(list, (session, field) => availSortValue(session, field))
 
   // Tooltip state
   const [tooltipData, setTooltipData] = useState<{
@@ -554,21 +674,37 @@ export default function SessionAvailability() {
 
         const { ag_sessions } = guardedData
         const teenSessions = guardedData.teen_sessions
+        const shownCamp = sortSessions(campSessions)
+        const shownQuest = sortSessions(questSessions)
 
         return (
           <div className="space-y-6">
-            <div>
-              <h2 className="text-foreground text-lg font-semibold">Session Availability</h2>
-              <p className="text-muted-foreground text-sm">
-                Grade-level availability by session and gender for {currentYear}
-              </p>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-foreground text-lg font-semibold">Session Availability</h2>
+                <p className="text-muted-foreground text-sm">
+                  Grade-level availability by session and gender for {currentYear}
+                </p>
+              </div>
+              <TableExportButtons
+                filename={csvFilename(currentYear, 'Session Availability')}
+                headers={AVAIL_HEADERS}
+                rows={availabilityRows(
+                  [
+                    { label: 'Sessions', sessions: shownCamp },
+                    { label: 'Quests', sessions: shownQuest },
+                  ],
+                  ag_sessions,
+                  teenSessions
+                )}
+              />
             </div>
 
             <div className="card-lodge p-4" data-tour="reg-availability-heatmap">
               <div className="space-y-6">
                 {/* Camp sessions matrix (main + embedded) */}
                 {campSessions.length > 0 && (
-                  <SessionsTable sessions={campSessions} handlers={waitlistHandlers} />
+                  <SessionsTable sessions={shownCamp} handlers={waitlistHandlers} sort={sort} />
                 )}
 
                 {/* AG Sessions + Teen Programs share one row: AG is the wide
@@ -674,7 +810,7 @@ export default function SessionAvailability() {
                 {questSessions.length > 0 && (
                   <div>
                     <h4 className="text-muted-foreground mb-3 text-sm font-semibold">Quests</h4>
-                    <SessionsTable sessions={questSessions} handlers={waitlistHandlers} />
+                    <SessionsTable sessions={shownQuest} handlers={waitlistHandlers} sort={sort} />
                   </div>
                 )}
               </div>

@@ -1417,10 +1417,95 @@
 }
 
 /* A page that prints alone (Season › Scenarios' compare, data-print-alone) keeps the app's chrome off the paper:
-   the nav (its user menu holds the version), the Season bar and the cache line (data-app-chrome). Every other page prints as before. */
+   the nav (its user menu holds the version), the Season bar and the cache line (data-app-chrome). Analytics has its own rule
+   below; every other page prints as before. */
 @media print {
   body:has([data-print-alone]) [data-app-chrome] {
     display: none !important;
+  }
+}
+
+/* Analytics prints on Ctrl+P (#3207 PR 10, rulings #68-#69): landscape, "Page n of N", the header line and
+   the table headers on every sheet, rows never split, the app chrome (data-app-chrome) off the paper.
+   AnalyticsPrintFrame marks the page; the light colours are its beforeprint handler's, not CSS. */
+@page analytics {
+  size: landscape;
+  margin: 12mm 12mm 16mm;
+
+  @bottom-right {
+    content: 'Page ' counter(page) ' of ' counter(pages);
+    font:
+      10px system-ui,
+      sans-serif;
+    color: #555;
+  }
+
+  @bottom-left {
+    content: 'Kindred';
+    font:
+      10px system-ui,
+      sans-serif;
+    color: #555;
+  }
+}
+
+.analytics-sheet-head {
+  display: none;
+}
+
+@media print {
+  body:has([data-print-analytics]) [data-app-chrome] {
+    display: none !important;
+  }
+
+  [data-print-analytics] {
+    page: analytics;
+    display: table;
+    width: 100%;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  [data-print-analytics] > .analytics-sheet-head {
+    display: table-header-group;
+  }
+
+  [data-print-analytics] > .analytics-sheet-body {
+    display: table-row-group;
+  }
+
+  .analytics-print-head {
+    font:
+      11px/15px system-ui,
+      sans-serif;
+    color: #333;
+    border-bottom: 1.5px solid #111;
+    padding-bottom: 6px;
+    margin-bottom: 12px;
+  }
+
+  [data-print-analytics] .overflow-x-auto,
+  [data-print-analytics] .overflow-y-auto {
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
+  [data-print-analytics] thead {
+    display: table-header-group;
+  }
+
+  [data-print-analytics] tr {
+    break-inside: avoid;
+  }
+
+  /* A card with no table (a chart) starts a new sheet rather than being cut; a table's card may continue. */
+  [data-print-analytics] .card-lodge:not(:has(table)) {
+    break-inside: avoid;
+  }
+
+  /* Sort arrows are screen furniture. */
+  [data-print-analytics] th button > span[aria-hidden='true'] {
+    display: none;
   }
 }
 

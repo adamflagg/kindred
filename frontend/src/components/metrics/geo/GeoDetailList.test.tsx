@@ -168,3 +168,27 @@ describe('GeoDetailList', () => {
     expect(screen.getAllByRole('row')).toHaveLength(cityItems.length + 1)
   })
 })
+
+describe('GeoDetailList sort and CSV (#3207 PR 10)', () => {
+  const names = () =>
+    screen
+      .getAllByRole('row')
+      .slice(1)
+      .map((r) => r.querySelector('td')?.textContent)
+
+  it('starts largest first, sorts names A to Z on the first click, and flips', () => {
+    render(<GeoDetailList data={cityItems} category="city" year={2026} />)
+    fireEvent.click(screen.getByText('Cities'))
+    expect(names()).toEqual(['San Francisco, CA', 'Portland, OR', 'Denver, CO'])
+    fireEvent.click(screen.getByRole('button', { name: /^City/ }))
+    expect(names()).toEqual(['Denver, CO', 'Portland, OR', 'San Francisco, CA'])
+    fireEvent.click(screen.getByRole('button', { name: /^City/ }))
+    expect(names()).toEqual(['San Francisco, CA', 'Portland, OR', 'Denver, CO'])
+  })
+
+  it('offers Copy and Download CSV when it knows the season', () => {
+    render(<GeoDetailList data={cityItems} category="city" year={2026} />)
+    fireEvent.click(screen.getByText('Cities'))
+    expect(screen.getByRole('button', { name: /download csv/i })).toBeInTheDocument()
+  })
+})

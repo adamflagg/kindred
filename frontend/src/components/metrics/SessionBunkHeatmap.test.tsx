@@ -45,6 +45,16 @@ function getColumnHeaders(table: HTMLElement): string[] {
     .map((th) => th.textContent)
 }
 
+describe('SessionBunkHeatmap CSV (#3207 PR 10)', () => {
+  it('offers Copy and Download CSV when it knows the season, and not otherwise', () => {
+    const { unmount } = render(<SessionBunkHeatmap data={sampleData} year={2026} />)
+    expect(screen.getByRole('button', { name: /download csv/i })).toBeInTheDocument()
+    unmount()
+    render(<SessionBunkHeatmap data={sampleData} />)
+    expect(screen.queryByRole('button', { name: /download csv/i })).not.toBeInTheDocument()
+  })
+})
+
 describe('SessionBunkHeatmap', () => {
   it('renders session names as row headers in each section', () => {
     render(<SessionBunkHeatmap data={sampleData} />)

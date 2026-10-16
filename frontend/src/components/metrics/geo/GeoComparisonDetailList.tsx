@@ -13,6 +13,10 @@ import { TrendingUp, TrendingDown, Minus, ChevronDown, ChevronRight } from 'luci
 import { mergeDataForComparison } from '../../../utils/comparisonUtils'
 import type { GeoCategoryExtended } from './GeoCategoryTabs'
 import { deltaInk } from '../../../utils/deltaTokens'
+import { useTableSort } from '../../../hooks/useTableSort'
+import { MetricSortHeader } from '../MetricSortHeader'
+import { TableExportButtons } from '../TableExportButtons'
+import { csvFilename } from '../exportFilename'
 
 interface GeoDataItem {
   name: string
@@ -52,6 +56,11 @@ export function GeoComparisonDetailList({
 }: GeoComparisonDetailListProps) {
   const [internalExpanded, setInternalExpanded] = useState(false)
   const isExpanded = isOpen ?? internalExpanded
+  const sort = useTableSort<'name' | 'primary' | 'compare' | 'change'>(
+    'primary',
+    ['name'],
+    'descending'
+  )
 
   // Transform geo data to {name, value} for merging
   const primaryItems = primaryData.map((d) => ({ name: d.name, value: d.count }))
@@ -72,8 +81,18 @@ export function GeoComparisonDetailList({
     )
   }
 
-  // Sort by primary value descending
-  const sorted = merged.toSorted((a, b) => b.primaryValue - a.primaryValue)
+  // Natural order: by this year's count, high to low; a header click re-sorts from there.
+  const natural = merged.toSorted((a, b) => b.primaryValue - a.primaryValue)
+  const sorted = sort.apply(natural, (row, field) =>
+    field === 'name'
+      ? row.name
+      : field === 'primary'
+        ? row.primaryValue
+        : field === 'compare'
+          ? row.compareValue
+          : row.change
+  )
+  const singular = CATEGORY_PLURALS[category].slice(0, -1)
 
   return (
     <div className={`card-lodge overflow-hidden ${className}`}>
@@ -99,22 +118,46 @@ export function GeoComparisonDetailList({
       {/* Table */}
       {isExpanded && (
         <div className="border-border border-t">
+          <div className="flex justify-end px-4 py-2">
+            <TableExportButtons
+              filename={csvFilename(primaryYear, CATEGORY_PLURALS[category])}
+              headers={[singular, String(primaryYear), String(compareYear), 'Change']}
+              rows={sorted.map((row) => [row.name, row.primaryValue, row.compareValue, row.change])}
+            />
+          </div>
           <div className="max-h-80 overflow-y-auto">
             <table className="w-full text-sm">
               <thead className="bg-muted sticky top-0 z-10">
                 <tr className="border-border border-b">
-                  <th className="text-muted-foreground px-4 py-2 text-left font-medium">
-                    {CATEGORY_PLURALS[category].slice(0, -1)}
-                  </th>
-                  <th className="text-muted-foreground w-20 px-4 py-2 text-right font-medium">
-                    {primaryYear}
-                  </th>
-                  <th className="text-muted-foreground w-20 px-4 py-2 text-right font-medium">
-                    {compareYear}
-                  </th>
-                  <th className="text-muted-foreground w-28 px-4 py-2 text-right font-medium">
-                    Change
-                  </th>
+                  <MetricSortHeader
+                    bare
+                    label={singular}
+                    align="left"
+                    direction={sort.direction('name')}
+                    onSort={() => sort.toggle('name')}
+                    className="text-muted-foreground px-4 py-2 text-left font-medium"
+                  />
+                  <MetricSortHeader
+                    bare
+                    label={String(primaryYear)}
+                    direction={sort.direction('primary')}
+                    onSort={() => sort.toggle('primary')}
+                    className="text-muted-foreground w-20 px-4 py-2 text-right font-medium"
+                  />
+                  <MetricSortHeader
+                    bare
+                    label={String(compareYear)}
+                    direction={sort.direction('compare')}
+                    onSort={() => sort.toggle('compare')}
+                    className="text-muted-foreground w-20 px-4 py-2 text-right font-medium"
+                  />
+                  <MetricSortHeader
+                    bare
+                    label="Change"
+                    direction={sort.direction('change')}
+                    onSort={() => sort.toggle('change')}
+                    className="text-muted-foreground w-28 px-4 py-2 text-right font-medium"
+                  />
                 </tr>
               </thead>
               <tbody>

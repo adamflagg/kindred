@@ -62,6 +62,7 @@ export default function BunkRetentionPage() {
                 data={data.by_session_bunk}
                 sessionDateLookup={sessionDateLookup}
                 bunkStaff={bunkStaffData}
+                year={currentYear}
               />
             </div>
           ) : (

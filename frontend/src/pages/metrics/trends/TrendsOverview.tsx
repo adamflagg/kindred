@@ -13,7 +13,7 @@
  */
 
 import { useMemo } from 'react'
-import { useHistoricalTrends } from '../../../hooks/useMetrics'
+import { useHistoricalTrends, useRegistrationMetrics } from '../../../hooks/useMetrics'
 import { useRetentionTrends } from '../../../hooks/useRetentionTrends'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
@@ -28,14 +28,10 @@ import { getYearColor, YEAR_PALETTE } from '../../../utils/yearColors'
 import { trendDirection } from '../../../utils/trendDirection'
 import { firstSummerYearLabel } from '../../../utils/metricsTransforms'
 import type { YearEnrollment } from '../../../types/metrics'
-import { DefinitionNotes, DefRef } from '../../../components/camperships/kit/DefinitionNotes'
-import {
-  formatCount,
-  formatPercent,
-  formatSignedCount,
-  formatSignedPercent,
-} from '../../../utils/numberFormat'
-import { TRENDS_NOTES } from '../cancelledNotes'
+import { formatSignedCount, formatSignedPercent } from '../../../utils/numberFormat'
+import { YearByYearTable } from '../../../components/metrics/YearByYearTable'
+import type { LiveCompare } from '../../../components/metrics/yearByYearRows'
+import { useCompareYearFilter } from '../../../hooks/useCompareYearFilter'
 import { MetricsBusy, MetricsLoadError } from '../../../components/metrics/MetricsQueryGuard'
 
 interface GroupedChartItem {
@@ -162,6 +158,25 @@ export default function TrendsOverview() {
     ...filterOptions,
     years: yearsParam,
   })
+
+  // While this season is live, its row compares with last year at the same registration day (decision 7,
+  // ruling #66); the server says which basis it used, so a finished season reads final to final.
+  const compareYear = currentYear - 1
+  const compareFilter = useCompareYearFilter(currentYear, compareYear, filterOptions)
+  const { data: samePointData } = useRegistrationMetrics(compareYear, {
+    ...compareFilter,
+    samePointOf: currentYear,
+  })
+  const live: LiveCompare | null =
+    samePointData?.prior_basis === 'same_point' && samePointData.as_of_date
+      ? {
+          year: currentYear,
+          priorYear: compareYear,
+          priorTotal: samePointData.total_enrolled,
+          asOf: samePointData.as_of_date,
+          pending: samePointData.day_offset === 0,
+        }
+      : null
 
   // Always fetch 5 years of retention trends for caching; slice when toggling
   const {
@@ -320,78 +335,7 @@ export default function TrendsOverview() {
         </div>
 
         {/* Data Table */}
-        <div data-tour="trends-table" className="card-lodge overflow-hidden">
-          <div className="border-border border-b px-4 py-3">
-            <h3 className="text-foreground text-base font-semibold">Year-by-Year Summary</h3>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-border bg-muted/30 border-b">
-                  <th className="text-muted-foreground px-4 py-3 text-left font-medium">Year</th>
-                  <th className="text-muted-foreground px-4 py-3 text-right font-medium">Total</th>
-                  <th className="text-muted-foreground px-4 py-3 text-right font-medium">New</th>
-                  <th className="text-muted-foreground px-4 py-3 text-right font-medium">
-                    Returning
-                  </th>
-                  <th className="text-muted-foreground px-4 py-3 text-right font-medium">New %</th>
-                  <th className="text-muted-foreground px-4 py-3 text-right font-medium">Male</th>
-                  <th className="text-muted-foreground px-4 py-3 text-right font-medium">Female</th>
-                  <th className="text-muted-foreground px-4 py-3 text-right font-medium">
-                    Cancelled
-                    <DefRef n={1} />
-                  </th>
-                  <th className="text-muted-foreground px-4 py-3 text-right font-medium">
-                    Cancel %
-                    <DefRef n={2} />
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.years.map((year) => {
-                  const maleCount = year.by_gender.find((g) => g.gender === 'M')?.count ?? 0
-                  const femaleCount = year.by_gender.find((g) => g.gender === 'F')?.count ?? 0
-                  return (
-                    <tr
-                      key={year.year}
-                      className="border-border hover:bg-muted/20 border-b transition-colors last:border-0"
-                    >
-                      <td className="text-foreground px-4 py-3 font-medium">{year.year}</td>
-                      <td className="text-foreground px-4 py-3 text-right">
-                        {formatCount(year.total_enrolled)}
-                      </td>
-                      <td className="text-foreground px-4 py-3 text-right">
-                        {formatCount(year.new_vs_returning.new_count)}
-                      </td>
-                      <td className="text-foreground px-4 py-3 text-right">
-                        {formatCount(year.new_vs_returning.returning_count)}
-                      </td>
-                      <td className="text-muted-foreground px-4 py-3 text-right">
-                        {formatPercent(year.new_vs_returning.new_percentage)}
-                      </td>
-                      <td className="text-foreground px-4 py-3 text-right">
-                        {formatCount(maleCount)}
-                      </td>
-                      <td className="text-foreground px-4 py-3 text-right">
-                        {formatCount(femaleCount)}
-                      </td>
-                      <td className="text-foreground px-4 py-3 text-right">
-                        {year.has_cancellation_data === false
-                          ? '—'
-                          : formatCount(year.total_cancelled ?? 0)}
-                      </td>
-                      <td className="text-muted-foreground px-4 py-3 text-right">
-                        {year.has_cancellation_data === false
-                          ? '—'
-                          : formatPercent(year.cancellation_rate ?? 0)}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <YearByYearTable years={data.years} live={live} />
 
         {/* Retention Rate + Cancellation Rate side-by-side */}
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -402,7 +346,10 @@ export default function TrendsOverview() {
               height={250}
               headerRight={
                 scopeHasTeens ? (
-                  <label className="flex cursor-pointer items-center gap-1.5 text-xs">
+                  <label
+                    data-app-chrome
+                    className="flex cursor-pointer items-center gap-1.5 text-xs"
+                  >
                     <input
                       type="checkbox"
                       checked={includeTeenPipeline}
@@ -608,7 +555,6 @@ export default function TrendsOverview() {
               />
             )
           })()}
-        <DefinitionNotes notes={TRENDS_NOTES} boldTerm />
       </div>
     </MetricsBusy>
   )
