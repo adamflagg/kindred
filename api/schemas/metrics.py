@@ -354,6 +354,30 @@ class RetentionMetricsResponse(BaseModel):
         default_factory=list, description="Session-to-session flow data for Sankey diagram"
     )
     aged_out_count: int = Field(0, description="Base year campers excluded (aged out of all eligible sessions)")
+    # #3207 PR 11 (decision 7): a prior year's retention asked for with same_point_of
+    prior_basis: Literal["same_point", "final"] | None = Field(
+        default=None,
+        description=(
+            "Set when same_point_of was asked: 'same_point' when the compare year was read at the registration "
+            "day that season has reached (registered by then and not cancelled by then), 'final' when it was "
+            "read as it stands now (that season is over, or a season has no registration anchor)"
+        ),
+    )
+    day_offset: int | None = Field(
+        default=None,
+        description="Same-point reads: the registration day (days from its anchor) the same_point_of season is on",
+    )
+    prior_day_offset: int | None = Field(
+        default=None,
+        description=(
+            "Same-point reads: the registration day the compare year was read at. One more than day_offset on a "
+            "priority, early or open date, where the prior year is read through the next day (decision 45)"
+        ),
+    )
+    as_of_date: str | None = Field(
+        default=None,
+        description="Same-point reads: the last day (YYYY-MM-DD) the compare year was read through",
+    )
 
 
 # ============================================================================
@@ -573,12 +597,43 @@ class RetentionTrendYear(BaseModel):
     )
     by_grade: list[RetentionByGrade] = Field(default_factory=list, description="Retention by grade")
     aged_out_count: int = Field(0, description="Base year campers excluded (aged out of all eligible sessions)")
+    same_point_rate: float | None = Field(
+        default=None,
+        description=(
+            "While the newest season is live (#3207 PR 11, ruling #89): this transition's retention (0-1) at the "
+            "registration day the newest season has reached, counted in to_year's own registration (registered "
+            "by then and not cancelled by then). The live transition's is today's rate. None when not live or "
+            "to_year has no registration anchor"
+        ),
+    )
+    same_point_as_of: str | None = Field(
+        default=None, description="The last day (YYYY-MM-DD) to_year was read through for same_point_rate"
+    )
 
 
 class RetentionTrendsResponse(BaseModel):
     """Response model for retention trends endpoint (3-year view)."""
 
     years: list[RetentionTrendYear] = Field(description="Retention data for each year transition")
+    prior_basis: Literal["same_point", "final"] | None = Field(
+        default=None,
+        description=(
+            "Set when the same-point series was asked for: 'same_point' while the newest season is live (each "
+            "transition carries same_point_rate), 'final' when it is over or has no registration anchor"
+        ),
+    )
+    day_offset: int | None = Field(
+        default=None,
+        description="Same-point reads: the registration day (days from its anchor) the newest season is on",
+    )
+    prior_day_offset: int | None = Field(
+        default=None,
+        description="Same-point reads: the registration day earlier seasons were read at (decision 45)",
+    )
+    as_of_date: str | None = Field(
+        default=None,
+        description="Same-point reads: the last day (YYYY-MM-DD) the season before the newest was read through",
+    )
     # Enrollment counts per year for 3-year comparison charts
     enrollment_by_year: list[YearEnrollment] = Field(
         default_factory=list, description="Enrollment counts per year for 3-year comparison"

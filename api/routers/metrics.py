@@ -95,6 +95,16 @@ async def get_retention_metrics(
         False,
         description="Credit grade-10 campers who continue into a summer teen program (main->teen bridge)",
     ),
+    same_point_of: int | None = Query(
+        None,
+        ge=2000,
+        le=2100,
+        description=(
+            "Read compare_year as a comparison for this season (decision 7): while that season is live, as it "
+            "stood at the registration day it has reached (registered by then and not cancelled by then); after "
+            "it, as it stands now. The response's prior_basis says which"
+        ),
+    ),
     user: AuthUser = Depends(get_current_user),
 ) -> RetentionMetricsResponse:
     """Get retention metrics comparing two years.
@@ -103,6 +113,8 @@ async def get_retention_metrics(
     broken down by gender, grade, session, and years at camp.
     """
     check_duration_session_exclusive(duration, session_cm_id)
+    # A same-point read moves every camp day, so the day is part of its cache key
+    camp_today = get_camp_today() if same_point_of is not None else None
 
     cache_params = {
         "base_year": base_year,
@@ -111,6 +123,8 @@ async def get_retention_metrics(
         "session_cm_id": session_cm_id,
         "duration": duration,
         "include_teen_pipeline": include_teen_pipeline,
+        "same_point_of": same_point_of,
+        "camp_today": camp_today,
     }
     cached: RetentionMetricsResponse | None = metrics_cache.get("retention", **cache_params)
     if cached is not None:
@@ -126,6 +140,8 @@ async def get_retention_metrics(
         session_cm_id=session_cm_id,
         duration=duration,
         include_teen_pipeline=include_teen_pipeline,
+        same_point_of=same_point_of,
+        today=camp_today,
     )
     metrics_cache.set("retention", result, **cache_params)
     return result
@@ -301,11 +317,15 @@ async def get_retention_trends(
     - 2025→2026 transition
 
     This enables line charts for overall retention and grouped bar charts
-    for breakdown categories.
+    for breakdown categories. While the newest season is live, each transition also
+    carries its retention at the same registration day of its own season (decision 7).
     """
     check_duration_session_exclusive(duration, session_cm_id)
+    # The same-point series moves every camp day, so the day is part of the cache key
+    camp_today = get_camp_today()
 
     cache_params = {
+        "camp_today": camp_today,
         "current_year": current_year,
         "num_years": num_years,
         "session_types": session_types,
@@ -327,6 +347,8 @@ async def get_retention_trends(
         session_cm_id=session_cm_id,
         duration=duration,
         include_teen_pipeline=include_teen_pipeline,
+        same_point=True,
+        today=camp_today,
     )
     metrics_cache.set("retention_trends", result, **cache_params)
     return result
