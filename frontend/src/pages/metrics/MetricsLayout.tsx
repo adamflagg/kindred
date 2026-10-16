@@ -61,7 +61,7 @@ function PrintableBody({
   const line = scopeLine(location.pathname, currentYear, scopeWords(session))
   const sub = subNavItems.find((item) => item.path === location.pathname) ?? subNavItems[0]
   const path = ['Analytics', title, ...(sub ? [sub.label] : [])].join(' › ')
-  const scope = [line.head.replace(/^\d{4} · /, ''), line.left, SUMMER_ONLY]
+  const scope = [line.head.replace(/^[\d–-]+ · /, ''), line.left, SUMMER_ONLY]
     .filter(Boolean)
     .join(' — ')
   return (
