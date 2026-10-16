@@ -69,6 +69,7 @@ from api.services.financial_aid_intake_types import (
     SessionRow,
     equity_from_json,
 )
+from api.services.financial_aid_repository import FinancialAidRepository
 from api.services.financial_aid_requesters import FaContact
 from api.services.financial_aid_rules_service import AidRulesRepository, FinancialAidRulesService
 from api.services.pb_precise_datetime import aid_collection
@@ -476,6 +477,11 @@ class FinancialAidIntakeRepository:
         scope = f" && application = '{pb_escape(application_id)}'"
         rows = await self._page(AID_REQUESTS, {"filter": f"year = {year}{scope}", "sort": STABLE_SORT})
         return [_request(r) for r in rows]
+
+    async def fetch_household_links(self, year: int) -> list[Any]:
+        """The season's aid_household_links rows (D26), staff links included: intake reads them to know when a camper's
+        household change stays within one aid family (family_household_set)."""
+        return await FinancialAidRepository(self.pb).fetch_links(year)
 
     async def fetch_request_additions(self, year: int) -> list[AdditionRecord]:
         """The season's staff-added requests, retired ones included (aid_request_additions; no sync writes it)."""

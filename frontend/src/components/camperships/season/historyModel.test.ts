@@ -258,6 +258,17 @@ describe('who, what kind, and the action words', () => {
     expect(actionWords('aid_requests', 'add_request')).toBe('Request added')
     expect(actionWords('aid_payer_shares', 'add_request')).toBe('Request added')
     expect(actionWords('aid_requests', 'remove_added_request')).toBe('Added request removed')
+    // Intake's re-home (a camper's household changed within one aid family) logs every record it moves under one
+    // action: the request, its application, default share, corrections and addition.
+    for (const entity of [
+      'aid_requests',
+      'aid_applications',
+      'aid_payer_shares',
+      'aid_application_corrections',
+      'aid_request_additions',
+    ]) {
+      expect(actionWords(entity, 'move_household')).toBe("Moved to the camper's new household")
+    }
     expect(actionWords('aid_decisions', 'award')).toBe('Round 3 amount entered')
     expect(actionWords('aid_decisions', 'approve')).toBe('Round 3 approved')
     expect(actionWords('aid_rules', 'approve')).toBe('Approved')

@@ -37,18 +37,42 @@ What a re-run may and may not change:
   billing only fills an unknown or `billed` one.
 * answers, ask, option text and flags are the builder's own copy and are
   refreshed every run. Staff corrections live in aid_application_corrections
-  and are not read or written here.
+  and are not read or written here, except a re-homed request's own
+  corrections, which follow it to its new application (below).
 * every `active` / `unmatched_session` request carries a payer share (spec
   9.2): one with none is listed in `share_creates`, and the service gives it
   the default (100% for its own household). The split itself is staff's.
 * `created` and a request's identity are never written by a rebuild: `created`
-  is the only "requested on" date (spec 5).
+  is the only "requested on" date (spec 5). The one exception is a re-home
+  (below), which rewrites a request's household and application in place.
+
+A camper whose household changes (coordinator ruling, owner agreed 2026-10-16). CampMinder can move a camper
+to another household id, the aid-form sync copies it onto the camper's form row, and the intake key would then
+withdraw the request (its decisions still attached) and create a fresh one. When the old and the new household
+are ONE aid family for the season (`same_family`: aid_household_links, staff links included, joined the way
+family_household_set joins them), the request is MOVED instead: the same id, status and decisions, its
+household re-keyed in place. A request moves only when the match is unambiguous: a live (not withdrawn)
+camper-level request whose own key no answer names any more, and exactly one new answer of the same camper,
+program and option on one other household of its family. Anything else keeps withdraw-and-create, and an
+ambiguous one names its camper in `unmoved_campers` for the service to log. Family Camp's household-level
+requests (person 0) never move: they have no camper to anchor them, and two households of one aid family
+(co-parents) often apply separately. What rides with a move, each its own write logged "move_household":
+* the application, re-keyed in place, when every live request on it moves to one household that has no
+  application this season and the old household is left with nothing; its withdrawn requests ride with it,
+  each its own move, and stay withdrawn; otherwise the request lands on the new
+  household's application (created this run if need be), where its camper's form row now is, and its own
+  request-level corrections follow it there (the service's plan_writes);
+* intake's own 100% default payer share (source "intake_default", on the old household). A staff-set share is
+  staff's and stays as it is;
+* a moved camper's live additions on the old household (`addition_moves`), so the next run builds their
+  requests where the camper now is.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from collections import defaultdict
+from collections.abc import Callable, Collection, Mapping, Sequence
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from api.constants.collections import AID_APPLICATIONS, AID_REQUESTS
@@ -63,6 +87,7 @@ from api.services.financial_aid_intake_types import (
     HEADCOUNT_INFANT_MAX,
     HEADCOUNT_NON_INFANT_MAX,
     RESOLUTION_STAFF,
+    SHARE_SOURCE_INTAKE,
     STAFF_HEADCOUNT_SOURCES,
     STATUS_ACTIVE,
     STATUS_DUPLICATE,
@@ -70,9 +95,11 @@ from api.services.financial_aid_intake_types import (
     STATUS_UNMATCHED,
     STATUS_WITHDRAWN,
     UNKNOWN_EQUITY,
+    AdditionRecord,
     ApplicationRecord,
     EquityAnswers,
     Flag,
+    PayerShareRecord,
     RequestKey,
     RequestRecord,
     equity_json,
@@ -82,6 +109,8 @@ _Slot = tuple[str, int, int]
 _NEEDS_A_SHARE = frozenset({STATUS_ACTIVE, STATUS_UNMATCHED})
 # A resolved session_cm_id -> the flags the season's approved rules raise for it.
 RulesCheck = Callable[[int], list[Flag]]
+# Whether two households are one aid family this season (the service builds it from aid_household_links).
+SameFamily = Callable[[int, int], bool]
 
 
 @dataclass(frozen=True)
@@ -109,6 +138,16 @@ class StatusChange:
     after: str
 
 
+@dataclass(frozen=True)
+class Move:
+    """One record re-homed from a household to another of the same aid family (logged "move_household")."""
+
+    record_id: str
+    from_household: int
+    to_household: int
+    request_id: str = ""  # a payer share's request
+
+
 @dataclass
 class IntakePlan:
     application_creates: list[tuple[int, dict[str, Any]]] = field(default_factory=list)
@@ -117,6 +156,14 @@ class IntakePlan:
     request_updates: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
     status_changes: list[StatusChange] = field(default_factory=list)
     share_creates: list[str] = field(default_factory=list)
+    # A camper whose household changed within one aid family (see the module docstring). Each is written before
+    # the run's other updates; request_updates are diffed against the moved record.
+    request_moves: list[Move] = field(default_factory=list)
+    application_moves: list[Move] = field(default_factory=list)
+    share_moves: list[Move] = field(default_factory=list)
+    addition_moves: list[Move] = field(default_factory=list)
+    # Campers whose request looked moved but matched more than one household: kept as today, logged.
+    unmoved_campers: list[int] = field(default_factory=list)
 
     @property
     def is_empty(self) -> bool:
@@ -126,6 +173,10 @@ class IntakePlan:
             or self.request_creates
             or self.request_updates
             or self.share_creates
+            or self.request_moves
+            or self.application_moves
+            or self.share_moves
+            or self.addition_moves
         )
 
 
@@ -300,11 +351,125 @@ def application_payload(
     }
 
 
-def _plan_applications(
-    plan: IntakePlan, households: Sequence[HouseholdIntake], existing: Sequence[ApplicationRecord]
-) -> None:
+def _pair_moves(
+    spec_keys: Collection[RequestKey], existing: Sequence[RequestRecord], same_family: SameFamily | None
+) -> tuple[dict[str, int], list[int]]:
+    """Which existing requests move, to which household: request id -> new household. And the campers left
+    unmoved because their match was ambiguous. See the module docstring for the rule."""
+    if same_family is None:
+        return {}, []
+    known = {r.key for r in existing}
+    orphans: dict[tuple[int, str, str], list[RequestRecord]] = defaultdict(list)
+    for r in existing:
+        if r.person_cm_id > 0 and r.status != STATUS_WITHDRAWN and r.key not in spec_keys:
+            orphans[(r.person_cm_id, r.program_key, r.program_option_key)].append(r)
+    claims: dict[str, list[int]] = defaultdict(list)
+    ambiguous: set[int] = set()
+    for key in sorted(spec_keys):
+        household_cm_id, person_cm_id, program_key, option_key = key
+        if person_cm_id <= 0 or key in known:
+            continue
+        found = [
+            r
+            for r in orphans.get((person_cm_id, program_key, option_key), ())
+            if r.household_cm_id != household_cm_id and same_family(r.household_cm_id, household_cm_id)
+        ]
+        if len(found) == 1:
+            claims[found[0].id].append(household_cm_id)
+        elif found:
+            ambiguous.add(person_cm_id)
+    by_id = {r.id: r for r in existing}
+    moves: dict[str, int] = {}
+    for record_id, targets in claims.items():
+        if len(targets) == 1:
+            moves[record_id] = targets[0]
+        else:
+            ambiguous.add(by_id[record_id].person_cm_id)
+    return moves, sorted(ambiguous)
+
+
+def camper_moves(
+    households: Sequence[HouseholdIntake], existing: Sequence[RequestRecord], same_family: SameFamily | None
+) -> dict[int, tuple[int, int]]:
+    """Each camper whose requests move this run, all of them to one household: person -> (old, new). The service
+    reads it before planning, to move the camper's additions (addition_moves) and build their requests anew."""
+    keys = {s.key for h in households for s in h.requests}
+    moves, _ = _pair_moves(keys, existing, same_family)
+    by_id = {r.id: r for r in existing}
+    found: dict[int, set[tuple[int, int]]] = defaultdict(set)
+    for record_id, to in moves.items():
+        record = by_id[record_id]
+        found[record.person_cm_id].add((record.household_cm_id, to))
+    return {person: next(iter(pairs)) for person, pairs in sorted(found.items()) if len(pairs) == 1}
+
+
+def addition_moves(additions: Sequence[AdditionRecord], moves: Mapping[int, tuple[int, int]]) -> list[Move]:
+    """The live additions a moved camper holds on the household they left. One whose slot is already taken by a live
+    addition on the new household stays (idx_aid_request_additions_live)."""
+    taken = {(a.household_cm_id, a.person_cm_id, a.session_cm_id) for a in additions if a.live}
+    result: list[Move] = []
+    for a in sorted(additions, key=lambda a: a.id):
+        old_new = moves.get(a.person_cm_id)
+        if not a.live or old_new is None or a.household_cm_id != old_new[0]:
+            continue
+        if (old_new[1], a.person_cm_id, a.session_cm_id) not in taken:
+            result.append(Move(a.id, old_new[0], old_new[1]))
+    return result
+
+
+def _rekeyed_applications(
+    plan: IntakePlan,
+    wanted: Collection[int],
+    existing: Sequence[ApplicationRecord],
+    requests: Sequence[RequestRecord],
+    moved_to: Mapping[str, int],
+    riders: dict[str, int],
+) -> dict[int, ApplicationRecord]:
+    """The season's applications by household after this run's re-keys (the module docstring's first rider: every
+    live request on an application the old household no longer needs moves to one household that has none).
+
+    Only live requests decide it (owner ruling 2026-10-16). A withdrawn one rides with its application, its own
+    move recorded in `riders` (request id -> new household), and stays withdrawn. It can't ride when it names no
+    camper, or when its key on the new household is already a request's (the intake key is unique): then the
+    application stays where it is, and the move lands on a new application as a partial move does."""
     by_household = {a.household_cm_id: a for a in existing}
+    taken = set(by_household)
+    known = {r.key for r in requests}
+    for application in sorted(existing, key=lambda a: a.id):
+        if application.household_cm_id in wanted:
+            continue
+        on_it = [r for r in requests if r.application_id == application.id]
+        withdrawn = [r for r in on_it if r.status == STATUS_WITHDRAWN]
+        targets = {moved_to.get(r.id) for r in on_it if r.status != STATUS_WITHDRAWN}
+        if len(targets) != 1:
+            continue
+        (to,) = targets
+        if to is None or to not in wanted or to in taken:
+            continue
+        if any(
+            r.person_cm_id <= 0 or (to, r.person_cm_id, r.program_key, r.program_option_key) in known for r in withdrawn
+        ):
+            continue
+        taken.add(to)
+        riders.update({r.id: to for r in withdrawn})
+        plan.application_moves.append(Move(application.id, application.household_cm_id, to))
+        del by_household[application.household_cm_id]
+        by_household[to] = replace(application, household_cm_id=to)
+    return by_household
+
+
+def _plan_applications(
+    plan: IntakePlan,
+    households: Sequence[HouseholdIntake],
+    existing: Sequence[ApplicationRecord],
+    requests: Sequence[RequestRecord] = (),
+    moved_to: Mapping[str, int] | None = None,
+    riders: dict[str, int] | None = None,
+) -> None:
     wanted = {h.household_cm_id for h in households}
+    by_household = _rekeyed_applications(
+        plan, wanted, existing, requests, moved_to or {}, {} if riders is None else riders
+    )
     for household in sorted(households, key=lambda h: h.household_cm_id):
         payload = application_payload(household.member_person_cm_ids, household.answers, household.flags)
         record = by_household.get(household.household_cm_id)
@@ -448,10 +613,26 @@ def plan_intake(
     requests_with_shares: frozenset[str] = frozenset(),
     rules_check: RulesCheck | None = None,
     equity: Mapping[int, EquityAnswers] | None = None,
+    *,
+    same_family: SameFamily | None = None,
+    payer_shares: Sequence[PayerShareRecord] = (),
+    addition_moves: Sequence[Move] = (),
 ) -> IntakePlan:
+    """`same_family`, when given, lets a camper's request move within its aid family (module docstring);
+    `payer_shares` are the season's, read for the default share that rides with a move; `addition_moves` are the
+    service's (from addition_moves), carried into the plan."""
     plan = IntakePlan()
-    _plan_applications(plan, households, existing_applications)
     specs: dict[RequestKey, RequestSpec] = {s.key: s for h in households for s in h.requests}
+    moved_to, plan.unmoved_campers = _pair_moves(set(specs), existing_requests, same_family)
+    riders: dict[str, int] = {}  # withdrawn requests that ride with their re-keyed application
+    _plan_applications(plan, households, existing_applications, existing_requests, moved_to, riders)
+    moved_to = {**moved_to, **riders}
+    _plan_moves(plan, existing_requests, moved_to, payer_shares)
+    plan.addition_moves = list(addition_moves)
+    # The rest of the run plans each moved request as it stands after its move.
+    existing_requests = [
+        replace(r, household_cm_id=moved_to[r.id]) if r.id in moved_to else r for r in existing_requests
+    ]
     holders: dict[_Slot, str] = {}
     known: set[RequestKey] = set()
     # Targets first, writes after: a stranded duplicate can only be judged once every other
@@ -514,6 +695,30 @@ def plan_intake(
         if payload["status"] in _NEEDS_A_SHARE:
             plan.share_creates.append(ref)
     return plan
+
+
+def _plan_moves(
+    plan: IntakePlan,
+    existing: Sequence[RequestRecord],
+    moved_to: Mapping[str, int],
+    payer_shares: Sequence[PayerShareRecord],
+) -> None:
+    shares: dict[str, list[PayerShareRecord]] = defaultdict(list)
+    for share in payer_shares:
+        shares[share.request_id].append(share)
+    for record in sorted(existing, key=lambda r: r.id):
+        to = moved_to.get(record.id)
+        if to is None:
+            continue
+        plan.request_moves.append(Move(record.id, record.household_cm_id, to))
+        own = shares.get(record.id, [])
+        if any(s.household_cm_id == to for s in own):
+            continue  # the new household already pays a share of it: never a second row there
+        plan.share_moves.extend(
+            Move(s.id, record.household_cm_id, to, record.id)
+            for s in sorted(own, key=lambda s: s.id)
+            if s.source == SHARE_SOURCE_INTAKE and s.household_cm_id == record.household_cm_id
+        )
 
 
 def share_entity_id(request_id: str, household_cm_id: int) -> str:

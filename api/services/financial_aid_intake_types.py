@@ -43,6 +43,9 @@ RESOLUTION_UNMATCHED: Final = "unmatched"
 REGISTERED_STATUS_IDS: Final = frozenset({ACTIVE_ENROLLED_STATUS_ID, 4, 8, 512})
 
 INTAKE_ACTOR: Final = "system:intake"
+# aid_change_log.action of every record a re-home moves (financial_aid_intake_plan, "A camper whose household
+# changes"): the request, and what rides with it (its application, default payer share, own corrections, addition).
+ACTION_MOVE_HOUSEHOLD: Final = "move_household"
 
 # aid_requests field limits (pocketbase/pb_migrations/1500000201). PocketBase refuses a value
 # outside them, and one refusal rolls back the season's whole intake batch, so intake never
