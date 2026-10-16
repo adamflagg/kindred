@@ -4543,7 +4543,7 @@ export type DrilldownAttendee = {
   /**
    * Gender
    *
-   * Gender identity label: CampMinder's Gender Identity, 'self-described' for a write-in, 'not given' when blank (never the binary Gender field)
+   * Gender identity label: CampMinder's Gender Identity, 'self-described' for a write-in; a blank answer counts by the binary Gender field (F as 'Girl/woman', M as 'Boy/man'), and 'not given' when neither is set
    */
   gender?: string | null
   /**
@@ -6117,7 +6117,7 @@ export type GenderBreakdown = {
   /**
    * Gender
    *
-   * Gender identity label: CampMinder's Gender Identity, 'self-described' for a write-in, 'not given' when blank (never the binary Gender field)
+   * Gender identity label: CampMinder's Gender Identity, 'self-described' for a write-in; a blank answer counts by the binary Gender field (F as 'Girl/woman', M as 'Boy/man'), and 'not given' when neither is set
    */
   gender: string
   /**
@@ -6235,7 +6235,7 @@ export type GenderEnrollment = {
   /**
    * Gender
    *
-   * Gender identity label: CampMinder's Gender Identity, 'self-described' for a write-in, 'not given' when blank (never the binary Gender field)
+   * Gender identity label: CampMinder's Gender Identity, 'self-described' for a write-in; a blank answer counts by the binary Gender field (F as 'Girl/woman', M as 'Boy/man'), and 'not given' when neither is set
    */
   gender: string
   /**
@@ -15065,7 +15065,7 @@ export type RetentionByGender = {
   /**
    * Gender
    *
-   * Gender identity label: CampMinder's Gender Identity, 'self-described' for a write-in, 'not given' when blank (never the binary Gender field)
+   * Gender identity label: CampMinder's Gender Identity, 'self-described' for a write-in; a blank answer counts by the binary Gender field (F as 'Girl/woman', M as 'Boy/man'), and 'not given' when neither is set
    */
   gender: string
   /**

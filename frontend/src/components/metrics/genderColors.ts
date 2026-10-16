@@ -1,6 +1,7 @@
 /**
  * Analytics' gender colours and stacked-bar segments, read from the kit's gender identity tokens
- * (`camperships/kit/genderIdentity.ts`, design language §16) so every chart wears the same colour per label.
+ * (`camperships/kit/genderIdentity.ts`, design language "Gender identity") so every chart wears the same
+ * colour per label.
  */
 
 import {

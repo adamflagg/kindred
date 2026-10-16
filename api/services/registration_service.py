@@ -246,7 +246,7 @@ class RegistrationService:
         # Session length by session (stacked bar chart showing sessions per length category)
         by_session_length_by_session = self._compute_session_length_by_session(combined_attendees, sessions)
 
-        # Gender by session length (stacked bar chart showing boys vs girls per length category)
+        # Gender by session length (stacked bar chart of the gender identity groups per length category)
         by_gender_by_session_length = self._compute_gender_by_session_length(combined_attendees, sessions, persons)
 
         # Summers at Camp: CampMinder's Years At Camp this season (decision 36), and the

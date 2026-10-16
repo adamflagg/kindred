@@ -301,7 +301,7 @@ export function TrendLineChart({
                 dot={{ fill: color, strokeWidth: 2 }}
                 activeDot={{ r: 6 }}
               >
-                {/* The two largest lines carry their values, as Male and Female did; the small ones stay clear. */}
+                {/* The first two groups drawn, in the fixed order, carry their values, as Male and Female did. */}
                 {i < 2 && (
                   <LabelList
                     dataKey={group}

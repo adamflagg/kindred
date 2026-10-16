@@ -26,6 +26,8 @@ Paths are relative to `frontend/src/components/camperships/` unless they say oth
 | §14 sessions | 14 |
 | §16 explanations, §21 staff words | 15 |
 
+Section 16, Gender identity, came after that working set, so comments cite it by name (design language "Gender identity").
+
 ---
 
 ## How this relates to "Family Camp Models Summer"
@@ -71,6 +73,7 @@ Where Camperships deliberately differs from summer, the reason is stated at that
 | 21 | A camper's household in a grid cell is ONE chip that never drops, beside a name that cuts. The chip takes at most 45% of the cell: its label cuts, with the full label in its title. No household is a dashed chip that is not a link | `AidHouseholdChip`, `AidNameWithChip` |
 | 22 | A row an action moved out of the filter stays where it was, opened, until the filter changes. It is never counted | `useKeptRows`, `keepInView`, `AidTable keptKeys` |
 | 23 | A fold line opens in place onto a kit table whose rows carry their own actions. Never a modal | `AidFoldToggle`, `AidFoldPanel`, `CS_FOLD_PANEL` |
+| 24 | A gender identity split takes its order, groups, names and colours from the kit's tokens, never its own | `GENDER_IDENTITY_ORDER`, `GENDER_IDENTITY_GROUPS`, `genderIdentityColor`, `genderDisplayName` |
 
 ---
 
@@ -268,7 +271,7 @@ A line that **replaces** the table (loading, failed, empty) is allowed. So is a 
 ## Adding to the kit
 
 1. **A pattern the kit lacks goes into `kit/` first, with its tests.** Then it gets a rule here naming the export. A page never grows a private near-copy of a picker, toolbar, table, CSV button or chip.
-2. **Tokens live in `kit/csType.ts`.** Exports marked `@deprecated` (`CS_BTN_TOOL`, `PILL.emerald`) exist only so older call sites keep rendering correctly. New code never uses them.
+2. **Tokens live in `kit/csType.ts`**, except the gender identity colours, which live with their order and groups in `kit/genderIdentity.ts` (section 16). Exports marked `@deprecated` (`CS_BTN_TOOL`, `PILL.emerald`) exist only so older call sites keep rendering correctly. New code never uses them.
 3. **Visual changes hold for the owner.** Every Camperships screen has an approved mock. A change matches that mock and this guide before it is called merge-ready, and anything with visual impact waits for the owner's eyes before merge.
 4. **Change a rule here, not in one place.** If a rule turns out wrong, change it in this document and the kit together. Never work around it on a single page.
 

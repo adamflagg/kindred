@@ -18,7 +18,8 @@ NOT_GIVEN: Final = "not given"
 PREFER_NOT_TO_ANSWER: Final = "Prefer not to answer"
 
 # The order a gender split is listed in: CampMinder's identity options, most common first, then the non-answers.
-# A label CampMinder adds later lists after the known identities (alphabetically) and before the non-answers.
+# A label CampMinder adds later lists after Not listed above and before self-described (alphabetically among
+# themselves), so before the non-answers.
 IDENTITY_ORDER: Final[tuple[str, ...]] = (
     "Girl/woman",
     "Boy/man",

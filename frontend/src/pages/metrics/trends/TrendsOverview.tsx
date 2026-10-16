@@ -247,8 +247,9 @@ export default function TrendsOverview() {
   }
 
   // Calculate summary metrics
-  // #2898: gender identity in the five groups (#75 a); ruling 58's Gender field count is note 3, per season
-  // above 0 (#74 a), under each gender card and table and at the page foot.
+  // #2898: gender identity in the five groups (#75 a); ruling 58's Gender field count is the note after the
+  // Year-by-Year table's (genderNoteN), per season above 0 (#74 a), under each gender card and table and at
+  // the page foot.
   const byGender = (rows: ReadonlyArray<{ gender: string; count: number }>) =>
     Object.fromEntries(rows.map((g) => [g.gender, g.count]))
   const fallbackSeasons = data.years.map((y) => ({

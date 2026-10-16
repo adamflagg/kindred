@@ -1,6 +1,6 @@
 /**
- * Gender identity tokens (design language §16; #2898). Every chart that splits by gender identity takes its
- * order, groups, names and colours from here, so a label wears one colour on every page.
+ * Gender identity tokens (design language, "Gender identity" section; #2898). Every chart that splits by gender
+ * identity takes its order, groups, names and colours from here, so a label wears one colour on every page.
  *
  * The labels are the ones the API sends (`bunking/gender_identity.py`): CampMinder's Gender Identity options,
  * "self-described" for a write-in and "not given" for no answer at all.
@@ -99,7 +99,8 @@ export function genderDisplayName(label: string): string {
   return DISPLAY[label] ?? label
 }
 
-// Unknown labels sort after the known identities and before the non-answers; groups sit beside their members.
+// Unknown labels sort after Not listed above and before self-described (so before the non-answers); groups sit
+// beside their members.
 const RANK: Readonly<Record<string, number>> = {
   ...Object.fromEntries(GENDER_IDENTITY_ORDER.map((label, i) => [label, i])),
   [ANOTHER_IDENTITY]: GENDER_IDENTITY_ORDER.indexOf('self-described') + 0.5,

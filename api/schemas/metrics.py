@@ -8,11 +8,12 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-# Every Analytics gender split reads CampMinder's Gender Identity, never the binary field (#2898; epic #3207
-# decision 38). bunking.gender_identity holds the rule, shared with Camperships' development report.
+# Every Analytics gender split reads CampMinder's Gender Identity first (#2898; epic #3207 decision 38), and a blank
+# answer counts by the binary field (owner ruling 58, api.services.extractors.IDENTITY_FALLS_BACK_TO_BINARY).
+# bunking.gender_identity holds the rule, shared with Camperships' development report, which never falls back.
 GENDER_IDENTITY_DESCRIPTION = (
-    "Gender identity label: CampMinder's Gender Identity, 'self-described' for a write-in, 'not given' when blank "
-    "(never the binary Gender field)"
+    "Gender identity label: CampMinder's Gender Identity, 'self-described' for a write-in; a blank answer counts by "
+    "the binary Gender field (F as 'Girl/woman', M as 'Boy/man'), and 'not given' when neither is set"
 )
 
 
