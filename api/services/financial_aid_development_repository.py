@@ -290,9 +290,11 @@ class DevelopmentRepository:
         return source_record(row) if row is not None else None
 
     async def has_live_grant_lines(self, year: int) -> bool:
-        """Whether the season has any line the rebuilt ages could count as an outside grant: live, positive, outside
-        or incentive (the grants register's own rows come from these postings, so a False here means its rows hold
-        none). One row, no count: the question before paying for the season's register, a full-season load."""
+        """Whether the season has any line the rebuilt ages could count as an outside grant: live, outside or
+        incentive, and a credit (the grants register's own rows come from these postings, so a False here means its
+        rows hold none). One row, no count: the question before paying for the season's register, a full-season load.
+        `amount < 0`: the column keeps CampMinder's sign, and the register's `amount > 0` is in aid dollars
+        (aid_dollars flips it), so a credit is negative here."""
         page = await pb_read(
             self.pb.collection(AID_POSTINGS).get_list,
             1,
@@ -300,7 +302,7 @@ class DevelopmentRepository:
             {
                 "filter": (
                     f"year = {int(year)} && (funder_type = 'outside' || funder_type = 'incentive')"
-                    " && is_reversed = false && amount > 0"
+                    " && is_reversed = false && amount < 0"
                 ),
                 "fields": "id",
                 "skipTotal": True,
