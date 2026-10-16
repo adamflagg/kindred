@@ -339,17 +339,10 @@ class TestGenderByGradeBreakdown:
         sample_persons_2026: list[Mock],
         sample_attendees_2026: list[Mock],
     ) -> None:
-        """by_gender_grade should have male/female counts per grade.
+        """The fixtures' Gender field per grade: one M and one F in each of grades 5-8.
 
-        Note: We only track M/F since CampMinder's sex field only has these values.
-
-        Expected structure:
-        [
-            { grade: 5, male_count: 1, female_count: 1, total: 2 },
-            { grade: 6, male_count: 1, female_count: 1, total: 2 },
-            { grade: 7, male_count: 1, female_count: 1, total: 2 },
-            { grade: 8, male_count: 1, female_count: 1, total: 2 },
-        ]
+        by_gender_grade counts gender identity (#2898); these fixtures have no identity answer, so the API counts
+        them by this field (ruling 58), as {"grade": 5, "by_gender": {"Girl/woman": 1, "Boy/man": 1}, "total": 2}.
         """
         persons_by_id = {p.cm_id: p for p in sample_persons_2026}
         person_ids = {a.person_id for a in sample_attendees_2026}
@@ -579,7 +572,7 @@ class TestRegistrationEndpointWithSessionFilter:
         Expected response field:
         {
             "by_gender_grade": [
-                {"grade": 5, "male_count": 1, "female_count": 1, "total": 2},
+                {"grade": 5, "by_gender": {"Girl/woman": 1, "Boy/man": 1}, "total": 2},
                 ...
             ]
         }
@@ -2270,7 +2263,7 @@ class TestGenderBySessionLength:
         - 4 females: Emma (101), Olivia (103), Ava (105), Sophia (107)
 
         Expected:
-        [{ length_category: "3-week", male_count: 4, female_count: 4, total: 8 }]
+        [{ length_category: "3-week", by_gender: {"Girl/woman": 4, "Boy/man": 4}, total: 8 }]
         """
         from api.services.registration_service import RegistrationService
 

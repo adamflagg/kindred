@@ -250,6 +250,19 @@ A line that **replaces** the table (loading, failed, empty) is allowed. So is a 
 - **Money** renders through `Money`, `MoneyCompact` and `ReversedAmount` (`kit/MoneyText.tsx`). Never format a figure by hand.
 - **Accessibility is opt-out here.** Follow `frontend/CLAUDE.md` § "Accessibility — deliberately minimal": add `aria-label` / `role` only as a test query handle, and add no `sr-only`, `aria-live` or extra keyboard handlers. Native `title` tooltips are the one affordance this guide requires everywhere (§8).
 
+
+## 16. Gender identity
+
+**Every chart or table that splits by gender identity takes its order, groups, names and colours from `kit/genderIdentity.ts`** (#2898), so a label wears one colour on every page. Analytics adopts these tokens (option 3 below), together with `AidSegmented` for its Gender picker and `DefinitionNotes` for its notes.
+
+- **Labels** are the ones the API sends (`bunking/gender_identity.py`): CampMinder's Gender Identity options, "self-described" for a write-in and "not given" for no answer at all. `genderDisplayName` capitalises those two for staff ("Self-described", "Not given"). Camperships' own words are unchanged.
+- **Order** is `GENDER_IDENTITY_ORDER`, the same as Camperships'. Sort with `sortByIdentityOrder`, never by size.
+- **Groups.** A chart with little room (stacked bars, Trends' lines and table, Velocity's lines) folds labels into the five `GENDER_IDENTITY_GROUPS`: Girl/woman, Boy/man, Non-binary, Another identity (`ANOTHER_IDENTITY_MEMBERS`: both transgender labels, Agender, Not listed above, Self-described) and No answer (Prefer not to answer, Not given). `identityGroup` maps a label to its group. A grouped chart says under it what Another identity holds. Donuts, comparison tables, Retention, the drill-down and the CSV list every label.
+- **Colours** are named tokens: `GENDER_GIRL_WOMAN`, `GENDER_BOY_MAN`, `GENDER_NON_BINARY`, `GENDER_TRANSGENDER_GIRL_WOMAN`, `GENDER_TRANSGENDER_BOY_MAN`, `GENDER_AGENDER`, `GENDER_NOT_LISTED`, `GENDER_SELF_DESCRIBED` and `GENDER_ANOTHER_IDENTITY`. The two non-answers are greys that change with the theme: `GENDER_PREFER_NOT` and `GENDER_NOT_GIVEN` (`--gender-prefer-not`, `--gender-not-given` in `index.css`). Look a label up with `genderIdentityColor` or `GENDER_IDENTITY_COLOR`. The binary Gender field's F and M wear Girl/woman's and Boy/man's colours.
+- **Another identity is hatched** on a bar or swatch (`GENDER_HATCH_IMAGE`, `genderHatched`) and dashed as a line, because it folds several identities.
+- **The Gender field** reads "Girls" and "Boys" (`GENDER_FIELD_LABEL`) wherever a chart still reads it: Velocity's split defaults to it, because cabins fill by it.
+- **No identity answer.** Analytics counts such a camper by the Gender field (owner ruling 58) and says how many in a visible numbered line under the chart, plus a page-foot note. There is no note when the count is 0. The lines are in `components/metrics/genderIdentityNotes.tsx`.
+
 ---
 
 ## Adding to the kit
