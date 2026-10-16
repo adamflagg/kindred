@@ -5,7 +5,7 @@
 
 import { TrendingUp, TrendingDown } from 'lucide-react'
 import type { RetentionOutlier } from '../../utils/retentionTransforms'
-import { formatCount, formatPercent, formatSignedPercent } from '../../utils/numberFormat'
+import { formatCount, formatPercent, formatSignedWholePercent } from '../../utils/numberFormat'
 
 interface RetentionNotableOutliersProps {
   cityOutliers: RetentionOutlier[]
@@ -45,7 +45,7 @@ export function OutlierSection({ outliers, max }: { outliers: RetentionOutlier[]
                 }`}
               >
                 <Icon className="h-3 w-3" />
-                {formatSignedPercent(o.deviation)}
+                {formatSignedWholePercent(o.deviation)}
               </span>
             </li>
           )
