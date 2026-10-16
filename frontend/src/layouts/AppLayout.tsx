@@ -41,6 +41,7 @@ import { type Program, useProgram } from '../contexts/ProgramContext'
 import { canOpenProgram } from '../config/programAccess'
 import { getProgramFromPath, getProgramHomeUrl } from '../utils/programUrls'
 import { pb } from '../lib/pocketbase'
+import { StaffGuideMenuItem } from '../help/StaffGuideMenuItem'
 import { VersionMenuRow } from '../components/VersionInfo'
 import { MANAGE_TABS, canSeeTab } from '../config/manageTabs'
 import { AidNavLinks } from '../components/camperships/shell/AidNavLinks'
@@ -563,6 +564,8 @@ export const AppLayout = () => {
 
                   {isHelpMenuOpen && (
                     <div className="card-lodge shadow-lodge-lg animate-scale-in absolute top-full right-0 z-50 mt-2 w-64 p-2">
+                      <StaffGuideMenuItem onNavigate={() => setIsHelpMenuOpen(false)} />
+
                       <button
                         onClick={() => {
                           setIsHelpMenuOpen(false)

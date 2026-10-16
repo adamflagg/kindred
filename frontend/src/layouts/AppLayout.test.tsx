@@ -102,6 +102,13 @@ vi.mock('../components/BunkRequestsUpload', () => ({
   ),
 }))
 
+// Mutable so a test can give the build a guide address, as branding.local.json does in prod.
+let mockDocsUrl: string | null = null
+vi.mock('../config/branding', async (importActual) => ({
+  ...(await importActual<typeof import('../config/branding')>()),
+  getDocsUrl: () => mockDocsUrl,
+}))
+
 vi.mock('../components/BrandedLogo', () => ({
   BrandedLogo: () => <div>Logo</div>,
 }))
@@ -253,6 +260,30 @@ describe('Help Menu', () => {
 
     expect(screen.getByText('Report a Problem')).toBeInTheDocument()
     expect(screen.getByText('Tour This Page')).toBeInTheDocument()
+  })
+
+  it('hides the Staff Guide item when the build has no docs_url', () => {
+    mockDocsUrl = null
+    renderAppLayout()
+    fireEvent.click(screen.getByLabelText('Help menu'))
+    expect(screen.queryByText('Staff Guide')).toBeNull()
+    expect(screen.getByText('Report a Problem')).toBeInTheDocument()
+  })
+
+  it('puts Staff Guide first in the Help menu when docs_url is set, and closes the menu on click', () => {
+    mockDocsUrl = 'https://guide.example.test'
+    try {
+      renderAppLayout()
+      fireEvent.click(screen.getByLabelText('Help menu'))
+      const guide = screen.getByRole('link', { name: /Staff Guide/ })
+      const report = screen.getByText('Report a Problem')
+      expect(guide.compareDocumentPosition(report) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      expect(guide.closest('.card-lodge')).toBe(report.closest('.card-lodge'))
+      fireEvent.click(guide)
+      expect(screen.queryByText('Report a Problem')).toBeNull()
+    } finally {
+      mockDocsUrl = null
+    }
   })
 
   it('puts the version row in the Help menu after the other items, and closes the menu on click', () => {

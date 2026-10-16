@@ -20,6 +20,8 @@ interface BrandingConfig {
   sso_display_name: string;
   page_title: string;
   page_description: string;
+  // Base URL of the staff guide; null hides the Help menu's Staff Guide item.
+  docs_url: string | null;
   logo: {
     large: string | null;
     nav: string | null;
