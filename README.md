@@ -1,6 +1,6 @@
 # Kindred
 
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/adamflagg/kindred)
+[![Ask DeepWiki](https://img.shields.io/badge/Ask-DeepWiki-1f6feb)](https://deepwiki.com/adamflagg/kindred)
 
 **Kindred finds campers who belong together and places them in the right cabins** — and gives camps the analytics to understand their enrollment, retention, and community at a depth spreadsheets can't reach.
 
