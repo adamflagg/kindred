@@ -304,6 +304,32 @@ export function whyWords(
             long: `No request for ${full}. The camper is enrolled, but the household's aid form names no program for it.`,
           }
     }
+    // The registration-ask rule (2027 on) makes a request from an ask typed at one registration; these say why not.
+    case 'registration_ask_ambiguous': {
+      const tiny = gap.map((g) => tinyName(g.session_cm_id, names)).join(', ')
+      const full = gap.map((g) => fullName(g.session_cm_id, names)).join(', ')
+      const asked = reg ? `They asked ${formatMoney(reg.amount)}` : 'They asked'
+      return {
+        short: `None for ${tiny}: one ask, two or more sessions that day`,
+        long: `No request for ${full}. ${asked} for financial assistance when registering${reg ? regDate(reg) : ''}, but registered for more than one session that day, so the dashboard can't tell which one the ask was for. Add a Request… if it was for this one.`,
+      }
+    }
+    case 'registration_ask_unattributed': {
+      const tiny = gap.map((g) => tinyName(g.session_cm_id, names)).join(', ')
+      const full = gap.map((g) => fullName(g.session_cm_id, names)).join(', ')
+      const ask = reg
+        ? `Their registration ask of ${formatMoney(reg.amount)}`
+        : 'Their registration ask'
+      return row.why_not_detail === 'ask_predates_registration'
+        ? {
+            short: `None for ${tiny}: the ask predates this registration`,
+            long: `No request for ${full}. ${ask} was typed before they registered for it, so it belongs to an earlier registration. Add a Request… if they asked for this one too.`,
+          }
+        : {
+            short: `None for ${tiny}: the ask was typed at no registration of it`,
+            long: `No request for ${full}. ${ask} was not typed within a day of registering for it, so the dashboard can't tell it was for this session. Add a Request… if it was.`,
+          }
+    }
     case 'not_enrolled':
       return {
         short: 'No request: not enrolled in what the form asked',

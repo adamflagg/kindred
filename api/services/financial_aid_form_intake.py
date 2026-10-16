@@ -17,6 +17,12 @@ The pieces it reuses rather than repeats:
 Needs a look (spec §2.4, owner Q3-A): CampMinder aid on no request; an enrolled session no request holds (not for a
 registration-only family: that one counts only once CampMinder posted aid on it); a request whose session is unclear
 between enrolled candidates; a rule-made request nobody has marked reviewed (Q2-A).
+
+From 2027 the registration-ask rule's own facts explain an enrolled session it made no request for (PR 4b,
+financial_aid_registration_ask, run here over the requests intake made): `registration_ask_ambiguous` when the ask's
+day also registered another session, `registration_ask_unattributed` when no ask was typed at this registration
+(detail `ask_predates_registration` when every ask is older than it). A camper the rule could not decide for gets a
+row even when the form never named them.
 """
 
 from __future__ import annotations
@@ -48,6 +54,7 @@ from api.schemas.financial_aid_form_intake import (
     RegistrationAskOut,
     UnlistedResponse,
     WhyNot,
+    WhyNotDetail,
 )
 from api.services.camp_calendar import CAMP_TZ
 from api.services.financial_aid_addition_view import addition_view, additions_by_request_key, posted_rounds
@@ -83,6 +90,14 @@ from api.services.financial_aid_intake_types import (
 )
 from api.services.financial_aid_ledger_service import family_household_set
 from api.services.financial_aid_reconciliation import CampLine
+from api.services.financial_aid_registration_ask import (
+    REGISTRATION_ASK_RULE_FIRST_SEASON,
+    AskFact,
+    AskHistoryRow,
+    AttendeeDates,
+    RegistrationAskResult,
+    registration_ask_additions,
+)
 from api.services.financial_aid_session_resolver import session_named_by
 from bunking.financial_aid.decisions.rounds import DecisionEvent, fold_rounds
 from bunking.financial_aid.rules.schema import AidRules
@@ -116,6 +131,8 @@ class FormIntakeStore(Protocol):
     async def fetch_camp_lines(self, year: int, *, recorded_times: bool = False) -> list[CampLine]: ...
     async def fetch_household_links(self, year: int) -> list[Any]: ...
     async def load_intake_rules(self, year: int) -> AidRules | None: ...
+    async def fetch_registration_ask_history(self, year: int) -> list[AskHistoryRow]: ...
+    async def fetch_attendee_dates(self, year: int) -> list[AttendeeDates]: ...
     async def fetch_names(
         self, year: int, household_cm_ids: Collection[int], person_cm_ids: Collection[int]
     ) -> tuple[dict[int, str], dict[int, str]]: ...
@@ -146,6 +163,8 @@ class _Season:
     no_request: list[NoRequestAid] = field(default_factory=list)
     # CampMinder's money a request holds, per (household, whose, session): whose is d170_person's (0: the household's).
     on_request: dict[tuple[int, int, int], Decimal] = field(default_factory=dict)
+    # The registration-ask rule's open enrollments it could not tie to an ask (PR 4b; empty before 2027).
+    asked: RegistrationAskResult = field(default_factory=RegistrationAskResult)
 
 
 def _session_key(sessions: Mapping[int, SessionRow]) -> Callable[[int], tuple[str, int]]:
@@ -204,6 +223,7 @@ class _Explainer:
         self.aid_by_subject: dict[Subject, list[NoRequestAid]] = defaultdict(list)
         for found in season.no_request:
             self.aid_by_subject[self.d170_subject(found)].append(found)
+        self.ask_facts: tuple[AskFact, ...] = (*season.asked.ambiguous, *season.asked.unattributed)
 
     # -- who a row is for ----------------------------------------------------------------------------------------------
 
@@ -264,7 +284,8 @@ class _Explainer:
         return found
 
     def subjects(self) -> list[Subject]:
-        return sorted(self._named_subjects() | set(self.aid_by_subject))
+        asked = {(f.household_cm_id, f.person_cm_id) for f in self.ask_facts}
+        return sorted(self._named_subjects() | set(self.aid_by_subject) | asked)
 
     # -- one row -------------------------------------------------------------------------------------------------------
 
@@ -438,6 +459,19 @@ class _Explainer:
                     out.append(CampMinderAidOut(session_cm_id=r.session_cm_id, amount=float(money), on_request=True))
         return out
 
+    def ask_why(self, person: int, gaps: Sequence[GapSessionOut]) -> tuple[WhyNot, WhyNotDetail | None]:
+        """An enrolled session no request holds: the registration-ask rule's reason when it could not decide for one
+        of them (ambiguous before unattributed), else plain enrolled_no_request."""
+        sids = {g.session_cm_id for g in gaps}
+        facts = [f for f in self.ask_facts if f.person_cm_id == person and f.session_cm_id in sids]
+        if any(f in self.s.asked.ambiguous for f in facts):
+            return "registration_ask_ambiguous", None
+        if facts:
+            return "registration_ask_unattributed", (
+                "ask_predates_registration" if all(f.predates for f in facts) else None
+            )
+        return "enrolled_no_request", None
+
     def row(self, subject: Subject) -> FormIntakeRowOut:
         household, person = subject
         rows = self.rows_by_household.get(household, []) if household else []
@@ -454,6 +488,7 @@ class _Explainer:
         gaps = self.gaps(subject, requests, enrolled)
         aid = self.campminder_aid(subject, requests)
         why: WhyNot | None = None
+        detail: WhyNotDetail | None = None
         if household <= 0:
             why = "no_household"
         elif registration_only and not live:
@@ -461,7 +496,7 @@ class _Explainer:
         elif person and not answers and self.interest_only(subject) and not enrolled and not live:
             why = "adult_not_registered"
         elif gaps:
-            why = "enrolled_no_request"
+            why, detail = self.ask_why(person, gaps)
         elif not any(b.status == "active" for b in live) and (
             any(b.why == "not_enrolled" for b in became) or (answers and not enrolled)
         ):
@@ -489,6 +524,7 @@ class _Explainer:
             became=became,
             campminder_aid=aid,
             why_not=why,
+            why_not_detail=detail,
             gap_sessions=gaps,
             can_add=household > 0 and bool(gaps),
             needs_look=bool(reasons),
@@ -558,6 +594,20 @@ class FormIntakeService:
         # D170's own read, as Season's figure and Add a Request…'s guard make it: the raw requests and additions (an
         # added request staff removed holds no money), and whose each line is (#49: a request holds only its own).
         d170 = D170Reads(requests, additions, list(links), family_camp_sessions(sessions), attendees)
+        asked = RegistrationAskResult()
+        if year >= REGISTRATION_ASK_RULE_FIRST_SEASON:
+            history, dated = await asyncio.gather(
+                store.fetch_registration_ask_history(year), store.fetch_attendee_dates(year)
+            )
+            asked = registration_ask_additions(
+                year,
+                fa_rows=fa_rows,
+                sessions=sessions,
+                attendees=dated,
+                history=history,
+                additions=additions,
+                requests=requests,
+            )
         return _Season(
             year=year,
             fa_rows=fa_rows,
@@ -573,6 +623,7 @@ class FormIntakeService:
             by_id={s.cm_id: s for s in sessions},
             no_request=aid_on_no_request_lines(lines, d170),
             on_request=aid_on_request(lines, d170),
+            asked=asked,
         )
 
     async def _named(self, year: int, rows: list[FormIntakeRowOut]) -> list[FormIntakeRowOut]:

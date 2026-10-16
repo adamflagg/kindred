@@ -417,3 +417,68 @@ async def test_an_additions_times_read_as_utc_stamps_whatever_shape_the_sdk_hand
     pb.tables["aid_request_additions"] = [blank]
     (addition,) = await FinancialAidIntakeRepository(pb).fetch_request_additions(2027)
     assert (addition.retired_at, addition.reviewed_at, addition.live) == ("", "", True)
+
+
+# -- PR 4b: the registration-ask rule's two reads ----------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_the_ask_history_read_is_the_seasons_camper_ask_field_only() -> None:
+    """aid_registration_ask_history holds the camper ask (28906) and the adult-weekend one (209090); the rule reads the
+    camper ask alone, as superuser (all five rules are null), each row's time verbatim and its order kept."""
+    handle = MagicMock()
+    handle.get_full_list.return_value = [
+        SimpleNamespace(
+            id="ask000000000001",
+            person_cm_id=1000011,
+            field_cm_id=28906,
+            amount=585,
+            source_changed_at="2027-10-01T17:02:11.000+00:00",
+            observed_at=datetime(2027, 10, 2, 4, 0, tzinfo=UTC),
+            created=datetime(2027, 10, 2, 4, 0, 1, 250000),
+        )
+    ]
+    pb = MagicMock()
+    pb.collection.return_value = handle
+    (row,) = await FinancialAidIntakeRepository(pb).fetch_registration_ask_history(2027)
+    assert (row.person_cm_id, row.amount, row.source_changed_at) == (1000011, 585.0, "2027-10-01T17:02:11.000+00:00")
+    assert (row.observed_at, row.created) == ("2027-10-02 04:00:00.000Z", "2027-10-02 04:00:01.250Z")
+    pb.collection.assert_called_with("aid_registration_ask_history")
+    params = handle.get_full_list.call_args.kwargs["query_params"]
+    assert params["filter"] == "year = 2027 && field_cm_id = 28906"
+    assert set(params["fields"].split(",")) == {
+        "id",
+        "person_cm_id",
+        "amount",
+        "source_changed_at",
+        "observed_at",
+        "created",
+    }
+
+
+@pytest.mark.asyncio
+async def test_the_dated_attendee_read_takes_every_status_with_both_dates() -> None:
+    handle = MagicMock()
+    handle.get_full_list.return_value = [
+        SimpleNamespace(
+            id="att000000000001",
+            person_id=1000011,
+            status_id=32,
+            effective_date=datetime(2027, 7, 27),
+            enrollment_date="2027-07-28 05:40:00.000Z",
+            expand={"person": SimpleNamespace(household_id=1000001), "session": SimpleNamespace(cm_id=1000301)},
+        )
+    ]
+    pb = MagicMock()
+    pb.collection.return_value = handle
+    (row,) = await FinancialAidIntakeRepository(pb).fetch_attendee_dates(2027)
+    assert (row.person_cm_id, row.household_cm_id, row.session_cm_id, row.status_id) == (
+        1000011,
+        1000001,
+        1000301,
+        32,
+    )
+    assert (row.effective_date, row.enrollment_date) == ("2027-07-27 00:00:00.000Z", "2027-07-28 05:40:00.000Z")
+    params = handle.get_full_list.call_args.kwargs["query_params"]
+    assert params["filter"] == "year = 2027"  # any status: a cancelled same-day registration still makes an ask unclear
+    assert {"effective_date", "enrollment_date", "status_id"} <= set(params["fields"].split(","))

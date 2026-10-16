@@ -5503,7 +5503,13 @@ export type FormIntakeRowOut = {
     | 'enrolled_no_request'
     | 'not_enrolled'
     | 'answer_edited'
+    | 'registration_ask_ambiguous'
+    | 'registration_ask_unattributed'
     | null
+  /**
+   * Why Not Detail
+   */
+  why_not_detail?: 'ask_predates_registration' | null
   /**
    * Gap Sessions
    */

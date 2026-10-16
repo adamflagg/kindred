@@ -40,6 +40,7 @@ from api.services.financial_aid_intake_types import (
     equity_from_json,
 )
 from api.services.financial_aid_reconciliation import CampLine
+from api.services.financial_aid_registration_ask import AskHistoryRow, AttendeeDates
 from bunking.financial_aid.change_log import COLLECTION, AidOperationResult, AidWrite, commit_aid_writes
 from bunking.financial_aid.decisions.rounds import DecisionEvent
 from bunking.financial_aid.rules.schema import AidRules
@@ -204,6 +205,9 @@ class FakeAidStore:
         self.cancel_events: list[Any] = []  # aid_cancellations rows (CancelEvent)
         self.enrollments: list[Any] = []  # EnrollmentState rows: CampMinder's own cancelled / enrolled registrations
         self.equity: dict[int, EquityAnswers] = {}
+        # PR 4b: aid_registration_ask_history rows (CA ask field only) and every attendee row with its dates.
+        self.ask_history: list[AskHistoryRow] = []
+        self.attendee_dates: list[AttendeeDates] = []
         self.birthdates: dict[int, str] = {}
         self.rules: AidRules | None = None
         self.equity_rules: AidRules | None = None
@@ -239,6 +243,14 @@ class FakeAidStore:
     async def fetch_family_camp_billing(self, year: int) -> list[BillingLine]:
         await self._read(year)
         return list(self.billing)
+
+    async def fetch_registration_ask_history(self, year: int) -> list[AskHistoryRow]:
+        await self._read(year)
+        return list(self.ask_history)
+
+    async def fetch_attendee_dates(self, year: int) -> list[AttendeeDates]:
+        await self._read(year)
+        return list(self.attendee_dates)
 
     async def fetch_applications(self, year: int) -> list[ApplicationRecord]:
         await self._read(year)
