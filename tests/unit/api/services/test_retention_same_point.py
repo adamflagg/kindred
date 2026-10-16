@@ -193,13 +193,14 @@ class TestRetentionSamePoint:
 
     @pytest.mark.asyncio
     async def test_without_same_point_of_the_read_is_unchanged(self) -> None:
-        service = RetentionService(_repo(BASE_ROWS + PRIOR_ROWS))
+        repo = _repo(BASE_ROWS + PRIOR_ROWS)
+        service = RetentionService(repo)
 
         result = await service.calculate_retention(BASE, PRIOR)
 
         assert result.prior_basis is None
         assert result.returned_count == 3
-        service.repo.fetch_attendees_with_dates.assert_not_called()
+        repo.fetch_attendees_with_dates.assert_not_called()
 
 
 def _trend_repo(rows: list[_Att], anchors: dict[int, str] | None = None) -> AsyncMock:
@@ -258,7 +259,8 @@ class TestRetentionTrendsSamePoint:
 
     @pytest.mark.asyncio
     async def test_after_the_season_there_is_no_same_point_series(self) -> None:
-        service = RetentionTrendsService(_trend_repo(self.TREND_ROWS))
+        repo = _trend_repo(self.TREND_ROWS)
+        service = RetentionTrendsService(repo)
 
         result = await service.calculate_retention_trends(
             CURRENT, num_years=2, same_point=True, today=date(2026, 9, 30)
@@ -267,14 +269,15 @@ class TestRetentionTrendsSamePoint:
         assert result.prior_basis == "final"
         assert result.as_of_date is None
         assert all(y.same_point_rate is None for y in result.years)
-        service.repo.fetch_attendees_with_dates.assert_not_called()
+        repo.fetch_attendees_with_dates.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_without_same_point_nothing_is_read_by_date(self) -> None:
-        service = RetentionTrendsService(_trend_repo(self.TREND_ROWS))
+        repo = _trend_repo(self.TREND_ROWS)
+        service = RetentionTrendsService(repo)
 
         result = await service.calculate_retention_trends(CURRENT, num_years=2)
 
         assert result.prior_basis is None
         assert all(y.same_point_rate is None for y in result.years)
-        service.repo.fetch_registration_dates.assert_not_called()
+        repo.fetch_registration_dates.assert_not_called()
