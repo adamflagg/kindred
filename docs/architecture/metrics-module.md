@@ -79,7 +79,9 @@ their final. One rule, one place:
   while it is live (from before the anchor through `SEASON_WEEKS` weeks after it), with the
   prior-side read day clamped by `same_point_offset` (decision 45: on a priority, early or open date
   the prior is read through the next day). None means "compare with finals".
-- **Forecast** live mode uses it for `prior_basis`. Week mode is always same point.
+- **Forecast** live mode takes its prior read day (`prior_offset`, already clamped) and
+  `prior_basis` from it, and drops the Week-0 lower bound, since a negative day there is a real
+  "N days before the anchor". Week mode is always same point.
 - **Overview** (`/registration?same_point_of=<season>`): the compare year is read at that day with
   `reconstruction.attendees_at_cutoff`, the record-level form of the rule `_reconstruct_core` counts per
   session, so every breakdown can use it. The response says `prior_basis`, `day_offset`,
