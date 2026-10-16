@@ -516,3 +516,35 @@ describe('CssVerticalStackedBarChart legend spacing', () => {
     expect(legendWrapper).toBeInTheDocument()
   })
 })
+
+// ---------------------------------------------------------------------------
+// #2898: a note line under the chart, and the hatched Another identity segment
+// ---------------------------------------------------------------------------
+describe('CssVerticalStackedBarChart footer and hatch (#2898)', () => {
+  it('renders the footer under the chart', () => {
+    render(
+      <CssVerticalStackedBarChart
+        data={sampleData}
+        segments={segments}
+        footer={<p>762 campers counted by the Gender field.</p>}
+      />
+    )
+    expect(screen.getByText('762 campers counted by the Gender field.')).toBeInTheDocument()
+  })
+
+  it('hatches a segment marked hatch, in the bars and the legend', () => {
+    const { container } = render(
+      <CssVerticalStackedBarChart
+        data={[{ name: 'Grade 3', total: 3, a: 2, b: 1 }]}
+        segments={[
+          { key: 'a', label: 'Girl/woman', color: '#d9266b' },
+          { key: 'b', label: 'Another identity', color: '#8460c0', hatch: true },
+        ]}
+      />
+    )
+    const hatched = [...container.querySelectorAll<HTMLElement>('[style]')].filter((el) =>
+      el.style.backgroundImage.includes('repeating-linear-gradient')
+    )
+    expect(hatched.length).toBe(2) // the segment and its legend swatch
+  })
+})

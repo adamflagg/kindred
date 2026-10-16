@@ -6,6 +6,7 @@
  * Handles items existing in one year but not the other (NEW/GONE indicators).
  */
 
+import type { ReactNode } from 'react'
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react'
 import { mergeDataForComparison } from '../../utils/comparisonUtils'
 import { formatCount, formatSignedCount, formatSignedPercent } from '../../utils/numberFormat'
@@ -40,6 +41,10 @@ interface ComparisonSummaryTableProps {
   categoryLabel?: string
   /** Sort by any column, with Copy and Download CSV in the heading (#3207 PR 10: the long per-session lists). */
   sortable?: boolean
+  /** A swatch before each row's name, keyed by name (gender identity, #2898). */
+  colorMap?: Record<string, string>
+  /** Under the table: visible note lines (#2898's Gender field count). */
+  footer?: ReactNode
 }
 
 export function ComparisonSummaryTable({
@@ -55,6 +60,8 @@ export function ComparisonSummaryTable({
   aliasMap,
   categoryLabel = 'Category',
   sortable = false,
+  colorMap,
+  footer,
 }: ComparisonSummaryTableProps) {
   const mergedNatural = mergeDataForComparison(
     primaryData,
@@ -173,6 +180,12 @@ export function ComparisonSummaryTable({
                   className="border-border hover:bg-muted/20 border-b transition-colors last:border-0"
                 >
                   <td className="text-foreground px-4 py-3 font-medium">
+                    {colorMap?.[row.name] && (
+                      <span
+                        className="mr-1.5 inline-block h-2.5 w-2.5 rounded-sm align-[-1px]"
+                        style={{ backgroundColor: colorMap[row.name] }}
+                      />
+                    )}
                     {row.name}
                     {row.compareName && (
                       <span className="text-muted-foreground ml-1 text-xs">
@@ -215,6 +228,7 @@ export function ComparisonSummaryTable({
           </tbody>
         </table>
       </div>
+      {footer && <div className="px-4 pb-3">{footer}</div>}
     </div>
   )
 }

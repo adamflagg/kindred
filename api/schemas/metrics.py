@@ -752,6 +752,15 @@ class DrilldownAttendee(BaseModel):
     preferred_name: str | None = Field(None, description="Preferred name if set")
     grade: int | None = Field(None, description="Grade level")
     gender: str | None = Field(None, description=GENDER_IDENTITY_DESCRIPTION)
+    gender_field: str | None = Field(
+        None,
+        description="The binary Gender field (F / M / Other) as CampMinder holds it: the CSV's Gender field column",
+    )
+    gender_counted_by_field: bool = Field(
+        False,
+        description="True when gender is read from the Gender field because the camper has no identity answer "
+        "(ruling 58): the modal marks the row with the note number",
+    )
     age: int | None = Field(
         None, description="Season year minus birth year (the rule CampMinder uses); None without a birth date"
     )

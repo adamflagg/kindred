@@ -379,6 +379,18 @@ async def test_drilldown_rows_show_the_identity_label() -> None:
     assert {r.person_id: r.gender for r in rows} == EXPECTED
 
 
+@pytest.mark.asyncio
+async def test_drilldown_rows_carry_the_gender_field_and_whether_it_was_used() -> None:
+    """#80: the modal marks a row counted by the Gender field; the CSV carries both columns."""
+    from api.services.drilldown_service import DrilldownService
+
+    rows = await DrilldownService(_drilldown_repo()).get_attendees_for_breakdown(
+        year=2026, breakdown_type="session", breakdown_value="1000"
+    )
+    assert {r.person_id: r.gender_field for r in rows} == {pid: p.gender for pid, p in PERSONS.items()}
+    assert {r.person_id for r in rows if r.gender_counted_by_field} == {4, 7}  # Riley and Mia
+
+
 # ----------------------------------------------------------------------------
 # A camper with no persons row for the season still counts, as "not given", so every gender split adds up
 # to its total (2017-2022 in the dev DB were one camper short: enrolled, but persons held no row for those

@@ -4547,6 +4547,18 @@ export type DrilldownAttendee = {
    */
   gender?: string | null
   /**
+   * Gender Field
+   *
+   * The binary Gender field (F / M / Other) as CampMinder holds it: the CSV's Gender field column
+   */
+  gender_field?: string | null
+  /**
+   * Gender Counted By Field
+   *
+   * True when gender is read from the Gender field because the camper has no identity answer (ruling 58): the modal marks the row with the note number
+   */
+  gender_counted_by_field?: boolean
+  /**
    * Age
    *
    * Season year minus birth year (the rule CampMinder uses); None without a birth date

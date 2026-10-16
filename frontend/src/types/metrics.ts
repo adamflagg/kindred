@@ -80,17 +80,18 @@ export interface SynagogueBreakdown {
 }
 
 // New registration breakdown types for registration tab redesign
+/** Gender identity label (the API's raw label, #2898) → campers. */
+export type GenderCounts = Record<string, number>
+
 export interface GenderByGradeBreakdown {
   grade: number | null
-  male_count: number
-  female_count: number
+  by_gender: GenderCounts
   total: number
 }
 
 export interface GenderBySessionLengthBreakdown {
   length_category: string
-  male_count: number
-  female_count: number
+  by_gender: GenderCounts
   total: number
 }
 
@@ -204,6 +205,10 @@ export interface SessionFlowItem {
 }
 
 export interface RetentionMetrics {
+  /** How many of gender_fallback_count returned (#82's Read with care line). */
+  gender_fallback_returned_count?: number
+  /** Campers in the gender split with no identity answer, counted by the Gender field (ruling 58). */
+  gender_fallback_count?: number
   base_year: number
   compare_year: number
   base_year_total: number
@@ -227,6 +232,8 @@ export interface RetentionMetrics {
 }
 
 export interface RegistrationMetrics {
+  /** Campers in the gender split with no identity answer, counted by the Gender field (ruling 58). */
+  gender_fallback_count?: number
   year: number
   total_enrolled: number
   /** null on a same-point read: a past waitlist cannot be rebuilt. */
@@ -264,6 +271,8 @@ export interface RegistrationMetrics {
 
 // Historical trends types
 export interface YearMetrics {
+  /** Campers in the gender split with no identity answer, counted by the Gender field (ruling 58). */
+  gender_fallback_count?: number
   year: number
   total_enrolled: number
   by_gender: GenderBreakdown[]
@@ -325,6 +334,8 @@ export interface RegionEnrollment {
 }
 
 export interface YearEnrollment {
+  /** Campers in the gender split with no identity answer, counted by the Gender field (ruling 58). */
+  gender_fallback_count?: number
   year: number
   total: number
   by_gender: GenderEnrollment[]
@@ -339,6 +350,8 @@ export interface YearEnrollment {
 
 // Retention trends types (3-year view)
 export interface RetentionTrendYear {
+  /** Campers in the gender split with no identity answer, counted by the Gender field (ruling 58). */
+  gender_fallback_count?: number
   from_year: number
   to_year: number
   retention_rate: number
@@ -427,7 +440,12 @@ export interface DrilldownAttendee {
   last_name: string
   preferred_name?: string
   grade?: number
+  /** Gender identity label (#2898), as every Analytics split counts it. */
   gender?: string
+  /** The binary Gender field (F / M / Other): the CSV's Gender field column (#80). */
+  gender_field?: string | null
+  /** Gender read from the Gender field: no identity answer (ruling 58). The modal marks it. */
+  gender_counted_by_field?: boolean
   age?: number
   school?: string
   city?: string
@@ -468,6 +486,8 @@ export interface WaitlistSessionBreakdown {
 }
 
 export interface WaitlistMetrics {
+  /** Campers in the gender split with no identity answer, counted by the Gender field (ruling 58). */
+  gender_fallback_count?: number
   year: number
   total_waitlisted: number
   waitlisted_no_enrollment: number
@@ -510,6 +530,8 @@ export interface CancellationSessionBreakdown {
 }
 
 export interface CancellationMetrics {
+  /** Campers in the gender split with no identity answer, counted by the Gender field (ruling 58). */
+  gender_fallback_count?: number
   year: number
   total_cancelled: number
   was_enrolled: number

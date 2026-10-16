@@ -25,6 +25,8 @@ export interface ChartCardProps {
   legend?: Array<{ label: string; color: string }>
   isEmpty?: boolean
   emptyMessage?: string
+  /** Under the legend: a chart's visible note lines (#2898's Gender field count). */
+  footer?: ReactNode
   children: ReactNode
 }
 
@@ -41,6 +43,7 @@ export function ChartCard({
   legend,
   isEmpty,
   emptyMessage = 'No data available',
+  footer,
   children,
 }: ChartCardProps) {
   if (isEmpty) {
@@ -105,6 +108,7 @@ export function ChartCard({
       </div>
 
       {legend && legend.length > 0 && <ChartLegend items={legend} className="mt-3" />}
+      {footer}
     </div>
   )
 }
