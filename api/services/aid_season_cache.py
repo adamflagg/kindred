@@ -100,7 +100,10 @@ def sync_changes_aid_season(sync_type: str | None) -> bool:
 
 
 V = TypeVar("V")
-_Key = tuple[int, date]
+# (year, camp-time day, part). The priced season is one value per day (part ""); a cache that holds several reads of
+# one season -- Form intake's explained rows and the responses built from them (financial_aid_form_intake_cache.py) --
+# names each read by its part. Every clear is by year (key[0]), so a clear drops every part of the year at once.
+_Key = tuple[int, date, str]
 
 
 class AidSeasonCache:
@@ -126,7 +129,14 @@ class AidSeasonCache:
     async def get_or_build(self, year: int, day: date, build: Callable[[], Awaitable[V]]) -> V:
         """The cached value for (year, day), or the one build in flight for it, or a new build. Concurrent callers
         share one build; a build that raises reaches every waiter and caches nothing."""
-        key = (int(year), day)
+        return await self._get_or_build((int(year), day, ""), build)
+
+    async def get_or_build_part(self, year: int, day: date, part: str, build: Callable[[], Awaitable[V]]) -> V:
+        """As get_or_build, for one named read of the season: each part is its own entry, single-flighted and
+        generation-guarded like the season, and cleared with its year."""
+        return await self._get_or_build((int(year), day, part), build)
+
+    async def _get_or_build(self, key: _Key, build: Callable[[], Awaitable[V]]) -> V:
         loop = asyncio.get_running_loop()
         with self._lock:
             hit = self._entries.get(key)
@@ -196,17 +206,20 @@ def on_aid_commit(writes: Sequence[AidWrite], actor: str) -> None:
     It touches the event loop only through call_soon_threadsafe: the warm is scheduled, never run, from here."""
     # Imported here, not at the top: api.dependencies builds this module's class, and the layer-1 module and the
     # placement module both reach api.dependencies.
-    from api.dependencies import aid_season_cache  # noqa: PLC0415 - circular
+    from api.dependencies import aid_season_cache, form_intake_cache  # noqa: PLC0415 - circular
     from api.services.aid_sync_inputs import schedule_aid_warm  # noqa: PLC0415 - circular
     from api.services.financial_aid_grant_placements import PLACEMENT_ACTOR  # noqa: PLC0415 - circular
 
     if actor == PLACEMENT_ACTOR or not writes:
         return
-    if any(w.collection in SEASON_SPANNING_COLLECTIONS for w in writes):
-        aid_season_cache.invalidate_all()  # logged under one season, read by every season
-    else:
-        for year in {int(w.year) for w in writes}:
-            aid_season_cache.invalidate_year(year)
+    # Form intake's explained season (financial_aid_form_intake_cache.py) reads the same aid tables, so it clears with
+    # the priced season, scoped the same way.
+    for cache in (aid_season_cache, form_intake_cache):
+        if any(w.collection in SEASON_SPANNING_COLLECTIONS for w in writes):
+            cache.invalidate_all()  # logged under one season, read by every season
+        else:
+            for year in {int(w.year) for w in writes}:
+                cache.invalidate_year(year)
     loop = _warm_loop
     if loop is not None and not loop.is_closed():
         loop.call_soon_threadsafe(schedule_aid_warm)

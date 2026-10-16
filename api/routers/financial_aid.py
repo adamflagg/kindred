@@ -247,6 +247,7 @@ from api.services.financial_aid_development_service import (
     FundingSourceNotFoundError,
 )
 from api.services.financial_aid_form_intake import FormIntakeService
+from api.services.financial_aid_form_intake_cache import CachedFormIntakeService
 from api.services.financial_aid_grant_offsets import GrantsRegisterService
 from api.services.financial_aid_grants_repository import GrantsRepository
 from api.services.financial_aid_grants_service import (
@@ -358,7 +359,7 @@ from bunking.logging_config import get_logger
 from bunking.rbac.dependencies import require_any_permission, require_permission
 from bunking.rbac.permissions import Permission
 
-from ..dependencies import aid_season_cache, pb
+from ..dependencies import aid_season_cache, form_intake_cache, pb
 
 router = APIRouter(prefix="/api/financial-aid", tags=["financial-aid"])
 logger = get_logger(__name__)
@@ -808,8 +809,11 @@ async def _grants_waiting_for_camper(year: int) -> int:
 
 
 def _form_intake() -> FormIntakeService:
-    return FormIntakeService(
+    """Form intake's reads, served from the process's form_intake_cache (follow-up B): the Requests band count, the
+    page, the D170 line and Today's form_intake line share one explained season until a write or a sync changes it."""
+    return CachedFormIntakeService(
         FinancialAidDecisionsRepository(pb),
+        cache=form_intake_cache,
         labels=_household_labels(),
         grants_waiting=_grants_waiting_for_camper,
         people_search=HouseholdSearchRepository(pb).search_people,

@@ -55,7 +55,7 @@ from api.constants.collections import (
     PERSON_CUSTOM_VALUES,
     PERSONS,
 )
-from api.dependencies import AID_INPUTS_BACKSTOP_SECONDS, aid_inputs_cache, aid_season_cache
+from api.dependencies import AID_INPUTS_BACKSTOP_SECONDS, aid_inputs_cache, aid_season_cache, form_intake_cache
 from api.dependencies import pb as default_pb
 from api.services.lodging_cache import cached_by_year
 from api.services.pb_precise_datetime import aid_collection
@@ -350,8 +350,8 @@ async def refresh_aid_inputs_forever(
     freshness plan. A backstop expiry is a clear like any other, so it is followed by a warm too: clearing BEFORE
     the re-warm, rather than letting the entry expire on its own, keeps the staleness bound at the backstop while
     every synced season stays filled. A request that arrives mid-warm waits on the warm's fill (single-flight per
-    year). The priced season (layer 2) is cleared with it, since it was built from what this clear drops, and `warm`
-    rebuilds it. `year`, a test seam, warms that one season instead of every synced one."""
+    year). The priced season (layer 2) and Form intake's explained season are cleared with it, since both were built from
+    what this clear drops, and `warm` rebuilds the priced season. `year`, a test seam, warms that one season instead of every synced one."""
     while True:
         try:
             for season in await _synced_years() if year is None else [await year()]:
@@ -361,6 +361,7 @@ async def refresh_aid_inputs_forever(
         await sleep(interval)
         aid_inputs_cache.invalidate_all()
         aid_season_cache.invalidate_all()
+        form_intake_cache.invalidate_all()  # Form intake's explained season, built from layer 1 too
 
 
 def start_aid_inputs_refresher() -> asyncio.Task[None]:

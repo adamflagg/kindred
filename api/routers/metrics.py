@@ -18,6 +18,7 @@ from api.services.cancellation_service import CancellationService
 from api.services.day1_service import Day1Service
 from api.services.drilldown_service import DrilldownService
 from api.services.financial_aid_development_repository import DEVELOPMENT_HISTORY_TABLES
+from api.services.financial_aid_form_intake_cache import sync_changes_form_intake
 from api.services.forecast_service import ForecastService
 from api.services.geo_service import clear_person_id_cache
 from api.services.historical_service import HistoricalService
@@ -39,6 +40,7 @@ from ..dependencies import (
     aid_inputs_cache,
     aid_season_cache,
     development_history_cache,
+    form_intake_cache,
     graph_cache,
     lodging_cache,
     metrics_cache,
@@ -685,6 +687,12 @@ def invalidate_server_caches(sync_type: str | None) -> dict[str, int]:
     synced seasons follows its clear. Unscoped, the hourly bunk_assignments
     run (and its N-1 pass from Oct 15) rebuilt both live seasons every hour.
 
+    form_intake_cache, Requests › Form intake's explained season and the
+    responses built from it (`api/services/financial_aid_form_intake_cache.py`),
+    is scoped by `sync_changes_form_intake`: the tables its reads read (layer
+    1's, the sessions and registrations, the aid_postings job's ledger tables).
+    No warm follows: its next read (the Requests band or Today) rebuilds it.
+
     development_history_cache, Reports › Development's past-seasons attendance
     (`api/services/financial_aid_development_repository.py`), is scoped like
     layer 1, against DEVELOPMENT_HISTORY_TABLES (attendees, persons,
@@ -703,6 +711,8 @@ def invalidate_server_caches(sync_type: str | None) -> dict[str, int]:
     if sync_changes_aid_season(sync_type):
         aid_season_cache.invalidate_all()
         schedule_aid_warm()  # layer 2, and layer 1 when this sync cleared it too
+    if sync_changes_form_intake(sync_type):
+        form_intake_cache.invalidate_all()
     # graph_cache (kindred#2803): until now only scenario, solver and position
     # writes cleared it, so a sync rewriting attendees or bunk assignments left
     # the production graph stale for its whole 15-minute TTL. Scoped the same
