@@ -20,6 +20,8 @@ const defaultBranding = {
   page_description: 'Cabin assignments that put relationships first',
   // Staff guide base URL, supplied by branding.local.json; null hides the Help menu item.
   docs_url: null as string | null,
+  // CARTO basemaps key, supplied by branding.local.json; null leaves map tiles watermarked.
+  basemaps_key: null as string | null,
   logo: {
     large: null as string | null,
     nav: null as string | null,
@@ -81,4 +83,8 @@ export function getPageDescription(): string {
 
 export function getDocsUrl(): string | null {
   return branding.docs_url
+}
+
+export function getBasemapsKey(): string | null {
+  return branding.basemaps_key
 }

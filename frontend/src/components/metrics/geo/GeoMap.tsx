@@ -18,7 +18,9 @@ import {
 } from '../../../data/californiaGeo'
 import { getLocationCoordsWithOverrides } from '../../../data/geoCoords'
 import type { DrilldownFilter } from '../../../types/metrics'
+import { getBasemapsKey } from '../../../config/branding'
 import { RegionOverlays } from './RegionOverlays'
+import { basemapTileUrl } from './basemap'
 import type { GeoCategory } from './GeoCategoryTabs'
 
 export interface GeoDataItem {
@@ -159,10 +161,9 @@ export function GeoMap({
           scrollWheelZoom={true}
           zoomControl={true}
         >
-          {/* CartoDB Positron tiles - clean, muted colors */}
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
-            url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+            url={basemapTileUrl(getBasemapsKey())}
           />
 
           <MapController center={BAY_AREA_CENTER} zoom={BAY_AREA_ZOOM} />
