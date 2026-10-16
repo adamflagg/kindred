@@ -335,6 +335,39 @@ describe('Today › Session fill', () => {
     expect(total).toHaveTextContent('▲ 14 · 372') // vs 104 + 268
   })
 
+  it('a session new this year reads "new this year" and stays out of the total\'s comparison (ruling #15)', () => {
+    vi.mocked(useTodaySessions).mockReturnValue(
+      q({
+        ...SESSIONS,
+        rows: [
+          ...SESSIONS.rows,
+          {
+            session_cm_id: 1000950,
+            session_name: 'Session 5',
+            session_type: 'main',
+            enrolled: 20,
+            waitlisted: 0,
+            beds: 40,
+            goal: null,
+            prior: null,
+            parts: [
+              { label: 'Girls', enrolled: 10, waitlisted: 0, beds: 20, prior: null },
+              { label: 'Boys', enrolled: 10, waitlisted: 0, beds: 20, prior: null },
+            ],
+          },
+        ],
+      }) as unknown as ReturnType<typeof useTodaySessions>
+    )
+    renderPage()
+    const rows = within(fill()).getAllByRole('row')
+    const s5 = rows.find((r) => within(r).queryAllByRole('cell')[0]?.textContent === 'Session 5')
+    expect(within(s5!).getAllByRole('cell').at(-1)).toHaveTextContent('— new this year')
+    const cells = within(rows.at(-1)!).getAllByRole('cell')
+    expect(cells[0]).toHaveTextContent('3 sessions')
+    expect(cells[1]).toHaveTextContent('406') // every session's enrolled: 109 + 277 + 20
+    expect(cells.at(-1)).toHaveTextContent('▲ 14 · 372') // only the matched two: 386 vs 104 + 268
+  })
+
   it('defaults to Fill: Bunk plan, with beds and open places', () => {
     renderPage()
     expect(within(fill()).getByRole('button', { name: 'Bunk plan' })).toHaveAttribute(
@@ -439,6 +472,27 @@ describe('Today › notes', () => {
     expect(screen.getByText(/campers with a summer enrollment in this scope/)).toBeInTheDocument()
     expect(screen.getByText(/not offered this year is not counted/)).toBeInTheDocument()
     expect(container.querySelector('sup[title]')).toBeNull()
+  })
+})
+
+describe('Today › a finished season', () => {
+  it('every change reads "vs 2026 final", the hero and Session fill alike', () => {
+    const final = {
+      prior_basis: 'final',
+      day_offset: null,
+      prior_day_offset: null,
+      as_of_date: null,
+    }
+    withHero({
+      prior: reg(2026, { ...PRIOR_SAME_POINT, ...final } as Partial<RegistrationMetrics>),
+    })
+    vi.mocked(useTodaySessions).mockReturnValue(
+      q({ ...SESSIONS, ...final }) as unknown as ReturnType<typeof useTodaySessions>
+    )
+    renderPage()
+    expect(hero()).toHaveTextContent('vs 2026 final')
+    expect(hero()).not.toHaveTextContent('same point')
+    expect(within(fill()).getByRole('columnheader', { name: /vs 2026 final/ })).toBeInTheDocument()
   })
 })
 

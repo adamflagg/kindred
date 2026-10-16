@@ -67,5 +67,6 @@ describe('Analytics change figures use the shared delta tokens', () => {
   it('Day 1 draws its change in forest on the card gradient', () => {
     const src = read('pages/metrics/registration/Day1Page.tsx')
     expect(src).not.toContain("diff > 0 ? 'text-emerald-300'")
+    expect(src).toContain("diff > 0 ? 'text-forest-300' : 'text-red-300'")
   })
 })

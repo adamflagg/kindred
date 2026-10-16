@@ -410,7 +410,11 @@ def _prior_attendee(pid: int, sid: int, registered: str, status: str = "enrolled
 class TestSessionFillSamePoint:
     @pytest.mark.asyncio
     async def test_prior_is_read_at_the_same_registration_day(self) -> None:
-        """2027 day 10 against 2026 day 10: registered by then, and not cancelled by then."""
+        """2027 day 10 reads 2026 at its day 10 (2025-11-22): the basis and the cutoff day.
+
+        What counts at that cutoff (registered by then, not cancelled by then) is pinned by
+        test_counts_only_what_stood_at_the_cutoff, on the same four attendees.
+        """
         prior_dated = [
             _prior_attendee(1000001, 1000200, "2025-11-12"),  # registered day 1: counts
             _prior_attendee(1000002, 1000200, "2026-01-05"),  # registered later: not yet
