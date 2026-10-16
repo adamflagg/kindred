@@ -220,6 +220,14 @@ def test_on_the_campminder_axis_a_line_is_read_on_its_own_campminder_dates() -> 
     assert recorded == live
 
 
+def test_an_evening_pacific_reversal_is_read_on_its_camp_day_not_its_utc_date() -> None:
+    """reversal_date is true UTC: 7:30 pm on March 9 Pacific is March 10 in UTC, still March 9 on the camp's calendar."""
+    live = grant_row(EMMA, "500")
+    reversed_now = replace(live, is_reversed=True, reversal_date="2027-03-10 03:30:00.000Z", counts=False, requests=())
+    (row,) = placements_as_of([_logged(live, MAR_1)], [reversed_now], [], MAR_9_END, posted_by=date(2027, 3, 9)).rows
+    assert (row.counts, row.requests) == (False, ())
+
+
 # --- two register rows that share one key (aid_postings' grain is transaction, amount, year) ----------
 
 

@@ -32,7 +32,7 @@ from typing import Any, Final, Literal
 from pydantic import TypeAdapter
 
 from api.constants.collections import AID_GRANT_PLACEMENTS
-from api.services.financial_aid_grants_register import RegisterRow
+from api.services.financial_aid_grants_register import RegisterRow, camp_day
 from api.services.financial_aid_ledger_service import parse_pb_datetime
 from bunking.financial_aid.change_log import AidWrite
 from bunking.financial_aid.change_replay import LogRow
@@ -214,7 +214,7 @@ def placements_as_of(
             if (
                 current is not None
                 and current.is_reversed
-                and current.reversal_date[:10] <= posted_by.isoformat()
+                and camp_day(current.reversal_date) <= posted_by.isoformat()
                 and not row.is_reversed
             ):
                 row = replace(row, is_reversed=True, reversal_date=current.reversal_date, counts=False, requests=())
