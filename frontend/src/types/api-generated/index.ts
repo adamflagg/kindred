@@ -26,6 +26,7 @@ export type {
   AdditionOut,
   AdditionRetire,
   AddPrefillOut,
+  AgeBandBreakdown,
   AgSessionAvailability,
   AidLikeOutside,
   AidOnNoRequestLineOut,
