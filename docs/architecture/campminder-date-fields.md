@@ -4,16 +4,21 @@
 
 | PB Field | CM API Field | Type | Meaning | Stability |
 |----------|-------------|------|---------|-----------|
-| `effective_date` | `EffectiveDate` | date | Original registration/application date | **Stable** — never overwritten |
+| `effective_date` | `EffectiveDate` | date | Original registration/application date | **Stable** through ordinary status changes; CampMinder bulk actions overwrite it (see below) |
 | `enrollment_date` | `PostDate` | date | Date of the CURRENT status transition | **Changes** on every status change |
 | `last_updated_utc` | `LastUpdatedUTC` | datetime | Last modification timestamp | Changes on any update |
 
 ## Key Rule
 
-**`effective_date` = original registration/application date (ALWAYS stable).**
+**`effective_date` = original registration/application date (stable through ordinary status changes).**
 
 For ALL statuses, `effective_date` represents when the person first took action
-(applied, enrolled, waitlisted). It never gets overwritten by subsequent status changes.
+(applied, enrolled, waitlisted). An ordinary status change (a cancellation, a withdrawal,
+an approval of one record) does not overwrite it.
+
+> **Exception: CampMinder bulk actions DO overwrite it** (epic #3207). The 2020–21 bulk
+> cancellations and the 2023 and 2025 priority-day approvals overwrote `EffectiveDate` on the
+> rows they acted on, so on those rows it is the bulk action's date, not the registration date.
 
 **`enrollment_date` (PostDate) = when the current status was set.** MISLEADING NAME.
 It gets overwritten each time status changes:
