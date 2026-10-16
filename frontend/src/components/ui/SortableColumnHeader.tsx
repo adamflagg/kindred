@@ -20,6 +20,9 @@ export interface SortableColumnHeaderProps {
   style?: CSSProperties | undefined
   /** A native title on the host cell (the full words behind a short header). */
   title?: string | undefined
+  /** Spans, for a header over a grouped or two-row head (th only). */
+  colSpan?: number | undefined
+  rowSpan?: number | undefined
   /** Classes on the inner button — padding, hover, focus ring. */
   buttonClassName?: string
   /** The button's cross-axis alignment and gap; the default centres the arrow 4px off the label. */
@@ -48,6 +51,8 @@ export function SortableColumnHeader({
   className,
   style,
   title,
+  colSpan,
+  rowSpan,
   buttonClassName,
   layoutClassName = 'items-center gap-1',
 }: SortableColumnHeaderProps) {
@@ -61,6 +66,8 @@ export function SortableColumnHeader({
       className={className}
       style={style}
       title={title}
+      colSpan={colSpan}
+      rowSpan={rowSpan}
     >
       <button
         type="button"

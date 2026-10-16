@@ -606,6 +606,7 @@ export default function RegistrationOverview() {
                 </div>
                 <ComparisonSummaryTable
                   title="Session Enrollment Comparison"
+                  sortable
                   primaryYear={currentYear}
                   compareYear={compareYear}
                   {...buildSessionComparisonData(
@@ -871,18 +872,13 @@ export default function RegistrationOverview() {
 
         {/* Session Details Table */}
         <div className="card-lodge overflow-hidden" data-tour="reg-overview-session-table">
-          <div className="border-border border-b px-4 py-3">
-            <h3 className="text-foreground text-base font-semibold">Session Details</h3>
-          </div>
-          <div className="overflow-x-auto">
-            <SessionDetailsTable
-              current={sortedBySession}
-              prior={compData?.by_session}
-              isComparing={isComparing}
-              currentYear={currentYear}
-              compareYear={compareYear}
-            />
-          </div>
+          <SessionDetailsTable
+            current={sortedBySession}
+            prior={compData?.by_session}
+            isComparing={isComparing}
+            currentYear={currentYear}
+            compareYear={compareYear}
+          />
         </div>
 
         <DefinitionNotes notes={[...pageNotes, ...(compareBasis?.notes ?? [])]} />

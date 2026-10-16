@@ -27,6 +27,7 @@ import { useDrilldownAttendees } from '../../hooks/useDrilldownAttendees'
 import { sessionName } from '../../utils/sessionName'
 import { buildCsvContent, downloadCsv as triggerCsvDownload } from '../../utils/csvExport'
 import { campToday, formatLongDate } from '../camperships/kit/dates'
+import { csvFilename, type RowsMode } from './exportFilename'
 import { AidSegmented } from '../camperships/kit/Segmented'
 import { DefinitionNotes, DefRef, type DefinitionNote } from '../camperships/kit/DefinitionNotes'
 import { CS_BTN2, CS_FLABEL } from '../camperships/kit/csType'
@@ -98,8 +99,6 @@ function campDayKey(value: string | undefined | null): string {
   return Number.isNaN(at.getTime()) ? value : campToday(at)
 }
 
-type RowsMode = 'campers' | 'enrollments'
-
 const ROWS_OPTIONS = [
   { value: 'campers', label: 'Campers' },
   { value: 'enrollments', label: 'Enrollments' },
@@ -111,17 +110,6 @@ const GROUP_OPTIONS = [
   { value: 'flat', label: 'Flat' },
   { value: 'household', label: 'Household' },
 ] as const
-
-/** "<season>-<view>[-enrollments]-<camp-time date>.csv", e.g. "2026-total-cancelled-2026-10-15.csv". */
-function csvFilename(year: number, label: string | undefined, mode: RowsMode): string {
-  const view =
-    (label ?? '')
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '') || 'campers'
-  const rows = mode === 'enrollments' ? '-enrollments' : ''
-  return `${String(year)}-${view}${rows}-${campToday()}.csv`
-}
 
 function earliest(values: ReadonlyArray<string | null | undefined>): string | undefined {
   let first: string | undefined

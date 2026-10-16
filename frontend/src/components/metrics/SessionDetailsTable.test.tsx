@@ -2,7 +2,7 @@
  * Session Details table (decision 43 / K8): a light render test of the table the Overview page
  * shows, so retired sessions are checked without mocking the whole page.
  */
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import type { SessionBreakdown } from '../../types/metrics'
 import { SessionDetailsTable } from './SessionDetailsTable'
@@ -58,5 +58,48 @@ describe('SessionDetailsTable', () => {
     expect(screen.queryByText('Session B')).not.toBeInTheDocument()
     expect(screen.queryByText('Delta')).not.toBeInTheDocument()
     expect(screen.queryByText(/not offered/)).not.toBeInTheDocument()
+  })
+
+  describe('sort, Total and CSV (#3207 PR 10)', () => {
+    const renderTable = () =>
+      render(
+        <SessionDetailsTable
+          current={[s('Session A', 10), s('Session B', 30), s('Session C', 20)]}
+          prior={[s('Session A', 8), s('Session B', 25), s('Session C', 20), s('Session D', 5)]}
+          isComparing
+          currentYear={2026}
+          compareYear={2025}
+        />
+      )
+    const names = () =>
+      screen
+        .getAllByRole('row')
+        .slice(1)
+        .map((r) => r.querySelector('td')?.textContent ?? '')
+
+    it('keeps session order, then the first click on a number column goes high to low; a second flips', () => {
+      renderTable()
+      expect(names().slice(0, 3)).toEqual(['Session A', 'Session B', 'Session C'])
+      fireEvent.click(screen.getByRole('button', { name: /^Enrolled/ }))
+      expect(names().slice(0, 3)).toEqual(['Session B', 'Session C', 'Session A'])
+      fireEvent.click(screen.getByRole('button', { name: /^Enrolled/ }))
+      expect(names().slice(0, 3)).toEqual(['Session A', 'Session C', 'Session B'])
+    })
+
+    it('rows with nothing to sort on stay at the bottom both ways, and Total stays last', () => {
+      renderTable()
+      fireEvent.click(screen.getByRole('button', { name: /^Enrolled/ }))
+      expect(names().at(-2)).toMatch(/Session D/)
+      expect(names().at(-1)).toBe('Total')
+      fireEvent.click(screen.getByRole('button', { name: /^Enrolled/ }))
+      expect(names().at(-2)).toMatch(/Session D/)
+      expect(names().at(-1)).toBe('Total')
+    })
+
+    it('offers Copy and Download CSV', () => {
+      renderTable()
+      expect(screen.getByRole('button', { name: /download csv/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /^copy/i })).toBeInTheDocument()
+    })
   })
 })
