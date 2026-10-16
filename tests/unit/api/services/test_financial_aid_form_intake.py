@@ -774,6 +774,30 @@ async def test_a_camper_is_offered_their_money_across_the_linked_family_and_the_
     assert await _drill(store) == (0.0, [])
 
 
+@pytest.mark.asyncio
+async def test_a_campers_money_held_under_the_linked_household_shows_on_their_own_requests_cell() -> None:
+    """The money is held by the camper's own request, but on the linked household's family x session (its own
+    household has a request there too): the camper's row reads its on-request cell across the linked family."""
+    from api.services.financial_aid_to_place import LinkRow
+
+    linked = 1000009  # CampMinder's second household id for the Johnsons, where Samuel is filed
+    store = await intake(
+        fa_row(EMMA, JOHNSON, registration_ask=1500.0),
+        fa_row(SAMUEL, linked, registration_ask=1500.0),
+        attendees=[*enrolled(EMMA, JOHNSON, TASTE_1), *enrolled(SAMUEL, linked, TASTE_1)],
+        lines=[camp(59000031, linked, "1000", session=TASTE_1, person=EMMA)],
+    )
+    store.links = [LinkRow(JOHNSON, "fam-johnson", False, None), LinkRow(linked, "fam-johnson", False, None)]
+    casework = FinancialAidCaseworkService(store)
+    await casework.add_request(YEAR, JOHNSON, EMMA, TASTE_1, 1000.0, "By phone", ACTOR)
+    await casework.add_request(YEAR, linked, SAMUEL, TASTE_1, 500.0, "By phone", ACTOR)
+    out = await forms(store)
+    emma, samuel = row(out, JOHNSON, EMMA), row(out, linked, SAMUEL)
+    assert (_amber(emma), _on_request(emma)) == ([], [(TASTE_1, 1000.0)])
+    assert (_amber(samuel), _on_request(samuel)) == ([], [])
+    assert await _drill(store) == (0.0, [])
+
+
 # -- Follow-up A (approved polish): the Became cell lists live requests first, then closed ones, each in date order ----
 
 
