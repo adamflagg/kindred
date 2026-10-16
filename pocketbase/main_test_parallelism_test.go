@@ -379,6 +379,10 @@ var serialGroups = []struct {
 		tests: []string{
 			"TestRequestProcessorSendsItsOwnYearNotThePrimary",
 			"TestDailySyncRunsPrimaryThenPriorSeason",
+			"TestHistoricalSeasonsIsEveryOlderSeasonNewestFirst",
+			"TestAllSeasonsResyncRunsTheSourceJobsForEveryOlderSeason",
+			"TestAllSeasonsResyncWaitsForARunningQueue",
+			"TestAllSeasonsResyncRefusesASecondRun",
 			"TestPriorSeasonPassNeverSwapsTheRegistry",
 			"TestPriorSeasonFailureLeavesPrimaryRecorded",
 			"TestSyncRunsRowsCarryTheirSeason",
