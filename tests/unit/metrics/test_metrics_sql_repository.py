@@ -934,15 +934,23 @@ class TestDrilldownPersonFields:
             assert person.parent_names is None
 
 
-class TestFetchHouseholdPostalCodes:
+class TestFetchDrilldownHouseholds:
+    """PR 6b: each household's CampMinder id (the list's group key and Household ID) and postal code."""
+
     @pytest.mark.asyncio
-    async def test_this_seasons_codes_keyed_by_pocketbase_id(self, sql_db: sqlite3.Connection) -> None:
+    async def test_this_seasons_households_keyed_by_pocketbase_id(self, sql_db: sqlite3.Connection) -> None:
+        from api.services.metrics_repository import DrilldownHousehold
+
         sql_db.execute("UPDATE households SET billing_postal_code = '94110' WHERE id = 'hh_2001'")
         sql_db.execute(
             "INSERT INTO households (id, cm_id, year, billing_postal_code) VALUES ('hh_old', 2002, 2024, '94612')"
         )
         repo = _make_repo(sql_db)
-        assert await repo.fetch_household_postal_codes(2025) == {"hh_2001": "94110"}
+        assert await repo.fetch_drilldown_households(2025) == {
+            "hh_2001": DrilldownHousehold(cm_id=2001, postal_code="94110"),
+            "hh_2002": DrilldownHousehold(cm_id=2002, postal_code=None),
+            "hh_2003": DrilldownHousehold(cm_id=2003, postal_code=None),
+        }
 
 
 class TestDrilldownServiceOnSQL:
@@ -963,6 +971,7 @@ class TestDrilldownServiceOnSQL:
         rows = await service.get_attendees_for_breakdown(2025, "status", "enrolled", status_filter=["enrolled"])
         emma = next(r for r in rows if r.person_id == 1001)
         assert (emma.age, emma.zip, emma.caregivers) == (11, "94110", ["Sarah Johnson"])
+        assert emma.household_cm_id == 2001  # PR 6b: the group key and the CSV's Household ID
 
 
 class TestRegistrationAgeOnSQL:
