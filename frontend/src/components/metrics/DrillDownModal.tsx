@@ -33,6 +33,8 @@ import { DefinitionNotes, DefRef, type DefinitionNote } from '../camperships/kit
 import { CS_BTN2, CS_FLABEL } from '../camperships/kit/csType'
 import { GROUP_ROW_BAND } from '../camperships/kit/kitStyles'
 import { groupByHousehold, householdCountWords } from './householdGroups'
+import { GenderFallbackLine } from './genderIdentityNotes'
+import { genderDisplayName } from '../camperships/kit/genderIdentity'
 import type { DrilldownAttendee, DrilldownFilter, DrilldownSession } from '../../types/metrics'
 
 /** Get display session name: comma-joined if multi-session, fallback to single session_name. */
@@ -450,7 +452,9 @@ export function DrillDownModal({
       ['CampMinder ID', (a) => a.person_id],
       ['Name', name],
       ['Grade', (a) => a.grade ?? ''],
-      ['Gender', (a) => a.gender ?? ''],
+      // #80: identity as the list shows it, and the binary Gender field beside it.
+      ['Gender identity', (a) => (a.gender ? genderDisplayName(a.gender) : '')],
+      ['Gender field', (a) => a.gender_field ?? ''],
       ['Age', (a) => a.age ?? ''],
       ['School', (a) => a.school ?? ''],
       ['City', (a) => a.city ?? ''],
@@ -530,6 +534,19 @@ export function DrillDownModal({
         ]
       : []),
   ]
+  // #80 / ruling 58: campers with no identity answer are counted by the Gender field; their cell carries
+  // this note's number, and a visible line under the list says how many (nothing at 0).
+  const fallbackCampers = new Set(
+    sortedAttendees.filter((a) => a.gender_counted_by_field).map((a) => a.person_id)
+  ).size
+  const genderNoteN = fallbackCampers > 0 ? notes.length + 1 : undefined
+  if (genderNoteN !== undefined) {
+    notes.push({
+      n: genderNoteN,
+      term: 'Gender',
+      text: `Gender: gender identity from CampMinder; a write-in counts as Self-described. ${formatCount(fallbackCampers)} of these campers ${fallbackCampers === 1 ? 'has' : 'have'} no gender identity answer and ${fallbackCampers === 1 ? 'is' : 'are'} counted by the Gender field (F as Girl/woman, M as Boy/man); their Gender cell is marked ${String(genderNoteN)}.`,
+    })
+  }
   const noun = mode === 'enrollments' ? 'enrollment' : 'camper'
   const shownCampers = new Set(sortedAttendees.map((a) => a.person_id)).size
   const showSchool = !isWaitlistDrilldown && !isRetentionDrilldown && !isCancellationSpecial
@@ -568,7 +585,10 @@ export function DrillDownModal({
         {attendee.grade ?? '—'}
       </td>
       <td className="text-foreground px-4 py-3 text-center whitespace-nowrap">
-        {attendee.gender ?? '—'}
+        {attendee.gender ? genderDisplayName(attendee.gender) : '—'}
+        {attendee.gender_counted_by_field && genderNoteN !== undefined && (
+          <sup className="text-[0.8em]">{genderNoteN}</sup>
+        )}
       </td>
       {!isWaitlistDrilldown && !isRetentionDrilldown && !isCancellationSpecial && (
         <td
@@ -967,6 +987,13 @@ export function DrillDownModal({
 
         {/* Numbered notes */}
         <div className="border-border border-t px-6 pb-2">
+          {genderNoteN !== undefined && (
+            <GenderFallbackLine
+              n={genderNoteN}
+              count={fallbackCampers}
+              className="text-muted-foreground pt-2 text-xs leading-[17px]"
+            />
+          )}
           <DefinitionNotes notes={notes} />
         </div>
       </div>

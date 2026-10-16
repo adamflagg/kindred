@@ -28,15 +28,18 @@ export function GenderFallbackLine({
   n,
   count,
   season,
+  className = LINE,
 }: {
   n: number
   count: number
   /** Which campers, when the chart reads a season other than the page's ("2017 campers"). */
   season?: string | undefined
+  /** In place of the rule-topped card line (the drill-down's foot already has its rule). */
+  className?: string
 }) {
   if (count <= 0) return null
   return (
-    <p className={LINE}>
+    <p className={className}>
       <Sup n={n} /> <b className={STRONG}>{formatCount(count)}</b> {campers(count)} {WHAT}{' '}
       {count === 1 ? 'is' : 'are'} counted by the Gender field{season ? ` (${season})` : ''}.
     </p>
