@@ -80,7 +80,7 @@ func NewPersonsSync(app core.App, client *campminder.Client) *PersonsSync {
 // explicitly rather than inherited by embedding BaseSyncService -- see that field's doc
 // comment on BaseSyncService for why a promoted setter is not safe. Setting it also gates
 // this file's own App.Save/App.Delete call sites (the person and household upserts, the
-// attendee-relation and household-relation backfills, and deleteHouseholdOrphans), all of
+// attendee-relation backfill, the household-relation update, and deleteHouseholdOrphans), all of
 // which are outside BaseSyncService's write sites.
 func (s *PersonsSync) SetDryRun(dryRun bool) {
 	s.DryRun = dryRun
@@ -580,7 +580,8 @@ func (s *PersonsSync) processPerson(
 
 	// Fields to compare for updates (includes expanded CamperDetails fields)
 	// Note: Household relation fields (household, primary_childhood_household, alternate_childhood_household)
-	// are excluded because they're populated separately in updatePersonHouseholdRelations after save.
+	// are excluded because updatePersonHouseholdRelations sets them after save, filling and re-pointing
+	// them to the households CampMinder names this run.
 	// Tags field IS included - FieldEquals normalizes []interface{} vs []string for proper comparison.
 	// Removed: phone_numbers, email_addresses (JSON), address (JSON) - fields dropped from schema
 	compareFields := []string{"cm_id", "first_name", "last_name", "preferred_name",
@@ -840,8 +841,9 @@ func (s *PersonsSync) transformPersonToPB(
 	}
 
 	// Extract parent/guardian names by parsing the household's MailingTitle
-	// (e.g. "Sarah Johnson and David Garcia"). The Relatives array carries only
-	// guardian IDs — no names — so a salutation parse is the only name source
+	// (e.g. "Sarah Johnson and David Garcia"). The Relatives array carries ids and
+	// flags (IsGuardian, IsPrimary; kept in persons.relatives below) but no names,
+	// so a salutation parse is the only name source
 	// available without a follow-up GetPersons call. See #1393.
 	//
 	// Always set parent_names (to "" on failure) so the upsert path clears any
