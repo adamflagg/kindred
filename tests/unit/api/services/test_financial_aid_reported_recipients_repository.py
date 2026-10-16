@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 
+from api.services.financial_aid_development_repository import DevelopmentRepository
 from api.services.financial_aid_reported_recipients_repository import (
     ReportedRecipientsRepository,
     recipient_fields,
@@ -59,3 +60,11 @@ async def test_a_season_is_one_read_filtered_to_its_year() -> None:
     assert stored.recipient == GRANT
     [query] = pb.asked
     assert (query["collection"], query["filter"]) == ("aid_reported_recipients", "year = 2025")
+
+
+async def test_registrants_are_one_read_of_the_season_at_any_status() -> None:
+    """The load's "had a registration that season" check: every status (a camper who left early is on the sheet)."""
+    pb = _Rows([SimpleNamespace(person_id=1000011), SimpleNamespace(person_id=1000012), SimpleNamespace(person_id=0)])
+    assert await DevelopmentRepository(pb).registrants(2025) == {1000011, 1000012}
+    [query] = pb.asked
+    assert (query["collection"], query["filter"], query["fields"]) == ("attendees", "year = 2025", "person_id")

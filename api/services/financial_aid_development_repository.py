@@ -4,8 +4,10 @@ earlier seasons' attendance (first-time), aid families
 (aid_household_links) and the sources with their incentive flag (D88). Its one write (Part C) is a Funding sources
 edit, through 4a.
 
-Development never reads the raw person_custom_values table (§10) and never aid_postings.attributed_* (the grants
-register places outside lines; the camp's money comes from the decisions season).
+Development never reads the raw person_custom_values table (§10) and, but for one carve-out, never
+aid_postings.attributed_* (the grants register places outside lines; the camp's money comes from the decisions
+season). The carve-out is `outside_credits`: an as-reported season's outside-only family's camper counts only where
+the sync placed the line on one person (owner ruling 2026-10-16, #55), and that season's register is never built.
 
 THE PAST SEASONS ARE ONE CACHED WINDOW. `earlier_attendance` used to filter attendees by the campers and
 households it was asked about, 50 ids to a filter, households through `person.household_id` -- a join through a
@@ -243,6 +245,12 @@ class DevelopmentRepository:
             }
         )
         return [attendance_record(row) for row in rows]
+
+    async def registrants(self, year: int) -> set[int]:
+        """Everyone with a registration that season, of ANY status (a camper who left early, 16, or was waitlisted,
+        8, too): a Campership sheet row loads only for one of them. One read, the person id only."""
+        rows = await self._page({"filter": f"year = {int(year)}", "fields": "person_id"})
+        return {pid for row in rows if (pid := int(getattr(row, "person_id", 0) or 0)) > 0}
 
     async def earlier_attendance(
         self, year: int, person_cm_ids: Collection[int], household_cm_ids: Collection[int]

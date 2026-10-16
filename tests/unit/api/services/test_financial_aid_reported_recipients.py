@@ -103,6 +103,20 @@ async def test_a_cancelled_registrant_is_accepted_and_simply_not_counted_later()
     assert out.created == 1
 
 
+async def test_a_registrant_who_left_early_or_was_waitlisted_is_accepted() -> None:
+    """Any status counts as a registration that season (CampMinder 16 = left early, 8 = waitlisted): a camper who
+    left early had the aid, so the sheet's row loads rather than refusing the whole sheet."""
+    store = _store()
+    store.registrations += [
+        went(1000031, 1000003, year=2025, start=date(2025, 6, 20), status=16),
+        went(1000041, 1000004, year=2025, start=date(2025, 6, 20), status=8),
+    ]
+    out = await ReportedRecipientsService(store).load(
+        [_recipient(1000031, 1000003), _recipient(1000041, 1000004)], actor=ACTOR
+    )
+    assert out.created == 2
+
+
 async def test_a_person_who_was_not_a_camper_that_season_refuses_the_whole_load_and_is_named() -> None:
     """All or nothing: the stranger (no 2025 registration at all) and Liam (registered 2025, listed as 2024) are
     both named, and Emma's good row is not written either."""

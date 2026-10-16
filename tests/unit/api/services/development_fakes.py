@@ -74,7 +74,12 @@ class FakeDevelopmentStore:
     operations: list[list[AidWrite]] = field(default_factory=list)  # every commit attempted
 
     async def attendances(self, year: int) -> list[AttendanceRecord]:
-        return [r for r in self.registrations if r.year == year]
+        """As DevelopmentRepository.attendances: the season's enrolled, cancelled and withdrawn registrations."""
+        return [r for r in self.registrations if r.year == year and r.status_id in {2, 32, 256}]
+
+    async def registrants(self, year: int) -> set[int]:
+        """As DevelopmentRepository.registrants: everyone with a registration that season, of any status."""
+        return {r.person_cm_id for r in self.registrations if r.year == year}
 
     async def earlier_attendance(
         self, year: int, person_cm_ids: Iterable[int], household_cm_ids: Iterable[int]

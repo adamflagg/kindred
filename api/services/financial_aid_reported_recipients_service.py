@@ -18,7 +18,6 @@ from api.schemas.financial_aid_reports import (
     ReportedRecipientsLoadOut,
     ReportedRecipientsResponse,
 )
-from api.services.financial_aid_development_repository import AttendanceRecord
 from api.services.financial_aid_ledger_service import money
 from api.services.financial_aid_reported_recipients_repository import StoredRecipient, recipient_fields
 from api.services.financial_aid_reports_service import ReportsRefusedError
@@ -30,7 +29,7 @@ from bunking.financial_aid.reports.recipients import ReportedRecipient, problems
 class RecipientsStore(Protocol):
     """What the load reads and writes (DevelopmentRepository has it; tests use a fake)."""
 
-    async def attendances(self, year: int) -> list[AttendanceRecord]: ...
+    async def registrants(self, year: int) -> set[int]: ...
     async def reported_recipients(self, year: int) -> list[StoredRecipient]: ...
     async def reported_recipient(self, record_id: str) -> StoredRecipient | None: ...
     async def commit(
@@ -82,7 +81,7 @@ class ReportedRecipientsService:
             by_year[recipient.year].append((n, recipient))
         stored: dict[tuple[int, int, str, str, str], StoredRecipient] = {}
         for year, rows in sorted(by_year.items()):
-            campers = {r.person_cm_id for r in await self._store.attendances(year)}
+            campers = await self._store.registrants(year)
             found.extend(
                 f"recipient {n}: {r.person_cm_id} has no registration in {year}"
                 for n, r in rows
