@@ -74,6 +74,23 @@ describe('StaffCabinAnalysisPage', () => {
     vi.clearAllMocks()
   })
 
+  it('offers Copy and Download CSV beside its existing two sorts (#3207 PR 10)', () => {
+    ;(useStaffRetentionData as Mock).mockReturnValue({
+      staffRows: [makeRow({ personId: '1', name: 'Alex Rivera', overallRetention: 0.5 })],
+      sessions: ['Session 2'],
+      bunkStaff: new Map(),
+      isLoading: false,
+      error: null,
+    })
+
+    renderPage()
+
+    expect(screen.getByRole('button', { name: /download csv/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^copy/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Staff/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Overall/ })).toBeInTheDocument()
+  })
+
   describe('loading/error/empty states', () => {
     it('shows loading state', () => {
       ;(useStaffRetentionData as Mock).mockReturnValue({

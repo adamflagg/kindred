@@ -98,6 +98,16 @@ describe('Day1Page', () => {
     })
   })
 
+  it('offers Copy and Download CSV on the comparison matrix, and no sort (a grid in a fixed order)', () => {
+    setSession('main,embedded,ag,quest,scit,tli')
+    mockUseDay1.mockReturnValue({ data: makeData(4), isLoading: false, error: null })
+
+    renderPage()
+
+    expect(screen.getByRole('button', { name: /download csv/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^copy/i })).toBeInTheDocument()
+  })
+
   it('renders a Teens breakdown when teen counts are present', () => {
     setSession('main,embedded,ag,quest,scit,tli')
     mockUseDay1.mockReturnValue({ data: makeData(4), isLoading: false, error: null })
