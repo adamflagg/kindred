@@ -337,3 +337,113 @@ class TestCancellationDailyGenderLines:
             assert last == {"M": 2, "F": 2}
         else:
             assert last == {"Girl/woman": 1, "Boy/man": 2, "Another identity": 1}
+
+
+class TestCancellationHistoryGap:
+    """Campers already cancelled when the dashboard first saw them have no status history row, so they are in the
+    snapshot total but never on a gender line. The response says how many, per season, in both picker modes."""
+
+    @pytest.fixture
+    def one_session(self) -> dict[int, Any]:
+        return {1001: create_mock_session(1001, "Session 1", session_type="main")}
+
+    @staticmethod
+    def _snap(year: int, cancelled: int) -> Any:
+        return create_mock_snapshot(f"{year}-01-31", 1001, year, 20, cancelled=cancelled)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("basis", ["field", "identity"])
+    async def test_gap_is_snapshot_total_minus_lines(
+        self, service: Any, mock_repository: Any, one_session: Any, basis: str
+    ) -> None:
+        mock_repository.fetch_sessions.return_value = one_session
+        mock_repository.fetch_enrollment_snapshots.return_value = [self._snap(2026, 5)]
+        mock_repository.fetch_status_transitions.return_value = [
+            _cancel(1, 1001, "2026-01-12", "F", "Girl/woman"),
+            _cancel(2, 1001, "2026-01-13", "M", "Boy/man"),
+        ]
+
+        result = await service.get_velocity(
+            year=2026, metric="cancellation", split_by_gender=True, gender_basis=basis, today=date(2026, 3, 1)
+        )
+
+        assert result.cancelled_to_date == 5
+        assert [(g.year, g.unseen_count, g.no_history) for g in result.gender_history_gaps] == [(2026, 3, False)]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("basis", ["field", "identity"])
+    async def test_no_gap_when_lines_match_total(
+        self, service: Any, mock_repository: Any, one_session: Any, basis: str
+    ) -> None:
+        mock_repository.fetch_sessions.return_value = one_session
+        mock_repository.fetch_enrollment_snapshots.return_value = [self._snap(2026, 2)]
+        mock_repository.fetch_status_transitions.return_value = [
+            _cancel(1, 1001, "2026-01-12", "F", "Girl/woman"),
+            _cancel(2, 1001, "2026-01-13", "M", "Boy/man"),
+        ]
+
+        result = await service.get_velocity(
+            year=2026, metric="cancellation", split_by_gender=True, gender_basis=basis, today=date(2026, 3, 1)
+        )
+
+        assert [(g.year, g.unseen_count, g.no_history) for g in result.gender_history_gaps] == [(2026, 0, False)]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("basis", ["field", "identity"])
+    async def test_season_without_history_is_flagged_and_keeps_its_total(
+        self, service: Any, mock_repository: Any, one_session: Any, basis: str
+    ) -> None:
+        mock_repository.fetch_sessions.return_value = one_session
+        mock_repository.fetch_enrollment_snapshots.return_value = [self._snap(2025, 7)]
+
+        result = await service.get_velocity(
+            year=2025, metric="cancellation", split_by_gender=True, gender_basis=basis, today=date(2026, 3, 1)
+        )
+
+        assert result.cancelled_to_date == 7
+        assert all(not c.weekly for c in result.by_gender)
+        assert [(g.year, g.unseen_count, g.no_history) for g in result.gender_history_gaps] == [(2025, 7, True)]
+
+    @pytest.mark.asyncio
+    async def test_compared_season_gets_its_own_entry(
+        self, service: Any, mock_repository: Any, one_session: Any
+    ) -> None:
+        mock_repository.fetch_sessions.return_value = one_session
+
+        async def snaps(year: int) -> list[Any]:
+            return [self._snap(year, 5 if year == 2026 else 7)]
+
+        mock_repository.fetch_enrollment_snapshots.side_effect = snaps
+
+        async def transitions(year: int, *_a: Any, **_k: Any) -> list[Any]:
+            if year == 2026:
+                return [_cancel(1, 1001, "2026-01-12", "F", "Girl/woman")]
+            return []
+
+        mock_repository.fetch_status_transitions.side_effect = transitions
+
+        result = await service.get_velocity(
+            year=2026,
+            metric="cancellation",
+            split_by_gender=True,
+            compare_years=[2025],
+            today=date(2026, 3, 1),
+        )
+
+        assert [(g.year, g.unseen_count, g.no_history) for g in result.gender_history_gaps] == [
+            (2026, 4, False),
+            (2025, 7, True),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_not_split_or_enrollment_has_no_entries(
+        self, service: Any, mock_repository: Any, one_session: Any
+    ) -> None:
+        mock_repository.fetch_sessions.return_value = one_session
+        mock_repository.fetch_enrollment_snapshots.return_value = [self._snap(2026, 5)]
+
+        unsplit = await service.get_velocity(year=2026, metric="cancellation", today=date(2026, 3, 1))
+        enrollment = await service.get_velocity(year=2026, split_by_gender=True, today=date(2026, 3, 1))
+
+        assert unsplit.gender_history_gaps == []
+        assert enrollment.gender_history_gaps == []

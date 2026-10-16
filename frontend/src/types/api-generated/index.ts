@@ -373,6 +373,7 @@ export type {
   GenderByGradeBreakdown,
   GenderBySessionLengthBreakdown,
   GenderEnrollment,
+  GenderHistoryGap,
   GeoCategory,
   GeoNormalizeApiInternalGeoNormalizePostData,
   GeoNormalizeApiInternalGeoNormalizePostError,

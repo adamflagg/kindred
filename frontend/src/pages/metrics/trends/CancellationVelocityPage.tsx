@@ -73,7 +73,8 @@ import {
   velocityGenderSeries,
 } from '../../../components/velocity/velocityGenderSeries'
 import { VelocityGenderNotes } from '../../../components/velocity/VelocityGenderNotes'
-import { genderNote } from '../../../components/metrics/genderNotes'
+import { historyGapNotes } from '../../../components/velocity/velocityHistoryGap'
+import { LINE, genderNote } from '../../../components/metrics/genderNotes'
 import { MetricsBusy, MetricsLoadError } from '../../../components/metrics/MetricsQueryGuard'
 import { deltaInk } from '../../../utils/deltaTokens'
 
@@ -208,6 +209,11 @@ export default function CancellationVelocityPage() {
     ...priorityDayNotes,
     ...(genderNoteN !== undefined ? [genderNote(genderNoteN, fallbackSeasons)] : []),
   ]
+  // Gender lines come from status history; campers already cancelled when the dashboard first saw them are in the
+  // total only. The server counts them per season (gender_history_gaps); numbered after the page's own notes.
+  const historyGap = controls.splitByGender
+    ? historyGapNotes(data.gender_history_gaps, pageNotes.length + 1)
+    : { notes: [], noHistory: [] }
   // Ruling 9: only the priority date itself waits a day for this year's data.
   const deltaPending = isPriorityDayOffset(data.current_day_offset)
   const todayLine = (x: number) => (
@@ -496,6 +502,9 @@ export default function CancellationVelocityPage() {
           <h3 className="text-foreground mb-2 text-base font-semibold">
             Cancellation Velocity - {currentYear}
             {genderNoteN !== undefined && <DefRef n={genderNoteN} />}
+            {historyGap.notes.map((note) => (
+              <DefRef key={note.n} n={note.n} />
+            ))}
           </h3>
 
           {/* Phase marker legend */}
@@ -984,6 +993,12 @@ export default function CancellationVelocityPage() {
               seasons={fallbackSeasons}
             />
           )}
+          {historyGap.noHistory.map((line) => (
+            <p key={line} className={LINE}>
+              {line}
+            </p>
+          ))}
+          <DefinitionNotes notes={historyGap.notes} />
         </div>
 
         {/* Per-Session Cancellation Breakdown */}
