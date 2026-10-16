@@ -100,6 +100,11 @@ let reportIdsRead: {
 vi.mock('../../hooks/camperships/useAidReportRequests', () => ({
   useAidReportRequests: () => reportIdsRead,
 }))
+// PR 3 (owner Q1-A): the band's link to Form intake counts Needs a look.
+let intakeSummary: { data: { needs_look: number } | undefined } = { data: { needs_look: 5 } }
+vi.mock('../../hooks/camperships/useAidIntake', () => ({
+  useAidIntakeSummary: () => intakeSummary,
+}))
 let granted: string[] = ['financial_aid.view']
 vi.mock('../../hooks/usePermissions', () => ({
   usePermissions: () => ({ hasPermission: (p: string) => granted.includes(p) }),
@@ -201,8 +206,29 @@ beforeEach(() => {
   operation = { data: undefined, error: null, isLoading: false }
   reportIdsRead = { data: undefined, error: null }
   granted = ['financial_aid.view']
+  intakeSummary = { data: { needs_look: 5 } }
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date('2027-04-01T18:00:00Z'))
+})
+
+describe('the band links to Form intake (PR 3; owner Q1-A)', () => {
+  it('reads "Form intake · N need a look ›" in the band, and opens Requests › Form intake', () => {
+    renderAt('/aid/requests')
+    const link = screen.getByRole('link', { name: 'Form intake · 5 need a look ›' })
+    expect(link).toHaveAttribute('href', '/aid/requests/intake?year=2027')
+    // The band's right slot, not a tab row: nothing under the band moves.
+    expect(screen.getByTestId('aid-page-head')).toContainElement(link)
+  })
+
+  it('drops the count when Needs a look is empty, and while it loads', () => {
+    intakeSummary = { data: { needs_look: 0 } }
+    const { unmount } = renderAt('/aid/requests')
+    expect(screen.getByRole('link', { name: 'Form intake ›' })).toBeInTheDocument()
+    unmount()
+    intakeSummary = { data: undefined }
+    renderAt('/aid/requests')
+    expect(screen.getByRole('link', { name: 'Form intake ›' })).toBeInTheDocument()
+  })
 })
 afterEach(() => vi.useRealTimers())
 

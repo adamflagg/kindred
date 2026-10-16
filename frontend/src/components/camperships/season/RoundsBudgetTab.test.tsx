@@ -16,6 +16,10 @@ import { RoundsBudgetCsv, RoundsBudgetTab } from './RoundsBudgetTab'
 
 let read: { data: ApiAidBudget | undefined; isLoading: boolean; error: Error | null }
 vi.mock('../../../hooks/camperships/useAidBudget', () => ({ useAidBudget: () => read }))
+// The opened line's own table and editor have their own tests (intake/AidOnNoRequestPanel.test.tsx).
+vi.mock('../intake/AidOnNoRequestPanel', () => ({
+  AidOnNoRequestPanel: () => <div data-testid="aid-on-no-request-panel" />,
+}))
 let notes: Array<{ n: number; term?: string; text: string }> = []
 vi.mock('../../../hooks/camperships/useAidDefinitions', () => ({
   useAidDefinitions: () => ({
@@ -518,7 +522,7 @@ describe('the fold lines carry what the table, strip and notes did (spec §5.2 F
     )
   })
 
-  it('shows CampMinder aid on no request as families only, titled, with no link (D170)', () => {
+  it('shows CampMinder aid on no request as families only, titled, opening in place (D170; owner Q4-A)', () => {
     const data = structuredClone(BUDGET)
     data.total.below.campminder_aid_off_requests = { amount: 3783, families: 4 }
     read = { data, isLoading: false, error: null }
@@ -531,20 +535,52 @@ describe('the fold lines carry what the table, strip and notes did (spec §5.2 F
       'held',
     ])
     const row = below('campminder_off_requests')
-    expect(within(row).getByText('CampMinder aid on no request')).toHaveAttribute(
-      'title',
-      expect.stringContaining('not in Committed or Remaining')
-    )
+    // The label is the fold toggle now (Q4-A), titled as the label was.
+    expect(
+      within(row).getByRole('button', { name: /CampMinder aid on no request/ })
+    ).toHaveAttribute('title', expect.stringContaining('not in Committed or Remaining'))
     expect(within(row).getByText('4 fam')).toBeInTheDocument()
     expect(within(row).getByText('$3,783')).toBeInTheDocument()
     expect(within(row).getByText('posted in CampMinder, on no request')).toHaveAttribute(
       'title',
       expect.stringContaining('2026 only')
     )
-    expect(within(row).queryByRole('link')).toBeNull()
+    // Q4-A: the line opens in place (a caret), and Of it links to Form intake filtered to the families it counts.
+    expect(
+      within(row).getByRole('button', { name: /CampMinder aid on no request/ })
+    ).toHaveAttribute('aria-expanded', 'false')
+    expect(within(row).getByRole('link', { name: 'Form intake ›' })).toHaveAttribute(
+      'href',
+      '/aid/requests/intake?show=all&cmaid=1&year=2027'
+    )
     expect(screen.getByTestId('fold-lines')).toHaveTextContent(
       '10 held requests · CampMinder aid on no request $3,783'
     )
+  })
+
+  it('opens the CampMinder-aid line in place onto its families, the open state in the URL (owner Q4-A)', async () => {
+    const data = structuredClone(BUDGET)
+    data.total.below.campminder_aid_off_requests = { amount: 3783, families: 4 }
+    read = { data, isLoading: false, error: null }
+    renderAt('/aid/season/rounds-budget?open=lines:below')
+    expect(screen.queryByTestId('aid-on-no-request-panel')).toBeNull()
+    await userEvent.click(
+      within(below('campminder_off_requests')).getByRole('button', {
+        name: /CampMinder aid on no request/,
+      })
+    )
+    const panel = screen.getByTestId('aid-on-no-request-panel')
+    // The very next row, one cell across the table (rule 23), never a modal.
+    const fold = panel.closest('tr[data-aid-fold-panel]') as HTMLElement
+    expect(fold.previousElementSibling).toBe(below('campminder_off_requests'))
+    expect(fold.querySelector('td')).toHaveAttribute('colspan', '4')
+    expect(screen.getByTestId('where')).toHaveTextContent('below%3Acampminder_off_requests')
+    await userEvent.click(
+      within(below('campminder_off_requests')).getByRole('button', {
+        name: /CampMinder aid on no request/,
+      })
+    )
+    expect(screen.queryByTestId('aid-on-no-request-panel')).toBeNull()
   })
 
   it('titles Shown, not counted, with the outside fund qualified and Held showing "—" for its unknown amount (rounds-7, m3)', () => {

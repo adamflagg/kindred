@@ -22,7 +22,9 @@ import {
   UnlockButton,
   UnlockPanel,
 } from '../../components/camperships/season/SeasonChrome'
+import { SeasonStatusContext } from '../../components/camperships/season/seasonStatus'
 import { SeasonTabRowContext } from '../../components/camperships/season/seasonTabRow'
+import { StatusSlot } from '../../components/camperships/requests/StatusSlot'
 import { AidPageHead } from '../../components/camperships/shell/AidPageHead'
 import { AidPageBand } from '../../components/camperships/shell/AidPageBand'
 import { AidTabNav } from '../../components/camperships/shell/AidTabNav'
@@ -73,6 +75,8 @@ export default function AidSeasonPage() {
   const asOf = useAidAsOf()
   const view = useMemo((): AidView => ({ year, asOf }), [year, asOf])
   const [tabRowSlot, setTabRowSlot] = useState<HTMLElement | null>(null)
+  // The result of an action inside Rounds & budget (Add a Request… on the CampMinder-aid line), before Download CSV.
+  const [status, setStatus] = useState<string | null>(null)
   const resolved = resolveAidTab(SEASON, tab, { hasPermission })
   if (resolved.kind === 'denied') return <PermissionDeniedPage />
   if (resolved.kind === 'first') {
@@ -103,40 +107,48 @@ export default function AidSeasonPage() {
       )}
       <ApproveButton />
       <UnlockButton />
+      {onRounds && status !== null && (
+        <StatusSlot
+          status={{ text: status, title: status, tone: 'ok', dismiss: 'result' }}
+          onDismiss={() => setStatus(null)}
+        />
+      )}
       {onRounds && <RoundsBudgetCsv />}
     </>
   )
 
   return (
     <SeasonChromeProvider section={approveSection} tab={slug}>
-      <SeasonTabRowContext.Provider value={onScenarios ? tabRowSlot : null}>
-        <div className="space-y-2.5 print:font-sans">
-          {/* Scenarios prints as the compare alone: its band and tab strip stay off the paper. */}
-          <div className={onScenarios ? 'print:hidden' : undefined}>
-            <AidPageHead
-              band={
-                <AidPageBand
-                  icon={CalendarCheck}
-                  title={SEASON.label}
-                  subtitle={`Season ${String(year)}`}
-                  // A past date covers the Remaining line on every tab, so its pill shows on every tab (I6).
-                  asOf={asOf}
-                  stats={onRounds ? <BudgetStats /> : undefined}
-                />
-              }
-              tabs={<AidTabNav section={SEASON} tabs={resolved.tabs} view={view} right={right} />}
-            />
+      <SeasonStatusContext.Provider value={setStatus}>
+        <SeasonTabRowContext.Provider value={onScenarios ? tabRowSlot : null}>
+          <div className="space-y-2.5 print:font-sans">
+            {/* Scenarios prints as the compare alone: its band and tab strip stay off the paper. */}
+            <div className={onScenarios ? 'print:hidden' : undefined}>
+              <AidPageHead
+                band={
+                  <AidPageBand
+                    icon={CalendarCheck}
+                    title={SEASON.label}
+                    subtitle={`Season ${String(year)}`}
+                    // A past date covers the Remaining line on every tab, so its pill shows on every tab (I6).
+                    asOf={asOf}
+                    stats={onRounds ? <BudgetStats /> : undefined}
+                  />
+                }
+                tabs={<AidTabNav section={SEASON} tabs={resolved.tabs} view={view} right={right} />}
+              />
+            </div>
+            {/* Rules puts the panel and the notice under its own lead line (spec §6.2 B). */}
+            {!onRules && <ApprovePanel />}
+            {!onRules && <UnlockPanel />}
+            {!onRules && <SeasonNotice />}
+            {onRounds && <RoundsBudgetTab />}
+            {slug === 'history' && <HistoryTab />}
+            {onRules && <RulesTab />}
+            {onScenarios && <ScenariosTab />}
           </div>
-          {/* Rules puts the panel and the notice under its own lead line (spec §6.2 B). */}
-          {!onRules && <ApprovePanel />}
-          {!onRules && <UnlockPanel />}
-          {!onRules && <SeasonNotice />}
-          {onRounds && <RoundsBudgetTab />}
-          {slug === 'history' && <HistoryTab />}
-          {onRules && <RulesTab />}
-          {onScenarios && <ScenariosTab />}
-        </div>
-      </SeasonTabRowContext.Provider>
+        </SeasonTabRowContext.Provider>
+      </SeasonStatusContext.Provider>
     </SeasonChromeProvider>
   )
 }

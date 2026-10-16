@@ -827,6 +827,15 @@ export const queryKeys = {
   aidMarchFile: (year: number) => ['financial-aid', 'march-file', year] as const,
   // Reports (slice 4): every report read sits under one prefix, so every money write refreshes them.
   aidReportsPrefix: () => ['financial-aid', 'reports'] as const,
+  // Requests › Form intake (PR 3; spec 71 §2.4): every read under one prefix, so every aid write refreshes them (a
+  // cancel, a settled session or an added request each move a row's Became).
+  aidIntakePrefix: () => ['financial-aid', 'intake'] as const,
+  aidIntakeForms: (year: number) => ['financial-aid', 'intake', year, 'forms'] as const,
+  aidIntakeSummary: (year: number) => ['financial-aid', 'intake', year, 'summary'] as const,
+  aidIntakeAidOnNoRequest: (year: number) =>
+    ['financial-aid', 'intake', year, 'aid-on-no-request'] as const,
+  aidIntakeUnlisted: (year: number, q: string) =>
+    ['financial-aid', 'intake', year, 'unlisted', q] as const,
   /** One report read: its season, which report, and the exact query it sends (controls and as-of). */
   aidReport: (year: number, report: AidReportKey, params: Readonly<Record<string, string>>) =>
     ['financial-aid', 'reports', year, report, params] as const,
@@ -1017,6 +1026,7 @@ export interface AidRefresh {
  *   (D26, D151).
  * - Reports: Statistics, Programs, the committee's tables, Development, its ZIP codes and the
  *   requests behind a count read the priced season and the ledger (slice 4).
+ * - Form intake (PR 3): its rows, the Requests band's count, Season's line opened and Find a Camper Not Listed….
  * A write that changes which households have aid activity (payer shares) also passes `jumpIndex`.
  * A write to the sources registry or the grantor directory passes `registry`.
  * A rules approval re-prices the season: `invalidateAidRulesQueries({ priced: true })` calls this too.
@@ -1049,6 +1059,8 @@ export function invalidateAidMoneyQueries(
     // Reports read the priced season and the ledger (slice 4): Statistics, Programs, the committee's
     // tables, Development, ZIP codes and the requests behind a count all sit under one prefix.
     { queryKey: queryKeys.aidReportsPrefix() },
+    // Requests › Form intake, its band count and Season's line opened (PR 3): an aid write can move a row's Became.
+    { queryKey: queryKeys.aidIntakePrefix() },
     ...(options.jumpIndex === true ? [{ queryKey: queryKeys.aidJumpIndexPrefix() }] : []),
     ...(options.registry === true
       ? [{ queryKey: queryKeys.aidSourcesPrefix() }, { queryKey: queryKeys.aidGrantorsPrefix() }]

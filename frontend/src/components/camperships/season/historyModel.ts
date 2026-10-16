@@ -231,6 +231,11 @@ const GENERIC_ACTION_WORDS: Readonly<Record<string, string>> = {
   create: 'Created',
   update: 'Updated',
   delete: 'Deleted',
+  // Add a Request… and Remove… (PR 1) log every row they write (the addition, its request, the payer share, a
+  // recorded Round 1) under one action; Mark Reviewed (PR 3; owner Q2-A) writes the addition alone.
+  add_request: 'Request added',
+  remove_added_request: 'Added request removed',
+  review_added_request: 'Marked reviewed',
 }
 
 export function actionWords(entity: string, action: string): string {
@@ -522,6 +527,8 @@ const LOCK_SOURCE_WORDS: ReadonlyMap<string, string> = new Map([
   ['reproduced', 'Reproduced from the sheet'],
   // The same load's Round 1 on a request the sheet has no row for (owner, 10-07: "CampMinder only").
   ['campminder_only', 'From CampMinder (no sheet row)'],
+  // Add a Request… with "Record CampMinder's $X as Round 1, posted" ticked (PR 3, owner Q5-A).
+  ['campminder_added', "Added at CampMinder's amount"],
 ])
 
 /** What a row's values are read with: the season's session names, and whether it corrects money. */

@@ -602,3 +602,21 @@ describe('countWords singulars', () => {
     expect(countWords(over(2))).toBe('2 pools')
   })
 })
+
+describe('the Form intake line (PR 3; spec 71 §2.4)', () => {
+  it('words the line as the mock does, and counts campers', () => {
+    expect(LINE_WORDS.form_intake).toBe('Form intake: needs a look')
+    expect(countWords(line('form_intake', 5, { item_kind: 'campers', families: 4 }))).toBe(
+      '5 campers'
+    )
+    expect(countWords(line('form_intake', 1, { item_kind: 'campers', families: 1 }))).toBe(
+      '1 camper'
+    )
+  })
+
+  it('sits on the registrar queue after Session not settled', () => {
+    expect(REGISTRAR_ORDER.indexOf('form_intake')).toBe(
+      REGISTRAR_ORDER.indexOf('session_not_settled') + 1
+    )
+  })
+})

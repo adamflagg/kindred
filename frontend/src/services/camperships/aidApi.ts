@@ -99,6 +99,14 @@ import type {
   ApiAidReportRequestIds,
   ApiAidStatistics,
 } from '../../types/api-types'
+import type {
+  AddedRequestOut,
+  AdditionCreateIn,
+  AidOnNoRequestResponse,
+  FormIntakeResponse,
+  FormIntakeSummaryOut,
+  UnlistedResponse,
+} from '../../components/camperships/intake/intakeTypes'
 import { ApiError, readErrorDetail, toApiError } from '../apiError'
 import type { FetchWithAuth } from '../lodgingApi'
 
@@ -1461,5 +1469,103 @@ export function fetchAidZip(
     `${String(year)}/development/zip`,
     params,
     'Failed to load the ZIP codes'
+  )
+}
+
+// --- Requests › Form intake (PR 3; spec 71 §2.4) -------------------------------------------------
+
+async function fetchAidIntake<T>(
+  fetchWithAuth: FetchWithAuth,
+  path: string,
+  fallback: string,
+  params: Record<string, string> = {}
+): Promise<T> {
+  const response = await fetchWithAuth(withQuery(`${BASE}/intake/${path}`, params))
+  if (!response.ok) throw await toApiError(response, fallback, AidApiError)
+  return (await response.json()) as T
+}
+
+/** Every Form intake row for the season, the filter counts and the side figures (`view`). */
+export function fetchAidIntakeForms(
+  fetchWithAuth: FetchWithAuth,
+  year: number
+): Promise<FormIntakeResponse> {
+  return fetchAidIntake(fetchWithAuth, `${String(year)}/forms`, 'Failed to load Form intake')
+}
+
+/** The Requests band link's count (owner Q1-A): the same numbers as /forms. */
+export function fetchAidIntakeSummary(
+  fetchWithAuth: FetchWithAuth,
+  year: number
+): Promise<FormIntakeSummaryOut> {
+  return fetchAidIntake(fetchWithAuth, `${String(year)}/summary`, 'Failed to load the intake count')
+}
+
+/** Season's "CampMinder aid on no request" opened in place (owner Q4-A): one line per family × session. */
+export function fetchAidAidOnNoRequest(
+  fetchWithAuth: FetchWithAuth,
+  year: number
+): Promise<AidOnNoRequestResponse> {
+  return fetchAidIntake(
+    fetchWithAuth,
+    `${String(year)}/aid-on-no-request`,
+    'Failed to load CampMinder aid on no request'
+  )
+}
+
+/** Find a Camper Not Listed…: enrolled campers on no row, by name words or a CampMinder person id (25 at most). */
+export function fetchAidIntakeUnlisted(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  q: string
+): Promise<UnlistedResponse> {
+  return fetchAidIntake(fetchWithAuth, `${String(year)}/unlisted`, "Couldn't search the campers", {
+    q,
+  })
+}
+
+/** Add a Request… (casework): the addition, its request, and with `round1_campminder` a posted Round 1 (Q5-A). */
+export function addAidRequest(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  body: AdditionCreateIn
+): Promise<AddedRequestOut> {
+  return send<AddedRequestOut>(
+    fetchWithAuth,
+    'POST',
+    `${BASE}/requests/${String(year)}/additions`,
+    body,
+    "Couldn't add the request"
+  )
+}
+
+/** Mark Reviewed (owner Q2-A; casework): a request the dashboard made from a registration ask is right. */
+export function reviewAidAddition(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  additionId: string
+): Promise<AddedRequestOut> {
+  return send<AddedRequestOut>(
+    fetchWithAuth,
+    'POST',
+    `${BASE}/requests/${String(year)}/additions/${encodeURIComponent(additionId)}/review`,
+    undefined,
+    "Couldn't mark it reviewed"
+  )
+}
+
+/** Remove… (casework): the addition retired, its request withdrawn, decisions kept. A posted round refuses it. */
+export function retireAidAddition(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  additionId: string,
+  reason: string
+): Promise<AddedRequestOut> {
+  return send<AddedRequestOut>(
+    fetchWithAuth,
+    'POST',
+    `${BASE}/requests/${String(year)}/additions/${encodeURIComponent(additionId)}/retire`,
+    { reason },
+    "Couldn't remove the request"
   )
 }

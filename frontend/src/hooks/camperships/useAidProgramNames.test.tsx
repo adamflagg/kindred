@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } fr
 
 import { RULES_2027 } from '../../components/camperships/money/ledgerFixtures'
 import { programLabel } from '../../components/camperships/requests/programLabel'
-import { useAidProgramNames } from './useAidProgramNames'
+import { useAidProgramNames, useAidProgramPool } from './useAidProgramNames'
 
 vi.mock('../../lib/pocketbase', () => ({
   pb: { authStore: { token: 'test-jwt', clear: vi.fn() } },
@@ -48,5 +48,25 @@ describe('useAidProgramNames', () => {
     const { result } = renderHook(() => useAidProgramNames(), { wrapper })
     await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1))
     expect(programLabel(result.current, 'family_camp')).toBe('Family camp')
+  })
+})
+
+describe('useAidProgramPool (Add a Request…: where Round 1 counts)', () => {
+  it("names a program's pool in the rules' words, and null with no rules", async () => {
+    const rules = {
+      ...RULES_2027,
+      sections: [
+        ...RULES_2027.sections,
+        {
+          ...RULES_2027.sections[0]!,
+          section: 'budget',
+          content: { total: 1, pools: { pool_a: { label: 'Camp & Quest' } } },
+        },
+      ],
+    }
+    answer = new Response(JSON.stringify(rules), { status: 200 })
+    const { result } = renderHook(() => useAidProgramPool(), { wrapper })
+    await waitFor(() => expect(result.current('summer')).toBe('Camp & Quest'))
+    expect(result.current('family_camp')).toBeNull()
   })
 })

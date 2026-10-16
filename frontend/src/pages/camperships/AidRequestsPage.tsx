@@ -12,6 +12,7 @@ import type { EditorSave } from '../../components/camperships/kit/RequestEditor'
 import { useEditorWalk } from '../../components/camperships/kit/useEditorWalk'
 import { toPlaceHref } from '../../components/camperships/money/moneyTabs'
 import { BulkConfirmDialog } from '../../components/camperships/requests/BulkConfirmDialog'
+import { IntakeBandLink } from '../../components/camperships/intake/IntakeBandLink'
 import { GridEditorRow } from '../../components/camperships/requests/GridEditorRow'
 import { GridFiltersBar, ShowIdsToggle } from '../../components/camperships/requests/GridFiltersBar'
 import { MarchFileItem } from '../../components/camperships/requests/MarchFileButton'
@@ -597,6 +598,7 @@ export default function AidRequestsPage() {
             title="Requests"
             subtitle={`Season ${String(year)}`}
             asOf={asOf}
+            stats={<IntakeBandLink />}
           />
         }
       />

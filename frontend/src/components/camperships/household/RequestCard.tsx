@@ -10,7 +10,8 @@ import { formatCampDateTime } from '../kit/dates'
 import type { AidView } from '../kit/asOf'
 import { Money } from '../kit/MoneyText'
 import { AttentionChip } from '../kit/NeedsAttentionCell'
-import { ConfirmationState, HouseholdChip, StatusPill } from '../kit/Pills'
+import { ConfirmationState, HouseholdChip, OriginMark, StatusPill } from '../kit/Pills'
+import { addedByWords, originOf, originTitle, type OriginWords } from '../intake/intakeModel'
 import { toPlaceHref } from '../money/moneyTabs'
 import { TO_PLACE_STEP } from '../requests/attention'
 import { requestStage } from '../requests/stage'
@@ -218,6 +219,10 @@ export function RequestCard({
   const [costDetail, setCostDetail] = useState(false)
   const override = row.cost_override ?? null
   const names = staffNames(page)
+  // PR 3 (design rule 9): an added or rule-made request carries its origin mark; staff read by name, the day at camp.
+  const addition = request.addition ?? null
+  const origin = addition === null ? null : originOf(addition)
+  const originWords: OriginWords = { who: (actor) => whoWords(actor, names), day: costDay }
   return (
     <div id={`request-${row.request_id}`} className={`${HH_CARD} space-y-1.5`}>
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
@@ -230,6 +235,9 @@ export function RequestCard({
         )}
         {stage && !row.cancellation && <StatusPill tone={stage.tone}>{stage.text}</StatusPill>}
         {statusWords !== null && <StatusPill tone="stone">{statusWords}</StatusPill>}
+        {addition !== null && origin !== null && (
+          <OriginMark origin={origin} title={originTitle(addition, originWords)} />
+        )}
         {applied && (
           <>
             <span className={HH_NOTE}>applied by</span>
@@ -261,6 +269,16 @@ export function RequestCard({
         </span>
         <ReceiptDetailsButton request={request} open={details.open} onToggle={details.toggle} />
       </div>
+      {addition !== null && origin === 'added' && (
+        // Set Cost's grammar ("Set by Name, date: “note”"), the name bold; the mark's title says the same.
+        <p data-testid="added-by" className={HH_NOTE} title={addedByWords(addition, originWords)}>
+          Added by{' '}
+          <b className="text-foreground font-medium">
+            {addition.added_by ? whoWords(addition.added_by, names) : 'staff'}
+          </b>
+          {addition.added_at ? `, ${costDay(addition.added_at)}` : ''}: “{addition.added_reason}”
+        </p>
+      )}
       {row.cancellation && (
         <div>
           <StatusPill tone="stone">{cancellationWords(row.cancellation)}</StatusPill>

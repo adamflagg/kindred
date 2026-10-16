@@ -52,10 +52,26 @@ vi.mock('../../hooks/camperships/useAidRulesWrites', () => ({
   useAidApproveRules: () => ({ mutate: vi.fn(), isPending: false }),
   useFreshAidRulesDraft: () => () => Promise.resolve(draft as ApiAidRulesDraft),
 }))
-vi.mock('../../components/camperships/season/RoundsBudgetTab', () => ({
-  RoundsBudgetTab: () => <div>Rounds and budget body</div>,
-  RoundsBudgetCsv: () => <button type="button">Download CSV</button>,
-}))
+vi.mock('../../components/camperships/season/RoundsBudgetTab', async () => {
+  const { useContext } = await import('react')
+  const { SeasonStatusContext } = await import('../../components/camperships/season/seasonStatus')
+  // The body reports an action's result the way the opened CampMinder-aid line does (PR 3).
+  function Body() {
+    const say = useContext(SeasonStatusContext)
+    return (
+      <div>
+        Rounds and budget body
+        <button type="button" onClick={() => say('✓ Lucas Garcia · S3 added')}>
+          Act
+        </button>
+      </div>
+    )
+  }
+  return {
+    RoundsBudgetTab: Body,
+    RoundsBudgetCsv: () => <button type="button">Download CSV</button>,
+  }
+})
 vi.mock('../../components/camperships/season/HistoryTab', () => ({
   HistoryTab: () => <div>History body</div>,
 }))
@@ -121,6 +137,19 @@ beforeEach(() => {
   vi.setSystemTime(new Date('2027-04-10T18:00:00Z'))
 })
 afterEach(() => vi.useRealTimers())
+
+describe("Rounds & budget's status slot (PR 3: Add a Request… on the CampMinder-aid line)", () => {
+  it('says what the action did in the tab row, before Download CSV, and ✕ dismisses it', async () => {
+    renderAt('/aid/season/rounds-budget')
+    expect(screen.queryByText('✓ Lucas Garcia · S3 added')).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Act' }))
+    const words = screen.getByText('✓ Lucas Garcia · S3 added')
+    const csv = screen.getByRole('button', { name: 'Download CSV' })
+    expect(words.compareDocumentPosition(csv) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    await userEvent.click(screen.getByRole('button', { name: 'Dismiss' }))
+    expect(screen.queryByText('✓ Lucas Garcia · S3 added')).toBeNull()
+  })
+})
 
 describe('AidSeasonPage (spec §7; D44, D76)', () => {
   it('opens on Rounds & budget, keeping the season and the as-of, replacing the bare URL', () => {

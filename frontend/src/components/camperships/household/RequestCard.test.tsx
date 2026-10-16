@@ -763,4 +763,47 @@ describe('a C1 round on the decision panel', () => {
     await userEvent.click(screen.getByRole('button', { name: /^set by staff/ }))
     expect(screen.getByTestId('cost-set-detail')).toHaveTextContent('Set by Registrar, Oct 7:')
   })
+
+  describe('an added or rule-made request (PR 3; design rule 9)', () => {
+    const added = {
+      addition_id: 'addemmatwr0001',
+      origin: 'added' as const,
+      added_by: 'registrar@example.com',
+      added_at: '2027-03-03 18:00:00.000Z',
+      added_reason: 'Asked at TWR registration; the form names one program',
+      reviewed: null,
+      reviewed_by: '',
+      reviewed_at: '',
+      posted_rounds: [],
+      live: true,
+    }
+
+    it('marks an added request "added", and says who added it, when and why', () => {
+      renderCard(householdRequest(ROW_EMMA, { addition: added }))
+      const mark = screen.getByText('added')
+      expect(mark).toHaveAttribute(
+        'title',
+        expect.stringContaining('“Asked at TWR registration; the form names one program”')
+      )
+      expect(screen.getByTestId('added-by')).toHaveTextContent(
+        'Added by Registrar, Mar 3: “Asked at TWR registration; the form names one program”'
+      )
+    })
+
+    it('marks a rule-made request amber until it is reviewed, with no Added by line', () => {
+      renderCard(
+        householdRequest(ROW_EMMA, {
+          addition: { ...added, origin: 'registration_ask', added_reason: '', reviewed: false },
+        })
+      )
+      expect(screen.getByText('reg. ask · review')).toBeInTheDocument()
+      expect(screen.queryByTestId('added-by')).toBeNull()
+    })
+
+    it('draws no mark on a request the form made', () => {
+      renderCard(householdRequest(ROW_EMMA, { addition: null }))
+      expect(screen.queryByText('added')).toBeNull()
+      expect(screen.queryByText(/reg\. ask/)).toBeNull()
+    })
+  })
 })

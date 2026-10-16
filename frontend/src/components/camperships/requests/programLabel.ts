@@ -42,6 +42,15 @@ export function poolLabels(rules: ApiAidApprovedRules | undefined): Record<strin
   return stringField(sectionContent(rules, 'budget')?.['pools'], 'label')
 }
 
+/** A program's budget pool in the pool's own words (the rules' `budget_pool`, then that pool's label); null if unfiled. */
+export function programPoolWords(
+  rules: ApiAidApprovedRules | undefined,
+  program: string
+): string | null {
+  const pool = stringField(sectionContent(rules, 'programs'), 'budget_pool')[program]
+  return pool === undefined ? null : (poolLabels(rules)[pool] ?? null)
+}
+
 /**
  * A program key in words: its word in `labels` (normally `programWords`). While the read loads, after it
  * fails or 404s ("no rules yet"), or for a key `labels` does not name, the key spelled out:

@@ -122,6 +122,8 @@ export interface AidColumn<Row> {
   readonly render?: ((row: Row, ctx: CellContext) => ReactNode) | undefined
   readonly csv?: ((row: Row) => string) | undefined
   readonly total?: ((rows: readonly Row[]) => number | null) | undefined
+  /** The total's ink, when its money means something apart (Form intake's amber "shown, never counted"). */
+  readonly totalClassName?: string | undefined
   /** The opening total's native title ("In CampMinder (net): open the lines behind it"). Needs `onOpenTotal`. */
   readonly totalTitle?: ((rows: readonly Row[]) => string | undefined) | undefined
   /**
@@ -1267,10 +1269,10 @@ export function AidTable<Row>({
                               disabled={totalsDisabled}
                               onClick={() => onOpenTotal(c.key, visible)}
                             >
-                              <Money value={total} />
+                              <Money value={total} className={c.totalClassName} />
                             </button>
                           ) : (
-                            <Money value={total} />
+                            <Money value={total} className={c.totalClassName} />
                           ))}
                       </td>
                     )

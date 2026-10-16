@@ -1,6 +1,10 @@
 import { useMemo } from 'react'
 
-import { programRank, programWords } from '../../components/camperships/requests/programLabel'
+import {
+  programPoolWords,
+  programRank,
+  programWords,
+} from '../../components/camperships/requests/programLabel'
 import { useAidApprovedRules } from './useAidRules'
 
 /**
@@ -18,4 +22,10 @@ export function useAidProgramNames(): Readonly<Record<string, string>> {
 export function useAidProgramRank(): (program: string) => number {
   const rules = useAidApprovedRules(null)
   return useMemo(() => programRank(rules.data), [rules.data])
+}
+
+/** A program's budget pool in the pool's words, or null (`programPoolWords`); shares the rules read's cache entry. */
+export function useAidProgramPool(): (program: string) => string | null {
+  const rules = useAidApprovedRules(null)
+  return useMemo(() => (program: string) => programPoolWords(rules.data, program), [rules.data])
 }
