@@ -139,6 +139,13 @@ class VelocityResponse(BaseModel):
     current_day_offset: int | None = Field(
         None, description="Day offset of the current year's latest daily point; None when there is no daily data"
     )
+    prior_day_offset: int | None = Field(
+        None,
+        description=(
+            "The day the prior years were read at: one more than current_day_offset on a priority, early or open "
+            "date, where the prior is read through the next day (decision 45); None when current_day_offset is"
+        ),
+    )
     today_day_offset: int | None = Field(
         None, description="(today - season_start) in days while the season is live, else None; drives the TODAY line"
     )

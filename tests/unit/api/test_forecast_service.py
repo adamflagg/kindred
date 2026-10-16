@@ -2215,6 +2215,29 @@ class TestForecastEarlyRegDatePrior:
         assert result.sessions[0].prior_year_count == 10
 
     @pytest.mark.asyncio
+    async def test_prior_day_offset_says_the_read_ran_through_the_next_day(self, service, mock_repository):
+        """The page marks its note from this, not from re-deriving phase dates."""
+        self._wire(mock_repository)
+
+        live = await service.calculate_forecast(year=2026, today=date(2025, 10, 22))  # early date, offset 7
+        week = await service.calculate_forecast(year=2026, day_offset=7)
+        plain = await service.calculate_forecast(year=2026, today=date(2025, 10, 23))  # offset 8
+
+        assert live.prior_day_offset == 8
+        assert week.day_offset == 7
+        assert week.prior_day_offset == 8
+        assert plain.prior_day_offset == 8  # its own day: offset 8 reads offset 8
+
+    @pytest.mark.asyncio
+    async def test_final_basis_has_no_prior_day_offset(self, service, mock_repository):
+        self._wire(mock_repository)
+
+        result = await service.calculate_forecast(year=2026, today=date(2026, 9, 1))
+
+        assert result.prior_basis == "final"
+        assert result.prior_day_offset is None
+
+    @pytest.mark.asyncio
     async def test_the_day_after_the_early_date_is_unchanged(self, service, mock_repository):
         self._wire(mock_repository)
 

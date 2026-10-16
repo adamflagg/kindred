@@ -401,13 +401,30 @@ describe('CancellationVelocityPage priority-day note (decision 45)', () => {
   })
 
   it('notes the two-day priority day when the same point is the priority date', () => {
-    useComparison({ ...comparedData, today_day_offset: 0, current_day_offset: 0 })
+    useComparison({
+      ...comparedData,
+      today_day_offset: 0,
+      current_day_offset: 0,
+      prior_day_offset: 1,
+    })
     render(<CancellationVelocityPage />)
     expect(screen.getByText(NOTE)).toBeInTheDocument()
     const label = screen.getByText(
       (_, el) => el?.tagName === 'P' && el.textContent === '2025 at Wk 11'
     )
     expect(label.querySelector('sup')).toHaveTextContent('1')
+  })
+
+  it('notes it on an early or open date too, without the "updates tomorrow" wait', () => {
+    useComparison({
+      ...comparedData,
+      today_day_offset: 7,
+      current_day_offset: 7,
+      prior_day_offset: 8,
+    })
+    render(<CancellationVelocityPage />)
+    expect(screen.getByText(NOTE)).toBeInTheDocument()
+    expect(cardValue('vs 2025')).not.toBe('updates tomorrow')
   })
 
   it('shows no note on any later day', () => {
@@ -423,7 +440,12 @@ describe('CancellationVelocityPage priority-day note (decision 45)', () => {
     })
 
     it('replaces the vs card value and keeps the numbered note', () => {
-      useComparison({ ...comparedData, today_day_offset: 0, current_day_offset: 0 })
+      useComparison({
+        ...comparedData,
+        today_day_offset: 0,
+        current_day_offset: 0,
+        prior_day_offset: 1,
+      })
       render(<CancellationVelocityPage />)
       expect(cardValue('vs 2025')).toBe('updates tomorrow')
       expect(cardValue('2025 Final Cancelled')).toBe('140')
@@ -431,7 +453,12 @@ describe('CancellationVelocityPage priority-day note (decision 45)', () => {
     })
 
     it('replaces the By Session delta', () => {
-      useComparison({ ...comparedData, today_day_offset: 0, current_day_offset: 0 })
+      useComparison({
+        ...comparedData,
+        today_day_offset: 0,
+        current_day_offset: 0,
+        prior_day_offset: 1,
+      })
       mockChart.sortedBySession = [byCurve(1, 'Session 1', 9), byCurve(3, 'Session 3', 2)]
       mockChart.priorSessionMap = new Map([[1, priorSession({ enrolled_at_current_week: 6 })]])
       render(<CancellationVelocityPage />)

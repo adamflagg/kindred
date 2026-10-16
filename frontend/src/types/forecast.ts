@@ -36,6 +36,8 @@ export interface ForecastResponse {
   day_offset: number | null
   /** Whether the prior columns are same-point-last-year or last year's final. */
   prior_basis: 'same_point' | 'final'
+  /** Same-point reads: the day the priors were read at; one more than this year's day on a phase date. */
+  prior_day_offset?: number | null
   /** Keys: camp, quest, teen. */
   section_priors: Record<string, ForecastPriorTotals>
 }
