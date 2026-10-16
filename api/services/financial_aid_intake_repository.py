@@ -35,6 +35,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any, Final
 
@@ -164,6 +165,16 @@ def _str(value: Any) -> str:
     return str(value or "")
 
 
+def _stamp(value: Any) -> str:
+    """A PocketBase time as PocketBase writes it, "2026-10-16 01:44:02.377Z" (UTC), whatever the SDK hands back: it
+    turns a date column into a naive datetime, whose str() has no zone, so a browser would read it as local time and
+    name the wrong day. Blank stays blank."""
+    if isinstance(value, datetime):
+        at = value if value.tzinfo is None else value.astimezone(UTC)
+        return at.strftime("%Y-%m-%d %H:%M:%S.") + f"{at.microsecond // 1000:03d}Z"
+    return _str(value)
+
+
 async def read_fa_contacts(pb: Any, year: int) -> list[FaContact]:
     """The contact name on every aid form row of the season, not only applicants, with the camper and household it
     belongs to: the Requests grid's Requested by, and the jump index's requesters (financial_aid_requesters). In
@@ -261,10 +272,12 @@ def _addition(record: Any) -> AdditionRecord:
         source=_str(record.source),
         reason=_str(getattr(record, "reason", "")),
         actor=_str(getattr(record, "actor", "")),
-        created=_str(getattr(record, "created", "")),
-        retired_at=_str(getattr(record, "retired_at", "")),
+        created=_stamp(getattr(record, "created", "")),
+        retired_at=_stamp(getattr(record, "retired_at", "")),
         retired_by=_str(getattr(record, "retired_by", "")),
         retire_reason=_str(getattr(record, "retire_reason", "")),
+        reviewed_at=_stamp(getattr(record, "reviewed_at", "")),
+        reviewed_by=_str(getattr(record, "reviewed_by", "")),
     )
 
 

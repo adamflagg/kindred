@@ -265,10 +265,17 @@ class AdditionRecord:
     retired_at: str = ""
     retired_by: str = ""
     retire_reason: str = ""
+    # Mark Reviewed (owner Q2-A, PR 3): a person checked a rule-made (registration_ask) request. Empty until then.
+    reviewed_at: str = ""
+    reviewed_by: str = ""
 
     @property
     def live(self) -> bool:
         return not self.retired_at
+
+    @property
+    def reviewed(self) -> bool:
+        return bool(self.reviewed_at)
 
     @property
     def option_key(self) -> str:

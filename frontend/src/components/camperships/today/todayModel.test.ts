@@ -399,6 +399,14 @@ describe('reasonWords: staff text never shows a snake_case code', () => {
   ])('words the grant and source code %s', (code, words) => {
     expect(reasonWords('grants', reason(code))).toBe(words)
   })
+  it.each([
+    ['campminder_aid', 'CM aid on no request'],
+    ['enrolled_no_request', 'Enrolled, no request'],
+    ['session_unclear', 'Session unclear'],
+    ['registration_ask_unreviewed', 'Reg. ask to review'],
+  ])("words Form intake's Needs a look reason %s (the visual audit)", (code, words) => {
+    expect(reasonWords('form_intake', reason(code))).toBe(words)
+  })
   it("reuses the Rules page's section titles for rules sections", () => {
     expect(reasonWords('rules_sections', reason('award_tables'))).toBe('Round 1 award table')
     expect(reasonWords('rules_sections', reason('quality_checks'))).toBe('Quality checks')
@@ -600,5 +608,23 @@ describe('countWords singulars', () => {
       line('intake', n, { key: 'over_budget' as never, item_kind: 'lines', families: null })
     expect(countWords(over(1))).toBe('1 pool')
     expect(countWords(over(2))).toBe('2 pools')
+  })
+})
+
+describe('the Form intake line (PR 3; spec 71 §2.4)', () => {
+  it('words the line as the mock does, and counts campers', () => {
+    expect(LINE_WORDS.form_intake).toBe('Form intake: needs a look')
+    expect(countWords(line('form_intake', 5, { item_kind: 'campers', families: 4 }))).toBe(
+      '5 campers'
+    )
+    expect(countWords(line('form_intake', 1, { item_kind: 'campers', families: 1 }))).toBe(
+      '1 camper'
+    )
+  })
+
+  it('sits on the registrar queue after Session not settled', () => {
+    expect(REGISTRAR_ORDER.indexOf('form_intake')).toBe(
+      REGISTRAR_ORDER.indexOf('session_not_settled') + 1
+    )
   })
 })

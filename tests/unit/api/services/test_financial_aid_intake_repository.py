@@ -383,3 +383,37 @@ async def test_fetch_fa_contacts_reads_every_row_of_the_year_with_only_the_conta
     # projection holds FA_CONTACT_FIELDS and no other contact column (test_aid_sync_inputs pins it).
     assert [f for c, f in pb.calls if c == "financial_aid_applications"] == ["year = 2027"]
     assert FA_CONTACT_FIELDS == "id,person_id,contact_first_name,contact_last_name,expand.household.cm_id"
+
+
+@pytest.mark.asyncio
+async def test_an_additions_times_read_as_utc_stamps_whatever_shape_the_sdk_hands_back() -> None:
+    """The PocketBase SDK hands `created` back as a datetime (naive, in UTC); str() of it has no zone, so a browser
+    reads "2026-10-16 01:44:02.377000" as local time and names the wrong day. Every addition time reads as PocketBase's
+    own UTC stamp, "2026-10-16 01:44:02.377Z" (form-intake visual audit)."""
+    stored = SimpleNamespace(
+        id="add000000000001",
+        year=2027,
+        household_cm_id=1000001,
+        person_cm_id=1000011,
+        program_key="summer",
+        session_cm_id=1000108,
+        ask=290,
+        source="staff",
+        reason="Asked at TWR registration",
+        actor="registrar@example.com",
+        created=datetime(2026, 10, 16, 1, 44, 2, 377000),
+        retired_at=datetime(2026, 10, 17, 2, 5, 0, tzinfo=UTC),
+        retired_by="registrar@example.com",
+        retire_reason="Not attending after all",
+        reviewed_at="2026-10-18 03:00:00.000Z",
+        reviewed_by="",
+    )
+    pb = RecordingPb(tables={"aid_request_additions": [stored]})
+    (addition,) = await FinancialAidIntakeRepository(pb).fetch_request_additions(2027)
+    assert addition.created == "2026-10-16 01:44:02.377Z"
+    assert addition.retired_at == "2026-10-17 02:05:00.000Z"
+    assert addition.reviewed_at == "2026-10-18 03:00:00.000Z"
+    blank = SimpleNamespace(**{**vars(stored), "retired_at": "", "reviewed_at": None})
+    pb.tables["aid_request_additions"] = [blank]
+    (addition,) = await FinancialAidIntakeRepository(pb).fetch_request_additions(2027)
+    assert (addition.retired_at, addition.reviewed_at, addition.live) == ("", "", True)

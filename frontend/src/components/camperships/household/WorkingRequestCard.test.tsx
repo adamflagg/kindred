@@ -14,7 +14,7 @@ import {
 } from '../requests/gridFixtures'
 import { useEditorExits, type EditorExits } from './editorExits'
 import { applicationOut, householdPage, householdRequest, requestOut } from './householdFixtures'
-import type { DuplicateWaitingOut } from '../../../types/api-generated'
+import type { DuplicateWaitingOut, RequestAdditionOut } from '../../../types/api-generated'
 import { WorkingRequestCard } from './WorkingRequestCard'
 import { aidPicker, chooseAid, queryAidPicker } from '../../../test/aidPicker'
 
@@ -94,6 +94,21 @@ vi.mock('../../../hooks/camperships/useAidWrites', () => ({
   useAidCostOverride: () => quiet,
   useAidCorrection: () => quiet,
 }))
+// PR 3: Remove… on an added request's card. When set, the retire is refused with these words.
+const retire = vi.fn()
+let retireRefusal: string | null = null
+vi.mock('../../../hooks/camperships/useAidIntakeWrites', () => ({
+  useAidRetireAddition: () => ({
+    isPending: false,
+    error: null,
+    mutateAsync: (vars: unknown) => {
+      retire(vars)
+      return retireRefusal === null ? Promise.resolve({}) : Promise.reject(new Error(retireRefusal))
+    },
+  }),
+}))
+// The addition behind a request, by request id (the page's HouseholdRequestOut.addition).
+let additionFor: Record<string, RequestAdditionOut> = {}
 let application = applicationOut()
 // What each application read asked for: [householdCmId, options].
 const applicationRead = vi.fn()
@@ -142,7 +157,10 @@ function Cards({
   const exits = useEditorExits()
   exitsSeen = exits
   const requests = rows.map((row) =>
-    householdRequest(row, { duplicates_waiting: waitingFor[row.request_id] ?? [] })
+    householdRequest(row, {
+      duplicates_waiting: waitingFor[row.request_id] ?? [],
+      addition: additionFor[row.request_id] ?? null,
+    })
   )
   const page = householdPage({ requests })
   return (
@@ -171,6 +189,9 @@ beforeEach(() => {
   duplicate.mockReset()
   duplicateRefusal = null
   waitingFor = {}
+  additionFor = {}
+  retire.mockReset()
+  retireRefusal = null
   applicationRead.mockReset()
   application = applicationOut()
   gridRows = []
@@ -993,5 +1014,80 @@ describe('WorkingRequestCard: a duplicate pair (item 11)', () => {
   it('offers no Set Cost… to a reader without casework', () => {
     renderCards([ROW_EMMA], false)
     expect(screen.queryByRole('button', { name: 'Set Cost…' })).toBeNull()
+  })
+
+  describe('Remove… on an added request (PR 1 retire; the form-intake mock steps 15–17)', () => {
+    const added = (over: Partial<RequestAdditionOut> = {}): RequestAdditionOut => ({
+      addition_id: 'addemmatwr0001',
+      origin: 'added',
+      added_by: 'registrar@example.com',
+      added_at: '2027-03-03 18:00:00.000Z',
+      added_reason: 'Asked at TWR registration',
+      reviewed: null,
+      reviewed_by: '',
+      reviewed_at: '',
+      posted_rounds: [],
+      live: true,
+      ...over,
+    })
+
+    it('offers Remove… only on a live added request', () => {
+      additionFor = { [ROW_EMMA.request_id]: added() }
+      renderCards([ROW_EMMA, ROW_OLIVIA])
+      expect(screen.getAllByRole('button', { name: 'Remove…' })).toHaveLength(1)
+    })
+
+    it('offers no Remove… on a rule-made request, a removed one, or without casework', () => {
+      additionFor = {
+        [ROW_EMMA.request_id]: added({ origin: 'registration_ask', reviewed: false }),
+      }
+      const { unmount } = renderCards([ROW_EMMA])
+      expect(screen.queryByRole('button', { name: 'Remove…' })).toBeNull()
+      unmount()
+      additionFor = { [ROW_EMMA.request_id]: added({ live: false }) }
+      const again = renderCards([ROW_EMMA])
+      expect(screen.queryByRole('button', { name: 'Remove…' })).toBeNull()
+      again.unmount()
+      additionFor = { [ROW_EMMA.request_id]: added() }
+      renderCards([ROW_EMMA], false)
+      expect(screen.queryByRole('button', { name: 'Remove…' })).toBeNull()
+    })
+
+    it('says up front that a posted round must be undone first, rather than failing on save', () => {
+      additionFor = { [ROW_EMMA.request_id]: added({ posted_rounds: [1] }) }
+      renderCards([ROW_EMMA])
+      const button = screen.getByRole('button', { name: 'Remove…' })
+      expect(button).toBeDisabled()
+      expect(button).toHaveAttribute('title', 'Round 1 is posted: undo Posted first')
+    })
+
+    it('asks for a reason, says what removing does, and retires the addition', async () => {
+      additionFor = { [ROW_EMMA.request_id]: added() }
+      renderCards([ROW_EMMA])
+      await userEvent.click(screen.getByRole('button', { name: 'Remove…' }))
+      expect(screen.getByText('Remove this added request')).toBeInTheDocument()
+      expect(screen.getByText('Withdraws the request')).toBeInTheDocument()
+      expect(screen.getByText(/use Cancel Request… instead/)).toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: 'Remove Request' }))
+      expect(screen.getByText('Reason is required')).toBeInTheDocument()
+      expect(retire).not.toHaveBeenCalled()
+      await userEvent.type(screen.getByLabelText('Reason'), 'Family is not attending TWR after all')
+      await userEvent.click(screen.getByRole('button', { name: 'Remove Request' }))
+      expect(retire).toHaveBeenCalledWith({
+        year: 2027,
+        additionId: 'addemmatwr0001',
+        reason: 'Family is not attending TWR after all',
+      })
+    })
+
+    it("shows the server's refusal on the form", async () => {
+      retireRefusal = 'Round 1 is posted: undo Posted first'
+      additionFor = { [ROW_EMMA.request_id]: added() }
+      renderCards([ROW_EMMA])
+      await userEvent.click(screen.getByRole('button', { name: 'Remove…' }))
+      await userEvent.type(screen.getByLabelText('Reason'), 'Family declined')
+      await userEvent.click(screen.getByRole('button', { name: 'Remove Request' }))
+      expect(await screen.findByText('Round 1 is posted: undo Posted first')).toBeInTheDocument()
+    })
   })
 })

@@ -79,6 +79,8 @@ export function openHref(key: TodayKey | string, view: AidView): string | undefi
       return aidHref('/aid/money/grants', view)
     case 'to_place':
       return aidHref('/aid/money/to-place', view)
+    case 'form_intake':
+      return aidHref('/aid/requests/intake', view)
     case 'late_full_coverage':
     case 'intake':
       return aidHref('/aid/requests', view)

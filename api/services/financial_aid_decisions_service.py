@@ -312,6 +312,32 @@ _POSTED_OVERRIDE_WARNING: Final = (
 _UNMATCHED_FLAG: Final = "unmatched_session"
 
 
+def decision_write(
+    year: int, request_id: str, n: int, kind: EventKind, actor: str, *, record_id: str | None = None, **fields: Any
+) -> AidWrite:
+    """One aid_decisions row and its log line. A field given as None is left out. The log's `after`
+    leaves out a post's snapshot: the row keeps the receipt, the log what changed. Public for casework's Add a
+    Request…, which writes a Round 1 post for a request created in the same operation (owner Q5-A)."""
+    data: dict[str, Any] = {
+        "year": year,
+        "request": request_id,
+        "round": n,
+        "event": kind,
+        "actor": actor,
+        **{key: value for key, value in fields.items() if value is not None},
+    }
+    return AidWrite(
+        collection=AID_DECISIONS,
+        action="create",
+        year=year,
+        record_id=record_id,
+        data=data,
+        after={key: value for key, value in data.items() if key != "snapshot"},
+        log_action=kind,
+        entity_id=f"{request_id}:{n}",
+    )
+
+
 class DecisionNotFoundError(FinancialAidError, LookupError):
     """No such request, or none in the season named."""
 
@@ -1271,6 +1297,10 @@ def _session_pools(sessions: Mapping[int, SessionRow], rules: AidRules | None) -
         if program is not None and program.budget_pool:
             out[cm_id] = program.budget_pool
     return out
+
+
+# Public for Form intake's D170 lines (PR 3): each family x session's pool, as Season places D170's money.
+session_pools = _session_pools
 
 
 def _home(
@@ -2642,25 +2672,7 @@ class FinancialAidDecisionsService:
 
     @staticmethod
     def _write(request: RequestRecord, n: int, kind: EventKind, actor: str, **fields: Any) -> AidWrite:
-        """One aid_decisions row and its log line. A field given as None is left out. The log's `after`
-        leaves out a post's snapshot: the row keeps the receipt, the log what changed."""
-        data: dict[str, Any] = {
-            "year": request.year,
-            "request": request.id,
-            "round": n,
-            "event": kind,
-            "actor": actor,
-            **{key: value for key, value in fields.items() if value is not None},
-        }
-        return AidWrite(
-            collection=AID_DECISIONS,
-            action="create",
-            year=request.year,
-            data=data,
-            after={key: value for key, value in data.items() if key != "snapshot"},
-            log_action=kind,
-            entity_id=f"{request.id}:{n}",
-        )
+        return decision_write(request.year, request.id, n, kind, actor, **fields)
 
     def _post_write(
         self,

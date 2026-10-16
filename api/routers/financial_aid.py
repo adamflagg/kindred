@@ -80,6 +80,12 @@ from api.schemas.financial_aid_decisions import (
     Round3ApprovalIn,
     UnpostIn,
 )
+from api.schemas.financial_aid_form_intake import (
+    AidOnNoRequestResponse,
+    FormIntakeResponse,
+    FormIntakeSummaryOut,
+    UnlistedResponse,
+)
 from api.schemas.financial_aid_grants import (
     CommitmentIn,
     CommitmentOut,
@@ -240,6 +246,7 @@ from api.services.financial_aid_development_service import (
     FunderNotFoundError,
     FundingSourceNotFoundError,
 )
+from api.services.financial_aid_form_intake import FormIntakeService
 from api.services.financial_aid_grant_offsets import GrantsRegisterService
 from api.services.financial_aid_grants_repository import GrantsRepository
 from api.services.financial_aid_grants_service import (
@@ -710,7 +717,9 @@ async def _rebuild_intake(year: int) -> bool:
 
 
 def _addition_item(body: AdditionCreate) -> AdditionItem:
-    return AdditionItem(body.household_cm_id, body.person_cm_id, body.session_cm_id, body.ask, body.reason)
+    return AdditionItem(
+        body.household_cm_id, body.person_cm_id, body.session_cm_id, body.ask, body.reason, body.round1_campminder
+    )
 
 
 @router.post("/requests/{year}/additions", response_model=AddedRequestOut, status_code=201)
@@ -720,10 +729,19 @@ async def add_aid_request(
     user: AuthUser = Depends(require_permission(Permission.FINANCIAL_AID_CASEWORK)),
 ) -> AddedRequestOut:
     """Add a request the aid form never named (a winter retreat or B*Mitzvah request beside a summer one, or a
-    Family Camp household's with person 0): stored in aid_request_additions, so intake keeps it."""
+    Family Camp household's with person 0): stored in aid_request_additions, so intake keeps it. With
+    `round1_campminder` (owner Q5-A) the same operation records CampMinder's posted money on that family x session as
+    the request's Round 1, posted."""
     try:
         added = await _casework().add_request(
-            year, body.household_cm_id, body.person_cm_id, body.session_cm_id, body.ask, body.reason, user.email
+            year,
+            body.household_cm_id,
+            body.person_cm_id,
+            body.session_cm_id,
+            body.ask,
+            body.reason,
+            user.email,
+            round1_campminder=body.round1_campminder,
         )
     except _ERRORS as exc:
         _raise_http(exc)
@@ -765,6 +783,65 @@ async def retire_aid_request_addition(
         _raise_http(exc)
     await _rebuild_intake(year)
     return retired
+
+
+@router.post("/requests/{year}/additions/{addition_id}/review", response_model=AddedRequestOut)
+async def review_aid_request_addition(
+    year: _Year,
+    addition_id: str = Path(min_length=1, max_length=15),
+    user: AuthUser = Depends(require_permission(Permission.FINANCIAL_AID_CASEWORK)),
+) -> AddedRequestOut:
+    """Mark Reviewed (owner Q2-A): a request the dashboard made from a registration ask is right, so it leaves Form
+    intake's Needs a look. Logged; a second call changes nothing. No rebuild: it changes no request."""
+    try:
+        return await _casework().review_addition(year, addition_id, user.email)
+    except _ERRORS as exc:
+        _raise_http(exc)
+
+
+# -- Requests › Form intake (PR 3): the explain service's reads ---------------------------------------------------------
+
+
+async def _grants_waiting_for_camper(year: int) -> int:
+    """Grants › Needs a camper's count: the outside grants that matched no camper (spec 71 §2.4's one-line link)."""
+    return len((await _grants().read(year)).needs_camper)
+
+
+def _form_intake() -> FormIntakeService:
+    return FormIntakeService(
+        FinancialAidDecisionsRepository(pb),
+        labels=_household_labels(),
+        grants_waiting=_grants_waiting_for_camper,
+        people_search=HouseholdSearchRepository(pb).search_people,
+    )
+
+
+@router.get("/intake/{year}/forms", response_model=FormIntakeResponse)
+async def get_form_intake(year: _Year, user: AuthUser = _VIEW) -> FormIntakeResponse:
+    """Requests › Form intake: every aid form answer and registration ask, the request it became or why not, and
+    CampMinder's camp aid on the family; with the Needs a look / Registration ask only / All forms counts."""
+    return await _form_intake().forms(year)
+
+
+@router.get("/intake/{year}/summary", response_model=FormIntakeSummaryOut)
+async def get_form_intake_summary(year: _Year, user: AuthUser = _VIEW) -> FormIntakeSummaryOut:
+    """The Requests band link's counts (owner Q1-A): the same numbers /forms gives, without names or grants."""
+    return await _form_intake().summary(year)
+
+
+@router.get("/intake/{year}/aid-on-no-request", response_model=AidOnNoRequestResponse)
+async def get_aid_on_no_request(year: _Year, user: AuthUser = _VIEW) -> AidOnNoRequestResponse:
+    """Season's "CampMinder aid on no request" (D170) opened in place (owner Q4-A): one line per family x session,
+    each with what Add a Request… pre-fills. Its total is Season's figure."""
+    return await _form_intake().aid_on_no_request(year)
+
+
+@router.get("/intake/{year}/unlisted", response_model=UnlistedResponse)
+async def get_unlisted_campers(
+    year: _Year, q: Annotated[str, Query(max_length=200)] = "", user: AuthUser = _VIEW
+) -> UnlistedResponse:
+    """Find a Camper Not Listed…: campers enrolled this season on no Form intake row, by name or person id."""
+    return await _form_intake().unlisted(year, q)
 
 
 def _history() -> SeasonHistoryService:
@@ -1983,6 +2060,7 @@ async def get_today(year: _Year, user: AuthUser = _CAMPERSHIPS_OPEN) -> TodayRes
         ledger=_ledger(),
         intake=FinancialAidIntakeRepository(pb),
         to_place=store,  # To place's own reads (SP11): Today counts its open lines as Money › To place does
+        form_intake=_form_intake().needs_a_look,  # PR 3: Form intake's Needs a look rows, counted by its own code
         labels=_household_labels(),  # next-up households read as the grid names them (audit R2)
         season_cache=aid_season_cache,
     )
@@ -2027,6 +2105,7 @@ async def get_household_page(
         casework=_casework(),
         ledger=FinancialAidRepository(pb),
         history=EntityLogReads(pb),
+        additions=FinancialAidDecisionsRepository(pb).fetch_request_additions,  # PR 3: each added request's card
         season_cache=aid_season_cache,
     )
     try:

@@ -164,3 +164,24 @@ describe('AidTable bounded box (§23)', () => {
     expect(box.style.maxHeight).toBe('')
   })
 })
+
+describe('AidTable total tone (Form intake: money shown, never counted)', () => {
+  it("inks a column's total with its totalClassName, and leaves other totals plain", () => {
+    const toned = COLUMNS.map((c) =>
+      c.key === 'amount' ? { ...c, totalClassName: 'text-amber-700' } : c
+    )
+    renderTable({ columns: toned })
+    const figure = within(
+      screen.getByRole('table').querySelector('tfoot') as HTMLElement
+    ).getByText('$750')
+    expect(figure).toHaveClass('text-amber-700', 'tabular-nums')
+  })
+
+  it('draws a plain total without it', () => {
+    renderTable()
+    const figure = within(
+      screen.getByRole('table').querySelector('tfoot') as HTMLElement
+    ).getByText('$750')
+    expect(figure).not.toHaveClass('text-amber-700')
+  })
+})

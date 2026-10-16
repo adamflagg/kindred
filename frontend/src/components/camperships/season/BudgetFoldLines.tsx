@@ -1,9 +1,11 @@
-import type { ReactNode } from 'react'
+import { Fragment, type ReactNode } from 'react'
 import { Link } from 'react-router'
 
 import type { ApiAidBudget } from '../../../types/api-types'
 import { countWords } from '../requests/views'
-import type { AidView } from '../kit/asOf'
+import { aidHref, type AidView } from '../kit/asOf'
+import { AidFoldPanel, AidFoldToggle } from '../kit/FoldRow'
+import { AidOnNoRequestPanel } from '../intake/AidOnNoRequestPanel'
 import { CS_LINK_CELL } from '../kit/csType'
 import { TABLE_CARD } from '../kit/kitStyles'
 import { formatMoney } from '../kit/money'
@@ -115,15 +117,24 @@ function StandsTable({ budget, view }: { budget: ApiAidBudget; view: AidView }) 
   )
 }
 
+/** D170's line (owner Q4-A): it opens in place, its open state in `?open=` beside the sections'. */
+const CM_LINE = 'campminder_off_requests'
+export const CM_LINE_OPEN = `below:${CM_LINE}`
+
 function BelowTable({
   budget,
   pool,
   view,
+  open,
+  onToggle,
 }: {
   budget: ApiAidBudget
   pool: string | null
   view: AidView
+  open: ReadonlySet<string>
+  onToggle: (key: string) => void
 }) {
+  const cmOpen = open.has(CM_LINE_OPEN)
   return (
     <div className={TABLE_CARD}>
       <table className={RG_TABLE}>
@@ -137,32 +148,61 @@ function BelowTable({
         </thead>
         <tbody>
           {belowTheLine(budget, pool, view).map((line) => (
-            <tr key={line.key} data-below-line={line.key}>
-              <td className={RG_TD}>
-                <span title={line.title ?? undefined}>
-                  {line.key.startsWith('outside_type:')
-                    ? `${line.label} (outside the camp's budget)`
-                    : line.label}
-                </span>
-              </td>
-              <td className={RG_TD_NUM}>
-                {line.families !== null ? (
-                  `${String(line.families)} fam`
-                ) : line.count === null ? null : line.href === null ? (
-                  countWords(line.count)
-                ) : (
-                  <Link to={line.href} className={CS_LINK_CELL}>
-                    {countWords(line.count)}
-                  </Link>
-                )}
-              </td>
-              <td className={RG_TD_NUM} title={line.key === 'held' ? HELD_UNKNOWN : undefined}>
-                {line.amount === null ? '—' : formatMoney(line.amount)}
-              </td>
-              <td className={RG_TD}>
-                <span title={line.title ?? undefined}>{line.note}</span>
-              </td>
-            </tr>
+            <Fragment key={line.key}>
+              <tr data-below-line={line.key}>
+                <td className={RG_TD}>
+                  {line.key === CM_LINE ? (
+                    <AidFoldToggle
+                      open={cmOpen}
+                      onToggle={() => onToggle(CM_LINE_OPEN)}
+                      title={line.title ?? undefined}
+                    >
+                      {line.label}
+                    </AidFoldToggle>
+                  ) : (
+                    <span title={line.title ?? undefined}>
+                      {line.key.startsWith('outside_type:')
+                        ? `${line.label} (outside the camp's budget)`
+                        : line.label}
+                    </span>
+                  )}
+                </td>
+                <td className={RG_TD_NUM}>
+                  {line.families !== null ? (
+                    `${String(line.families)} fam`
+                  ) : line.count === null ? null : line.href === null ? (
+                    countWords(line.count)
+                  ) : (
+                    <Link to={line.href} className={CS_LINK_CELL}>
+                      {countWords(line.count)}
+                    </Link>
+                  )}
+                </td>
+                <td className={RG_TD_NUM} title={line.key === 'held' ? HELD_UNKNOWN : undefined}>
+                  {line.amount === null ? '—' : formatMoney(line.amount)}
+                </td>
+                <td className={RG_TD}>
+                  <span title={line.title ?? undefined}>{line.note}</span>
+                  {line.key === CM_LINE && (
+                    <>
+                      {' · '}
+                      <Link
+                        to={aidHref('/aid/requests/intake', view, { show: 'all', cmaid: '1' })}
+                        className={CS_LINK_CELL}
+                        title="Open Requests › Form intake, the families this line counts"
+                      >
+                        Form intake ›
+                      </Link>
+                    </>
+                  )}
+                </td>
+              </tr>
+              {line.key === CM_LINE && cmOpen && (
+                <AidFoldPanel span={4}>
+                  <AidOnNoRequestPanel />
+                </AidFoldPanel>
+              )}
+            </Fragment>
           ))}
         </tbody>
       </table>
@@ -216,7 +256,7 @@ export function BudgetFoldLines({
         open={is('below')}
         onToggle={toggle('below')}
       >
-        <BelowTable budget={budget} pool={pool} view={view} />
+        <BelowTable budget={budget} pool={pool} view={view} open={open} onToggle={onToggle} />
       </Section>
       {demand.length > 0 && (
         <Section

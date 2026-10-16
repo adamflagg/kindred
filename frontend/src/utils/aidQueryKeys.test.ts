@@ -81,6 +81,8 @@ describe("invalidateAidMoneyQueries (spec §10; #2924's invalidation table)", ()
       ['financial-aid', 'grants'],
       ['financial-aid', 'ledger'],
       ['financial-aid', 'reports'],
+      // Form intake (PR 3): a cancel, a settled session or an added request moves a row's Became.
+      ['financial-aid', 'intake'],
     ])
   })
 
@@ -101,6 +103,7 @@ describe("invalidateAidMoneyQueries (spec §10; #2924's invalidation table)", ()
       ['financial-aid', 'grants'],
       ['financial-aid', 'ledger'],
       ['financial-aid', 'reports'],
+      ['financial-aid', 'intake'],
       ['financial-aid', 'jump-index'],
     ])
     expect(queryKeys.aidJumpIndex(2027).slice(0, 2)).toEqual(queryKeys.aidJumpIndexPrefix())

@@ -854,6 +854,47 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         spec="§9.4",
         rulings=("D66", "D90"),
     ),
+    # Requests › Form intake (PR 3, spec 71 §2.4; the approved mock's four notes). Intake is the clean spec's §9.1.
+    Definition(
+        key="intake_form_asked",
+        term="Form asked",
+        text=(
+            "Form asked: the aid form's program answers, or the registration form's \"financial assistance\" ask "
+            'when no aid form was filed. "reg. ask" is that ask beside a filed form.'
+        ),
+        spec="§9.1",
+        rulings=("D20",),
+    ),
+    Definition(
+        key="intake_became",
+        term="Became",
+        text=(
+            'Became: each request the dashboard made for this camper. "added": staff made it with Add a Request…. '
+            '"reg. ask": the dashboard made it from a registration ask dated within a day of that enrollment.'
+        ),
+        spec="§9.1",
+        rulings=("D20",),
+    ),
+    Definition(
+        key="intake_campminder_aid",
+        term="CampMinder aid",
+        text=(
+            "CampMinder aid: camp aid CampMinder posted on this family and session. Amber: no request holds it, so it "
+            'is shown, never counted (Season\'s "CampMinder aid on no request").'
+        ),
+        spec="§9.1",
+        rulings=("D170",),
+    ),
+    Definition(
+        key="intake_needs_a_look",
+        term="Needs a look",
+        text=(
+            "Needs a look: CampMinder aid on no request, an enrollment no request holds, a session that is unclear, "
+            "or a request made from a registration ask that no one has reviewed yet."
+        ),
+        spec="§9.1",
+        rulings=("D170",),
+    ),
     Definition(
         key="today_season_so_far",
         term="The season so far",
@@ -906,6 +947,8 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
 # The notes each surface shows, numbered from 1 in this order (§4.8). A surface not listed here is unknown.
 SURFACES: Final[Mapping[str, tuple[str, ...]]] = {
     "requests": ("decided", "posted", "cm_check", "cost"),
+    # Requests › Form intake (PR 3): its own four, numbered as the approved mock numbers its column headers.
+    "requests-form-intake": ("intake_form_asked", "intake_became", "intake_campminder_aid", "intake_needs_a_look"),
     "household": ("cost", "decided", "grants", "family_share", "posted", "confirmation"),
     # Rounds & budget's own six (final design): 1 Allocated (and Share), 2 Committed (Accepted), 3 Posted (Not yet
     # confirmed), 4 Needs an offer (Pending approval), 5 Remaining, 6 Below the line (Shown, not counted, Demand).

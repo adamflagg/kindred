@@ -140,13 +140,14 @@ async def test_one_operation_is_read_whole_and_only_by_a_well_formed_id() -> Non
 
 
 @pytest.mark.asyncio
-async def test_the_subject_reads_are_five_light_season_lists() -> None:
+async def test_the_subject_reads_are_six_light_season_lists() -> None:
     from api.services.financial_aid_change_log_reads import fetch_subject_records
 
     pb = MagicMock()
     pb.collection.return_value.get_full_list.return_value = []
-    assert await fetch_subject_records(pb, 2027) == ([], [], [], [], [])
+    assert await fetch_subject_records(pb, 2027) == ([], [], [], [], [], [])
     assert {c.args[0] for c in pb.collection.call_args_list} == {
+        "aid_request_additions",  # PR 3: a staff-added request's rows name their camper (Subjects.additions)
         "aid_requests",
         "aid_applications",
         "aid_application_corrections",
@@ -162,6 +163,7 @@ async def test_the_subject_reads_are_five_light_season_lists() -> None:
             "id,application",
             "id,household_cm_id",  # grants
             "id,household_cm_id",  # household links
+            "id,household_cm_id,person_cm_id,session_cm_id",  # staff-added requests
         ]
     )
 

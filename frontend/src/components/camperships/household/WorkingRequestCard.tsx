@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useAidCancellation, useAidManualHold } from '../../../hooks/camperships/useAidWrites'
 import type { ApiAidHouseholdPage, ApiAidHouseholdRequest } from '../../../types/api-types'
 import type { AidView } from '../kit/asOf'
+import { removeBlock } from '../intake/intakeModel'
 import { CancelForm } from './CancelForm'
 import { CardEditor, type CardEditorHandle } from './CardEditor'
 import { CARD_EDIT_LABEL, cardEdits, type CardEditKind } from './cardEdits'
@@ -20,6 +21,7 @@ import { staffNames } from './historyWords'
 import { HH_BUTTON, HH_DETAILS_BUTTON } from './householdStyles'
 import { OtherRequestLink } from './OtherRequestLink'
 import { ReasonForm } from './ReasonForm'
+import { RemoveAddedForm } from './RemoveAddedForm'
 import { RequestCard } from './RequestCard'
 import {
   RoundChecklist,
@@ -42,6 +44,7 @@ type Open =
   | { readonly kind: 'headcount' }
   | { readonly kind: 'cost' }
   | { readonly kind: 'clear_cost' }
+  | { readonly kind: 'remove' }
   | null
 
 /**
@@ -136,6 +139,10 @@ export function WorkingRequestCard({
   // The server's `_live`: a withdrawn or duplicate request takes no cancellation or hold.
   const live = isLiveRequest(row)
   const manualHeld = row.holds.some((hold) => hold.code === 'manual_hold')
+  // PR 3: Remove… undoes Add a Request… on a live staff addition (a rule-made one is cancelled instead).
+  const addition = request.addition ?? null
+  const removable = addition !== null && addition.origin === 'added' && addition.live !== false
+  const removeRefusal = addition === null ? null : removeBlock(addition)
   const switchTo = (next: Open) => {
     // Re-clicking the open editor's own button would save it and leave it open on the same draft.
     if (next?.kind === 'edit' && edit === next.edit) return
@@ -174,6 +181,20 @@ export function WorkingRequestCard({
       {pair?.keepOther === true && button('Keep the Other Request…', { kind: 'keep_other' })}
       {pair && <OtherRequestLink pair={pair} view={view} beforeLeave={exits?.beforeLeave} />}
       {offers.headcount && button('Number of People…', { kind: 'headcount' })}
+      {removable && (
+        // Retiring an addition while a round is posted is refused (PR 1's guard): say so before the save.
+        <button
+          type="button"
+          className={HH_BUTTON}
+          disabled={removeRefusal !== null}
+          title={
+            removeRefusal ?? 'Undo Add a Request…: the request is withdrawn, its decisions kept'
+          }
+          onClick={() => switchTo({ kind: 'remove' })}
+        >
+          Remove…
+        </button>
+      )}
       <ReleasedHolds request={request} names={staffNames(page)} />
     </>
   )
@@ -275,6 +296,8 @@ export function WorkingRequestCard({
         onCancel={close}
       />
     )
+  } else if (open?.kind === 'remove' && removable && removeRefusal === null) {
+    editor = <RemoveAddedForm year={year} additionId={addition.addition_id} onDone={close} />
   } else if (open?.kind === 'hold') {
     editor = (
       <ReasonForm

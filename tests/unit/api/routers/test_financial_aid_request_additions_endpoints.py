@@ -162,7 +162,9 @@ def test_adding_one_reaches_the_service_with_the_callers_email_then_rebuilds_the
         response = client.post("/api/financial-aid/requests/2027/additions", json=ITEM)
     assert response.status_code == 201
     assert response.json()["request"]["origin"] == "added"
-    stub.add_request.assert_awaited_once_with(2027, 1000007, 1000071, 1000501, 600.0, "Retreat", user.email)
+    stub.add_request.assert_awaited_once_with(
+        2027, 1000007, 1000071, 1000501, 600.0, "Retreat", user.email, round1_campminder=None
+    )
     rebuild.assert_awaited_once_with(2027)
 
 

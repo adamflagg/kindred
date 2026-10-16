@@ -1221,3 +1221,23 @@ def test_counts_in_out_is_the_registers_share_vocabulary() -> None:
         "offsets": "round",
         "round": 1,
     }
+
+
+# -- staff-added requests (PR 1's add_request / remove_added_request rows; PR 3 makes them name their subject) ---------
+
+
+def test_an_added_request_row_names_its_camper_household_session_and_request() -> None:
+    addition_id, winter, added_request = "addemma00000001", 1000501, "reqemmaadded001"
+    requests = (*REQUEST_ROWS, SimpleNamespace(id=added_request, application=APP_JOHNSON, household_cm_id=JOHNSON,
+                                               person_cm_id=P_EMMA, session_cm_id=winter))  # fmt: skip
+    additions = (
+        SimpleNamespace(id=addition_id, household_cm_id=JOHNSON, person_cm_id=P_EMMA, session_cm_id=winter),
+        SimpleNamespace(id="addgarciafc0001", household_cm_id=GARCIA, person_cm_id=0, session_cm_id=1000202),
+    )
+    about = subjects_from(requests, APPLICATION_ROWS, CORRECTION_ROWS, GRANT_ROWS, LINK_ROWS, additions).of
+    assert about("aid_request_additions", addition_id) == Subject(JOHNSON, P_EMMA, added_request, winter)
+    # A household (Family Camp) addition with no request found yet is still about its family and session.
+    assert about("aid_request_additions", "addgarciafc0001") == Subject(GARCIA, 0, "", 1000202)
+    assert about("aid_request_additions", "addunknown00001") is None
+    # The five-read season (no additions read) still resolves everything else.
+    assert subjects_from(*SEASON).of("aid_request_additions", addition_id) is None

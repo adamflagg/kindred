@@ -13,7 +13,7 @@ from __future__ import annotations
 import asyncio
 from collections import Counter
 from collections.abc import Collection, Iterable, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Final, Protocol
@@ -136,6 +136,8 @@ class Subjects:
     corrections: Mapping[str, str]  # casework correction id -> application id
     grants: Mapping[str, int]  # grant id -> household (a commitment's placement is keyed by its grant)
     links: Mapping[str, int]  # household link id -> household
+    # Staff-added request id -> (household, person, session): add_request / remove_added_request / review rows (PR 3).
+    additions: Mapping[str, tuple[int, int, int]] = field(default_factory=dict)
 
     def of(self, entity: str, entity_id: str) -> Subject | None:
         if entity in REQUEST_HEADED:
@@ -143,6 +145,8 @@ class Subjects:
             found = self.requests.get(request_id)
             if found is not None:
                 return Subject(found[0], found[1], request_id, found[2])
+        if entity == AID_REQUEST_ADDITIONS:
+            return self._addition(entity_id)
         household: int | None
         if entity == AID_APPLICATIONS:
             household = self.applications.get(entity_id)
@@ -158,6 +162,16 @@ class Subjects:
             return None
         return Subject(household, 0, "") if household is not None else None
 
+    def _addition(self, addition_id: str) -> Subject | None:
+        """An addition is about its camper (or its household, person 0) and session; the request it stands for is the
+        one request on that subject and session, when there is exactly one."""
+        found = self.additions.get(addition_id)
+        if found is None:
+            return None
+        household, person, session = found
+        matches = [rid for rid, subject in self.requests.items() if subject == found]
+        return Subject(household, person, matches[0] if len(matches) == 1 else "", session)
+
 
 NO_SUBJECTS: Final = Subjects({}, {}, {}, {}, {})
 
@@ -168,8 +182,9 @@ def subjects_from(
     corrections: Iterable[Any],
     grants: Iterable[Any] = (),
     links: Iterable[Any] = (),
+    additions: Iterable[Any] = (),
 ) -> Subjects:
-    """The season's five light subject reads (fetch_subject_records) as one lookup."""
+    """The season's six light subject reads (fetch_subject_records) as one lookup."""
     return Subjects(
         requests={
             str(r.id): (int(r.household_cm_id), int(r.person_cm_id or 0), int(getattr(r, "session_cm_id", 0) or 0))
@@ -179,6 +194,9 @@ def subjects_from(
         corrections={str(c.id): str(c.application or "") for c in corrections},
         grants={str(g.id): int(g.household_cm_id) for g in grants},
         links={str(k.id): int(k.household_cm_id) for k in links},
+        additions={
+            str(a.id): (int(a.household_cm_id), int(a.person_cm_id or 0), int(a.session_cm_id or 0)) for a in additions
+        },
     )
 
 
@@ -629,9 +647,7 @@ class HistoryNotFoundError(FinancialAidError):
 class HistoryReads(Protocol):
     async def fetch_season_log(self, year: int) -> list[Any]: ...
     async def fetch_operation(self, year: int, operation_id: str) -> list[Any]: ...
-    async def fetch_subject_records(
-        self, year: int
-    ) -> tuple[list[Any], list[Any], list[Any], list[Any], list[Any]]: ...
+    async def fetch_subject_records(self, year: int) -> tuple[list[Any], ...]: ...
     async def fetch_recorded(
         self, year: int, operation_ids: Collection[str], entities: Collection[str]
     ) -> list[Any]: ...

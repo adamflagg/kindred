@@ -45,6 +45,8 @@ export const REGISTRAR_ORDER: readonly TodayKey[] = [
   'not_reconciled',
   'to_reverse',
   'session_not_settled',
+  // PR 3 (spec 71 §2.4): Requests › Form intake's Needs a look rows, beside the other intake line.
+  'form_intake',
   'duplicates',
   'cancel_reason',
   'late_full_coverage',
@@ -90,6 +92,7 @@ export const LINE_WORDS: Readonly<Record<TodayWordKey, string>> = {
   not_reconciled: 'Not reconciled',
   to_reverse: 'To reverse',
   session_not_settled: 'Session not settled',
+  form_intake: 'Form intake: needs a look',
   duplicates: 'Duplicates',
   cancel_reason: 'Cancelled: give a reason',
   to_place: 'To place',
@@ -115,6 +118,7 @@ const UNIT: Record<ApiAidTodayLine['item_kind'], readonly [string, string]> = {
   fields: ['field', 'fields'],
   lines: ['line', 'lines'],
   funders: ['funder', 'funders'],
+  campers: ['camper', 'campers'],
 }
 export function countWords(line: ApiAidTodayLine): string {
   // Finance's synthetic Over budget line counts pools, not lines.
@@ -477,6 +481,11 @@ const REASON_WORDS: Readonly<Record<string, string>> = {
   r1: 'R1',
   r2: 'R2',
   r3: 'R3',
+  // Form intake's Needs a look reasons (PR 3)
+  campminder_aid: 'CM aid on no request',
+  enrolled_no_request: 'enrolled, no request',
+  session_unclear: 'session unclear',
+  registration_ask_unreviewed: 'reg. ask to review',
 }
 const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1)
 

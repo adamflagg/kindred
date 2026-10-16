@@ -8,6 +8,7 @@ import {
   programWords,
   poolLabels,
   programRank,
+  programPoolWords,
 } from './programLabel'
 
 // Owner 2026-10-10: Funders and the household page read the server's shared family words (#3131's FAMILY_WORDS
@@ -224,5 +225,31 @@ describe('programRank (final audit M-E8: pool order, then the rules’ order ins
   it('ranks every key alike while the rules have not loaded', () => {
     const rank = programRank(undefined)
     expect(rank('summer')).toBe(rank('family_camp'))
+  })
+})
+
+describe('programPoolWords (Add a Request…: where Round 1 counts)', () => {
+  const rules = {
+    ...APPROVED_RULES_2026,
+    sections: [
+      {
+        ...APPROVED_RULES_2026.sections[1]!,
+        content: { summer: { budget_pool: 'camp_quest' }, family_camp: { budget_pool: 'weekend' } },
+      },
+      {
+        ...APPROVED_RULES_2026.sections[2]!,
+        content: {
+          total: 1,
+          pools: { camp_quest: { label: 'Camp & Quest' }, weekend: { label: 'Weekend Programs' } },
+        },
+      },
+    ],
+  }
+
+  it("names a program's pool by the pool's own label, or null when the rules do not file it", () => {
+    expect(programPoolWords(rules, 'summer')).toBe('Camp & Quest')
+    expect(programPoolWords(rules, 'family_camp')).toBe('Weekend Programs')
+    expect(programPoolWords(rules, 'twr')).toBeNull()
+    expect(programPoolWords(undefined, 'summer')).toBeNull()
   })
 })

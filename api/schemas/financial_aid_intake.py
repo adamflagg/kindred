@@ -200,6 +200,10 @@ class AdditionCreate(BaseModel):
     session_cm_id: int = Field(gt=0)
     ask: float = Field(ge=0, le=1_000_000)
     reason: str = Field(default="", max_length=2000)
+    # Owner Q5-A (PR 3): "Record CampMinder's $X as Round 1, posted". The amount the screen showed; the service refuses
+    # it unless it is, to the cent, CampMinder's live camp aid on that family x session that no request holds. None:
+    # the request only.
+    round1_campminder: float | None = Field(default=None, gt=0, le=1_000_000)
 
 
 class AdditionBulkCreate(BaseModel):
@@ -229,6 +233,9 @@ class AdditionOut(BaseModel):
     retired_by: str
     retire_reason: str
     request_id: str  # the request it stands for; "" when none exists
+    reviewed_at: str = ""  # Mark Reviewed (owner Q2-A): a rule-made request a person checked; "" until then
+    reviewed_by: str = ""
+    round1_posted: float | None = None  # the request's posted Round 1 amount (Q5's recorded one included); None if none
 
 
 class AddedRequestOut(BaseModel):
@@ -250,6 +257,7 @@ class AdditionItemReport(BaseModel):
     holder_id: str = ""  # the live request already holding the slot, when that is why
     addition_id: str = ""
     request_id: str = ""
+    round1_campminder: float | None = None  # the Round 1 the item records at CampMinder's money (Q5-A); None if none
 
 
 class AdditionBulkResult(BaseModel):

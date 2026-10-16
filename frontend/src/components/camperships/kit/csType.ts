@@ -28,6 +28,7 @@ import {
   CS_RULE_GROUP,
   DETAIL_LINE,
   DETAIL_ROW,
+  FOLD_PANEL,
   HIGHLIGHT_EDGE,
   PILL,
   ROW_HIGHLIGHT,
@@ -77,6 +78,8 @@ export const CS_ROW_HIGHLIGHT = ROW_HIGHLIGHT
 export const CS_HIGHLIGHT_EDGE = HIGHLIGHT_EDGE
 export const CS_DETAIL_ROW = DETAIL_ROW
 export const CS_DETAIL_LINE = DETAIL_LINE
+/** A fold line's row opened in place onto a kit table (rule 23; `AidFoldPanel`). */
+export const CS_FOLD_PANEL = FOLD_PANEL
 
 // ── An opened row's panels (cs-panel, cs-pmeta, cs-phead) ──
 /** The dashed amber rule between panels (RequestDetailLine's). */
@@ -161,7 +164,7 @@ export const CS_PICKER_FIELD = `${FIELD_FACE} ${CTL_FOCUS} inline-flex cursor-po
 export const CS_PICKER_OPTIONS =
   'bg-card text-foreground border-border absolute top-[calc(100%+4px)] left-0 z-[70] max-h-[260px] w-max max-w-[320px] min-w-full overflow-auto rounded-[10px] border p-1 shadow-lg transition duration-200 ease-out focus:outline-none data-[closed]:-translate-y-1 data-[closed]:opacity-0'
 export const CS_PICKER_OPTION =
-  'relative flex cursor-pointer items-center gap-1.5 rounded-md py-1 pr-2.5 pl-[22px] text-[12.5px] leading-[18px] whitespace-nowrap data-[focus]:bg-muted data-[selected]:font-semibold'
+  'relative flex cursor-pointer items-center gap-1.5 rounded-md py-1 pr-2.5 pl-[22px] text-[12.5px] leading-[18px] whitespace-nowrap data-[focus]:bg-muted data-[selected]:font-semibold data-[disabled]:text-muted-foreground data-[disabled]:cursor-default'
 /** A group heading inside the popover (programs under their pool). */
 export const CS_PICKER_GROUP =
   'text-muted-foreground px-2.5 pt-1.5 pb-0.5 text-[11px] font-bold tracking-[.05em] uppercase'
@@ -177,6 +180,13 @@ const BTN_SHAPE = `${CS_CTL_H} box-border inline-flex flex-none cursor-pointer i
 export const CS_BTN = `${BTN_SHAPE} bg-forest-700 border-forest-700 text-white hover:bg-forest-800 hover:border-forest-800 dark:bg-forest-500 dark:border-forest-500 dark:hover:bg-forest-600 dark:hover:border-forest-600`
 /** The secondary action (Close, Back, Clear). */
 export const CS_BTN2 = `${BTN_SHAPE} bg-card border-border text-foreground shadow-[0_1px_2px_hsl(var(--shadow-color)/0.07)] hover:border-[color-mix(in_oklab,var(--color-primary)_45%,var(--color-border))]`
+/**
+ * A row's own action inside a grid cell (design-language rule 20; the household card's Set Cost… grammar,
+ * HH_DETAILS_BUTTON): 20px, border-box, 12/16 600 in forest ink. The 26px buttons would make the row taller
+ * than its neighbours; this one is the cell's own 20px line, so the row stays the grid's 30px.
+ */
+export const CS_ROW_BTN =
+  'border-border bg-card text-forest-700 hover:bg-muted dark:text-forest-300 box-border inline-flex h-5 flex-none cursor-pointer items-center rounded-[7px] border px-2 text-xs leading-4 font-semibold whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-45'
 /** Download CSV and Copy: the secondary button, the same on every page, always last on its row. */
 export const CS_BTN_CSV = CS_BTN2
 /** @deprecated The 38px tool button; Download CSV is the small one now. */
@@ -255,5 +265,11 @@ export const CS_FGRID_TWO =
 export const CS_FGRID_PAYER =
   'grid grid-cols-[max-content_minmax(0,1fr)_max-content_72px_max-content] items-center gap-x-2.5 gap-y-1.5'
 export const CS_FGRID_LABEL = 'text-muted-foreground text-[12.5px] whitespace-nowrap'
+/**
+ * An editor's checkbox and its sentence (rule 14; Add a Request…'s "Record CampMinder's $X as Round 1, posted"): one
+ * 30px row at 13.5px, the field height, so it lines up with the fields beside it. The row is the box's label.
+ */
+export const CS_FIELD_CHECK =
+  'inline-flex h-[30px] max-w-full min-w-0 items-center gap-2 text-[13.5px] leading-normal'
 /** The buttons on one row, with the required-field reason or logged-with-who line beside them. */
 export const CS_EDROW = 'flex min-w-0 flex-nowrap items-center gap-2'

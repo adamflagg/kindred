@@ -248,6 +248,16 @@ describe('who, what kind, and the action words', () => {
     expect(actionWords('aid_decisions', 'post')).toBe('Posted')
     expect(actionWords('aid_decisions', 'unpost')).toBe('Posted undone')
     expect(actionWords('aid_decisions', 'ask')).toBe('Ask entered')
+    // Add a Request…, Remove… and Mark Reviewed (PR 1, PR 3): staff words, never the log's codes.
+    expect(actionWords('aid_request_additions', 'add_request')).toBe('Request added')
+    expect(actionWords('aid_request_additions', 'remove_added_request')).toBe(
+      'Added request removed'
+    )
+    expect(actionWords('aid_request_additions', 'review_added_request')).toBe('Marked reviewed')
+    // One Add a Request… logs its request, payer share and decision rows under the same action.
+    expect(actionWords('aid_requests', 'add_request')).toBe('Request added')
+    expect(actionWords('aid_payer_shares', 'add_request')).toBe('Request added')
+    expect(actionWords('aid_requests', 'remove_added_request')).toBe('Added request removed')
     expect(actionWords('aid_decisions', 'award')).toBe('Round 3 amount entered')
     expect(actionWords('aid_decisions', 'approve')).toBe('Round 3 approved')
     expect(actionWords('aid_rules', 'approve')).toBe('Approved')
@@ -483,6 +493,8 @@ describe("a row's view in an opened line", () => {
     expect(lines('reproduced')).toEqual(['Locked by: Reproduced from the sheet'])
     // The load's "CampMinder only" round (owner, 10-07) never reads as reproduced from the sheet.
     expect(lines('campminder_only')).toEqual(['Locked by: From CampMinder (no sheet row)'])
+    // Add a Request… recording CampMinder's posted money as Round 1 (PR 3, owner Q5-A).
+    expect(lines('campminder_added')).toEqual(["Locked by: Added at CampMinder's amount"])
     expect(lines('some_new_code')).toEqual(['Locked by: Some new code'])
   })
 

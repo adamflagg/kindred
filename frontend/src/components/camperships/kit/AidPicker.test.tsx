@@ -259,3 +259,24 @@ describe('AidPicker placeholder', () => {
     )
   })
 })
+
+describe('AidPicker: a switched-off option (design rule 14: shown switched off, never hidden)', () => {
+  it('draws a disabled option muted, so it reads as switched off beside the live ones', async () => {
+    render(
+      <AidPicker
+        label="Session"
+        value="twr"
+        options={[
+          { value: 'twr', label: 'Teen Winter Retreat' },
+          { value: 'tli', label: 'Teen Leadership Institute · holds a request', disabled: true },
+        ]}
+        onChange={vi.fn()}
+      />
+    )
+    await userEvent.click(screen.getByRole('button', { name: /Session/ }))
+    const off = await screen.findByRole('option', { name: /holds a request/ })
+    expect(off).toHaveAttribute('aria-disabled', 'true')
+    expect(off.className).toContain('data-[disabled]:text-muted-foreground')
+    expect(off.className).toContain('data-[disabled]:cursor-default')
+  })
+})

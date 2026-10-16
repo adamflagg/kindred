@@ -66,6 +66,7 @@ const AidHome = lazy(() => import('./pages/camperships/AidHome'))
 const AidToday = lazy(() => import('./pages/camperships/AidTodayPage'))
 const AidReportsPage = lazy(() => import('./pages/camperships/AidReportsPage'))
 const AidRequestsPage = lazy(() => import('./pages/camperships/AidRequestsPage'))
+const AidFormIntakePage = lazy(() => import('./pages/camperships/AidFormIntakePage'))
 const RequestsNotForDevelopment = lazy(
   () => import('./pages/camperships/RequestsNotForDevelopment')
 )
@@ -673,6 +674,19 @@ function App() {
                                   <ErrorBoundary>
                                     <Suspense fallback={<PageSkeleton />}>
                                       <AidRequestsPage />
+                                    </Suspense>
+                                  </ErrorBoundary>
+                                </RequirePermission>
+                              }
+                            />
+                            {/* Requests › Form intake (PR 3; spec 71 §2.4): the grid's own read permission. */}
+                            <Route
+                              path="requests/intake"
+                              element={
+                                <RequirePermission permission={Permission.FINANCIAL_AID_VIEW}>
+                                  <ErrorBoundary>
+                                    <Suspense fallback={<PageSkeleton />}>
+                                      <AidFormIntakePage />
                                     </Suspense>
                                   </ErrorBoundary>
                                 </RequirePermission>

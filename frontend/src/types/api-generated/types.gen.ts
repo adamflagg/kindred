@@ -117,6 +117,32 @@ export type AccessibilityFlagSummary = {
 }
 
 /**
+ * AddPrefillOut
+ */
+export type AddPrefillOut = {
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Person Cm Id
+   */
+  person_cm_id: number
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Ask
+   */
+  ask: number
+  /**
+   * Round1 Campminder
+   */
+  round1_campminder: number | null
+}
+
+/**
  * AddedRequestOut
  */
 export type AddedRequestOut = {
@@ -200,6 +226,10 @@ export type AdditionCreate = {
    * Reason
    */
   reason?: string
+  /**
+   * Round1 Campminder
+   */
+  round1_campminder?: number | null
 }
 
 /**
@@ -252,6 +282,10 @@ export type AdditionItemReport = {
    * Request Id
    */
   request_id?: string
+  /**
+   * Round1 Campminder
+   */
+  round1_campminder?: number | null
 }
 
 /**
@@ -314,6 +348,18 @@ export type AdditionOut = {
    * Request Id
    */
   request_id: string
+  /**
+   * Reviewed At
+   */
+  reviewed_at?: string
+  /**
+   * Reviewed By
+   */
+  reviewed_by?: string
+  /**
+   * Round1 Posted
+   */
+  round1_posted?: number | null
 }
 
 /**
@@ -375,6 +421,63 @@ export type AidLikeOutside = {
 }
 
 /**
+ * AidOnNoRequestLineOut
+ *
+ * Season's D170 line opened in place (owner Q4-A): one family x session.
+ */
+export type AidOnNoRequestLineOut = {
+  /**
+   * Row Key
+   */
+  row_key: string
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Household Label
+   */
+  household_label?: string
+  /**
+   * Household Tiebreak
+   */
+  household_tiebreak?: string
+  /**
+   * Person Cm Id
+   */
+  person_cm_id: number
+  /**
+   * Camper Name
+   */
+  camper_name?: string
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Pool
+   */
+  pool: string | null
+  /**
+   * Amount
+   */
+  amount: number
+  /**
+   * Posted On
+   */
+  posted_on?: string | null
+  prefill: AddPrefillOut
+  /**
+   * Can Add
+   */
+  can_add: boolean
+  /**
+   * Gap Sessions
+   */
+  gap_sessions?: Array<GapSessionOut>
+}
+
+/**
  * AidOnNoRequestOut
  *
  * D170: CampMinder's camp aid that matches no request, and the families it is on. Shown, never counted.
@@ -388,6 +491,32 @@ export type AidOnNoRequestOut = {
    * Families
    */
   families: number
+}
+
+/**
+ * AidOnNoRequestResponse
+ */
+export type AidOnNoRequestResponse = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Total
+   */
+  total: number
+  /**
+   * Families
+   */
+  families: number
+  /**
+   * Lines
+   */
+  lines: Array<AidOnNoRequestLineOut>
+  /**
+   * Sessions
+   */
+  sessions: Array<IntakeSessionOut>
 }
 
 /**
@@ -1535,6 +1664,81 @@ export type BatchResolveResponse = {
 }
 
 /**
+ * BecameOut
+ */
+export type BecameOut = {
+  /**
+   * Request Id
+   */
+  request_id: string
+  /**
+   * Program Key
+   */
+  program_key: string
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Candidate Session Cm Ids
+   */
+  candidate_session_cm_ids?: Array<number>
+  /**
+   * Status
+   */
+  status:
+    'active' | 'session_unclear' | 'duplicate_pending' | 'duplicate' | 'withdrawn' | 'cancelled'
+  /**
+   * Origin
+   */
+  origin: 'form' | 'added' | 'registration_ask'
+  /**
+   * Ask
+   */
+  ask: number
+  /**
+   * Why
+   */
+  why?: 'answer_edited' | 'not_enrolled' | 'removed' | null
+  /**
+   * Addition Id
+   */
+  addition_id?: string
+  /**
+   * Added By
+   */
+  added_by?: string
+  /**
+   * Added At
+   */
+  added_at?: string
+  /**
+   * Added Reason
+   */
+  added_reason?: string
+  /**
+   * Reviewed
+   */
+  reviewed?: boolean | null
+  /**
+   * Reviewed By
+   */
+  reviewed_by?: string
+  /**
+   * Reviewed At
+   */
+  reviewed_at?: string
+  /**
+   * Posted Rounds
+   */
+  posted_rounds?: Array<number>
+  /**
+   * Round1 Posted
+   */
+  round1_posted?: number | null
+}
+
+/**
  * BelowTheLineOut
  */
 export type BelowTheLineOut = {
@@ -1985,6 +2189,31 @@ export type CampAidLevel = {
    * Share
    */
   share: number
+}
+
+/**
+ * CampMinderAidOut
+ *
+ * Live camp aid CampMinder posted on this family x session. on_request False: no request holds it (D170's money:
+ * shown, never counted). session_cm_id 0: CampMinder's lines name no session the dashboard can tell.
+ */
+export type CampMinderAidOut = {
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Amount
+   */
+  amount: number
+  /**
+   * Posted On
+   */
+  posted_on?: string | null
+  /**
+   * On Request
+   */
+  on_request: boolean
 }
 
 /**
@@ -5136,6 +5365,183 @@ export type ForecastResponse = {
 }
 
 /**
+ * FormAnswerOut
+ *
+ * One program answer on the aid form: the option text as the family wrote it and its ask.
+ */
+export type FormAnswerOut = {
+  /**
+   * Program Key
+   */
+  program_key: string
+  /**
+   * Option Text
+   */
+  option_text: string
+  /**
+   * Ask
+   */
+  ask: number
+  /**
+   * Named Session Cm Id
+   */
+  named_session_cm_id?: number
+}
+
+/**
+ * FormIntakeCountsOut
+ */
+export type FormIntakeCountsOut = {
+  /**
+   * Needs Look
+   */
+  needs_look: number
+  /**
+   * Registration Only
+   */
+  registration_only: number
+  /**
+   * All
+   */
+  all: number
+}
+
+/**
+ * FormIntakeResponse
+ */
+export type FormIntakeResponse = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Rows
+   */
+  rows: Array<FormIntakeRowOut>
+  counts: FormIntakeCountsOut
+  /**
+   * Sessions
+   */
+  sessions: Array<IntakeSessionOut>
+  /**
+   * Grants Waiting For Camper
+   */
+  grants_waiting_for_camper: number
+  /**
+   * Campminder Aid On No Request
+   */
+  campminder_aid_on_no_request: number
+}
+
+/**
+ * FormIntakeRowOut
+ */
+export type FormIntakeRowOut = {
+  /**
+   * Key
+   */
+  key: string
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Household Label
+   */
+  household_label?: string
+  /**
+   * Household Tiebreak
+   */
+  household_tiebreak?: string
+  /**
+   * Person Cm Id
+   */
+  person_cm_id: number
+  /**
+   * Camper Name
+   */
+  camper_name?: string
+  /**
+   * Filed
+   */
+  filed: boolean
+  /**
+   * Registration Only
+   */
+  registration_only: boolean
+  /**
+   * Answers
+   */
+  answers?: Array<FormAnswerOut>
+  registration_ask?: RegistrationAskOut | null
+  /**
+   * Enrolled Session Cm Ids
+   */
+  enrolled_session_cm_ids?: Array<number>
+  /**
+   * Became
+   */
+  became?: Array<BecameOut>
+  /**
+   * Campminder Aid
+   */
+  campminder_aid?: Array<CampMinderAidOut>
+  /**
+   * Why Not
+   */
+  why_not?:
+    | 'no_household'
+    | 'registration_only'
+    | 'adult_not_registered'
+    | 'enrolled_no_request'
+    | 'not_enrolled'
+    | 'answer_edited'
+    | null
+  /**
+   * Gap Sessions
+   */
+  gap_sessions?: Array<GapSessionOut>
+  /**
+   * Can Add
+   */
+  can_add?: boolean
+  /**
+   * Needs Look
+   */
+  needs_look?: boolean
+  /**
+   * Look Reasons
+   */
+  look_reasons?: Array<
+    'campminder_aid' | 'enrolled_no_request' | 'session_unclear' | 'registration_ask_unreviewed'
+  >
+}
+
+/**
+ * FormIntakeSummaryOut
+ *
+ * The Requests band link's count (owner Q1-A), the same numbers /forms gives.
+ */
+export type FormIntakeSummaryOut = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Needs Look
+   */
+  needs_look: number
+  /**
+   * Registration Only
+   */
+  registration_only: number
+  /**
+   * All
+   */
+  all: number
+}
+
+/**
  * FormPersonOut
  *
  * A person who owns an income form on the page, named so a "Use <name>'s Form" button reads as a person.
@@ -5575,6 +5981,26 @@ export type GapItem = {
   state_distribution?: {
     [key: string]: number
   }
+}
+
+/**
+ * GapSessionOut
+ *
+ * A session Add a Request… may add: enrolled, held by no live request, nameable by a program.
+ */
+export type GapSessionOut = {
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Program Key
+   */
+  program_key: string
+  /**
+   * Campminder Amount
+   */
+  campminder_amount?: number | null
 }
 
 /**
@@ -7791,6 +8217,7 @@ export type HouseholdRequestOut = {
    * Duplicates Waiting
    */
   duplicates_waiting?: Array<DuplicateWaitingOut>
+  addition?: RequestAdditionOut | null
 }
 
 /**
@@ -8131,6 +8558,32 @@ export type IncrementalUpdateResponse = {
    * Cache Invalidated
    */
   cache_invalidated?: boolean
+}
+
+/**
+ * IntakeSessionOut
+ */
+export type IntakeSessionOut = {
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Name
+   */
+  name: string
+  /**
+   * Session Type
+   */
+  session_type: string
+  /**
+   * Program Key
+   */
+  program_key: string
+  /**
+   * Program Family
+   */
+  program_family?: string
 }
 
 /**
@@ -13298,6 +13751,22 @@ export type ReclassifyLineIn = {
 }
 
 /**
+ * RegistrationAskOut
+ *
+ * The registration form's "financial assistance" ask. `on` is its date once PR 4 mirrors it; None until then.
+ */
+export type RegistrationAskOut = {
+  /**
+   * Amount
+   */
+  amount: number
+  /**
+   * On
+   */
+  on?: string | null
+}
+
+/**
  * RegistrationMetricsResponse
  *
  * Response model for registration metrics endpoint.
@@ -13806,6 +14275,68 @@ export type ReportedLoadOut = {
    * Unchanged
    */
   unchanged: number
+}
+
+/**
+ * RequestAdditionOut
+ *
+ * The addition behind an added or rule-made request (Form intake's Became and the household request card share
+ * it): who added it, when and why; a rule-made one's Mark Reviewed; and the rounds posted on its request, so Remove…
+ * can say "Round N is posted: undo Posted first" before it is refused.
+ */
+export type RequestAdditionOut = {
+  /**
+   * Addition Id
+   */
+  addition_id: string
+  /**
+   * Origin
+   */
+  origin: 'form' | 'added' | 'registration_ask'
+  /**
+   * Added By
+   */
+  added_by: string
+  /**
+   * Added At
+   */
+  added_at: string
+  /**
+   * Added Reason
+   */
+  added_reason: string
+  /**
+   * Reviewed
+   */
+  reviewed: boolean | null
+  /**
+   * Reviewed By
+   */
+  reviewed_by?: string
+  /**
+   * Reviewed At
+   */
+  reviewed_at?: string
+  /**
+   * Posted Rounds
+   */
+  posted_rounds?: Array<number>
+  /**
+   * Live
+   */
+  live?: boolean
+  /**
+   * Retired By
+   */
+  retired_by?: string
+  /**
+   * Retired At
+   */
+  retired_at?: string
+  /**
+   * Retire Reason
+   */
+  retire_reason?: string
 }
 
 /**
@@ -18289,6 +18820,7 @@ export type TodayLineOut = {
     | 'not_reconciled'
     | 'to_reverse'
     | 'session_not_settled'
+    | 'form_intake'
     | 'duplicates'
     | 'cancel_reason'
     | 'to_place'
@@ -18315,7 +18847,8 @@ export type TodayLineOut = {
   /**
    * Item Kind
    */
-  item_kind: 'requests' | 'grants' | 'sections' | 'descriptions' | 'fields' | 'lines' | 'funders'
+  item_kind:
+    'requests' | 'grants' | 'sections' | 'descriptions' | 'fields' | 'lines' | 'funders' | 'campers'
   /**
    * Reasons
    */
@@ -18817,6 +19350,26 @@ export type UnconfirmedOut = {
    * Amount
    */
   amount: number
+}
+
+/**
+ * UnlistedResponse
+ *
+ * Find a Camper Not Listed…: enrolled campers on no row, in the row shape so Add a Request… works on them.
+ */
+export type UnlistedResponse = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Rows
+   */
+  rows: Array<FormIntakeRowOut>
+  /**
+   * Sessions
+   */
+  sessions: Array<IntakeSessionOut>
 }
 
 /**
@@ -20401,6 +20954,7 @@ export type HouseholdRequestOutWritable = {
    * Duplicates Waiting
    */
   duplicates_waiting?: Array<DuplicateWaitingOut>
+  addition?: RequestAdditionOut | null
 }
 
 /**
@@ -24787,6 +25341,177 @@ export type RetireAidRequestAdditionApiFinancialAidRequestsYearAdditionsAddition
 
 export type RetireAidRequestAdditionApiFinancialAidRequestsYearAdditionsAdditionIdRetirePostResponse =
   RetireAidRequestAdditionApiFinancialAidRequestsYearAdditionsAdditionIdRetirePostResponses[keyof RetireAidRequestAdditionApiFinancialAidRequestsYearAdditionsAdditionIdRetirePostResponses]
+
+export type ReviewAidRequestAdditionApiFinancialAidRequestsYearAdditionsAdditionIdReviewPostData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+    /**
+     * Addition Id
+     */
+    addition_id: string
+  }
+  query?: never
+  url: '/api/financial-aid/requests/{year}/additions/{addition_id}/review'
+}
+
+export type ReviewAidRequestAdditionApiFinancialAidRequestsYearAdditionsAdditionIdReviewPostErrors =
+  {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError
+  }
+
+export type ReviewAidRequestAdditionApiFinancialAidRequestsYearAdditionsAdditionIdReviewPostError =
+  ReviewAidRequestAdditionApiFinancialAidRequestsYearAdditionsAdditionIdReviewPostErrors[keyof ReviewAidRequestAdditionApiFinancialAidRequestsYearAdditionsAdditionIdReviewPostErrors]
+
+export type ReviewAidRequestAdditionApiFinancialAidRequestsYearAdditionsAdditionIdReviewPostResponses =
+  {
+    /**
+     * Successful Response
+     */
+    200: AddedRequestOut
+  }
+
+export type ReviewAidRequestAdditionApiFinancialAidRequestsYearAdditionsAdditionIdReviewPostResponse =
+  ReviewAidRequestAdditionApiFinancialAidRequestsYearAdditionsAdditionIdReviewPostResponses[keyof ReviewAidRequestAdditionApiFinancialAidRequestsYearAdditionsAdditionIdReviewPostResponses]
+
+export type GetFormIntakeApiFinancialAidIntakeYearFormsGetData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: never
+  url: '/api/financial-aid/intake/{year}/forms'
+}
+
+export type GetFormIntakeApiFinancialAidIntakeYearFormsGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetFormIntakeApiFinancialAidIntakeYearFormsGetError =
+  GetFormIntakeApiFinancialAidIntakeYearFormsGetErrors[keyof GetFormIntakeApiFinancialAidIntakeYearFormsGetErrors]
+
+export type GetFormIntakeApiFinancialAidIntakeYearFormsGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: FormIntakeResponse
+}
+
+export type GetFormIntakeApiFinancialAidIntakeYearFormsGetResponse =
+  GetFormIntakeApiFinancialAidIntakeYearFormsGetResponses[keyof GetFormIntakeApiFinancialAidIntakeYearFormsGetResponses]
+
+export type GetFormIntakeSummaryApiFinancialAidIntakeYearSummaryGetData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: never
+  url: '/api/financial-aid/intake/{year}/summary'
+}
+
+export type GetFormIntakeSummaryApiFinancialAidIntakeYearSummaryGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetFormIntakeSummaryApiFinancialAidIntakeYearSummaryGetError =
+  GetFormIntakeSummaryApiFinancialAidIntakeYearSummaryGetErrors[keyof GetFormIntakeSummaryApiFinancialAidIntakeYearSummaryGetErrors]
+
+export type GetFormIntakeSummaryApiFinancialAidIntakeYearSummaryGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: FormIntakeSummaryOut
+}
+
+export type GetFormIntakeSummaryApiFinancialAidIntakeYearSummaryGetResponse =
+  GetFormIntakeSummaryApiFinancialAidIntakeYearSummaryGetResponses[keyof GetFormIntakeSummaryApiFinancialAidIntakeYearSummaryGetResponses]
+
+export type GetAidOnNoRequestApiFinancialAidIntakeYearAidOnNoRequestGetData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: never
+  url: '/api/financial-aid/intake/{year}/aid-on-no-request'
+}
+
+export type GetAidOnNoRequestApiFinancialAidIntakeYearAidOnNoRequestGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetAidOnNoRequestApiFinancialAidIntakeYearAidOnNoRequestGetError =
+  GetAidOnNoRequestApiFinancialAidIntakeYearAidOnNoRequestGetErrors[keyof GetAidOnNoRequestApiFinancialAidIntakeYearAidOnNoRequestGetErrors]
+
+export type GetAidOnNoRequestApiFinancialAidIntakeYearAidOnNoRequestGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: AidOnNoRequestResponse
+}
+
+export type GetAidOnNoRequestApiFinancialAidIntakeYearAidOnNoRequestGetResponse =
+  GetAidOnNoRequestApiFinancialAidIntakeYearAidOnNoRequestGetResponses[keyof GetAidOnNoRequestApiFinancialAidIntakeYearAidOnNoRequestGetResponses]
+
+export type GetUnlistedCampersApiFinancialAidIntakeYearUnlistedGetData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: {
+    /**
+     * Q
+     */
+    q?: string
+  }
+  url: '/api/financial-aid/intake/{year}/unlisted'
+}
+
+export type GetUnlistedCampersApiFinancialAidIntakeYearUnlistedGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetUnlistedCampersApiFinancialAidIntakeYearUnlistedGetError =
+  GetUnlistedCampersApiFinancialAidIntakeYearUnlistedGetErrors[keyof GetUnlistedCampersApiFinancialAidIntakeYearUnlistedGetErrors]
+
+export type GetUnlistedCampersApiFinancialAidIntakeYearUnlistedGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: UnlistedResponse
+}
+
+export type GetUnlistedCampersApiFinancialAidIntakeYearUnlistedGetResponse =
+  GetUnlistedCampersApiFinancialAidIntakeYearUnlistedGetResponses[keyof GetUnlistedCampersApiFinancialAidIntakeYearUnlistedGetResponses]
 
 export type GetSeasonHistoryApiFinancialAidHistoryYearGetData = {
   body?: never

@@ -181,3 +181,17 @@ export function canvasMeasurer(font: string): TextMeasurer {
     return context ? context.measureText(text).width : null
   }
 }
+
+/**
+ * The rows a page draws under its filter (design-language rule 22): those the filter matches, plus the rows an action
+ * just moved out of it (`kept`), in the order they came, so a kept row stays where it was. Pass the same set to
+ * AidTable `keptKeys`, which draws them without counting them.
+ */
+export function keepInView<Row>(
+  rows: readonly Row[],
+  matches: (row: Row) => boolean,
+  kept: ReadonlySet<string>,
+  rowKey: (row: Row) => string
+): Row[] {
+  return rows.filter((row) => matches(row) || kept.has(rowKey(row)))
+}

@@ -16,6 +16,8 @@ const ROUTES: Record<string, Guard> = {
   index: 'open',
   today: 'open',
   requests: 'view',
+  // Requests › Form intake (PR 3; spec 71 §2.4): the Requests grid's read permission.
+  'requests/intake': 'view',
   'money/:tab?': 'viewOrGrantors',
   'season/:tab?': 'view',
   'reports/:tab?': 'open',

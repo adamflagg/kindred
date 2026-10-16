@@ -18,6 +18,10 @@ vi.mock('../../components/camperships/requests/RequestsGrid', () => ({
     )
   },
 }))
+// The band's Form intake link (PR 3) reads its own count; it plays no part in what this test pins.
+vi.mock('../../hooks/camperships/useAidIntake', () => ({
+  useAidIntakeSummary: () => ({ data: undefined }),
+}))
 vi.mock('../../hooks/camperships/useAidGrid', () => ({
   useAidGrid: () => ({
     data: { year: 2027, rules_version: 1, rows: [...GRID_ROWS] },

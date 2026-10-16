@@ -9,6 +9,7 @@ import {
   CS_FGRID_LABEL,
   CS_FGRID_PAYER,
   CS_FGRID_TWO,
+  CS_FIELD_CHECK,
   CS_FORM2,
   CS_FORM2_MAIN,
   CS_FORM2_SIDE,
@@ -120,6 +121,50 @@ export function EditorField({
       )}
       <div className={wide ? 'col-[2/-1] min-w-0' : 'min-w-0'}>{children}</div>
     </>
+  )
+}
+
+/**
+ * A checkbox field (rule 14): the caption in the label column, then the box and its sentence on one 30px row taking
+ * the rest of the row. Both the caption and the sentence are labels for the box. `off` keeps it on screen, disabled
+ * and dimmed, as any switched-off field.
+ */
+export function EditorCheck({
+  id,
+  label,
+  checked,
+  onChange,
+  off = false,
+  children,
+}: {
+  readonly id: string
+  readonly label: ReactNode
+  readonly checked: boolean
+  readonly onChange: (checked: boolean) => void
+  readonly off?: boolean
+  readonly children: ReactNode
+}) {
+  return (
+    <EditorField label={label} htmlFor={id} off={off} wide>
+      <label
+        className={`${CS_FIELD_CHECK} ${off ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+      >
+        <input
+          id={id}
+          type="checkbox"
+          className="accent-primary flex-none"
+          checked={checked}
+          disabled={off}
+          onChange={(event) => onChange(event.target.checked)}
+        />
+        <span
+          className="min-w-0 truncate"
+          title={typeof children === 'string' ? children : undefined}
+        >
+          {children}
+        </span>
+      </label>
+    </EditorField>
   )
 }
 

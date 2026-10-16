@@ -225,3 +225,29 @@ def test_a_pinned_twr_line_with_no_twr_request_counts_on_no_request_in_its_pool(
     out = aid_on_no_request([pinned], [Req("r1", HH, CAMPER, SUMMER)], [], pools.get)
     assert out["twr_pool"] == OffRequestAid(Decimal(250), 1)
     assert out[TOTAL] == OffRequestAid(Decimal(250), 1)
+
+
+# -- PR 3 (Q4-A): the same D170 money, one entry per live line, so Season's drill-in and Form intake agree -----------
+
+
+def test_the_lines_on_no_request_name_their_family_x_session_and_sum_to_the_line() -> None:
+    from api.services.financial_aid_campminder_money import aid_on_no_request_lines
+
+    lines = [
+        line(1, 1000001, "2258", session=SUMMER, person=1000011),
+        line(2, 1000001, "100", session=SUMMER, person=1000012),  # a sibling's money joins the family x session
+        line(3, 1000002, "350", session=WEEKEND),
+        line(4, 1000003, "75"),  # no session can be told, on a family with no request: TOTAL only
+        line(5, 1000004, "900", session=SUMMER),  # on the family's own request: not on the line
+        line(6, 1000005, "40", session=SUMMER, reversed_=True),
+    ]
+    requests = [Req("r1", 1000004, 1000041, SUMMER)]
+    found = aid_on_no_request_lines(lines, requests, [])
+    assert [(a.line.transaction_cm_id, a.group) for a in found] == [
+        (1, (1000001, SUMMER)),
+        (2, (1000001, SUMMER)),
+        (3, (1000002, WEEKEND)),
+        (4, None),
+    ]
+    total = on_no_request(lines, requests)[TOTAL]
+    assert total == OffRequestAid(sum((a.line.amount for a in found), Decimal(0)), 3)  # three households
