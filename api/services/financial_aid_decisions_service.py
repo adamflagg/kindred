@@ -105,7 +105,7 @@ from api.services.financial_aid_calc_inputs import (
     request_issues,
     to_application_inputs,
 )
-from api.services.financial_aid_campminder_money import aid_on_no_request
+from api.services.financial_aid_campminder_money import D170Reads, aid_on_no_request, family_camp_sessions
 from api.services.financial_aid_cancellations import (
     CANCEL_REASON_LABELS,
     TODO_CANCEL_REASON,
@@ -145,7 +145,9 @@ from api.services.financial_aid_intake_types import (
     STATUS_DUPLICATE,
     STATUS_UNMATCHED,
     STATUS_WITHDRAWN,
+    AdditionRecord,
     ApplicationRecord,
+    AttendeeRow,
     CorrectionRecord,
     EquityAnswers,
     PayerShareRecord,
@@ -370,6 +372,7 @@ class DecisionsStore(Protocol):
     async def fetch_decision_events(self, year: int) -> list[DecisionEvent]: ...
     async def fetch_request_events(self, request_id: str) -> list[DecisionEvent]: ...
     async def fetch_hold_events(self, year: int) -> list[HoldEvent]: ...
+    async def fetch_request_additions(self, year: int) -> list[AdditionRecord]: ...
     async def fetch_change_log(self, year: int, entity: str) -> list[LogRow]: ...
     async def fetch_request_hold_events(self, request_id: str) -> list[HoldEvent]: ...
     async def fetch_names(
@@ -379,6 +382,7 @@ class DecisionsStore(Protocol):
     async def fetch_fa_contacts(self, year: int) -> list[FaContact]: ...
     async def fetch_camp_lines(self, year: int, *, recorded_times: bool = False) -> list[CampLine]: ...
     async def fetch_household_links(self, year: int) -> list[Any]: ...
+    async def fetch_registered_attendees(self, year: int) -> list[AttendeeRow]: ...
     async def fetch_line_placements(self, year: int) -> dict[int, Placement]: ...
     async def fetch_line_splits(self, year: int) -> dict[int, tuple[SplitPart, ...]]: ...
     async def fetch_changed_since(self, year: int, floor: datetime, *, persons: bool) -> SinceRecords: ...
@@ -778,7 +782,7 @@ def _confirmation_out(c: Confirmation) -> ConfirmationOut:
     )
 
 
-def _enrollment_scope(requests: Iterable[RequestRecord]) -> tuple[set[int], set[int]]:
+def enrollment_scope(requests: Iterable[RequestRecord]) -> tuple[set[int], set[int]]:
     """Whose registrations a cancellation reads (SP10b-2): the camper of each live or withdrawn
     camper-level request, and the household of each household-level (Family Camp) one."""
     wanted = [r for r in requests if r.status in _LIVE or r.status == STATUS_WITHDRAWN]
@@ -1609,7 +1613,7 @@ class FinancialAidDecisionsService:
         households = {r.household_cm_id for r in requests}
         equity, enrollments, found = await asyncio.gather(
             self._store.fetch_equity_answers(year, people),
-            self._store.fetch_enrollment_states(year, *_enrollment_scope(requests)),
+            self._store.fetch_enrollment_states(year, *enrollment_scope(requests)),
             self._store.fetch_names(year, households, people) if names else _no_names(),
         )
         return _RequestSide(rules, applications, requests, corrections, equity, enrollments, found)
@@ -2325,15 +2329,26 @@ class FinancialAidDecisionsService:
 
     async def _aid_on_no_request(self, season: Season) -> dict[str, OffRequestAid] | None:
         """D170: the live season's CampMinder aid on no request, for the seasons the line is shown for; None elsewhere
-        and on a past date (a past read loads no live ledger). By the 2026 loader's own family x session rule, over
-        every request of the season, whatever its status, and the season's household links."""
+        and on a past date (a past read loads no live ledger). D170Reads' one read, as Form intake's drill-in and Add a
+        Request…'s guard make it: the 2026 loader's family x session rule over every request of the season, whatever
+        its status, but an added request staff removed; the season's household links; and #49's per-camper holding
+        (a request holds only its own camper's money: d170_person, from the registered attendees)."""
         if season.as_of is not None or season.year not in CAMPMINDER_AID_ON_NO_REQUEST_YEARS:
             return None
-        links = await self._store.fetch_household_links(season.year)
-        document = season.rules.document if season.rules is not None else None
-        return aid_on_no_request(
-            season.camp_lines, list(season.requests.values()), links, _session_pools(season.sessions, document).get
+        links, additions, attendees = await asyncio.gather(
+            self._store.fetch_household_links(season.year),
+            self._store.fetch_request_additions(season.year),
+            self._store.fetch_registered_attendees(season.year),
         )
+        document = season.rules.document if season.rules is not None else None
+        reads = D170Reads(
+            list(season.requests.values()),
+            additions,
+            links,
+            family_camp_sessions(season.sessions.values()),
+            attendees,
+        )
+        return aid_on_no_request(season.camp_lines, reads, _session_pools(season.sessions, document).get)
 
     def _budget(
         self,
@@ -2734,7 +2749,7 @@ class FinancialAidDecisionsService:
         events, cancels, enrollments, sessions = await asyncio.gather(
             self._store.fetch_request_events(request.id),
             self._store.fetch_request_cancellations(request.id),
-            self._store.fetch_enrollment_states(request.year, *_enrollment_scope([request])),
+            self._store.fetch_enrollment_states(request.year, *enrollment_scope([request])),
             self._store.fetch_sessions(request.year),
         )
         # "Reopen it first" only while Kindred's cancellation stands: once CampMinder cancels the enrollment too it
@@ -3111,7 +3126,7 @@ class FinancialAidDecisionsService:
             raise DecisionRefusedError(f"a {request.status} request can't be cancelled or reopened")
         events, enrollments, sessions = await asyncio.gather(
             self._store.fetch_request_cancellations(request.id),
-            self._store.fetch_enrollment_states(request.year, *_enrollment_scope([request])),
+            self._store.fetch_enrollment_states(request.year, *enrollment_scope([request])),
             self._store.fetch_sessions(request.year),
         )
         state = fold_cancellations(events).get(request.id, CancelState())
@@ -3158,7 +3173,7 @@ class FinancialAidDecisionsService:
             self._store.fetch_decision_events(year),
             self._store.fetch_cancellations(year),
             self._store.fetch_sessions(year),
-            self._store.fetch_enrollment_states(year, *_enrollment_scope(ticked)),
+            self._store.fetch_enrollment_states(year, *enrollment_scope(ticked)),
         )
         rounds = fold_rounds(events)
         cancelled = cancellations_by_request(ticked, cancel_events, enrollments, sessions)

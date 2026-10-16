@@ -199,7 +199,7 @@ function BelowTable({
               </tr>
               {line.key === CM_LINE && cmOpen && (
                 <AidFoldPanel span={4}>
-                  <AidOnNoRequestPanel />
+                  <AidOnNoRequestPanel pool={pool} />
                 </AidFoldPanel>
               )}
             </Fragment>

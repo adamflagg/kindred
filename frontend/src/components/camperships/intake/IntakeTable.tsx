@@ -4,7 +4,7 @@ import { Link } from 'react-router'
 import { POOL_NEGATIVE_INK } from '../kit/aidStyles'
 import { AidTable, type AidColumn, type AidCsvExtra } from '../kit/AidTable'
 import type { AidView } from '../kit/asOf'
-import { CS_LINK_CELL, CS_LINK_SM, CS_PANEL, CS_POPEN_META } from '../kit/csType'
+import { CS_LINK_CELL, CS_LINK_SM, CS_PANEL, CS_PMETA, CS_POPEN_META } from '../kit/csType'
 import { formatShortDate } from '../kit/dates'
 import { Money } from '../kit/MoneyText'
 import { AidHouseholdChip, AidNameWithChip } from '../kit/NameChips'
@@ -246,7 +246,7 @@ function IntakeDetail({
             </span>
           ))}
         </span>
-        <span className="text-xs">{next}</span>
+        <span className={CS_PMETA}>{next}</span>
       </div>
       <div className={CS_POPEN_META}>
         {requests.length === 0 ? 'No requests' : `Requests: ${requests.join(' · ')}`}

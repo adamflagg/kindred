@@ -2,7 +2,7 @@ import { Search } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { UNLISTED_MIN, useAidIntakeUnlisted } from '../../../hooks/camperships/useAidIntake'
-import { CS_BTN2, CS_POPEN_META, CS_SEARCH, CS_SMALL } from '../kit/csType'
+import { CS_BODY, CS_BTN2, CS_POPEN_META, CS_SEARCH, CS_SMALL } from '../kit/csType'
 import { EditorForm } from '../kit/EditorLayout'
 import { AidRowAction } from '../kit/RowAction'
 import { AddRequestEditor } from './AddRequestEditor'
@@ -45,7 +45,7 @@ export function FindUnlistedPanel({
   ) : (
     <div className="mt-0.5 flex flex-col gap-1">
       {rows.map((r) => (
-        <div key={r.key} className="flex items-center gap-2.5 text-[13.5px]">
+        <div key={r.key} className={`flex items-center gap-2.5 ${CS_BODY}`}>
           <b>{r.camper_name}</b>
           <span className={CS_POPEN_META}>
             {enrolledWords(r, names).text} ·{' '}

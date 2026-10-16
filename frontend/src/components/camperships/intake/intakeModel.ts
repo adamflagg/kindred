@@ -396,13 +396,20 @@ export const unreviewed = (row: FormIntakeRowOut): BecameOut | undefined =>
 
 // ── Remove… (the household card) ───────────────────────────────────────────────────────────────
 
-/** Retiring an addition with a posted round is refused (PR 1's guard): say so before the save. */
+/**
+ * Retiring an addition is refused (casework's retire) while a round is posted (PR 1's guard), and on a request
+ * cancelled in Kindred, whose cancellation would stay on it (scan row 3): say so before the save.
+ */
 export function removeBlock(b: {
   readonly posted_rounds?: readonly number[] | undefined
+  readonly cancelled?: boolean | undefined
 }): string | null {
   const posted = b.posted_rounds ?? []
-  if (posted.length === 0) return null
-  return `Round ${String(Math.max(...posted))} is posted: undo Posted first`
+  if (posted.length > 0) return `Round ${String(Math.max(...posted))} is posted: undo Posted first`
+  if (b.cancelled === true) {
+    return 'The request is cancelled: Reopen… it first (the cancellation would stay), then remove it'
+  }
+  return null
 }
 
 // ── Add a Request… ─────────────────────────────────────────────────────────────────────────────
@@ -476,6 +483,20 @@ export function targetFromRow(row: FormIntakeRowOut): AddTarget {
     startAsk:
       reg?.amount ?? (startSession === null ? null : (campminder.get(startSession) ?? null)),
   }
+}
+
+/**
+ * Season's `?pool=` scopes the D170 lines its "CampMinder aid on no request" opens onto, as it scopes the line's own
+ * figure: null (no pool selected) keeps every line; a pool keeps its sessions' lines; '' (No pool) keeps the lines on
+ * a session no program claims. A line with no session counts in Season's total only, so only "all" shows it.
+ */
+export function linesInPool(
+  lines: readonly AidOnNoRequestLineOut[],
+  pool: string | null
+): AidOnNoRequestLineOut[] {
+  if (pool === null) return [...lines]
+  if (pool === '') return lines.filter((l) => l.pool == null && l.session_cm_id > 0)
+  return lines.filter((l) => l.pool === pool)
 }
 
 /**

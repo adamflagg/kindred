@@ -30,9 +30,14 @@ def posted_rounds(rounds: Mapping[int, RoundState]) -> list[int]:
 
 
 def addition_view(
-    request: RequestRecord, by_key: Mapping[RequestKey, AdditionRecord], rounds: Mapping[int, RoundState]
+    request: RequestRecord,
+    by_key: Mapping[RequestKey, AdditionRecord],
+    rounds: Mapping[int, RoundState],
+    *,
+    cancelled: bool = False,
 ) -> RequestAdditionOut | None:
-    """The request's addition, or None for a request the aid form made (or one whose addition is not read)."""
+    """The request's addition, or None for a request the aid form made (or one whose addition is not read).
+    `cancelled`: the request is cancelled in Kindred, so Remove… is refused until Reopen… (casework's retire)."""
     origin = request_origin(request.program_option_key)
     addition = by_key.get(request.key) if origin != ORIGIN_FORM else None
     if addition is None:
@@ -48,6 +53,7 @@ def addition_view(
         reviewed_by=addition.reviewed_by,
         reviewed_at=addition.reviewed_at,
         posted_rounds=posted_rounds(rounds),
+        cancelled=cancelled,
         live=addition.live,
         retired_by=addition.retired_by,
         retired_at=addition.retired_at,

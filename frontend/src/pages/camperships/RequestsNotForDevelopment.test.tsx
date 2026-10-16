@@ -58,3 +58,21 @@ describe("the /aid/requests route's fallback in App.tsx", () => {
     )
   })
 })
+
+describe('every Requests route gives the development persona the card, not a dead end', () => {
+  const app = readFileSync(resolve(__dirname, '../../App.tsx'), 'utf-8')
+  // Each `path="requests…"` route's own RequirePermission opening tag.
+  const gates = [
+    ...app.matchAll(/path="(requests[^"]*)"\s*element=\{\s*(<RequirePermission[^>]*>)/g),
+  ].map((m) => [m[1], m[2]] as const)
+
+  it('finds the Requests routes, Form intake among them', () => {
+    expect(gates.map(([path]) => path)).toEqual(
+      expect.arrayContaining(['requests', 'requests/intake'])
+    )
+  })
+
+  it.each(gates)('%s falls back to REQUESTS_FALLBACK', (_path, gate) => {
+    expect(gate).toMatch(/fallback=\{REQUESTS_FALLBACK\}/)
+  })
+})

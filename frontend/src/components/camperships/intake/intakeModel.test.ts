@@ -48,6 +48,7 @@ import {
   targetFromLine,
   targetFromRow,
   whyWords,
+  linesInPool,
 } from './intakeModel'
 
 const names = sessionIndex(SESSIONS)
@@ -262,6 +263,17 @@ describe('Remove… (the household card)', () => {
     expect(removeBlock(CHEN_HH.became![0]!)).toBeNull()
   })
 
+  it('refuses up front on a request cancelled in Kindred: reopen it first, or the cancellation stays', () => {
+    const refusal =
+      'The request is cancelled: Reopen… it first (the cancellation would stay), then remove it'
+    expect(removeBlock({ posted_rounds: [], cancelled: true })).toBe(refusal)
+    expect(removeBlock({ posted_rounds: [], cancelled: false })).toBeNull()
+    // A posted round is named first: Undo Posted is the first step either way.
+    expect(removeBlock({ posted_rounds: [1], cancelled: true })).toBe(
+      'Round 1 is posted: undo Posted first'
+    )
+  })
+
   it('reads S2 as the tiny form', () => {
     // A guard on the fixture's session table, which the cells read.
     expect(names.get(S2)?.name).toBe('Session 2')
@@ -314,5 +326,33 @@ describe('the visual audit (2026-10-15)', () => {
     const effects = addEffects(targetFromRow(RILEY), draft, names, 'Camp & Quest')
     const blank = effects.find((e) => `${e.lead}${e.rest}`.startsWith('No aid form'))
     expect(blank).toMatchObject({ lead: '', rest: 'No aid form: a blank application is made' })
+  })
+})
+
+describe("linesInPool: Season's ?pool= scopes the D170 lines it opens onto", () => {
+  const base = aidOnNoRequestRead().lines[0]!
+  const line = (row: string, pool: string | null, session = 1000103) => ({
+    ...base,
+    row_key: row,
+    pool,
+    session_cm_id: session,
+  })
+  const lines = [
+    line('a', 'camp_pool'),
+    line('b', 'weekend_pool'),
+    line('c', null), // a session no program claims: Season's No pool
+    line('d', null, 0), // no session can be told: Season's TOTAL only
+  ]
+  const keys = (pool: string | null) => linesInPool(lines, pool).map((l) => l.row_key)
+
+  it('keeps every line with no pool selected', () => {
+    expect(keys(null)).toEqual(['a', 'b', 'c', 'd'])
+  })
+  it("keeps only the selected pool's lines", () => {
+    expect(keys('camp_pool')).toEqual(['a'])
+    expect(keys('weekend_pool')).toEqual(['b'])
+  })
+  it('keeps the No pool line its sessions-no-program-claims money, never the money with no session', () => {
+    expect(keys('')).toEqual(['c'])
   })
 })

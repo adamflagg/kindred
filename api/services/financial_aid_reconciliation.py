@@ -77,6 +77,7 @@ from bunking.financial_aid.decisions import (
     RoundView,
 )
 from bunking.financial_aid.decisions.budget import counted_part
+from bunking.financial_aid.decisions.rounds import ADDED_AT_CAMPMINDER
 from bunking.financial_aid.money import ZERO, dollars
 from bunking.logging_config import get_logger
 
@@ -724,9 +725,10 @@ def _status(awaiting: bool, held: Decimal, due: Decimal) -> ConfirmationStatus:
     return "short" if held < due else "over"
 
 
-# Locks made from money already in CampMinder: the ledger's own tick (D78) and the tick a registrar's
-# placement makes (D81, SP11-rest). Neither waits for tonight's sync.
-FROM_THE_LEDGER: Final = frozenset({"ledger", "placement"})
+# Locks made from money already in CampMinder: the ledger's own tick (D78), the tick a registrar's placement makes
+# (D81, SP11-rest), and a Round 1 Add a Request… recorded at CampMinder's posted amount (owner Q5-A). None of them
+# waits for tonight's sync.
+FROM_THE_LEDGER: Final = frozenset({"ledger", "placement", ADDED_AT_CAMPMINDER})
 
 
 def _awaiting(state: RoundState | None, synced_at: datetime | None) -> bool:

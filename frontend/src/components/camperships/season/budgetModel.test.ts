@@ -523,6 +523,13 @@ describe('CampMinder aid on no request (D170)', () => {
     })
     expect(NO_REQUEST_AID_TITLE).toContain('not in Committed or Remaining')
     expect(NO_REQUEST_AID_TITLE).toContain('2026 only')
+    // Follow-up A to PR 3: the line says where a camper's own money gets recorded, plainly, and promises no Round 1
+    // for money no one camper holds (a household line two siblings share).
+    expect(NO_REQUEST_AID_TITLE).toContain(
+      "Add a Request… can record a camper's own posted money as their Round 1"
+    )
+    expect(NO_REQUEST_AID_TITLE).not.toContain('can now')
+    expect(NO_REQUEST_AID_TITLE).not.toMatch(/record it:/)
   })
 
   it("shows a pool's own share after its outside grants", () => {

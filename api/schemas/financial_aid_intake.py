@@ -201,8 +201,8 @@ class AdditionCreate(BaseModel):
     ask: float = Field(ge=0, le=1_000_000)
     reason: str = Field(default="", max_length=2000)
     # Owner Q5-A (PR 3): "Record CampMinder's $X as Round 1, posted". The amount the screen showed; the service refuses
-    # it unless it is, to the cent, CampMinder's live camp aid on that family x session that no request holds. None:
-    # the request only.
+    # it unless it is, to the cent, CampMinder's live camp aid on that family x session that no request holds and that
+    # is this camper's (a household request: the household's). None: the request only.
     round1_campminder: float | None = Field(default=None, gt=0, le=1_000_000)
 
 

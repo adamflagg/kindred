@@ -739,8 +739,8 @@ async def add_aid_request(
 ) -> AddedRequestOut:
     """Add a request the aid form never named (a winter retreat or B*Mitzvah request beside a summer one, or a
     Family Camp household's with person 0): stored in aid_request_additions, so intake keeps it. With
-    `round1_campminder` (owner Q5-A) the same operation records CampMinder's posted money on that family x session as
-    the request's Round 1, posted."""
+    `round1_campminder` (owner Q5-A) the same operation records CampMinder's posted money on that family x session, the
+    camper's own (or the household's), as the request's Round 1, posted."""
     try:
         added = await _casework().add_request(
             year,
@@ -843,8 +843,8 @@ async def get_form_intake_summary(year: _Year, user: AuthUser = _VIEW) -> FormIn
 
 @router.get("/intake/{year}/aid-on-no-request", response_model=AidOnNoRequestResponse)
 async def get_aid_on_no_request(year: _Year, user: AuthUser = _VIEW) -> AidOnNoRequestResponse:
-    """Season's "CampMinder aid on no request" (D170) opened in place (owner Q4-A): one line per family x session,
-    each with what Add a Request… pre-fills. Its total is Season's figure."""
+    """Season's "CampMinder aid on no request" (D170) opened in place (owner Q4-A): one line per Form intake row x
+    session, each with what Add a Request… pre-fills. Its total is Season's figure."""
     return await _form_intake().aid_on_no_request(year)
 
 

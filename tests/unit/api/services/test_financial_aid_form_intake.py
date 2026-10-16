@@ -16,7 +16,7 @@ import pytest
 
 from api.schemas.financial_aid_form_intake import FormIntakeResponse, FormIntakeRowOut
 from api.services.financial_aid_addition_view import addition_view, additions_by_request_key
-from api.services.financial_aid_campminder_money import aid_on_no_request
+from api.services.financial_aid_campminder_money import D170Reads, aid_on_no_request, family_camp_sessions
 from api.services.financial_aid_cancellations import CancelEvent
 from api.services.financial_aid_casework_service import FinancialAidCaseworkService
 from api.services.financial_aid_form_intake import FormIntakeService
@@ -342,7 +342,10 @@ async def test_the_d170_lines_are_one_per_family_x_session_with_the_add_prefill_
         True,
         "camp_pool",
     )
-    season = aid_on_no_request(store.camp_lines, list(store.requests.values()), [], lambda s: None)
+    reads = D170Reads(
+        list(store.requests.values()), [], [], family_camp_sessions(store.sessions), list(store.attendees)
+    )
+    season = aid_on_no_request(store.camp_lines, reads, lambda s: None)
     assert out.total == float(season[TOTAL].amount) == 2758.0
     assert out.families == season[TOTAL].families == 2
     assert (await forms(store)).campminder_aid_on_no_request == out.total
@@ -558,3 +561,317 @@ async def test_a_household_rows_enrolled_lists_its_family_camp_weekends_only() -
         lines=[camp(59000002, OKAFOR, "458", session=FAMILY_CAMP_6)],
     )
     assert row(await forms(store), OKAFOR, 0).enrolled_session_cm_ids == [FAMILY_CAMP_6]
+
+
+# -- Follow-up A (coordinator ruling): siblings in one session. Form intake's amber cell, its gap's campminder_amount,
+#    the D170 drill-in line's prefill and Add a Request…'s guard all offer the SAME per-camper money: the lines credited
+#    to that camper, plus lines credited to no camper only when that camper is the household's one camper enrolled
+#    (status 2) in the session. A household (Family Camp) row keeps the household x session's money. ---------------
+
+
+async def _siblings(*lines: CampLine, samuel_enrolled: bool = True) -> FakeAidStore:
+    """Emma and Samuel Johnson asked at registration only, and are both enrolled in Taste of Camp 1 (unless not)."""
+    return await intake(
+        fa_row(EMMA, JOHNSON, registration_ask=1500.0),
+        fa_row(SAMUEL, JOHNSON, registration_ask=1500.0),
+        attendees=[
+            *enrolled(EMMA, JOHNSON, TASTE_1),
+            *enrolled(SAMUEL, JOHNSON, TASTE_1, status=2 if samuel_enrolled else 4),
+        ],
+        lines=lines,
+    )
+
+
+def _offered(r: FormIntakeRowOut) -> list[tuple[int, float | None]]:
+    return [(g.session_cm_id, g.campminder_amount) for g in r.gap_sessions]
+
+
+def _amber(r: FormIntakeRowOut) -> list[tuple[int, float]]:
+    return [(a.session_cm_id, a.amount) for a in r.campminder_aid if not a.on_request]
+
+
+@pytest.mark.asyncio
+async def test_two_credited_siblings_in_one_session_are_each_offered_their_own_money() -> None:
+    store = await _siblings(
+        camp(59000011, JOHNSON, "1000", session=TASTE_1, person=EMMA),
+        camp(59000012, JOHNSON, "500", session=TASTE_1, person=SAMUEL),
+    )
+    out = await forms(store)
+    emma, samuel = row(out, JOHNSON, EMMA), row(out, JOHNSON, SAMUEL)
+    assert (_amber(emma), _offered(emma)) == ([(TASTE_1, 1000.0)], [(TASTE_1, 1000.0)])
+    assert (_amber(samuel), _offered(samuel)) == ([(TASTE_1, 500.0)], [(TASTE_1, 500.0)])
+
+    drill = await FormIntakeService(store).aid_on_no_request(YEAR)
+    assert sorted(
+        (x.person_cm_id, x.session_cm_id, x.amount, x.prefill.person_cm_id, x.prefill.round1_campminder)
+        for x in drill.lines
+    ) == [(EMMA, TASTE_1, 1000.0, EMMA, 1000.0), (SAMUEL, TASTE_1, 500.0, SAMUEL, 500.0)]
+    assert (drill.total, drill.families) == (1500.0, 1)
+
+
+@pytest.mark.asyncio
+async def test_money_credited_to_no_camper_with_two_enrolled_siblings_is_offered_to_neither() -> None:
+    store = await _siblings(camp(59000013, JOHNSON, "700", session=TASTE_1))
+    out = await forms(store)
+    emma, samuel = row(out, JOHNSON, EMMA), row(out, JOHNSON, SAMUEL)
+    assert (_amber(emma), _offered(emma)) == ([], [(TASTE_1, None)])
+    assert (_amber(samuel), _offered(samuel)) == ([], [(TASTE_1, None)])
+    assert emma.can_add  # Add a Request… still works, with no Round 1 box
+    assert samuel.can_add
+
+    # It stays on D170: the line is the household's, and Add a Request… there offers no Round 1.
+    drill = await FormIntakeService(store).aid_on_no_request(YEAR)
+    (line,) = drill.lines
+    assert (line.person_cm_id, line.session_cm_id, line.amount, line.prefill.round1_campminder) == (
+        0,
+        TASTE_1,
+        700.0,
+        None,
+    )
+    assert drill.total == out.campminder_aid_on_no_request == 700.0
+
+
+@pytest.mark.asyncio
+async def test_money_credited_to_no_camper_is_offered_to_the_one_enrolled_camper() -> None:
+    store = await _siblings(camp(59000014, JOHNSON, "700", session=TASTE_1), samuel_enrolled=False)
+    emma = row(await forms(store), JOHNSON, EMMA)
+    assert (_amber(emma), _offered(emma)) == ([(TASTE_1, 700.0)], [(TASTE_1, 700.0)])
+    (line,) = (await FormIntakeService(store).aid_on_no_request(YEAR)).lines
+    assert (line.person_cm_id, line.prefill.person_cm_id, line.prefill.round1_campminder) == (EMMA, EMMA, 700.0)
+
+
+@pytest.mark.asyncio
+async def test_a_household_row_keeps_the_household_x_session_money() -> None:
+    # Family Camp: CampMinder's lines on the weekend, whichever member they credit, are the household's request's.
+    store = await intake(
+        attendees=[*enrolled(1000061, OKAFOR, FAMILY_CAMP_6), *enrolled(1000062, OKAFOR, FAMILY_CAMP_6)],
+        lines=[
+            camp(59000015, OKAFOR, "300", session=FAMILY_CAMP_6, person=1000061),
+            camp(59000016, OKAFOR, "158", session=FAMILY_CAMP_6),
+        ],
+    )
+    household = row(await forms(store), OKAFOR, 0)
+    assert (_amber(household), _offered(household)) == ([(FAMILY_CAMP_6, 458.0)], [(FAMILY_CAMP_6, 458.0)])
+    (line,) = (await FormIntakeService(store).aid_on_no_request(YEAR)).lines
+    assert (line.person_cm_id, line.amount, line.prefill.round1_campminder) == (0, 458.0, 458.0)
+
+
+# -- #49 (owner ruling: PER CAMPER). A request holds only its own camper's D170 money (d170_person). A sibling's credited
+#    money stays on D170 until the sibling's own request exists, and their row keeps offering it. Money credited to no
+#    camper is the household's: any request on the family x session holds it, unless the household's one enrolled
+#    camper is the only one it can be, when only that camper's request does. ---------------------------------------
+
+
+def _on_request(r: FormIntakeRowOut) -> list[tuple[int, float]]:
+    return [(a.session_cm_id, a.amount) for a in r.campminder_aid if a.on_request]
+
+
+async def _drill(store: FakeAidStore) -> tuple[float, list[tuple[int, int, float]]]:
+    out = await FormIntakeService(store).aid_on_no_request(YEAR)
+    return out.total, sorted((x.person_cm_id, x.session_cm_id, x.amount) for x in out.lines)
+
+
+@pytest.mark.asyncio
+async def test_a_siblings_credited_money_stays_on_d170_once_the_other_sibling_has_a_request() -> None:
+    store = await _siblings(
+        camp(59000021, JOHNSON, "1000", session=TASTE_1, person=EMMA),
+        camp(59000022, JOHNSON, "500", session=TASTE_1, person=SAMUEL),
+    )
+    await FinancialAidCaseworkService(store).add_request(YEAR, JOHNSON, EMMA, TASTE_1, 1000.0, "By phone", ACTOR)
+
+    out = await forms(store)
+    emma, samuel = row(out, JOHNSON, EMMA), row(out, JOHNSON, SAMUEL)
+    assert (_amber(emma), _on_request(emma)) == ([], [(TASTE_1, 1000.0)])  # only her own money is on her request
+    assert (_amber(samuel), _offered(samuel)) == ([(TASTE_1, 500.0)], [(TASTE_1, 500.0)])
+    assert await _drill(store) == (500.0, [(SAMUEL, TASTE_1, 500.0)])
+    assert out.campminder_aid_on_no_request == 500.0
+
+
+@pytest.mark.asyncio
+async def test_a_siblings_credited_money_stays_on_d170_after_q5_records_the_other_siblings_round_1() -> None:
+    store = await _siblings(
+        camp(59000023, JOHNSON, "1000", session=TASTE_1, person=EMMA),
+        camp(59000024, JOHNSON, "500", session=TASTE_1, person=SAMUEL),
+    )
+    casework = FinancialAidCaseworkService(store)
+    await casework.add_request(YEAR, JOHNSON, EMMA, TASTE_1, 1000.0, "By phone", ACTOR, round1_campminder=1000.0)
+
+    samuel = row(await forms(store), JOHNSON, SAMUEL)
+    assert (_amber(samuel), _offered(samuel)) == ([(TASTE_1, 500.0)], [(TASTE_1, 500.0)])
+    assert await _drill(store) == (500.0, [(SAMUEL, TASTE_1, 500.0)])
+    # Samuel's own money can still be recorded, and then D170 is empty.
+    await casework.add_request(YEAR, JOHNSON, SAMUEL, TASTE_1, 500.0, "By phone", ACTOR, round1_campminder=500.0)
+    assert await _drill(store) == (0.0, [])
+
+
+@pytest.mark.asyncio
+async def test_money_credited_to_no_camper_with_two_enrolled_siblings_is_held_once_either_has_a_request() -> None:
+    for person in (EMMA, SAMUEL):
+        store = await _siblings(camp(59000025, JOHNSON, "700", session=TASTE_1))
+        await FinancialAidCaseworkService(store).add_request(YEAR, JOHNSON, person, TASTE_1, 700.0, "By phone", ACTOR)
+        out = await forms(store)
+        assert [_amber(row(out, JOHNSON, p)) for p in (EMMA, SAMUEL)] == [[], []]
+        assert await _drill(store) == (0.0, [])
+
+
+@pytest.mark.asyncio
+async def test_money_credited_to_no_camper_with_one_enrolled_camper_is_held_only_by_that_campers_request() -> None:
+    from dataclasses import replace
+
+    store = await _siblings(camp(59000026, JOHNSON, "700", session=TASTE_1), samuel_enrolled=False)
+    await FinancialAidCaseworkService(store).add_request(YEAR, JOHNSON, EMMA, TASTE_1, 700.0, "By phone", ACTOR)
+    (emmas,) = store.requests.values()
+    # Samuel (not enrolled there) holding a request on that session does not take Emma's money.
+    store.requests = {"req0000000000s1": replace(emmas, id="req0000000000s1", person_cm_id=SAMUEL)}
+    assert await _drill(store) == (700.0, [(EMMA, TASTE_1, 700.0)])
+    assert _amber(row(await forms(store), JOHNSON, EMMA)) == [(TASTE_1, 700.0)]
+    # Emma's own request does.
+    store.requests[emmas.id] = emmas
+    assert await _drill(store) == (0.0, [])
+    assert _on_request(row(await forms(store), JOHNSON, EMMA)) == [(TASTE_1, 700.0)]
+
+
+@pytest.mark.asyncio
+async def test_a_family_camp_household_request_still_holds_the_household_x_session_money() -> None:
+    store = await intake(
+        attendees=[*enrolled(1000061, OKAFOR, FAMILY_CAMP_6), *enrolled(1000062, OKAFOR, FAMILY_CAMP_6)],
+        lines=[
+            camp(59000027, OKAFOR, "300", session=FAMILY_CAMP_6, person=1000061),
+            camp(59000028, OKAFOR, "158", session=FAMILY_CAMP_6),
+        ],
+    )
+    await FinancialAidCaseworkService(store).add_request(YEAR, OKAFOR, 0, FAMILY_CAMP_6, 458.0, "By phone", ACTOR)
+    household = row(await forms(store), OKAFOR, 0)
+    assert (_amber(household), _on_request(household)) == ([], [(FAMILY_CAMP_6, 458.0)])
+    assert await _drill(store) == (0.0, [])
+
+
+# -- Scan row 2 (coordinator ruling): a camper is offered their own money across the linked family (aid_household_links),
+#    exactly what Add a Request…'s guard accepts. -------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_camper_is_offered_their_money_across_the_linked_family_and_the_guard_accepts_it() -> None:
+    from api.services.financial_aid_to_place import LinkRow
+
+    linked = 1000009  # CampMinder's second household id for the Johnsons
+    store = await _siblings(
+        camp(59000029, JOHNSON, "1000", session=TASTE_1, person=EMMA),
+        camp(59000030, linked, "258", session=TASTE_1, person=EMMA),
+    )
+    store.links = [LinkRow(JOHNSON, "fam-johnson", False, None), LinkRow(linked, "fam-johnson", False, None)]
+    out = await forms(store)
+    emma = row(out, JOHNSON, EMMA)
+    assert (_amber(emma), _offered(emma)) == ([(TASTE_1, 1258.0)], [(TASTE_1, 1258.0)])
+    assert [r.key for r in out.rows if r.person_cm_id == EMMA] == [emma.key]  # one row, not one per household id
+    (line,) = (await FormIntakeService(store).aid_on_no_request(YEAR)).lines
+    assert (line.row_key, line.amount, line.prefill.round1_campminder) == (emma.key, 1258.0, 1258.0)
+
+    added = await FinancialAidCaseworkService(store).add_request(
+        YEAR, JOHNSON, EMMA, TASTE_1, 1258.0, "By phone", ACTOR, round1_campminder=1258.0
+    )
+    assert added.addition.round1_posted == 1258.0
+    assert await _drill(store) == (0.0, [])
+
+
+@pytest.mark.asyncio
+async def test_a_campers_money_held_under_the_linked_household_shows_on_their_own_requests_cell() -> None:
+    """The money is held by the camper's own request, but on the linked household's family x session (its own
+    household has a request there too): the camper's row reads its on-request cell across the linked family."""
+    from api.services.financial_aid_to_place import LinkRow
+
+    linked = 1000009  # CampMinder's second household id for the Johnsons, where Samuel is filed
+    store = await intake(
+        fa_row(EMMA, JOHNSON, registration_ask=1500.0),
+        fa_row(SAMUEL, linked, registration_ask=1500.0),
+        attendees=[*enrolled(EMMA, JOHNSON, TASTE_1), *enrolled(SAMUEL, linked, TASTE_1)],
+        lines=[camp(59000031, linked, "1000", session=TASTE_1, person=EMMA)],
+    )
+    store.links = [LinkRow(JOHNSON, "fam-johnson", False, None), LinkRow(linked, "fam-johnson", False, None)]
+    casework = FinancialAidCaseworkService(store)
+    await casework.add_request(YEAR, JOHNSON, EMMA, TASTE_1, 1000.0, "By phone", ACTOR)
+    await casework.add_request(YEAR, linked, SAMUEL, TASTE_1, 500.0, "By phone", ACTOR)
+    out = await forms(store)
+    emma, samuel = row(out, JOHNSON, EMMA), row(out, linked, SAMUEL)
+    assert (_amber(emma), _on_request(emma)) == ([], [(TASTE_1, 1000.0)])
+    assert (_amber(samuel), _on_request(samuel)) == ([], [])
+    assert await _drill(store) == (0.0, [])
+
+
+# -- Follow-up A (approved polish): the Became cell lists live requests first, then closed ones, each in date order ----
+
+
+@pytest.mark.asyncio
+async def test_became_lists_live_requests_first_then_closed_ones_each_in_session_date_order() -> None:
+    from dataclasses import replace
+
+    quest = 1000106  # River `n` Ridge Quest, 2027-07-05
+    store = await intake(
+        fa_row(EMMA, JOHNSON, summer="Session 2", summer_ask=3000.0),
+        attendees=enrolled(EMMA, JOHNSON, SESSION_2, TASTE_1, TASTE_2, quest),
+    )
+    (base,) = store.requests.values()
+    made = {
+        "req0000000000a1": replace(base, session_cm_id=TASTE_2, program_option_key="taste 2"),  # 07-25
+        "req0000000000a2": replace(base, status="withdrawn", session_cm_id=TASTE_1, program_option_key="t1"),  # 06-13
+        "req0000000000a3": replace(base, status="duplicate", session_cm_id=TASTE_2, program_option_key="t2b"),
+        "req0000000000a4": replace(base, status="duplicate_pending", session_cm_id=quest, program_option_key="q"),
+        "req0000000000a5": replace(base, session_cm_id=TASTE_1, program_option_key="taste 1"),  # 06-13
+        "req0000000000a6": replace(
+            base,
+            status="unmatched_session",
+            session_cm_id=0,
+            program_option_key="session 2 or so",
+            flags=({"code": "unmatched_session", "detail": {"candidates": [SESSION_2]}},),
+        ),
+    }
+    store.requests = {rid: replace(r, id=rid) for rid, r in made.items()} | {base.id: base}
+    store.cancel_events = [  # the form's own Session 2 request (06-20), cancelled in Kindred
+        CancelEvent(
+            id="can000000000001",
+            request_id=base.id,
+            kind="cancel",
+            created=datetime(YEAR, 3, 1, tzinfo=UTC),
+            reason="schedule",
+            note="",
+            in_kindred=True,
+        )
+    ]
+    emma = row(await forms(store), JOHNSON, EMMA)
+    assert [(b.status, b.session_cm_id or b.candidate_session_cm_ids[0]) for b in emma.became] == [
+        ("active", TASTE_1),
+        ("session_unclear", SESSION_2),
+        ("duplicate_pending", quest),
+        ("active", TASTE_2),
+        ("withdrawn", TASTE_1),
+        ("cancelled", SESSION_2),
+        ("duplicate", TASTE_2),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_became_lists_a_request_with_no_session_and_no_candidates_after_the_dated_ones_of_its_group() -> None:
+    """Session date order puts what has no date last: a session-less request with no candidate session sorts after
+    every dated request of its group (live, or closed), never first."""
+    from dataclasses import replace
+
+    store = await intake(
+        fa_row(EMMA, JOHNSON, summer="Session 2", summer_ask=3000.0),
+        attendees=enrolled(EMMA, JOHNSON, SESSION_2, TASTE_1),
+    )
+    (base,) = store.requests.values()
+    made = {
+        "req0000000000b1": replace(
+            base, status="unmatched_session", session_cm_id=0, program_option_key="some session", flags=()
+        ),
+        "req0000000000b2": replace(base, status="withdrawn", session_cm_id=0, program_option_key="old", flags=()),
+        "req0000000000b3": replace(base, status="withdrawn", session_cm_id=TASTE_1, program_option_key="t1"),
+    }
+    store.requests = {rid: replace(r, id=rid) for rid, r in made.items()} | {base.id: base}
+    emma = row(await forms(store), JOHNSON, EMMA)
+    assert [(b.status, b.session_cm_id) for b in emma.became] == [
+        ("active", SESSION_2),
+        ("session_unclear", 0),
+        ("withdrawn", TASTE_1),
+        ("withdrawn", 0),
+    ]
