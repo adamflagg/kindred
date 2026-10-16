@@ -346,7 +346,10 @@ export default function TrendsOverview() {
               height={250}
               headerRight={
                 scopeHasTeens ? (
-                  <label className="flex cursor-pointer items-center gap-1.5 text-xs">
+                  <label
+                    data-app-chrome
+                    className="flex cursor-pointer items-center gap-1.5 text-xs"
+                  >
                     <input
                       type="checkbox"
                       checked={includeTeenPipeline}

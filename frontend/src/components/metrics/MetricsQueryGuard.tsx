@@ -34,7 +34,7 @@ export function MetricsLoadError({
         </span>
       </div>
       {onRetry && (
-        <button type="button" className={CS_BTN} onClick={onRetry}>
+        <button type="button" data-app-chrome className={CS_BTN} onClick={onRetry}>
           Try again
         </button>
       )}

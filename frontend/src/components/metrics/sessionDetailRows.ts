@@ -82,17 +82,23 @@ export function buildSessionDetailRows(
   return rows
 }
 
-/** The Total row: sums of the column; utilization is over the sessions that have a capacity. */
+/**
+ * The Total row: sums of the column; utilization is over the sessions that have a capacity. Delta is
+ * Total Enrolled minus the prior total, so a session new this year (no prior, "—" in its own Delta)
+ * still counts toward the change, as the PR 10 mock's total does.
+ */
 export function sessionDetailTotals(rows: readonly SessionDetailRow[]) {
   const sum = (pick: (r: SessionDetailRow) => number | null) =>
     rows.reduce((acc, r) => acc + (pick(r) ?? 0), 0)
   const capacity = sum((r) => r.capacity)
   const enrolledWithCapacity = sum((r) => (r.capacity ? r.enrolled : null))
+  const enrolled = sum((r) => r.enrolled)
+  const priorEnrolled = sum((r) => r.priorEnrolled)
   return {
-    enrolled: sum((r) => r.enrolled),
+    enrolled,
     capacity,
     utilization: capacity > 0 ? (enrolledWithCapacity / capacity) * 100 : null,
-    priorEnrolled: sum((r) => r.priorEnrolled),
-    delta: sum((r) => r.delta),
+    priorEnrolled,
+    delta: enrolled - priorEnrolled,
   }
 }

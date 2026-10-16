@@ -202,7 +202,7 @@ vi.mock('../../../utils/chartFormatters', () => ({
   priorYearDailyDateLabel: () => null,
 }))
 
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import CancellationVelocityPage from './CancellationVelocityPage'
 
 describe('CancellationVelocityPage cards when the prior year has no matching session', () => {
@@ -465,6 +465,29 @@ describe('CancellationVelocityPage priority-day note (decision 45)', () => {
       const row = screen.getByText('Session 1').closest('tr')!
       expect(within(row).getByText('updates tomorrow')).toBeInTheDocument()
       expect(within(row).queryByText('+3')).not.toBeInTheDocument()
+    })
+
+    it('leaves the pending By Session delta empty in Copy and the CSV', async () => {
+      Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } })
+      useComparison({
+        ...comparedData,
+        today_day_offset: 0,
+        current_day_offset: 0,
+        prior_day_offset: 1,
+      })
+      mockChart.sortedBySession = [byCurve(1, 'Session 1', 9), byCurve(3, 'Session 3', 2)]
+      mockChart.priorSessionMap = new Map([[1, priorSession({ enrolled_at_current_week: 6 })]])
+      render(<CancellationVelocityPage />)
+      const table = screen.getByText('Session 1').closest('table')!.parentElement!
+      fireEvent.click(within(table).getByRole('button', { name: /^copy/i }))
+      await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalled())
+      const [head, ...lines] = vi
+        .mocked(navigator.clipboard.writeText)
+        .mock.calls[0]![0].split('\n')
+      const line = lines.find((l) => l.startsWith('Session 1'))
+      const at = head!.split('\t').indexOf('vs 2025')
+      expect(at).toBeGreaterThan(-1)
+      expect(line!.split('\t')[at]).toBe('')
     })
 
     it('shows the delta on any later day', () => {

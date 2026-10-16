@@ -196,7 +196,7 @@ export function GeoDetailList({
 
           {/* Show More/Less */}
           {hasMore && (
-            <div className="border-border bg-muted/30 border-t px-4 py-2">
+            <div data-app-chrome className="border-border bg-muted/30 border-t px-4 py-2">
               <button
                 onClick={() => setShowAll(!showAll)}
                 className="text-primary hover:text-primary/80 text-sm transition-colors"

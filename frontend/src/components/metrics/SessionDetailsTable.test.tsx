@@ -96,6 +96,24 @@ describe('SessionDetailsTable', () => {
       expect(names().at(-1)).toBe('Total')
     })
 
+    it("the Total row's Delta is Total Enrolled minus the prior total, a new session included (the mock's total)", () => {
+      render(
+        <SessionDetailsTable
+          current={[s('Session A', 10), s('Session New', 7)]}
+          prior={[s('Session A', 8), s('Session D', 5)]}
+          isComparing
+          currentYear={2026}
+          compareYear={2025}
+        />
+      )
+      const total = screen.getByText('Total').closest('tr')!
+      const cells = within(total).getAllByRole('cell')
+      // Enrolled 17, prior 13: +4, not the +2 −5 = −3 the visible row deltas add to.
+      expect(cells[1]).toHaveTextContent('17')
+      expect(cells[4]).toHaveTextContent('13')
+      expect(cells[5]).toHaveTextContent('+4')
+    })
+
     it('offers Copy and Download CSV', () => {
       renderTable()
       expect(screen.getByRole('button', { name: /download csv/i })).toBeInTheDocument()

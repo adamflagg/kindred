@@ -294,11 +294,14 @@ export default function CancellationVelocityPage() {
           } satisfies SessionColumnDef,
           {
             header: priorLabel ? `vs ${priorLabel}` : 'vs Prior',
+            // A pending cell reads "updates tomorrow": blank in the CSV, and it sorts with the blanks.
             value: (session, priorSession) =>
-              vsPriorSamePoint(
-                session.weekly.at(-1)?.enrolled,
-                priorSession?.enrolled_at_current_week
-              ) ?? null,
+              deltaPending
+                ? null
+                : (vsPriorSamePoint(
+                    session.weekly.at(-1)?.enrolled,
+                    priorSession?.enrolled_at_current_week
+                  ) ?? null),
             accessor: (session, priorSession) => {
               // A session the comparison year has no match for is new, not missing data. A year
               // with no status history has no sessions to match, so its rows read '—' (ruling 6).
@@ -508,7 +511,7 @@ export default function CancellationVelocityPage() {
           {/* Zoom range selectors */}
           {useDailyChart
             ? chartData.dailyZoomMilestones.length > 0 && (
-                <div className="mb-3 flex flex-wrap items-center gap-3 text-sm">
+                <div data-app-chrome className="mb-3 flex flex-wrap items-center gap-3 text-sm">
                   <label
                     htmlFor="cancellation-daily-zoom-start"
                     className="text-muted-foreground text-xs font-medium"
@@ -558,7 +561,7 @@ export default function CancellationVelocityPage() {
                 </div>
               )
             : chartData.weeklyChartData.length > 0 && (
-                <div className="mb-3 flex flex-wrap items-center gap-3 text-sm">
+                <div data-app-chrome className="mb-3 flex flex-wrap items-center gap-3 text-sm">
                   <label
                     htmlFor="cancellation-weekly-zoom-start"
                     className="text-muted-foreground text-xs font-medium"

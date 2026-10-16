@@ -10,7 +10,7 @@ export interface SessionColumnDef {
   header: string
   accessor: (session: VelocityCurve, priorData?: PriorYearSessionSummary) => ReactNode
   className?: string
-  /** The figure behind the cell, for sorting and the CSV; a column without one is neither sorted nor exported. */
+  /** The figure behind the cell, for sorting and the CSV; a column without one is not sorted and exports empty. */
   value?: (session: VelocityCurve, priorData?: PriorYearSessionSummary) => SortValue
 }
 

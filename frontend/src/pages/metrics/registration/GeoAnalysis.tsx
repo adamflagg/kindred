@@ -264,7 +264,7 @@ export default function GeoAnalysis() {
               />
 
               {/* Layer Toggles */}
-              <div data-tour="reg-geo-layers">
+              <div data-tour="reg-geo-layers" data-app-chrome>
                 <GeoLayerToggles
                   activeLayers={activeLayers}
                   onToggleLayer={handleToggleLayer}

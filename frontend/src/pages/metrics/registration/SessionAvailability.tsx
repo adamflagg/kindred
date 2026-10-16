@@ -447,6 +447,7 @@ function SessionsTable({
               bare
               rowSpan={2}
               label="Session"
+              align="left"
               direction={sort.direction('name')}
               onSort={() => sort.toggle('name')}
               className="bg-muted/50 text-muted-foreground border-border sticky left-0 z-10 border-r border-b px-3 py-2 text-left font-medium"
@@ -455,6 +456,7 @@ function SessionsTable({
               bare
               colSpan={GRADES.length + 1}
               label="Girls' Availability"
+              align="center"
               title="Sort by open spots"
               direction={sort.direction('girlsOpen')}
               onSort={() => sort.toggle('girlsOpen')}
@@ -465,6 +467,7 @@ function SessionsTable({
               bare
               colSpan={GRADES.length + 1}
               label="Boys' Availability"
+              align="center"
               title="Sort by open spots"
               direction={sort.direction('boysOpen')}
               onSort={() => sort.toggle('boysOpen')}
@@ -483,6 +486,7 @@ function SessionsTable({
             <MetricSortHeader
               bare
               label="WL"
+              align="center"
               title="Sort by waitlisted"
               direction={sort.direction('girlsWl')}
               onSort={() => sort.toggle('girlsWl')}
@@ -499,6 +503,7 @@ function SessionsTable({
             <MetricSortHeader
               bare
               label="WL"
+              align="center"
               title="Sort by waitlisted"
               direction={sort.direction('boysWl')}
               onSort={() => sort.toggle('boysWl')}

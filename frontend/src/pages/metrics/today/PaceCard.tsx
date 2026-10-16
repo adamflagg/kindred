@@ -250,6 +250,7 @@ export function PaceHead({ sessionsNote }: { sessionsNote: number | undefined })
         {sessionsNote !== undefined && <DefRef n={sessionsNote} />} · by registration day
       </span>
       <Link
+        data-app-chrome
         className={`${CS_LINK_SM} ml-auto whitespace-nowrap`}
         to={analyticsHref('/analytics/trends/velocity', location.search)}
       >

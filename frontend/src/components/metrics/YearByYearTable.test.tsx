@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
 import type { YearMetrics } from '../../types/metrics'
 import { YearByYearTable } from './YearByYearTable'
 import { buildYearRows } from './yearByYearRows'
@@ -73,6 +73,27 @@ describe('YearByYearTable', () => {
     expect(order()).toEqual(['2025', '2024', '2023', '2026'])
     fireEvent.click(screen.getByRole('button', { name: /^Total/ }))
     expect(order()).toEqual(['2026', '2023', '2024', '2025'])
+  })
+
+  it('on the priority date the live row reads "updates tomorrow", sorts with the blanks and leaves its CSV change empty', async () => {
+    Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } })
+    render(<YearByYearTable years={YEARS} live={{ ...LIVE, pending: true }} />)
+    const order = () =>
+      screen
+        .getAllByRole('row')
+        .slice(1)
+        .map((r) => r.querySelector('td')?.textContent)
+    fireEvent.click(screen.getByRole('button', { name: /^vs final/ }))
+    // 2026's hidden change (−38) would sort it above nothing; it sits with 2023's blank at the bottom.
+    expect(order()).toEqual(['2024', '2025', '2023', '2026'])
+    fireEvent.click(screen.getByRole('button', { name: /^vs final/ }))
+    expect(order()).toEqual(['2024', '2025', '2023', '2026'])
+
+    fireEvent.click(screen.getByRole('button', { name: /^copy/i }))
+    await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalled())
+    const tsv = vi.mocked(navigator.clipboard.writeText).mock.calls[0]![0]
+    const liveLine = tsv.split('\n').find((l) => l.startsWith('2026'))!
+    expect(liveLine.split('\t').slice(2, 5)).toEqual(['', '', ''])
   })
 
   it('offers Copy and Download CSV', () => {

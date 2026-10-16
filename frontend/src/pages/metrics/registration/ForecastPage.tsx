@@ -156,7 +156,7 @@ function ForecastTableHeader({
       align={align}
       direction={sort.direction(field)}
       onSort={() => sort.toggle(field)}
-      className={`${hide ? 'hidden lg:table-cell' : ''}px-3 py-2 text-${align} text-xs font-semibold`}
+      className={`${hide ? 'hidden lg:table-cell' : ''} px-3 py-2 text-${align} text-xs font-semibold`}
     />
   )
   return (
@@ -394,6 +394,9 @@ export default function ForecastPage() {
   }
 
   const { grand_total } = data
+  const thisYearOffset = data.day_offset ?? todayOffset
+  // Ruling 9: only the priority date itself waits a day for this year's data.
+  const deltaPending = data.prior_basis === 'same_point' && isPriorityDayOffset(thisYearOffset)
 
   const sections = buildForecastSections(
     campSessions,
@@ -402,15 +405,15 @@ export default function ForecastPage() {
     data.section_priors
   ).map((section) => ({
     ...section,
-    sessions: sort.apply(section.sessions, (row, field) => forecastSortValue(row, field)),
+    // A pending vs-prior cell reads "updates tomorrow" and is blank in the CSV, so it sorts as a blank.
+    sessions: sort.apply(section.sessions, (row, field) =>
+      deltaPending && field === 'vsPrior' ? null : forecastSortValue(row, field)
+    ),
   }))
   const showSectionHeadings = sections.length >= 2
   const showGrandTotal = sections.length >= 2 && selectedSessionCmId === null
-  const thisYearOffset = data.day_offset ?? todayOffset
   const priorityDay =
     data.prior_basis === 'same_point' && readsThroughNextDay(thisYearOffset, data.prior_day_offset)
-  // Ruling 9: only the priority date itself waits a day for this year's data.
-  const deltaPending = data.prior_basis === 'same_point' && isPriorityDayOffset(thisYearOffset)
 
   return (
     <MetricsBusy busy={isPlaceholderData} what={String(currentYear)}>

@@ -74,7 +74,8 @@ function sortValue(row: YearRow, field: Field) {
     case 'total':
       return row.total
     case 'change':
-      return row.change
+      // On the priority date the cell reads "updates tomorrow", so it sorts with the blanks.
+      return row.pending ? null : row.change
     case 'new':
       return row.newCount
     case 'returning':
@@ -146,7 +147,7 @@ export function YearByYearTable({
               r.total,
               r.pending ? null : r.change,
               r.pending ? null : oneDecimal(r.changePct),
-              r.basis,
+              r.pending ? null : r.basis,
               r.newCount,
               r.returning,
               oneDecimal(r.newPct),
