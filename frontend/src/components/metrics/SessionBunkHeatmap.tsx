@@ -17,6 +17,8 @@ import type { BunkStaffInfo } from '../../hooks/useBunkStaff'
 import { BunkCellTooltip } from './BunkStaffTooltip'
 import { formatRate } from '../../utils/numberFormat'
 import { getRetentionCellColor as getCellColor } from '../../utils/retentionColors'
+import { TableExportButtons } from './TableExportButtons'
+import { csvFilename } from './exportFilename'
 
 type BunkCategory = 'boys' | 'girls' | 'ag'
 
@@ -168,12 +170,15 @@ interface SessionBunkHeatmapProps {
   data: RetentionBySessionBunk[]
   sessionDateLookup?: SessionDateLookup
   bunkStaff?: Map<string, BunkStaffInfo[]> | undefined
+  /** The season shown; names the CSV file. Without it there is no Copy or Download CSV. */
+  year?: number | undefined
 }
 
 export function SessionBunkHeatmap({
   data,
   sessionDateLookup = {},
   bunkStaff,
+  year,
 }: SessionBunkHeatmapProps) {
   // The generic is load-bearing. Both `categoryBunks` maps are built as
   // `Record<string, string[]>` but read with a `BunkCategory` key, and the
@@ -240,8 +245,37 @@ export function SessionBunkHeatmap({
   const hasData = CATEGORY_ORDER.some((cat) => (categoryBunks[cat]?.length ?? 0) > 0)
   if (!hasData) return null
 
+  // The grid as a file: one row per session and bunk that has data, in cabin order (#3207 PR 10).
+  const csvRows = CATEGORY_ORDER.flatMap((cat) =>
+    (categorySessions[cat] ?? []).flatMap((session) =>
+      (categoryBunks[cat] ?? []).flatMap((bunk) => {
+        const item = lookup.get(`${session}|${bunk}`)
+        return item
+          ? [
+              [
+                session,
+                bunk,
+                item.base_count,
+                item.returned_count,
+                Math.round(item.retention_rate * 1000) / 10,
+              ],
+            ]
+          : []
+      })
+    )
+  )
+
   return (
     <div className="card-lodge p-4">
+      {year !== undefined && (
+        <div className="mb-3 flex justify-end">
+          <TableExportButtons
+            filename={csvFilename(year, 'Returning campers by bunk')}
+            headers={['Session', 'Bunk', 'Campers', 'Returned', 'Retention %']}
+            rows={csvRows}
+          />
+        </div>
+      )}
       <div className="space-y-6">
         {CATEGORY_ORDER.filter((cat) => (categoryBunks[cat]?.length ?? 0) > 0).map((cat) => (
           <BunkHeatmapTable

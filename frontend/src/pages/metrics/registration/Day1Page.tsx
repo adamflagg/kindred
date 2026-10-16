@@ -24,6 +24,8 @@
  * does this year's column header for it in the table. The counts so far stay.
  */
 
+import { TableExportButtons } from '../../../components/metrics/TableExportButtons'
+import { csvFilename } from '../../../components/metrics/exportFilename'
 import { formatCount, formatSignedCount } from '../../../utils/numberFormat'
 import { useMemo } from 'react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
@@ -293,75 +295,103 @@ function ComparisonTable({ data, currentYear }: ComparisonTableProps) {
     return { display: fmtCount(count), isCurrentYear }
   }
 
+  // The CSV is the matrix flattened: one row per tier and year, a column per category (#3207 PR 10).
+  const csvRows = TIER_LABELS.flatMap((tl) =>
+    years.map((year) => {
+      const tier = tierByYear[tl.tier]?.[year]
+      const state = !tier ? '' : year === currentYear && isFutureTier(tier) ? 'Upcoming' : null
+      return [
+        tl.label,
+        year,
+        ...rowCategories.map((row) =>
+          state !== null || !tier
+            ? state
+            : row.key === 'total'
+              ? tier.total.count
+              : getCategoryCount(tier, row.key)
+        ),
+      ]
+    })
+  )
+
   return (
-    <div className="border-border overflow-x-auto rounded-xl border">
-      <table className="w-full border-collapse">
-        <thead>
-          {/* Tier group headers */}
-          <tr className="bg-muted/50">
-            <th className="border-border border-b px-3 py-2 text-left text-xs font-semibold" />
-            {TIER_LABELS.map((tl) => (
-              <th
-                key={tl.tier}
-                colSpan={years.length}
-                className="border-border border-b border-l px-3 py-2 text-center text-xs font-semibold"
-              >
-                {tl.label}
-              </th>
-            ))}
-          </tr>
-          {/* Year sub-headers */}
-          <tr className="bg-muted/30">
-            <th className="border-border border-b px-3 py-2 text-left text-xs font-medium" />
-            {TIER_LABELS.map((tl) =>
-              years.map((year, yi) => (
+    <div>
+      <div className="mb-2 flex justify-end">
+        <TableExportButtons
+          filename={csvFilename(currentYear, 'Day 1 registration')}
+          headers={['Tier', 'Year', ...rowCategories.map((row) => row.label)]}
+          rows={csvRows}
+        />
+      </div>
+      <div className="border-border overflow-x-auto rounded-xl border">
+        <table className="w-full border-collapse">
+          <thead>
+            {/* Tier group headers */}
+            <tr className="bg-muted/50">
+              <th className="border-border border-b px-3 py-2 text-left text-xs font-semibold" />
+              {TIER_LABELS.map((tl) => (
                 <th
-                  key={`${tl.tier}-${year}`}
-                  className={`border-border border-b px-3 py-2 text-right text-xs ${
-                    year === currentYear ? 'font-bold' : 'text-muted-foreground font-normal'
-                  } ${yi === 0 ? 'border-l' : ''}`}
+                  key={tl.tier}
+                  colSpan={years.length}
+                  className="border-border border-b border-l px-3 py-2 text-center text-xs font-semibold"
                 >
-                  {year}
-                  {year === currentYear && tierByYear[tl.tier]?.[year]?.opening_day && (
-                    <span className={`block ${PRIORITY_DAY_PENDING_CLASS}`}>
-                      {PRIORITY_DAY_PENDING}
-                    </span>
-                  )}
+                  {tl.label}
                 </th>
-              ))
-            )}
-          </tr>
-        </thead>
-        <tbody>
-          {rowCategories.map((row) => (
-            <tr
-              key={row.key}
-              className={
-                row.key === 'total'
-                  ? 'border-border bg-muted/20 border-t-2 font-semibold'
-                  : 'border-border border-b'
-              }
-            >
-              <td className="px-3 py-2 text-sm">{row.label}</td>
+              ))}
+            </tr>
+            {/* Year sub-headers */}
+            <tr className="bg-muted/30">
+              <th className="border-border border-b px-3 py-2 text-left text-xs font-medium" />
               {TIER_LABELS.map((tl) =>
-                years.map((year, yi) => {
-                  const { display, isCurrentYear } = getCellValue(row.key, tl.tier, year)
-                  return (
-                    <td
-                      key={`${tl.tier}-${year}-${row.key}`}
-                      className={`px-3 py-2 text-right text-sm tabular-nums ${
-                        isCurrentYear ? 'font-bold' : 'text-muted-foreground'
-                      } ${yi === 0 ? 'border-border border-l' : ''}`}
-                    >
-                      {display}
-                    </td>
-                  )
-                })
+                years.map((year, yi) => (
+                  <th
+                    key={`${tl.tier}-${year}`}
+                    className={`border-border border-b px-3 py-2 text-right text-xs ${
+                      year === currentYear ? 'font-bold' : 'text-muted-foreground font-normal'
+                    } ${yi === 0 ? 'border-l' : ''}`}
+                  >
+                    {year}
+                    {year === currentYear && tierByYear[tl.tier]?.[year]?.opening_day && (
+                      <span className={`block ${PRIORITY_DAY_PENDING_CLASS}`}>
+                        {PRIORITY_DAY_PENDING}
+                      </span>
+                    )}
+                  </th>
+                ))
               )}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {rowCategories.map((row) => (
+              <tr
+                key={row.key}
+                className={
+                  row.key === 'total'
+                    ? 'border-border bg-muted/20 border-t-2 font-semibold'
+                    : 'border-border border-b'
+                }
+              >
+                <td className="px-3 py-2 text-sm">{row.label}</td>
+                {TIER_LABELS.map((tl) =>
+                  years.map((year, yi) => {
+                    const { display, isCurrentYear } = getCellValue(row.key, tl.tier, year)
+                    return (
+                      <td
+                        key={`${tl.tier}-${year}-${row.key}`}
+                        className={`px-3 py-2 text-right text-sm tabular-nums ${
+                          isCurrentYear ? 'font-bold' : 'text-muted-foreground'
+                        } ${yi === 0 ? 'border-border border-l' : ''}`}
+                      >
+                        {display}
+                      </td>
+                    )
+                  })
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }
