@@ -1,11 +1,11 @@
 """Test NetworkX friend group detection integration"""
 
-from datetime import datetime
 from unittest.mock import MagicMock
 
 import pytest
 
 # Import the modules we're testing
+from api.services.camp_calendar import default_season_year
 from bunking.graph.social_graph_builder import SocialGraphBuilder
 
 
@@ -27,7 +27,7 @@ class TestSocialGraphBuilder:
         assert builder.pb == mock_pb
         assert builder.graph is not None
         assert builder.graph.number_of_nodes() == 0
-        assert builder.current_year == datetime.now().year
+        assert builder.current_year == default_season_year()
         assert isinstance(builder.person_cache, dict)
         assert isinstance(builder.attendee_cache, dict)
 
