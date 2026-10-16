@@ -181,7 +181,9 @@ export function SessionFillTable({
     return (
       <tr key={r.key}>
         <td className={`${TD_LABEL} whitespace-nowrap`}>
-          <span className="text-foreground block min-w-0 truncate font-medium">{r.name}</span>
+          <span className="text-foreground block min-w-0 truncate font-medium" title={r.name}>
+            {r.name}
+          </span>
         </td>
         <td className={TD_NUMBER}>{formatCount(r.enrolled)}</td>
         {basisCols > 0 &&
@@ -200,7 +202,7 @@ export function SessionFillTable({
           ))}
         {hasPills && (
           <td className={TD_BASE_MID}>
-            <span className="flex flex-nowrap gap-1 overflow-hidden">
+            <span className="flex flex-wrap gap-1">
               {pills.map((p) => (
                 <span key={p.words} className={`${p.full ? PILL.amber : PILL.muted} flex-none`}>
                   {p.words}
@@ -227,7 +229,7 @@ export function SessionFillTable({
     <div className={TABLE_CARD}>
       <table className="w-full table-fixed border-separate border-spacing-0 text-sm">
         <colgroup>
-          <col style={basisCols > 0 ? { width: 128 } : undefined} />
+          <col style={basisCols > 0 ? { width: 148 } : undefined} />
           <col style={{ width: 66 }} />
           {basisCols > 0 && (
             <>
@@ -236,7 +238,7 @@ export function SessionFillTable({
               <col style={{ width: 48 }} />
             </>
           )}
-          {hasPills && <col style={{ width: 160 }} />}
+          {hasPills && <col style={{ width: 184 }} />}
           <col style={{ width: 62 }} />
           <col style={{ width: 150 }} />
         </colgroup>

@@ -30,6 +30,9 @@ describe('resolveHelpKey', () => {
   it('keeps the literal weekend sessions route above the param route', () => {
     expect(resolveHelpKey('/weekend/sessions', '')).toBe('weekend.sessions')
   })
+  it('maps Analytics › Today to its own key (#3207 PR 8)', () => {
+    expect(resolveHelpKey('/analytics/today', '')).toBe('analytics.today')
+  })
   it('maps the camper detail screen to its key', () => {
     expect(resolveHelpKey('/camper/1000001', '')).toBe('people.camper')
   })
