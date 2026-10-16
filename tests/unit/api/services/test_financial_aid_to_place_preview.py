@@ -12,7 +12,6 @@ from typing import Any
 
 import pytest
 
-from api.constants.collections import AID_GRANT_PLACEMENTS
 from api.schemas.financial_aid_to_place import (
     PlaceLineIn,
     PlacePartIn,
@@ -21,7 +20,6 @@ from api.schemas.financial_aid_to_place import (
     SuggestionOut,
 )
 from api.services.financial_aid_decisions_service import FinancialAidDecisionsService
-from api.services.financial_aid_grant_placements import PLACEMENT_ACTOR
 from api.services.financial_aid_grants_register import RegisterRow
 from api.services.financial_aid_to_place import LeftLine
 from api.services.financial_aid_to_place_service import ToPlaceService
@@ -132,14 +130,13 @@ async def test_a_preview_writes_nothing_not_even_the_end_of_a_leave() -> None:
 
 
 @pytest.mark.asyncio
-async def test_a_previews_pricing_records_only_the_grant_placement_log() -> None:
-    """Group 4 Q2: pricing the season logs where the register placed each grant, as system:grant-placement, strictly.
-    The preview prices the season (so GET /to-place and Today's reads already do this too). With a register grant
-    seeded, every write the preview makes is that log's, on aid_grant_placements, and nothing else; the to_place fakes
-    price with no grants, which is why the other preview tests cannot see it."""
+async def test_a_previews_pricing_writes_nothing_not_even_the_grant_placement_log() -> None:
+    """Owner ruling 2026-10-16 (reversing Group 4 Q2): pricing the season for a preview, GET /to-place or Today
+    never writes the grant placement log; the sync step and the warm record it. With a register grant seeded, the
+    preview makes no write at all."""
     store = one_line("1000")
     register = [replace(grant_row(EMMA, "500"), transaction_cm_id=9002)]
-    events = list(store.events)
+    events, log = list(store.events), list(store.log)
 
     async def rows(year: int) -> Sequence[RegisterRow]:
         return register
@@ -151,15 +148,8 @@ async def test_a_previews_pricing_records_only_the_grant_placement_log() -> None
         clock=lambda: T0,
     )
     await service.preview(YEAR, 9001, _preview((EMMA, "1000")), ACTOR)
-    writes = [write for operation in store.operations for write in operation]
-    assert writes  # not vacuous: the seeded grant's placement was logged
-    assert {write.collection for write in writes} == {AID_GRANT_PLACEMENTS}
-    assert all(write.data is not None and write.data["actor"] == PLACEMENT_ACTOR for write in writes)
-    assert [row["actor"] for row in store.log] == [PLACEMENT_ACTOR] * len(writes)
+    assert (store.operations, store.grant_placements, store.log) == ([], [], log)
     assert (store.override_rows, store.events) == ({}, events)
-    operations = len(store.operations)
-    await service.preview(YEAR, 9001, _preview((EMMA, "1000")), ACTOR)
-    assert len(store.operations) == operations  # the log already holds it: a second preview writes nothing
 
 
 @pytest.mark.parametrize(

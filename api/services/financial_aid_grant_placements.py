@@ -1,15 +1,22 @@
-"""Grant placement, logged so a past date can replay it (campership 3c-2; owner rulings 2026-09-30 and
-2026-10-01).
+"""Grant placement, logged so a past date can replay it (campership 3c-2; owner rulings 2026-09-30,
+2026-10-01 and 2026-10-16).
 
 The grants register (sub-project 6-core) places each grant line and commitment on aid requests at
 read time, from enrollments and records that aren't dated. So a past date can know which request a
-grant sat on, every live pricing of the season logs the placement it priced with: it compares the
-register's rows with the newest logged row of each grant and appends one aid_grant_placements row
-for each grant whose placement is new or changed (`place`), or that has left the register
-(`remove`), through sub-project 4a's commit_aid_writes. Nothing is written when nothing moved. The
-log is pricing history (system rows, written only on a change), not an access log, so a write that
-fails fails the read (owner ruling 2026-10-01). A placement is recorded at the next pricing after it
-moves, since the enrollments behind it are undated (owner ruling 2026-10-01).
+grant sat on, the placement is recorded (record_placements): the register's rows are compared with the
+newest logged row of each grant, and one aid_grant_placements row is appended for each grant whose
+placement is new or changed (`place`), or that has left the register (`remove`), through sub-project
+4a's commit_aid_writes. Nothing is written when nothing moved. The log is pricing history (system rows,
+written only on a change), not an access log.
+
+Who records it (owner ruling 2026-10-16, reversing 2026-10-01's "every live pricing logs, and a write
+that fails fails the read"): the Go grant_placements sync step, after the aid ledger, for each synced
+season (POST /api/internal/financial-aid/grant-placements), and FastAPI's warm after each staff write
+(aid_sync_inputs), for the write's own season or, for a season-spanning table, every season from
+FIRST_PLACEMENT_SEASON. An interactive read never writes the log, so the log can never fail one; a
+failed record fails the sync step's own card instead, and a warm's is a warning. A placement is
+recorded at the next record after it moves, since the enrollments behind it are undated (owner ruling
+2026-10-01).
 
 A past date replays the newest row per grant recorded by the end of that day. A placement has no
 CampMinder date, so the cut is when Kindred recorded it on both axes (owner ruling 2026-09-30); on
@@ -40,6 +47,10 @@ from bunking.financial_aid.change_replay import LogRow
 # 4a's actor for the placement log, as intake writes as "system:intake".
 PLACEMENT_ACTOR: Final = "system:grant-placement"
 PLACEMENT_REASON: Final = "Where the grants register placed each grant when the dashboard priced the season"
+# The first season with aid requests (FIRST_REQUEST_SEASON in the development and reports services; Go's
+# firstPlacementSeason in pocketbase/sync/grant_placements.go). An earlier season has no request to place a
+# grant on, so neither the sync step nor the warm records it.
+FIRST_PLACEMENT_SEASON: Final = 2026
 
 PlacementEvent = Literal["place", "remove"]
 
@@ -69,6 +80,21 @@ def placement_json(row: RegisterRow) -> dict[str, Any]:
 def register_row(placement: Mapping[str, Any]) -> RegisterRow:
     """A logged placement back into the register row it recorded."""
     return _ROW.validate_python(dict(placement))
+
+
+@dataclass(frozen=True)
+class PlacementsRecorded:
+    """What one record appended: `place` rows and `remove` rows (both 0 when the log already held it)."""
+
+    year: int
+    placed: int
+    removed: int
+
+
+def recorded_counts(year: int, writes: Sequence[AidWrite]) -> PlacementsRecorded:
+    """The counts of the writes one record appended."""
+    placed = sum(1 for w in writes if w.log_action == "place")
+    return PlacementsRecorded(year=year, placed=placed, removed=len(writes) - placed)
 
 
 @dataclass(frozen=True)

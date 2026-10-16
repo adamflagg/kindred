@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -2990,13 +2991,36 @@ func TestJobMeta_NoDuplicateIDs(t *testing.T) {
 	}
 }
 
+// replayedTransformJobs is every transform job a historical replay runs: all of them but the
+// SyncedSeasonsOnly ones, which a current-season run still includes (checked here).
+func replayedTransformJobs(t *testing.T) []string {
+	t.Helper()
+	current := GetDefaultUnifiedSyncJobs(false, true)
+	var jobs []string
+	for _, m := range syncJobMeta {
+		if m.Phase != PhaseTransform {
+			continue
+		}
+		if m.SyncedSeasonsOnly {
+			if !slices.Contains(current, m.ID) {
+				t.Errorf("synced-seasons transform job %q missing from a current-season unified sync", m.ID)
+			}
+			continue
+		}
+		jobs = append(jobs, m.ID)
+	}
+	return jobs
+}
+
 // TestDailySyncDoesNotIncludeTransformPhase tests that daily sync excludes all transform jobs
 func TestUnifiedSyncAlwaysIncludesTransformPhase(t *testing.T) {
 	t.Parallel()
 	// Transform jobs should ALWAYS be included in unified sync,
 	// regardless of IncludeCustomValues setting.
 	// They run against existing custom values data (same as daily sync).
-	transformJobs := GetJobsForPhase(PhaseTransform)
+	// A SyncedSeasonsOnly transform job (grant_placements) is the one exclusion: these lists
+	// are a historical replay's, which that bit removes whatever the CV flag says.
+	transformJobs := replayedTransformJobs(t)
 
 	t.Run("without custom values", func(t *testing.T) {
 		jobs := GetDefaultUnifiedSyncJobs(false, false)
@@ -3178,7 +3202,7 @@ func TestRunSyncWithOptionsHistoricalMode(t *testing.T) {
 		withCV := GetDefaultUnifiedSyncJobs(true, false)
 		withoutCV := GetDefaultUnifiedSyncJobs(false, false)
 
-		transformJobs := GetJobsForPhase(PhaseTransform)
+		transformJobs := replayedTransformJobs(t)
 		for _, tj := range transformJobs {
 			foundWith := false
 			foundWithout := false

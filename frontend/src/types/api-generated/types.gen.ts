@@ -6395,6 +6395,16 @@ export type GradeEnrollment = {
 }
 
 /**
+ * GrantPlacementsRun
+ */
+export type GrantPlacementsRun = {
+  /**
+   * Year
+   */
+  year: number
+}
+
+/**
  * GrantRowOut
  *
  * One register row: a CampMinder grant line (live or reversed), or an open commitment not yet
@@ -30386,6 +30396,37 @@ export type RunFinancialAidLedgerTicksApiInternalFinancialAidLedgerTicksPostResp
 
 export type RunFinancialAidLedgerTicksApiInternalFinancialAidLedgerTicksPostResponse =
   RunFinancialAidLedgerTicksApiInternalFinancialAidLedgerTicksPostResponses[keyof RunFinancialAidLedgerTicksApiInternalFinancialAidLedgerTicksPostResponses]
+
+export type RecordGrantPlacementsApiInternalFinancialAidGrantPlacementsPostData = {
+  body: GrantPlacementsRun
+  path?: never
+  query?: never
+  url: '/api/internal/financial-aid/grant-placements'
+}
+
+export type RecordGrantPlacementsApiInternalFinancialAidGrantPlacementsPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type RecordGrantPlacementsApiInternalFinancialAidGrantPlacementsPostError =
+  RecordGrantPlacementsApiInternalFinancialAidGrantPlacementsPostErrors[keyof RecordGrantPlacementsApiInternalFinancialAidGrantPlacementsPostErrors]
+
+export type RecordGrantPlacementsApiInternalFinancialAidGrantPlacementsPostResponses = {
+  /**
+   * Response Record Grant Placements Api Internal Financial Aid Grant Placements Post
+   *
+   * Successful Response
+   */
+  200: {
+    [key: string]: number
+  }
+}
+
+export type RecordGrantPlacementsApiInternalFinancialAidGrantPlacementsPostResponse =
+  RecordGrantPlacementsApiInternalFinancialAidGrantPlacementsPostResponses[keyof RecordGrantPlacementsApiInternalFinancialAidGrantPlacementsPostResponses]
 
 export type ListAuditLogApiAdminAuditLogGetData = {
   body?: never

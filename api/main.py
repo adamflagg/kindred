@@ -67,7 +67,12 @@ from .routers import (
 from .schemas.permissions import PermissionEntry, PermissionRegistryResponse, PermissionScreen
 from .schemas.version import ApiVersionResponse
 from .services.aid_season_cache import bind_warm_loop, on_aid_commit
-from .services.aid_sync_inputs import cancel_aid_warm, set_season_warmer, start_aid_inputs_refresher
+from .services.aid_sync_inputs import (
+    cancel_aid_warm,
+    set_placement_recorder,
+    set_season_warmer,
+    start_aid_inputs_refresher,
+)
 from .services.lodging_cache_warm import start_lodging_cache_refresher
 from .services.metrics_sql_connection import close_connection
 from .settings import get_settings
@@ -112,6 +117,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             # through the router's own staff read, so it fills the very cache entry staff read; so does the warm that
             # follows each write's clear.
             set_season_warmer(lambda year: financial_aid._decisions().named_season(year))
+            # The warm after a Camperships write records its grant placements through the same staff service (owner
+            # ruling 2026-10-16: a read never records; the nightly grant_placements sync step records the rest).
+            set_placement_recorder(lambda year: financial_aid._decisions().record_placements(year))
             bind_warm_loop(asyncio.get_running_loop())
             aid_refresh_task = start_aid_inputs_refresher()
         else:
@@ -134,6 +142,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         remove_aid_listener()
         bind_warm_loop(None)
         set_season_warmer(None)
+        set_placement_recorder(None)
 
 
 def create_app() -> FastAPI:

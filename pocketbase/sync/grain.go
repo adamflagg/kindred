@@ -434,6 +434,10 @@ var serviceGrainDeclarations = []ServiceGrain{
 			NoGrain: "sweeps only source=auto rows, in the hand-rolled syncHouseholdLinks; staff rows are never touched"},
 	}},
 
+	{Service: "grant_placements",
+		WritesNothing: "POSTs to FastAPI's grant placement recorder (grant_placements.go); every " +
+			"aid_grant_placements row it causes is appended by the Python side"},
+
 	{Service: "household_demographics", Writes: []CollectionGrain{{
 		Collection: "household_demographics",
 		NoGrain: "HouseholdDemographicsSync.deleteOrphans is hand-rolled -- one of the " +

@@ -19,6 +19,7 @@ from api.routers.metrics import invalidate_server_caches
 from api.schemas.financial_aid_decisions import LedgerTicksOut
 from api.services.financial_aid_decisions_repository import FinancialAidDecisionsRepository
 from api.services.financial_aid_decisions_service import FinancialAidDecisionsService
+from api.services.financial_aid_grant_placements import FIRST_PLACEMENT_SEASON
 from api.services.financial_aid_grants_repository import GrantsRepository
 from api.services.financial_aid_grants_service import GrantsService
 from api.services.financial_aid_intake_repository import FinancialAidIntakeRepository
@@ -298,3 +299,28 @@ async def run_financial_aid_ledger_ticks(body: FinancialAidLedgerTicksRun) -> Le
         return await service.ledger_ticks(body.year)
     except FinancialAidError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+# --- Grant placements (campership 3c-2) ---
+
+
+class GrantPlacementsRun(BaseModel):
+    # No season before the first with aid requests: the register has no request to place a grant on.
+    year: int = Field(ge=FIRST_PLACEMENT_SEASON, le=2100)
+
+
+@router.post("/financial-aid/grant-placements")
+async def record_grant_placements(body: GrantPlacementsRun) -> dict[str, int]:
+    """Record where the grants register places each grant this season, so a past date can replay it (3c-2).
+
+    Called by the Go grant_placements sync step after the aid ledger, for each synced season; never in a dry run
+    (Go skips the call). Owner ruling 2026-10-16: this step and the warm after a staff write record placements, and
+    an interactive read never does. Idempotent: nothing moved, nothing written. A failure is a 500, which the Go step
+    counts as an error, so its card goes FAILED. Register-only: nothing is priced, and no cache is cleared (the
+    record commits as system:grant-placement, which changes nothing a season prices)."""
+    service = FinancialAidDecisionsService(
+        FinancialAidDecisionsRepository(pb),
+        FinancialAidRulesService(AidRulesRepository(pb)),
+        GrantsService(GrantsRepository(pb)).register_rows,
+    )
+    return asdict(await service.record_placements(body.year))

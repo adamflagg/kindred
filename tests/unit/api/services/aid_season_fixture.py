@@ -348,7 +348,7 @@ class SeasonPb(FilteringPb):
         raise NotImplementedError(f"SeasonPb has no collection {name!r}")
 
     def commit(self, writes: Sequence[AidWrite]) -> None:
-        """Apply creates as PocketBase would store them (the season build writes only its placement log)."""
+        """Apply creates as PocketBase would store them (record_placements writes only the placement log)."""
         for write in writes:
             if write.action != "create" or write.collection != "aid_grant_placements":
                 raise NotImplementedError(f"SeasonPb commits only placement-log creates, not {write!r}")

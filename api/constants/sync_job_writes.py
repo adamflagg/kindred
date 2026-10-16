@@ -28,6 +28,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from api.constants.collections import (
+    AID_GRANT_PLACEMENTS,
     AID_HOUSEHOLD_LINKS,
     AID_POSTINGS,
     AID_SOURCES,
@@ -106,6 +107,9 @@ SYNC_JOB_WRITES: dict[str, frozenset[str]] = {
     # sources, and the auto household links. Never aid_attribution_overrides or
     # aid_flag_dispositions, which only FastAPI writes.
     "aid_postings": frozenset({AID_POSTINGS, AID_SOURCES, AID_HOUSEHOLD_LINKS}),
+    # Campership 3c-2: a Go step that only calls Python, which appends the grant placement log (and its
+    # aid_change_log rows) through commit_aid_writes as system:grant-placement. No live season reads either.
+    "grant_placements": frozenset({AID_GRANT_PLACEMENTS, "aid_change_log"}),
     "household_demographics": frozenset({"household_demographics"}),
     "camper_dietary": frozenset({"camper_dietary"}),
     "camper_transportation": frozenset({"camper_transportation"}),

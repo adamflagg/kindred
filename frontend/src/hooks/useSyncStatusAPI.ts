@@ -160,6 +160,7 @@ export interface SyncStatusResponse {
   staff_skills: SyncStatus
   financial_aid_applications: SyncStatus
   aid_postings: SyncStatus
+  grant_placements: SyncStatus // Campership 3c-2: the grant placement log, after aid_postings
   household_demographics: SyncStatus
   camper_dietary: SyncStatus
   camper_transportation: SyncStatus

@@ -127,8 +127,10 @@ from api.services.financial_aid_grant_placements import (
     PLACEMENT_REASON,
     PlacementRecord,
     PlacementsAsOf,
+    PlacementsRecorded,
     placement_writes,
     placements_as_of,
+    recorded_counts,
 )
 from api.services.financial_aid_grants_register import (
     Placement,
@@ -534,10 +536,6 @@ class _RequestSide:
 
 async def _no_names() -> Names:
     return {}, {}
-
-
-async def _unlogged() -> list[PlacementRecord]:
-    return []
 
 
 def _to_price(
@@ -1590,9 +1588,10 @@ class FinancialAidDecisionsService:
         labels: HouseholdLabeler | None = None,
         season_cache: AidSeasonCache | None = None,
     ) -> None:
-        """`log_placements` False: this service's live pricing neither reads nor writes the grant placement
-        log (3c-2). Only a scenario's frozen season and a rules approval's effect measurement (H3) pass it; neither
-        is a read staff see, and neither writes.
+        """`log_placements` False: this service never writes the grant placement log (3c-2): record_placements
+        refuses. Only a scenario's frozen season and a rules approval's effect measurement (H3) pass it; neither
+        is a read staff see, and neither writes. No live read writes the log either way (owner ruling 2026-10-16):
+        the sync step and the warm call record_placements.
 
         `season_cache`: the process's live-season cache (api.dependencies.aid_season_cache), which every staff read
         passes. None: every read builds. Never with log_placements False: that pricing runs on candidate rules or a
@@ -1685,26 +1684,22 @@ class FinancialAidDecisionsService:
             return await self._priced_season(year, names=names)
 
     async def _priced_season(self, year: int, *, names: bool) -> tuple[Season, Names]:
-        """The season's loads run as five concurrent branches: the requests with what hangs off them
+        """The season's loads run as four concurrent branches: the requests with what hangs off them
         (the names too, when asked), the sessions, shares, events and grants register, the CampMinder
-        ledger (10b), the cancellation events (10b-2), and the grant placement log (3c-2). The registrations
-        a cancellation reads hang off the requests, so they are read in the first branch, once the requests
-        say whose to read. The register's placement is logged before anything is priced."""
+        ledger (10b), and the cancellation events (10b-2). The registrations a cancellation reads hang off
+        the requests, so they are read in the first branch, once the requests say whose to read. The grant
+        placement log is neither read nor written here (owner ruling 2026-10-16): record_placements records it."""
         (
             side,
             (sessions, shares, events, hold_events, register),
             (camp_lines, placements, splits, synced_at),
             cancel_events,
-            logged,
         ) = await asyncio.gather(
             self._request_side(year, names=names),
             self._rounds_side(year),
             self._ledger_side(year),
             self._store.fetch_cancellations(year),
-            self._store.fetch_grant_placements(year) if self._logs_placements else _unlogged(),
         )
-        if self._logs_placements:
-            await self._log_placements(year, register, logged)
         enrollments = side.enrollments
         rules = side.rules
         rounds = fold_rounds(events)
@@ -1824,17 +1819,21 @@ class FinancialAidDecisionsService:
         )
         return season, side.names
 
-    async def _log_placements(
-        self, year: int, register: Sequence[RegisterRow], logged: Sequence[PlacementRecord]
-    ) -> None:
-        """3c-2 (owner rulings 2026-09-30, 2026-10-01): log where the grants register placed each grant this
-        pricing reads, so a past date can replay it. One operation as system:grant-placement, only for grants
-        whose placement is new, changed or gone; nothing when the log already holds it. Strict: a failed write
-        fails the read, since a placement priced but not logged would leave that day's past view wrong.
-        Chunking is safe: each row stands alone, and the next read writes whatever a failed chunk left."""
+    async def record_placements(self, year: int) -> PlacementsRecorded:
+        """3c-2 (owner rulings 2026-09-30, 2026-10-01, 2026-10-16): record where the grants register places each
+        grant now, so a past date can replay it. Register-only: the register and the log are read, nothing is
+        priced. One operation as system:grant-placement, only for grants whose placement is new, changed or gone;
+        nothing when the log already holds it. Called by the Go grant_placements sync step (the internal route)
+        and the warm after a staff write, never by a read; a failure raises to the caller (the step's card goes
+        FAILED; the warm logs it). Chunking is safe: each row stands alone, and the next record writes whatever a
+        failed chunk left."""
+        if not self._logs_placements:
+            raise ValueError("a pricing on candidate rules or a frozen season never records grant placements")
+        register, logged = await asyncio.gather(self._register(year), self._store.fetch_grant_placements(year))
         writes = placement_writes(year, register, logged)
         if writes:
             await self._store.commit(writes, actor=PLACEMENT_ACTOR, reason=PLACEMENT_REASON, allow_chunking=True)
+        return recorded_counts(year, writes)
 
     def _past_day(self, as_of: date | None) -> date | None:
         """The past date a read shows, or None for the live read (no date, or today or later in camp time)."""

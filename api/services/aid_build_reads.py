@@ -9,8 +9,8 @@ caller in the build awaits.
 BUILD-SCOPED, AND ONLY THESE TWO. The scope is a ContextVar holding a fresh memo per build. asyncio.gather and
 create_task copy the context, so the build's own child tasks share it, while another build (another year, a rebuild
 after a write, a concurrent build of the same year) opens its own, and nothing outside a build sees one. It is not a
-general read memo: the only write a build makes (its grant placement log) touches neither table, and both reads run
-before it.
+general read memo: a build writes nothing (owner ruling 2026-10-16: the grant placement log is recorded by the sync
+step and the warm, record_placements), so nothing it reads can go stale under it.
 
 SAME ROWS, SAME COLUMNS. A shared read is one canonical query: the requests read is the whole record with the filter
 and sort both readers use, a superset of the register's own projection, so no reader loses a column. Each caller gets

@@ -31,6 +31,7 @@ import {
   Camera,
   RefreshCw,
   Wallet,
+  History,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -257,6 +258,19 @@ export const YEAR_SYNC_TYPES = [
     icon: Wallet,
     color: 'text-emerald-600',
     phase: 'transform' as SyncPhase,
+  },
+  // Campership 3c-2: records where the grants register placed each grant, so Camperships' past
+  // dates can replay it. Runs after the Aid Ledger for each synced season; no individual POST
+  // route (its Run Phase and the full run start it), and never in a historical replay.
+  {
+    id: 'grant_placements',
+    name: 'Grant Placements',
+    description: 'Daily cron · after Aid Ledger',
+    icon: History,
+    color: 'text-emerald-500',
+    phase: 'transform' as SyncPhase,
+    manualTrigger: false,
+    syncedSeasonsOnly: true,
   },
   {
     id: 'household_demographics',
