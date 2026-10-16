@@ -32,6 +32,17 @@ describe('AidHeroBar', () => {
     expect(segs[0]).toHaveStyle({ flexGrow: '318' })
     expect(segs[2]).toHaveAttribute('title', 'Need an offer: 31')
   })
+  it("inks a segment's words when it carries an ink (Today's shortfall, a delta token)", () => {
+    wrap(
+      <AidHeroBar
+        segments={[
+          { key: 'ret', value: 80, label: 'Returning', figure: '80', tone: 'done' },
+          { key: 'gap', value: 20, label: 'Short', figure: '20', tone: 'gap', ink: 'text-red-700' },
+        ]}
+      />
+    )
+    expect(screen.getAllByTestId('hero-seg')[1]?.className).toContain('text-red-700')
+  })
   it('labels a segment inside only when it is wide enough', () => {
     wrap(<AidHeroBar segments={SEGS} labelMinPct={6} />)
     const [accepted, waiting] = screen.getAllByTestId('hero-seg')

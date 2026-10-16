@@ -95,11 +95,13 @@ export default function MetricsLayout() {
 
   const subNavItems = getSubNavItems()
 
-  const title = location.pathname.startsWith('/analytics/retention')
-    ? 'Retention'
-    : location.pathname.startsWith('/analytics/trends')
-      ? 'Trend Analysis'
-      : 'Registration'
+  const title = location.pathname.startsWith('/analytics/today')
+    ? 'Today'
+    : location.pathname.startsWith('/analytics/retention')
+      ? 'Retention'
+      : location.pathname.startsWith('/analytics/trends')
+        ? 'Trend Analysis'
+        : 'Registration'
 
   return (
     <MetricsSessionProvider>

@@ -528,7 +528,8 @@ describe('getTrendDirection', () => {
     const result = getTrendDirection('improving')
 
     expect(result.label).toBe('Improving')
-    expect(result.colorClass).toContain('emerald')
+    // The app-wide delta tokens (#3207 PR 8, ruling #16): good is forest
+    expect(result.colorClass).toContain('forest')
   })
 
   it('returns declining data for declining trend', () => {

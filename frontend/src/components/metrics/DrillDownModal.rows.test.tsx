@@ -418,4 +418,33 @@ describe('DrillDownModal — PR 6 lists', () => {
       expect(filename).toBe('2026-enrolled-campers-enrollments-2026-10-15.csv')
     })
   })
+
+  // Analytics › Today's Recent sign-ups "View all N enrollments ›" (#3207 PR 8, decision 40): the list opens
+  // at Rows: Enrollments, newest first, holding the enrollments whose Enrolled on day is in the window.
+  describe('opened from Today (initialRows, enrolledSince)', () => {
+    const RECENT: DrilldownFilter = {
+      ...ENROLLED,
+      label: 'Enrolled in the last 7 days',
+      initialRows: 'enrollments',
+      enrolledSince: '2026-04-04',
+    }
+
+    it('opens at Enrollments, newest first, with only the window', () => {
+      mockAttendees = threeCampers()
+      renderModal(RECENT)
+      expect(screen.getByRole('button', { name: 'Enrollments' })).toHaveAttribute(
+        'aria-pressed',
+        'true'
+      )
+      // Apr 10's two enrollments; Liam's Nov 12 and Olivia's Dec 4 are older than the window
+      expect(names()).toEqual(['Liam Garcia', 'Emma Johnson'])
+    })
+
+    it('Campers keeps every camper with an enrollment in the window', () => {
+      mockAttendees = threeCampers()
+      renderModal(RECENT)
+      fireEvent.click(screen.getByRole('button', { name: 'Campers' }))
+      expect([...names()].sort()).toEqual(['Emma Johnson', 'Liam Garcia'])
+    })
+  })
 })

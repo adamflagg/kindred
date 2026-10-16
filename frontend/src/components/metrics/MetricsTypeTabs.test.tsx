@@ -75,6 +75,24 @@ const renderWithRouter = (initialPath: string) => {
 }
 
 describe('MetricsTypeTabs', () => {
+  // Analytics › Today (#3207 PR 8): the first tab, summer at a glance.
+  it('puts Today first, linking to /analytics/today', () => {
+    renderWithRouter('/analytics/registration')
+    const links = screen.getAllByRole('link')
+    expect(links[0]).toHaveTextContent('Today')
+    expect(links[0]).toHaveAttribute('href', '/analytics/today')
+  })
+
+  it('highlights Today on its route, and hides Compare and Expanded analysis there', () => {
+    renderWithRouter('/analytics/today')
+    expect(screen.getByRole('link', { name: /today/i }).className).toContain('bg-primary')
+    expect(screen.getByRole('link', { name: /registration/i }).className).not.toContain(
+      'bg-primary'
+    )
+    expect(screen.queryByText(/Compare to/)).toBeNull()
+    expect(screen.queryByText(/Expanded analysis/)).toBeNull()
+  })
+
   it('renders all three metric type tabs', () => {
     renderWithRouter('/analytics/registration')
 
@@ -88,7 +106,7 @@ describe('MetricsTypeTabs', () => {
 
     // Each tab should have an icon (rendered as svg)
     const links = screen.getAllByRole('link')
-    expect(links).toHaveLength(3)
+    expect(links).toHaveLength(4) // Today, Registration, Retention, Trends (#3207 PR 8)
 
     links.forEach((link) => {
       const svg = link.querySelector('svg')

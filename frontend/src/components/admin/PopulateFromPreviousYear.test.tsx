@@ -550,6 +550,12 @@ describe('PopulateFromPreviousYear', () => {
 
     releaseServerInvalidate()
     await waitFor(() => expect(forecastInvalidated(invalidateSpy)).toBe(true))
+    // Analytics › Today reads the same goals and beds (#3207 PR 8)
+    expect(
+      invalidateSpy.mock.calls.some(
+        (c) => JSON.stringify((c[0] as { queryKey?: unknown }).queryKey) === '["metrics","today"]'
+      )
+    ).toBe(true)
   })
 
   it('still invalidates forecast when the server cache clear fails', async () => {

@@ -31,6 +31,7 @@ import {
   readsThroughNextDay,
 } from '../../../utils/priorityDay'
 import { MetricsBusy, MetricsLoadError } from '../../../components/metrics/MetricsQueryGuard'
+import { deltaInk } from '../../../utils/deltaTokens'
 
 function pctColor(pct: number | null): string {
   if (pct === null) return ''
@@ -45,8 +46,7 @@ function fmt(value: number | null, suffix = ''): string {
 }
 
 function deltaColor(value: number | null): string {
-  if (value === null || value === 0) return 'text-muted-foreground'
-  return value > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
+  return deltaInk(value ?? 0, 'up-good')
 }
 
 function fmtSigned(value: number | null): string {

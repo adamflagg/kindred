@@ -9,6 +9,7 @@
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react'
 import { mergeDataForComparison } from '../../utils/comparisonUtils'
 import { formatCount, formatSignedCount, formatSignedPercent } from '../../utils/numberFormat'
+import { deltaInk } from '../../utils/deltaTokens'
 
 interface DataItem {
   name: string
@@ -87,30 +88,12 @@ export function ComparisonSummaryTable({
               const isNew = row.compareValue === 0 && row.primaryValue > 0
               const isGone = row.primaryValue === 0 && row.compareValue > 0
 
-              let changeClass = 'text-muted-foreground'
-              let Icon = Minus
-              if (sentiment === 'neutral') {
-                if (row.change !== 0) {
-                  changeClass = 'text-blue-600 dark:text-blue-400'
-                  Icon = row.change > 0 ? TrendingUp : TrendingDown
-                }
-              } else if (sentiment === 'inverse') {
-                if (row.change > 0) {
-                  changeClass = 'text-red-600 dark:text-red-400'
-                  Icon = TrendingUp
-                } else if (row.change < 0) {
-                  changeClass = 'text-emerald-600 dark:text-emerald-400'
-                  Icon = TrendingDown
-                }
-              } else {
-                if (row.change > 0) {
-                  changeClass = 'text-emerald-600 dark:text-emerald-400'
-                  Icon = TrendingUp
-                } else if (row.change < 0) {
-                  changeClass = 'text-red-600 dark:text-red-400'
-                  Icon = TrendingDown
-                }
-              }
+              // The app-wide delta tokens (#3207 PR 8): 'neutral' is grey either way (ruling #17).
+              const changeClass = deltaInk(
+                row.change,
+                sentiment === 'neutral' ? 'neutral' : sentiment === 'inverse' ? 'up-bad' : 'up-good'
+              )
+              const Icon = row.change > 0 ? TrendingUp : row.change < 0 ? TrendingDown : Minus
 
               return (
                 <tr
@@ -134,7 +117,7 @@ export function ComparisonSummaryTable({
                   <td className={`px-4 py-3 text-right ${changeClass}`}>
                     <span className="flex items-center justify-end gap-1">
                       {isNew ? (
-                        <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                        <span className="bg-forest-100 text-forest-700 dark:bg-forest-900/30 dark:text-forest-300 rounded px-1.5 py-0.5 text-xs font-medium">
                           NEW
                         </span>
                       ) : isGone ? (

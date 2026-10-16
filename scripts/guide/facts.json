@@ -59,6 +59,11 @@
       "label": "Analytics › Retention",
       "path": "/analytics/retention/*"
     },
+    "analytics.today": {
+      "area": "analytics",
+      "label": "Analytics › Today",
+      "path": "/analytics/today"
+    },
     "analytics.trends": {
       "area": "analytics",
       "label": "Analytics › Trends",

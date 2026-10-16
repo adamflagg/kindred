@@ -56,6 +56,12 @@
   },
   { "key": "analytics", "area": "analytics", "label": "Analytics", "path": "/analytics/*" },
   {
+    "key": "analytics.today",
+    "area": "analytics",
+    "label": "Analytics › Today",
+    "path": "/analytics/today"
+  },
+  {
     "key": "analytics.registration",
     "area": "analytics",
     "label": "Analytics › Registration",

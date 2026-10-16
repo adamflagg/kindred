@@ -64,12 +64,11 @@ import {
 } from '../../../utils/chartFormatters'
 import PartialWeekDot from './PartialWeekDot'
 import { MetricsBusy, MetricsLoadError } from '../../../components/metrics/MetricsQueryGuard'
+import { deltaInk } from '../../../utils/deltaTokens'
 
 /** Inverted delta color: more cancellations = red (bad), fewer = green (good). */
 function invertedDeltaColorClass(value: number | null): string {
-  if (value != null && value > 0) return 'text-red-600 dark:text-red-400'
-  if (value != null && value < 0) return 'text-green-600 dark:text-green-400'
-  return 'text-muted-foreground'
+  return deltaInk(value ?? 0, 'up-bad')
 }
 
 /** Compute the calendar date for a prior year at a given week offset from its season start. */

@@ -22,6 +22,7 @@ import {
   type SessionDateLookup,
   type SessionTypeLookup,
 } from './sessionUtils'
+import { DELTA_INK } from './deltaTokens'
 
 // ============================================================================
 // Common types
@@ -271,9 +272,9 @@ export type TrendDirection = 'improving' | 'declining' | 'stable'
 export function getTrendDirection(direction: TrendDirection): TrendDisplay {
   switch (direction) {
     case 'improving':
-      return { label: 'Improving', colorClass: 'text-emerald-500' }
+      return { label: 'Improving', colorClass: DELTA_INK.good }
     case 'declining':
-      return { label: 'Declining', colorClass: 'text-red-500' }
+      return { label: 'Declining', colorClass: DELTA_INK.bad }
     default:
       return { label: 'Stable', colorClass: 'text-muted-foreground' }
   }

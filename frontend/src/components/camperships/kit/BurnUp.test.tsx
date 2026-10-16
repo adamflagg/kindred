@@ -133,7 +133,15 @@ describe('AidBurnUp', () => {
     )
     const line = container.querySelector('path[data-line="posted"]')!
     expect(line.getAttribute('stroke-width')).toBe('2.5')
-    expect(line.getAttribute('stroke')).toContain('forest-700')
+    // The shared chart's dark-mode ink (#3207 PR 8): forest-700 nearly vanishes on a dark card, so dark mode
+    // takes forest-400 on the line and dot and forest-500 on the area, as classes the theme can switch.
+    expect(line.getAttribute('class')).toBe('stroke-forest-700 dark:stroke-forest-400')
+    expect(container.querySelector('circle[data-dot="posted"]')?.getAttribute('class')).toBe(
+      'fill-forest-700 dark:fill-forest-400'
+    )
+    expect(container.querySelector('path[data-area="posted"]')?.getAttribute('class')).toBe(
+      'fill-forest-300 dark:fill-forest-500'
+    )
     expect(screen.getByText('$116k posted').getAttribute('font-weight')).toBe('700')
     expect(screen.getByText('Budget $1.11M').getAttribute('font-weight')).toBe('700')
   })

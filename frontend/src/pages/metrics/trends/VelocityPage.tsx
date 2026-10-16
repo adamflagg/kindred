@@ -67,6 +67,7 @@ import {
 } from '../../../utils/chartFormatters'
 import PartialWeekDot from './PartialWeekDot'
 import { MetricsBusy, MetricsLoadError } from '../../../components/metrics/MetricsQueryGuard'
+import { DELTA_INK, deltaInk } from '../../../utils/deltaTokens'
 
 type VelocityViewMode = 'gross' | 'net' | 'delta'
 
@@ -83,9 +84,7 @@ const Y_AXIS_LABELS: Record<VelocityViewMode, string> = {
 }
 
 function deltaColorClass(value: number | null): string {
-  if (value != null && value > 0) return 'text-green-600 dark:text-green-400'
-  if (value != null && value < 0) return 'text-red-600 dark:text-red-400'
-  return 'text-muted-foreground'
+  return deltaInk(value ?? 0, 'up-good')
 }
 
 /** Compute the calendar date for a prior year at a given week offset from its season start. */
@@ -396,9 +395,7 @@ export default function VelocityPage() {
     {
       header: 'New',
       accessor: (week) => (
-        <span className="text-green-600 dark:text-green-400">
-          {formatSignedCount(week.weekly_new)}
-        </span>
+        <span className={DELTA_INK.good}>{formatSignedCount(week.weekly_new)}</span>
       ),
       className: 'text-right',
     },

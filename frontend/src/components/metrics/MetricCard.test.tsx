@@ -100,6 +100,8 @@ describe('MetricCard onClick functionality', () => {
     })
   })
 
+  // The app-wide delta tokens (#3207 PR 8; rulings #16, #17, 2026-10-15): good is forest, bad the kit's
+  // red, and 'neutral' (New Campers) folds into grey.
   describe('sentiment prop', () => {
     it.each([
       {
@@ -107,23 +109,23 @@ describe('MetricCard onClick functionality', () => {
         value: 150,
         compareValue: 140,
         pattern: /\+10/,
-        expectedClass: 'text-emerald-600',
-        desc: 'default up=green',
+        expectedClass: 'text-forest-700',
+        desc: 'default up=forest',
       },
       {
         sentiment: 'default' as const,
         value: 150,
         compareValue: 140,
         pattern: /\+10/,
-        expectedClass: 'text-emerald-600',
-        desc: 'explicit default up=green',
+        expectedClass: 'text-forest-700',
+        desc: 'explicit default up=forest',
       },
       {
         sentiment: 'inverse' as const,
         value: 20,
         compareValue: 15,
         pattern: /\+5/,
-        expectedClass: 'text-red-600',
+        expectedClass: 'text-red-700',
         desc: 'inverse up=red',
       },
       {
@@ -131,24 +133,24 @@ describe('MetricCard onClick functionality', () => {
         value: 10,
         compareValue: 15,
         pattern: /\u22125/,
-        expectedClass: 'text-emerald-600',
-        desc: 'inverse down=green',
+        expectedClass: 'text-forest-700',
+        desc: 'inverse down=forest',
       },
       {
         sentiment: 'neutral' as const,
         value: 50,
         compareValue: 40,
         pattern: /\+10/,
-        expectedClass: 'text-blue-600',
-        desc: 'neutral up=blue',
+        expectedClass: 'text-muted-foreground',
+        desc: 'neutral up=grey',
       },
       {
         sentiment: 'neutral' as const,
         value: 30,
         compareValue: 40,
         pattern: /\u221210/,
-        expectedClass: 'text-blue-600',
-        desc: 'neutral down=blue',
+        expectedClass: 'text-muted-foreground',
+        desc: 'neutral down=grey',
       },
     ])('$desc', ({ sentiment, value, compareValue, pattern, expectedClass }) => {
       render(
@@ -166,7 +168,7 @@ describe('MetricCard onClick functionality', () => {
     })
 
     // Decision 16 (2026-10-14): a waitlist change is neither good nor bad news, so it reads
-    // in grey. 'muted' is its own value: 'neutral' stays blue for New Campers.
+    // in grey. 'muted' is its own value ('neutral', New Campers, is grey too since ruling #17).
     it.each([
       { value: 74, compareValue: 61, pattern: /\+13 vs 2025/, desc: 'muted up' },
       { value: 50, compareValue: 61, pattern: /\u221211 vs 2025/, desc: 'muted down' },
@@ -184,7 +186,7 @@ describe('MetricCard onClick functionality', () => {
 
       const trendSpan = screen.getByText(pattern).closest('span')
       expect(trendSpan).toHaveClass('text-muted-foreground')
-      expect(trendSpan?.className).not.toMatch(/emerald|red-|blue-/)
+      expect(trendSpan?.className).not.toMatch(/emerald|forest-|red-|blue-/)
       // The arrow still says which way it moved.
       expect(trendSpan?.querySelector('svg')).not.toBeNull()
     })

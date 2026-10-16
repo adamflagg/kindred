@@ -13741,6 +13741,90 @@ export type ReceiptOut = {
 }
 
 /**
+ * RecentSignupLine
+ *
+ * One camper on one Enrolled-on day (decision 40).
+ */
+export type RecentSignupLine = {
+  /**
+   * Person Id
+   *
+   * Person CampMinder ID
+   */
+  person_id: number
+  /**
+   * First Name
+   */
+  first_name: string
+  /**
+   * Last Name
+   */
+  last_name: string
+  /**
+   * Preferred Name
+   */
+  preferred_name?: string | null
+  /**
+   * Day
+   *
+   * Enrolled on, the camp-time day (YYYY-MM-DD)
+   */
+  day: string
+  /**
+   * Sessions
+   *
+   * The sessions enrolled in that day, in session order
+   */
+  sessions: Array<string>
+  /**
+   * Is New
+   *
+   * New to camp (CampMinder's Years At Camp is 1)
+   */
+  is_new: boolean
+  /**
+   * Is Second
+   *
+   * Already held a summer session this season from an earlier day
+   */
+  is_second: boolean
+}
+
+/**
+ * RecentSignupsResponse
+ */
+export type RecentSignupsResponse = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Since
+   *
+   * The window's first day (YYYY-MM-DD): today and the 6 days before it
+   */
+  since: string
+  /**
+   * Today
+   *
+   * The camp-time day the window ends on (YYYY-MM-DD)
+   */
+  today: string
+  /**
+   * Lines
+   *
+   * At most 6, newest first
+   */
+  lines: Array<RecentSignupLine>
+  /**
+   * Enrollments
+   *
+   * Enrollments in scope whose Enrolled on day is in the window
+   */
+  enrollments: number
+}
+
+/**
  * ReclassifyLineIn
  *
  * Reclassify (D104): the aid_sources description key the line's money really is, and why.
@@ -19176,6 +19260,148 @@ export type TodayResponse = {
 }
 
 /**
+ * TodaySessionPart
+ *
+ * One cabin group of a session (Girls, Boys, AG), or the whole of a quest or teen program ("").
+ */
+export type TodaySessionPart = {
+  /**
+   * Label
+   *
+   * The cabin group; empty for a one-part row
+   */
+  label: 'Girls' | 'Boys' | 'AG' | ''
+  /**
+   * Enrolled
+   *
+   * Enrolled camper-sessions
+   */
+  enrolled: number
+  /**
+   * Waitlisted
+   *
+   * Waitlisted camper-sessions
+   */
+  waitlisted: number
+  /**
+   * Beds
+   *
+   * Bunk-plan beds (or the places set in Manage); None when none are set
+   */
+  beds: number | null
+  /**
+   * Prior
+   *
+   * Last year's figure for this group; None when the session has no match
+   */
+  prior: number | null
+}
+
+/**
+ * TodaySessionRow
+ *
+ * A session this year, with its own match last year (ruling #15).
+ */
+export type TodaySessionRow = {
+  /**
+   * Session Cm Id
+   *
+   * Session CampMinder ID; 0 for a teen program row (SCIT, TLI)
+   */
+  session_cm_id: number
+  /**
+   * Session Name
+   */
+  session_name: string
+  /**
+   * Session Type
+   */
+  session_type: string
+  /**
+   * Enrolled
+   *
+   * Enrolled camper-sessions, all-gender cabins included
+   */
+  enrolled: number
+  /**
+   * Waitlisted
+   */
+  waitlisted: number
+  /**
+   * Beds
+   *
+   * Bunk-plan beds or Manage's places; None when none are set
+   */
+  beds: number | null
+  /**
+   * Goal
+   *
+   * The budget config's participant goal; None when not set yet
+   */
+  goal: number | null
+  /**
+   * Prior
+   *
+   * Last year's enrolled camper-sessions in the matched session; None when nothing matches
+   */
+  prior: number | null
+  /**
+   * Parts
+   */
+  parts: Array<TodaySessionPart>
+}
+
+/**
+ * TodaySessionsResponse
+ */
+export type TodaySessionsResponse = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Prior Year
+   */
+  prior_year: number
+  /**
+   * Rows
+   *
+   * This year's sessions in session order (ruling #14)
+   */
+  rows: Array<TodaySessionRow>
+  /**
+   * Limited Threshold
+   *
+   * The Availability page's 'limited' threshold, in percent
+   */
+  limited_threshold: number
+  /**
+   * Prior Basis
+   *
+   * same_point: last year at the same registration day; final: last year's final
+   */
+  prior_basis: 'same_point' | 'final'
+  /**
+   * Day Offset
+   *
+   * This season's registration day (0 = the priority date)
+   */
+  day_offset?: number | null
+  /**
+   * Prior Day Offset
+   *
+   * The registration day last year was read at
+   */
+  prior_day_offset?: number | null
+  /**
+   * As Of Date
+   *
+   * The day last year was read at (YYYY-MM-DD)
+   */
+  as_of_date?: string | null
+}
+
+/**
  * TodayStagesOut
  *
  * The registrar hero's one bar (spec 2026-10-10 §4.1, owner ruling 17): every live request once, by its own Stage
@@ -23785,6 +24011,110 @@ export type GetForecastApiMetricsForecastGetResponses = {
 
 export type GetForecastApiMetricsForecastGetResponse =
   GetForecastApiMetricsForecastGetResponses[keyof GetForecastApiMetricsForecastGetResponses]
+
+export type GetTodaySessionsApiMetricsTodaySessionsGetData = {
+  body?: never
+  path?: never
+  query: {
+    /**
+     * Year
+     *
+     * Season
+     */
+    year: number
+    /**
+     * Session Types
+     *
+     * Comma-separated session types (default: summer camp sessions)
+     */
+    session_types?: string | null
+    /**
+     * Session Cm Id
+     *
+     * One session (its AG cabins included)
+     */
+    session_cm_id?: number | null
+    /**
+     * Duration
+     *
+     * Filter by session duration category (1-week, 2-week, 3-week, 4-week+)
+     */
+    duration?: '1-week' | '2-week' | '3-week' | '4-week+' | null
+  }
+  url: '/api/metrics/today/sessions'
+}
+
+export type GetTodaySessionsApiMetricsTodaySessionsGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetTodaySessionsApiMetricsTodaySessionsGetError =
+  GetTodaySessionsApiMetricsTodaySessionsGetErrors[keyof GetTodaySessionsApiMetricsTodaySessionsGetErrors]
+
+export type GetTodaySessionsApiMetricsTodaySessionsGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: TodaySessionsResponse
+}
+
+export type GetTodaySessionsApiMetricsTodaySessionsGetResponse =
+  GetTodaySessionsApiMetricsTodaySessionsGetResponses[keyof GetTodaySessionsApiMetricsTodaySessionsGetResponses]
+
+export type GetTodayRecentApiMetricsTodayRecentGetData = {
+  body?: never
+  path?: never
+  query: {
+    /**
+     * Year
+     *
+     * Season
+     */
+    year: number
+    /**
+     * Session Types
+     *
+     * Comma-separated session types (default: summer camp sessions)
+     */
+    session_types?: string | null
+    /**
+     * Session Cm Id
+     *
+     * One session (its AG cabins included)
+     */
+    session_cm_id?: number | null
+    /**
+     * Duration
+     *
+     * Filter by session duration category (1-week, 2-week, 3-week, 4-week+)
+     */
+    duration?: '1-week' | '2-week' | '3-week' | '4-week+' | null
+  }
+  url: '/api/metrics/today/recent'
+}
+
+export type GetTodayRecentApiMetricsTodayRecentGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetTodayRecentApiMetricsTodayRecentGetError =
+  GetTodayRecentApiMetricsTodayRecentGetErrors[keyof GetTodayRecentApiMetricsTodayRecentGetErrors]
+
+export type GetTodayRecentApiMetricsTodayRecentGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: RecentSignupsResponse
+}
+
+export type GetTodayRecentApiMetricsTodayRecentGetResponse =
+  GetTodayRecentApiMetricsTodayRecentGetResponses[keyof GetTodayRecentApiMetricsTodayRecentGetResponses]
 
 export type GetDay1ApiMetricsRegistrationDay1GetData = {
   body?: never

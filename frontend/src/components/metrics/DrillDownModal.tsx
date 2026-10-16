@@ -213,10 +213,14 @@ export function DrillDownModal({
     (filter?.type.startsWith('waitlist_') ?? false) || filter?.waitlistContext === true
 
   const [searchTerm, setSearchTerm] = useState('')
+  // Today's "View all" opens at Enrollments, newest first by Enrolled on (#3207 PR 8)
+  const opensAtEnrollments = filter?.initialRows === 'enrollments'
   const [sortField, setSortField] = useState<SortField>(
-    isWaitlistDrilldown ? 'registration' : 'name'
+    opensAtEnrollments ? 'enrolled_on' : isWaitlistDrilldown ? 'registration' : 'name'
   )
-  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+  const [sortDirection, setSortDirection] = useState<SortDirection>(
+    opensAtEnrollments ? 'desc' : 'asc'
+  )
   const isRetentionDrilldown = !!filter?.retentionContext
   const isCancellationDrilldown = filter?.type.startsWith('cancellation_') ?? false
   // These cancellation types use default layout (School + Session columns)
@@ -234,7 +238,7 @@ export function DrillDownModal({
       (filter?.statusOverride ?? statusFilter ?? ['enrolled']).every((s) => s === 'enrolled'))
   // A retention list asks whether a person came back, so it stays one row per camper.
   const showRowsSwitch = !isRetentionDrilldown
-  const [rowsMode, setRowsMode] = useState<RowsMode>('campers')
+  const [rowsMode, setRowsMode] = useState<RowsMode>(opensAtEnrollments ? 'enrollments' : 'campers')
   const mode: RowsMode = showRowsSwitch ? rowsMode : 'campers'
   // "Newest first" reads each list's own date (mock, small proposals).
   const newestField: SortField = isWaitlistDrilldown
@@ -297,11 +301,18 @@ export function DrillDownModal({
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [filter, onClose])
 
-  // One row per camper, or one per enrollment
-  const rows = useMemo(
-    () => (mode === 'enrollments' ? attendees.flatMap(enrollmentRows) : attendees.map(camperRow)),
-    [attendees, mode]
-  )
+  // One row per camper, or one per enrollment; Today's window keeps the enrollments Enrolled on since a day
+  const since = filter?.enrolledSince
+  const rows = useMemo(() => {
+    const all =
+      mode === 'enrollments' ? attendees.flatMap(enrollmentRows) : attendees.map(camperRow)
+    if (!since) return all
+    const enrolledDays = (a: DrilldownAttendee) =>
+      a.sessions?.length
+        ? a.sessions.map((s) => campDayKey(s.enrollment_date))
+        : [campDayKey(a.enrollment_date)]
+    return all.filter((a) => enrolledDays(a).some((day) => day !== '' && day >= since))
+  }, [attendees, mode, since])
 
   // Filter rows by search term
   const filteredAttendees = useMemo(() => {

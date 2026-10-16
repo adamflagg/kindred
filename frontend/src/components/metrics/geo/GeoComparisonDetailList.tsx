@@ -12,6 +12,7 @@ import { useState } from 'react'
 import { TrendingUp, TrendingDown, Minus, ChevronDown, ChevronRight } from 'lucide-react'
 import { mergeDataForComparison } from '../../../utils/comparisonUtils'
 import type { GeoCategoryExtended } from './GeoCategoryTabs'
+import { deltaInk } from '../../../utils/deltaTokens'
 
 interface GeoDataItem {
   name: string
@@ -121,15 +122,8 @@ export function GeoComparisonDetailList({
                   const isNew = row.compareValue === 0 && row.primaryValue > 0
                   const isGone = row.primaryValue === 0 && row.compareValue > 0
 
-                  let changeClass = 'text-muted-foreground'
-                  let Icon = Minus
-                  if (row.change > 0) {
-                    changeClass = 'text-emerald-600 dark:text-emerald-400'
-                    Icon = TrendingUp
-                  } else if (row.change < 0) {
-                    changeClass = 'text-red-600 dark:text-red-400'
-                    Icon = TrendingDown
-                  }
+                  const changeClass = deltaInk(row.change, 'up-good')
+                  const Icon = row.change > 0 ? TrendingUp : row.change < 0 ? TrendingDown : Minus
 
                   return (
                     <tr
@@ -146,7 +140,7 @@ export function GeoComparisonDetailList({
                       <td className={`px-4 py-2 text-right ${changeClass}`}>
                         <span className="flex items-center justify-end gap-1">
                           {isNew ? (
-                            <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                            <span className="bg-forest-100 text-forest-700 dark:bg-forest-900/30 dark:text-forest-300 rounded px-1.5 py-0.5 text-xs font-medium">
                               NEW
                             </span>
                           ) : isGone ? (

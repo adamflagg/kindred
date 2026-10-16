@@ -248,6 +248,11 @@ import type {
   ZipResponse,
   ZipRowOut,
   ZipTableOut,
+  RecentSignupLine,
+  RecentSignupsResponse,
+  TodaySessionPart,
+  TodaySessionRow,
+  TodaySessionsResponse,
 } from './api-generated'
 
 // ── Social graph types ────────────────────────────────────────────────────────
@@ -648,3 +653,12 @@ export type ApiAidZip = ZipResponse
 export type ApiAidZipTable = ZipTableOut
 export type ApiAidZipRow = ZipRowOut
 export type ApiAidZipGroup = ZipGroupOut
+
+/**
+ * Analytics › Today (#3207 PR 8): Session fill and Recent sign-ups. Mirrors Python `api/schemas/today.py`.
+ */
+export type ApiTodaySessions = TodaySessionsResponse
+export type ApiTodaySessionRow = TodaySessionRow
+export type ApiTodaySessionPart = TodaySessionPart
+export type ApiRecentSignups = RecentSignupsResponse
+export type ApiRecentSignupLine = RecentSignupLine

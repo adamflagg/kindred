@@ -63,6 +63,14 @@ describe('scopeWords — what the session filter picked, and what it leaves out'
 })
 
 describe('scopeLine — per page', () => {
+  it('Today names no unit: it mixes campers and camper-sessions, and each card names its own', () => {
+    expect(scopeLine('/analytics/today', 2027, atCamp)).toEqual({
+      head: '2027 · At Camp',
+      left: 'Quests and Teens not counted',
+      unit: null,
+    })
+  })
+
   it('Registration Overview: the season, the scope, campers', () => {
     expect(scopeLine('/analytics/registration/overview', 2026, atCamp)).toEqual({
       head: '2026 · At Camp',

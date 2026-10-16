@@ -14,8 +14,11 @@ const MONTH_GAP = 30 // the least room, in chart units, two month labels need si
 // The mock's inks (audit F16): a forest line over a light forest fill, labels that matter in bold foreground.
 const INK = 'var(--color-muted-foreground)'
 const STRONG = 'var(--color-foreground)'
-const POSTED = 'var(--color-forest-700)'
-const FILL = 'var(--color-forest-300)'
+// The posted line, dot and area are classes, so dark mode can lift them (#3207 PR 8: forest-700 all but
+// vanishes on a dark card). Light keeps the mock's forest-700 over forest-300.
+const POSTED_STROKE = 'stroke-forest-700 dark:stroke-forest-400'
+const POSTED_FILL = 'fill-forest-700 dark:fill-forest-400'
+const AREA_FILL = 'fill-forest-300 dark:fill-forest-500'
 const AMBER = 'var(--color-amber-600)'
 const AMBER_INK = 'var(--color-amber-700)' // amber type: amber-600 is the stroke, too light for 10.5px text
 const RULE = 'var(--color-border)'
@@ -148,8 +151,8 @@ export function AidBurnUp({
           {m.label}
         </text>
       ))}
-      <path d={area} fill={FILL} fillOpacity={0.3} />
-      <path d={line} data-line="posted" fill="none" stroke={POSTED} strokeWidth={2.5} />
+      <path d={area} data-area="posted" className={AREA_FILL} fillOpacity={0.3} />
+      <path d={line} data-line="posted" fill="none" className={POSTED_STROKE} strokeWidth={2.5} />
       {budget !== null && budget > 0 && (
         <>
           <line
@@ -207,7 +210,7 @@ export function AidBurnUp({
           </text>
         </>
       )}
-      <circle data-dot="posted" cx={dotX} cy={dotY} r={3.5} fill={POSTED} />
+      <circle data-dot="posted" cx={dotX} cy={dotY} r={3.5} className={POSTED_FILL} />
       <text
         data-label="posted"
         x={labelX}

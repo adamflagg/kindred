@@ -104,7 +104,8 @@ function formatDelta(
   const arrow = diff > 0 ? '\u25B2' : '\u25BC'
   return {
     text: `${arrow} ${formatSignedCount(diff)}`,
-    color: diff > 0 ? 'text-emerald-300' : 'text-red-300',
+    // On the card's dark gradient: the light end of the delta tokens' forest and red (#3207 PR 8)
+    color: diff > 0 ? 'text-forest-300' : 'text-red-300',
   }
 }
 

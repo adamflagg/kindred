@@ -415,6 +415,10 @@ export interface DrilldownFilter {
   waitlistContext?: boolean
   /** Retention context: base year and compare year for retention drilldowns */
   retentionContext?: { baseYear: number; compareYear: number }
+  /** Open at Rows: Enrollments, newest first (Analytics › Today's "View all", #3207 PR 8). */
+  initialRows?: 'enrollments'
+  /** Keep only enrollments whose Enrolled on camp day is this YYYY-MM-DD or later (Today's 7-day window). */
+  enrolledSince?: string
 }
 
 export interface DrilldownAttendee {
