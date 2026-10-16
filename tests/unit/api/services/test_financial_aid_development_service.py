@@ -336,6 +336,16 @@ async def test_an_ambiguous_outside_line_is_not_counted_and_a_person_level_one_i
     assert _row(placed, "teens", "camp_pool").values[0] == 1.0  # Samuel, 13; never Riley
 
 
+async def test_a_family_camp_outside_credit_posted_to_a_summer_camper_counts_nobody() -> None:
+    """#55 (coordinator 2026-10-16): CampMinder posted a Family Camp grant to Samuel, who also had a 2025 summer stay.
+    A Family Camp grant doesn't make him a summer aid recipient, so the age lines count nobody from it."""
+    family_camp = OutsideCreditRecord(SAM_HOME, SAMUEL, 0, "none", "regional family camp", "family_camp")
+    out = await _service(_outside_only_2025(family_camp), _backfilled_2025()).development(YEAR)
+    assert _row(out, "youth", "camp_pool").values[0] == 1.0  # Emma, from the sheet, only
+    assert _row(out, "teens", "camp_pool").values[0] == 0.0
+    assert _row(out, "adults", "camp_pool").values[0] == 0.0
+
+
 async def test_the_families_cell_of_an_as_reported_column_stays_the_typed_figure() -> None:
     """#55's Families clause is how the dashboard counts families where it computes them; an as-reported column's
     Families cell stays what development typed, sheet loaded or not."""

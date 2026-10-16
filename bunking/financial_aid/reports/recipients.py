@@ -80,7 +80,8 @@ def recipient_entity(recipient: ReportedRecipient) -> str:
 class OutsideCredit:
     """A live outside or incentive ledger credit of the season (an aid_postings row): who CampMinder posted it to
     (`person_cm_id`, 0 = the household), where the sync placed it (`attributed_person_cm_id` at
-    `attribution_level`), and whether its source implies summer aid (`summer_source`)."""
+    `attribution_level`), and whether its source or program implies summer aid (`summer_source`; False: it never
+    adds a camper to the summer age lines)."""
 
     household_cm_id: int
     person_cm_id: int
@@ -98,13 +99,19 @@ def _certain_camper(credit: OutsideCredit, summer_homes: Mapping[int, set[int]])
     """RULED (owner 2026-10-16, #55 = a): an outside-only family's camper counts in the age lines only when the
     camper is certain: CampMinder named the person on the line, or the sync placed it on a person (person or session
     level, a staff override or a decision; never "ambiguous" or "program_family"), or the household had exactly
-    one enrolled summer camper that season and the line's source is summer aid. Never fanned out to siblings."""
+    one enrolled summer camper that season. Never fanned out to siblings.
+
+    Every branch needs the line's source or program to be summer aid (summer, Quest or teen; coordinator, applying
+    #55, 2026-10-16): a Family Camp, B*Mitzvah or weekend grant doesn't make a child a summer aid recipient, even
+    when CampMinder posted it to that child."""
+    if not credit.summer_source:
+        return None
     if credit.person_cm_id > 0:
         return credit.person_cm_id
     if credit.attribution_level in CERTAIN_LEVELS and credit.attributed_person_cm_id > 0:
         return credit.attributed_person_cm_id
     campers = summer_homes.get(credit.household_cm_id, set())
-    if credit.summer_source and len(campers) == 1:
+    if len(campers) == 1:
         return next(iter(campers))
     return None
 

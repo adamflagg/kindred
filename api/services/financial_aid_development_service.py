@@ -910,7 +910,9 @@ class FinancialAidDevelopmentService:
         # RULED (owner 2026-10-16, #55 = a): a family whose only aid was an outside credit, with no row on the sheet
         # (2025's tool keeps outside grants in per-application columns, not a Grants tab), is a recipient family; its
         # camper enters the age lines only when certain (bunking.financial_aid.reports.recipients._certain_camper),
-        # never fanned out to siblings. Past seasons' synced aid_requests are never read here (FIRST_REQUEST_SEASON).
+        # never fanned out to siblings, and only from a summer, Quest or teen source or program: a Family Camp,
+        # B*Mitzvah or weekend grant adds nobody, even posted to a summer camper. Past seasons' synced aid_requests
+        # are never read here (FIRST_REQUEST_SEASON).
         summer_sources = {s.description_key for s in sources if SUMMER_AID_FAMILIES & set(s.implied_program_families)}
         outside = [
             OutsideCredit(

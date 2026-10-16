@@ -181,6 +181,19 @@ def test_a_single_camper_household_line_counts_only_when_its_source_is_summer_ai
     assert sheet_ages([], stays, PEOPLE, [_credit(LIAM_HOME, summer=False)]) == {}
 
 
+def test_a_family_camp_credit_campminder_posted_to_a_summer_camper_counts_nobody() -> None:
+    """#55 (coordinator 2026-10-16): a Family Camp, B*Mitzvah or weekend grant doesn't make a child a summer aid
+    recipient, even posted to that child, who also had a summer stay."""
+    stays = [(LIAM, LIAM_HOME, JUNE_20)]
+    assert sheet_ages([], stays, PEOPLE, [_credit(LIAM_HOME, person=LIAM, summer=False)]) == {}
+
+
+@pytest.mark.parametrize("level", ["person", "session", "override", "decision"])
+def test_a_non_summer_credit_the_sync_placed_on_a_summer_camper_counts_nobody(level: str) -> None:
+    stays = [(LIAM, LIAM_HOME, JUNE_20)]
+    assert sheet_ages([], stays, PEOPLE, [_credit(LIAM_HOME, attributed=LIAM, level=level, summer=False)]) == {}
+
+
 def test_a_household_on_the_sheet_is_never_counted_again_from_its_outside_lines() -> None:
     """Emma's household is on the sheet (Emma's award); its outside grant on the household doesn't add Olivia."""
     stays = [(EMMA, EMMA_HOME, JUNE_20), (OLIVIA, EMMA_HOME, JUNE_20)]
