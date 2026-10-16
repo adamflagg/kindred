@@ -69,6 +69,8 @@ TodayKey = Literal[
     "not_reconciled",
     "to_reverse",
     "session_not_settled",
+    # PR 3 (spec 71 §2.4): Requests › Form intake's Needs a look rows, while there are any
+    "form_intake",
     "duplicates",
     "cancel_reason",
     "to_place",
@@ -89,7 +91,7 @@ TodayKey = Literal[
     "needs_group",
     "no_grantor",
 ]
-TodayItemKind = Literal["requests", "grants", "sections", "descriptions", "fields", "lines", "funders"]
+TodayItemKind = Literal["requests", "grants", "sections", "descriptions", "fields", "lines", "funders", "campers"]
 
 
 class TodayReasonOut(BaseModel):

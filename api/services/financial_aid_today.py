@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import defaultdict
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
@@ -42,6 +42,7 @@ from api.services.financial_aid_decisions_service import (
     PricingRules,
     Season,
 )
+from api.services.financial_aid_form_intake import FormIntakeLook
 from api.services.financial_aid_grants_register import RegisterRow
 from api.services.financial_aid_grants_service import GrantsLoader, OneGrantsLoad
 from api.services.financial_aid_household_page import HouseholdLabeler
@@ -62,6 +63,7 @@ CASEWORK_LINES: Final[tuple[TodayKey, ...]] = (
     "not_reconciled",
     "to_reverse",
     "session_not_settled",
+    "form_intake",
     "duplicates",
     "cancel_reason",
     "to_place",
@@ -110,6 +112,8 @@ class TodayInputs:
     # Development's chips (audit D8): each description key -> the description as CampMinder writes it.
     descriptions: Mapping[str, str] = field(default_factory=dict)
     source_ids: Mapping[str, str] = field(default_factory=dict)  # each description key -> its aid_sources record id
+    # Casework (PR 3): Requests › Form intake's Needs a look rows; None: not read.
+    form_intake: FormIntakeLook | None = None
 
 
 def _families(rows: Iterable[GridRowOut]) -> int:
@@ -377,6 +381,30 @@ def _to_place_line(found: OpenToPlace | None) -> TodayLineOut:
     )
 
 
+def _form_intake_line(look: FormIntakeLook | None) -> TodayLineOut:
+    """Spec 71 §2.4: "Form intake · N need a look", counted by Form intake's own rows (one per camper, or per household
+    for a Family Camp request), with its look reasons and the first households in the page's own order. The client
+    shows a line only while it is non-zero."""
+    rows = look.rows if look is not None else ()
+    households: dict[int, TodayNextUpOut] = {}
+    for row in rows:
+        if row.household_cm_id > 0 and row.household_cm_id not in households and len(households) < NEXT_UP_CAP:
+            households[row.household_cm_id] = TodayNextUpOut(
+                household_cm_id=row.household_cm_id,
+                label=row.camper_name or row.household_label,
+                tiebreak="" if row.camper_name else row.household_tiebreak,
+                camper_name=row.camper_name,
+            )
+    return TodayLineOut(
+        key="form_intake",
+        families=len({row.household_cm_id for row in rows}),
+        items=len(rows),
+        item_kind="campers",
+        reasons=_reasons((reason, row.household_cm_id) for row in rows for reason in row.look_reasons),
+        next_up=list(households.values()),
+    )
+
+
 def _casework(inputs: TodayInputs) -> list[TodayLineOut]:
     rows = inputs.rows
     needs_offer = _in(rows, "needs_offer")
@@ -433,6 +461,7 @@ def _casework(inputs: TodayInputs) -> list[TodayLineOut]:
         ),
         "to_reverse": _line("to_reverse", _in(rows, "to_reverse")),
         "session_not_settled": _line("session_not_settled", _in(rows, "session_not_settled")),
+        "form_intake": _form_intake_line(inputs.form_intake),
         "duplicates": _line("duplicates", _in(rows, "duplicates")),
         # D164 (owner 2026-10-14): a CampMinder withdrawal stays an open to-do until someone gives its reason.
         "cancel_reason": _line(
@@ -833,6 +862,7 @@ class TodayService:
         ledger: LedgerReads,
         intake: IntakeWarningReads | None = None,
         to_place: ToPlaceCounts | None = None,
+        form_intake: Callable[[int], Awaitable[FormIntakeLook]] | None = None,
         labels: HouseholdLabeler | None = None,
         clock: Callable[[], datetime] | None = None,
         season_cache: AidSeasonCache | None = None,
@@ -848,6 +878,7 @@ class TodayService:
         self._ledger = ledger
         self._intake = intake
         self._to_place = to_place
+        self._form_intake = form_intake
         self._labels = labels
         self._clock: Callable[[], datetime] = clock or (lambda: datetime.now(UTC))
 
@@ -899,6 +930,7 @@ class TodayService:
             }
             if casework and self._to_place is not None:
                 open_lines = await open_to_place(live, self._to_place)
+        look = await self._form_intake(year) if casework and self._form_intake is not None else None
         inputs = TodayInputs(
             year=year,
             rows=rows,
@@ -916,6 +948,7 @@ class TodayService:
             hold_since=hold_since,
             descriptions={key: named.description for key, named in named_sources.items()},
             source_ids={key: named.source_id for key, named in named_sources.items()},
+            form_intake=look,
         )
         out = build_today(inputs, casework=casework, finance=finance, development=development, view=view)
         return await self._labelled(year, out) if named else out
