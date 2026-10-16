@@ -37,10 +37,16 @@ import {
   sortPriorSessionDataByDate,
 } from '../../../utils/sessionUtils'
 import { OutlierSection } from '../../../components/metrics/RetentionNotableOutliers'
+import { schoolChartName, synagogueChartName } from '../../../utils/chartLabels'
+import { sessionName } from '../../../utils/sessionName'
 import type { DrilldownFilter } from '../../../types/metrics'
 import { Loader2 } from 'lucide-react'
 import { formatCount, formatPercent, formatRate } from '../../../utils/numberFormat'
 import { MetricsBusy, MetricsLoadError } from '../../../components/metrics/MetricsQueryGuard'
+
+// P-20 option B (owner, 2026-10-15): the session, school and synagogue charts write
+// shorter names on the axis. City and region names are left as they are.
+const shortSessionName = (name: string) => sessionName(name, undefined, 'short')
 
 export default function RetentionOverview() {
   const { currentYear } = useCurrentYear()
@@ -287,6 +293,7 @@ export default function RetentionOverview() {
               title={`Retention by ${currentYear} Session`}
               sortBy="none"
               barWidthPercent={88}
+              shortenLabel={shortSessionName}
               onBarClick={(item) => setFilter(makeRetentionFilter('retention_session', item))}
             />
           )}
@@ -296,6 +303,7 @@ export default function RetentionOverview() {
               title={`Retention by ${priorYear} Session`}
               sortBy="none"
               barWidthPercent={88}
+              shortenLabel={shortSessionName}
             />
           )}
         </div>
@@ -345,6 +353,7 @@ export default function RetentionOverview() {
                 topN={15}
                 sortBy="count"
                 barWidthPercent={78}
+                shortenLabel={schoolChartName}
                 onBarClick={(item) => setFilter(makeRetentionFilter('school', item))}
               />
             </div>
@@ -362,6 +371,7 @@ export default function RetentionOverview() {
                 topN={15}
                 sortBy="count"
                 barWidthPercent={78}
+                shortenLabel={synagogueChartName}
                 onBarClick={(item) => setFilter(makeRetentionFilter('synagogue', item))}
               />
             </div>

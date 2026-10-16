@@ -105,8 +105,16 @@ vi.mock('../../../hooks/useDrilldown', () => ({
 vi.mock('../../../components/metrics/BreakdownChart', () => ({
   BreakdownChart: () => null,
 }))
+// Each chart's props, by title, so a test can read what the page hands a chart.
+const retentionChartProps = new Map<string, { shortenLabel?: (name: string) => string }>()
 vi.mock('../../../components/metrics/CssVerticalRetentionBarChart', () => ({
-  CssVerticalRetentionBarChart: () => null,
+  CssVerticalRetentionBarChart: (props: {
+    title: string
+    shortenLabel?: (name: string) => string
+  }) => {
+    retentionChartProps.set(props.title, props)
+    return null
+  },
 }))
 vi.mock('../../../components/metrics/RetentionRateLineChart', () => ({
   RetentionRateLineChart: () => null,
@@ -390,5 +398,54 @@ describe('RetentionOverview number format', () => {
     })
     render(<RetentionOverview />)
     expect(screen.getByText(/Excluding 1,234 rising 10th graders/)).toBeInTheDocument()
+  })
+})
+
+describe('RetentionOverview chart labels (P-20 option B, shorter names)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    retentionChartProps.clear()
+    mockActiveSessionTypes = ['main', 'embedded', 'ag', 'quest']
+    const row = { base_count: 20, returned_count: 12, retention_rate: 0.6 }
+    useRetentionMetricsMock.mockReturnValue({
+      data: {
+        ...mockData,
+        by_session: [{ session_cm_id: 1001, session_name: 'Session 2', ...row }],
+        by_prior_session: [{ prior_session: 'Session 2', ...row }],
+        by_city: [{ city: 'Springfield', ...row }],
+        by_school: [{ school: 'Harbor School', ...row }],
+        by_synagogue: [{ synagogue: 'Temple Emet', ...row }],
+      },
+      isLoading: false,
+      error: null,
+    })
+  })
+
+  it('shortens school names on the school chart', () => {
+    render(<RetentionOverview />)
+    const shorten = retentionChartProps.get('Retention by School (Top 15)')?.shortenLabel
+    expect(shorten?.('Riverbend Community School')).toBe('Riverbend Comm.')
+  })
+
+  it('shortens synagogue names on the synagogue chart', () => {
+    render(<RetentionOverview />)
+    const shorten = retentionChartProps.get('Retention by Synagogue (Top 15)')?.shortenLabel
+    expect(shorten?.('Congregation Or Tikvah')).toBe('Or Tikvah')
+  })
+
+  it.each(['Retention by 2026 Session', 'Retention by 2025 Session'])(
+    'gives %s the short session form',
+    (title) => {
+      render(<RetentionOverview />)
+      const shorten = retentionChartProps.get(title)?.shortenLabel
+      expect(shorten?.('All-Gender Cabin-Session 2 (7th & 8th grades)')).toBe('AG 2 (7-8)')
+    }
+  )
+
+  it('leaves the city and region charts as they are', () => {
+    render(<RetentionOverview />)
+    expect(retentionChartProps.get('Retention by City (Top 15)')).toBeDefined()
+    expect(retentionChartProps.get('Retention by City (Top 15)')?.shortenLabel).toBeUndefined()
+    expect(retentionChartProps.get('Retention by Region')?.shortenLabel).toBeUndefined()
   })
 })

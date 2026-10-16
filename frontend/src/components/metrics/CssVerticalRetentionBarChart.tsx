@@ -10,6 +10,7 @@ import { useCallback, useMemo } from 'react'
 import { CssVerticalBarChart, type CssVerticalBarItem } from './CssVerticalBarChart'
 import { sortRetentionBarData, type RetentionSortBy } from '../../utils/retentionTransforms'
 import type { RetentionRateBarItem } from '../../types/metrics'
+import { chartAxisLabels } from '../../utils/chartLabels'
 import { formatCount, formatPercent } from '../../utils/numberFormat'
 
 interface CssVerticalRetentionBarChartProps {
@@ -22,6 +23,11 @@ interface CssVerticalRetentionBarChartProps {
   onBarClick?: (item: RetentionRateBarItem) => void
   /** Bar width as percentage of column (1-100). Passed through to CssVerticalBarChart. */
   barWidthPercent?: number
+  /**
+   * Shortens a name for the x-axis only (P-20 option B). Names that would then
+   * read the same keep their full names. The tooltip and the click keep the full name.
+   */
+  shortenLabel?: (name: string) => string
   className?: string
 }
 
@@ -40,20 +46,27 @@ export function CssVerticalRetentionBarChart({
   showCounts = false,
   onBarClick,
   barWidthPercent,
+  shortenLabel,
   className = '',
 }: CssVerticalRetentionBarChartProps) {
   const sorted = useMemo(() => sortRetentionBarData(data, sortBy, topN), [data, sortBy, topN])
 
   // Map RetentionRateBarItem[] to CssVerticalBarItem[]
-  const barData: CssVerticalBarItem[] = useMemo(
-    () =>
-      sorted.map((item) => ({
-        ...item,
-        name: item.name,
-        value: item.retentionRate * 100,
-      })),
-    [sorted]
-  )
+  // Shortened over the bars shown (after topN), so a cut bar can't force a full name.
+  const barData: CssVerticalBarItem[] = useMemo(() => {
+    const axisLabels = shortenLabel
+      ? chartAxisLabels(
+          sorted.map((item) => item.name),
+          shortenLabel
+        )
+      : undefined
+    return sorted.map((item, i) => ({
+      ...item,
+      name: item.name,
+      ...(axisLabels ? { axisLabel: axisLabels[i] } : {}),
+      value: item.retentionRate * 100,
+    }))
+  }, [sorted, shortenLabel])
 
   const colorFn = useCallback(
     (item: CssVerticalBarItem) => getBarColor(item['retentionRate'] as number),

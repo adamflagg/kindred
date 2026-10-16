@@ -26,6 +26,8 @@ import { formatCount } from '../../utils/numberFormat'
 export interface CssVerticalBarItem {
   name: string
   value: number
+  /** Shorter text for the x-axis only; `name` stays the item's name everywhere else (P-20). */
+  axisLabel?: string
   id?: string | number
   [key: string]: unknown // extra fields for tooltip access
 }
@@ -226,7 +228,7 @@ export function CssVerticalBarChart({
 
         {/* X-axis labels */}
         <VerticalXAxis
-          labels={data.map((d) => d.name)}
+          labels={data.map((d) => d.axisLabel ?? d.name)}
           rotated={rotateLabels}
           marginLeft={yAxisMarginLeft}
           columnSizing={{ ...columnSizing, gap: 0 }}
