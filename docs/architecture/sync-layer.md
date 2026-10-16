@@ -365,6 +365,14 @@ Adding it to the file afterwards changes nothing: each run then logs a warning n
 classified in the app. Classifications never
 come from a migration, because the camp's own descriptions name the camp.
 
+**`grant_placements`** (campership 3c-2) runs right after `aid_postings`, for each synced season (the N−1
+pass too: it is not `PrimaryOnly`), and never in a historical replay or a dry run. It writes nothing itself:
+it POSTs the season to FastAPI's `/api/internal/financial-aid/grant-placements`, which records where the
+grants register places each grant now (`aid_grant_placements`, appended only for a grant that moved), so a
+past date in Camperships can replay it. Seasons before 2026 have no aid requests and are skipped. A failed
+record fails the job's own card. FastAPI also records after each staff write; an interactive read never does
+(owner ruling 2026-10-16).
+
 **Key ordering rules:**
 
 1. **Source → Derived**: All derived tables (`family_camp_derived`, `lodging_assignments`, …) run AFTER source data syncs

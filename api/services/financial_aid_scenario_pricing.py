@@ -190,7 +190,7 @@ async def capture_season(
         rows.extend(found)
         return found
 
-    # A scenario never writes (spec §7.4): freezing leaves the grant placement log to live pricing (3c-2).
+    # A scenario never writes (spec §7.4): freezing leaves the grant placement log to its recorders (3c-2).
     service = FinancialAidDecisionsService(
         cast(DecisionsStore, recorder), rules, recorded, clock=lambda: frozen_at, log_placements=False
     )

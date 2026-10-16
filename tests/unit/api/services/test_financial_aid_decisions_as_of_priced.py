@@ -247,10 +247,14 @@ async def test_a_request_whose_application_history_cannot_be_replayed_is_named()
 
 
 @pytest.mark.asyncio
-async def test_today_or_later_is_still_the_live_read_and_logs_its_placement() -> None:
+async def test_today_or_later_is_still_the_live_read_and_writes_no_placement() -> None:
+    """Owner ruling 2026-10-16 (reversing 2026-10-01): the live read prices with the register and never writes the
+    placement log; the sync step and the warm record it (record_placements)."""
     store = _two_families()
-    await _service(store, register=[grant_row(EMMA, "500")]).grid(YEAR, as_of=NOW.date() + timedelta(days=1))
-    assert [p.grant for p in store.grant_placements] == ["ledger:9001"]
+    service = _service(store, register=[grant_row(EMMA, "500")])
+    live = _row(await service.grid(YEAR, as_of=NOW.date() + timedelta(days=1)), EMMA)
+    assert live.rounds[0].decided == 1000.0  # the register's grant is priced: 1,500 less the 500 grant
+    assert (store.grant_placements, store.operations) == ([], [])
 
 
 @pytest.mark.asyncio

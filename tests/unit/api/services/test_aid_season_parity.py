@@ -67,8 +67,9 @@ LAYER_ONE: frozenset[str] = frozenset(
 
 
 def _service(pb: SeasonPb, cache: AidSeasonCache | None) -> FinancialAidDecisionsService:
-    """The real service over the real repositories, as a staff read builds it (log_placements on). The rules are
-    FakeRules: they are not one of the cached reads. The placement log's batch write is applied to the double."""
+    """The real service over the real repositories, as a staff read builds it (log_placements on, so it may record
+    placements). The rules are FakeRules: they are not one of the cached reads. The placement log's batch write
+    (record_placements) is applied to the double."""
     store = FinancialAidDecisionsRepository(pb)
     store.commit = committing(pb)  # type: ignore[method-assign, assignment]
     return FinancialAidDecisionsService(
@@ -260,7 +261,7 @@ async def test_the_reference_season_holds_every_route_a_number_takes() -> None:
     # camper, so Okafor's grant line, from a family that never applied, has no sole camper to tie to.
     assert register[("ledger", T_OKAFOR_GRANT, OKAFOR)].camper_basis == "none"
     assert any(r.kind == "commitment" and r.requests[0].request_id == REQ_NOAH for r in season.register)
-    assert len(pb.written) == len(season.register)
+    assert pb.written == []  # a season build writes nothing (owner ruling 2026-10-16): the sync step records
     # Payer shares across two households: Liam's, half paid by his childhood household (Johnson).
     assert {s.household_cm_id for s in season.shares[REQ_LIAM]} == {GARCIA, JOHNSON}
     # The Family Camp household-level request, priced with its cost override.
@@ -280,6 +281,10 @@ async def test_the_reference_season_holds_every_route_a_number_takes() -> None:
     assert REQ_PRIOR not in season.requests
     assert T_PRIOR not in {line.transaction_cm_id for line in season.camp_lines}
     assert all(r.year == YEAR for r in season.requests.values())
+    # The sync step records the register's placement (record_placements), every grant of this season and no other's.
+    await _service(pb, None).record_placements(YEAR)
+    assert pb.refused == [], pb.refused
+    assert len(pb.written) == len(season.register)
     assert PRIOR_SEASON not in {e.year for e in pb.tables["aid_grant_placements"][1:]}
 
 

@@ -10,8 +10,9 @@ entries the difference does not matter). An expired entry is dropped when next r
 Cleared by: every Camperships write (on_aid_commit, registered on commit_aid_writes at startup: the write's own year,
 or every year for a write to a season-spanning table, SEASON_SPANNING_COLLECTIONS), the completion of every
 sync job that writes something a season reads (invalidate_server_caches, scoped by sync_changes_aid_season), and
-the layer-1 refresher's backstop clear. Each clear is followed by a background warm of every synced season. This
-cache's own TTL is the fallback, not the plan.
+the layer-1 refresher's backstop clear. Each clear is followed by a background warm of every synced season; a
+Camperships write's warm records its grant placements first (on_aid_commit). This cache's own TTL is the fallback,
+not the plan.
 
 Generation-guarded per year: a build that started before a clear is handed to the waiters who already
 joined it but never STORED, so the writer's own refetch always starts a fresh build.
@@ -198,28 +199,33 @@ def on_aid_commit(writes: Sequence[AidWrite], actor: str) -> None:
     """commit_aid_writes' listener. Runs in the committing worker thread, BEFORE the write's HTTP response
     returns, so the browser's own refetch after a save can never read the pre-save season.
 
-    PLACEMENT_ACTOR is skipped: that commit is the season build's own placement log (_log_placements) --
-    clearing on it would throw away the very build that wrote it. The log needs a write only when the
-    grants register changed, and every register change is a staff commit or a sync, each of which clears
-    this cache.
+    PLACEMENT_ACTOR is skipped: that commit is the grant placement log's own record (record_placements), which
+    changes nothing a season prices -- clearing on it would throw away the season the warm just built, and
+    scheduling a warm on it would record again, forever.
+
+    Every other commit asks the warm to record grant placements too (owner ruling 2026-10-16): for the write's own
+    seasons, or, for a season-spanning table (a source's grantor mapping, a grantor's pays-after-camp-aid flag), every
+    register season, since such a write moves grants in seasons it is not logged under. A read never records.
 
     It touches the event loop only through call_soon_threadsafe: the warm is scheduled, never run, from here."""
     # Imported here, not at the top: api.dependencies builds this module's class, and the layer-1 module and the
     # placement module both reach api.dependencies.
     from api.dependencies import aid_season_cache, form_intake_cache  # noqa: PLC0415 - circular
-    from api.services.aid_sync_inputs import schedule_aid_warm  # noqa: PLC0415 - circular
+    from api.services.aid_sync_inputs import EVERY_REGISTER_SEASON, schedule_aid_warm  # noqa: PLC0415 - circular
     from api.services.financial_aid_grant_placements import PLACEMENT_ACTOR  # noqa: PLC0415 - circular
 
     if actor == PLACEMENT_ACTOR or not writes:
         return
     # Form intake's explained season (financial_aid_form_intake_cache.py) reads the same aid tables, so it clears with
     # the priced season, scoped the same way.
+    spanning = any(w.collection in SEASON_SPANNING_COLLECTIONS for w in writes)
+    years = frozenset(int(w.year) for w in writes)
     for cache in (aid_season_cache, form_intake_cache):
-        if any(w.collection in SEASON_SPANNING_COLLECTIONS for w in writes):
+        if spanning:
             cache.invalidate_all()  # logged under one season, read by every season
         else:
-            for year in {int(w.year) for w in writes}:
+            for year in years:
                 cache.invalidate_year(year)
     loop = _warm_loop
     if loop is not None and not loop.is_closed():
-        loop.call_soon_threadsafe(schedule_aid_warm)
+        loop.call_soon_threadsafe(schedule_aid_warm, EVERY_REGISTER_SEASON if spanning else years)

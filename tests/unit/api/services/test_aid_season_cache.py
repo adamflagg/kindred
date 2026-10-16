@@ -11,9 +11,11 @@ from __future__ import annotations
 import ast
 import asyncio
 import copy
+import logging
 import re
 from collections import Counter
 from collections.abc import Sequence
+from dataclasses import replace
 from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -36,7 +38,7 @@ from api.services.aid_season_cache import (
     on_aid_commit,
     sync_changes_aid_season,
 )
-from api.services.aid_sync_inputs import set_season_warmer
+from api.services.aid_sync_inputs import set_placement_recorder, set_season_warmer
 from api.services.financial_aid_decisions_service import FinancialAidDecisionsService, Season
 from api.services.financial_aid_grant_placements import PLACEMENT_ACTOR
 from api.services.financial_aid_grants_register import RegisterRow
@@ -386,9 +388,9 @@ async def test_a_disconnect_on_a_screen_that_shares_its_grants_load_never_cancel
 
 
 @pytest.mark.asyncio
-async def test_a_build_that_logs_its_grant_placements_stays_cached() -> None:
-    """_log_placements commits INSIDE the build, through the real commit_aid_writes, whose listener
-    must not throw away the build that wrote it."""
+async def test_a_live_build_commits_nothing_and_stays_cached() -> None:
+    """Owner ruling 2026-10-16: a season build no longer logs grant placements (the sync step and the warm record
+    them, record_placements), so it commits nothing, through the real commit_aid_writes or otherwise."""
     store = _store()
     heard: list[str] = []
 
@@ -400,7 +402,23 @@ async def test_a_build_that_logs_its_grant_placements_stays_cached() -> None:
     try:
         service = _service(store, aid_season_cache, register=[grant_row(EMMA, "500")])
         first = await service.season(YEAR)
-        assert heard == [PLACEMENT_ACTOR]  # the build did commit its placement log
+        assert (heard, store.grant_placements) == ([], [])
+        assert await service.season(YEAR) is first
+        assert store.builds[YEAR] == 1
+    finally:
+        remove()
+
+
+@pytest.mark.asyncio
+async def test_recording_placements_never_clears_the_cached_season() -> None:
+    """record_placements commits as PLACEMENT_ACTOR through the real commit_aid_writes; the listener skips that actor,
+    so recording after a warm never throws away the season the warm just built."""
+    store = _store()
+    remove = add_commit_listener(on_aid_commit)
+    try:
+        service = _service(store, aid_season_cache, register=[grant_row(EMMA, "500")])
+        first = await service.season(YEAR)
+        await service.record_placements(YEAR)
         assert len(store.grant_placements) == 1
         assert await service.season(YEAR) is first
         assert store.builds[YEAR] == 1
@@ -765,6 +783,85 @@ async def test_a_write_rebuilds_the_configured_season_in_the_background_and_a_re
     await warm
 
 
+async def _commit_and_settle(writes: Sequence[AidWrite], actor: str = STAFF) -> None:
+    """Commit from a worker thread, as commit_aid_writes' listener runs, and wait out the warm it schedules."""
+    bind_warm_loop(asyncio.get_running_loop())
+    await asyncio.to_thread(on_aid_commit, writes, actor)
+    for _ in range(200):
+        await asyncio.sleep(0)
+        task = layer1._warm_task
+        if task is not None and task.done():
+            task.result()  # a warm never raises
+            return
+    raise AssertionError("the warm never finished")
+
+
+@pytest.fixture
+def recorded(monkeypatch: pytest.MonkeyPatch) -> list[int]:
+    """The warm's placement recordings, in order, with both synced seasons and no real fill."""
+    seen: list[int] = []
+
+    async def record(year: int) -> None:
+        seen.append(year)
+
+    monkeypatch.setattr(layer1, "_synced_years", AsyncMock(return_value=[YEAR + 1, YEAR]))
+    monkeypatch.setattr(layer1, "aid_sync_inputs", AsyncMock())
+    monkeypatch.setattr(layer1, "_season_warmer", None)
+    monkeypatch.setattr(layer1, "_placement_recorder", None)
+    monkeypatch.setattr(layer1, "_warm_task", None)
+    monkeypatch.setattr(layer2, "_warm_loop", None)
+    set_placement_recorder(record)
+    return seen
+
+
+@pytest.mark.asyncio
+async def test_a_staff_write_records_its_own_seasons_placements(recorded: list[int]) -> None:
+    """The warm after a commit records the commit's own season, synced or not: a 2026 write in a later year
+    is still that season's history, and the nightly sync step only reaches the synced seasons."""
+    await _commit_and_settle([_staff_write(YEAR - 1)])
+    assert recorded == [YEAR - 1]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("collection", ["aid_sources", "aid_grantors"])
+async def test_a_season_spanning_write_records_every_register_season(recorded: list[int], collection: str) -> None:
+    """A source's grantor mapping or a grantor's pays-after-camp-aid flag places grants in EVERY season, though the
+    write is logged under one. So the warm records every register season from 2026 to the newest synced season,
+    not only the seasons it warms: the gap a season-scoped record would leave."""
+    write = replace(_staff_write(YEAR), collection=collection, record_id="src000000000001")
+    await _commit_and_settle([write])
+    assert recorded == [2026, 2027, 2028]
+
+
+@pytest.mark.asyncio
+async def test_a_write_to_a_season_before_the_log_records_nothing(recorded: list[int]) -> None:
+    await _commit_and_settle([_staff_write(2025)])
+    assert recorded == []
+
+
+@pytest.mark.asyncio
+async def test_a_failed_recording_is_logged_at_warning_and_the_warm_goes_on(
+    monkeypatch: pytest.MonkeyPatch, recorded: list[int], caplog: pytest.LogCaptureFixture
+) -> None:
+    warmed: list[int] = []
+
+    async def failing(year: int) -> None:
+        raise RuntimeError("PocketBase refused the batch")
+
+    async def warm_season(year: int) -> None:
+        warmed.append(year)
+
+    set_placement_recorder(failing)
+    monkeypatch.setattr(layer1, "_season_warmer", warm_season)
+    with caplog.at_level(logging.WARNING, logger=layer1.__name__):
+        await _commit_and_settle([_staff_write(YEAR)])
+    assert warmed == [YEAR + 1, YEAR]
+    assert any(
+        r.levelno == logging.WARNING and "placement" in r.getMessage() and str(YEAR) in r.getMessage()
+        for r in caplog.records
+    )
+
+
 @pytest.mark.asyncio
 async def test_a_placement_commit_schedules_no_warm(monkeypatch: pytest.MonkeyPatch) -> None:
     loop = MagicMock()
@@ -811,9 +908,11 @@ async def test_startup_registers_the_listener_and_the_season_warmer_and_shutdown
             assert on_aid_commit in change_log._LISTENERS
             assert layer2._warm_loop is asyncio.get_running_loop()
             assert layer1._season_warmer is not None
+            assert layer1._placement_recorder is not None
         assert on_aid_commit not in change_log._LISTENERS
         assert layer2._warm_loop is None
         assert layer1._season_warmer is None
+        assert layer1._placement_recorder is None
 
 
 @pytest.mark.asyncio
@@ -840,6 +939,8 @@ _NEVER = {
     ("api/routers/financial_aid.py", "season_on"),
     # The overnight tick runs right after the ledger sync writes aid_postings and before that job's cache clear.
     ("api/routers/internal.py", "run_financial_aid_ledger_ticks"),
+    # The grant placement record (3c-2) reads only the register and the log: it builds no season to cache.
+    ("api/routers/internal.py", "record_grant_placements"),
     # Scenarios: a frozen season and its replay on candidate rules (log_placements=False).
     ("api/services/financial_aid_scenario_pricing.py", "capture_season"),
     ("api/services/financial_aid_scenario_pricing.py", "price_document"),

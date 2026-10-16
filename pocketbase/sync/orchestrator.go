@@ -260,6 +260,17 @@ var syncJobMeta = []JobMeta{
 		Description: "Materialize the aid ledger from financial-aid transactions (live, plus reversed history)",
 		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun,
 		PrimaryOnly: true},
+	// Campership 3c-2: records where the grants register placed each grant, so a past date can
+	// replay it (owner ruling 2026-10-16: this step and FastAPI's post-write warm record it, never
+	// an interactive read). A Go step that only calls Python, as process_requests is. The register
+	// reads the ledger, so its row sits right after aid_postings. Not PrimaryOnly: aid_postings
+	// covers N-1..N+1 from the primary pass, but placements are per season, so the N-1 pass
+	// records its own season too. SyncedSeasonsOnly: a historical replay records nothing (and no
+	// season before 2026 has a request to place a grant on). No individual route.
+	{ID: "grant_placements", Phase: PhaseTransform,
+		Description: "Record where the grants register placed each grant (Camperships past dates)",
+		Cadences:    CadenceDaily, Triggers: TriggerPhaseRun | TriggerFullRun,
+		SyncedSeasonsOnly: true},
 	{ID: "household_demographics", Phase: PhaseTransform,
 		Description: "Compute household demographics from custom values",
 		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
@@ -2780,6 +2791,12 @@ func (o *Orchestrator) servicesForYear(year int, debug bool) map[string]Service 
 	aidPostings.LedgerTickTrigger = TriggerFinancialAidLedgerTicks
 	s.add("aid_postings", aidPostings)
 
+	// Grant placements for this season, after its ledger
+	grantPlacements := NewGrantPlacementsSync()
+	grantPlacements.Year = year
+	grantPlacements.Record = TriggerGrantPlacements
+	s.add("grant_placements", grantPlacements)
+
 	// Household demographics (computed from HH- fields + household custom values)
 	householdDemographics := NewHouseholdDemographicsSync(o.app)
 	householdDemographics.Year = year
@@ -3604,6 +3621,11 @@ func (o *Orchestrator) InitializeSyncServices() error {
 	aidPostingsDefaultSync := NewAidPostingsSync(o.app)
 	aidPostingsDefaultSync.LedgerTickTrigger = TriggerFinancialAidLedgerTicks
 	o.RegisterService("aid_postings", aidPostingsDefaultSync)
+
+	// Grant placements (the grants register's placement log, recorded through FastAPI)
+	grantPlacementsDefaultSync := NewGrantPlacementsSync()
+	grantPlacementsDefaultSync.Record = TriggerGrantPlacements
+	o.RegisterService("grant_placements", grantPlacementsDefaultSync)
 
 	// Household demographics (computes from HH- fields + household custom values - on-demand)
 	o.RegisterService("household_demographics", NewHouseholdDemographicsSync(o.app))

@@ -40,10 +40,10 @@ from __future__ import annotations
 
 import asyncio
 from collections import defaultdict
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Any, Final
+from typing import Any, Final, Literal
 
 from api.constants.collections import (
     ATTENDEES,
@@ -255,6 +255,15 @@ async def aid_sync_inputs(pb: Any, year: int) -> AidSyncInputs:
 # whether another warm was asked for while it ran -- the coalescing schedule_lodging_warm uses.
 _warm_task: asyncio.Task[None] | None = None
 _rerun_requested = False
+# The grant placement records the next warm owes (owner ruling 2026-10-16): the seasons commits named since the last
+# one, and whether a season-spanning commit asked for every register season. Gathered here so a burst of writes is
+# recorded once per season.
+_record_years: set[int] = set()
+_record_every_season = False
+
+# schedule_aid_warm's ask for a record of every register season: a season-spanning write.
+EVERY_REGISTER_SEASON: Final = "every"
+RecordAsk = Iterable[int] | Literal["every"]
 
 
 async def _synced_years() -> list[int]:
@@ -276,6 +285,42 @@ def set_season_warmer(warm: Callable[[int], Awaitable[object]] | None) -> None:
     """The lifespan registers the router's own staff read, so the warm fills the very cache entry staff read."""
     global _season_warmer
     _season_warmer = warm
+
+
+# Records one season's grant placements (FinancialAidDecisionsService.record_placements on the staff service).
+# Registered by the lifespan, like the season warmer. None: nothing is recorded (tests, before startup).
+_placement_recorder: Callable[[int], Awaitable[object]] | None = None
+
+
+def set_placement_recorder(record: Callable[[int], Awaitable[object]] | None) -> None:
+    """The lifespan registers the staff decisions service's record_placements, and None at shutdown."""
+    global _placement_recorder
+    _placement_recorder = record
+
+
+async def _record_placements(years: Iterable[int], every: bool) -> None:
+    """Record the grant placements the commits since the last warm owe: their own seasons, and, after a
+    season-spanning write, every register season from FIRST_PLACEMENT_SEASON to the newest synced one (a source's
+    grantor mapping places grants in seasons the warm never fills). Never a season before the log. Never raises:
+    a failure is a warning, and the nightly grant_placements sync step is the visible backstop."""
+    from api.services.financial_aid_grant_placements import FIRST_PLACEMENT_SEASON  # noqa: PLC0415 - import cost
+
+    record = _placement_recorder
+    if record is None:
+        return
+    seasons = set(years)
+    if every:
+        try:
+            newest = max(await _synced_years())
+        except Exception as exc:
+            logger.warning(f"Camperships grant placement record could not list the synced seasons: {exc}")
+        else:
+            seasons |= set(range(FIRST_PLACEMENT_SEASON, newest + 1))
+    for year in sorted(s for s in seasons if s >= FIRST_PLACEMENT_SEASON):
+        try:
+            await record(year)
+        except Exception as exc:
+            logger.warning(f"Camperships grant placement record for {year} failed: {exc}")
 
 
 async def warm_aid_year(year: int) -> None:
@@ -306,18 +351,29 @@ async def _warm_live_seasons() -> None:
 
 
 async def _warm_until_settled() -> None:
-    global _rerun_requested
+    global _rerun_requested, _record_every_season
     while True:
         _rerun_requested = False
+        years, every = set(_record_years), _record_every_season
+        _record_years.clear()
+        _record_every_season = False
+        await _record_placements(years, every)
         await _warm_live_seasons()
         if not _rerun_requested:
             return
 
 
-def schedule_aid_warm() -> None:
+def schedule_aid_warm(record: RecordAsk = ()) -> None:
     """Start a background fill of every synced season, and return at once. One warm at a time: a request that
-    lands mid-warm becomes a single rerun after it (see schedule_lodging_warm)."""
-    global _rerun_requested, _warm_task
+    lands mid-warm becomes a single rerun after it (see schedule_lodging_warm).
+
+    `record`: the seasons whose grant placements the warm records first, or EVERY_REGISTER_SEASON (on_aid_commit
+    passes a staff write's). Asks gather until the warm that takes them, so none is lost to the coalescing."""
+    global _rerun_requested, _record_every_season, _warm_task
+    if isinstance(record, str):  # EVERY_REGISTER_SEASON
+        _record_every_season = True
+    else:
+        _record_years.update(int(y) for y in record)
     loop = asyncio.get_running_loop()
     # A task from another event loop (a finished pytest loop) can never complete here.
     if _warm_task is not None and not _warm_task.done() and _warm_task.get_loop() is loop:

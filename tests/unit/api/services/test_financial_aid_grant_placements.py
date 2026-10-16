@@ -16,6 +16,7 @@ from api.services.financial_aid_decisions_service import FinancialAidDecisionsSe
 from api.services.financial_aid_grant_placements import (
     PLACEMENT_ACTOR,
     PlacementRecord,
+    PlacementsRecorded,
     grant_key,
     placement_json,
     placement_record,
@@ -124,40 +125,68 @@ def _service(store: FakeDecisionsStore, register: list[RegisterRow]) -> Financia
 
 
 @pytest.mark.asyncio
-async def test_live_pricing_logs_where_each_grant_sits_and_logs_again_only_when_it_moves() -> None:
+async def test_recording_logs_where_each_grant_sits_and_logs_again_only_when_it_moves() -> None:
+    """record_placements (the nightly sync step and the warm after a staff write) logs the register's placement:
+    one row per grant that is new, moved or gone, as system:grant-placement, and nothing when nothing moved."""
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
     seed_request(store, LIAM, household=1000002, person=1000021)
     register = [grant_row(EMMA, "500")]
     service = _service(store, register)
-    await service.grid(YEAR)
-    await service.budget(YEAR)
+    assert await service.record_placements(YEAR) == PlacementsRecorded(year=YEAR, placed=1, removed=0)
+    assert await service.record_placements(YEAR) == PlacementsRecorded(year=YEAR, placed=0, removed=0)
     (logged,) = store.grant_placements
     assert (logged.grant, logged.event) == ("ledger:9001", "place")
     assert [row["actor"] for row in store.log] == [PLACEMENT_ACTOR]
     register[0] = grant_row(LIAM, "500")
-    await service.remaining(YEAR)
+    await service.record_placements(YEAR)
     assert [
         (p.grant, p.placement["requests"][0]["request_id"] if p.placement else None) for p in store.grant_placements
     ] == [
         ("ledger:9001", EMMA),
         ("ledger:9001", LIAM),
     ]
+    register.clear()
+    assert await service.record_placements(YEAR) == PlacementsRecorded(year=YEAR, placed=0, removed=1)
+    assert store.grant_placements[-1].event == "remove"
 
 
 @pytest.mark.asyncio
-async def test_a_placement_log_write_that_fails_fails_the_read() -> None:
-    """Owner ruling 2026-10-01 (Group 4, Q2): strict. The log is pricing history, so a placement priced
-    but not logged must not look logged: the read fails (a 500 through the global handler)."""
+async def test_an_interactive_read_writes_no_placement_and_the_log_cannot_fail_it() -> None:
+    """Owner ruling 2026-10-16, reversing 2026-10-01's strict rule: an interactive read never writes the placement
+    log, so a log that can't be read or written can't fail it. The sync step and the warm record placements."""
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
+    attempted: list[Any] = []
 
     async def refused(*args: Any, **kwargs: Any) -> Any:
+        attempted.append(args)
         raise RuntimeError("the batch failed")
 
+    async def unreadable(year: int) -> Any:
+        raise RuntimeError("the placement log can't be read")
+
     store.commit = refused  # type: ignore[method-assign]
-    with pytest.raises(RuntimeError, match="the batch failed"):
-        await _service(store, [grant_row(EMMA, "500")]).remaining(YEAR)
+    store.fetch_grant_placements = unreadable  # type: ignore[method-assign]
+    service = _service(store, [grant_row(EMMA, "500")])
+    await service.remaining(YEAR)
+    await service.grid(YEAR)
+    await service.budget(YEAR)
+    assert (attempted, store.grant_placements) == ([], [])
+
+
+@pytest.mark.asyncio
+async def test_a_pricing_that_never_logs_refuses_to_record() -> None:
+    """log_placements False (a scenario's frozen season, a rules approval's effect) never writes the log."""
+    store = FakeDecisionsStore()
+
+    async def rows(year: int) -> Sequence[RegisterRow]:
+        return [grant_row(EMMA, "500")]
+
+    service = FinancialAidDecisionsService(store, FakeRules(approved()), rows, clock=lambda: T0, log_placements=False)
+    with pytest.raises(ValueError, match="never records"):
+        await service.record_placements(YEAR)
+    assert store.grant_placements == []
 
 
 # --- a past date replays the log (Task 3) ------------------------------------------------------------
@@ -258,14 +287,14 @@ def test_a_key_two_register_rows_share_is_unplaced_even_where_the_log_placed_it(
 
 
 @pytest.mark.asyncio
-async def test_live_reads_with_a_shared_key_log_only_the_other_grants_and_then_nothing() -> None:
+async def test_records_with_a_shared_key_log_only_the_other_grants_and_then_nothing() -> None:
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
     seed_request(store, LIAM, household=1000002, person=1000021)
     service = _service(store, _twins())
-    await service.grid(YEAR)
+    await service.record_placements(YEAR)
     assert [p.grant for p in store.grant_placements] == ["ledger:9002"]
-    await service.grid(YEAR)
+    await service.record_placements(YEAR)
     assert [p.grant for p in store.grant_placements] == ["ledger:9002"]
 
 
