@@ -650,6 +650,18 @@ describe('Today › the embedded add (PR 8b)', () => {
     expect(within(hero()).getByTestId('hero-change')).toHaveTextContent('▲ 500') // 880 vs 380
   })
 
+  it("one session picked: the headline is busy while Session fill still holds another session's figure", () => {
+    vi.mocked(useMetricsSession).mockReturnValue(
+      session({
+        selectedSessionCmId: 1000200,
+        selectedSession: { cm_id: 1000200, name: 'Session 2' },
+      })
+    )
+    withSessions({ ...FOLDED, rows: [S2_FOLDED], headline_prior: 380 }, { isPlaceholderData: true })
+    renderPage()
+    expect(hero()).toHaveTextContent('Loading 2027')
+  })
+
   it('a whole-scope headline is unchanged (#51)', () => {
     withSessions({ ...FOLDED, headline_prior: null })
     renderPage()

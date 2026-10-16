@@ -405,7 +405,11 @@ export default function TodayPage() {
             data: primary.data,
             isLoading: primary.isLoading || (oneSession !== null && sessions.isLoading),
             error: primary.error ?? comparison?.error ?? null,
-            isPlaceholderData: primary.isPlaceholderData || comparison?.isPlaceholderData === true,
+            // #51's headline reads Session fill, which may still hold the previous session's figure
+            isPlaceholderData:
+              primary.isPlaceholderData ||
+              comparison?.isPlaceholderData === true ||
+              (oneSession !== null && sessions.isPlaceholderData),
           }}
           onRetry={retryHero}
           busyWhat={busyWhat}
