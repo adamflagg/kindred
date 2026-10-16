@@ -2,10 +2,11 @@
 
 Form intake's explain service (financial_aid_form_intake.py) reads a whole season -- the FA mirror and the season's
 people through layer 1, the sessions and registrations, every request, addition, decision and cancellation, the camp
-aid lines and household links, the intake rules -- and explains every row, on every read. Four reads make that build:
-the Requests band count (/intake/{year}/summary), the page (/forms), Season's D170 line opened in place
-(/aid-on-no-request) and Today's form_intake line (needs_a_look), and Today and the Requests band are read on every
-Camperships page load. This wraps the service from the outside, so the explain code itself is unchanged:
+aid lines and household links, the intake rules, and (2027 on) the dated registration asks with every registration's
+dates -- and explains every row, on every read. Four reads make that build: the Requests band count
+(/intake/{year}/summary), the page (/forms), Season's D170 line opened in place (/aid-on-no-request) and Today's
+form_intake line (needs_a_look), and Today and the Requests band are read on every Camperships page load. This
+wraps the service from the outside, so the explain code itself is unchanged:
 
   - `rows`: the explained season and its unnamed rows, built once and shared by all four reads, so the band's count,
     the page's counts, Today's line and the D170 total are one computation;
@@ -58,11 +59,13 @@ from api.schemas.financial_aid_form_intake import (
 from api.services.aid_season_cache import AidSeasonCache
 from api.services.camp_calendar import CAMP_TZ
 from api.services.financial_aid_form_intake import FormIntakeLook, FormIntakeService, FormIntakeStore, _Season
+from api.services.financial_aid_registration_ask import ASK_HISTORY_COLLECTION
 
 # The sync-written collections Form intake's cached reads read: layer 1's (the people, households, registrations,
 # equity answers and the FA mirror, which fetch_fa_rows reads through it), the sessions and registrations it reads
 # itself, the camp aid lines and household links the aid_postings job writes, and the funding sources Grants' "Needs a
-# camper" count reads beside the page. The aid_* tables nothing but commit_aid_writes writes are cleared by its
+# camper" count reads beside the page, and (2027 on) the dated registration asks the custom-values and FA jobs append
+# (PR 4b's why-nots). The aid_* tables nothing but commit_aid_writes writes are cleared by its
 # listener (on_aid_commit). Derived, not guessed: see this module's docstring.
 FORM_INTAKE_SYNC_TABLES: frozenset[str] = frozenset(
     {
@@ -76,6 +79,7 @@ FORM_INTAKE_SYNC_TABLES: frozenset[str] = frozenset(
         AID_POSTINGS,
         AID_SOURCES,
         AID_HOUSEHOLD_LINKS,
+        ASK_HISTORY_COLLECTION,
     }
 )
 

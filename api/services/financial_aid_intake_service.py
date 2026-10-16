@@ -25,6 +25,10 @@ A camper whose household changes within one aid family keeps their request (fina
 season's aid_household_links, staff links included, decide "one family" exactly as family_household_set
 joins them, and every record the move touches is one write in the same operation, logged "move_household".
 
+From 2027, a registration aid ask makes a request too (PR 4b, financial_aid_registration_ask): once the specs are
+known the rule reads the dated ask history and every registration, its new additions join the specs of the SAME run,
+and their rows are written in the run's one operation.
+
 Called by the Go FA sync after it writes (POST /api/internal/financial-aid/intake).
 Every build re-resolves each request's session from registration, so a camper who
 enrolls or switches sessions is picked up on the next run. One build per season runs
@@ -87,6 +91,14 @@ from api.services.financial_aid_intake_types import (
     SessionRow,
 )
 from api.services.financial_aid_ledger_service import family_household_set
+from api.services.financial_aid_registration_ask import (
+    REGISTRATION_ASK_RULE_FIRST_SEASON,
+    AskHistoryRow,
+    AttendeeDates,
+    RegistrationAskResult,
+    addition_writes,
+    registration_ask_additions,
+)
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite, new_record_id
 from bunking.financial_aid.headcount import is_infant
 from bunking.financial_aid.rules import resolve_program
@@ -128,6 +140,8 @@ class IntakeStore(Protocol):
     async def fetch_request_additions(self, year: int) -> list[AdditionRecord]: ...
     async def fetch_household_links(self, year: int) -> list[Any]: ...
     async def fetch_corrections(self, year: int, application_id: str | None) -> list[CorrectionRecord]: ...
+    async def fetch_registration_ask_history(self, year: int) -> list[AskHistoryRow]: ...
+    async def fetch_attendee_dates(self, year: int) -> list[AttendeeDates]: ...
     async def load_intake_rules(self, year: int) -> AidRules | None: ...
     async def load_equity_rules(self, year: int) -> AidRules | None: ...
     async def commit(
@@ -164,6 +178,11 @@ class IntakeReport:
     warnings: tuple[str, ...] = ()
     # Requests moved in place to another household of their aid family (a camper whose household changed).
     requests_moved: int = 0
+    # The registration-ask rule (PR 4b, 2027 on): additions it made this run, and the open enrollments it could not
+    # tie to an ask (one ask on a day that registered several sessions; an ask typed at no registration of this one).
+    registration_ask_added: int = 0
+    registration_ask_ambiguous: int = 0
+    registration_ask_unattributed: int = 0
 
 
 INTAKE_REASON: Final = "intake rebuild"
@@ -589,9 +608,12 @@ class FinancialAidIntakeService:
         moved_additions = addition_moves(live, camper_moves(households, requests, same_family))
         if moved_additions:
             moved = {m.record_id: m.to_household for m in moved_additions}
-            households, without_request = intake_households(
-                [replace(a, household_cm_id=moved[a.id]) if a.id in moved else a for a in live]
-            )
+            live = [replace(a, household_cm_id=moved[a.id]) if a.id in moved else a for a in live]
+            households, without_request = intake_households(live)
+        # PR 4b: the registration-ask rule, once the specs are known. Its additions make their requests in this run.
+        asked = await self._registration_ask(year, fa_rows, sessions, households, requests, additions)
+        if asked.additions:
+            households, without_request = intake_households([*live, *asked.additions])
 
         family_households = [h.household_cm_id for h in households if any(s.person_cm_id == 0 for s in h.requests)]
         billed = await billed_for(store, year, sessions, family_households, billing)
@@ -619,7 +641,7 @@ class FinancialAidIntakeService:
                 plan.unmoved_campers,
             )
         corrections = await self._moved_corrections(year, plan, requests)
-        operation_id = await self._commit(year, plan, applications, requests, corrections, shares)
+        operation_id = await self._commit(year, plan, applications, requests, corrections, shares, asked.additions)
         statuses = _final_statuses(plan, requests)
         report = IntakeReport(
             year=year,
@@ -637,12 +659,16 @@ class FinancialAidIntakeService:
             operation_id=operation_id,
             warnings=never_true_warnings(equity_rules, fa_rows),
             requests_moved=len(plan.request_moves),
+            registration_ask_added=len(asked.additions),
+            registration_ask_ambiguous=len(asked.ambiguous),
+            registration_ask_unattributed=len(asked.unattributed),
         )
         for warning in report.warnings:
             logger.warning("Financial-aid intake season warning year=%s %s", year, warning)
         logger.info(
             "Financial-aid intake built year=%s households=%s created=%s updated=%s unmatched=%s pending=%s "
-            "awaiting_approved_rules=%s rows_without_request=%s rows_without_household=%s moved=%s operation_id=%s",
+            "awaiting_approved_rules=%s rows_without_request=%s rows_without_household=%s moved=%s "
+            "registration_ask_added=%s registration_ask_ambiguous=%s registration_ask_unattributed=%s operation_id=%s",
             year,
             report.households,
             report.requests_created,
@@ -653,6 +679,9 @@ class FinancialAidIntakeService:
             report.rows_without_request,
             report.rows_without_household,
             report.requests_moved,
+            report.registration_ask_added,
+            report.registration_ask_ambiguous,
+            report.registration_ask_unattributed,
             report.operation_id,
         )
         return report
@@ -670,6 +699,33 @@ class FinancialAidIntakeService:
             found.extend(await self._store.fetch_corrections(year, application_id))
         return found
 
+    async def _registration_ask(
+        self,
+        year: int,
+        fa_rows: Sequence[FaRow],
+        sessions: Sequence[SessionRow],
+        households: Sequence[HouseholdIntake],
+        requests: Sequence[RequestRecord],
+        additions: Sequence[AdditionRecord],
+    ) -> RegistrationAskResult:
+        """The registration-ask rule over this run's specs (financial_aid_registration_ask). Before its first season it
+        reads nothing and makes nothing."""
+        if year < REGISTRATION_ASK_RULE_FIRST_SEASON:
+            return RegistrationAskResult()
+        history, dated = await asyncio.gather(
+            self._store.fetch_registration_ask_history(year), self._store.fetch_attendee_dates(year)
+        )
+        return registration_ask_additions(
+            year,
+            fa_rows=fa_rows,
+            sessions=sessions,
+            attendees=dated,
+            history=history,
+            additions=additions,
+            requests=requests,
+            specs=[spec for household in households for spec in household.requests],
+        )
+
     async def _commit(
         self,
         year: int,
@@ -678,11 +734,13 @@ class FinancialAidIntakeService:
         requests: Sequence[RequestRecord],
         corrections: Sequence[CorrectionRecord] = (),
         shares: Sequence[PayerShareRecord] = (),
+        asked: Sequence[AdditionRecord] = (),
     ) -> str:
         """One run is one operation (spec 14.4). Chunking is allowed on purpose: a run over
         the batch limit is a first build of a whole season, and the next run finishes one
-        left part-done. A run under the limit is still one atomic batch."""
-        writes = plan_writes(year, plan, applications, requests, corrections, shares)
+        left part-done. A run under the limit is still one atomic batch. The registration-ask rule's
+        additions (`asked`) go first: the run's request creates are made from them."""
+        writes = [*addition_writes(year, asked), *plan_writes(year, plan, applications, requests, corrections, shares)]
         if not writes:
             return ""
         result = await self._store.commit(writes, actor=INTAKE_ACTOR, reason=INTAKE_REASON, allow_chunking=True)

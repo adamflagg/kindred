@@ -1037,13 +1037,42 @@ describe('WorkingRequestCard: a duplicate pair (item 11)', () => {
       expect(screen.getAllByRole('button', { name: 'Remove…' })).toHaveLength(1)
     })
 
-    it('offers no Remove… on a rule-made request, a removed one, or without casework', () => {
+    it('offers Remove… on a live rule-made request too, saying it is never made again (PR 4b, owner 8a)', () => {
+      // Owner ruling 8a (2026-10-16), design 96 §8.4: a wrong rule-made request is Removed, not Cancelled, and Remove
+      // is permanent (the rule never re-makes a slot that has had an addition). This supersedes PR 3's Cancel-only.
       additionFor = {
         [ROW_EMMA.request_id]: added({ origin: 'registration_ask', reviewed: false }),
       }
-      const { unmount } = renderCards([ROW_EMMA])
-      expect(screen.queryByRole('button', { name: 'Remove…' })).toBeNull()
-      unmount()
+      renderCards([ROW_EMMA])
+      expect(screen.getByRole('button', { name: 'Remove…' })).toHaveAttribute(
+        'title',
+        'The dashboard made this from a registration ask. Remove it if that was wrong: it is withdrawn, its decisions kept, and never made again'
+      )
+    })
+
+    it('says on the Remove form itself that removing a rule-made request is permanent (owner #83)', async () => {
+      additionFor = {
+        [ROW_EMMA.request_id]: added({ origin: 'registration_ask', reviewed: false }),
+      }
+      renderCards([ROW_EMMA])
+      await userEvent.click(screen.getByRole('button', { name: 'Remove…' }))
+      expect(screen.getByText('Remove this request the dashboard made')).toBeInTheDocument()
+      expect(screen.getByText('Permanent')).toBeInTheDocument()
+      expect(
+        screen.getByText(/the dashboard never makes this request again from the registration ask/)
+      ).toBeInTheDocument()
+      expect(screen.getByText(/use Cancel Request… instead/)).toBeInTheDocument()
+    })
+
+    it('keeps a staff-added request’s Remove form free of the rule-made permanence line', async () => {
+      additionFor = { [ROW_EMMA.request_id]: added() }
+      renderCards([ROW_EMMA])
+      await userEvent.click(screen.getByRole('button', { name: 'Remove…' }))
+      expect(screen.getByText('Remove this added request')).toBeInTheDocument()
+      expect(screen.queryByText('Permanent')).toBeNull()
+    })
+
+    it('offers no Remove… on a removed request, or without casework', () => {
       additionFor = { [ROW_EMMA.request_id]: added({ live: false }) }
       const again = renderCards([ROW_EMMA])
       expect(screen.queryByRole('button', { name: 'Remove…' })).toBeNull()

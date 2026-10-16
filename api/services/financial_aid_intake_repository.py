@@ -69,6 +69,12 @@ from api.services.financial_aid_intake_types import (
     SessionRow,
     equity_from_json,
 )
+from api.services.financial_aid_registration_ask import (
+    ASK_HISTORY_COLLECTION,
+    REGISTRATION_ASK_FIELD_CM_ID,
+    AskHistoryRow,
+    AttendeeDates,
+)
 from api.services.financial_aid_repository import FinancialAidRepository
 from api.services.financial_aid_requesters import FaContact
 from api.services.financial_aid_rules_service import AidRulesRepository, FinancialAidRulesService
@@ -445,6 +451,54 @@ class FinancialAidIntakeRepository:
             for r in rows
         ]
 
+    async def fetch_registration_ask_history(self, year: int) -> list[AskHistoryRow]:
+        """The season's dated camper registration asks (PR 4a's aid_registration_ask_history, field 28906 only: the
+        rule never reads the adult-weekend slot). All five rules are null; this client is the superuser."""
+        rows = await self._page(
+            ASK_HISTORY_COLLECTION,
+            {
+                "filter": f"year = {int(year)} && field_cm_id = {REGISTRATION_ASK_FIELD_CM_ID}",
+                "fields": "id,person_cm_id,amount,source_changed_at,observed_at,created",
+                "sort": STABLE_SORT,
+            },
+        )
+        return [
+            AskHistoryRow(
+                person_cm_id=_int(getattr(r, "person_cm_id", 0)),
+                amount=_float(getattr(r, "amount", 0)),
+                source_changed_at=_str(getattr(r, "source_changed_at", "")),
+                observed_at=_stamp(getattr(r, "observed_at", "")),
+                created=_stamp(getattr(r, "created", "")),
+            )
+            for r in rows
+        ]
+
+    async def fetch_attendee_dates(self, year: int) -> list[AttendeeDates]:
+        """Every registration of the season, ANY status, with its registration day (effective_date) and status date
+        (enrollment_date): the registration-ask rule's match. A cancelled same-day registration still makes an ask
+        ambiguous, so this is wider than fetch_registered_attendees, which reads registered statuses and no dates."""
+        rows = await self._page(
+            ATTENDEES,
+            {
+                "filter": f"year = {int(year)}",
+                "expand": "person,session",
+                "fields": "id,person_id,status_id,effective_date,enrollment_date,"
+                "expand.person.household_id,expand.session.cm_id",
+                "sort": STABLE_SORT,
+            },
+        )
+        return [
+            AttendeeDates(
+                person_cm_id=_int(r.person_id),
+                household_cm_id=_int(getattr(_expanded(r, "person"), "household_id", 0)),
+                session_cm_id=_int(getattr(_expanded(r, "session"), "cm_id", 0)),
+                status_id=_int(r.status_id),
+                effective_date=_stamp(getattr(r, "effective_date", "")),
+                enrollment_date=_stamp(getattr(r, "enrollment_date", "")),
+            )
+            for r in rows
+        ]
+
     async def fetch_family_camp_billing(self, year: int) -> list[BillingLine]:
         rows = await self._page(
             FINANCIAL_TRANSACTIONS,
@@ -484,7 +538,9 @@ class FinancialAidIntakeRepository:
         return await FinancialAidRepository(self.pb).fetch_links(year)
 
     async def fetch_request_additions(self, year: int) -> list[AdditionRecord]:
-        """The season's staff-added requests, retired ones included (aid_request_additions; no sync writes it)."""
+        """The season's added requests, staff-added and (2027 on) rule-made, retired ones included
+        (aid_request_additions; no sync writes it). Keep the retired ones: the registration-ask rule never re-makes a
+        slot any addition held."""
         rows = await self._page(AID_REQUEST_ADDITIONS, {"filter": f"year = {int(year)}", "sort": STABLE_SORT})
         return [_addition(r) for r in rows]
 

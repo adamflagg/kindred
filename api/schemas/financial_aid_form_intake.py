@@ -17,7 +17,13 @@ WhyNot = Literal[
     "enrolled_no_request",
     "not_enrolled",
     "answer_edited",
+    # The registration-ask rule (PR 4b, 2027 on) made no request for an enrolled session: the ask's day also registered
+    # another session, so it can't tell which the ask was for; or no ask was typed at this registration.
+    "registration_ask_ambiguous",
+    "registration_ask_unattributed",
 ]
+# More about a why-not: registration_ask_unattributed's ask is older than this registration (design 96 §3.2).
+WhyNotDetail = Literal["ask_predates_registration"]
 # Why a row is in Needs a look (owner Q3-A: a registration-only row only through campminder_aid).
 LookReason = Literal["campminder_aid", "enrolled_no_request", "session_unclear", "registration_ask_unreviewed"]
 BecameStatus = Literal["active", "session_unclear", "duplicate_pending", "duplicate", "withdrawn", "cancelled"]
@@ -123,6 +129,7 @@ class FormIntakeRowOut(BaseModel):
     became: list[BecameOut] = Field(default_factory=list)
     campminder_aid: list[CampMinderAidOut] = Field(default_factory=list)
     why_not: WhyNot | None = None
+    why_not_detail: WhyNotDetail | None = None
     gap_sessions: list[GapSessionOut] = Field(default_factory=list)
     can_add: bool = False
     needs_look: bool = False

@@ -139,9 +139,11 @@ export function WorkingRequestCard({
   // The server's `_live`: a withdrawn or duplicate request takes no cancellation or hold.
   const live = isLiveRequest(row)
   const manualHeld = row.holds.some((hold) => hold.code === 'manual_hold')
-  // PR 3: Remove… undoes Add a Request… on a live staff addition (a rule-made one is cancelled instead).
+  // PR 3: Remove… undoes Add a Request… on a live staff addition. PR 4b (owner 8a): a rule-made one that is wrong is
+  // Removed too, never re-made (the rule skips a slot any addition has held); Cancel is for a family that declined.
   const addition = request.addition ?? null
-  const removable = addition !== null && addition.origin === 'added' && addition.live !== false
+  const removable = addition !== null && addition.origin !== 'form' && addition.live !== false
+  const ruleMade = addition?.origin === 'registration_ask'
   const removeRefusal = addition === null ? null : removeBlock(addition)
   const switchTo = (next: Open) => {
     // Re-clicking the open editor's own button would save it and leave it open on the same draft.
@@ -189,7 +191,10 @@ export function WorkingRequestCard({
           className={HH_BUTTON}
           disabled={removeRefusal !== null}
           title={
-            removeRefusal ?? 'Undo Add a Request…: the request is withdrawn, its decisions kept'
+            removeRefusal ??
+            (ruleMade
+              ? 'The dashboard made this from a registration ask. Remove it if that was wrong: it is withdrawn, its decisions kept, and never made again'
+              : 'Undo Add a Request…: the request is withdrawn, its decisions kept')
           }
           onClick={() => switchTo({ kind: 'remove' })}
         >
@@ -298,7 +303,14 @@ export function WorkingRequestCard({
       />
     )
   } else if (open?.kind === 'remove' && removable && removeRefusal === null) {
-    editor = <RemoveAddedForm year={year} additionId={addition.addition_id} onDone={close} />
+    editor = (
+      <RemoveAddedForm
+        year={year}
+        additionId={addition.addition_id}
+        ruleMade={ruleMade}
+        onDone={close}
+      />
+    )
   } else if (open?.kind === 'hold') {
     editor = (
       <ReasonForm

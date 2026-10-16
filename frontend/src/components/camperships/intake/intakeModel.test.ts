@@ -109,6 +109,36 @@ describe('cells', () => {
     expect(whyWords(LIAM, names)).toBeNull()
   })
 
+  it('says why the registration-ask rule made no request (PR 4b)', () => {
+    const ambiguous = whyWords({ ...EMMA, why_not: 'registration_ask_ambiguous' }, names)
+    expect(ambiguous?.short).toBe('None for TWR: one ask, two or more sessions that day')
+    expect(ambiguous?.long).toBe(
+      "No request for Teen Winter Retreat. They asked $290 for financial assistance when registering, but registered for more than one session that day, so the dashboard can't tell which one the ask was for. Add a Request… if it was for this one."
+    )
+    const predates = whyWords(
+      {
+        ...EMMA,
+        why_not: 'registration_ask_unattributed',
+        why_not_detail: 'ask_predates_registration',
+      },
+      names
+    )
+    expect(predates?.short).toBe('None for TWR: the ask predates this registration')
+    expect(predates?.long).toBe(
+      'No request for Teen Winter Retreat. Their registration ask of $290 was typed before they registered for it, so it belongs to an earlier registration. Add a Request… if they asked for this one too.'
+    )
+    const elsewhere = whyWords({ ...EMMA, why_not: 'registration_ask_unattributed' }, names)
+    expect(elsewhere?.short).toBe('None for TWR: the ask was typed at no registration of it')
+    expect(elsewhere?.long).toBe(
+      "No request for Teen Winter Retreat. Their registration ask of $290 was not typed within a day of registering for it, so the dashboard can't tell it was for this session. Add a Request… if it was."
+    )
+    // A camper with no aid-form row of their own: the ask has no amount on the row.
+    expect(
+      whyWords({ ...EMMA, registration_ask: null, why_not: 'registration_ask_ambiguous' }, names)
+        ?.long
+    ).toContain('They asked for financial assistance when registering, but')
+  })
+
   it('totals the amber CampMinder aid: on no request only', () => {
     expect(amberAid(RILEY)).toBe(2258)
     expect(amberAid(LIAM)).toBe(0)
