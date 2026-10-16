@@ -8,6 +8,10 @@ import { ChevronDown, ChevronRight } from 'lucide-react'
 import type { GeoDataItem } from './GeoMap'
 import type { GeoCategoryExtended } from './GeoCategoryTabs'
 import type { DrilldownFilter } from '../../../types/metrics'
+import { useTableSort } from '../../../hooks/useTableSort'
+import { MetricSortHeader } from '../MetricSortHeader'
+import { TableExportButtons } from '../TableExportButtons'
+import { csvFilename } from '../exportFilename'
 
 interface GeoDetailListProps {
   data: GeoDataItem[]
@@ -22,6 +26,8 @@ interface GeoDetailListProps {
   isOpen?: boolean | undefined
   /** Callback when header is clicked (for controlled mode) */
   onToggle?: (() => void) | undefined
+  /** The season shown; names the CSV file. Without it the list has no Copy or Download CSV. */
+  year?: number | undefined
 }
 
 const CATEGORY_LABELS: Record<GeoCategoryExtended, string> = {
@@ -47,12 +53,18 @@ export function GeoDetailList({
   initialLimit = 15,
   isOpen,
   onToggle,
+  year,
 }: GeoDetailListProps) {
   const [internalExpanded, setInternalExpanded] = useState(false)
   const isExpanded = isOpen ?? internalExpanded
   const [showAll, setShowAll] = useState(false)
+  // Natural order: the data as given (largest first); a header click re-sorts from there.
+  const sort = useTableSort<'name' | 'count' | 'percentage'>('count', ['name'], 'descending')
+  const sorted = sort.apply(data, (item, field) =>
+    field === 'name' ? item.name : field === 'count' ? item.count : item.percentage
+  )
 
-  const displayData = showAll ? data : data.slice(0, initialLimit)
+  const displayData = showAll ? sorted : sorted.slice(0, initialLimit)
   const hasMore = data.length > initialLimit
 
   return (
@@ -79,17 +91,45 @@ export function GeoDetailList({
       {/* Table */}
       {isExpanded && (
         <div className="border-border border-t">
+          {year !== undefined && (
+            <div className="flex justify-end px-4 py-2">
+              <TableExportButtons
+                filename={csvFilename(year, CATEGORY_PLURALS[category])}
+                headers={[CATEGORY_LABELS[category], 'Count', '%']}
+                rows={sorted.map((item) => [
+                  item.name,
+                  item.count,
+                  Math.round(item.percentage * 10) / 10,
+                ])}
+              />
+            </div>
+          )}
           <div className="max-h-80 overflow-y-auto">
             <table className="w-full text-sm">
               <thead className="bg-muted sticky top-0 z-10">
                 <tr className="border-border border-b">
-                  <th className="text-muted-foreground px-4 py-2 text-left font-medium">
-                    {CATEGORY_LABELS[category]}
-                  </th>
-                  <th className="text-muted-foreground w-20 px-4 py-2 text-right font-medium">
-                    Count
-                  </th>
-                  <th className="text-muted-foreground w-16 px-4 py-2 text-right font-medium">%</th>
+                  <MetricSortHeader
+                    bare
+                    label={CATEGORY_LABELS[category]}
+                    align="left"
+                    direction={sort.direction('name')}
+                    onSort={() => sort.toggle('name')}
+                    className="text-muted-foreground px-4 py-2 text-left font-medium"
+                  />
+                  <MetricSortHeader
+                    bare
+                    label="Count"
+                    direction={sort.direction('count')}
+                    onSort={() => sort.toggle('count')}
+                    className="text-muted-foreground w-20 px-4 py-2 text-right font-medium"
+                  />
+                  <MetricSortHeader
+                    bare
+                    label="%"
+                    direction={sort.direction('percentage')}
+                    onSort={() => sort.toggle('percentage')}
+                    className="text-muted-foreground w-16 px-4 py-2 text-right font-medium"
+                  />
                 </tr>
               </thead>
               <tbody>

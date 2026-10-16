@@ -10,7 +10,9 @@ import { sortRows, type SortDir, type SortValue } from '../utils/tableSort'
  */
 export function useTableSort<K extends string>(
   leadField: K,
-  textFields: readonly K[] = [leadField]
+  textFields: readonly K[] = [leadField],
+  /** Which way the natural order runs along the lead column (a list ranked by count runs high to low). */
+  leadDirection: SortDirection = 'ascending'
 ) {
   const [state, setState] = useState<{ field: K; dir: SortDir } | null>(null)
 
@@ -22,7 +24,7 @@ export function useTableSort<K extends string>(
     )
 
   const direction = (field: K): SortDirection | null => {
-    if (state === null) return field === leadField ? 'ascending' : null
+    if (state === null) return field === leadField ? leadDirection : null
     if (state.field !== field) return null
     return state.dir === 'asc' ? 'ascending' : 'descending'
   }

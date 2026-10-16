@@ -359,6 +359,7 @@ export default function GeoAnalysis() {
                   {activeLayers.has('city') && geoData.city.length > 0 && (
                     <GeoDetailList
                       data={geoData.city}
+                      year={currentYear}
                       category="city"
                       selectedItem={selectedItem}
                       onItemClick={handleItemClick}
@@ -370,6 +371,7 @@ export default function GeoAnalysis() {
                   {activeLayers.has('school') && geoData.school.length > 0 && (
                     <GeoDetailList
                       data={geoData.school}
+                      year={currentYear}
                       category="school"
                       selectedItem={selectedItem}
                       onItemClick={handleItemClick}
@@ -381,6 +383,7 @@ export default function GeoAnalysis() {
                   {activeLayers.has('synagogue') && geoData.synagogue.length > 0 && (
                     <GeoDetailList
                       data={geoData.synagogue}
+                      year={currentYear}
                       category="synagogue"
                       selectedItem={selectedItem}
                       onItemClick={handleItemClick}
@@ -392,6 +395,7 @@ export default function GeoAnalysis() {
                   {activeLayers.has('region') && geoData.region.length > 0 && (
                     <GeoDetailList
                       data={geoData.region}
+                      year={currentYear}
                       category="region"
                       isOpen={expandedCategories.has('region')}
                       onToggle={() => handleDetailToggle('region')}
