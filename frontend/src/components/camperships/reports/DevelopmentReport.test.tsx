@@ -300,6 +300,53 @@ describe('the capped-requests line (Rule M)', () => {
   })
 })
 
+describe('the groups-from line (#53)', () => {
+  const LINE = "Groups follow 2026's rules until 2027's are approved."
+
+  it('is a muted line under the table while the report year follows an earlier season’s groups', async () => {
+    liveAnswer = () =>
+      json({
+        ...DEVELOPMENT_LIVE,
+        not_built: [
+          ...DEVELOPMENT_LIVE.not_built,
+          { figure: 'groups_from', reason: "Groups follow 2026's rules until 2027's are approved" },
+        ],
+      })
+    renderReport()
+    const table = await screen.findByRole('table', { name: 'Development report' })
+    const line = await screen.findByText(LINE)
+    expect(screen.getAllByText(LINE)).toHaveLength(1)
+    expect(table.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect((table.closest('section') as HTMLElement).contains(line)).toBe(true)
+    expect(document.querySelector('.text-amber-700, .bg-amber-50')).toBeNull()
+  })
+
+  it('shows beside the capped-requests line, both in the same muted style', async () => {
+    liveAnswer = () =>
+      json({
+        ...DEVELOPMENT_LIVE,
+        not_built: [
+          ...DEVELOPMENT_LIVE.not_built,
+          { figure: 'groups_from', reason: "Groups follow 2026's rules until 2027's are approved" },
+        ],
+      })
+    renderReport()
+    const table = await screen.findByRole('table', { name: 'Development report' })
+    const groups = await screen.findByText(LINE)
+    const capped = await screen.findByText(/Total Requests and % of need met: 1 request above/)
+    const section = table.closest('section') as HTMLElement
+    expect(section.querySelectorAll('p')).toHaveLength(2)
+    expect(groups.className).toBe(capped.className)
+    expect(groups.compareDocumentPosition(capped) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('is absent once the report year has its own groups', async () => {
+    renderReport()
+    await screen.findByRole('table', { name: 'Development report' })
+    expect(document.body.textContent).not.toContain('Groups follow')
+  })
+})
+
 describe('Show As Of a Date…: one on-demand column, not saved (D1), inline in the one toolbar row', () => {
   const MARCH = '2027-03-09'
   const calls = () => fetchSpy.mock.calls.map(([url, init]) => [String(url), init?.method ?? 'GET'])

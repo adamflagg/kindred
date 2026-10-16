@@ -1090,3 +1090,45 @@ async def test_the_rebuild_note_names_only_the_seasons_still_shown() -> None:
     # by 2031 every unconfirmed season has rolled off, so there is no rebuild to wait on
     out = await _service(_development()).development(2031)
     assert not any(n.figure == "rebuild" for n in out.not_built)
+
+
+# --- #53 (owner 2026-10-16, "go with a"): a report year with no approved rules keeps the newest approved groups ---
+
+
+class _RulesFrom(FakeRules):
+    """Rules approved only for the seasons in `years` (FakeRules answers every season alike)."""
+
+    def __init__(self, years: set[int]) -> None:
+        super().__init__(approved(intake_rules()))
+        self.years = years
+
+    async def latest_approved(self, year: int, sections: Any) -> Any:
+        return self.version if year in self.years else None
+
+    async def first_approved(self, year: int, sections: Any) -> Any:
+        return self.first if year in self.years else None
+
+
+async def test_a_report_year_with_no_approved_rules_keeps_the_newest_approved_seasons_groups() -> None:
+    """2027's rules aren't approved yet, so the report would have no groups at all (`groups: []`). Ruling a: every
+    column uses 2026's groups, and the report says so where staff see it."""
+    out = await _service(
+        _development(), register=[grant_row("reqemma00000001", "500")], fake_rules=_RulesFrom({2026})
+    ).development(YEAR)
+    assert [g.key for g in out.groups] == ["camp_pool", "weekend_pool", "bmitzvah_pool"]
+    assert _row(out, "outside_awards", "camp_pool").values[-1] == 500.0  # 2027's grant, in 2026's summer group
+    assert _row(out, "recipients", "camp_pool").values[-1] == 1.0
+    [notice] = [n for n in out.not_built if n.figure == "groups_from"]
+    assert notice.reason == "Groups follow 2026's rules until 2027's are approved"
+
+
+async def test_the_groups_switch_to_the_report_years_own_once_they_are_approved() -> None:
+    out = await _service(_development(), fake_rules=_RulesFrom({2026, 2027})).development(YEAR)
+    assert [g.key for g in out.groups] == ["camp_pool", "weekend_pool", "bmitzvah_pool"]
+    assert "groups_from" not in {n.figure for n in out.not_built}
+
+
+async def test_with_no_approved_rules_in_any_season_there_are_no_groups_and_no_notice() -> None:
+    out = await _service(_development(), fake_rules=_RulesFrom(set())).development(YEAR)
+    assert out.groups == []
+    assert "groups_from" not in {n.figure for n in out.not_built}

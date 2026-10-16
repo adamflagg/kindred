@@ -431,6 +431,15 @@ export function cappedWords(dev: ApiAidDevelopment): string | null {
   return `Total Requests and % of need met: ${clauses.join('; ')}.`
 }
 
+/**
+ * #53 (owner 2026-10-16, ruling a): while the report year's rules aren't approved, its groups are the newest
+ * approved season's, and the read names it (`groups_from`). One muted line under the table says so.
+ */
+export function groupsFromWords(dev: ApiAidDevelopment): string | null {
+  const reason = dev.not_built.find((item) => item.figure === 'groups_from')?.reason
+  return reason ? `${reason}.` : null
+}
+
 /** "Show the dashboard's rebuild" (≈, §9.4): why it is off, while the read names `rebuild` as not built. */
 export function rebuildReason(dev: ApiAidDevelopment): string | null {
   return dev.not_built.find((item) => item.figure === 'rebuild')?.reason ?? null
