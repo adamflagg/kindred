@@ -38,6 +38,7 @@ let defaultBranding: BrandingConfig = {
   sso_display_name: 'Staff SSO',
   page_title: 'Kindred',
   page_description: 'Cabin assignments that put relationships first',
+  docs_url: null,
   logo: { large: null, nav: null },
 }
 
