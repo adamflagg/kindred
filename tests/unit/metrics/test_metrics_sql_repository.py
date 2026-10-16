@@ -12,7 +12,7 @@ Test data uses fictional names per CLAUDE.md conventions:
 from __future__ import annotations
 
 import sqlite3
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -958,7 +958,8 @@ class TestDrilldownServiceOnSQL:
             " parent_names = ? WHERE id = 'per_emma'",
             ('[{"first": "Sarah", "last": "Johnson"}]',),
         )
-        service = DrilldownService(_make_repo(sql_db))
+        repo: Any = _make_repo(sql_db)  # as the router passes it (_create_repository)
+        service = DrilldownService(repo)
         rows = await service.get_attendees_for_breakdown(2025, "status", "enrolled", status_filter=["enrolled"])
         emma = next(r for r in rows if r.person_id == 1001)
         assert (emma.age, emma.zip, emma.caregivers) == (11, "94110", ["Sarah Johnson"])
