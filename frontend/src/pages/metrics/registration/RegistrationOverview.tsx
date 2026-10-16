@@ -50,10 +50,10 @@ import { DefinitionNotes, DefRef } from '../../../components/camperships/kit/Def
 import { PRIORITY_DAY_PENDING } from '../../../utils/priorityDay'
 import { describeCompareBasis } from './overviewCompareBasis'
 import { AverageSummersLine } from '../../../components/metrics/AverageSummersLine'
-import { TENURE_NOTES } from '../../../components/metrics/tenureNotes'
+import { tenureNote } from '../../../components/metrics/tenureNotes'
 import { OVERVIEW_NOTES } from '../cancelledNotes'
 import { AgeChart } from '../../../components/metrics/AgeChart'
-import { AGE_NOTES } from '../../../components/metrics/ageNotes'
+import { ageNote } from '../../../components/metrics/ageNotes'
 import type { DrilldownFilter, SessionLengthBySessionBreakdown } from '../../../types/metrics'
 import type { SessionDateLookup, SessionTypeLookup } from '../../../utils/sessionUtils'
 import { MetricsBusy, MetricsLoadError } from '../../../components/metrics/MetricsQueryGuard'
@@ -262,12 +262,18 @@ export default function RegistrationOverview() {
 
   // Decision 7: the compare year is read at the same point while this season is live, at its final
   // after. On the priority date itself the card deltas wait a day (ruling 9).
-  // One note list in page order (decision 11): Total Cancelled, the Summers at Camp average when
-  // it exists, then the compare notes while Compare is on.
+  // One note list in page order (decision 11), numbered by position: Total Cancelled, the age
+  // chart when it has bars, the Summers at Camp average when it exists, then the compare notes
+  // while Compare is on.
+  const ageNoteN = transformAgeData(data.by_age).length > 0 ? OVERVIEW_NOTES.length + 1 : undefined
+  const tenureNoteN =
+    data.average_summers_at_camp != null
+      ? OVERVIEW_NOTES.length + (ageNoteN !== undefined ? 1 : 0) + 1
+      : undefined
   const pageNotes = [
     ...OVERVIEW_NOTES,
-    ...(transformAgeData(data.by_age).length > 0 ? AGE_NOTES : []),
-    ...(data.average_summers_at_camp != null ? TENURE_NOTES : []),
+    ...(ageNoteN !== undefined ? [ageNote(ageNoteN)] : []),
+    ...(tenureNoteN !== undefined ? [tenureNote(tenureNoteN)] : []),
   ]
   const compareBasis = describeCompareBasis(compareYear, compData, pageNotes.length + 1)
   const pending = compareBasis?.pending ?? false
@@ -527,8 +533,13 @@ export default function RegistrationOverview() {
               compareData={transformGradeData(compData.by_grade)}
             />
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-              <AgeChart title={`${currentYear} Age`} data={data.by_age} onBarClick={setFilter} />
-              <AgeChart title={`${compareYear} Age`} data={compData.by_age} />
+              <AgeChart
+                title={`${currentYear} Age`}
+                data={data.by_age}
+                onBarClick={setFilter}
+                note={ageNoteN}
+              />
+              <AgeChart title={`${compareYear} Age`} data={compData.by_age} note={ageNoteN} />
             </div>
             <ComparisonSummaryTable
               title="Age Comparison"
@@ -557,6 +568,7 @@ export default function RegistrationOverview() {
               onBarClick={setFilter}
             />
             <AgeChart
+              note={ageNoteN}
               key={`age-${selectedSessionCmId ?? 'all'}`}
               title="Enrollment by Age"
               data={data.by_age}
@@ -762,7 +774,9 @@ export default function RegistrationOverview() {
                 height={300}
                 breakdownType="years_at_camp"
                 onBarClick={setFilter}
-                footer={<AverageSummersLine average={data.average_summers_at_camp} />}
+                footer={
+                  <AverageSummersLine average={data.average_summers_at_camp} note={tenureNoteN} />
+                }
               />
               <CssHorizontalBarChart
                 title={`${compareYear} ${(compData.by_summer_years?.length ?? 0) > 0 ? 'Summers at Camp' : 'Years at Camp'}`}
@@ -776,7 +790,12 @@ export default function RegistrationOverview() {
                       }))
                 }
                 height={300}
-                footer={<AverageSummersLine average={compData.average_summers_at_camp} />}
+                footer={
+                  <AverageSummersLine
+                    average={compData.average_summers_at_camp}
+                    note={tenureNoteN}
+                  />
+                }
               />
             </div>
             <ComparisonSummaryTable
@@ -833,7 +852,9 @@ export default function RegistrationOverview() {
               height={300}
               breakdownType="years_at_camp"
               onBarClick={setFilter}
-              footer={<AverageSummersLine average={data.average_summers_at_camp} />}
+              footer={
+                <AverageSummersLine average={data.average_summers_at_camp} note={tenureNoteN} />
+              }
             />
             {firstSummerYearData.length > 0 && (
               <CssHorizontalBarChart

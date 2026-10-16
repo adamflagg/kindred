@@ -6,7 +6,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 
 import { AgeChart } from './AgeChart'
-import { AGE_NOTE, AGE_NOTES } from './ageNotes'
+import { ageNote, AGE_NOTE_TEXT } from './ageNotes'
 import { transformAgeData } from '../../utils/metricsTransforms'
 import type { AgeBandBreakdown } from '../../types/metrics'
 
@@ -52,11 +52,11 @@ describe('AgeChart', () => {
   })
 
   it('says how many campers it counts, each once, marked with the age note and no hover', () => {
-    const { container } = render(<AgeChart data={BY_AGE} />)
+    const { container } = render(<AgeChart data={BY_AGE} note={2} />)
     const line = screen.getByText(/campers, each counted once\./)
-    expect(line.textContent).toBe(`1,291 campers, each counted once.${AGE_NOTE}`)
+    expect(line.textContent).toBe('1,291 campers, each counted once.2')
     const sup = line.querySelector('sup')
-    expect(sup?.textContent).toBe(String(AGE_NOTE))
+    expect(sup?.textContent).toBe('2')
     expect(sup?.hasAttribute('title')).toBe(false)
     expect(container.querySelector('[title]')).toBeNull()
   })
@@ -95,13 +95,14 @@ describe('AgeChart', () => {
   })
 })
 
-describe('AGE_NOTES', () => {
+describe('ageNote', () => {
   it('says age is the season year minus the birth year, with the late-2016 example, and what None is', () => {
-    expect(AGE_NOTES).toEqual([
-      {
-        n: AGE_NOTE,
-        text: 'Age is the season year minus the birth year, so a camper born in late 2016 counts as 10 all through 2026. None means CampMinder has no birthdate for the camper.',
-      },
-    ])
+    expect(AGE_NOTE_TEXT).toBe(
+      'Age is the season year minus the birth year, so a camper born in late 2016 counts as 10 all through 2026. None means CampMinder has no birthdate for the camper.'
+    )
+  })
+
+  it('takes the number the page gives it', () => {
+    expect(ageNote(4)).toEqual({ n: 4, text: AGE_NOTE_TEXT })
   })
 })

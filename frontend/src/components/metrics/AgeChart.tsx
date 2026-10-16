@@ -9,7 +9,6 @@ import { DefRef } from '../camperships/kit/DefinitionNotes'
 import type { AgeBandBreakdown, DrilldownFilter } from '../../types/metrics'
 import { ageBandLabel, transformAgeData } from '../../utils/metricsTransforms'
 import { formatCount } from '../../utils/numberFormat'
-import { AGE_NOTE } from './ageNotes'
 import { CssVerticalBarChart, type CssVerticalBarItem } from './CssVerticalBarChart'
 
 // The grade chart's bar colour; None (no birthdate) is muted, as the mock draws it.
@@ -28,12 +27,15 @@ export function AgeChart({
   title,
   height = 300,
   onBarClick,
+  note,
 }: {
   data: AgeBandBreakdown[] | undefined
   title?: string
   height?: number
   /** The drill-down; the compare-year chart passes none, as the grade chart's does. */
   onBarClick?: (filter: DrilldownFilter) => void
+  /** The page's number for the age note; no mark when the page lists none. */
+  note?: number | undefined
 }) {
   const bars = useMemo(() => transformAgeData(data), [data])
   const total = bars.reduce((sum, b) => sum + b.value, 0)
@@ -54,7 +56,7 @@ export function AgeChart({
         bars.length > 0 ? (
           <p className="text-muted-foreground pt-2 text-sm">
             {formatCount(total)} campers, each counted once.
-            <DefRef n={AGE_NOTE} />
+            {note !== undefined && <DefRef n={note} />}
           </p>
         ) : undefined
       }

@@ -137,3 +137,49 @@ describe('RegistrationOverview — campers by age (D-UNCOVERED)', () => {
     expect(screen.getByText('Age Comparison')).toBeInTheDocument()
   })
 })
+
+describe('RegistrationOverview — note numbers follow the page (decisions 7, 11, 12, D-UNCOVERED)', () => {
+  const items = (container: HTMLElement) =>
+    Array.from(container.querySelectorAll('ol > li')).map((li) => li.textContent)
+
+  it('numbers Summers at Camp 2 when the age chart is empty', () => {
+    vi.mocked(useComparisonRegistrationData).mockReturnValue({
+      primary: { data: { ...mockData, by_age: [] }, isLoading: false, error: null },
+      comparison: null,
+    } as unknown as ReturnType<typeof useComparisonRegistrationData>)
+    const { container } = render(<RegistrationOverview />)
+    expect(screen.getByText(/summers per camper/).querySelector('sup')?.textContent).toBe('2')
+    const notes = items(container)
+    expect(notes).toHaveLength(2)
+    expect(notes[1]).toMatch(/^2\.\s*From CampMinder's Years at Camp/)
+  })
+
+  it('runs Cancelled 1, age 2, Summers at Camp 3, then the compare notes 4 and 5', () => {
+    vi.mocked(useMetricsSession).mockReturnValue(
+      session(2025) as unknown as ReturnType<typeof useMetricsSession>
+    )
+    vi.mocked(useComparisonRegistrationData).mockReturnValue({
+      primary: { data: mockData, isLoading: false, error: null },
+      comparison: {
+        data: {
+          ...compData,
+          total_waitlisted: null,
+          prior_basis: 'same_point',
+          day_offset: 0,
+          prior_day_offset: 1,
+          as_of_date: '2024-11-13',
+        },
+      },
+    } as unknown as ReturnType<typeof useComparisonRegistrationData>)
+    const { container } = render(<RegistrationOverview />)
+    const notes = items(container)
+    expect(notes).toHaveLength(5)
+    expect(notes[0]).toMatch(/^1\.\s*Cancelled/)
+    expect(notes[1]).toMatch(/^2\.\s*Age is the season year minus the birth year/)
+    expect(notes[2]).toMatch(/^3\.\s*From CampMinder's Years at Camp/)
+    expect(notes[3]).toMatch(/^4\..*rebuilt from each camper's registration date/)
+    expect(notes[4]).toMatch(/^5\..*opening day and the next day/)
+    const line = screen.getByText('vs same point').closest('p') as HTMLElement
+    expect(Array.from(line.querySelectorAll('sup')).map((x) => x.textContent)).toEqual(['4', '5'])
+  })
+})
