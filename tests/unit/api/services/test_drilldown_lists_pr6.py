@@ -20,6 +20,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from api.services.drilldown_service import DrilldownService
+from api.services.metrics_repository import DrilldownHousehold
 
 YEAR = 2026
 ALL_SUMMER = ["main", "embedded", "ag", "quest", "scit", "tli"]
@@ -93,7 +94,9 @@ def _repo(
     repo.fetch_attendees.side_effect = fetch_attendees
     repo.fetch_persons.return_value = persons
     repo.fetch_status_history.return_value = []
-    repo.fetch_household_postal_codes.return_value = postal_codes or {}
+    repo.fetch_drilldown_households.return_value = {
+        pb_id: DrilldownHousehold(cm_id=None, postal_code=code) for pb_id, code in (postal_codes or {}).items()
+    }
     return repo
 
 
@@ -202,7 +205,7 @@ class TestCsvOnlyFields:
         )
 
         assert {a.person_id: a.zip for a in result} == {1: "94110", 2: None, 3: None}
-        repo.fetch_household_postal_codes.assert_awaited_with(YEAR)
+        repo.fetch_drilldown_households.assert_awaited_with(YEAR)
 
     @pytest.mark.asyncio
     async def test_caregivers_keep_the_stored_mailing_title_order(self) -> None:

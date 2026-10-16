@@ -4624,6 +4624,12 @@ export type DrilldownAttendee = {
    */
   zip?: string | null
   /**
+   * Household Cm Id
+   *
+   * CampMinder id of the primary childhood household: the key the list groups by, and the CSV's Household ID (PR 6b)
+   */
+  household_cm_id?: number | null
+  /**
    * Caregivers
    *
    * Caregiver names as stored in parent_names: the household's mailing-title order (CSV only, decision 44)

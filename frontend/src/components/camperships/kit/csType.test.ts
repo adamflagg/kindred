@@ -175,6 +175,14 @@ describe('csType carries the final design language (design-language.md)', () => 
     expect(everything).not.toMatch(/\b(bg|text)-(emerald|yellow)-\d/)
   })
 
+  it('§9: a section row on another cell grid takes the same band and type, with its own side padding', () => {
+    // Metrics' drill-down table pads its cells px-4 (PR 6b); the kit's own rows stay px-2.
+    expect(kit.GROUP_ROW_BAND).toContain(cs.CS_BAND)
+    expect(kit.GROUP_ROW_BAND).toContain(cs.CS_BAND_EDGE)
+    expect(classes(kit.GROUP_ROW_BAND).filter((c) => /^p[xlr]-/.test(c))).toEqual([])
+    expect(classes(kit.GROUP_ROW)).toEqual([...classes(kit.GROUP_ROW_BAND), 'px-2'])
+  })
+
   it('§9–10: section rows and every total row sit in the band', () => {
     expect(kit.GROUP_ROW).toContain(cs.CS_BAND)
     expect(kit.TFOOT_CELL).toContain(cs.CS_BAND)

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 from itertools import batched
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from api.constants.collections import (
     ATTENDEE_STATUS_HISTORY,
@@ -58,6 +58,13 @@ PERSON_FIELDS: tuple[str, ...] = (
     "primary_childhood_household",
     "parent_names",
 )
+
+
+class DrilldownHousehold(NamedTuple):
+    """What a drill-down row reads from its camper's primary childhood household."""
+
+    cm_id: int | None
+    postal_code: str | None
 
 
 class MetricsRepository:
@@ -135,21 +142,25 @@ class MetricsRepository:
         # Ensure int keys for consistent lookup (PocketBase may return float)
         return {int(getattr(p, "cm_id", 0)): p for p in persons}
 
-    async def fetch_household_postal_codes(self, year: int) -> dict[str, str]:
-        """Each household's billing postal code this season, keyed by its PocketBase id.
+    async def fetch_drilldown_households(self, year: int) -> dict[str, DrilldownHousehold]:
+        """Each household's CampMinder id and billing postal code this season, keyed by its PocketBase id.
 
-        The drill-down CSV's Zip (decision 13) reads it through a camper's
-        `primary_childhood_household` relation. Names its two columns, so no
+        A drill-down row reads it through the camper's `primary_childhood_household`
+        relation: the cm_id is what the list groups by and the CSV's Household ID (PR 6b),
+        the postal code is the CSV's Zip (decision 13). Names its three columns, so no
         hidden Camperships-only household column rides along.
         """
         households = await asyncio.to_thread(
             self.pb.collection(HOUSEHOLDS).get_full_list,
-            query_params={"filter": f"year = {int(year)}", "fields": "id,billing_postal_code"},
+            query_params={"filter": f"year = {int(year)}", "fields": "id,cm_id,billing_postal_code"},
         )
         return {
-            str(h.id): str(code)
+            str(h.id): DrilldownHousehold(
+                cm_id=int(cm_id) if (cm_id := getattr(h, "cm_id", None)) else None,
+                postal_code=str(code) if (code := getattr(h, "billing_postal_code", None)) else None,
+            )
             for h in households
-            if (code := getattr(h, "billing_postal_code", None)) and getattr(h, "id", None)
+            if getattr(h, "id", None)
         }
 
     async def fetch_sessions(

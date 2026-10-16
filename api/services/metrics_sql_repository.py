@@ -15,7 +15,7 @@ from api.utils.session_metrics import parse_teen_config_key
 from bunking.logging_config import get_logger
 from bunking.solver.constants import DEFAULT_BUNK_CAPACITY
 
-from .metrics_repository import PERSON_FIELDS
+from .metrics_repository import PERSON_FIELDS, DrilldownHousehold
 from .metrics_sql_connection import get_connection
 
 logger = get_logger(__name__)
@@ -190,17 +190,25 @@ class MetricsSQLRepository:
         rows = self._query(f"SELECT {', '.join(PERSON_FIELDS)} FROM persons WHERE year = ?", (year,))
         return {int(r["cm_id"]): SimpleNamespace(**_person_fields(r)) for r in rows}
 
-    async def fetch_household_postal_codes(self, year: int) -> dict[str, str]:
-        """Each household's billing postal code this season, keyed by its PocketBase id.
+    async def fetch_drilldown_households(self, year: int) -> dict[str, DrilldownHousehold]:
+        """Each household's CampMinder id and billing postal code this season, keyed by its PocketBase id.
 
-        Same contract as MetricsRepository.fetch_household_postal_codes: the drill-down
-        CSV's Zip (decision 13), read through a camper's primary childhood household.
+        Same contract as MetricsRepository.fetch_drilldown_households: the drill-down's
+        Household ID and group key (PR 6b) and the CSV's Zip (decision 13), read through a
+        camper's primary childhood household.
         """
         rows = self._query(
-            "SELECT id, billing_postal_code FROM households WHERE year = ?",
+            "SELECT id, cm_id, billing_postal_code FROM households WHERE year = ?",
             (int(year),),
         )
-        return {str(r["id"]): str(r["billing_postal_code"]) for r in rows if r["id"] and r["billing_postal_code"]}
+        return {
+            str(r["id"]): DrilldownHousehold(
+                cm_id=int(r["cm_id"]) if r["cm_id"] else None,
+                postal_code=str(r["billing_postal_code"]) if r["billing_postal_code"] else None,
+            )
+            for r in rows
+            if r["id"]
+        }
 
     # ------------------------------------------------------------------
     # 3. fetch_sessions

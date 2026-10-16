@@ -135,8 +135,11 @@ export const HIGHLIGHT_PINNED_EDGE =
 export const TFOOT_CELL = `${CS_BAND} ${CS_BAND_EDGE} px-2 py-[5px] font-bold whitespace-nowrap ${CS_RULE} first:border-l-0`
 /** The totals label's cell in the screen box: it wraps within the pinned column rather than printing over the next total. */
 export const TFOOT_CELL_WRAP = `${CS_BAND} ${CS_BAND_EDGE} px-2 py-[5px] font-bold whitespace-normal ${CS_RULE} first:border-l-0`
+/** A section row's band and type without its side padding, for a table on another cell grid
+ *  (Metrics' drill-down pads its cells px-4, PR 6b), so the heading lines up with the names below. */
+export const GROUP_ROW_BAND = `${CS_BAND} ${CS_BAND_EDGE} text-foreground border-border border-b py-[5px] text-[13.5px] font-bold`
 /** A section row (§9): the green band. */
-export const GROUP_ROW = `${CS_BAND} ${CS_BAND_EDGE} text-foreground border-border border-b px-2 py-[5px] text-[13.5px] font-bold`
+export const GROUP_ROW = `${GROUP_ROW_BAND} px-2`
 /**
  * The opened row's detail line (batch 4, grid-layout-options.html round 6): the mock's td.cf-detail tint (lighter
  * than the clicked row's, ux3 to-place-5) with an amber rule under it. Its cell must not clip (`overflow-visible`) and carries no side

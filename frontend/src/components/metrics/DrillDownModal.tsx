@@ -10,10 +10,12 @@
  *   newest first by the list's own date
  * - Enrolled on (decision 37) on lists of enrolled campers; the CSV adds Zip and Caregivers
  *   (decisions 13, 44), never as modal columns
+ * - Group: Flat | Household (decision 39, PR 6b): every list, Retention included, can group its
+ *   rows by the camper's primary childhood household; the CSV always has its Household ID
  */
 
 import { formatCount } from '../../utils/numberFormat'
-import { useState, useMemo, useEffect } from 'react'
+import { Fragment, useState, useMemo, useEffect } from 'react'
 import { Link } from 'react-router'
 import { X, Download, Search, ArrowUpDown, Loader2 } from 'lucide-react'
 import { SortIcon } from './SortIcon'
@@ -27,7 +29,9 @@ import { buildCsvContent, downloadCsv as triggerCsvDownload } from '../../utils/
 import { campToday, formatLongDate } from '../camperships/kit/dates'
 import { AidSegmented } from '../camperships/kit/Segmented'
 import { DefinitionNotes, DefRef, type DefinitionNote } from '../camperships/kit/DefinitionNotes'
-import { CS_FLABEL } from '../camperships/kit/csType'
+import { CS_BTN2, CS_FLABEL } from '../camperships/kit/csType'
+import { GROUP_ROW_BAND } from '../camperships/kit/kitStyles'
+import { groupByHousehold, householdCountWords } from './householdGroups'
 import type { DrilldownAttendee, DrilldownFilter, DrilldownSession } from '../../types/metrics'
 
 /** Get display session name: comma-joined if multi-session, fallback to single session_name. */
@@ -99,6 +103,13 @@ type RowsMode = 'campers' | 'enrollments'
 const ROWS_OPTIONS = [
   { value: 'campers', label: 'Campers' },
   { value: 'enrollments', label: 'Enrollments' },
+] as const
+
+type GroupMode = 'flat' | 'household'
+
+const GROUP_OPTIONS = [
+  { value: 'flat', label: 'Flat' },
+  { value: 'household', label: 'Household' },
 ] as const
 
 /** "<season>-<view>[-enrollments]-<camp-time date>.csv", e.g. "2026-total-cancelled-2026-10-15.csv". */
@@ -234,8 +245,19 @@ export function DrillDownModal({
         ? 'enrolled_on'
         : 'registration'
 
+  // Every list opens Flat (owner ruling #37): the choice is never remembered.
+  const [groupMode, setGroupMode] = useState<GroupMode>('flat')
+  const grouped = groupMode === 'household'
+  // Groups start open (#38). Which are closed is view state only, reset when Rows or Group changes.
+  const [folded, setFolded] = useState<ReadonlySet<string>>(() => new Set())
+  const changeGroupMode = (next: GroupMode) => {
+    setGroupMode(next)
+    setFolded(new Set())
+  }
+
   const changeRowsMode = (next: RowsMode) => {
     setRowsMode(next)
+    setFolded(new Set())
     setSortField(
       next === 'enrollments' ? newestField : isWaitlistDrilldown ? 'registration' : 'name'
     )
@@ -379,6 +401,24 @@ export function DrillDownModal({
     return sorted
   }, [filteredAttendees, sortField, sortDirection, showEnrolledOn])
 
+  // Each household sits where its first camper sits in the sort (#39); search empties drop out,
+  // but a group keeps the name and town its whole household gives it.
+  const groups = useMemo(
+    () => (grouped ? groupByHousehold(sortedAttendees, rows) : []),
+    [grouped, sortedAttendees, rows]
+  )
+  // The list's order on screen, which the CSV follows (a closed group's rows included).
+  const listedRows = grouped ? groups.flatMap((g) => g.rows) : sortedAttendees
+  const anyFolded = groups.some((g) => folded.has(g.key))
+  const allFolded = groups.every((g) => folded.has(g.key))
+  const toggleFold = (key: string) =>
+    setFolded((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+
   const handleSort = (field: SortField) => {
     if (sortField === field) {
       setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'))
@@ -452,13 +492,15 @@ export function DrillDownModal({
       ['Years at Camp', (a) => a.years_at_camp ?? ''],
       ['Status', (a) => a.status],
       ['Returning', (a) => (a.is_returning ? 'Yes' : isRetentionDrilldown ? 'DNR' : 'No')],
+      // Grouped or not, every list's file has it (owner ruling #42).
+      ['Household ID', (a) => a.household_cm_id ?? ''],
       ['Caregivers', (a) => (a.caregivers ?? []).join('; ')],
     ]
     const columns = [...lead, ...middle, ...tail]
 
-    // The CSV follows the switch: one row per camper or per enrollment, in the list's order.
+    // The CSV follows the switches: one row per camper or per enrollment, in the list's order.
     const headers = columns.map(([header]) => header)
-    const stringRows = sortedAttendees.map((a) => columns.map(([, cell]) => String(cell(a))))
+    const stringRows = listedRows.map((a) => columns.map(([, cell]) => String(cell(a))))
     const csv = buildCsvContent(headers, stringRows)
     triggerCsvDownload(csv, csvFilename(year, filter?.label, mode))
   }
@@ -477,11 +519,137 @@ export function DrillDownModal({
       : []),
     {
       n: csvNote,
-      text: `The CSV also has each camper's zip and caregivers (in the household's mailing-title order), and Age = ${String(year)} − birth year, the rule CampMinder uses (blank with no birth date).`,
+      text: `The CSV also has each camper's zip, their household ID and caregivers (in the household's mailing-title order), and Age = ${String(year)} − birth year, the rule CampMinder uses (blank with no birth date).`,
     },
+    ...(grouped
+      ? [
+          {
+            n: csvNote + 1,
+            text: "A household is the camper's primary childhood household in CampMinder, the one CampMinder groups by. It is named for its campers' surnames, with its town.",
+            alsoBold: ['household'],
+          },
+        ]
+      : []),
   ]
   const noun = mode === 'enrollments' ? 'enrollment' : 'camper'
   const shownCampers = new Set(sortedAttendees.map((a) => a.person_id)).size
+  const showSchool = !isWaitlistDrilldown && !isRetentionDrilldown && !isCancellationSpecial
+  // Name, Grade, Gender, City, the session column and Years, plus each layout's own columns.
+  const columnCount =
+    6 +
+    (showSchool ? 1 : 0) +
+    (isWaitlistDrilldown ? 2 : 0) +
+    (isRetentionDrilldown ? 1 : 0) +
+    (isCancellationSpecial ? 3 : 0) +
+    (isDefaultLayout ? 1 : 0) +
+    (showEnrolledOn ? 1 : 0)
+
+  const attendeeRow = (attendee: DrilldownAttendee, index: number) => (
+    <tr
+      key={`${attendee.person_id}-${attendee.session_cm_id}-${index}`}
+      className="border-border hover:bg-muted/30 border-b transition-colors last:border-0"
+    >
+      <td
+        className="text-foreground max-w-[180px] truncate px-4 py-3 font-medium"
+        title={`${attendee.preferred_name ?? attendee.first_name} ${attendee.last_name}`}
+      >
+        <Link
+          to={`/camper/${attendee.person_id}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hover:text-forest-700 dark:hover:text-forest-400 transition-colors"
+        >
+          {`${attendee.preferred_name ?? attendee.first_name} ${attendee.last_name}`}
+        </Link>
+        {attendee.is_returning && (
+          <span className="bg-primary/10 text-primary ml-1.5 rounded px-1 py-0.5 text-xs">R</span>
+        )}
+      </td>
+      <td className="text-foreground px-4 py-3 text-center whitespace-nowrap">
+        {attendee.grade ?? '—'}
+      </td>
+      <td className="text-foreground px-4 py-3 text-center whitespace-nowrap">
+        {attendee.gender ?? '—'}
+      </td>
+      {!isWaitlistDrilldown && !isRetentionDrilldown && !isCancellationSpecial && (
+        <td
+          className="text-foreground max-w-[160px] truncate px-4 py-3"
+          title={attendee.school ?? undefined}
+        >
+          {attendee.school ?? '—'}
+        </td>
+      )}
+      <td
+        className="text-foreground max-w-[140px] truncate px-4 py-3"
+        title={
+          attendee.city
+            ? attendee.state
+              ? `${attendee.city}, ${attendee.state}`
+              : attendee.city
+            : undefined
+        }
+      >
+        {attendee.city
+          ? attendee.state
+            ? `${attendee.city}, ${attendee.state}`
+            : attendee.city
+          : '—'}
+      </td>
+      <td className="text-foreground px-4 py-3 whitespace-nowrap">{getSessionDisplay(attendee)}</td>
+      {isWaitlistDrilldown && (
+        <td
+          className="text-foreground max-w-[180px] truncate px-4 py-3"
+          title={getEnrolledDisplay(attendee)}
+        >
+          {getEnrolledDisplay(attendee)}
+        </td>
+      )}
+      {isWaitlistDrilldown && (
+        <td className="text-foreground px-4 py-3 whitespace-nowrap">
+          {formatRegistrationDate(attendee)}
+        </td>
+      )}
+      {isRetentionDrilldown && (
+        <td className="text-foreground px-4 py-3 whitespace-nowrap">
+          {getEnrolledDisplay(attendee) !== '—' ? getEnrolledDisplay(attendee) : '—'}
+          {!attendee.is_returning && (
+            <span className="ml-1.5 rounded bg-amber-100 px-1 py-0.5 text-xs text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
+              DNR
+            </span>
+          )}
+        </td>
+      )}
+      {isCancellationSpecial && (
+        <>
+          <td
+            className="text-foreground max-w-[180px] truncate px-4 py-3"
+            title={getEnrolledDisplay(attendee)}
+          >
+            {getEnrolledDisplay(attendee)}
+          </td>
+          <td className="text-foreground px-4 py-3 whitespace-nowrap">
+            {formatDay(attendee.effective_date)}
+          </td>
+          <td className="text-foreground px-4 py-3 whitespace-nowrap">
+            {formatCampDay(attendee.enrollment_date)}
+          </td>
+        </>
+      )}
+      {isDefaultLayout && (
+        <td className="text-foreground px-4 py-3 whitespace-nowrap">
+          {formatRegistered(attendee)}
+        </td>
+      )}
+      {showEnrolledOn && (
+        <td className="text-foreground px-4 py-3 whitespace-nowrap">
+          {formatCampDay(attendee.enrollment_date)}
+        </td>
+      )}
+      <td className="text-foreground px-4 py-3 text-center whitespace-nowrap">
+        {attendee.years_at_camp ?? '—'}
+      </td>
+    </tr>
+  )
 
   if (!filter) return null
 
@@ -502,6 +670,9 @@ export function DrillDownModal({
                 : `${year} enrollment data`}
               {mode === 'enrollments' &&
                 ` · ${formatCount(shownCampers)} camper${shownCampers !== 1 ? 's' : ''}`}
+              {grouped &&
+                groups.length > 0 &&
+                ` · ${formatCount(groups.length)} household${groups.length !== 1 ? 's' : ''}`}
               {searchTerm && ` (filtered from ${formatCount(rows.length)})`}
             </p>
           </div>
@@ -556,12 +727,42 @@ export function DrillDownModal({
               />
             </>
           )}
+          <span className={CS_FLABEL}>Group</span>
+          <AidSegmented
+            label="Group"
+            value={groupMode}
+            options={GROUP_OPTIONS}
+            onChange={changeGroupMode}
+          />
+          {/* Open All / Close All keep their space while Flat, so the switches never move (#36). */}
+          <span
+            data-fold-buttons=""
+            aria-hidden={!grouped || undefined}
+            className={grouped ? 'flex flex-none gap-2' : 'invisible flex flex-none gap-2'}
+          >
+            <button
+              type="button"
+              className={CS_BTN2}
+              disabled={!grouped || !anyFolded}
+              onClick={() => setFolded(new Set())}
+            >
+              Open All
+            </button>
+            <button
+              type="button"
+              className={CS_BTN2}
+              disabled={!grouped || allFolded}
+              onClick={() => setFolded(new Set(groups.map((g) => g.key)))}
+            >
+              Close All
+            </button>
+          </span>
         </div>
 
         {/* Table */}
         <div className="flex-1 overflow-auto">
           <table className="w-full text-sm">
-            <thead className="bg-muted sticky top-0">
+            <thead className="bg-muted sticky top-0 z-10">
               <tr>
                 <SortableColumnHeader
                   label="Name"
@@ -721,117 +922,45 @@ export function DrillDownModal({
                     {searchTerm ? 'No campers match your search' : 'No campers found'}
                   </td>
                 </tr>
-              ) : (
-                sortedAttendees.map((attendee, index) => (
-                  <tr
-                    key={`${attendee.person_id}-${attendee.session_cm_id}-${index}`}
-                    className="border-border hover:bg-muted/30 border-b transition-colors last:border-0"
-                  >
-                    <td
-                      className="text-foreground max-w-[180px] truncate px-4 py-3 font-medium"
-                      title={`${attendee.preferred_name ?? attendee.first_name} ${attendee.last_name}`}
-                    >
-                      <Link
-                        to={`/camper/${attendee.person_id}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="hover:text-forest-700 dark:hover:text-forest-400 transition-colors"
-                      >
-                        {`${attendee.preferred_name ?? attendee.first_name} ${attendee.last_name}`}
-                      </Link>
-                      {attendee.is_returning && (
-                        <span className="bg-primary/10 text-primary ml-1.5 rounded px-1 py-0.5 text-xs">
-                          R
-                        </span>
-                      )}
-                    </td>
-                    <td className="text-foreground px-4 py-3 text-center whitespace-nowrap">
-                      {attendee.grade ?? '—'}
-                    </td>
-                    <td className="text-foreground px-4 py-3 text-center whitespace-nowrap">
-                      {attendee.gender ?? '—'}
-                    </td>
-                    {!isWaitlistDrilldown && !isRetentionDrilldown && !isCancellationSpecial && (
-                      <td
-                        className="text-foreground max-w-[160px] truncate px-4 py-3"
-                        title={attendee.school ?? undefined}
-                      >
-                        {attendee.school ?? '—'}
-                      </td>
-                    )}
-                    <td
-                      className="text-foreground max-w-[140px] truncate px-4 py-3"
-                      title={
-                        attendee.city
-                          ? attendee.state
-                            ? `${attendee.city}, ${attendee.state}`
-                            : attendee.city
-                          : undefined
-                      }
-                    >
-                      {attendee.city
-                        ? attendee.state
-                          ? `${attendee.city}, ${attendee.state}`
-                          : attendee.city
-                        : '—'}
-                    </td>
-                    <td className="text-foreground px-4 py-3 whitespace-nowrap">
-                      {getSessionDisplay(attendee)}
-                    </td>
-                    {isWaitlistDrilldown && (
-                      <td
-                        className="text-foreground max-w-[180px] truncate px-4 py-3"
-                        title={getEnrolledDisplay(attendee)}
-                      >
-                        {getEnrolledDisplay(attendee)}
-                      </td>
-                    )}
-                    {isWaitlistDrilldown && (
-                      <td className="text-foreground px-4 py-3 whitespace-nowrap">
-                        {formatRegistrationDate(attendee)}
-                      </td>
-                    )}
-                    {isRetentionDrilldown && (
-                      <td className="text-foreground px-4 py-3 whitespace-nowrap">
-                        {getEnrolledDisplay(attendee) !== '—' ? getEnrolledDisplay(attendee) : '—'}
-                        {!attendee.is_returning && (
-                          <span className="ml-1.5 rounded bg-amber-100 px-1 py-0.5 text-xs text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
-                            DNR
-                          </span>
-                        )}
-                      </td>
-                    )}
-                    {isCancellationSpecial && (
-                      <>
+              ) : grouped ? (
+                groups.map((g) => {
+                  const closed = folded.has(g.key)
+                  return (
+                    <Fragment key={g.key}>
+                      <tr>
+                        {/* The kit's green section row (#46); the heading folds its group. */}
                         <td
-                          className="text-foreground max-w-[180px] truncate px-4 py-3"
-                          title={getEnrolledDisplay(attendee)}
+                          colSpan={columnCount}
+                          className={`${GROUP_ROW_BAND} px-4`}
+                          data-group-heading=""
                         >
-                          {getEnrolledDisplay(attendee)}
+                          <button
+                            type="button"
+                            className="sticky left-4 cursor-pointer"
+                            onClick={() => toggleFold(g.key)}
+                          >
+                            <span className="mr-1 inline-block">{closed ? '▸' : '▾'}</span>
+                            <span>{g.label}</span>
+                            {g.town && (
+                              <span className="text-muted-foreground font-normal">
+                                {` · ${g.town}`}
+                              </span>
+                            )}
+                          </button>
+                          <span
+                            data-group-count=""
+                            className="text-muted-foreground ml-1.5 text-xs font-normal"
+                          >
+                            {householdCountWords(g.campers, g.rows.length, mode)}
+                          </span>
                         </td>
-                        <td className="text-foreground px-4 py-3 whitespace-nowrap">
-                          {formatDay(attendee.effective_date)}
-                        </td>
-                        <td className="text-foreground px-4 py-3 whitespace-nowrap">
-                          {formatCampDay(attendee.enrollment_date)}
-                        </td>
-                      </>
-                    )}
-                    {isDefaultLayout && (
-                      <td className="text-foreground px-4 py-3 whitespace-nowrap">
-                        {formatRegistered(attendee)}
-                      </td>
-                    )}
-                    {showEnrolledOn && (
-                      <td className="text-foreground px-4 py-3 whitespace-nowrap">
-                        {formatCampDay(attendee.enrollment_date)}
-                      </td>
-                    )}
-                    <td className="text-foreground px-4 py-3 text-center whitespace-nowrap">
-                      {attendee.years_at_camp ?? '—'}
-                    </td>
-                  </tr>
-                ))
+                      </tr>
+                      {!closed && g.rows.map(attendeeRow)}
+                    </Fragment>
+                  )
+                })
+              ) : (
+                sortedAttendees.map(attendeeRow)
               )}
             </tbody>
           </table>

@@ -351,7 +351,7 @@ describe('DrillDownModal — PR 6 lists', () => {
       ).toBeInTheDocument()
       expect(
         screen.getByText(
-          /The CSV also has each camper's zip and caregivers \(in the household's mailing-title order\), and Age = 2026 − birth year/
+          /The CSV also has each camper's zip, their household ID and caregivers \(in the household's mailing-title order\), and Age = 2026 − birth year/
         )
       ).toBeInTheDocument()
       expect(
@@ -387,7 +387,8 @@ describe('DrillDownModal — PR 6 lists', () => {
 
       const { lines, filename } = lastCsv()
       expect(lines[0]).toBe(
-        'CampMinder ID,Name,Grade,Gender,Age,School,City,State,Zip,Session,Registered,Enrolled on,Years at Camp,Status,Returning,Caregivers'
+        // PR 6b ruling #42: Household ID always sits before Caregivers
+        'CampMinder ID,Name,Grade,Gender,Age,School,City,State,Zip,Session,Registered,Enrolled on,Years at Camp,Status,Returning,Household ID,Caregivers'
       )
       expect(lines[1]).toContain(',12,')
       expect(lines[1]).toContain(',94110,')
