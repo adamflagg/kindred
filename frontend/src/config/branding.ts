@@ -18,6 +18,8 @@ const defaultBranding = {
   sso_display_name: 'Staff SSO',
   page_title: 'Kindred',
   page_description: 'Cabin assignments that put relationships first',
+  // Staff guide base URL, supplied by branding.local.json; null hides the Help menu item.
+  docs_url: null as string | null,
   logo: {
     large: null as string | null,
     nav: null as string | null,
@@ -75,4 +77,8 @@ export function getPageTitle(): string {
 
 export function getPageDescription(): string {
   return branding.page_description
+}
+
+export function getDocsUrl(): string | null {
+  return branding.docs_url
 }
