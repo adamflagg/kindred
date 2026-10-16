@@ -13,7 +13,7 @@ import { CANCELLED_FINAL_NOTE, CANCEL_RATE_NOTE } from '../../pages/metrics/canc
 import { AnotherIdentityLine, GenderFallbackSeasonsLine } from './genderIdentityNotes'
 import { genderNote } from './genderNotes'
 import { GENDER_IDENTITY_GROUPS, genderDisplayName } from '../camperships/kit/genderIdentity'
-import { buildYearRows, type LiveCompare, type YearRow } from './yearByYearRows'
+import { buildYearRows, yearNoteCount, type LiveCompare, type YearRow } from './yearByYearRows'
 import { MetricSortHeader } from './MetricSortHeader'
 import { TableExportButtons } from './TableExportButtons'
 import { csvFilename } from './exportFilename'
@@ -41,11 +41,6 @@ const VS_FINAL_NOTE =
 function liveNote(live: LiveCompare): string {
   const day = MONTH_DAY.format(new Date(`${live.asOf}T00:00:00Z`))
   return `${String(live.year)} is still registering, so it is compared with ${String(live.priorYear)} at the same registration day (${day}). Earlier rows compare final to final.`
-}
-
-/** How many notes the table's own columns carry; the Gender note (#2898) follows them. */
-export function yearNoteCount(live: LiveCompare | null): number {
-  return live ? 4 : 3
 }
 
 const GENDER_AFTER =

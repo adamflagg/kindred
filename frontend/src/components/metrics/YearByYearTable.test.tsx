@@ -102,3 +102,37 @@ describe('YearByYearTable', () => {
     expect(screen.getByRole('button', { name: /^copy/i })).toBeInTheDocument()
   })
 })
+
+describe('YearByYearTable gender identity (#2898)', () => {
+  const identity = (fallback: number) =>
+    y(2024, 100, {
+      gender_fallback_count: fallback,
+      by_gender: [
+        { gender: 'Girl/woman', count: 60, percentage: 60 },
+        { gender: 'Boy/man', count: 40, percentage: 40 },
+      ],
+    })
+
+  it('heads the table with the identity groups, not Male and Female', () => {
+    render(<YearByYearTable years={[identity(0)]} live={null} />)
+    expect(screen.getByRole('button', { name: /^Girl\/woman/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Male/ })).not.toBeInTheDocument()
+  })
+
+  it('numbers the Gender note after the column notes, and after the live row note', () => {
+    const { unmount } = render(<YearByYearTable years={[identity(7)]} live={null} />)
+    expect(screen.getByText(/gender identity from CampMinder/).closest('li')?.textContent).toMatch(
+      /^4/
+    )
+    unmount()
+    render(<YearByYearTable years={[identity(7), y(2026, 100)]} live={LIVE} />)
+    expect(screen.getByText(/gender identity from CampMinder/).closest('li')?.textContent).toMatch(
+      /^5/
+    )
+  })
+
+  it('adds no Gender note when every camper answered', () => {
+    render(<YearByYearTable years={[identity(0)]} live={null} />)
+    expect(screen.queryByText(/gender identity from CampMinder/)).not.toBeInTheDocument()
+  })
+})

@@ -29,8 +29,8 @@ import { trendDirection } from '../../../utils/trendDirection'
 import { firstSummerYearLabel } from '../../../utils/metricsTransforms'
 import type { YearEnrollment } from '../../../types/metrics'
 import { formatSignedCount, formatSignedPercent } from '../../../utils/numberFormat'
-import { YearByYearTable, yearNoteCount } from '../../../components/metrics/YearByYearTable'
-import type { LiveCompare } from '../../../components/metrics/yearByYearRows'
+import { YearByYearTable } from '../../../components/metrics/YearByYearTable'
+import { yearNoteCount, type LiveCompare } from '../../../components/metrics/yearByYearRows'
 import { useCompareYearFilter } from '../../../hooks/useCompareYearFilter'
 import {
   AnotherIdentityLine,

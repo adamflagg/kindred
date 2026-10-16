@@ -56,3 +56,8 @@ export function buildYearRows(years: readonly YearMetrics[], live: LiveCompare |
     }
   })
 }
+
+/** How many notes the table's own columns carry; the Gender note (#2898) follows them. */
+export function yearNoteCount(live: LiveCompare | null): number {
+  return live ? 4 : 3
+}
