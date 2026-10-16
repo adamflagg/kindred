@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any, Protocol, cast
@@ -19,10 +19,12 @@ import httpx
 from api.constants.collections import (
     AID_APPLICATION_CORRECTIONS,
     AID_APPLICATIONS,
+    AID_DECISIONS,
     AID_PAYER_SHARES,
     AID_REQUEST_ADDITIONS,
     AID_REQUESTS,
 )
+from api.services.financial_aid_decisions_repository import decision_event
 from api.services.financial_aid_intake_repository import _exact_pct
 from api.services.financial_aid_intake_types import (
     AdditionRecord,
@@ -37,6 +39,7 @@ from api.services.financial_aid_intake_types import (
     SessionRow,
     equity_from_json,
 )
+from api.services.financial_aid_reconciliation import CampLine
 from bunking.financial_aid.change_log import COLLECTION, AidOperationResult, AidWrite, commit_aid_writes
 from bunking.financial_aid.decisions.rounds import DecisionEvent
 from bunking.financial_aid.rules.schema import AidRules
@@ -194,6 +197,9 @@ class FakeAidStore:
         self.corrections: list[CorrectionRecord] = []
         self.additions: dict[str, AdditionRecord] = {}  # aid_request_additions, retired rows included
         self.decision_events: list[DecisionEvent] = []  # aid_decisions rows, for the casework swap's posted check
+        self.camp_lines: list[CampLine] = []  # aid_postings' camp-aid lines (D170, Add a Request…'s Round 1 guard)
+        self.links: list[Any] = []  # aid_household_links rows (D26)
+        self.cancel_events: list[Any] = []  # aid_cancellations rows (CancelEvent)
         self.equity: dict[int, EquityAnswers] = {}
         self.birthdates: dict[int, str] = {}
         self.rules: AidRules | None = None
@@ -291,6 +297,25 @@ class FakeAidStore:
 
     async def fetch_request_events(self, request_id: str) -> list[DecisionEvent]:
         return [e for e in self.decision_events if e.request_id == request_id]
+
+    async def fetch_decision_events(self, year: int) -> list[DecisionEvent]:
+        return list(self.decision_events)
+
+    async def fetch_camp_lines(self, year: int, *, recorded_times: bool = False) -> list[CampLine]:
+        await self._read(year)
+        return list(self.camp_lines)
+
+    async def fetch_household_links(self, year: int) -> list[Any]:
+        return list(self.links)
+
+    async def fetch_cancellations(self, year: int) -> list[Any]:
+        return list(self.cancel_events)
+
+    async def fetch_names(
+        self, year: int, household_cm_ids: Collection[int], person_cm_ids: Collection[int]
+    ) -> tuple[dict[int, str], dict[int, str]]:
+        """As FakeDecisionsStore names them: "Family <id>" and "Camper <id>"."""
+        return {h: f"Family {h}" for h in household_cm_ids}, {p: f"Camper {p}" for p in person_cm_ids}
 
     async def fetch_equity_answers(self, year: int, person_cm_ids: Sequence[int]) -> dict[int, EquityAnswers]:
         return {p: self.equity[p] for p in person_cm_ids if p in self.equity}
@@ -438,9 +463,17 @@ class FakeAidStore:
                 retired_at=body.get("retired_at", ""),
                 retired_by=body.get("retired_by", ""),
                 retire_reason=body.get("retire_reason", ""),
+                reviewed_at=body.get("reviewed_at", ""),
+                reviewed_by=body.get("reviewed_by", ""),
             )
         elif collection == AID_REQUEST_ADDITIONS and method == "PATCH":
             self.additions[rid] = replace(self.additions[rid], **body)
+        elif collection == AID_DECISIONS and method == "POST":
+            if body["request"] not in self.requests:
+                raise ValueError(f"aid_decisions.request {body['request']!r} does not exist")
+            created = f"2027-03-09 17:00:{len(self.decision_events):02d}.000Z"
+            self.decision_events.append(decision_event(SimpleNamespace(**{**body, "id": rid, "created": created})))
+            return {**body, "id": rid, "created": created}
         elif collection == AID_APPLICATION_CORRECTIONS:
             created = f"2027-01-01 00:00:{len(self.corrections):02d}.000Z"
             self.corrections.append(

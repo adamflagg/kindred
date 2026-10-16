@@ -32,6 +32,10 @@ REPRODUCED: Final = "reproduced"
 # CampMinder's money. Read-only like REPRODUCED, and never labelled as reproduced from the sheet.
 FROM_CAMPMINDER: Final = "campminder_only"
 LOADED: Final = frozenset({REPRODUCED, FROM_CAMPMINDER})
+# PR 3 (owner Q5-A, 2026-10-15): the Round 1 Add a Request… records, in the operation that makes the request, at the
+# camp aid CampMinder already posted on that family x session with no request. An ordinary posted round, NOT read-only
+# (not in LOADED): Undo Posted works on it.
+ADDED_AT_CAMPMINDER: Final = "campminder_added"
 
 
 @dataclass(frozen=True)

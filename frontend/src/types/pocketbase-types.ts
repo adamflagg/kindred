@@ -393,6 +393,7 @@ export const AidDecisionsLockSourceOptions = {
   placement: 'placement',
   reproduced: 'reproduced',
   campminder_only: 'campminder_only',
+  campminder_added: 'campminder_added',
 } as const
 export type AidDecisionsLockSourceOptions =
   (typeof AidDecisionsLockSourceOptions)[keyof typeof AidDecisionsLockSourceOptions]
@@ -731,6 +732,8 @@ export type AidRequestAdditionsRecord = {
   retire_reason?: string
   retired_at?: IsoDateString
   retired_by?: string
+  reviewed_at?: IsoDateString
+  reviewed_by?: string
   session_cm_id: number
   source: AidRequestAdditionsSourceOptions
   updated: IsoAutoDateString

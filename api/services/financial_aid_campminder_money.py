@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Callable, Collection, Iterable, Sequence
+from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Protocol
 
@@ -99,14 +100,20 @@ def campminder_money(
     return dict(placed), dict(no_request), dict(unplaced)
 
 
-def aid_on_no_request(
-    lines: Iterable[CampLine],
-    requests: Sequence[GroupRequest],
-    links: Iterable[Any],
-    pool_of_session: Callable[[int], str | None],
-) -> dict[str, OffRequestAid]:
-    """D170: CampMinder's live camp aid that matches no request, by budget pool (its session's; NO_POOL for a session no
-    program claims) and TOTAL, each with the households it is on. Only scopes holding some are keyed.
+@dataclass(frozen=True)
+class NoRequestAid:
+    """One live camp-aid line D170 counts: the family x session it is on (`group`), or None when no session can be told
+    on a family with no request at all (it counts in TOTAL only)."""
+
+    line: CampLine
+    group: Group | None
+
+
+def aid_on_no_request_lines(
+    lines: Iterable[CampLine], requests: Sequence[GroupRequest], links: Iterable[Any]
+) -> list[NoRequestAid]:
+    """D170 line by line: each live camp-aid line that matches no request, in the order given. aid_on_no_request sums
+    exactly these, so Season's figure, its drill-in (one line per family x session) and Form intake agree.
 
     Each live line is read by the loader's family x session rule (_line_group, with the household's links), and counts
     when it lands on:
@@ -115,7 +122,7 @@ def aid_on_no_request(
         the line's, or either camper is unknown (0): the loader posts such a request at the sheet's session when an
         override loads a sheet row onto it, and this read, having no sheet, takes any such request to hold that money;
       - nothing it can be told, on a family (its household and the households linked to it) with no request at all.
-        It has no session, so it counts in TOTAL only.
+        It has no session (group None).
     Money no one request can take on a family that did ask is not counted: the loader leaves the sheet's decision
     standing for it (its "not placeable on one request"), so it is on a decision already. (Not quite true of a
     person-level credit that waits for a pin beside a pinned award: no decision stands for it, and it is reported
@@ -127,14 +134,7 @@ def aid_on_no_request(
         if not request.session_cm_id:
             sessionless[request.household_cm_id].add(request.person_cm_id)
     families_of: dict[int, list[int]] = {}
-    amounts: dict[str, Decimal] = defaultdict(lambda: ZERO)
-    families: dict[str, set[int]] = defaultdict(set)
-
-    def add(scopes: Iterable[str], line: CampLine) -> None:
-        for scope in scopes:
-            amounts[scope] += line.amount
-            families[scope].add(line.household_cm_id)
-
+    out: list[NoRequestAid] = []
     for line in lines:
         if not line.live() or not line.amount:
             continue
@@ -146,7 +146,26 @@ def aid_on_no_request(
         if group is not None and why == "no_request":
             camper = line.attributed_person_cm_id or line.person_cm_id
             if not any(not camper or not p or p == camper for h in family for p in sessionless.get(h, ())):
-                add((pool_of_session(group[1]) or NO_POOL, TOTAL), line)
+                out.append(NoRequestAid(line, group))
         elif group is None and asked.isdisjoint(family):
-            add((TOTAL,), line)
+            out.append(NoRequestAid(line, None))
+    return out
+
+
+def aid_on_no_request(
+    lines: Iterable[CampLine],
+    requests: Sequence[GroupRequest],
+    links: Iterable[Any],
+    pool_of_session: Callable[[int], str | None],
+) -> dict[str, OffRequestAid]:
+    """D170: CampMinder's live camp aid that matches no request (aid_on_no_request_lines), by budget pool (its
+    session's; NO_POOL for a session no program claims) and TOTAL, each with the households it is on. Only scopes
+    holding some are keyed. A line with no session counts in TOTAL only."""
+    amounts: dict[str, Decimal] = defaultdict(lambda: ZERO)
+    families: dict[str, set[int]] = defaultdict(set)
+    for found in aid_on_no_request_lines(lines, requests, links):
+        scopes = (TOTAL,) if found.group is None else (pool_of_session(found.group[1]) or NO_POOL, TOTAL)
+        for scope in scopes:
+            amounts[scope] += found.line.amount
+            families[scope].add(found.line.household_cm_id)
     return {scope: OffRequestAid(amounts[scope], len(families[scope])) for scope in amounts}

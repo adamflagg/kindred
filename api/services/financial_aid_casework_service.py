@@ -49,11 +49,13 @@ from api.schemas.financial_aid_intake import (
     RequestQueueResponse,
     UseFormOut,
 )
+from api.services.camp_calendar import CAMP_TZ
 from api.services.financial_aid_calc_inputs import (
     CalculatorInputs,
     calculator_inputs,
     request_issues,
 )
+from api.services.financial_aid_campminder_money import NoRequestAid, aid_on_no_request_lines
 from api.services.financial_aid_corrections import (
     APPLICATION_CORRECTABLE,
     INCOME_OVERRIDE_FIELD,
@@ -65,6 +67,7 @@ from api.services.financial_aid_corrections import (
     effective_values,
     parse_new_value,
 )
+from api.services.financial_aid_decisions_service import decision_write
 from api.services.financial_aid_household import (
     HOUSEHOLD_ANSWER_FIELDS,
     TEXT_FIELDS,
@@ -80,6 +83,7 @@ from api.services.financial_aid_intake_plan import (
 )
 from api.services.financial_aid_intake_service import billed_for, rules_check_for, season_lock
 from api.services.financial_aid_intake_types import (
+    ADDITION_SOURCE_REGISTRATION_ASK,
     ADDITION_SOURCE_STAFF,
     INTAKE_ACTOR,
     PROGRAM_FAMILY_CAMP,
@@ -105,6 +109,7 @@ from api.services.financial_aid_intake_types import (
     SessionRow,
     request_origin,
 )
+from api.services.financial_aid_ledger_service import family_household_set
 from api.services.financial_aid_payer_shares import (
     PayerShareError,
     ShareSpec,
@@ -113,11 +118,12 @@ from api.services.financial_aid_payer_shares import (
     split_award,
     validate_shares,
 )
+from api.services.financial_aid_reconciliation import CampLine
 from api.services.financial_aid_request_overrides import DEFAULT_REASON_CODES
 from api.services.financial_aid_session_resolver import PROGRAM_SESSION_TYPES
 from bunking.financial_aid.change_diff import values_equal
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite, new_record_id
-from bunking.financial_aid.decisions.rounds import DecisionEvent, fold_rounds
+from bunking.financial_aid.decisions.rounds import ADDED_AT_CAMPMINDER, DecisionEvent, fold_rounds
 from bunking.financial_aid.rules.schema import AidRules
 
 
@@ -160,6 +166,9 @@ class CaseworkStore(Protocol):
     async def fetch_family_camp_billing(self, year: int) -> list[BillingLine]: ...
     async def fetch_birthdates(self, year: int, person_cm_ids: Sequence[int]) -> dict[int, str]: ...
     async def load_intake_rules(self, year: int) -> AidRules | None: ...
+    # Add a Request…'s Round 1 at CampMinder's money (owner Q5-A): D170's own reads.
+    async def fetch_camp_lines(self, year: int, *, recorded_times: bool = False) -> list[CampLine]: ...
+    async def fetch_household_links(self, year: int) -> list[Any]: ...
     async def commit(
         self,
         writes: Sequence[AidWrite],
@@ -349,6 +358,9 @@ class AdditionItem:
     session_cm_id: int
     ask: float
     reason: str
+    # Owner Q5-A: record CampMinder's posted money on this family x session as Round 1, posted, in the same operation.
+    # The amount the screen showed; refused unless it is CampMinder's to the cent. None: the request only.
+    round1_campminder: float | None = None
 
 
 def _program_for(session: SessionRow) -> str | None:
@@ -375,7 +387,7 @@ def _addition_fields(addition: AdditionRecord) -> dict[str, Any]:
     }
 
 
-def addition_out(addition: AdditionRecord, request_id: str) -> AdditionOut:
+def addition_out(addition: AdditionRecord, request_id: str, round1_posted: Decimal | None = None) -> AdditionOut:
     return AdditionOut(
         id=addition.id,
         year=addition.year,
@@ -391,6 +403,9 @@ def addition_out(addition: AdditionRecord, request_id: str) -> AdditionOut:
         retired_by=addition.retired_by,
         retire_reason=addition.retire_reason,
         request_id=request_id,
+        reviewed_at=addition.reviewed_at,
+        reviewed_by=addition.reviewed_by,
+        round1_posted=float(round1_posted) if round1_posted is not None else None,
     )
 
 
@@ -414,6 +429,15 @@ class _AdditionContext:
     # Filled as items plan: the slots this load claims and the applications it creates.
     claimed: set[tuple[str, int, int]] = dataclass_field(default_factory=set)
     new_applications: dict[int, str] = dataclass_field(default_factory=dict)
+    # Read only when an item records CampMinder's money as Round 1 (Q5-A): D170's lines and the season's links, and
+    # the family x sessions whose money this load has already recorded.
+    no_request: list[NoRequestAid] | None = None
+    links: list[Any] = dataclass_field(default_factory=list)
+    recorded: set[tuple[int, int]] = dataclass_field(default_factory=set)
+
+
+def _cents(amount: Decimal) -> str:
+    return f"${amount:,.2f}"
 
 
 @dataclass
@@ -421,6 +445,39 @@ class _PlannedAddition:
     addition: AdditionRecord
     request_id: str
     writes: list[AidWrite]
+
+
+def _campminder_post(
+    year: int, request_id: str, amount: Decimal, lines: Sequence[CampLine], addition_id: str, actor: str, reason: str
+) -> AidWrite:
+    """Round 1's Posted row at CampMinder's money (owner Q5-A), through the decisions service's own row writer. A
+    posted round's decided amount IS its locked amount (pricing.posted_view), so this one row is the Round 1 decision
+    and its posted mark. Dated the posting's day: the latest of the lines, camp time (today when none has a date)."""
+    days = [line.post_date.astimezone(CAMP_TZ).date() for line in lines if line.post_date is not None]
+    posted_on = max(days) if days else datetime.now(UTC).astimezone(CAMP_TZ).date()
+    return replace(
+        decision_write(
+            year,
+            request_id,
+            1,
+            "post",
+            actor,
+            record_id=new_record_id(),
+            amount=float(amount),
+            effective_on=posted_on.isoformat(),
+            lock_source=ADDED_AT_CAMPMINDER,
+            snapshot={
+                "round": 1,
+                "decided": str(amount),
+                "result": None,
+                "inputs": None,
+                "campminder": str(amount),
+                "added": {"addition": addition_id, "transactions": sorted(line.transaction_cm_id for line in lines)},
+            },
+            note=f"Recorded at CampMinder's posted {_cents(amount)} when the request was added",
+        ),
+        reason=reason,
+    )
 
 
 class FinancialAidCaseworkService:
@@ -1018,6 +1075,7 @@ class FinancialAidCaseworkService:
             a.live and (a.household_cm_id, a.person_cm_id, a.session_cm_id) == (hh, person, sid) for a in ctx.additions
         ):
             raise CaseworkValidationError("that request is already added")
+        campminder = await self._campminder_round1(ctx, item) if item.round1_campminder is not None else None
 
         addition = AdditionRecord(
             id=new_record_id(),
@@ -1115,8 +1173,45 @@ class FinancialAidCaseworkService:
                     reason=reason,
                 )
             )
+        if campminder is not None:
+            if existing is not None:
+                earlier = fold_rounds(await self._store.fetch_request_events(existing.id)).get(existing.id, {}).get(1)
+                if earlier is not None and earlier.posted:
+                    raise CaseworkValidationError("Round 1 is already posted on that request")
+            amount, lines, family_key = campminder
+            writes.append(_campminder_post(year, request_id, amount, lines, addition.id, actor, reason))
+            ctx.recorded.add(family_key)
         ctx.claimed.add(slot)
         return _PlannedAddition(addition, request_id, writes)
+
+    async def _campminder_round1(
+        self, ctx: _AdditionContext, item: AdditionItem
+    ) -> tuple[Decimal, list[CampLine], tuple[int, int]]:
+        """Owner Q5-A's guard: the Round 1 to record is, to the cent, CampMinder's live camp aid on this family x
+        session that no request holds (D170's own lines, so the money then leaves that line and counts in the pool).
+        The family is the household and the households linked to it, as D170 reads a line. Recorded once per family
+        x session in a load: CampMinder's money is the family x session's, never split."""
+        if ctx.no_request is None:
+            lines = await self._store.fetch_camp_lines(ctx.year)
+            ctx.links = list(await self._store.fetch_household_links(ctx.year))
+            ctx.no_request = aid_on_no_request_lines(lines, list(ctx.requests.values()), ctx.links)
+        hh, sid = item.household_cm_id, item.session_cm_id
+        family = set(family_household_set(ctx.links, hh) or [hh])
+        found = [a.line for a in ctx.no_request if a.group is not None and a.group[1] == sid and a.group[0] in family]
+        key = (min(family), sid)
+        if key in ctx.recorded:
+            raise CaseworkValidationError(
+                "CampMinder's money on that family and session is already recorded on another item in this load"
+            )
+        if not found:
+            raise CaseworkValidationError("CampMinder shows no aid on no request for that family and session")
+        amount = sum((line.amount for line in found), Decimal(0))
+        given = Decimal(str(item.round1_campminder)).quantize(Decimal("0.01"))
+        if amount.quantize(Decimal("0.01")) != given:
+            raise CaseworkValidationError(
+                f"CampMinder shows {_cents(amount)} on no request for that family and session, not {_cents(given)}"
+            )
+        return amount, found, key
 
     async def add_request(
         self,
@@ -1127,11 +1222,18 @@ class FinancialAidCaseworkService:
         ask: float,
         reason: str,
         actor: str,
+        *,
+        round1_campminder: float | None = None,
     ) -> AddedRequestOut:
         """Add a request the aid form never named, as ONE operation: the addition, its request and the default
         payer share (and the household's application when it has none), each with its aid_change_log row, logged
-        `add_request`. Intake's next run reads the addition and finds the request already matched."""
-        item = AdditionItem(household_cm_id, person_cm_id, session_cm_id, ask, reason)
+        `add_request`. Intake's next run reads the addition and finds the request already matched.
+
+        `round1_campminder` (owner Q5-A, "Record CampMinder's $X as Round 1, posted"): the same operation also writes
+        the request's Round 1 `post` at that amount (lock_source campminder_added, dated the posting's day), so the
+        money counts in Committed and Posted at once. Refused unless it is CampMinder's money on that family x
+        session with no request (_campminder_round1)."""
+        item = AdditionItem(household_cm_id, person_cm_id, session_cm_id, ask, reason, round1_campminder)
         async with season_lock(year):
             ctx = await self._addition_context(year)
             planned = await self._plan_addition(ctx, item, "", actor)
@@ -1158,6 +1260,7 @@ class FinancialAidCaseworkService:
                     ask=item.ask,
                     program_key=(_program_for(session) or "") if session is not None else "",
                     ok=False,
+                    round1_campminder=item.round1_campminder,
                 )
                 try:
                     one = await self._plan_addition(ctx, item, reason, actor)
@@ -1185,7 +1288,41 @@ class FinancialAidCaseworkService:
 
     async def _added_out(self, addition: AdditionRecord, request_id: str) -> AddedRequestOut:
         request = await self._require_request(request_id)
-        return AddedRequestOut(addition=addition_out(addition, request_id), request=await self._request_out(request))
+        round1 = fold_rounds(await self._store.fetch_request_events(request_id)).get(request_id, {}).get(1)
+        posted = round1.locked_amount if round1 is not None and round1.posted else None
+        return AddedRequestOut(
+            addition=addition_out(addition, request_id, posted), request=await self._request_out(request)
+        )
+
+    async def review_addition(self, year: int, addition_id: str, actor: str) -> AddedRequestOut:
+        """Mark Reviewed (owner Q2-A): a person checked a request the dashboard made from a registration ask, so it
+        leaves Form intake's Needs a look. Stamps reviewed_at / reviewed_by once, logged `review_added_request`; a
+        second call changes nothing (the first stamp stands). Only a live rule-made addition is reviewed."""
+        async with season_lock(year):
+            addition = await self._store.fetch_request_addition(addition_id)
+            if addition is None or addition.year != year:
+                raise CaseworkNotFoundError("no such added request in that season")
+            if addition.source != ADDITION_SOURCE_REGISTRATION_ASK:
+                raise CaseworkValidationError("only a request made from a registration ask is reviewed")
+            if not addition.live:
+                raise CaseworkValidationError("that added request is removed")
+            if not addition.reviewed:
+                stamp = {"reviewed_at": datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S.000Z"), "reviewed_by": actor}
+                write = AidWrite(
+                    collection=AID_REQUEST_ADDITIONS,
+                    action="update",
+                    year=year,
+                    record_id=addition.id,
+                    before={**_addition_fields(addition), "reviewed_at": "", "reviewed_by": ""},
+                    data=stamp,
+                    log_action="review_added_request",
+                )
+                await self._store.commit([write], actor=actor, reason="Mark Reviewed")
+                addition = replace(addition, reviewed_at=stamp["reviewed_at"], reviewed_by=actor)
+            request = next((r for r in await self._store.fetch_requests(year) if r.key == addition.request_key), None)
+        if request is None:
+            raise CaseworkNotFoundError("the added request's own request is missing")
+        return await self._added_out(addition, request.id)
 
     async def retire_addition(self, year: int, addition_id: str, reason: str, actor: str) -> AddedRequestOut:
         """Retire an addition and withdraw its request at once, as one operation. Nothing is deleted: the addition

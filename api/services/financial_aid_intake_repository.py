@@ -265,6 +265,8 @@ def _addition(record: Any) -> AdditionRecord:
         retired_at=_str(getattr(record, "retired_at", "")),
         retired_by=_str(getattr(record, "retired_by", "")),
         retire_reason=_str(getattr(record, "retire_reason", "")),
+        reviewed_at=_str(getattr(record, "reviewed_at", "")),
+        reviewed_by=_str(getattr(record, "reviewed_by", "")),
     )
 
 
