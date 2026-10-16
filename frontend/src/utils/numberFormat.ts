@@ -59,13 +59,6 @@ export function formatSignedPercent(value: number): string {
   return value > 0 ? `+${text}%` : `${text}%`
 }
 
-/** A change already in whole percentage points: "+12%", "−14%", "0%". */
-export function formatSignedWholePercent(value: number): string {
-  const rounded = Math.round(value)
-  if (rounded === 0) return '0%'
-  return rounded > 0 ? `+${rounded}%` : `${MINUS}${Math.abs(rounded)}%`
-}
-
 /** What a card shows: a number as a count, a pre-formatted string as given. */
 export function formatValue(value: string | number): string {
   return typeof value === 'number' ? formatCount(value) : value

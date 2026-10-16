@@ -32,7 +32,7 @@ describe('OutlierSection number format', () => {
 
   it('writes the deviation as a signed percentage with a true minus', () => {
     render(<OutlierSection outliers={outliers} max={5} />)
-    expect(screen.getByText('+12%')).toBeInTheDocument()
-    expect(screen.getByText('−14%')).toBeInTheDocument()
+    expect(screen.getByText('+12.0%')).toBeInTheDocument()
+    expect(screen.getByText('−14.0%')).toBeInTheDocument()
   })
 })

@@ -6,7 +6,6 @@ import {
   formatRate,
   formatSignedCount,
   formatSignedPercent,
-  formatSignedWholePercent,
   formatValue,
 } from './numberFormat'
 
@@ -69,12 +68,6 @@ describe('numberFormat (decision 43, #3207)', () => {
       expect(formatSignedPercent(-7.26)).toBe(`${MINUS}7.3%`)
       expect(formatSignedPercent(0)).toBe('0.0%')
       expect(formatSignedPercent(-0.04)).toBe('0.0%')
-    })
-    it('formatSignedWholePercent writes a whole-number change with no decimal', () => {
-      expect(formatSignedWholePercent(12)).toBe('+12%')
-      expect(formatSignedWholePercent(-14)).toBe(`${MINUS}14%`)
-      expect(formatSignedWholePercent(0)).toBe('0%')
-      expect(formatSignedWholePercent(11.6)).toBe('+12%')
     })
   })
 
