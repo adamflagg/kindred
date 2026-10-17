@@ -17,6 +17,8 @@ import type { VelocityResponse } from '../../types/velocity'
 /** #111: past this, the hourly sync has missed two runs and the live point is hidden. */
 export const LIVE_SYNC_MAX_AGE_MS = 2 * 60 * 60 * 1000
 const DAY_MS = 24 * 60 * 60 * 1000
+/** A stored count older than this means the nightly was missed ('3 a.m.' would date it wrongly). */
+const STORED_STALE_MS = 26 * 60 * 60 * 1000
 
 /** What the sync status says about the viewed season's enrollment (attendees) run. */
 export interface LiveSync {
@@ -41,6 +43,11 @@ export interface LivePoint {
   x: number
   /** The sync it is as of. */
   at: string
+  /**
+   * The stored point's date ('2026-12-14'), set only when the stored count is more than ~26 h old, i.e. a
+   * nightly was missed: the callout then names that date instead of "3 a.m." (row 3 of the #3283 scan).
+   */
+  storedDate: string | null
 }
 
 /** PocketBase writes "2026-12-14 10:40:12.000Z"; Date.parse wants the T. */
@@ -72,6 +79,10 @@ export function livePoint(
     storedDay: last.day_offset,
     x: last.day_offset + Math.min(since / DAY_MS, 1),
     at: sync.at,
+    storedDate:
+      now - parseTime(live.stored_at) > STORED_STALE_MS
+        ? last.date || live.stored_at.slice(0, 10)
+        : null,
   }
 }
 
@@ -83,9 +94,23 @@ export function syncTimeLabel(at: string): string {
   return `as of ${time} sync`
 }
 
-/** #108: "+626 since 3 a.m.", or null at zero (the callout disappears). */
-export function sinceStoredLabel(added: number): string | null {
-  return added === 0 ? null : `${formatSignedCount(added)} since 3 a.m.`
+/** 'Dec 14' from '2026-12-14' (a calendar date, so no timezone shift). */
+function shortDate(date: string): string {
+  return new Date(`${date.slice(0, 10)}T00:00:00Z`).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'UTC',
+  })
+}
+
+/**
+ * #108: "+626 since 3 a.m.", or null at zero (the callout disappears). With the stored point's date
+ * (a missed nightly), "+626 since Dec 14, 3 a.m.".
+ */
+export function sinceStoredLabel(added: number, storedDate?: string | null): string | null {
+  if (added === 0) return null
+  const when = storedDate ? `${shortDate(storedDate)}, 3 a.m.` : '3 a.m.'
+  return `${formatSignedCount(added)} since ${when}`
 }
 
 export interface LiveLabelLine {
@@ -111,7 +136,7 @@ export function liveLabelLines(
       weight: 700,
     },
   ]
-  const since = sinceStoredLabel(point.added)
+  const since = sinceStoredLabel(point.added, point.storedDate)
   if (since) lines.push({ text: since, tone: point.added > 0 ? 'good' : 'bad', weight: 600 })
   if (prior?.value != null) {
     lines.push({

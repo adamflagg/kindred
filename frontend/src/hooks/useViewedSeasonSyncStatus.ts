@@ -4,7 +4,12 @@ export type ViewedSeasonSyncStatus =
   | { kind: 'loading' }
   /** The viewed season is not one the scheduled runs cover. */
   | { kind: 'unsynced' }
-  | { kind: 'synced'; scoped: SyncStatusResponse }
+  | {
+      kind: 'synced'
+      scoped: SyncStatusResponse
+      /** Re-reads this season's status now (the staleTime is unchanged; see useStaleSyncRefetch). */
+      refetch: () => void
+    }
 
 /**
  * The viewed season's own sync status (`?year=`), for the Analytics chip and its refetch.
@@ -21,7 +26,11 @@ export function useViewedSeasonSyncStatus(year: number): ViewedSeasonSyncStatus 
     status?._synced_years ?? (configured !== undefined ? [configured, configured - 1] : undefined)
   const inSynced = syncedYears?.includes(year) ?? false
 
-  const { data: scoped, isPlaceholderData } = useSyncStatusAPI({
+  const {
+    data: scoped,
+    isPlaceholderData,
+    refetch,
+  } = useSyncStatusAPI({
     enabled: inSynced,
     year: inSynced ? year : undefined,
   })
@@ -30,5 +39,11 @@ export function useViewedSeasonSyncStatus(year: number): ViewedSeasonSyncStatus 
   if (!inSynced) return { kind: 'unsynced' }
   // keepPreviousData hands back the last year's payload while this year's loads: not its status.
   if (!scoped || isPlaceholderData) return { kind: 'loading' }
-  return { kind: 'synced', scoped }
+  return {
+    kind: 'synced',
+    scoped,
+    refetch: () => {
+      void refetch()
+    },
+  }
 }

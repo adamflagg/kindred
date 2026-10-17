@@ -120,6 +120,49 @@ describe('livePoint', () => {
   })
 })
 
+// Row 3 of the scan: a missed nightly leaves the stored count more than a day old, so "since 3 a.m."
+// would date it wrongly. The callout names the stored point's real date instead.
+describe('a stored count more than ~26 h old', () => {
+  const OLD_STORED_AT = new Date(2026, 11, 12, 3, 40).toISOString()
+  const stale = () => {
+    const d = data({ live: { enrolled: 1_038, stored_at: OLD_STORED_AT } })
+    return {
+      ...d,
+      combined: {
+        ...d.combined,
+        daily: d.combined.daily.map((p) => ({ ...p, date: '2026-12-12' })),
+      },
+    }
+  }
+
+  it('carries the stored point date; a fresh count carries none', () => {
+    expect(livePoint(stale(), fresh, NOW)?.storedDate).toBe('2026-12-12')
+    expect(livePoint(data(), fresh, NOW)?.storedDate).toBeNull()
+  })
+
+  it('stays undated at 25 h and dates from 27 h', () => {
+    const at = (hours: number) => {
+      const d = stale()
+      return livePoint(
+        { ...d, live: { enrolled: 1_038, stored_at: new Date(NOW - hours * HOUR).toISOString() } },
+        fresh,
+        NOW
+      )
+    }
+    expect(at(25)?.storedDate).toBeNull()
+    expect(at(27)?.storedDate).toBe('2026-12-12')
+  })
+
+  it('dates the callout, and keeps the point (the count is still right)', () => {
+    expect(sinceStoredLabel(626, '2026-12-12')).toBe('+626 since Dec 12, 3 a.m.')
+    expect(sinceStoredLabel(0, '2026-12-12')).toBeNull()
+    expect(liveLabelLines(livePoint(stale(), fresh, NOW)!).map((l) => l.text)).toEqual([
+      'as of 2:05 pm sync · 1,038',
+      '+626 since Dec 12, 3 a.m.',
+    ])
+  })
+})
+
 describe('syncBehind', () => {
   it('is true only past 2 hours since the last sync', () => {
     expect(syncBehind(new Date(NOW - 2 * HOUR - 1).toISOString(), NOW)).toBe(true)

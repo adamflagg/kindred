@@ -560,6 +560,12 @@ type Status struct {
 	// run wrote nothing, so every freshness line ("Assignments synced N ago") dates the job by
 	// this run instead (frontend freshnessRun). Never persisted. See withLastRealRun.
 	LastRealRun *Status `json:"last_real_run,omitempty"`
+	// LastSuccessAt is when the job last SUCCEEDED for real, stamped on every sync-status payload
+	// entry (withLastSuccess), whatever the entry's own outcome. The entry is the latest run, which
+	// may have failed or still be going; the 2-hour staleness rule and the amber chip on Analytics
+	// date the enrollments by this, so two failed runs in a row go amber and a failed run's partial
+	// count never reads as fresh. Nil when the job has no real success on record. Never persisted.
+	LastSuccessAt *time.Time `json:"last_success_at,omitempty"`
 	// BatchID groups every service execution of one queue — a whole nightly run — under one
 	// id. Minted when the queue starts.
 	//

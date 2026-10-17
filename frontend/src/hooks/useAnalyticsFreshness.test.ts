@@ -44,7 +44,12 @@ describe('useAnalyticsFreshness', () => {
     }
     const { result } = renderHook(() => useAnalyticsFreshness(2027))
     expect(calls).toContainEqual({ enabled: true, year: 2027 })
-    expect(result.current).toEqual({ kind: 'synced', at: '2026-10-27T10:04:00Z', running: false })
+    expect(result.current).toEqual({
+      kind: 'synced',
+      at: '2026-10-27T10:04:00Z',
+      running: false,
+      failed: false,
+    })
   })
 
   it('never reads the hourly bunk-assignment run', () => {
@@ -59,10 +64,20 @@ describe('useAnalyticsFreshness', () => {
   it('keeps the last finished time it saw while a run is live ("… · syncing now")', () => {
     scoped[2026] = { attendees: job('success', '2026-10-26T10:04:00Z') }
     const { result, rerender } = renderHook(() => useAnalyticsFreshness(2026))
-    expect(result.current).toEqual({ kind: 'synced', at: '2026-10-26T10:04:00Z', running: false })
+    expect(result.current).toEqual({
+      kind: 'synced',
+      at: '2026-10-26T10:04:00Z',
+      running: false,
+      failed: false,
+    })
     scoped[2026] = { attendees: job('running') }
     rerender()
-    expect(result.current).toEqual({ kind: 'synced', at: '2026-10-26T10:04:00Z', running: true })
+    expect(result.current).toEqual({
+      kind: 'synced',
+      at: '2026-10-26T10:04:00Z',
+      running: true,
+      failed: false,
+    })
   })
 
   it('treats a queued run in the nightly sequence as live too', () => {
@@ -70,7 +85,12 @@ describe('useAnalyticsFreshness', () => {
     const { result, rerender } = renderHook(() => useAnalyticsFreshness(2026))
     scoped[2026] = { attendees: job('pending') }
     rerender()
-    expect(result.current).toEqual({ kind: 'synced', at: '2026-10-26T10:04:00Z', running: true })
+    expect(result.current).toEqual({
+      kind: 'synced',
+      at: '2026-10-26T10:04:00Z',
+      running: true,
+      failed: false,
+    })
   })
 
   // A dry run stays in the slot (Manage > Sync shows it) but wrote nothing: the chip dates the
@@ -84,7 +104,12 @@ describe('useAnalyticsFreshness', () => {
       },
     }
     const { result } = renderHook(() => useAnalyticsFreshness(2026))
-    expect(result.current).toEqual({ kind: 'synced', at: '2026-10-26T10:04:00Z', running: false })
+    expect(result.current).toEqual({
+      kind: 'synced',
+      at: '2026-10-26T10:04:00Z',
+      running: false,
+      failed: false,
+    })
   })
 
   it('says "never" for a season whose only attendees run is a dry run', () => {
@@ -132,5 +157,75 @@ describe('useAnalyticsFreshness', () => {
     unscoped = undefined
     const { result } = renderHook(() => useAnalyticsFreshness(2027))
     expect(result.current).toEqual({ kind: 'loading' })
+  })
+
+  // Row 2 of the scan (#111 says "last GOOD sync"): the chip dates the enrollments by the last SUCCESS,
+  // and a failed run is remembered through the run that follows it.
+  describe('a failed run', () => {
+    const failedRun = (success: string) => ({
+      ...job('failed', '2026-10-27T12:04:00Z'),
+      last_success_at: success,
+    })
+
+    it('dates the chip by the last success, and says the last run failed', () => {
+      scoped[2027] = { attendees: failedRun('2026-10-27T10:04:00Z') }
+      const { result } = renderHook(() => useAnalyticsFreshness(2027))
+      expect(result.current).toEqual({
+        kind: 'synced',
+        at: '2026-10-27T10:04:00Z',
+        running: false,
+        failed: true,
+      })
+    })
+
+    it('two failures in a row still date by the one success', () => {
+      scoped[2027] = { attendees: failedRun('2026-10-27T10:04:00Z') }
+      const { result, rerender } = renderHook(() => useAnalyticsFreshness(2027))
+      scoped[2027] = {
+        attendees: {
+          ...job('failed', '2026-10-27T13:04:00Z'),
+          last_success_at: '2026-10-27T10:04:00Z',
+        },
+      }
+      rerender()
+      expect(result.current).toMatchObject({ at: '2026-10-27T10:04:00Z', failed: true })
+    })
+
+    it('keeps the failed flag through the next run', () => {
+      scoped[2027] = { attendees: failedRun('2026-10-27T10:04:00Z') }
+      const { result, rerender } = renderHook(() => useAnalyticsFreshness(2027))
+      scoped[2027] = { attendees: { ...job('running'), last_success_at: '2026-10-27T10:04:00Z' } }
+      rerender()
+      expect(result.current).toEqual({
+        kind: 'synced',
+        at: '2026-10-27T10:04:00Z',
+        running: true,
+        failed: true,
+      })
+    })
+
+    it('clears the flag when a run succeeds', () => {
+      scoped[2027] = { attendees: failedRun('2026-10-27T10:04:00Z') }
+      const { result, rerender } = renderHook(() => useAnalyticsFreshness(2027))
+      scoped[2027] = {
+        attendees: {
+          ...job('success', '2026-10-27T14:04:00Z'),
+          last_success_at: '2026-10-27T14:04:00Z',
+        },
+      }
+      rerender()
+      expect(result.current).toEqual({
+        kind: 'synced',
+        at: '2026-10-27T14:04:00Z',
+        running: false,
+        failed: false,
+      })
+    })
+
+    it('an older backend without last_success_at: a success dates itself, a failure with no success says never', () => {
+      scoped[2027] = { attendees: job('failed', '2026-10-27T12:04:00Z') }
+      const { result } = renderHook(() => useAnalyticsFreshness(2027))
+      expect(result.current).toEqual({ kind: 'never' })
+    })
   })
 })

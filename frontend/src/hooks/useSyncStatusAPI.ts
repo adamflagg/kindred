@@ -57,6 +57,12 @@ export interface SyncStatus {
    */
   last_real_run?: SyncStatus
   /**
+   * When the job last SUCCEEDED for real (`Status.LastSuccessAt`), whatever this entry's own outcome:
+   * the entry is the latest run, which may have failed or still be going. Freshness lines and the
+   * 2-hour staleness rule date by it (useAnalyticsFreshness). Absent when none is on record.
+   */
+  last_success_at?: string
+  /**
    * The weekend this run was started FOR, absent when it covers everything
    * (kindred#2601, `Status.Session` in pocketbase/sync/orchestrator.go).
    *

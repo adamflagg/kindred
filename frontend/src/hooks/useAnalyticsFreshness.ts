@@ -20,7 +20,11 @@ export type AnalyticsFreshness =
   | { kind: 'none' }
   /** A synced season whose attendees job has never run for it. */
   | { kind: 'never' }
-  | { kind: 'synced'; at: string; running: boolean }
+  /**
+   * `at` is the last SUCCESSFUL run (row 2 of the #3283 scan: #111 says "last good sync"), and `failed` is
+   * whether the run after it failed, kept through the run that follows so the live point stays hidden.
+   */
+  | { kind: 'synced'; at: string; running: boolean; failed: boolean }
   /** A run is live and no finished time has been seen this session: "Enrollments syncing now". */
   | { kind: 'syncing' }
 
@@ -30,7 +34,7 @@ export type AnalyticsFreshness =
  * (orchestrator.go statusLocked). Remembering the finished time keeps "Enrollments synced 7h
  * ago · syncing now" true through a run. Module-level, so it survives navigation.
  */
-const lastFinished = new Map<number, string>()
+const lastFinished = new Map<number, { at: string | undefined; failed: boolean }>()
 
 /** Tests only: start each case with nothing remembered. */
 export function forgetFinishedRuns(): void {
@@ -48,11 +52,17 @@ export function useAnalyticsFreshness(year: number): AnalyticsFreshness {
   const attendees = freshnessRun((scoped as Partial<SyncStatusResponse>).attendees)
   if (!attendees) return { kind: 'never' }
   const live = attendees.status === 'running' || attendees.status === 'pending'
+  // The last success: the backend's last_success_at, or, from an older backend, a success dating itself.
+  const successAt =
+    attendees.last_success_at ?? (attendees.status === 'success' ? attendees.end_time : undefined)
+  const prev = lastFinished.get(year)
   if (attendees.end_time && !live) {
-    lastFinished.set(year, attendees.end_time)
-    return { kind: 'synced', at: attendees.end_time, running: false }
+    const failed = attendees.status === 'failed'
+    const at = successAt ?? (failed ? prev?.at : undefined)
+    lastFinished.set(year, { at, failed })
+    return at ? { kind: 'synced', at, running: false, failed } : { kind: 'never' }
   }
-  const at = attendees.end_time ?? lastFinished.get(year)
-  if (at) return { kind: 'synced', at, running: live }
+  const at = successAt ?? prev?.at
+  if (at) return { kind: 'synced', at, running: live, failed: prev?.failed ?? false }
   return live ? { kind: 'syncing' } : { kind: 'never' }
 }

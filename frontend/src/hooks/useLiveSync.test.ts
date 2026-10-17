@@ -12,16 +12,17 @@ interface Opts {
 }
 let unscoped: unknown
 let scoped: Record<number, unknown>
+const mockRefetch = vi.fn()
 
 vi.mock('./useSyncStatusAPI', () => ({
   useSyncStatusAPI: (opts: Opts = {}) => {
     if (opts.year === undefined) return { data: unscoped }
-    return { data: opts.enabled === false ? undefined : scoped[opts.year] }
+    return { data: opts.enabled === false ? undefined : scoped[opts.year], refetch: mockRefetch }
   },
 }))
 
 import { forgetFinishedRuns } from './useAnalyticsFreshness'
-import { useLiveSync } from './useLiveSync'
+import { forgetStaleRefetches, useLiveSync } from './useLiveSync'
 
 const job = (status: string, end_time?: string) => ({ status, ...(end_time ? { end_time } : {}) })
 
@@ -29,6 +30,8 @@ beforeEach(() => {
   vi.useFakeTimers()
   vi.setSystemTime(new Date('2026-12-14T22:40:00Z'))
   forgetFinishedRuns()
+  forgetStaleRefetches()
+  mockRefetch.mockReset()
   unscoped = { _synced_years: [2027, 2026] }
   scoped = {}
 })
@@ -72,5 +75,62 @@ describe('useLiveSync', () => {
       vi.advanceTimersByTime(60_000)
     })
     expect(result.current.now).toBe(Date.parse('2026-12-14T22:41:00Z'))
+  })
+
+  it('keeps the failed flag while the next run is going, and dates by the last success (row 2)', () => {
+    scoped[2027] = {
+      attendees: {
+        ...job('failed', '2026-12-14T22:05:00Z'),
+        last_success_at: '2026-12-14T20:05:00Z',
+      },
+    }
+    const { result, rerender } = renderHook(() => useLiveSync(2027))
+    expect(result.current.sync).toMatchObject({ at: '2026-12-14T20:05:00Z', failed: true })
+    scoped[2027] = {
+      attendees: { ...job('running'), last_success_at: '2026-12-14T20:05:00Z' },
+    }
+    rerender()
+    expect(result.current.sync).toMatchObject({ at: '2026-12-14T20:05:00Z', failed: true })
+  })
+
+  // Row 1 of the scan: a tab left open past a missed refetch reads amber off a status that is only
+  // stale in the cache. On the minute tick, a known sync older than 65 min refetches the viewed
+  // season's status once; the staleTime is unchanged.
+  describe('a sync more than 65 minutes old', () => {
+    it('refetches the viewed season status once, not on every tick', () => {
+      scoped[2027] = { attendees: job('success', '2026-12-14T21:30:00Z') } // 70 min before 22:40
+      renderHook(() => useLiveSync(2027))
+      expect(mockRefetch).toHaveBeenCalledTimes(1)
+      act(() => {
+        vi.advanceTimersByTime(3 * 60_000)
+      })
+      expect(mockRefetch).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not refetch within 65 minutes, then does once the page sits open past it', () => {
+      scoped[2027] = { attendees: job('success', '2026-12-14T21:40:00Z') } // 60 min
+      renderHook(() => useLiveSync(2027))
+      expect(mockRefetch).not.toHaveBeenCalled()
+      act(() => {
+        vi.advanceTimersByTime(6 * 60_000) // 66 min
+      })
+      expect(mockRefetch).toHaveBeenCalledTimes(1)
+    })
+
+    it('refetches again for a later stale sync time', () => {
+      scoped[2027] = { attendees: job('success', '2026-12-14T21:30:00Z') }
+      const { rerender } = renderHook(() => useLiveSync(2027))
+      scoped[2027] = { attendees: job('success', '2026-12-14T21:31:00Z') }
+      rerender()
+      act(() => {
+        vi.advanceTimersByTime(60_000)
+      })
+      expect(mockRefetch).toHaveBeenCalledTimes(2)
+    })
+
+    it('does nothing when no sync time is known', () => {
+      renderHook(() => useLiveSync(2024))
+      expect(mockRefetch).not.toHaveBeenCalled()
+    })
   })
 })

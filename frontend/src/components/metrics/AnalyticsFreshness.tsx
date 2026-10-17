@@ -3,7 +3,7 @@ import { FreshnessChip } from '../FreshnessChip'
 import { useAnalyticsFreshness } from '../../hooks/useAnalyticsFreshness'
 import { useAnalyticsSyncRefetch } from '../../hooks/useAnalyticsSyncRefetch'
 import { useCurrentYear } from '../../hooks/useCurrentYear'
-import { useMinuteClock } from '../../hooks/useLiveSync'
+import { useMinuteClock, useStaleSyncRefetch } from '../../hooks/useLiveSync'
 import { syncBehind } from '../velocity/velocityLive'
 
 /**
@@ -16,7 +16,7 @@ import { syncBehind } from '../velocity/velocityLive'
  * 05:00; N and N−1 run on the regular schedule), and
  * nothing for one never synced: the empty state says "hasn't synced from CampMinder yet" instead.
  * Summer's grammar: grey, relative inline, the absolute time in the tooltip (#1706). Amber once the
- * last sync is more than 2 hours old (PR 5b ruling #111: the hourly sync is behind, and Velocity's and
+ * last SUCCESSFUL sync is more than 2 hours old (PR 5b ruling #111: the hourly sync is behind, and Velocity's and
  * Pace's live point is hidden for the same reason).
  */
 export function AnalyticsFreshness() {
@@ -24,6 +24,7 @@ export function AnalyticsFreshness() {
   const freshness = useAnalyticsFreshness(currentYear)
   useAnalyticsSyncRefetch(currentYear)
   const now = useMinuteClock()
+  useStaleSyncRefetch(currentYear, freshness.kind === 'synced' ? freshness.at : null, now)
   if (freshness.kind === 'syncing') {
     // A live run with no finished time known this session: the payload carries none to show.
     return (
