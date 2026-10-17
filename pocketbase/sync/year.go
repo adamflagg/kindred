@@ -3,6 +3,7 @@ package sync
 import (
 	"fmt"
 	"os"
+	"slices"
 	"strconv"
 	"time"
 	_ "time/tzdata" // the season rule needs America/Los_Angeles on a minimal image
@@ -82,7 +83,30 @@ func SyncedSeasons(now time.Time) ([]int, error) {
 	if err != nil {
 		return nil, err
 	}
-	return []int{p, p - 1}, nil
+	return syncedSeasonsFor(p), nil
+}
+
+// syncedSeasonsFor is SyncedSeasons for a known primary season.
+func syncedSeasonsFor(primary int) []int {
+	return []int{primary, primary - 1}
+}
+
+// isClosedSeason reports whether year is a CLOSED season at now: older than every season the
+// scheduled runs cover (SyncedSeasons), so 2025 and before once 2027 is the primary. CampMinder
+// answers a closed season with today's households, so a re-read of one must not rewrite that
+// season's family structure (closed_season_freeze.go). A season that cannot be resolved (an
+// invalid CAMPMINDER_SEASON_ID override) counts as closed: freezing is the side that loses nothing.
+func isClosedSeason(year int, now time.Time) bool {
+	primary, err := PrimarySeason(now)
+	if err != nil {
+		return true
+	}
+	return isClosedSeasonFor(year, primary)
+}
+
+// isClosedSeasonFor is isClosedSeason for a known primary season.
+func isClosedSeasonFor(year, primary int) bool {
+	return year < slices.Min(syncedSeasonsFor(primary))
 }
 
 // SeasonSource says where the primary came from, for Manage > Sync.

@@ -52,6 +52,8 @@ type PersonsSync struct {
 	// Sub-entity stats for combined sync (households)
 	// Note: person_tags removed - tags are now a multi-select relation on persons
 	householdStats *Stats
+
+	freeze *closedSeasonFreeze
 }
 
 // personHouseholdIDs holds the CampMinder IDs for a person's households
@@ -131,6 +133,7 @@ func (s *PersonsSync) Sync(ctx context.Context) error {
 	s.Stats = Stats{}
 	s.SyncSuccessful = false
 	s.staffFetchFailed = false
+	s.freeze = nil
 	s.ClearProcessedKeys()
 
 	year := s.Client.GetSeasonID()
@@ -151,6 +154,8 @@ func (s *PersonsSync) Sync(ctx context.Context) error {
 	// Pre-load lookup data
 	existingPersons := s.preloadExistingPersons(filter, year)
 	existingHouseholds := s.preloadExistingHouseholds(filter, year)
+	// A closed season keeps its family structure (closed_season_freeze.go); nil when open.
+	s.freeze = s.seasonFreeze(year, existingPersons)
 	tagDefsByName := s.preloadTagDefinitions()
 	divisionsByID := s.preloadDivisions()
 
@@ -161,7 +166,8 @@ func (s *PersonsSync) Sync(ctx context.Context) error {
 		return err
 	}
 
-	// Process households
+	// Process households. A closed season may create only the households its new persons name.
+	s.freeze.allowHouseholdsOfNewPersons(processResult.personHouseholdMap)
 	householdStats := s.processHouseholds(processResult.extractedHouseholds, existingHouseholds, year)
 
 	// Reload households for relation updates
@@ -180,6 +186,7 @@ func (s *PersonsSync) Sync(ctx context.Context) error {
 	s.householdStats = &householdStats
 	s.printDataQualitySummary()
 	s.logSyncResults(householdStats)
+	s.freeze.log()
 	s.LogSyncComplete("Persons (combined)")
 
 	if err := s.updateAttendeeRelations(year); err != nil {
@@ -436,6 +443,10 @@ func (s *PersonsSync) processHouseholds(
 	}
 
 	for householdID, householdData := range households {
+		// A closed season creates only the households new persons need (closed_season_freeze.go).
+		if existingHouseholds[householdID] == nil && s.freeze.refusesNewHousehold(householdID) {
+			continue
+		}
 		pbData, err := s.transformHouseholdToPB(householdData, year)
 		if err != nil {
 			slog.Error("Error transforming household", "id", householdID, "error", err)
@@ -443,6 +454,10 @@ func (s *PersonsSync) processHouseholds(
 			continue
 		}
 
+		// A closed season keeps an existing household's fields, filling only blanks.
+		if existing := existingHouseholds[householdID]; existing != nil {
+			s.freeze.keepHouseholdFields(existing, pbData, s.FieldEquals)
+		}
 		err = s.processHouseholdRecord(householdID, pbData, existingHouseholds, compareFields, &householdStats)
 		if err != nil {
 			slog.Error("Error processing household", "id", householdID, "error", err)
@@ -594,6 +609,12 @@ func (s *PersonsSync) processPerson(
 		"tags"}
 
 	if existing != nil {
+		// A closed season keeps an existing row's legacy household_id and as-of-season fields, and
+		// takes CampMinder's corrections (closed_season_freeze.go). Before the compare, so the
+		// write-everything update below cannot carry a kept field.
+		s.freeze.keepLegacyHouseholdID(existing, pbData)
+		s.freeze.keepPersonFields(existing, pbData, s.FieldEquals)
+
 		// Check if update is needed
 		needsUpdate := false
 		for _, field := range compareFields {
@@ -1754,6 +1775,7 @@ func (s *PersonsSync) updatePersonHouseholdRelations(
 		if !fetched {
 			continue
 		}
+		s.freeze.notePointerDisagreement(person, householdsByID)
 
 		householdCMID := hhIDs.PrincipalID
 		// Fallback: no PrincipalID from the Households object, use household_id from
@@ -1777,6 +1799,10 @@ func (s *PersonsSync) updatePersonHouseholdRelations(
 				continue
 			}
 			record, exists := householdsByID[rel.cmID]
+			// A closed season never changes an existing row's relations (closed_season_freeze.go).
+			if s.freeze.holds(int(personCMID), person.GetString(rel.field), record) {
+				continue
+			}
 			if !exists || person.GetString(rel.field) == record.Id {
 				continue
 			}
@@ -1833,6 +1859,12 @@ func (s *PersonsSync) updatePersonHouseholdRelations(
 // feed failed, and this sweep would delete it. Hence the one guard this function
 // does take.
 func (s *PersonsSync) deleteHouseholdOrphans(year int, processedIDs map[int]bool) error {
+	// The staff-feed check first: a run whose staff feed failed has a known-incomplete
+	// computed set, so a kept-orphans count from it would overstate what was kept.
+	if s.skipSweepForStaffFetchFailure("households",
+		"households reachable only through staff are missing from the computed set", year) {
+		return nil
+	}
 	// This sweep is persons' own, outside BaseSyncService, so it honors the keep-orphans switch
 	// itself: the all-seasons re-sync's and the hourly run's (all_seasons_resync.go), and a
 	// historical replay's, which counts what it keeps (replay_orphans.go).
@@ -1849,10 +1881,6 @@ func (s *PersonsSync) deleteHouseholdOrphans(year int, processedIDs map[int]bool
 		}
 		return n, nil
 	}) {
-		return nil
-	}
-	if s.skipSweepForStaffFetchFailure("households",
-		"households reachable only through staff are missing from the computed set", year) {
 		return nil
 	}
 

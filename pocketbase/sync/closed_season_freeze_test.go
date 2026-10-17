@@ -1,0 +1,733 @@
+package sync
+
+import (
+	"fmt"
+	"slices"
+	"testing"
+	"time"
+
+	"github.com/camp/kindred/pocketbase/campminder"
+	"github.com/pocketbase/pocketbase/core"
+)
+
+// The closed-season freeze (closed_season_freeze.go). CampMinder answers a past season with
+// TODAY's household, so a re-read of a closed season (older than the synced pair N, N-1) must not
+// rewrite that season's family structure: persons' household pointers, the season's households,
+// and its automatic aid_household_links stay as they were. The open seasons behave as before.
+
+// TestIsClosedSeason pins the rule: closed means older than the oldest synced season.
+func TestIsClosedSeason(t *testing.T) {
+	t.Setenv("CAMPMINDER_SEASON_ID", "")
+	after := pacific(t, 2026, time.October, 17, 9, 0) // primary 2027: synced 2027, 2026
+	before := pacific(t, 2026, time.October, 1, 9, 0) // primary 2026: synced 2026, 2025
+	for _, tc := range []struct {
+		now    time.Time
+		year   int
+		closed bool
+	}{
+		{after, 2017, true}, {after, 2019, true}, {after, 2025, true},
+		{after, 2026, false}, {after, 2027, false}, {after, 2028, false},
+		{before, 2024, true}, {before, 2025, false}, {before, 2026, false},
+	} {
+		if got := isClosedSeason(tc.year, tc.now); got != tc.closed {
+			t.Errorf("isClosedSeason(%d, %s) = %v, want %v", tc.year, tc.now.Format(time.DateOnly), got, tc.closed)
+		}
+	}
+	if !isClosedSeasonFor(2025, 2027) || isClosedSeasonFor(2026, 2027) || isClosedSeasonFor(2028, 2027) {
+		t.Error("isClosedSeasonFor(year, 2027) must close 2025 and older, and only those")
+	}
+
+	// A season that cannot be resolved (an invalid override) freezes: the safe side for history.
+	t.Setenv("CAMPMINDER_SEASON_ID", "not-a-year")
+	if !isClosedSeason(2026, after) {
+		t.Error("an unresolvable season must count as closed")
+	}
+}
+
+// freezeFixture seeds households 7001 (A) and 7002 (B) for year, and person 5001 of that year
+// pointing all three household relations at A. Returns the app, the person and the households.
+func freezeFixture(t *testing.T, year int) (core.App, *core.Record, map[int]*core.Record) {
+	t.Helper()
+	app := newMinimalPersonsTestApp(t)
+	householdsCol := core.NewBaseCollection("households")
+	householdsCol.Fields.Add(&core.NumberField{Name: "cm_id"})
+	householdsCol.Fields.Add(&core.NumberField{Name: "year"})
+	if err := app.Save(householdsCol); err != nil {
+		t.Fatalf("create households: %v", err)
+	}
+	byID := map[int]*core.Record{}
+	for _, id := range []int{7001, 7002} {
+		hh := core.NewRecord(householdsCol)
+		hh.Set("cm_id", id)
+		hh.Set("year", year)
+		if err := app.Save(hh); err != nil {
+			t.Fatalf("seed household: %v", err)
+		}
+		byID[id] = hh
+	}
+	personsCol, err := app.FindCollectionByNameOrId("persons")
+	if err != nil {
+		t.Fatalf("find persons: %v", err)
+	}
+	person := core.NewRecord(personsCol)
+	person.Set("cm_id", 5001)
+	person.Set("year", year)
+	for _, f := range []string{"household", "primary_childhood_household", "alternate_childhood_household"} {
+		person.Set(f, byID[7001].Id)
+	}
+	if err := app.Save(person); err != nil {
+		t.Fatalf("seed person: %v", err)
+	}
+	return app, person, byID
+}
+
+// A closed season keeps an existing persons row's three household relations when CampMinder now
+// names another household; an open season re-points them, as before.
+func TestClosedSeasonReReadKeepsAnExistingPersonsHouseholds(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name   string
+		year   int
+		closed bool
+		want   int
+	}{
+		{"closed season keeps A", 2019, true, 7001},
+		{"open season re-points to B", 2026, false, 7002},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app, person, hh := freezeFixture(t, tc.year)
+			s := NewPersonsSync(app, nil)
+			if tc.closed {
+				s.freeze = startClosedSeasonFreeze(tc.year, map[int]*core.Record{5001: person})
+			}
+			ids := map[int]personHouseholdIDs{5001: {PrincipalID: 7002, PrimaryChildhoodID: 7002, AlternateChildhoodID: 7002}}
+			if err := s.updatePersonHouseholdRelations(tc.year, hh, ids); err != nil {
+				t.Fatalf("update: %v", err)
+			}
+			got := reload(t, app, person.Id)
+			for _, f := range []string{"household", "primary_childhood_household", "alternate_childhood_household"} {
+				if got.GetString(f) != hh[tc.want].Id {
+					t.Errorf("%s = %q, want household %d (%q)", f, got.GetString(f), tc.want, hh[tc.want].Id)
+				}
+			}
+			if tc.closed && s.freeze.relationsKept != 3 {
+				t.Errorf("relationsKept = %d, want 3", s.freeze.relationsKept)
+			}
+		})
+	}
+}
+
+// A NEW persons row in a closed season changes no history, so it is linked like an open season's:
+// to the season's household when one exists (counted), and to the household created for it when
+// none did (see the households test below). It stays blank only when the household has no record
+// at all, which happens only when its creation failed.
+func TestClosedSeasonNewPersonIsLinkedToTheSeasonsHousehold(t *testing.T) {
+	t.Parallel()
+	const year = 2019
+	app, existing, hh := freezeFixture(t, year)
+	newID := saveRecord(t, app, "persons", map[string]any{"cm_id": 5002, "year": year})
+
+	s := NewPersonsSync(app, nil)
+	s.freeze = startClosedSeasonFreeze(year, map[int]*core.Record{5001: existing})
+	ids := map[int]personHouseholdIDs{5002: {PrincipalID: 7002, PrimaryChildhoodID: 7999}}
+	s.freeze.allowHouseholdsOfNewPersons(ids)
+	if err := s.updatePersonHouseholdRelations(year, hh, ids); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	got := reload(t, app, newID)
+	if got.GetString("household") != hh[7002].Id {
+		t.Errorf("household = %q, want the season's own household 7002 (%q)", got.GetString("household"), hh[7002].Id)
+	}
+	if s.freeze.newPersonLinksToExistingHouseholds != 1 {
+		t.Errorf("newPersonLinksToExistingHouseholds = %d, want 1", s.freeze.newPersonLinksToExistingHouseholds)
+	}
+	if got.GetString("primary_childhood_household") != "" {
+		t.Errorf("primary_childhood_household = %q, want blank: household 7999 has no record",
+			got.GetString("primary_childhood_household"))
+	}
+	if s.freeze.newRelationsLeftBlank != 1 {
+		t.Errorf("newRelationsLeftBlank = %d, want 1", s.freeze.newRelationsLeftBlank)
+	}
+	if s.freeze.relationsKept != 0 {
+		t.Errorf("relationsKept = %d, want 0: linking a new row is not a re-point", s.freeze.relationsKept)
+	}
+}
+
+// A closed season creates no household that only an EXISTING person names (today's household for
+// someone the season already has), and creates, as CampMinder gives it, one a NEW person needs. An
+// open season creates both. An EXISTING household row keeps, in a closed season, every field it
+// already holds and fills only a blank one (owner ruling, option A); an open season overwrites.
+func TestClosedSeasonCreatesOnlyTheHouseholdsNewPersonsNeed(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name   string
+		year   int
+		closed bool
+	}{
+		{"closed season", 2019, true},
+		{"open season", 2026, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := newHouseholdsTestApp(t)
+			seedHousehold(t, app, 7001, tc.year)
+			s := NewPersonsSync(app, nil)
+			if tc.closed {
+				// 5001 had a row before this run; 5003 is new.
+				s.freeze = startClosedSeasonFreeze(tc.year, map[int]*core.Record{5001: nil})
+				s.freeze.allowHouseholdsOfNewPersons(map[int]personHouseholdIDs{
+					5001: {PrincipalID: 7002},
+					5003: {PrincipalID: 7003},
+				})
+			}
+			existing := s.preloadExistingHouseholds(fmt.Sprintf("year = %d", tc.year), tc.year)
+			payload := map[int]map[string]any{
+				7001: {"ID": float64(7001), "Greeting": "today's greeting", "MailingTitle": "The Johnson Family"},
+				7002: {"ID": float64(7002), "Greeting": "today's household of a person the season has"},
+				7003: {"ID": float64(7003), "Greeting": "the household of a person new to the season"},
+			}
+			stats := s.processHouseholds(payload, existing, tc.year)
+
+			got := householdCMIDs(t, app, tc.year)
+			if got[7002] == tc.closed {
+				t.Errorf("household 7002 exists = %v, want %v", got[7002], !tc.closed)
+			}
+			if !got[7003] {
+				t.Error("household 7003, needed by a new person, was not created")
+			}
+			wantCreated := 2
+			if tc.closed {
+				wantCreated = 1
+				if s.freeze.householdsNotCreated != 1 {
+					t.Errorf("householdsNotCreated = %d, want 1", s.freeze.householdsNotCreated)
+				}
+				if s.freeze.householdsCreatedForNewPersons != 1 {
+					t.Errorf("householdsCreatedForNewPersons = %d, want 1", s.freeze.householdsCreatedForNewPersons)
+				}
+			}
+			if stats.Created != wantCreated {
+				t.Errorf("Created = %d, want %d", stats.Created, wantCreated)
+			}
+			rec, err := app.FindFirstRecordByFilter("households", fmt.Sprintf("cm_id = 7001 && year = %d", tc.year))
+			if err != nil {
+				t.Fatalf("find 7001: %v", err)
+			}
+			wantGreeting := "today's greeting"
+			if tc.closed {
+				wantGreeting = "stored last run"
+				if s.freeze.householdOverwritesRefused != 1 || s.freeze.householdBlanksFilled != 1 {
+					t.Errorf("household overwrites refused %d, blanks filled %d; want 1 and 1",
+						s.freeze.householdOverwritesRefused, s.freeze.householdBlanksFilled)
+				}
+			}
+			if rec.GetString("greeting") != wantGreeting {
+				t.Errorf("existing household greeting = %q, want %q", rec.GetString("greeting"), wantGreeting)
+			}
+			if rec.GetString("mailing_title") != "The Johnson Family" {
+				t.Errorf("existing household's blank mailing_title = %q, want it filled", rec.GetString("mailing_title"))
+			}
+		})
+	}
+}
+
+// The legacy FamilyPersons household_id is a household pointer too (aid attribution reads it):
+// a closed season keeps an existing row's, an open season takes CampMinder's.
+func TestClosedSeasonReReadKeepsAnExistingPersonsLegacyHouseholdID(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name   string
+		year   int
+		closed bool
+		want   int
+	}{
+		{"closed season keeps 7001", 2019, true, 7001},
+		{"open season takes 7002", 2026, false, 7002},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := newPersonsTestApp(t)
+			col, err := app.FindCollectionByNameOrId("persons")
+			if err != nil {
+				t.Fatalf("find persons: %v", err)
+			}
+			col.Fields.Add(&core.NumberField{Name: "household_id"})
+			if saveErr := app.Save(col); saveErr != nil {
+				t.Fatalf("add household_id: %v", saveErr)
+			}
+			id := saveRecord(t, app, "persons", map[string]any{"cm_id": 5001, "year": tc.year,
+				"first_name": "Emma", "last_name": "Johnson", "is_camper": true, "household_id": 7001})
+
+			s := NewPersonsSync(app, nil)
+			existing := s.preloadExistingPersons(fmt.Sprintf("year = %d", tc.year), tc.year)
+			if tc.closed {
+				s.freeze = startClosedSeasonFreeze(tc.year, existing)
+			}
+			payload := validPersonData(5001)
+			payload["FamilyPersons"] = []any{map[string]any{"FamilyID": float64(7002)}}
+			if err := s.processPerson(payload, true, existing, map[string]string{}, map[int]string{}, tc.year); err != nil {
+				t.Fatalf("processPerson: %v", err)
+			}
+			if got := reload(t, app, id).GetInt("household_id"); got != tc.want {
+				t.Errorf("household_id = %d, want %d", got, tc.want)
+			}
+			if tc.closed && s.freeze.householdIDsKept != 1 {
+				t.Errorf("householdIDsKept = %d, want 1", s.freeze.householdIDsKept)
+			}
+		})
+	}
+}
+
+// A closed season's automatic aid_household_links are not re-derived from today's family
+// structure, so a posting keeps the attribution it had; an open season re-derives them as before.
+// The fixture's live season is 2026 (aidFixture.service), so 2024 is closed and 2026 open.
+func TestClosedSeasonAutoLinksAreNotRederived(t *testing.T) {
+	t.Parallel()
+	type link struct {
+		h      int
+		key    string
+		source string
+	}
+	for _, tc := range []struct {
+		name       string
+		year       int
+		wantLinks  []link
+		wantPerson int
+	}{
+		// The season's links as last derived joined 100 with 300; today's structure joins 100
+		// with 200. Closed: kept as they were, and the posting on 300 still reaches the camper.
+		{"closed season", 2024,
+			[]link{{100, "hh-100", "auto"}, {300, "hh-100", "auto"}, {600, "hh-100", "staff"}}, 1001},
+		{"open season", 2026,
+			[]link{{100, "hh-100", "auto"}, {200, "hh-100", "auto"}, {600, "hh-100", "staff"}}, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			f := newAidFixture(t)
+			f.session(11, "Session 2", "main", tc.year)
+			for _, h := range []int{100, 200, 300, 600} {
+				f.household(h, tc.year)
+			}
+			f.person(1001, tc.year, 100, 200)
+			f.attend(1001, 11, 2, tc.year)
+			for _, l := range []link{{100, "hh-100", "auto"}, {300, "hh-100", "auto"}, {600, "hh-100", "staff"}} {
+				saveRecord(t, f.app, colAidHouseholdLinks, map[string]any{"year": tc.year, "household_cm_id": l.h,
+					"family_key": l.key, "source": l.source})
+			}
+			f.txn(9001, tc.year, -500, aidCategoryFinancialAssistance, aidTestCampAid, 300, 0, 0, false)
+
+			f.run("", tc.year)
+
+			rows := f.rows(colAidHouseholdLinks, tc.year)
+			got := make([]link, 0, len(rows))
+			for _, r := range rows {
+				got = append(got, link{r.GetInt("household_cm_id"), r.GetString("family_key"), r.GetString("source")})
+			}
+			slices.SortFunc(got, func(a, b link) int { return a.h - b.h })
+			if !slices.Equal(got, tc.wantLinks) {
+				t.Errorf("links = %v, want %v", got, tc.wantLinks)
+			}
+			if p := f.posting(9001); p.GetInt("attributed_person_cm_id") != tc.wantPerson {
+				t.Errorf("posting on household 300 attributed to %d, want %d", p.GetInt("attributed_person_cm_id"),
+					tc.wantPerson)
+			}
+		})
+	}
+}
+
+// Every path that re-reads a closed season builds that season's own instances, and the freeze
+// keys on the instance's season, so it holds on each path: the weekly all-seasons re-sync
+// (runSeasonPassWith -> yearServices), and a historical replay or a named single-job run for a
+// closed year (RunSyncWithOptions{Year} -> replayOverrides). The open seasons stay unfrozen.
+func TestClosedSeasonFreezeReachesEveryPathThatReReadsAClosedSeason(t *testing.T) {
+	t.Setenv("CAMPMINDER_PRIMARY_KEY", "test-key")
+	t.Setenv("CAMPMINDER_SEASON_ID", "")
+	withNow(t, pacific(t, 2026, time.October, 17, 9, 0)) // primary 2027; closed is 2025 and older
+	o := newTestOrchestrator(t)
+	boot, err := campminder.NewClient(&campminder.Config{APIKey: "k", ClientID: "c", SeasonID: 2027})
+	if err != nil {
+		t.Fatalf("campminder.NewClient: %v", err)
+	}
+	o.baseClient = boot
+
+	personsFrozen := func(t *testing.T, svcs map[string]Service) bool {
+		t.Helper()
+		p, ok := svcs["persons"].(*PersonsSync)
+		if !ok || p.Client == nil {
+			t.Fatalf("persons instance = %T", svcs["persons"])
+		}
+		return p.seasonFreeze(p.Client.GetSeasonID(), nil) != nil
+	}
+	aidClosed := func(t *testing.T, svcs map[string]Service, year int) bool {
+		t.Helper()
+		a, ok := svcs["aid_postings"].(*AidPostingsSync)
+		if !ok {
+			t.Fatalf("aid_postings instance = %T", svcs["aid_postings"])
+		}
+		years, yErr := a.targetYears()
+		if yErr != nil || !slices.Equal(years, []int{year}) {
+			t.Fatalf("aid_postings for %d covers %v (%v)", year, years, yErr)
+		}
+		return a.seasonClosed(year)
+	}
+
+	// The weekly pass: every season it walks, through the persons job it runs.
+	if !slices.Contains(allSeasonsResyncJobs, "persons") {
+		t.Fatal("the weekly pass no longer runs persons; re-check what re-reads households")
+	}
+	seasons, err := HistoricalSeasons(nowFn())
+	if err != nil || len(seasons) == 0 {
+		t.Fatalf("HistoricalSeasons = %v, %v", seasons, err)
+	}
+	for _, year := range seasons {
+		if !personsFrozen(t, o.yearServices(year, false)) {
+			t.Errorf("weekly pass, %d: persons is not frozen", year)
+		}
+	}
+
+	// A replay, or a named single job, of a closed year.
+	replay := o.replayOverrides(2019, false)
+	if !personsFrozen(t, replay) {
+		t.Error("2019 replay: persons is not frozen")
+	}
+	if !aidClosed(t, replay, 2019) {
+		t.Error("2019 replay: aid_postings would re-derive its auto links")
+	}
+
+	// The open seasons behave as before.
+	for _, year := range []int{2027, 2026} {
+		svcs := o.yearServices(year, false)
+		if personsFrozen(t, svcs) {
+			t.Errorf("open season %d: persons is frozen", year)
+		}
+		if aidClosed(t, svcs, year) {
+			t.Errorf("open season %d: aid_postings treats it as closed", year)
+		}
+	}
+	if NewPersonsSync(nil, boot).seasonFreeze(2027, nil) != nil {
+		t.Error("the registered primary persons instance is frozen")
+	}
+	daily := NewAidPostingsSync(nil)
+	window, err := daily.targetYears()
+	if err != nil {
+		t.Fatalf("daily window: %v", err)
+	}
+	for _, year := range window {
+		if daily.seasonClosed(year) {
+			t.Errorf("the daily window's %d is treated as closed", year)
+		}
+	}
+}
+
+// newFreezePersonsApp is newPersonsTestApp plus the as-of-season and correction fields the
+// owner's closed-season rule (option A) is pinned on.
+func newFreezePersonsApp(t *testing.T) core.App {
+	t.Helper()
+	app := newPersonsTestApp(t)
+	col, err := app.FindCollectionByNameOrId("persons")
+	if err != nil {
+		t.Fatalf("find persons: %v", err)
+	}
+	col.Fields.Add(&core.NumberField{Name: "grade"})
+	col.Fields.Add(&core.NumberField{Name: "years_at_camp"})
+	for _, f := range []string{"grade_name", "gender", "birthdate", "address_city", "address_state", "school"} {
+		col.Fields.Add(&core.TextField{Name: f})
+	}
+	if saveErr := app.Save(col); saveErr != nil {
+		t.Fatalf("add fields: %v", saveErr)
+	}
+	return app
+}
+
+// A closed-season re-read of an EXISTING persons row (owner ruling, option A) always takes
+// CampMinder's corrections -- name, gender, birthdate, grade, grade_name -- and keeps every
+// as-of-that-season field it already holds, filling one only when it is blank. A stored 0 or false
+// is a value, not a blank, so it is kept too. The "any field differs, write every field" update
+// path must not carry a kept field past the rule. An open season overwrites all.
+func TestClosedSeasonReReadCorrectsIdentityButKeepsAsOfSeasonFields(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name       string
+		year       int
+		closed     bool
+		storedCity string
+		wantCity   string
+		wantSchool string
+		wantYears  int
+		wantCamper bool
+	}{
+		{"closed season keeps a stored city", 2019, true, "Springfield", "Springfield", "Lincoln Elementary", 0, false},
+		{"closed season fills a blank city", 2019, true, "", "Shelbyville", "Lincoln Elementary", 0, false},
+		{"open season overwrites everything", 2026, false, "Springfield", "Shelbyville", "Roosevelt Middle", 3, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := newFreezePersonsApp(t)
+			id := saveRecord(t, app, "persons", map[string]any{
+				"cm_id": 5001, "year": tc.year, "first_name": "Emma", "last_name": "Johnson", "is_camper": false,
+				"grade": 0, "grade_name": "", "gender": "F", "birthdate": "2012-03-04", "years_at_camp": 0,
+				"address_city": tc.storedCity, "address_state": "", "school": "Lincoln Elementary",
+			})
+
+			s := NewPersonsSync(app, nil)
+			existing := s.preloadExistingPersons(fmt.Sprintf("year = %d", tc.year), tc.year)
+			if tc.closed {
+				s.freeze = startClosedSeasonFreeze(tc.year, existing)
+			}
+			billing := map[string]any{"BillingAddress": map[string]any{"City": "Shelbyville", "State": "OR"}}
+			payload := map[string]any{
+				"ID":          float64(5001),
+				"Name":        map[string]any{"First": "Emma", "Last": "Johnson-Smith"},
+				"GenderID":    float64(1),
+				"DateOfBirth": "2012-04-03",
+				"CamperDetails": map[string]any{
+					"CampGradeID": float64(-1), "CampGradeName": "Toddler", "School": "Roosevelt Middle",
+					"YearsAtCamp": float64(3),
+				},
+				"Households": map[string]any{"PrincipalHousehold": billing, "PrimaryChildhoodHousehold": billing},
+			}
+			if err := s.processPerson(payload, true, existing, map[string]string{}, map[int]string{}, tc.year); err != nil {
+				t.Fatalf("processPerson: %v", err)
+			}
+
+			got := reload(t, app, id)
+			// Corrections, closed or open.
+			if got.GetInt("grade") != -2 || got.GetString("grade_name") != "Toddler" {
+				t.Errorf("grade = %d %q, want -2 Toddler: a stored 0 is the old cap, not a value",
+					got.GetInt("grade"), got.GetString("grade_name"))
+			}
+			if got.GetString("gender") != "M" {
+				t.Errorf("gender = %q, want the corrected M", got.GetString("gender"))
+			}
+			if got.GetString("last_name") != "Johnson-Smith" {
+				t.Errorf("last_name = %q, want the corrected Johnson-Smith", got.GetString("last_name"))
+			}
+			if got.GetString("birthdate") != "2012-04-03" {
+				t.Errorf("birthdate = %q, want the corrected 2012-04-03", got.GetString("birthdate"))
+			}
+			// A stored 0 and a stored false are values: kept on a closed season, overwritten when open.
+			if got.GetInt("years_at_camp") != tc.wantYears {
+				t.Errorf("years_at_camp = %d, want %d", got.GetInt("years_at_camp"), tc.wantYears)
+			}
+			if got.GetBool("is_camper") != tc.wantCamper {
+				t.Errorf("is_camper = %v, want %v", got.GetBool("is_camper"), tc.wantCamper)
+			}
+			// As of that season: kept when stored, filled when blank, overwritten when open.
+			if got.GetString("address_city") != tc.wantCity {
+				t.Errorf("address_city = %q, want %q", got.GetString("address_city"), tc.wantCity)
+			}
+			if got.GetString("address_state") != "OR" {
+				t.Errorf("address_state = %q, want the blank filled with OR", got.GetString("address_state"))
+			}
+			if got.GetString("school") != tc.wantSchool {
+				t.Errorf("school = %q, want %q", got.GetString("school"), tc.wantSchool)
+			}
+
+			if !tc.closed {
+				return
+			}
+			wantRefused, wantFilled := 4, 1 // city, school, years_at_camp, is_camper kept; state filled
+			if tc.storedCity == "" {
+				wantRefused, wantFilled = 3, 2 // school, years_at_camp, is_camper kept; city + state filled
+			}
+			if s.freeze.correctionsApplied != 5 {
+				t.Errorf("correctionsApplied = %d, want 5 (last_name, gender, birthdate, grade, grade_name)",
+					s.freeze.correctionsApplied)
+			}
+			if s.freeze.overwritesRefused != wantRefused {
+				t.Errorf("overwritesRefused = %d, want %d", s.freeze.overwritesRefused, wantRefused)
+			}
+			if s.freeze.blanksFilled != wantFilled {
+				t.Errorf("blanksFilled = %d, want %d", s.freeze.blanksFilled, wantFilled)
+			}
+		})
+	}
+}
+
+// The household relation and the legacy household_id are one pointer (prod finding, M/119: a
+// re-read moved the field while the relation stayed). On a closed season an existing row keeps
+// BOTH as they are, even when they already disagree, and the run counts the disagreement.
+func TestClosedSeasonKeepsADisagreeingRelationAndHouseholdIDTogether(t *testing.T) {
+	t.Parallel()
+	const year = 2019
+	app := newPersonsTestApp(t)
+	householdsCol := core.NewBaseCollection("households")
+	householdsCol.Fields.Add(&core.NumberField{Name: "cm_id"})
+	householdsCol.Fields.Add(&core.NumberField{Name: "year"})
+	if err := app.Save(householdsCol); err != nil {
+		t.Fatalf("create households: %v", err)
+	}
+	hh := map[int]*core.Record{}
+	for _, cm := range []int{7001, 7002} {
+		id := saveRecord(t, app, "households", map[string]any{"cm_id": cm, "year": year})
+		rec, err := app.FindRecordById("households", id)
+		if err != nil {
+			t.Fatalf("find household: %v", err)
+		}
+		hh[cm] = rec
+	}
+	col, err := app.FindCollectionByNameOrId("persons")
+	if err != nil {
+		t.Fatalf("find persons: %v", err)
+	}
+	col.Fields.Add(&core.NumberField{Name: "household_id"})
+	for _, f := range []string{"household", "primary_childhood_household", "alternate_childhood_household"} {
+		col.Fields.Add(&core.TextField{Name: f})
+	}
+	if saveErr := app.Save(col); saveErr != nil {
+		t.Fatalf("add fields: %v", saveErr)
+	}
+	// Already disagreeing: the relation says 7001, the field says 7002.
+	id := saveRecord(t, app, "persons", map[string]any{"cm_id": 5001, "year": year,
+		"first_name": "Emma", "last_name": "Johnson", "is_camper": true,
+		"household": hh[7001].Id, "household_id": 7002})
+
+	s := NewPersonsSync(app, nil)
+	existing := s.preloadExistingPersons(fmt.Sprintf("year = %d", year), year)
+	s.freeze = startClosedSeasonFreeze(year, existing)
+
+	// CampMinder now names the other household on each side.
+	payload := validPersonData(5001)
+	payload["FamilyPersons"] = []any{map[string]any{"FamilyID": float64(7001)}}
+	if err := s.processPerson(payload, true, existing, map[string]string{}, map[int]string{}, year); err != nil {
+		t.Fatalf("processPerson: %v", err)
+	}
+	ids := map[int]personHouseholdIDs{5001: {PrincipalID: 7002}}
+	if err := s.updatePersonHouseholdRelations(year, hh, ids); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+
+	got := reload(t, app, id)
+	if got.GetString("household") != hh[7001].Id || got.GetInt("household_id") != 7002 {
+		t.Errorf("household = %q, household_id = %d; want both kept (%q, 7002)",
+			got.GetString("household"), got.GetInt("household_id"), hh[7001].Id)
+	}
+	if s.freeze.pointerDisagreements != 1 {
+		t.Errorf("pointerDisagreements = %d, want 1", s.freeze.pointerDisagreements)
+	}
+}
+
+// A closed season with NO stored automatic aid_household_links derives them once, from the
+// season's own stored (frozen) persons and households; from then on they are kept as stored, so
+// a later change to the local family structure does not regroup them. The fixture's live season
+// is 2026, so 2024 is closed.
+func TestClosedSeasonWithNoAutoLinksDerivesThemOnce(t *testing.T) {
+	t.Parallel()
+	const year = 2024
+	type link struct {
+		h   int
+		key string
+	}
+	links := func(f *aidFixture) []link {
+		rows := f.rows(colAidHouseholdLinks, year)
+		got := make([]link, 0, len(rows))
+		for _, r := range rows {
+			got = append(got, link{r.GetInt("household_cm_id"), r.GetString("family_key")})
+		}
+		slices.SortFunc(got, func(a, b link) int { return a.h - b.h })
+		return got
+	}
+	f := newAidFixture(t)
+	f.session(11, "Session 2", "main", year)
+	for _, h := range []int{100, 200, 300} {
+		f.household(h, year)
+	}
+	f.person(1001, year, 100, 200)
+	f.attend(1001, 11, 2, year)
+	f.txn(9001, year, -500, aidCategoryFinancialAssistance, aidTestCampAid, 200, 0, 0, false)
+
+	f.run("", year)
+	want := []link{{100, "hh-100"}, {200, "hh-100"}}
+	if got := links(f); !slices.Equal(got, want) {
+		t.Fatalf("first run: links = %v, want %v derived from the stored family", got, want)
+	}
+	if p := f.posting(9001); p.GetInt("attributed_person_cm_id") != 1001 {
+		t.Errorf("posting on household 200 attributed to %d, want 1001 through the derived link",
+			p.GetInt("attributed_person_cm_id"))
+	}
+
+	// The season's stored family changes (another person joins 100 with 300); the links exist
+	// now, so a second run keeps them as they are.
+	f.person(1002, year, 100, 300)
+	f.attend(1002, 11, 2, year)
+	f.run("", year)
+	if got := links(f); !slices.Equal(got, want) {
+		t.Errorf("second run: links = %v, want %v kept, not re-derived", got, want)
+	}
+}
+
+// A refused re-point counts whenever CampMinder names a different household from the stored
+// one, whether or not the season has a record of CampMinder's household (the freeze does not
+// create it, so most refusals are of exactly that kind).
+func TestClosedSeasonCountsARefusedRepointToAHouseholdTheSeasonLacks(t *testing.T) {
+	t.Parallel()
+	const year = 2019
+	app, person, hh := freezeFixture(t, year)
+	s := NewPersonsSync(app, nil)
+	s.freeze = startClosedSeasonFreeze(year, map[int]*core.Record{5001: person})
+	ids := map[int]personHouseholdIDs{5001: {PrincipalID: 7999, PrimaryChildhoodID: 7999, AlternateChildhoodID: 7001}}
+	if err := s.updatePersonHouseholdRelations(year, hh, ids); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	got := reload(t, app, person.Id)
+	for _, f := range []string{"household", "primary_childhood_household", "alternate_childhood_household"} {
+		if got.GetString(f) != hh[7001].Id {
+			t.Errorf("%s = %q, want kept %q", f, got.GetString(f), hh[7001].Id)
+		}
+	}
+	// 7999 on two relations differs from the stored 7001; the third already matches.
+	if s.freeze.relationsKept != 2 {
+		t.Errorf("relationsKept = %d, want 2", s.freeze.relationsKept)
+	}
+}
+
+// The "none stored" check that lets a closed season derive its links is the SEASON's AUTOMATIC
+// links only: a staff link of the season, or another season's automatic links, does not stop the
+// derivation, and the staff link is left exactly as it was.
+func TestClosedSeasonDerivesLinksDespiteStaffLinksAndOtherSeasonsLinks(t *testing.T) {
+	t.Parallel()
+	const year = 2024
+	type link struct {
+		h      int
+		key    string
+		source string
+	}
+	for _, tc := range []struct {
+		name   string
+		stored []map[string]any
+		want   []link
+	}{
+		{"a staff link of the season",
+			[]map[string]any{{"year": year, "household_cm_id": 600, "family_key": "hh-600", "source": "staff"}},
+			[]link{{100, "hh-100", "auto"}, {200, "hh-100", "auto"}, {600, "hh-600", "staff"}}},
+		{"another season's automatic links",
+			[]map[string]any{{"year": 2023, "household_cm_id": 100, "family_key": "hh-100", "source": "auto"}},
+			[]link{{100, "hh-100", "auto"}, {200, "hh-100", "auto"}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			f := newAidFixture(t)
+			f.session(11, "Session 2", "main", year)
+			for _, h := range []int{100, 200, 600} {
+				f.household(h, year)
+			}
+			f.person(1001, year, 100, 200)
+			f.attend(1001, 11, 2, year)
+			for _, row := range tc.stored {
+				saveRecord(t, f.app, colAidHouseholdLinks, row)
+			}
+
+			f.run("", year)
+
+			rows := f.rows(colAidHouseholdLinks, year)
+			got := make([]link, 0, len(rows))
+			for _, r := range rows {
+				got = append(got, link{r.GetInt("household_cm_id"), r.GetString("family_key"), r.GetString("source")})
+			}
+			slices.SortFunc(got, func(a, b link) int { return a.h - b.h })
+			if !slices.Equal(got, tc.want) {
+				t.Errorf("links = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

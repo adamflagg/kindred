@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -2491,4 +2492,26 @@ func TestSeasonStatusFields(t *testing.T) {
 			t.Errorf("_season_source = %v, want override", got["_season_source"])
 		}
 	})
+}
+
+// The status payload's _queue carries a queued replay's skip= list, so the queue shows what a
+// waiting replay will leave out.
+func TestQueueStatusInfoCarriesSkip(t *testing.T) {
+	t.Parallel()
+	info := queueStatusInfo([]QueuedSync{
+		{ID: "a", Year: 2019, Type: "unified", Service: "all", Skip: []string{"bunks", "staff"}},
+		{ID: "b", Year: 2027, Type: "individual", Service: "persons"},
+	})
+	if len(info) != 2 {
+		t.Fatalf("len = %d, want 2", len(info))
+	}
+	if got, ok := info[0]["skip"].([]string); !ok || !slices.Equal(got, []string{"bunks", "staff"}) {
+		t.Errorf("first skip = %#v, want [bunks staff]", info[0]["skip"])
+	}
+	if got, ok := info[1]["skip"].([]string); !ok || len(got) != 0 {
+		t.Errorf("second skip = %#v, want an empty list", info[1]["skip"])
+	}
+	if info[1]["position"] != 2 || info[0]["id"] != "a" {
+		t.Errorf("position/id not carried: %v", info)
+	}
 }
