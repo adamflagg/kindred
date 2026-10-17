@@ -211,3 +211,59 @@ async def test_a_failed_live_read_leaves_the_stored_line(repo):
 
     assert result.live is None
     assert result.combined.daily[-1].enrolled == 33
+
+
+@pytest.mark.asyncio
+async def test_a_rebuilt_quest_in_scope_is_counted_once(repo):
+    """The default scope holds Quests, which the snapshot job never counts: the line rebuilds them from the
+    attendees already (hybrid path), so the live count must leave them as rebuilt, not count them a second time."""
+    sessions = repo.fetch_sessions.return_value
+    sessions[1004] = create_mock_session(
+        1004, "Quest 1", year=YEAR, session_type="quest", start_date="2027-06-15", end_date="2027-07-05"
+    )
+    quest = campers(1004, 5, 500)
+    repo.fetch_attendees_with_dates.return_value = quest
+    repo.has_pre_anchor_enrollments = AsyncMock(return_value=False)
+    repo.fetch_attendees.return_value += quest
+
+    result = await velocity(repo)
+
+    assert result.combined.daily[-1].enrolled == 38  # 33 stored + the 5 rebuilt Quest campers
+    assert result.live is not None
+    assert result.live.enrolled == 38
+
+    repo.fetch_attendees.return_value += campers(1004, 2, 600) + campers(1001, 1, 700)
+    repo.fetch_attendees_with_dates.return_value = quest + campers(1004, 2, 600)
+
+    result = await velocity(repo)
+
+    assert result.combined.daily[-1].enrolled == 40  # the rebuilt Quest line is already current
+    assert result.live is not None
+    assert result.live.enrolled == 41  # only the snapshot session's new camper is added
+
+
+@pytest.mark.asyncio
+async def test_live_on_the_pure_snapshot_path(repo):
+    """Snapshots from the priority day on take the pure snapshot path (the live season's real case): the live
+    count still starts from the stored point and moves by the sign-ups since."""
+    early = "2026-11-03 10:40:00.000Z"
+    repo.fetch_enrollment_snapshots.return_value = [
+        snap(early, 1001, 1),
+        snap(early, 1002, 1),
+        snap(early, 1003, 0),
+        *repo.fetch_enrollment_snapshots.return_value,
+    ]
+
+    result = await velocity(repo)
+
+    assert result.combined.daily[0].date == "2026-11-03"
+    assert result.combined.daily[-1].enrolled == 33
+    assert result.live is not None
+    assert result.live.enrolled == 33
+
+    repo.fetch_attendees.return_value += campers(1002, 3, 300)
+
+    result = await velocity(repo)
+
+    assert result.live is not None
+    assert result.live.enrolled == 36
