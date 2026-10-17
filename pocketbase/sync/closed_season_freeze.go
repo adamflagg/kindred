@@ -58,6 +58,9 @@ type closedSeasonFreeze struct {
 
 	// Existing rows' other fields (owner ruling, option A): corrections taken from CampMinder,
 	// as-of-season blanks filled, and as-of-season overwrites refused.
+	// pointerDisagreements counts existing rows whose household relation and legacy household_id
+	// already name different households. The two are one pointer: both are kept, as they are.
+	pointerDisagreements       int
 	correctionsApplied         int
 	blanksFilled               int
 	overwritesRefused          int
@@ -139,6 +142,23 @@ func (f *closedSeasonFreeze) holds(personCMID int, current string, record *core.
 		f.newPersonLinksToExistingHouseholds++
 	}
 	return false
+}
+
+// notePointerDisagreement counts an existing row whose household relation and legacy
+// household_id already disagree. The freeze keeps both (keepLegacyHouseholdID, holds), so a
+// re-read can neither fix nor create such a disagreement; it only reports it. byCMID is the
+// season's households, keyed by CampMinder id. A nil freeze counts nothing.
+func (f *closedSeasonFreeze) notePointerDisagreement(person *core.Record, byCMID map[int]*core.Record) {
+	if f == nil || !f.existed(person.GetInt("cm_id")) {
+		return
+	}
+	relation, legacy := person.GetString("household"), person.GetInt("household_id")
+	if relation == "" || legacy <= 0 {
+		return
+	}
+	if record := byCMID[legacy]; record == nil || record.Id != relation {
+		f.pointerDisagreements++
+	}
 }
 
 // refusesNewHousehold reports, and counts, whether the freeze refuses to create household
@@ -288,6 +308,7 @@ func (f *closedSeasonFreeze) log() {
 	slog.Info("Closed season: family structure kept",
 		"year", f.year,
 		"relation_repoints_refused", f.relationsKept,
+		"household_relation_vs_household_id_disagreements", f.pointerDisagreements,
 		"household_id_changes_refused", f.householdIDsKept,
 		"households_not_created", f.householdsNotCreated,
 		"households_created_for_new_persons", f.householdsCreatedForNewPersons,

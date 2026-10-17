@@ -1775,6 +1775,7 @@ func (s *PersonsSync) updatePersonHouseholdRelations(
 		if !fetched {
 			continue
 		}
+		s.freeze.notePointerDisagreement(person, householdsByID)
 
 		householdCMID := hhIDs.PrincipalID
 		// Fallback: no PrincipalID from the Households object, use household_id from
@@ -1858,6 +1859,12 @@ func (s *PersonsSync) updatePersonHouseholdRelations(
 // feed failed, and this sweep would delete it. Hence the one guard this function
 // does take.
 func (s *PersonsSync) deleteHouseholdOrphans(year int, processedIDs map[int]bool) error {
+	// The staff-feed check first: a run whose staff feed failed has a known-incomplete
+	// computed set, so a kept-orphans count from it would overstate what was kept.
+	if s.skipSweepForStaffFetchFailure("households",
+		"households reachable only through staff are missing from the computed set", year) {
+		return nil
+	}
 	// This sweep is persons' own, outside BaseSyncService, so it honors the keep-orphans switch
 	// itself: the all-seasons re-sync's and the hourly run's (all_seasons_resync.go), and a
 	// historical replay's, which counts what it keeps (replay_orphans.go).
@@ -1874,10 +1881,6 @@ func (s *PersonsSync) deleteHouseholdOrphans(year int, processedIDs map[int]bool
 		}
 		return n, nil
 	}) {
-		return nil
-	}
-	if s.skipSweepForStaffFetchFailure("households",
-		"households reachable only through staff are missing from the computed set", year) {
 		return nil
 	}
 

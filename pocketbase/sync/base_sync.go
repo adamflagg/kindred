@@ -92,10 +92,11 @@ type BaseSyncService struct {
 	// field directly (e.g. session_groups.go); a service that does not declare one stays
 	// correctly unsupported and gets the honest 400.
 	DryRun bool
-	// keepOrphans, when true, turns every sweep this type owns into a no-op for the run: the
-	// weekly all-seasons re-sync sets it on the jobs whose deletes would cascade into history an
-	// older season never rebuilds (all_seasons_resync.go). Set through setKeepOrphans, never
-	// from a request.
+	// keepOrphans, when true, turns every sweep this type owns into a no-op for the run. Three
+	// runs set it: the weekly all-seasons re-sync, on the jobs whose deletes would cascade into
+	// history an older season never rebuilds (all_seasons_resync.go); the hourly run
+	// (hourlyOrphanKeeper); and a historical replay (keepOrphansForReplay, replay_orphans.go). Set
+	// through setKeepOrphans or keepOrphansForReplay, never from a request.
 	keepOrphans bool
 	// countKeptOrphans, set only with keepOrphans, makes a kept sweep scan read-only and log how
 	// many rows it kept. A historical replay sets both (keepOrphansForReplay); the hourly run and

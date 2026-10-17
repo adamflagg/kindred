@@ -527,3 +527,66 @@ func TestClosedSeasonReReadCorrectsIdentityButKeepsAsOfSeasonFields(t *testing.T
 		})
 	}
 }
+
+// The household relation and the legacy household_id are one pointer (prod finding, M/119: a
+// re-read moved the field while the relation stayed). On a closed season an existing row keeps
+// BOTH as they are, even when they already disagree, and the run counts the disagreement.
+func TestClosedSeasonKeepsADisagreeingRelationAndHouseholdIDTogether(t *testing.T) {
+	t.Parallel()
+	const year = 2019
+	app := newPersonsTestApp(t)
+	householdsCol := core.NewBaseCollection("households")
+	householdsCol.Fields.Add(&core.NumberField{Name: "cm_id"})
+	householdsCol.Fields.Add(&core.NumberField{Name: "year"})
+	if err := app.Save(householdsCol); err != nil {
+		t.Fatalf("create households: %v", err)
+	}
+	hh := map[int]*core.Record{}
+	for _, cm := range []int{7001, 7002} {
+		id := saveRecord(t, app, "households", map[string]any{"cm_id": cm, "year": year})
+		rec, err := app.FindRecordById("households", id)
+		if err != nil {
+			t.Fatalf("find household: %v", err)
+		}
+		hh[cm] = rec
+	}
+	col, err := app.FindCollectionByNameOrId("persons")
+	if err != nil {
+		t.Fatalf("find persons: %v", err)
+	}
+	col.Fields.Add(&core.NumberField{Name: "household_id"})
+	for _, f := range []string{"household", "primary_childhood_household", "alternate_childhood_household"} {
+		col.Fields.Add(&core.TextField{Name: f})
+	}
+	if saveErr := app.Save(col); saveErr != nil {
+		t.Fatalf("add fields: %v", saveErr)
+	}
+	// Already disagreeing: the relation says 7001, the field says 7002.
+	id := saveRecord(t, app, "persons", map[string]any{"cm_id": 5001, "year": year,
+		"first_name": "Emma", "last_name": "Johnson", "is_camper": true,
+		"household": hh[7001].Id, "household_id": 7002})
+
+	s := NewPersonsSync(app, nil)
+	existing := s.preloadExistingPersons(fmt.Sprintf("year = %d", year), year)
+	s.freeze = startClosedSeasonFreeze(year, existing)
+
+	// CampMinder now names the other household on each side.
+	payload := validPersonData(5001)
+	payload["FamilyPersons"] = []any{map[string]any{"FamilyID": float64(7001)}}
+	if err := s.processPerson(payload, true, existing, map[string]string{}, map[int]string{}, year); err != nil {
+		t.Fatalf("processPerson: %v", err)
+	}
+	ids := map[int]personHouseholdIDs{5001: {PrincipalID: 7002}}
+	if err := s.updatePersonHouseholdRelations(year, hh, ids); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+
+	got := reload(t, app, id)
+	if got.GetString("household") != hh[7001].Id || got.GetInt("household_id") != 7002 {
+		t.Errorf("household = %q, household_id = %d; want both kept (%q, 7002)",
+			got.GetString("household"), got.GetInt("household_id"), hh[7001].Id)
+	}
+	if s.freeze.pointerDisagreements != 1 {
+		t.Errorf("pointerDisagreements = %d, want 1", s.freeze.pointerDisagreements)
+	}
+}

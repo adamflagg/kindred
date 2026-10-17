@@ -3276,7 +3276,8 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		}
 		overrides = o.replayOverrides(opts.Year, opts.Debug)
 
-		// A season outside the synced pair keeps its persons and households (replay_orphans.go).
+		// A season outside the synced pair keeps its session groups, sessions, persons and
+		// households (replay_orphans.go).
 		// A run of N-1 sweeps as its nightly pass does.
 		if !syncedSeasonsInclude(opts.Year) {
 			keepReplayOrphans(overrides)

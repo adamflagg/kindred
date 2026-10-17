@@ -1506,21 +1506,7 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 
 	// Add queue info
 	queue := orchestrator.GetQueuedSyncs()
-	queueInfo := make([]map[string]any, len(queue))
-	for i := range queue {
-		qs := &queue[i]
-		queueInfo[i] = map[string]any{
-			"id":                    qs.ID,
-			"year":                  qs.Year,
-			"type":                  qs.Type, // "unified", "phase", "individual"
-			"service":               qs.Service,
-			"include_custom_values": qs.IncludeCustomValues,
-			"dry_run":               qs.DryRun,
-			"position":              i + 1, // 1-based position
-			"queued_at":             qs.QueuedAt.Format(time.RFC3339),
-		}
-	}
-	statuses["_queue"] = queueInfo
+	statuses["_queue"] = queueStatusInfo(queue)
 	statuses["_queue_length"] = len(queue)
 
 	// Add current run progress (remaining jobs in current sequence)
@@ -3411,4 +3397,28 @@ func handleStaffVehicleInfoSync(e *core.RequestEvent, scheduler *Scheduler) erro
 		"syncType": syncType,
 		"year":     year,
 	})
+}
+
+// queueStatusInfo is the status payload's _queue: each queued sync, in queue order.
+func queueStatusInfo(queue []QueuedSync) []map[string]any {
+	queueInfo := make([]map[string]any, len(queue))
+	for i := range queue {
+		qs := &queue[i]
+		skip := qs.Skip // a replay's skip= jobs; an empty list, never null, for every other run
+		if skip == nil {
+			skip = []string{}
+		}
+		queueInfo[i] = map[string]any{
+			"id":                    qs.ID,
+			"year":                  qs.Year,
+			"type":                  qs.Type, // "unified", "phase", "individual"
+			"service":               qs.Service,
+			"include_custom_values": qs.IncludeCustomValues,
+			"dry_run":               qs.DryRun,
+			"skip":                  skip,
+			"position":              i + 1, // 1-based position
+			"queued_at":             qs.QueuedAt.Format(time.RFC3339),
+		}
+	}
+	return queueInfo
 }
