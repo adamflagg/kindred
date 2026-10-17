@@ -147,5 +147,7 @@ export interface VelocityResponse {
   status_history_start?: string | null
   /** ISO date of the first nightly snapshot of any year (enrollment metric): every season before it is rebuilt (K13). */
   snapshots_start?: string | null
+  /** PR 5b: the count after the last stored point, live season only; the page gates it on the sync (velocityLive). */
+  live?: { enrolled: number; stored_at: string } | null
   warnings: string[]
 }

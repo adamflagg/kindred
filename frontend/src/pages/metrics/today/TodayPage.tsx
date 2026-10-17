@@ -33,6 +33,8 @@ import { DELTA_INK, type DeltaKind } from '../../../utils/deltaTokens'
 import { readsThroughNextDay } from '../../../utils/priorityDay'
 import { formatShortDate } from '../../../components/camperships/kit/dates'
 import type { RegistrationMetrics } from '../../../types/metrics'
+import { useLiveSync } from '../../../hooks/useLiveSync'
+import { livePoint } from '../../../components/velocity/velocityLive'
 import { PaceCard, PaceHead } from './PaceCard'
 import { RecentSignupsCard } from './RecentSignupsCard'
 import { SessionFillHead, SessionFillTable } from './SessionFillCard'
@@ -342,6 +344,8 @@ export default function TodayPage() {
     sessionTypes: sessionTypesParam,
     duration: durationParam,
   })
+  // PR 5b: Pace's live point after the 3 a.m. count, drawn only after a fresh hourly sync
+  const { sync: liveSync, now } = useLiveSync(year)
   const priorityDate = usePriorityRegDate(year)
 
   const { setFilter, DrilldownModal } = useDrilldown({
@@ -486,7 +490,14 @@ export default function TodayPage() {
                 onRetry={() => void velocity.refetch()}
                 busyWhat={busyWhat}
               >
-                {(data) => <PaceCard data={data} year={year} fold={paceFold} />}
+                {(data) => (
+                  <PaceCard
+                    data={data}
+                    year={year}
+                    fold={paceFold}
+                    live={livePoint(data, liveSync, now)}
+                  />
+                )}
               </CardState>
             </div>
           </section>

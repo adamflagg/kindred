@@ -117,6 +117,10 @@ vi.mock('../../../hooks/useVelocityControls', () => ({
 vi.mock('../../../hooks/useVelocity', () => ({
   useVelocity: () => ({ data: state.data, isLoading: false, error: null }),
 }))
+// PR 5b: no sync known, so no live point
+vi.mock('../../../hooks/useLiveSync', () => ({
+  useLiveSync: () => ({ sync: { at: null, failed: false, nightly: false }, now: 0 }),
+}))
 vi.mock('../../../hooks/useChartZoom', () => ({
   useChartZoom: () => ({
     zoomRange: null,
@@ -141,6 +145,7 @@ vi.mock('recharts', () => {
     Legend: () => null,
     ReferenceLine: () => null,
     ReferenceArea: () => null,
+    ReferenceDot: () => null,
     Brush: () => null,
   }
 })

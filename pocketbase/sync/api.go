@@ -1276,9 +1276,9 @@ func resolveServiceStatuses(orchestrator *Orchestrator, syncTypes []string) map[
 		live := orchestrator.GetStatus(syncType)
 		switch {
 		case live != nil:
-			statuses[syncType] = withLastRealRun(live, recorded[syncType])
+			statuses[syncType] = withLastSuccess(withLastRealRun(live, recorded[syncType]), recorded[syncType])
 		case recorded[syncType] != nil:
-			statuses[syncType] = recorded[syncType]
+			statuses[syncType] = withLastSuccess(recorded[syncType], recorded[syncType])
 		default:
 			// Never run, or pruned past the retention window. Genuinely nothing to say.
 			statuses[syncType] = map[string]string{
@@ -1309,6 +1309,22 @@ func withLastRealRun(live, recorded *Status) *Status {
 	return live
 }
 
+// withLastSuccess stamps an entry with the job's last real success (Status.LastSuccessAt): its own end
+// when it is itself a real success, otherwise the end of recorded, the last real successful run from
+// sync_runs (LastRecordedRuns skips dry and failed rows). Left nil when there is none. status is
+// GetStatus's copy or a freshly read row, so stamping it never reaches the stored slot.
+func withLastSuccess(status, recorded *Status) *Status {
+	switch {
+	case status.Status == "success" && !status.DryRun && status.EndTime != nil:
+		end := *status.EndTime
+		status.LastSuccessAt = &end
+	case recorded != nil && recorded.EndTime != nil:
+		end := *recorded.EndTime
+		status.LastSuccessAt = &end
+	}
+	return status
+}
+
 // resolveServiceStatusesForSeason is resolveServiceStatuses for one synced season's Manage >
 // Sync cards (?year=): each job's live run or last completion of THAT season
 // (GetStatusForSeason), falling back to that season's rows in sync_runs. primary is the primary
@@ -1321,9 +1337,9 @@ func resolveServiceStatusesForSeason(orchestrator *Orchestrator, syncTypes []str
 		live := orchestrator.GetStatusForSeason(syncType, year, primary)
 		switch {
 		case live != nil:
-			statuses[syncType] = withLastRealRun(live, recorded[syncType])
+			statuses[syncType] = withLastSuccess(withLastRealRun(live, recorded[syncType]), recorded[syncType])
 		case recorded[syncType] != nil:
-			statuses[syncType] = recorded[syncType]
+			statuses[syncType] = withLastSuccess(recorded[syncType], recorded[syncType])
 		default:
 			statuses[syncType] = map[string]string{
 				"status": "idle",

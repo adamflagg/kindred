@@ -9575,6 +9575,29 @@ export type LeverEffectOut = {
 }
 
 /**
+ * LiveEnrollment
+ *
+ * PR 5b (#3207): the enrolled count since the line's last stored point, in the line's own scope.
+ *
+ * The line ends at the nightly (3 a.m.) snapshot; the hourly sync keeps the attendees table current
+ * after it. This is that table's count, so the page can draw one more point after the stored one.
+ */
+export type LiveEnrollment = {
+  /**
+   * Enrolled
+   *
+   * Net enrolled camper-sessions now: the stored point with each session counted that night re-counted from the attendees table (status_id 2). Equal to the stored point when nothing changed
+   */
+  enrolled: number
+  /**
+   * Stored At
+   *
+   * When the stored point it continues from was counted: the latest snapshot_datetime on its day
+   */
+  stored_at: string
+}
+
+/**
  * LoadIn
  */
 export type LoadIn = {
@@ -20441,6 +20464,10 @@ export type VelocityResponse = {
    * Cancellations that are session changes, not true departures
    */
   session_swap_count?: number
+  /**
+   * PR 5b: the count after the last stored point. Enrollment metric on the live season only; None on a closed season, the cancellation metric, a line with no nightly snapshot, or a failed read. The page decides from the sync status whether it is fresh enough to draw
+   */
+  live?: LiveEnrollment | null
   /**
    * Daily
    *

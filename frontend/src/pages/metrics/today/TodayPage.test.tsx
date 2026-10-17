@@ -4,7 +4,7 @@
  */
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import TodayPage from './TodayPage'
 import { useComparisonRegistrationData } from '../../../hooks/useComparisonRegistrationData'
 import { useRegistrationMetrics } from '../../../hooks/useMetrics'
@@ -39,6 +39,12 @@ vi.mock('../../../hooks/useDrilldown', () => ({
   useDrilldown: vi.fn(() => ({ setFilter, DrilldownModal: () => null })),
 }))
 vi.mock('../../../hooks/useMetricsSession', () => ({ useMetricsSession: vi.fn() }))
+// PR 5b: the sync Pace's live point is dated by. None known by default: no live point.
+const liveSync = {
+  sync: { at: null as string | null, failed: false, nightly: false },
+  now: new Date(2027, 1, 9, 14, 40).getTime(),
+}
+vi.mock('../../../hooks/useLiveSync', () => ({ useLiveSync: () => liveSync }))
 
 function session(over: Record<string, unknown> = {}) {
   return {
@@ -422,6 +428,43 @@ describe('Today › Pace', () => {
       'href',
       '/analytics/trends/velocity'
     )
+  })
+})
+
+describe('Today › Pace live point (PR 5b)', () => {
+  // Stored 951 at 3:40 am; the 2:05 pm hourly sync counts 1,577.
+  const LIVE = {
+    ...VELOCITY,
+    live: { enrolled: 1577, stored_at: new Date(2027, 1, 9, 3, 40).toISOString() },
+  }
+  function withLive(at: string | null) {
+    vi.mocked(useVelocity).mockReturnValue(q(LIVE) as unknown as ReturnType<typeof useVelocity>)
+    liveSync.sync = { at, failed: false, nightly: false }
+  }
+  afterEach(() => {
+    liveSync.sync = { at: null, failed: false, nightly: false }
+  })
+
+  it('"N today" reads the live count, labelled by the sync, with what moved since 3 a.m.', () => {
+    withLive(new Date(2027, 1, 9, 14, 5).toISOString())
+    renderPage()
+    const pace = screen.getByTestId('today-pace')
+    expect(pace).toHaveTextContent('1,577 today')
+    expect(pace).toHaveTextContent('as of 2:05 pm sync · 1,577')
+    expect(pace).toHaveTextContent('+626 since 3 a.m.')
+    // Last year's stored point on the same registration day, never a same-hour figure (#109)
+    expect(pace).toHaveTextContent('2026: 1,109')
+    expect(pace.querySelector('[data-live-dot="stored"]')).not.toBeNull()
+    expect(pace.querySelector('[data-live-dot="live"]')).not.toBeNull()
+  })
+
+  it('a sync more than 2 hours old leaves the 3 a.m. count (#111)', () => {
+    withLive(new Date(2027, 1, 9, 12, 30).toISOString())
+    renderPage()
+    const pace = screen.getByTestId('today-pace')
+    expect(pace).toHaveTextContent('951 today')
+    expect(pace).not.toHaveTextContent('since 3 a.m.')
+    expect(pace.querySelector('[data-live-dot="live"]')).toBeNull()
   })
 })
 

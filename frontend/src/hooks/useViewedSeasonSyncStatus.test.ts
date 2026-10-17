@@ -25,12 +25,26 @@ describe('useViewedSeasonSyncStatus', () => {
 
   it('reports synced once the requested year has arrived', () => {
     const scoped = { ...unscoped, marker: 'new' }
+    const refetch = vi.fn()
     mockUseSyncStatusAPI.mockImplementation((opts?: { year?: number }) =>
       opts?.year === undefined
         ? { data: unscoped, isPlaceholderData: false }
-        : { data: scoped, isPlaceholderData: false }
+        : { data: scoped, isPlaceholderData: false, refetch }
     )
     const { result } = renderHook(() => useViewedSeasonSyncStatus(2026))
-    expect(result.current).toEqual({ kind: 'synced', scoped })
+    expect(result.current).toEqual({ kind: 'synced', scoped, refetch: expect.any(Function) })
+  })
+
+  it('hands back a refetch of the viewed season only', () => {
+    const refetch = vi.fn()
+    mockUseSyncStatusAPI.mockImplementation((opts?: { year?: number }) =>
+      opts?.year === undefined
+        ? { data: unscoped, isPlaceholderData: false }
+        : { data: unscoped, isPlaceholderData: false, refetch }
+    )
+    const { result } = renderHook(() => useViewedSeasonSyncStatus(2026))
+    if (result.current.kind !== 'synced') throw new Error('not synced')
+    result.current.refetch()
+    expect(refetch).toHaveBeenCalledTimes(1)
   })
 })

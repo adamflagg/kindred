@@ -1771,6 +1771,95 @@ func TestTheStatusPayloadDatesFreshnessByTheLastRealRunNotADryRun(t *testing.T) 
 	}
 }
 
+// The scan of #3283 (row 2): the 2-hour staleness rule and the amber chip date a job by its last
+// SUCCESS, never by the last run. A failed run's end_time (and its partial count) must not read as a
+// fresh sync, so every payload entry carries last_success_at, whatever the entry's own outcome.
+func TestTheStatusPayloadCarriesTheLastSuccessWhateverTheLatestRunDid(t *testing.T) {
+	t.Parallel()
+
+	app := newSyncRunsApp(t)
+	o := NewOrchestrator(app)
+	runAndPublish(t, app, o, &MockService{name: "svc", stats: Stats{Created: 1}},
+		newBatch(triggerManual).forYear(2025), 1)
+	success := resolveServiceStatuses(o, []string{"svc"})["svc"].(*Status)
+	if success.EndTime == nil {
+		t.Fatal("the success has no end time")
+	}
+	if success.LastSuccessAt == nil || !success.LastSuccessAt.Equal(*success.EndTime) {
+		t.Fatalf("a success dates itself: last_success_at = %v, end = %v", success.LastSuccessAt, success.EndTime)
+	}
+	wantSuccess := *success.EndTime
+
+	// Two failed runs in a row: the entry is the latest failure, the success time is still the first run's.
+	for i := 2; i <= 3; i++ {
+		failing := &MockService{name: "svc", shouldFail: true}
+		_ = o.RunSingleSyncWithService(context.Background(), failing.name, failing,
+			newBatch(triggerManual).forYear(2025))
+		waitForSyncRuns(t, app, i)
+		waitForJobIdle(t, o, "svc")
+	}
+	for name, payload := range map[string]map[string]any{
+		"any season": resolveServiceStatuses(o, []string{"svc"}),
+		"?year=":     resolveServiceStatusesForSeason(o, []string{"svc"}, 2025, 2026),
+	} {
+		got := payload["svc"].(*Status)
+		if got.Status != "failed" {
+			t.Fatalf("%s: the entry is %q, want the latest run (failed)", name, got.Status)
+		}
+		if got.LastSuccessAt == nil || got.LastSuccessAt.Sub(wantSuccess).Abs() >= time.Millisecond {
+			t.Errorf("%s: last_success_at = %v, want the success at %v", name, got.LastSuccessAt, wantSuccess)
+		}
+	}
+}
+
+// After a restart the payload falls back to the recorded last success, which dates itself.
+func TestARecordedRunFallbackDatesItselfAsTheLastSuccess(t *testing.T) {
+	t.Parallel()
+
+	app := newSyncRunsApp(t)
+	runAndPublish(t, app, NewOrchestrator(app), &MockService{name: "svc", stats: Stats{Created: 1}},
+		newBatch(triggerManual).forYear(2025), 1)
+
+	got := resolveServiceStatuses(NewOrchestrator(app), []string{"svc"})["svc"].(*Status)
+	if got.EndTime == nil || got.LastSuccessAt == nil || !got.LastSuccessAt.Equal(*got.EndTime) {
+		t.Errorf("recorded entry: last_success_at = %v, end = %v", got.LastSuccessAt, got.EndTime)
+	}
+}
+
+// A job that never succeeded has nothing to date it by.
+func TestAJobThatNeverSucceededCarriesNoLastSuccess(t *testing.T) {
+	t.Parallel()
+
+	app := newSyncRunsApp(t)
+	o := NewOrchestrator(app)
+	failing := &MockService{name: "svc", shouldFail: true}
+	_ = o.RunSingleSyncWithService(context.Background(), failing.name, failing,
+		newBatch(triggerManual).forYear(2025))
+	waitForSyncRuns(t, app, 1)
+	waitForJobIdle(t, o, "svc")
+
+	if got := resolveServiceStatuses(o, []string{"svc"})["svc"].(*Status); got.LastSuccessAt != nil {
+		t.Errorf("last_success_at = %v, want none", got.LastSuccessAt)
+	}
+}
+
+func waitForJobIdle(t *testing.T, o *Orchestrator, name string) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		o.mu.RLock()
+		_, running := o.runningJobs[name]
+		o.mu.RUnlock()
+		if !running {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting for the job to finish")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
 // A real run's entry is its own freshness: it carries no last_real_run.
 func TestARealRunCarriesNoLastRealRun(t *testing.T) {
 	t.Parallel()

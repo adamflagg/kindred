@@ -20,6 +20,8 @@ import {
 } from '../../../components/camperships/kit/csType'
 import { formatCount } from '../../../utils/numberFormat'
 import type { VelocityResponse } from '../../../types/velocity'
+import { LiveDots, LiveLabelText } from '../../../components/velocity/LiveMark'
+import { liveLabelLines, type LivePoint } from '../../../components/velocity/velocityLive'
 import { analyticsHref, type PacePrior } from './todayModel'
 import { FoldedFigure } from './todayParts'
 
@@ -52,11 +54,13 @@ function PaceChart({
   year,
   priorYear,
   fold,
+  live,
 }: {
   data: VelocityResponse
   year: number
   priorYear: number
   fold: PacePrior | null
+  live: LivePoint | null
 }) {
   const current = [...data.combined.daily].sort((a, b) => a.day_offset - b.day_offset)
   const priorSource = fold
@@ -69,7 +73,12 @@ function PaceChart({
   if (!last) return <div className={CS_EMPTY}>No sign-ups to draw yet.</div>
 
   const nowDay = data.current_day_offset ?? last.day_offset
-  const now = atDay(current, nowDay)?.enrolled ?? 0
+  const stored = atDay(current, nowDay)?.enrolled ?? 0
+  // PR 5b (#107): "N today" reads the live count when it is drawn, the 3 a.m. count otherwise (#111)
+  const now = live?.enrolled ?? stored
+  const liveLines = live
+    ? liveLabelLines(live).map((line, i) => (i === 0 ? { ...line, weight: 400 as const } : line))
+    : []
   const priorDay = data.prior_day_offset ?? nowDay
   const priorNow = fold ? fold.now : (atDay(prior, priorDay)?.enrolled ?? null)
   const priorFinal = prior.at(-1)?.enrolled ?? null
@@ -107,11 +116,13 @@ function PaceChart({
 
   const ticks = [0, top / 3, (2 * top) / 3, top]
   const dx = x(nowDay)
-  const dy = y(now)
+  const dy = y(stored)
   const left = dx < W / 2
   const lx = left ? dx + 8 : dx - 8
   const anchor = left ? 'start' : 'end'
-  const ly = Math.min(dy + 16, y(0) - 18)
+  const lineH = FONT + 3
+  const ly = Math.min(dy + 16, y(0) - 18 - liveLines.length * lineH)
+  const priorY = ly + 12 + liveLines.length * lineH
   const finalX = dx > W - PAD.right - 130 ? dx - 6 : W - PAD.right
 
   return (
@@ -181,16 +192,40 @@ function PaceChart({
           strokeWidth={1}
           strokeDasharray="2 2"
         />
-        <circle cx={dx} cy={dy} r={3.5} className="fill-forest-700 dark:fill-forest-400" />
+        {live ? (
+          <>
+            {/* PR 5b (#105, #108): dashed from the 3 a.m. point (solid) to the live point (hollow) */}
+            <line
+              data-line="live"
+              x1={dx}
+              y1={dy}
+              x2={x(live.x)}
+              y2={y(live.enrolled)}
+              className="stroke-forest-700 dark:stroke-forest-400"
+              strokeWidth={2.5}
+              strokeDasharray="4 3"
+            />
+            <LiveDots
+              stored={{ x: dx, y: dy }}
+              live={{ x: x(live.x), y: y(live.enrolled) }}
+              r={3.5}
+              fillClass="fill-forest-700 dark:fill-forest-400"
+              strokeClass="stroke-forest-700 dark:stroke-forest-400"
+            />
+          </>
+        ) : (
+          <circle cx={dx} cy={dy} r={3.5} className="fill-forest-700 dark:fill-forest-400" />
+        )}
         <text x={lx} y={ly} textAnchor={anchor} fontSize={FONT} fontWeight={700} fill={STRONG}>
           {formatCount(now)} today
         </text>
+        <LiveLabelText x={lx} y={ly + lineH} anchor={anchor} fontSize={FONT} lines={liveLines} />
         {priorNow != null &&
           (fold?.parts ? (
             // The tooltip trigger is a button, which SVG cannot hold: a foreignObject on the label's line
             <foreignObject
               x={anchor === 'start' ? lx : lx - LABEL_W}
-              y={ly + 12 - FONT}
+              y={priorY - FONT}
               width={LABEL_W}
               height={FONT + 4}
               overflow="visible"
@@ -209,7 +244,7 @@ function PaceChart({
               </div>
             </foreignObject>
           ) : (
-            <text x={lx} y={ly + 12} textAnchor={anchor} fontSize={FONT} fill={INK}>
+            <text x={lx} y={priorY} textAnchor={anchor} fontSize={FONT} fill={INK}>
               {String(priorYear)}: {formatCount(priorNow)}
             </text>
           ))}
@@ -232,12 +267,15 @@ export function PaceCard({
   data,
   year,
   fold,
+  live = null,
 }: {
   data: VelocityResponse
   year: number
   fold: PacePrior | null
+  /** PR 5b: the live point (velocityLive.livePoint), or null to end at the 3 a.m. count. */
+  live?: LivePoint | null
 }) {
-  return <PaceChart data={data} year={year} priorYear={year - 1} fold={fold} />
+  return <PaceChart data={data} year={year} priorYear={year - 1} fold={fold} live={live} />
 }
 
 export function PaceHead({ sessionsNote }: { sessionsNote: number | undefined }) {
