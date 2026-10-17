@@ -959,11 +959,11 @@ class VelocityService:
             session_swap_count = len(swap_pids)
 
         # PR 12, ruling #98: the viewed season decides; the one live rule PR 11 uses, no second one.
-        live = await live_same_point(self.repo, year, ref_today)
+        pace_point = await live_same_point(self.repo, year, ref_today)
 
         return VelocityResponse(
             year=year,
-            prior_basis="same_point" if live is not None else "final",
+            prior_basis="same_point" if pace_point is not None else "final",
             season_start=season_start_dt.strftime("%Y-%m-%d"),
             combined=combined,
             by_session=by_session,
