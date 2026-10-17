@@ -12831,6 +12831,12 @@ export type PriorYearSessionSummary = {
    * Last enrollment value for this session in prior year
    */
   final_enrolled: number
+  /**
+   * Folds Into Session Cm Id
+   *
+   * #3207 PR 12, ruling #97: a prior embedded session with no current match that sits inside a prior main session's dates (Today's fold_embedded_sessions) names the current session that main matches; None otherwise. The pace card folds it there only when asked
+   */
+  folds_into_session_cm_id?: number | null
 }
 
 /**
@@ -20306,6 +20312,12 @@ export type VelocityResponse = {
    * Year
    */
   year: number
+  /**
+   * Prior Basis
+   *
+   * #3207 PR 12, ruling #98: the viewed season decides how the pace card reads prior seasons. 'same_point' while it is live (live_same_point, before its priority date included), 'final' once it is over
+   */
+  prior_basis?: 'same_point' | 'final'
   /**
    * Season Start
    *

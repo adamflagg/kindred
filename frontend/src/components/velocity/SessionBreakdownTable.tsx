@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import type { VelocityCurve, PriorYearSessionSummary } from '../../types/velocity'
-import { resolveSessionAlias } from '../../utils/sessionAliases'
+import { sessionPriorOf } from './velocityCompare'
 import { useTableSort } from '../../hooks/useTableSort'
 import type { SortValue } from '../../utils/tableSort'
 import { MetricSortHeader } from '../metrics/MetricSortHeader'
@@ -38,13 +38,7 @@ export function SessionBreakdownTable({
     )
   }
 
-  const priorOf = (session: VelocityCurve) => {
-    const canonical = session.session_name ? resolveSessionAlias(session.session_name) : null
-    return (
-      (session.session_cm_id != null ? priorSessionMap.get(session.session_cm_id) : undefined) ??
-      (canonical ? priorSessionMap.get(canonical) : undefined)
-    )
-  }
+  const priorOf = (session: VelocityCurve) => sessionPriorOf(session, priorSessionMap)
   const sortable = exportFile !== undefined
   const shown = sortable
     ? sort.apply(sortedBySession, (session, field) => {

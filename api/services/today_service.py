@@ -11,7 +11,8 @@ registration day while the season is live (decision 7):
 - the figure is ``prior_figure_for_session``: the matched session's own count, plus ruling #15's "embedded
   add" (PR 8b): a prior-year embedded session with no match this year is added to the prior-year main
   session whose dates contain it (``fold_embedded_sessions``), and the figure carries its breakdown for the
-  tooltip (#50). Today only: Metrics pages never fold. With one session picked, the headline's prior counts
+  tooltip (#50). Today folds by default; Metrics never does, except Velocity's pace card when
+  asked (PR 12, ruling #97, reusing ``fold_embedded_sessions``). With one session picked, the headline's prior counts
   that session's and the folded sessions' campers once each (#51, ``headline_prior_campers``), and Pace's
   prior curve covers the same sessions the fill total compares (``build_pace_prior``).
 

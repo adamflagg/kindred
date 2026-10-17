@@ -3,7 +3,9 @@
  * page compares with, the same-point "vs" value, and the small labels around them.
  */
 
+import type { PriorYearSessionSummary, VelocityCurve } from '../../types/velocity'
 import { formatCount } from '../../utils/numberFormat'
+import { resolveSessionAlias } from '../../utils/sessionAliases'
 
 /** Small muted pill, as used for the "new" session marker and the no-history note. */
 export const MUTED_PILL_CLASS =
@@ -22,6 +24,22 @@ export function pickComparisonYear(
     ? responseYears.filter((y) => selectedYears.includes(y))
     : responseYears
   return candidates.length ? Math.max(...candidates) : null
+}
+
+/**
+ * A session's prior-year summary as the By Session table reads it: by its own id when matched, else by its
+ * canonical name. The pace card reads through this too, so the two never disagree (PR 12); only the card's
+ * opt-in fold (#97) adds to a host's figure, and the card names what it folded.
+ */
+export function sessionPriorOf(
+  session: VelocityCurve,
+  priorSessionMap: ReadonlyMap<number | string, PriorYearSessionSummary>
+): PriorYearSessionSummary | undefined {
+  const canonical = session.session_name ? resolveSessionAlias(session.session_name) : null
+  return (
+    (session.session_cm_id != null ? priorSessionMap.get(session.session_cm_id) : undefined) ??
+    (canonical ? priorSessionMap.get(canonical) : undefined)
+  )
 }
 
 /** Current latest minus the prior year's value at the same point; null when either is missing. */

@@ -89,6 +89,8 @@ export interface PriorYearSessionSummary {
   /** Enrolled on the same registration day as the current year's latest point. */
   enrolled_at_current_week: number | null
   final_enrolled: number
+  /** PR 12 (#97): a retired embedded session's fold target, the current session; null = none. */
+  folds_into_session_cm_id?: number | null
 }
 
 export interface PriorYearVelocity {
@@ -110,6 +112,8 @@ export interface GenderHistoryGap {
 
 export interface VelocityResponse {
   year: number
+  /** PR 12 (#98): the viewed season's comparison, same registration day while live, else final. */
+  prior_basis?: 'same_point' | 'final'
   season_start: string
   combined: VelocityCurve
   by_session: VelocityCurve[]

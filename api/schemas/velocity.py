@@ -131,6 +131,14 @@ class PriorYearSessionSummary(BaseModel):
         ),
     )
     final_enrolled: int = Field(description="Last enrollment value for this session in prior year")
+    folds_into_session_cm_id: int | None = Field(
+        None,
+        description=(
+            "#3207 PR 12, ruling #97: a prior embedded session with no current match that sits inside a prior main "
+            "session's dates (Today's fold_embedded_sessions) names the current session that main matches; "
+            "None otherwise. The pace card folds it there only when asked"
+        ),
+    )
 
 
 class GenderHistoryGap(BaseModel):
@@ -149,6 +157,13 @@ class GenderHistoryGap(BaseModel):
 
 class VelocityResponse(BaseModel):
     year: int
+    prior_basis: Literal["same_point", "final"] = Field(
+        "same_point",
+        description=(
+            "#3207 PR 12, ruling #98: the viewed season decides how the pace card reads prior seasons. 'same_point' "
+            "while it is live (live_same_point, before its priority date included), 'final' once it is over"
+        ),
+    )
     season_start: str = Field(description="ISO date of season start (priority or early registration date)")
     combined: VelocityCurve
     by_session: list[VelocityCurve]

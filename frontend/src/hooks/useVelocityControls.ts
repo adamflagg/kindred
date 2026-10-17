@@ -10,6 +10,8 @@ import { GENDER_BASIS_PARAM, parseGenderBasis } from '../components/velocity/vel
  */
 const PRIORS_PARAM = 'priors'
 
+const PACE_FOLD_PARAM = 'retired'
+
 function parsePriors(raw: string | null, options: number[]): number[] {
   if (raw === null) return options[0] != null ? [options[0]] : []
   const years: number[] = []
@@ -97,6 +99,24 @@ export function useVelocityControls(availableYears: number[], currentYear: numbe
     [setSearchParams]
   )
 
+  // #3207 PR 12, ruling #97: the pace card's fold of retired embedded sessions lives in the link
+  // (`retired=fold`); the default, the not-offered line, writes nothing.
+  const paceFold = searchParams.get(PACE_FOLD_PARAM) === 'fold'
+  const setPaceFold = useCallback(
+    (fold: boolean) => {
+      setSearchParams(
+        (prev) => {
+          const newParams = new URLSearchParams(prev)
+          if (fold) newParams.set(PACE_FOLD_PARAM, 'fold')
+          else newParams.delete(PACE_FOLD_PARAM)
+          return newParams
+        },
+        { replace: true }
+      )
+    },
+    [setSearchParams]
+  )
+
   const handleGenderToggle = (enabled: boolean) => {
     setSplitByGender(enabled)
     // When enabling gender, limit prior years to max 1
@@ -113,5 +133,7 @@ export function useVelocityControls(availableYears: number[], currentYear: numbe
     priorYearOptions,
     togglePriorYear,
     handleGenderToggle,
+    paceFold,
+    setPaceFold,
   }
 }

@@ -179,4 +179,28 @@ describe('useVelocityControls', () => {
       expect(new URLSearchParams(result.current.search).has('gender')).toBe(false)
     })
   })
+
+  describe('pace card fold (#3207 PR 12, ruling #97)', () => {
+    it('defaults to the not-offered line, with nothing in the link', () => {
+      const { result } = renderControls(NONE)
+      expect(result.current.paceFold).toBe(false)
+      expect(new URLSearchParams(result.current.search).has('retired')).toBe(false)
+    })
+
+    it('reads retired=fold from the link', () => {
+      const { result } = renderControls('/?priors=&retired=fold')
+      expect(result.current.paceFold).toBe(true)
+    })
+
+    it('writes the fold into the link and removes it again', () => {
+      const { result } = renderControls('/?priors=2025')
+      act(() => result.current.setPaceFold(true))
+      expect(result.current.paceFold).toBe(true)
+      expect(new URLSearchParams(result.current.search).get('retired')).toBe('fold')
+      expect(new URLSearchParams(result.current.search).get('priors')).toBe('2025')
+      act(() => result.current.setPaceFold(false))
+      expect(result.current.paceFold).toBe(false)
+      expect(new URLSearchParams(result.current.search).has('retired')).toBe(false)
+    })
+  })
 })
