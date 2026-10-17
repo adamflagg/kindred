@@ -242,7 +242,7 @@ func TestPersonsCompareFields(t *testing.T) {
 		"last_year_attended", "gender_identity_id", "gender_identity_name", "gender_identity_write_in",
 		"gender_pronoun_id", "gender_pronoun_name", "gender_pronoun_write_in",
 		"address_city", "address_state", "primary_email", "secondary_email",
-		"household_id", "is_camper", "year", "parent_names",
+		"household_id", "is_camper", "year", "parent_names", "relatives",
 		"division", "partition_id", "lead_date", "tshirt_size", "cm_lead_date",
 		"tags",
 	}
@@ -2368,5 +2368,59 @@ func seedSweepHousehold(t *testing.T, app core.App, cmID, year int) {
 	rec.Set("year", year)
 	if saveErr := app.Save(rec); saveErr != nil {
 		t.Fatalf("seed household %d: %v", cmID, saveErr)
+	}
+}
+
+// TestTransformPersonToPB_RelativesKeepsGuardianAndPrimaryFlagsInOrder: persons.relatives
+// records CampMinder's Relatives as ids and flags in CampMinder's order (parent_names keeps
+// the mailing-title order), so a later export can put the primary parent first.
+func TestTransformPersonToPB_RelativesKeepsGuardianAndPrimaryFlagsInOrder(t *testing.T) {
+	t.Parallel()
+	s := &PersonsSync{missingDataStats: make(map[string]int)}
+
+	personData := map[string]any{
+		"ID":            float64(9400001),
+		"Name":          map[string]any{"First": "Emma", "Last": "Johnson"},
+		"CamperDetails": map[string]any{"CampGradeID": float64(7)},
+		"Relatives": []any{
+			map[string]any{"ID": float64(9400102), "IsGuardian": true, "IsPrimary": false},
+			map[string]any{"ID": float64(9400101), "IsGuardian": true, "IsPrimary": true},
+			map[string]any{"ID": float64(0), "IsGuardian": true, "IsPrimary": true},
+		},
+	}
+	pbData, err := s.transformPersonToPB(personData, 2026, true)
+	if err != nil {
+		t.Fatalf("transformPersonToPB: %v", err)
+	}
+	want := `[{"cm_id":9400102,"is_guardian":true,"is_primary":false},` +
+		`{"cm_id":9400101,"is_guardian":true,"is_primary":true}]`
+	if got, _ := pbData["relatives"].(string); got != want {
+		t.Errorf("relatives = %v, want %s", pbData["relatives"], want)
+	}
+}
+
+// An empty or absent Relatives clears a stale value: the key is always present, because the
+// update loop skips keys not in pbData.
+func TestTransformPersonToPB_EmptyRelativesClearsTheField(t *testing.T) {
+	t.Parallel()
+	s := &PersonsSync{missingDataStats: make(map[string]int)}
+
+	for _, relatives := range []any{nil, []any{}} {
+		personData := map[string]any{
+			"ID":            float64(9400001),
+			"Name":          map[string]any{"First": "Emma", "Last": "Johnson"},
+			"CamperDetails": map[string]any{"CampGradeID": float64(7)},
+		}
+		if relatives != nil {
+			personData["Relatives"] = relatives
+		}
+		pbData, err := s.transformPersonToPB(personData, 2026, true)
+		if err != nil {
+			t.Fatalf("transformPersonToPB: %v", err)
+		}
+		v, present := pbData["relatives"]
+		if !present || v != "" {
+			t.Errorf("relatives = %v (present=%v), want an explicit empty string", v, present)
+		}
 	}
 }

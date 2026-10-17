@@ -93,6 +93,7 @@ export const mockPerson = (overrides?: Partial<PersonsResponse>): PersonsRespons
   household: '',
   lead_date: '',
   parent_names: null,
+  relatives: null,
   partition_id: 0,
   primary_childhood_household: '',
   tags: [],

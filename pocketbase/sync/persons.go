@@ -14,6 +14,7 @@ import (
 	"unicode"
 
 	"github.com/camp/kindred/pocketbase/campminder"
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
 )
 
@@ -79,7 +80,7 @@ func NewPersonsSync(app core.App, client *campminder.Client) *PersonsSync {
 // explicitly rather than inherited by embedding BaseSyncService -- see that field's doc
 // comment on BaseSyncService for why a promoted setter is not safe. Setting it also gates
 // this file's own App.Save/App.Delete call sites (the person and household upserts, the
-// attendee-relation and household-relation backfills, and deleteHouseholdOrphans), all of
+// attendee-relation backfill, the household-relation update, and deleteHouseholdOrphans), all of
 // which are outside BaseSyncService's write sites.
 func (s *PersonsSync) SetDryRun(dryRun bool) {
 	s.DryRun = dryRun
@@ -579,7 +580,8 @@ func (s *PersonsSync) processPerson(
 
 	// Fields to compare for updates (includes expanded CamperDetails fields)
 	// Note: Household relation fields (household, primary_childhood_household, alternate_childhood_household)
-	// are excluded because they're populated separately in updatePersonHouseholdRelations after save.
+	// are excluded because updatePersonHouseholdRelations sets them after save, filling and re-pointing
+	// them to the households CampMinder names this run.
 	// Tags field IS included - FieldEquals normalizes []interface{} vs []string for proper comparison.
 	// Removed: phone_numbers, email_addresses (JSON), address (JSON) - fields dropped from schema
 	compareFields := []string{"cm_id", "first_name", "last_name", "preferred_name",
@@ -587,7 +589,7 @@ func (s *PersonsSync) processPerson(
 		"last_year_attended", "gender_identity_id", "gender_identity_name", "gender_identity_write_in",
 		"gender_pronoun_id", "gender_pronoun_name", "gender_pronoun_write_in",
 		"address_city", "address_state", "primary_email", "secondary_email",
-		"household_id", "is_camper", "year", "parent_names",
+		"household_id", "is_camper", "year", "parent_names", "relatives",
 		"division", "partition_id", "lead_date", "tshirt_size", "cm_lead_date",
 		"tags"}
 
@@ -839,8 +841,9 @@ func (s *PersonsSync) transformPersonToPB(
 	}
 
 	// Extract parent/guardian names by parsing the household's MailingTitle
-	// (e.g. "Sarah Johnson and David Garcia"). The Relatives array carries only
-	// guardian IDs — no names — so a salutation parse is the only name source
+	// (e.g. "Sarah Johnson and David Garcia"). The Relatives array carries ids and
+	// flags (IsGuardian, IsPrimary; kept in persons.relatives below) but no names,
+	// so a salutation parse is the only name source
 	// available without a follow-up GetPersons call. See #1393.
 	//
 	// Always set parent_names (to "" on failure) so the upsert path clears any
@@ -860,6 +863,11 @@ func (s *PersonsSync) transformPersonToPB(
 		pbData["parent_names"] = ""
 		s.missingDataStats["missing_parent_names"]++
 	}
+
+	// relatives: CampMinder's Relatives as ids and flags, in CampMinder's order (parent_names keeps
+	// the mailing-title order). IsPrimary is CampMinder's "parent 1". Always set (to "" when there
+	// are none) so the upsert path clears a stale value, as parent_names does.
+	pbData["relatives"] = relativesJSON(relativesOf(cmPerson))
 
 	// Set camper status based on whether this person came from attendees
 	pbData["is_camper"] = isCamper
@@ -1712,9 +1720,15 @@ func (s *PersonsSync) processHouseholdRecord(
 	return nil
 }
 
-// updatePersonHouseholdRelations updates person records to populate all three household relation fields
-// Uses the personHouseholdIDMap collected during sync to know which households to link
-// Also falls back to household_id (from FamilyPersons) when Households object is not available
+// updatePersonHouseholdRelations points each fetched person's three household relation fields
+// (household, primary_childhood_household, alternate_childhood_household) at the household
+// CampMinder names in this run's payload (personHouseholdIDMap).
+//
+// A relation is re-pointed whenever CampMinder gives a positive id that resolves to a household
+// record and that record differs from what is stored, so a person CampMinder moved to another
+// household follows it. It is never cleared: a payload with no id (no Households object) or an
+// id that resolves to no record leaves the stored relation alone. Persons this run did not
+// fetch are untouched. An empty `household` still falls back to the FamilyPersons household_id.
 func (s *PersonsSync) updatePersonHouseholdRelations(
 	year int,
 	householdsByID map[int]*core.Record,
@@ -1722,89 +1736,73 @@ func (s *PersonsSync) updatePersonHouseholdRelations(
 ) error {
 	slog.Info("Updating person household relations", "personsWithHouseholds", len(personHouseholdIDMap))
 
-	// Query all persons for this year that might need household relations updated
-	// Include persons with household_id but no household relation (the bug we're fixing)
-	filter := fmt.Sprintf(`year = %d && (
-		household = '' ||
-		primary_childhood_household = '' ||
-		alternate_childhood_household = ''
-	)`, year)
-	records, err := s.App.FindRecordsByFilter("persons", filter, "", 0, 0)
+	records, err := s.App.FindRecordsByFilter("persons", "year = {:year}", "", 0, 0, dbx.Params{"year": year})
 	if err != nil {
 		return fmt.Errorf("querying persons for household relation update: %w", err)
 	}
 
-	if len(records) == 0 {
-		slog.Info("No person household relations to update")
-		return nil
-	}
-
 	updated := 0
+	repointed := 0
 	errCount := 0
 
 	for _, person := range records {
-		// Get person's CampMinder ID to look up their household IDs
 		personCMID, ok := person.Get("cm_id").(float64)
 		if !ok || personCMID <= 0 {
 			continue
 		}
+		hhIDs, fetched := personHouseholdIDMap[int(personCMID)]
+		if !fetched {
+			continue
+		}
 
-		// Look up the household IDs we extracted during sync (from Households object)
-		hhIDs := personHouseholdIDMap[int(personCMID)]
-
-		needsSave := false
-
-		// Principal household (stored in 'household' relation field)
-		if person.GetString("household") == "" {
-			householdCMID := hhIDs.PrincipalID
-
-			// Fallback: If no PrincipalID from Households object, use household_id from FamilyPersons
-			// This fixes the bug where persons have household_id but no household relation
-			if householdCMID == 0 {
-				if legacyHouseholdID, ok := person.Get("household_id").(float64); ok && legacyHouseholdID > 0 {
-					householdCMID = int(legacyHouseholdID)
-				}
-			}
-
-			if householdCMID > 0 {
-				if householdRecord, exists := householdsByID[householdCMID]; exists {
-					person.Set("household", householdRecord.Id)
-					needsSave = true
-				}
+		householdCMID := hhIDs.PrincipalID
+		// Fallback: no PrincipalID from the Households object, use household_id from
+		// FamilyPersons, but only to fill an empty relation.
+		if householdCMID == 0 && person.GetString("household") == "" {
+			if legacyHouseholdID, ok := person.Get("household_id").(float64); ok && legacyHouseholdID > 0 {
+				householdCMID = int(legacyHouseholdID)
 			}
 		}
 
-		// Primary childhood household
-		if hhIDs.PrimaryChildhoodID > 0 && person.GetString("primary_childhood_household") == "" {
-			if householdRecord, exists := householdsByID[hhIDs.PrimaryChildhoodID]; exists {
-				person.Set("primary_childhood_household", householdRecord.Id)
-				needsSave = true
-			}
-		}
-
-		// Alternate childhood household
-		if hhIDs.AlternateChildhoodID > 0 && person.GetString("alternate_childhood_household") == "" {
-			if householdRecord, exists := householdsByID[hhIDs.AlternateChildhoodID]; exists {
-				person.Set("alternate_childhood_household", householdRecord.Id)
-				needsSave = true
-			}
-		}
-
-		if needsSave {
-			if s.DryRun {
-				updated++
+		changed := 0
+		for _, rel := range []struct {
+			field string
+			cmID  int
+		}{
+			{"household", householdCMID},
+			{"primary_childhood_household", hhIDs.PrimaryChildhoodID},
+			{"alternate_childhood_household", hhIDs.AlternateChildhoodID},
+		} {
+			if rel.cmID <= 0 {
 				continue
 			}
-			if err := s.App.Save(person); err != nil {
-				slog.Error("Error updating person household relations", "personID", person.Id, "error", err)
-				errCount++
-			} else {
-				updated++
+			record, exists := householdsByID[rel.cmID]
+			if !exists || person.GetString(rel.field) == record.Id {
+				continue
 			}
+			if person.GetString(rel.field) != "" {
+				repointed++
+			}
+			person.Set(rel.field, record.Id)
+			changed++
+		}
+
+		if changed == 0 {
+			continue
+		}
+		if s.DryRun {
+			updated++
+			continue
+		}
+		if err := s.App.Save(person); err != nil {
+			slog.Error("Error updating person household relations", "personID", person.Id, "error", err)
+			errCount++
+		} else {
+			updated++
 		}
 	}
 
-	slog.Info("Updated person household relations", "updated", updated, "errors", errCount)
+	slog.Info("Updated person household relations", "updated", updated, "repointed", repointed, "errors", errCount)
 	return nil
 }
 
@@ -1968,4 +1966,27 @@ func (s *PersonsSync) mergePersonIDs(attendeeIDs, staffIDs []int) []int {
 	}
 
 	return merged
+}
+
+// personRelative is one entry of persons.relatives.
+type personRelative struct {
+	CMID       int  `json:"cm_id"`
+	IsGuardian bool `json:"is_guardian"`
+	IsPrimary  bool `json:"is_primary"`
+}
+
+// relativesJSON renders a person's relatives for persons.relatives, "" when there are none.
+func relativesJSON(refs []relativeRef) string {
+	if len(refs) == 0 {
+		return ""
+	}
+	out := make([]personRelative, 0, len(refs))
+	for _, r := range refs {
+		out = append(out, personRelative{CMID: r.ID, IsGuardian: r.IsGuardian, IsPrimary: r.IsPrimary})
+	}
+	raw, err := json.Marshal(out)
+	if err != nil {
+		return ""
+	}
+	return string(raw)
 }

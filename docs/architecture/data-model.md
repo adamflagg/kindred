@@ -113,7 +113,7 @@ Key Fields:
 - `session` (relation to `camp_sessions`)
 - `year` (int): Attendance year
 - `status_id`: Enrollment status (the solver treats `2` as active enrolled)
-- `enrollment_date`, `effective_date`: Registration timing (`effective_date` is the registration date)
+- `enrollment_date`, `effective_date`: Registration timing (`effective_date` is the registration date, and holds through ordinary status changes; CampMinder bulk actions overwrite it, see `campminder-date-fields.md`)
 - Unique index on (`person_id`, `year`, `session`)
 
 ### Bunk Plans
