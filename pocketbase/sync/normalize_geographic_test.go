@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -2117,7 +2118,9 @@ func TestAddressCityPopulatedInMappings(t *testing.T) {
 	}
 
 	lookup := &normalizationLookup{
-		city: map[string]normalizedEntry{"Oakland": {Canonical: "Oakland", Confidence: 1.0}},
+		city: map[string]normalizedEntry{
+			cityLookupKey("Oakland", "CA", "US"): {Canonical: "Oakland", Confidence: 1.0},
+		},
 		school: map[string]normalizedEntry{
 			"Riverside Elementary": {Canonical: "Riverside Elementary", Confidence: 0.9},
 		},
@@ -2828,4 +2831,231 @@ func TestLoadGeoOverrides_NewestYearWins(t *testing.T) {
 		t.Errorf("alias override = %q, want the newest year's value %q",
 			got, "Lakeview Elementary Academy")
 	}
+}
+
+// ============================================================================
+// Same-named cities in different states (bare-value key collision)
+// ============================================================================
+
+// collidingGeoServer mimics the real geo-normalize service's response shape:
+// a map keyed by the BARE city value, so two same-named values in one request
+// collapse to whichever the service handled last. The canonical is state-aware
+// ("<city>, <state>"), as the real normalizer's is.
+func collidingGeoServer(t *testing.T, requests *[][]valueWithContext) string {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req geoNormalizeRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Errorf("decoding request: %v", err)
+		}
+		if requests != nil {
+			*requests = append(*requests, req.Values)
+		}
+		resp := make(map[string]pythonNormalizedResult)
+		for _, v := range req.Values {
+			if req.Category == categoryCity {
+				resp[v.Value] = pythonNormalizedResult{Canonical: v.Value + ", " + v.State, Confidence: 1.0}
+			} else {
+				resp[v.Value] = pythonNormalizedResult{Canonical: v.Value, Confidence: 1.0}
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	t.Cleanup(server.Close)
+	return server.URL
+}
+
+func sameNamedCityAttendees() []attendeeGeoData {
+	return []attendeeGeoData{
+		{PersonPBID: "p1", City: "Clayton", AddressState: "CA", AddressCountry: "US"},
+		{PersonPBID: "p2", City: "Clayton", AddressState: "MO", AddressCountry: "US"},
+		{PersonPBID: "p3", City: "Lafayette", AddressState: "CA", AddressCountry: "US"},
+		{PersonPBID: "p4", City: "Lafayette", AddressState: "CO", AddressCountry: "US"},
+		{PersonPBID: "p5", City: "Lafayette", AddressState: "CA", AddressCountry: "US"},
+	}
+}
+
+// TestBuildNormalizationLookup_SameNamedCitiesKeepTheirOwnState: each address
+// normalizes against its own state, never another same-named city's.
+func TestBuildNormalizationLookup_SameNamedCitiesKeepTheirOwnState(t *testing.T) {
+	t.Parallel()
+	n := &NormalizeGeographicSync{APIURL: collidingGeoServer(t, nil)}
+
+	lookup, err := n.buildNormalizationLookup(context.Background(), sameNamedCityAttendees())
+	if err != nil {
+		t.Fatalf("buildNormalizationLookup: %v", err)
+	}
+
+	for _, d := range sameNamedCityAttendees() {
+		entry, ok := lookup.city[cityLookupKey(d.City, d.AddressState, d.AddressCountry)]
+		want := d.City + ", " + d.AddressState
+		if !ok || entry.Canonical != want {
+			t.Errorf("%s/%s: got %q (found=%v), want %q", d.City, d.AddressState, entry.Canonical, ok, want)
+		}
+	}
+}
+
+// TestBuildNormalizationLookup_CityResultsDeterministic: the same input in any
+// order gives the same lookup and the same requests, every run.
+func TestBuildNormalizationLookup_CityResultsDeterministic(t *testing.T) {
+	t.Parallel()
+	var firstLookup map[string]normalizedEntry
+	var firstRequests [][]valueWithContext
+	for run := 0; run < 25; run++ {
+		var requests [][]valueWithContext
+		apiURL := collidingGeoServer(t, &requests)
+		data := sameNamedCityAttendees()
+		// Rotate the input so each run sees a different order.
+		rot := run % len(data)
+		data = append(data[rot:], data[:rot]...)
+
+		lookup, err := (&NormalizeGeographicSync{APIURL: apiURL}).buildNormalizationLookup(context.Background(), data)
+		if err != nil {
+			t.Fatalf("run %d: %v", run, err)
+		}
+		if run == 0 {
+			firstLookup, firstRequests = lookup.city, requests
+			continue
+		}
+		if !reflect.DeepEqual(firstLookup, lookup.city) {
+			t.Fatalf("run %d: city lookup differs\nfirst: %v\n this: %v", run, firstLookup, lookup.city)
+		}
+		if !reflect.DeepEqual(firstRequests, requests) {
+			t.Fatalf("run %d: requests differ\nfirst: %v\n this: %v", run, firstRequests, requests)
+		}
+	}
+}
+
+// TestCityLookupKeyDistinguishesStateAndCountry guards the key itself.
+func TestCityLookupKeyDistinguishesStateAndCountry(t *testing.T) {
+	t.Parallel()
+	keys := map[string]bool{
+		cityLookupKey("Clayton", "CA", "US"): true,
+		cityLookupKey("Clayton", "MO", "US"): true,
+		cityLookupKey("Clayton", "CA", "CA"): true,
+		cityLookupKey("Clayton", "", ""):     true,
+	}
+	if len(keys) != 4 {
+		t.Errorf("expected 4 distinct keys, got %d", len(keys))
+	}
+}
+
+// TestCreatePersonSessionMappings_SameNamedCities: the per-person mapping uses
+// that person's own state's normalization.
+func TestCreatePersonSessionMappings_SameNamedCities(t *testing.T) {
+	t.Parallel()
+	n := &NormalizeGeographicSync{APIURL: collidingGeoServer(t, nil)}
+	data := sameNamedCityAttendees()
+	lookup, err := n.buildNormalizationLookup(context.Background(), data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	empty := map[string]map[string]string{}
+	mappings := n.createPersonSessionMappings(data, lookup, empty, empty, 2022)
+
+	got := map[string]string{}
+	for _, m := range mappings {
+		if m.category == categoryCity {
+			got[m.personPBID] = m.normalizedValue
+		}
+	}
+	want := map[string]string{
+		"p1": "Clayton, CA", "p2": "Clayton, MO",
+		"p3": "Lafayette, CA", "p4": "Lafayette, CO", "p5": "Lafayette, CA",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+// TestUpdatePersonsNormalized_SameNamedCities: persons.normalized_city follows
+// the person's own state. A person with no attendee row this year (a parent, a
+// sibling) has no country, so it falls back to the (city, state) match, but
+// only where every country agrees on one canonical. Before the lookup was keyed
+// by (city, state, country), the bare-city key reached these persons too.
+func TestUpdatePersonsNormalized_SameNamedCities(t *testing.T) {
+	t.Parallel()
+	app := newNormalizeGeographicSyncTestApp(t)
+	personsCol, err := app.FindCollectionByNameOrId("persons")
+	if err != nil {
+		t.Fatalf("find persons: %v", err)
+	}
+	newPerson := func(city, state, normalized string) *core.Record {
+		rec := core.NewRecord(personsCol)
+		rec.Set("year", 2026)
+		rec.Set("address_city", city)
+		rec.Set("address_state", state)
+		rec.Set("normalized_city", normalized)
+		if saveErr := app.Save(rec); saveErr != nil {
+			t.Fatalf("save person: %v", saveErr)
+		}
+		return rec
+	}
+	camperCA := newPerson("Clayton", "CA", "")
+	camperMO := newPerson("Clayton", "MO", "")
+	camperSpringUS := newPerson("Springfield", "IL", "")
+	camperSpringCA := newPerson("Springfield", "IL", "")
+	parentCA := newPerson("Clayton", "CA", "")                  // no attendee row
+	parentMO := newPerson("Clayton", "MO", "stale")             // no attendee row
+	parentSpring := newPerson("Springfield", "IL", "untouched") // no attendee row; countries disagree
+
+	data := []attendeeGeoData{
+		{PersonPBID: camperCA.Id, City: "Clayton", AddressState: "CA", AddressCountry: "US"},
+		{PersonPBID: camperMO.Id, City: "Clayton", AddressState: "MO", AddressCountry: "US"},
+		{PersonPBID: camperSpringUS.Id, City: "Springfield", AddressState: "IL", AddressCountry: "US"},
+		{PersonPBID: camperSpringCA.Id, City: "Springfield", AddressState: "IL", AddressCountry: "CA"},
+	}
+	n := &NormalizeGeographicSync{App: app, APIURL: countryAwareGeoServer(t)}
+	lookup, err := n.buildNormalizationLookup(context.Background(), data)
+	if err != nil {
+		t.Fatalf("buildNormalizationLookup: %v", err)
+	}
+	if err := n.updatePersonsNormalized(context.Background(), lookup, data, 2026); err != nil {
+		t.Fatalf("updatePersonsNormalized: %v", err)
+	}
+
+	want := map[string]string{
+		camperCA.Id:       "Clayton, CA",
+		camperMO.Id:       "Clayton, MO",
+		camperSpringUS.Id: "Springfield, IL",
+		camperSpringCA.Id: "Springfield, IL (CA)",
+		parentCA.Id:       "Clayton, CA",
+		parentMO.Id:       "Clayton, MO",
+		parentSpring.Id:   "untouched",
+	}
+	for id, wantCity := range want {
+		rec, findErr := app.FindRecordById("persons", id)
+		if findErr != nil {
+			t.Fatalf("find %s: %v", id, findErr)
+		}
+		if got := rec.GetString("normalized_city"); got != wantCity {
+			t.Errorf("%s/%s: normalized_city = %q, want %q",
+				rec.GetString("address_city"), rec.GetString("address_state"), got, wantCity)
+		}
+	}
+}
+
+// countryAwareGeoServer is collidingGeoServer whose canonical also names a
+// non-US country, so two countries can disagree on one (city, state).
+func countryAwareGeoServer(t *testing.T) string {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req geoNormalizeRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Errorf("decoding request: %v", err)
+		}
+		resp := make(map[string]pythonNormalizedResult)
+		for _, v := range req.Values {
+			canonical := v.Value + ", " + v.State
+			if v.Country != "" && v.Country != "US" {
+				canonical += " (" + v.Country + ")"
+			}
+			resp[v.Value] = pythonNormalizedResult{Canonical: canonical, Confidence: 1.0}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	t.Cleanup(server.Close)
+	return server.URL
 }

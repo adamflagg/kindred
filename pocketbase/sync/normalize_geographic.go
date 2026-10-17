@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/pocketbase/dbx"
@@ -48,6 +49,7 @@ type NormalizeGeographicSync struct {
 	Stats          Stats
 	SyncSuccessful bool
 	ProcessedKeys  map[string]bool // Track processed keys for orphan detection
+	APIURL         string          // FastAPI base URL; empty means the configured default (tests point it at a stub)
 }
 
 // attendeeGeoData holds geographic data for one attendee
@@ -85,6 +87,14 @@ func NewNormalizeGeographicSync(app core.App) *NormalizeGeographicSync {
 		DryRun:        false, // Default: write to database
 		ProcessedKeys: make(map[string]bool),
 	}
+}
+
+// apiBaseURL returns the FastAPI base URL this sync posts to.
+func (n *NormalizeGeographicSync) apiBaseURL() string {
+	if n.APIURL != "" {
+		return n.APIURL
+	}
+	return getAPIURL()
 }
 
 // GetStats returns the current stats
@@ -572,7 +582,8 @@ type normalizedEntry struct {
 
 // normalizationLookup maps original values to normalized entries per category
 type normalizationLookup struct {
-	city         map[string]normalizedEntry // original → {canonical, confidence}
+	city         map[string]normalizedEntry // cityLookupKey(city, state, country) → {canonical, confidence}
+	cityByState  map[string]normalizedEntry // cityLookupKey(city, state, "") → entry, only where every country agrees
 	school       map[string]normalizedEntry
 	congregation map[string]normalizedEntry
 }
@@ -642,16 +653,9 @@ func (n *NormalizeGeographicSync) normalizeWithPython(
 	}
 
 	// Build context array for API request
-	contextValues := make([]valueWithContext, 0, len(valuesWithContext))
-	for key, geoCtx := range valuesWithContext {
-		contextValues = append(contextValues, valueWithContext{
-			Value:   key.Value,
-			State:   geoCtx.State,
-			Country: geoCtx.Country,
-		})
-	}
+	contextValues := sortedContextValues(valuesWithContext)
 
-	apiURL := getAPIURL()
+	apiURL := n.apiBaseURL()
 	results, err := callGeoNormalizeAPI(ctx, apiURL, category, contextValues)
 	if err != nil {
 		return nil, err
@@ -664,6 +668,98 @@ func (n *NormalizeGeographicSync) normalizeWithPython(
 	}
 
 	return result, nil
+}
+
+// sortedContextValues flattens the unique-value map into a request body in a
+// fixed order. Go map iteration is random, so without the sort two identical
+// runs would send differently ordered requests.
+func sortedContextValues(values map[geoLookupKey]geoContext) []valueWithContext {
+	out := make([]valueWithContext, 0, len(values))
+	for key, geoCtx := range values {
+		out = append(out, valueWithContext{Value: key.Value, State: geoCtx.State, Country: geoCtx.Country})
+	}
+	slices.SortFunc(out, func(a, b valueWithContext) int {
+		return strings.Compare(
+			a.Value+"\x00"+a.State+"\x00"+a.Country,
+			b.Value+"\x00"+b.State+"\x00"+b.Country,
+		)
+	})
+	return out
+}
+
+// cityLookupKey is the identity of a city in the normalization lookup. The
+// normalizer's response is keyed on the bare city value, so two same-named
+// cities in different states cannot share one response; the lookup is keyed
+// on (city, state, country) instead.
+func cityLookupKey(city, state, country string) string {
+	return city + "\x00" + state + "\x00" + country
+}
+
+// normalizeCitiesByContext normalizes cities one (state, country) group per
+// request, so every response is keyed on a bare value that is unique within
+// its request, and returns the entries keyed by cityLookupKey. Groups and the
+// values inside them are sent in sorted order, so the result does not depend
+// on map iteration order. The service clusters unknown spellings within one
+// request, so that clustering now runs per (state, country) group.
+func (n *NormalizeGeographicSync) normalizeCitiesByContext(
+	ctx context.Context, cities map[geoLookupKey]geoContext,
+) (map[string]normalizedEntry, error) {
+	result := make(map[string]normalizedEntry)
+	if len(cities) == 0 {
+		return result, nil
+	}
+
+	groups := make(map[geoContext]map[geoLookupKey]geoContext)
+	for key, geoCtx := range cities {
+		if groups[geoCtx] == nil {
+			groups[geoCtx] = make(map[geoLookupKey]geoContext)
+		}
+		groups[geoCtx][key] = geoCtx
+	}
+	contexts := make([]geoContext, 0, len(groups))
+	for geoCtx := range groups {
+		contexts = append(contexts, geoCtx)
+	}
+	slices.SortFunc(contexts, func(a, b geoContext) int {
+		return strings.Compare(a.State+"\x00"+a.Country, b.State+"\x00"+b.Country)
+	})
+
+	apiURL := n.apiBaseURL()
+	for _, geoCtx := range contexts {
+		results, err := callGeoNormalizeAPI(ctx, apiURL, categoryCity, sortedContextValues(groups[geoCtx]))
+		if err != nil {
+			return nil, err
+		}
+		for original, normalized := range results {
+			result[cityLookupKey(original, geoCtx.State, geoCtx.Country)] = normalizedEntry(normalized)
+		}
+	}
+	return result, nil
+}
+
+// cityStateIndex maps each (city, state) to its entry when every country seen
+// for it normalized to the same canonical, and omits it otherwise. It serves
+// persons with no attendee row this year, whose country is unknown.
+func cityStateIndex(
+	cities map[geoLookupKey]geoContext, lookup map[string]normalizedEntry,
+) map[string]normalizedEntry {
+	index := make(map[string]normalizedEntry)
+	ambiguous := make(map[string]bool)
+	for key := range cities {
+		entry, ok := lookup[cityLookupKey(key.Value, key.State, key.Country)]
+		if !ok {
+			continue
+		}
+		k := cityLookupKey(key.Value, key.State, "")
+		if prev, seen := index[k]; seen && prev.Canonical != entry.Canonical {
+			ambiguous[k] = true
+		}
+		index[k] = entry
+	}
+	for k := range ambiguous {
+		delete(index, k)
+	}
+	return index
 }
 
 // buildNormalizationLookup builds lookup maps from unique values
@@ -713,11 +809,12 @@ func (n *NormalizeGeographicSync) buildNormalizationLookup(
 	}
 
 	if len(uniqueCities) > 0 {
-		result, err := n.normalizeWithPython(ctx, uniqueCities, categoryCity)
+		result, err := n.normalizeCitiesByContext(ctx, uniqueCities)
 		if err != nil {
 			return nil, fmt.Errorf("normalizing cities: %w", err)
 		}
 		lookup.city = result
+		lookup.cityByState = cityStateIndex(uniqueCities, result)
 	}
 
 	if len(uniqueSchools) > 0 {
@@ -774,8 +871,9 @@ func (n *NormalizeGeographicSync) createPersonSessionMappings(
 
 		// City mapping
 		if d.City != "" {
-			normalized, confidence := resolveValue(
-				d.City, categoryCity, lookup.city, aliasOverrides, mergeOverrides)
+			normalized, confidence := resolveValueKeyed(
+				d.City, cityLookupKey(d.City, d.AddressState, d.AddressCountry),
+				categoryCity, lookup.city, aliasOverrides, mergeOverrides)
 			if normalized != "" {
 				mappings = append(mappings, &personSessionMapping{
 					personPBID:      d.PersonPBID,
@@ -1006,7 +1104,11 @@ func (n *NormalizeGeographicSync) updatePersonsNormalized(
 	// Build person PBID → raw congregation map from attendee data
 	// (congregation comes from person_custom_values, not persons table)
 	congregationByPerson := make(map[string]string)
+	geoByPerson := make(map[string]*attendeeGeoData)
 	for i := range attendeeData {
+		if _, seen := geoByPerson[attendeeData[i].PersonPBID]; !seen {
+			geoByPerson[attendeeData[i].PersonPBID] = &attendeeData[i]
+		}
 		if attendeeData[i].Congregation != "" {
 			congregationByPerson[attendeeData[i].PersonPBID] = attendeeData[i].Congregation
 		}
@@ -1042,7 +1144,20 @@ func (n *NormalizeGeographicSync) updatePersonsNormalized(
 
 			// City
 			if city := record.GetString("address_city"); city != "" {
-				if entry, ok := lookup.city[city]; ok {
+				// Country is not a persons column; take it from the attendee row
+				// the mapping step used, so both resolve the same key. A person
+				// with no attendee row this year (a parent, a sibling) has no
+				// country, so it falls back to the (city, state) match, used
+				// only when every country agrees on one canonical.
+				state := record.GetString("address_state")
+				entry, ok := normalizedEntry{}, false
+				if g := geoByPerson[record.Id]; g != nil && g.City == city {
+					entry, ok = lookup.city[cityLookupKey(city, state, g.AddressCountry)]
+				}
+				if !ok {
+					entry, ok = lookup.cityByState[cityLookupKey(city, state, "")]
+				}
+				if ok {
 					if record.GetString("normalized_city") != entry.Canonical {
 						record.Set("normalized_city", entry.Canonical)
 						needsUpdate = true
@@ -1150,6 +1265,16 @@ func resolveValue(
 	rawValue string, category string, lookupMap map[string]normalizedEntry,
 	aliasOverrides, mergeOverrides map[string]map[string]string,
 ) (normalized string, confidence float64) {
+	return resolveValueKeyed(rawValue, rawValue, category, lookupMap, aliasOverrides, mergeOverrides)
+}
+
+// resolveValueKeyed is resolveValue with the fuzzy-lookup key given separately
+// from the raw value (aliases match the raw value; cities look up by
+// cityLookupKey so each address resolves against its own state).
+func resolveValueKeyed(
+	rawValue, lookupKey string, category string, lookupMap map[string]normalizedEntry,
+	aliasOverrides, mergeOverrides map[string]map[string]string,
+) (normalized string, confidence float64) {
 	lowerRaw := strings.ToLower(rawValue)
 
 	// 1. Check alias override first
@@ -1168,7 +1293,7 @@ func resolveValue(
 	}
 
 	// 2. Fall back to Python normalizer result (preserving Python confidence)
-	if entry, ok := lookupMap[rawValue]; ok && entry.Canonical != "" {
+	if entry, ok := lookupMap[lookupKey]; ok && entry.Canonical != "" {
 		normalized = entry.Canonical
 		confidence = entry.Confidence
 	} else {
