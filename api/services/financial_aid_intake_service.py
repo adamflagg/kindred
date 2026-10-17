@@ -183,7 +183,13 @@ class IntakeReport:
     registration_ask_added: int = 0
     registration_ask_ambiguous: int = 0
     registration_ask_unattributed: int = 0
+    # Why the run did nothing, "" when it ran: a season below AID_INTAKE_FLOOR_YEAR is never taken in.
+    skipped_reason: str = ""
 
+
+# Owner ruling: "2024 and prior dont need aid lists". Intake creates and changes nothing for an earlier season;
+# the aid-form mirror (the Go financial_aid_applications sync) still refreshes it.
+AID_INTAKE_FLOOR_YEAR: Final = 2025
 
 INTAKE_REASON: Final = "intake rebuild"
 _CLOSED_STATUSES = frozenset({STATUS_DUPLICATE, STATUS_WITHDRAWN})
@@ -541,6 +547,9 @@ class FinancialAidIntakeService:
         self._store = store
 
     async def build(self, year: int) -> IntakeReport:
+        if year < AID_INTAKE_FLOOR_YEAR:
+            logger.info("Financial-aid intake skipped: year < floor year=%s floor=%s", year, AID_INTAKE_FLOOR_YEAR)
+            return IntakeReport(year, 0, 0, 0, 0, 0, 0, 0, 0, 0, skipped_reason="year below intake floor")
         async with season_lock(year):
             return await self._build(year)
 
