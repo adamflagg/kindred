@@ -456,6 +456,22 @@ func ResolveUnifiedSyncServices(service string, includeCustomValues, isSyncedSea
 	return GetDefaultUnifiedSyncJobs(includeCustomValues, isSyncedSeason)
 }
 
+// subtractJobs is jobs without the ones in skip, in jobs' own order. It applies a historical
+// replay's skip= to the list ResolveUnifiedSyncServices resolved, on the immediate and queued
+// paths alike. A skipped name the list does not hold is a no-op. With no skip it returns jobs.
+func subtractJobs(jobs, skip []string) []string {
+	if len(skip) == 0 {
+		return jobs
+	}
+	kept := make([]string, 0, len(jobs))
+	for _, job := range jobs {
+		if !slices.Contains(skip, job) {
+			kept = append(kept, job)
+		}
+	}
+	return kept
+}
+
 // Service defines the interface for sync services
 type Service interface {
 	Sync(ctx context.Context) error
@@ -587,6 +603,7 @@ type QueuedSync struct {
 	IncludeCustomValues bool           `json:"include_custom_values"`
 	Debug               bool           `json:"debug"`
 	DryRun              bool           `json:"dry_run"`
+	Skip                []string       `json:"skip,omitempty"` // unified replay only: jobs skip= leaves out
 	Options             map[string]any `json:"options,omitempty"`
 	QueuedAt            time.Time      `json:"queued_at"`
 	RequestedBy         string         `json:"requested_by"`
@@ -3259,6 +3276,12 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		}
 		overrides = o.replayOverrides(opts.Year, opts.Debug)
 
+		// A season outside the synced pair keeps its persons and households (replay_orphans.go).
+		// A run of N-1 sweeps as its nightly pass does.
+		if !syncedSeasonsInclude(opts.Year) {
+			keepReplayOrphans(overrides)
+		}
+
 		slog.Info("Running sync with year override", "year", opts.Year)
 	}
 
@@ -3407,6 +3430,14 @@ func generateQueueID() string {
 func (o *Orchestrator) EnqueueUnifiedSync(
 	year int, service string, includeCustomValues, debug, dryRun bool, requestedBy string,
 ) (*QueuedSync, error) {
+	return o.EnqueueUnifiedSyncWithSkip(year, service, includeCustomValues, debug, dryRun, nil, requestedBy)
+}
+
+// EnqueueUnifiedSyncWithSkip is EnqueueUnifiedSync for a historical replay that leaves out the
+// jobs in skip (parseSkipParam's sorted, de-duplicated list; nil for none).
+func (o *Orchestrator) EnqueueUnifiedSyncWithSkip(
+	year int, service string, includeCustomValues, debug, dryRun bool, skip []string, requestedBy string,
+) (*QueuedSync, error) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 
@@ -3415,12 +3446,15 @@ func (o *Orchestrator) EnqueueUnifiedSync(
 	// for the same year/service as an already-queued wet request would silently merge into
 	// that wet item and inherit its DryRun=false -- the caller would be handed a queue
 	// position for what they asked to be a dry run, and it would run wet anyway (kindred#2334).
+	// Skip is part of it for the same reason: a replay that leaves persons out must not merge
+	// into one that runs it. Both lists come sorted from parseSkipParam, so Equal compares sets.
 	for i := range o.pendingUnifiedSyncs {
 		if o.pendingUnifiedSyncs[i].Year == year &&
 			o.pendingUnifiedSyncs[i].Type == "unified" &&
 			o.pendingUnifiedSyncs[i].Service == service &&
 			o.pendingUnifiedSyncs[i].IncludeCustomValues == includeCustomValues &&
-			o.pendingUnifiedSyncs[i].DryRun == dryRun {
+			o.pendingUnifiedSyncs[i].DryRun == dryRun &&
+			slices.Equal(o.pendingUnifiedSyncs[i].Skip, skip) {
 			// Return existing item instead of creating duplicate
 			return &o.pendingUnifiedSyncs[i], nil
 		}
@@ -3435,6 +3469,7 @@ func (o *Orchestrator) EnqueueUnifiedSync(
 		IncludeCustomValues: includeCustomValues,
 		Debug:               debug,
 		DryRun:              dryRun,
+		Skip:                skip,
 		QueuedAt:            time.Now(),
 		RequestedBy:         requestedBy,
 	}

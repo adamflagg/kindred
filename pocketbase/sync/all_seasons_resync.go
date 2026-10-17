@@ -70,10 +70,17 @@ type orphanKeeper interface {
 
 func (b *BaseSyncService) setKeepOrphans(keep bool) { b.keepOrphans = keep }
 
-// keptOrphans reports, and logs, a sweep skipped because this run keeps its orphans.
-func (b *BaseSyncService) keptOrphans(entityName string) bool {
+// keptOrphans reports, and logs, a sweep skipped because this run keeps its orphans. orphans
+// counts the rows the sweep would have deleted; only a historical replay calls it
+// (keepOrphansForReplay, replay_orphans.go), because the count costs the sweep's read-only scan
+// and the hourly run must not pay that every hour.
+func (b *BaseSyncService) keptOrphans(entityName string, orphans func() (int, error)) bool {
 	if !b.keepOrphans {
 		return false
+	}
+	if b.countKeptOrphans {
+		logReplayKeptOrphans(entityName, b.SyncSuccessful, orphans)
+		return true
 	}
 	slog.Info("Keeping orphans: this run (the all-seasons re-sync, or an hourly run) deletes no rows of this kind",
 		"entity", entityName)

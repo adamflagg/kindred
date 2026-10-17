@@ -410,7 +410,8 @@ of the other queues:
   pass. The weekly globals and the custom-values pass write other tables, so it runs beside them.
 - **Its orphan sweeps are off.** Sessions, attendees and persons keep their orphans on an hourly run
   (`hourlyKeepOrphanJobs`, through `setKeepOrphans`, the all-seasons re-sync's mechanism) and sweep on
-  every other run: the nightly, a staff run, a replay. A short but well-formed feed passes every sweep
+  every other run: the nightly and a staff run. A historical replay keeps the session-group,
+  session, persons and households sweeps off too (below). A short but well-formed feed passes every sweep
   guard, and the cascade behind a deleted row takes locked group members, original bunk requests and a
   season's placements with it. The switch is set once the run holds the job's slot and cleared by the
   run itself (`startSingleSync`), so a refused start or a waiter that stops waiting cannot leave it on or
@@ -449,6 +450,21 @@ N−1, and returns 400 for any other year (`viewedSeason`, `sync/api.go`); the u
 `/api/custom/sync/run` treats a year outside the pair as a historical replay. The sync status
 payload reports the season as `_configured_year` (the primary), `_synced_years` and
 `_season_source` (`rule` or `override`).
+
+A historical replay differs from a synced season's run in two more ways:
+
+- **It deletes no session groups, sessions, persons or households** (`sync/replay_orphans.go`),
+  the same keep set as the all-seasons re-sync below. Those sweeps scan read-only and log how many
+  rows they kept ("Keeping orphans on a historical replay"). CampMinder's answer for an old season
+  drifts from what Kindred stored (merges, purges, staff-only people the feed no longer returns),
+  and a deleted session takes that season's bunk assignments, bunk plans and lodging rows with it,
+  a deleted person its bunk assignments, aid applications, demographics, original bunk requests
+  and custom values, a deleted household its `family_camp_*` rows. Every other sweep runs, the
+  attendees sweep included.
+- **`skip=<job,job>` leaves jobs out**, on the immediate and the queued path alike (`subtractJobs`).
+  Every name must be a registry job, or the request is a 400. The dry-run check judges the
+  post-skip list, and the queue's dedupe key includes it. A run of N or N−1 refuses `skip=` with
+  400: it is the live data's refresh and keeps its full job list.
 
 ### Financial transactions: rolling seasons and the one-off backfill
 

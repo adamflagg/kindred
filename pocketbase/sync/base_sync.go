@@ -97,6 +97,10 @@ type BaseSyncService struct {
 	// older season never rebuilds (all_seasons_resync.go). Set through setKeepOrphans, never
 	// from a request.
 	keepOrphans bool
+	// countKeptOrphans, set only with keepOrphans, makes a kept sweep scan read-only and log how
+	// many rows it kept. A historical replay sets both (keepOrphansForReplay); the hourly run and
+	// the all-seasons pass skip the scan.
+	countKeptOrphans bool
 }
 
 // NewBaseSyncService creates a new base sync service
@@ -310,7 +314,10 @@ func (b *BaseSyncService) deleteOrphans(
 	filter string,
 	guard *OrphanSweepGuard,
 ) error {
-	if b.keptOrphans(entityName) {
+	if b.keptOrphans(entityName, func() (int, error) {
+		orphans, _, _, err := b.collectOrphans(collection, getIDFunc, entityName, filter)
+		return len(orphans), err
+	}) {
 		return nil
 	}
 
@@ -516,7 +523,15 @@ func (b *BaseSyncService) DeleteOrphansFromPreloaded(
 	preloadedRecords map[any]*core.Record,
 	entityName string,
 ) error {
-	if b.keptOrphans(entityName) {
+	if b.keptOrphans(entityName, func() (int, error) {
+		n := 0
+		for compositeKey := range preloadedRecords {
+			if keyStr, ok := compositeKey.(string); ok && !b.ProcessedKeys[keyStr] {
+				n++
+			}
+		}
+		return n, nil
+	}) {
 		return nil
 	}
 

@@ -1833,9 +1833,22 @@ func (s *PersonsSync) updatePersonHouseholdRelations(
 // feed failed, and this sweep would delete it. Hence the one guard this function
 // does take.
 func (s *PersonsSync) deleteHouseholdOrphans(year int, processedIDs map[int]bool) error {
-	// This sweep is persons' own, outside BaseSyncService, so it honors the all-seasons
-	// re-sync's keep-orphans switch itself (all_seasons_resync.go).
-	if s.keptOrphans("household") {
+	// This sweep is persons' own, outside BaseSyncService, so it honors the keep-orphans switch
+	// itself: the all-seasons re-sync's and the hourly run's (all_seasons_resync.go), and a
+	// historical replay's, which counts what it keeps (replay_orphans.go).
+	if s.keptOrphans("household", func() (int, error) {
+		records, err := s.App.FindRecordsByFilter("households", fmt.Sprintf("year = %d", year), "", 0, 0)
+		if err != nil {
+			return 0, fmt.Errorf("querying households for orphan count: %w", err)
+		}
+		n := 0
+		for _, record := range records {
+			if cmID, ok := record.Get("cm_id").(float64); ok && cmID != 0 && !processedIDs[int(cmID)] {
+				n++
+			}
+		}
+		return n, nil
+	}) {
 		return nil
 	}
 	if s.skipSweepForStaffFetchFailure("households",
