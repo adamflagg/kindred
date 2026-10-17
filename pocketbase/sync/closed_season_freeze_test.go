@@ -156,8 +156,8 @@ func TestClosedSeasonNewPersonIsLinkedToTheSeasonsHousehold(t *testing.T) {
 
 // A closed season creates no household that only an EXISTING person names (today's household for
 // someone the season already has), and creates, as CampMinder gives it, one a NEW person needs. An
-// open season creates both. Either way an EXISTING household row still takes this run's fields
-// (unchanged, and outside the freeze).
+// open season creates both. An EXISTING household row keeps, in a closed season, every field it
+// already holds and fills only a blank one (owner ruling, option A); an open season overwrites.
 func TestClosedSeasonCreatesOnlyTheHouseholdsNewPersonsNeed(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -183,7 +183,7 @@ func TestClosedSeasonCreatesOnlyTheHouseholdsNewPersonsNeed(t *testing.T) {
 			}
 			existing := s.preloadExistingHouseholds(fmt.Sprintf("year = %d", tc.year), tc.year)
 			payload := map[int]map[string]any{
-				7001: {"ID": float64(7001), "Greeting": "today's greeting"},
+				7001: {"ID": float64(7001), "Greeting": "today's greeting", "MailingTitle": "The Johnson Family"},
 				7002: {"ID": float64(7002), "Greeting": "today's household of a person the season has"},
 				7003: {"ID": float64(7003), "Greeting": "the household of a person new to the season"},
 			}
@@ -213,9 +213,19 @@ func TestClosedSeasonCreatesOnlyTheHouseholdsNewPersonsNeed(t *testing.T) {
 			if err != nil {
 				t.Fatalf("find 7001: %v", err)
 			}
-			if rec.GetString("greeting") != "today's greeting" {
-				t.Errorf("existing household greeting = %q; the freeze must leave field updates as they were",
-					rec.GetString("greeting"))
+			wantGreeting := "today's greeting"
+			if tc.closed {
+				wantGreeting = "stored last run"
+				if s.freeze.householdOverwritesRefused != 1 || s.freeze.householdBlanksFilled != 1 {
+					t.Errorf("household overwrites refused %d, blanks filled %d; want 1 and 1",
+						s.freeze.householdOverwritesRefused, s.freeze.householdBlanksFilled)
+				}
+			}
+			if rec.GetString("greeting") != wantGreeting {
+				t.Errorf("existing household greeting = %q, want %q", rec.GetString("greeting"), wantGreeting)
+			}
+			if rec.GetString("mailing_title") != "The Johnson Family" {
+				t.Errorf("existing household's blank mailing_title = %q, want it filled", rec.GetString("mailing_title"))
 			}
 		})
 	}
@@ -406,5 +416,114 @@ func TestClosedSeasonFreezeReachesEveryPathThatReReadsAClosedSeason(t *testing.T
 		if daily.seasonClosed(year) {
 			t.Errorf("the daily window's %d is treated as closed", year)
 		}
+	}
+}
+
+// newFreezePersonsApp is newPersonsTestApp plus the as-of-season and correction fields the
+// owner's closed-season rule (option A) is pinned on.
+func newFreezePersonsApp(t *testing.T) core.App {
+	t.Helper()
+	app := newPersonsTestApp(t)
+	col, err := app.FindCollectionByNameOrId("persons")
+	if err != nil {
+		t.Fatalf("find persons: %v", err)
+	}
+	col.Fields.Add(&core.NumberField{Name: "grade"})
+	for _, f := range []string{"grade_name", "gender", "address_city", "address_state", "school"} {
+		col.Fields.Add(&core.TextField{Name: f})
+	}
+	if saveErr := app.Save(col); saveErr != nil {
+		t.Fatalf("add fields: %v", saveErr)
+	}
+	return app
+}
+
+// A closed-season re-read of an EXISTING persons row (owner ruling, option A) always takes
+// CampMinder's corrections -- name, gender, birthdate, grade -- and keeps every as-of-that-season
+// field it already holds, filling one only when it is blank. The "any field differs, write every
+// field" update path must not carry a kept field past the rule. An open season overwrites all.
+func TestClosedSeasonReReadCorrectsIdentityButKeepsAsOfSeasonFields(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name       string
+		year       int
+		closed     bool
+		storedCity string
+		wantCity   string
+		wantSchool string
+	}{
+		{"closed season keeps a stored city", 2019, true, "Springfield", "Springfield", "Lincoln Elementary"},
+		{"closed season fills a blank city", 2019, true, "", "Shelbyville", "Lincoln Elementary"},
+		{"open season overwrites everything", 2026, false, "Springfield", "Shelbyville", "Roosevelt Middle"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := newFreezePersonsApp(t)
+			id := saveRecord(t, app, "persons", map[string]any{
+				"cm_id": 5001, "year": tc.year, "first_name": "Emma", "last_name": "Johnson", "is_camper": true,
+				"grade": 0, "grade_name": "", "gender": "F",
+				"address_city": tc.storedCity, "address_state": "", "school": "Lincoln Elementary",
+			})
+
+			s := NewPersonsSync(app, nil)
+			existing := s.preloadExistingPersons(fmt.Sprintf("year = %d", tc.year), tc.year)
+			if tc.closed {
+				s.freeze = startClosedSeasonFreeze(tc.year, existing)
+			}
+			billing := map[string]any{"BillingAddress": map[string]any{"City": "Shelbyville", "State": "OR"}}
+			payload := map[string]any{
+				"ID":       float64(5001),
+				"Name":     map[string]any{"First": "Emma", "Last": "Johnson-Smith"},
+				"GenderID": float64(1),
+				"CamperDetails": map[string]any{
+					"CampGradeID": float64(-1), "CampGradeName": "Toddler", "School": "Roosevelt Middle",
+				},
+				"Households": map[string]any{"PrincipalHousehold": billing, "PrimaryChildhoodHousehold": billing},
+			}
+			if err := s.processPerson(payload, true, existing, map[string]string{}, map[int]string{}, tc.year); err != nil {
+				t.Fatalf("processPerson: %v", err)
+			}
+
+			got := reload(t, app, id)
+			// Corrections, closed or open.
+			if got.GetInt("grade") != -2 || got.GetString("grade_name") != "Toddler" {
+				t.Errorf("grade = %d %q, want -2 Toddler: a stored 0 is the old cap, not a value",
+					got.GetInt("grade"), got.GetString("grade_name"))
+			}
+			if got.GetString("gender") != "M" {
+				t.Errorf("gender = %q, want the corrected M", got.GetString("gender"))
+			}
+			if got.GetString("last_name") != "Johnson-Smith" {
+				t.Errorf("last_name = %q, want the corrected Johnson-Smith", got.GetString("last_name"))
+			}
+			// As of that season: kept when stored, filled when blank, overwritten when open.
+			if got.GetString("address_city") != tc.wantCity {
+				t.Errorf("address_city = %q, want %q", got.GetString("address_city"), tc.wantCity)
+			}
+			if got.GetString("address_state") != "OR" {
+				t.Errorf("address_state = %q, want the blank filled with OR", got.GetString("address_state"))
+			}
+			if got.GetString("school") != tc.wantSchool {
+				t.Errorf("school = %q, want %q", got.GetString("school"), tc.wantSchool)
+			}
+
+			if !tc.closed {
+				return
+			}
+			wantRefused, wantFilled := 2, 1 // city + school kept; state filled
+			if tc.storedCity == "" {
+				wantRefused, wantFilled = 1, 2 // school kept; city + state filled
+			}
+			if s.freeze.correctionsApplied != 4 {
+				t.Errorf("correctionsApplied = %d, want 4 (last_name, gender, grade, grade_name)",
+					s.freeze.correctionsApplied)
+			}
+			if s.freeze.overwritesRefused != wantRefused {
+				t.Errorf("overwritesRefused = %d, want %d", s.freeze.overwritesRefused, wantRefused)
+			}
+			if s.freeze.blanksFilled != wantFilled {
+				t.Errorf("blanksFilled = %d, want %d", s.freeze.blanksFilled, wantFilled)
+			}
+		})
 	}
 }

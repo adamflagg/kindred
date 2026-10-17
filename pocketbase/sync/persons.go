@@ -454,6 +454,10 @@ func (s *PersonsSync) processHouseholds(
 			continue
 		}
 
+		// A closed season keeps an existing household's fields, filling only blanks.
+		if existing := existingHouseholds[householdID]; existing != nil {
+			s.freeze.keepHouseholdFields(existing, pbData, s.FieldEquals)
+		}
 		err = s.processHouseholdRecord(householdID, pbData, existingHouseholds, compareFields, &householdStats)
 		if err != nil {
 			slog.Error("Error processing household", "id", householdID, "error", err)
@@ -605,8 +609,11 @@ func (s *PersonsSync) processPerson(
 		"tags"}
 
 	if existing != nil {
-		// A closed season keeps an existing row's legacy household_id (closed_season_freeze.go).
+		// A closed season keeps an existing row's legacy household_id and as-of-season fields, and
+		// takes CampMinder's corrections (closed_season_freeze.go). Before the compare, so the
+		// write-everything update below cannot carry a kept field.
 		s.freeze.keepLegacyHouseholdID(existing, pbData)
+		s.freeze.keepPersonFields(existing, pbData, s.FieldEquals)
 
 		// Check if update is needed
 		needsUpdate := false
