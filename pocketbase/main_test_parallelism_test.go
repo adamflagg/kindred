@@ -422,6 +422,8 @@ var serialGroups = []struct {
 			"TestScheduledHourlyRunsTheStaffQueueAfterwards",
 			"TestStaffRunsQueueWhileTheHourlyRuns",
 			"TestEveryScheduledRunStartsTheStaffQueueAfterwards",
+			"TestHourlyRunSweepsNothing",
+			"TestNightlyRunStillSweeps",
 		},
 	},
 	{
