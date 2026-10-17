@@ -77,6 +77,9 @@ import { useVelocityPace } from '../../../components/velocity/useVelocityPace'
 import { genderNote } from '../../../components/metrics/genderNotes'
 import { MetricsBusy, MetricsLoadError } from '../../../components/metrics/MetricsQueryGuard'
 import { DELTA_INK, deltaInk } from '../../../utils/deltaTokens'
+import { useLiveSync } from '../../../hooks/useLiveSync'
+import { liveLabelLines, livePoint } from '../../../components/velocity/velocityLive'
+import { velocityLiveDot } from '../../../components/velocity/velocityLiveDot'
 
 type VelocityViewMode = 'gross' | 'net' | 'delta'
 
@@ -85,6 +88,11 @@ const VIEW_MODE_LABELS: Record<VelocityViewMode, string> = {
   net: 'Net Cumulative',
   delta: 'Weekly Delta',
 }
+
+/** PR 5b: the current line's colour, which the live segment continues. */
+const CURRENT_LINE = 'hsl(160, 100%, 35%)'
+/** PR 5b: the live segment's legend entry (the dashed part after the 3 a.m. count). */
+const LIVE_LINE_NAME = 'since the 3 a.m. count (hourly sync)'
 
 const Y_AXIS_LABELS: Record<VelocityViewMode, string> = {
   gross: 'Gross Enrollment',
@@ -130,6 +138,9 @@ export default function VelocityPage() {
     selectedPriorYears: controls.selectedPriorYears,
   })
   const { phaseLines, comparisonYear } = chartData
+  // PR 5b: the count after the 3 a.m. stored point, drawn only after a fresh hourly sync (velocityLive)
+  const { sync, now } = useLiveSync(currentYear)
+  const live = useMemo(() => (data ? livePoint(data, sync, now) : null), [data, sync, now])
 
   // Separate zoom state per chart to avoid cross-contamination (#510)
   const weeklyZoom = useChartZoom(chartData.weeklyChartData.length)
@@ -163,7 +174,8 @@ export default function VelocityPage() {
     const currentLatest = currentWeekly.at(-1)
     if (!currentLatest) return null
     const currentMaxWeek = currentLatest.week_number
-    const currentEnrolled = currentLatest.enrolled
+    // #107: the live count when it is drawn; the 3 a.m. count otherwise (#111)
+    const currentEnrolled = live?.enrolled ?? currentLatest.enrolled
 
     // One comparison year for every card (#3209). The backend omits a prior year that has no
     // matching session; the label still names the most recent year the user ticked, and the
@@ -192,7 +204,7 @@ export default function VelocityPage() {
       priorCancelledAtWeek: priorCancelled?.cancelled_at_current_week ?? null,
       priorCancelledFinal: priorCancelled?.cancelled_final ?? null,
     }
-  }, [data, comparisonYear, controls.selectedPriorYears])
+  }, [data, comparisonYear, controls.selectedPriorYears, live])
 
   if (isLoading) {
     return (
@@ -251,7 +263,8 @@ export default function VelocityPage() {
   const latestWeek = data.combined.weekly.at(-1)
   const legendLabels = buildLegendLabels({
     currentYear,
-    currentValue: viewMode === 'gross' ? latestWeek?.gross_enrolled : latestWeek?.enrolled,
+    currentValue:
+      viewMode === 'gross' ? latestWeek?.gross_enrolled : (live?.enrolled ?? latestWeek?.enrolled),
     currentWeekNumber: latestWeek?.week_number,
     isLive: todayDayOffset != null,
     priors: data.prior_years.map((py) => {
@@ -299,6 +312,24 @@ export default function VelocityPage() {
     ...(bases ? [{ n: basesNoteN, text: bases.text }] : []),
     ...(genderNoteN !== undefined ? [genderNote(genderNoteN, fallbackSeasons)] : []),
   ]
+
+  // PR 5b: the live point rides the combined Net line, and only while the zoom shows its day
+  const daily = chartData.dailyChartData
+  const zoomFrom = dailyZoom.zoomRange
+    ? Number(daily[dailyZoom.zoomRange[0]]?.['day_offset'])
+    : null
+  const zoomTo = dailyZoom.zoomRange ? Number(daily[dailyZoom.zoomRange[1]]?.['day_offset']) : null
+  const liveShown =
+    live != null &&
+    viewMode === 'net' &&
+    !controls.splitByGender &&
+    (zoomFrom == null || zoomFrom <= live.storedDay) &&
+    (zoomTo == null || zoomTo >= live.storedDay)
+  // Words to the right of the point in the chart's first 60%, to its left after
+  const firstDay = Number(daily[0]?.['day_offset'] ?? 0)
+  const lastDay = Number(daily.at(-1)?.['day_offset'] ?? 0)
+  const liveAnchor: 'start' | 'end' =
+    live && lastDay > firstDay && (live.x - firstDay) / (lastDay - firstDay) > 0.6 ? 'end' : 'start'
 
   // View mode toggle (passed as extraControls to VelocityControls)
   const viewModeToggle = (
@@ -523,7 +554,10 @@ export default function VelocityPage() {
               <p className="text-foreground text-xl font-bold">
                 {formatCount(summaryCards.currentEnrolled)}
               </p>
-              <p className="text-muted-foreground text-xs">camper-sessions</p>
+              <p className="text-muted-foreground text-xs">
+                camper-sessions
+                {live ? ' · as of the hourly sync' : data.live ? ' · 3 a.m. count' : ''}
+              </p>
             </div>
             <div className="card-lodge p-3">
               <p className="text-muted-foreground text-xs font-medium">
@@ -563,6 +597,9 @@ export default function VelocityPage() {
               <p className="text-foreground text-xl font-bold">
                 {formatCount(summaryCards.cancelledToDate)}
               </p>
+              {data.live && (
+                <p className="text-muted-foreground text-xs">3 a.m. count (not live)</p>
+              )}
             </div>
             <div className="card-lodge p-3">
               <p className="text-muted-foreground text-xs font-medium">
@@ -1112,12 +1149,40 @@ export default function VelocityPage() {
                       type="monotone"
                       dataKey={viewMode === 'gross' ? 'gross_enrolled' : 'enrolled'}
                       name={String(currentYear)}
-                      stroke="hsl(160, 100%, 35%)"
+                      stroke={CURRENT_LINE}
                       strokeWidth={3}
                       dot={false}
                       activeDot={{ r: 5 }}
                       connectNulls={false}
                     />
+                    {liveShown && (
+                      // PR 5b (#105, #108): dashed from the 3 a.m. point (solid) to the live point (hollow)
+                      <Line
+                        data={[
+                          { day_offset: live.storedDay, live: live.stored },
+                          { day_offset: live.x, live: live.enrolled },
+                        ]}
+                        dataKey="live"
+                        name={LIVE_LINE_NAME}
+                        stroke={CURRENT_LINE}
+                        strokeWidth={3}
+                        strokeDasharray="4 3"
+                        legendType="plainline"
+                        tooltipType="none"
+                        isAnimationActive={false}
+                        activeDot={false}
+                        dot={velocityLiveDot({
+                          color: CURRENT_LINE,
+                          lines: liveLabelLines(
+                            live,
+                            summaryCards?.priorYear != null
+                              ? { year: summaryCards.priorYear, value: summaryCards.priorAtWeek }
+                              : undefined
+                          ),
+                          anchor: liveAnchor,
+                        })}
+                      />
+                    )}
                     {/* Prior year lines */}
                     {data.prior_years.map((py, i) => (
                       <Line

@@ -6,7 +6,8 @@ import { formatAgo } from '../utils/formatAgo'
  * One freshness chip on the secondary bar, the same grammar for summer, weekend and Camperships:
  * "<noun> synced 18h ago" or "<noun> uploaded 3d ago". The icon repeats the verb — refresh for a
  * CampMinder sync, upload for a CSV — because the two are deliberately distinct (kindred#2570: a job
- * that RAN is not text that ARRIVED). Grey always, the absolute time in the tooltip (#1706).
+ * that RAN is not text that ARRIVED). Grey, unless `warn` says the sync is behind; the absolute time in
+ * the tooltip (#1706).
  */
 export function FreshnessChip({
   noun,
@@ -14,6 +15,7 @@ export function FreshnessChip({
   at,
   title,
   suffix,
+  warn = false,
 }: {
   noun: string
   verb: 'synced' | 'uploaded'
@@ -21,10 +23,15 @@ export function FreshnessChip({
   title: string
   /** Words after the age, inside the same chip (Analytics' " · syncing now"). */
   suffix?: string
+  /** Amber: the sync is behind (Analytics' enrollments past 2 hours, PR 5b ruling #111). */
+  warn?: boolean
 }) {
   const Icon = verb === 'synced' ? RefreshCw : Upload
   return (
-    <span className="flex items-center gap-1.5 whitespace-nowrap" title={title}>
+    <span
+      className={`flex items-center gap-1.5 whitespace-nowrap${warn ? 'text-amber-600 dark:text-amber-400' : ''}`}
+      title={title}
+    >
       <Icon className="h-3 w-3" />
       {noun} {verb} {formatAgo(at)}
       {suffix}

@@ -17,6 +17,7 @@ from api.schemas.velocity import (
     DailyDataPoint,
     GenderBasis,
     GenderHistoryGap,
+    LiveEnrollment,
     PhaseMarker,
     PriorYearCancelledSummary,
     PriorYearSessionSummary,
@@ -779,6 +780,13 @@ class VelocityService:
 
         status_history_start = await self._status_history_start() if metric == "cancellation" else None
 
+        # PR 5b (#110): only the live season gets a live point; a closed season's line is history.
+        live = (
+            await self._live_enrollment(year, result, snapshots, ag_parent_map)
+            if snapshots and today_day_offset is not None
+            else None
+        )
+
         if compare_years:
             for prior_year in compare_years:
                 prior_reg_dates = await self.repo.fetch_registration_dates(prior_year)
@@ -975,6 +983,7 @@ class VelocityService:
             prior_year_session_summaries=prior_year_session_summaries,
             prior_year_season_starts=prior_year_season_starts,
             session_swap_count=session_swap_count,
+            live=live,
             warnings=warnings,
             current_day_offset=current_day_offset,
             prior_day_offset=None
@@ -984,6 +993,57 @@ class VelocityService:
             status_history_start=status_history_start,
             snapshots_start=await self._snapshots_start() if metric != "cancellation" else None,
         )
+
+    async def _live_enrollment(
+        self,
+        year: int,
+        result: _CurveResult,
+        snapshots: list[Any],
+        ag_parent_map: dict[int, int],
+    ) -> LiveEnrollment | None:
+        """PR 5b (#3207): the line's last stored point, re-counted from the attendees table now.
+
+        Only the sessions the last snapshot night counted move, each to its enrolled (status_id 2) count now,
+        AG cabins folded into their parent as the line folds them. Every other part of the point (a session
+        carried forward from an earlier night, one rebuilt from registration dates) stays as the line has it,
+        so with no change since that night the live count IS the stored point. None when the line has no
+        snapshot-counted last point, or the attendees cannot be read (the page keeps the stored line).
+        """
+        last = result.combined.daily[-1] if result.combined.daily else None
+        if last is None:
+            return None
+        counted = {
+            sid
+            for sid, points in result.by_session_daily.items()
+            if points and points[-1].date == last.date and points[-1].data_source == "snapshot"
+        }
+        stored_at = max(
+            (
+                str(snap.snapshot_datetime)
+                for snap in snapshots
+                if parse_date_only(str(snap.snapshot_datetime)) == last.date
+                and ag_parent_map.get(int(snap.session_cm_id), int(snap.session_cm_id)) in counted
+            ),
+            default=None,
+        )
+        if stored_at is None:
+            return None
+        try:
+            attendees = await self.repo.fetch_attendees(year)
+        except Exception:
+            logger.warning("Could not read the %d attendees for the live point", year, exc_info=True)
+            return None
+        now = dict.fromkeys(counted, 0)
+        for attendee in attendees:
+            session = get_session_from_expand(attendee)
+            cm_id = getattr(session, "cm_id", None) if session else None
+            if cm_id is None:
+                continue
+            sid = ag_parent_map.get(int(cm_id), int(cm_id))
+            if sid in now:
+                now[sid] += 1
+        moved = sum(count - result.by_session_daily[sid][-1].enrolled for sid, count in now.items())
+        return LiveEnrollment(enrolled=last.enrolled + moved, stored_at=stored_at)
 
     async def _snapshots_start(self) -> str | None:
         """ISO date of the first nightly snapshot of any year; None when unknown (K13)."""

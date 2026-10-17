@@ -5,7 +5,7 @@
  * runs don't cover, or one never synced (the empty state says that instead).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import type { AnalyticsFreshness as Freshness } from '../../hooks/useAnalyticsFreshness'
 
 const mockFreshness = vi.fn((_year: number): Freshness => ({ kind: 'none' }))
@@ -72,5 +72,30 @@ describe('AnalyticsFreshness', () => {
     mockFreshness.mockReturnValue({ kind })
     const { container } = render(<AnalyticsFreshness />)
     expect(container).toBeEmptyDOMElement()
+  })
+
+  // PR 5b ruling #111: an hourly sync more than 2 hours behind turns the chip amber (the live point is
+  // hidden then too). The wording does not change.
+  it('turns amber when the last sync is more than 2 hours old', () => {
+    mockFreshness.mockReturnValue({ kind: 'synced', at: '2026-10-27T15:03:00Z', running: false })
+    render(<AnalyticsFreshness />)
+    const chip = screen.getByText(/^Enrollments synced 2h ago$/)
+    expect(chip.className).toMatch(/text-amber-/)
+  })
+
+  it('stays grey within 2 hours', () => {
+    mockFreshness.mockReturnValue({ kind: 'synced', at: '2026-10-27T15:05:00Z', running: false })
+    render(<AnalyticsFreshness />)
+    const chip = screen.getByText(/^Enrollments synced 1h ago$/)
+    expect(chip.className).not.toMatch(/text-amber-/)
+  })
+
+  it('turns amber while the page sits open past the 2 hours', () => {
+    mockFreshness.mockReturnValue({ kind: 'synced', at: '2026-10-27T15:05:00Z', running: false })
+    render(<AnalyticsFreshness />)
+    act(() => {
+      vi.advanceTimersByTime(2 * 60_000)
+    })
+    expect(screen.getByText(/^Enrollments synced 2h ago$/).className).toMatch(/text-amber-/)
   })
 })

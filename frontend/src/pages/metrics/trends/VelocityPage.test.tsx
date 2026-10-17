@@ -116,6 +116,15 @@ vi.mock('../../../hooks/useVelocityControls', () => ({
 
 const mockState = { data: mockVelocityData }
 
+// PR 5b: the sync the live point is dated by. No sync known by default: no live point.
+const mockLiveSync = {
+  sync: { at: null as string | null, failed: false, nightly: false },
+  now: Date.parse('2026-12-14T22:40:00Z'),
+}
+vi.mock('../../../hooks/useLiveSync', () => ({
+  useLiveSync: () => mockLiveSync,
+}))
+
 vi.mock('../../../hooks/useVelocity', () => ({
   useVelocity: () => ({
     data: mockState.data,
@@ -171,7 +180,7 @@ vi.mock('recharts', () => ({
       {children as React.ReactNode}
     </div>
   ),
-  Line: () => <div />,
+  Line: ({ name }: { name?: string }) => <div data-testid="chart-line" data-name={name} />,
   XAxis: () => <div />,
   YAxis: () => <div />,
   CartesianGrid: () => <div />,
@@ -849,5 +858,125 @@ describe('VelocityPage pace card (PR 12)', () => {
     mockControls.selectedPriorYears = []
     render(<VelocityPage />)
     expect(screen.queryByRole('heading', { name: /^Pace vs/ })).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// PR 5b (#3207): the live point after the 3 a.m. stored count
+// ---------------------------------------------------------------------------
+describe('VelocityPage live point (PR 5b)', () => {
+  const LIVE_LINE = 'since the 3 a.m. count (hourly sync)'
+  const dailyPoint = (day_offset: number, enrolled: number) => ({
+    date: '2026-12-14',
+    day_offset,
+    gross_enrolled: enrolled + 10,
+    enrolled,
+    cancelled: 10,
+    daily_new: 0,
+    daily_cancelled: 0,
+    daily_new_boys: null,
+    daily_new_girls: null,
+    daily_cancelled_boys: null,
+    daily_cancelled_girls: null,
+    gross_enrolled_boys: null,
+    gross_enrolled_girls: null,
+    enrolled_boys: null,
+    enrolled_girls: null,
+    data_source: 'snapshot' as const,
+  })
+  // Stored 100 at 3:40 am; the 2:05 pm hourly sync counts 160.
+  const liveData: VelocityResponse = {
+    ...comparedData,
+    cancelled_to_date: 10,
+    combined: { ...comparedData.combined, daily: [dailyPoint(5, 90), dailyPoint(6, 100)] },
+    live: { enrolled: 160, stored_at: '2026-12-14 11:40:00.000Z' },
+  }
+
+  function useLive(over: Partial<VelocityResponse> = {}, at = '2026-12-14T22:05:00Z') {
+    useComparison([2025], 2025)
+    mockState.data = { ...liveData, ...over }
+    mockLiveSync.sync = { at, failed: false, nightly: false }
+  }
+
+  afterEach(() => {
+    mockControls.selectedPriorYears = []
+    mockChart.comparisonYear = null
+    mockState.data = mockVelocityData
+    mockLiveSync.sync = { at: null, failed: false, nightly: false }
+  })
+
+  it('the Enrolled card and "vs" read the live count (#107)', () => {
+    useLive()
+    render(<VelocityPage />)
+    expect(cardValue('Enrolled (2026, Wk 1)')).toBe('160')
+    expect(screen.getByText('Enrolled (2026, Wk 1)').parentElement).toHaveTextContent(
+      'camper-sessions · as of the hourly sync'
+    )
+    // Live against last year's stored point on the same registration day (#109)
+    expect(cardValue('2025 at Wk 1')).toBe('95')
+    expect(cardValue('vs 2025')).toBe('+65')
+  })
+
+  it('draws the dashed live segment, named in the legend, and the legend total reads live', () => {
+    useLive()
+    render(<VelocityPage />)
+    const names = screen.getAllByTestId('chart-line').map((l) => l.getAttribute('data-name'))
+    expect(names).toContain(LIVE_LINE)
+    expect(screen.getByTestId('legend')).toHaveTextContent('2026 (160 at Wk 1)')
+  })
+
+  it('cancelled cards stay at the 3 a.m. count and say so', () => {
+    useLive()
+    render(<VelocityPage />)
+    expect(cardValue('Cancelled to Date')).toBe('10')
+    expect(screen.getByText('Cancelled to Date').parentElement).toHaveTextContent(
+      '3 a.m. count (not live)'
+    )
+  })
+
+  it('on the priority day "vs" keeps "updates tomorrow" (ruling 9)', () => {
+    useLive({ today_day_offset: 0, current_day_offset: 0, prior_day_offset: 1 })
+    render(<VelocityPage />)
+    expect(cardValue('Enrolled (2026, Wk 1)')).toBe('160')
+    expect(cardValue('vs 2025')).toBe('updates tomorrow')
+  })
+
+  it('a sync more than 2 hours old hides it and the cards fall back to the 3 a.m. count (#111)', () => {
+    useLive({}, '2026-12-14T20:35:00Z')
+    render(<VelocityPage />)
+    expect(cardValue('Enrolled (2026, Wk 1)')).toBe('100')
+    expect(screen.getByText('Enrolled (2026, Wk 1)').parentElement).toHaveTextContent(
+      'camper-sessions · 3 a.m. count'
+    )
+    expect(cardValue('vs 2025')).toBe('+5')
+    const names = screen.getAllByTestId('chart-line').map((l) => l.getAttribute('data-name'))
+    expect(names).not.toContain(LIVE_LINE)
+    expect(screen.getByTestId('legend')).toHaveTextContent('2026 (100 at Wk 1)')
+  })
+
+  it('the nightly window shows the stored count only (#111)', () => {
+    useLive()
+    mockLiveSync.sync = { ...mockLiveSync.sync, nightly: true }
+    render(<VelocityPage />)
+    expect(cardValue('Enrolled (2026, Wk 1)')).toBe('100')
+  })
+
+  it('draws no live point on the Gross line; the cards still read live', () => {
+    useLive()
+    render(<VelocityPage />)
+    fireEvent.click(screen.getByRole('button', { name: 'Gross Cumulative' }))
+    const names = screen.getAllByTestId('chart-line').map((l) => l.getAttribute('data-name'))
+    expect(names).not.toContain(LIVE_LINE)
+    expect(screen.getByTestId('legend')).toHaveTextContent('2026 (110 at Wk 1)')
+    expect(cardValue('Enrolled (2026, Wk 1)')).toBe('160')
+  })
+
+  it('a line with no stored count to extend keeps the plain caption', () => {
+    useLive({ live: null })
+    render(<VelocityPage />)
+    expect(cardValue('Enrolled (2026, Wk 1)')).toBe('100')
+    expect(screen.getByText('Enrolled (2026, Wk 1)').parentElement?.lastChild).toHaveTextContent(
+      /^camper-sessions$/
+    )
   })
 })

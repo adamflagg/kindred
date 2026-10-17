@@ -1038,6 +1038,7 @@ export type {
   ListWeekendSessionsApiLodgingSessionsGetErrors,
   ListWeekendSessionsApiLodgingSessionsGetResponse,
   ListWeekendSessionsApiLodgingSessionsGetResponses,
+  LiveEnrollment,
   LoadIn,
   LoadOverridesApiFinancialAidOverridesBulkPostData,
   LoadOverridesApiFinancialAidOverridesBulkPostError,
