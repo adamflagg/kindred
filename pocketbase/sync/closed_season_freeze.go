@@ -51,7 +51,7 @@ type closedSeasonFreeze struct {
 	// id). A row in it is frozen; a row this run created is not.
 	existingPersons map[int]*core.Record
 
-	relationsKept         int // relation changes refused on existing rows: CampMinder named another household
+	relationsKept         int // relation changes refused on existing rows: a re-point, or a fill of a blank
 	householdIDsKept      int // legacy household_id changes refused on existing rows
 	householdsNotCreated  int // households only existing persons name (today's, for someone the season has)
 	newRelationsLeftBlank int // a new row's relation left blank: its household has no record
@@ -129,8 +129,9 @@ func (f *closedSeasonFreeze) holds(personCMID int, current string, record *core.
 		return false
 	}
 	if f.existed(personCMID) || current != "" {
-		// A refused re-point is any CampMinder household other than the stored one, whether or
-		// not the season has a record of it (the freeze does not create it, so most do not).
+		// A refused change is any CampMinder household other than the stored one (a blank
+		// included), whether or not the season has a record of it (the freeze does not create
+		// it, so most do not).
 		if record == nil || current != record.Id {
 			f.relationsKept++
 		}

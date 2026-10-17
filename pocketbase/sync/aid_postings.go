@@ -681,7 +681,7 @@ func (s *AidPostingsSync) syncHouseholdLinks(year int, auto []aidHouseholdLink) 
 		derived++
 	}
 	if firstDerivation {
-		slog.Info("Closed season: no automatic household links stored, derived once from the stored family",
+		slog.Info("Closed season: no automatic household links stored, derived them from the stored family",
 			"year", year, "links_derived_first_time", derived)
 	}
 	// An empty computed set is a season with no multi-household family, not a

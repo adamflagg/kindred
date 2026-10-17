@@ -680,3 +680,54 @@ func TestClosedSeasonCountsARefusedRepointToAHouseholdTheSeasonLacks(t *testing.
 		t.Errorf("relationsKept = %d, want 2", s.freeze.relationsKept)
 	}
 }
+
+// The "none stored" check that lets a closed season derive its links is the SEASON's AUTOMATIC
+// links only: a staff link of the season, or another season's automatic links, does not stop the
+// derivation, and the staff link is left exactly as it was.
+func TestClosedSeasonDerivesLinksDespiteStaffLinksAndOtherSeasonsLinks(t *testing.T) {
+	t.Parallel()
+	const year = 2024
+	type link struct {
+		h      int
+		key    string
+		source string
+	}
+	for _, tc := range []struct {
+		name   string
+		stored []map[string]any
+		want   []link
+	}{
+		{"a staff link of the season",
+			[]map[string]any{{"year": year, "household_cm_id": 600, "family_key": "hh-600", "source": "staff"}},
+			[]link{{100, "hh-100", "auto"}, {200, "hh-100", "auto"}, {600, "hh-600", "staff"}}},
+		{"another season's automatic links",
+			[]map[string]any{{"year": 2023, "household_cm_id": 100, "family_key": "hh-100", "source": "auto"}},
+			[]link{{100, "hh-100", "auto"}, {200, "hh-100", "auto"}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			f := newAidFixture(t)
+			f.session(11, "Session 2", "main", year)
+			for _, h := range []int{100, 200, 600} {
+				f.household(h, year)
+			}
+			f.person(1001, year, 100, 200)
+			f.attend(1001, 11, 2, year)
+			for _, row := range tc.stored {
+				saveRecord(t, f.app, colAidHouseholdLinks, row)
+			}
+
+			f.run("", year)
+
+			rows := f.rows(colAidHouseholdLinks, year)
+			got := make([]link, 0, len(rows))
+			for _, r := range rows {
+				got = append(got, link{r.GetInt("household_cm_id"), r.GetString("family_key"), r.GetString("source")})
+			}
+			slices.SortFunc(got, func(a, b link) int { return a.h - b.h })
+			if !slices.Equal(got, tc.want) {
+				t.Errorf("links = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

@@ -9,8 +9,9 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 )
 
-// Registration-ask history (PR 4a). Nothing reads this table yet; it moves no number and
-// nothing in it is staff-visible.
+// Registration-ask history (PR 4a). Aid intake reads it (api/services/financial_aid_registration_ask.py)
+// to tie each captured ask to the registration it was typed at; nothing in it is shown to staff
+// directly.
 //
 // WHY IT EXISTS. CampMinder keeps ONE registration ask per camper per season in the
 // person custom field CA-FinancialAssistanceAmount, and a later registration overwrites it.
