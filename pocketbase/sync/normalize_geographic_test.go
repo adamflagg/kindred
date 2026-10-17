@@ -2118,7 +2118,9 @@ func TestAddressCityPopulatedInMappings(t *testing.T) {
 	}
 
 	lookup := &normalizationLookup{
-		city: map[string]normalizedEntry{"Oakland": {Canonical: "Oakland", Confidence: 1.0}},
+		city: map[string]normalizedEntry{
+			cityLookupKey("Oakland", "CA", "US"): {Canonical: "Oakland", Confidence: 1.0},
+		},
 		school: map[string]normalizedEntry{
 			"Riverside Elementary": {Canonical: "Riverside Elementary", Confidence: 0.9},
 		},
