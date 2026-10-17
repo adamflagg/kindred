@@ -938,11 +938,17 @@ class FinancialAidDevelopmentService:
     async def _groups_from(self, year: int) -> tuple[int, AidRules] | None:
         """RULED (owner 2026-10-16, #53, "go with a"): a report year whose rules aren't approved yet has no groups,
         so its report would lose the program breakdown. It follows the newest approved season's groups instead,
-        until its own are approved. None: no earlier season has approved rules either."""
+        until its own are approved. Extends #53 to past seasons: a season before any approved rules (2025) has no
+        earlier season to follow, so it takes the nearest approved season AFTER it. The backward lookback keeps
+        priority. None: no season has approved rules."""
         for earlier in range(year - 1, FIRST_REQUEST_SEASON - 1, -1):
             found = await self._rules.latest_approved(earlier, ["programs", "budget"])
             if found is not None:
                 return earlier, found.document
+        for later in range(year + 1, max(self._today().year, year) + 2):
+            found = await self._rules.latest_approved(later, ["programs", "budget"])
+            if found is not None:
+                return later, found.document
         return None
 
     async def development(self, year: int, *, column: DatedColumn | None = None) -> DevelopmentResponse:
