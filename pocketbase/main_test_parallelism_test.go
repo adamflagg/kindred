@@ -365,6 +365,15 @@ var serialGroups = []struct {
 		},
 	},
 	{
+		pkg: "sync",
+		reason: "t.Setenv (CAMPMINDER_SEASON_ID, CAMPMINDER_PRIMARY_KEY) and swaps the season clock nowFn: " +
+			"the closed-season freeze's rule and the paths it reaches",
+		tests: []string{
+			"TestIsClosedSeason",
+			"TestClosedSeasonFreezeReachesEveryPathThatReReadsAClosedSeason",
+		},
+	},
+	{
 		pkg:    "sync",
 		reason: "t.Setenv: CAMPMINDER_PRIMARY_KEY (campminder.NewClient) builds a season's client",
 		tests: []string{

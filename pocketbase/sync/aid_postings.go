@@ -623,7 +623,7 @@ func (s *AidPostingsSync) syncHouseholdLinks(year int, auto []aidHouseholdLink) 
 		return nil, err
 	}
 	existingAuto := map[string]*core.Record{}
-	var staff []aidHouseholdLink
+	var storedAuto, staff []aidHouseholdLink
 	staffKeys := map[string]bool{}
 	for _, r := range rows {
 		l := aidHouseholdLink{HouseholdCMID: r.GetInt("household_cm_id"), FamilyKey: r.GetString("family_key"),
@@ -635,6 +635,13 @@ func (s *AidPostingsSync) syncHouseholdLinks(year int, auto []aidHouseholdLink) 
 			continue
 		}
 		existingAuto[key] = r
+		storedAuto = append(storedAuto, l)
+	}
+	// A closed season's auto links stay as stored, never re-derived from today's family
+	// structure (closed_season_freeze.go).
+	if s.seasonClosed(year) {
+		logHouseholdLinksKept(year, auto, existingAuto, staffKeys)
+		return mergeHouseholdLinks(storedAuto, staff), nil
 	}
 	effective := mergeHouseholdLinks(auto, staff)
 	if s.DryRun {

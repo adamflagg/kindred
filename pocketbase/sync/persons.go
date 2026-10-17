@@ -52,6 +52,8 @@ type PersonsSync struct {
 	// Sub-entity stats for combined sync (households)
 	// Note: person_tags removed - tags are now a multi-select relation on persons
 	householdStats *Stats
+
+	freeze *closedSeasonFreeze
 }
 
 // personHouseholdIDs holds the CampMinder IDs for a person's households
@@ -131,6 +133,7 @@ func (s *PersonsSync) Sync(ctx context.Context) error {
 	s.Stats = Stats{}
 	s.SyncSuccessful = false
 	s.staffFetchFailed = false
+	s.freeze = nil
 	s.ClearProcessedKeys()
 
 	year := s.Client.GetSeasonID()
@@ -151,6 +154,8 @@ func (s *PersonsSync) Sync(ctx context.Context) error {
 	// Pre-load lookup data
 	existingPersons := s.preloadExistingPersons(filter, year)
 	existingHouseholds := s.preloadExistingHouseholds(filter, year)
+	// A closed season keeps its family structure (closed_season_freeze.go); nil when open.
+	s.freeze = s.seasonFreeze(year, existingPersons)
 	tagDefsByName := s.preloadTagDefinitions()
 	divisionsByID := s.preloadDivisions()
 
@@ -180,6 +185,7 @@ func (s *PersonsSync) Sync(ctx context.Context) error {
 	s.householdStats = &householdStats
 	s.printDataQualitySummary()
 	s.logSyncResults(householdStats)
+	s.freeze.log()
 	s.LogSyncComplete("Persons (combined)")
 
 	if err := s.updateAttendeeRelations(year); err != nil {
@@ -436,6 +442,10 @@ func (s *PersonsSync) processHouseholds(
 	}
 
 	for householdID, householdData := range households {
+		// A closed season creates no household (closed_season_freeze.go).
+		if existingHouseholds[householdID] == nil && s.freeze.refusesNewHousehold() {
+			continue
+		}
 		pbData, err := s.transformHouseholdToPB(householdData, year)
 		if err != nil {
 			slog.Error("Error transforming household", "id", householdID, "error", err)
@@ -594,6 +604,9 @@ func (s *PersonsSync) processPerson(
 		"tags"}
 
 	if existing != nil {
+		// A closed season keeps an existing row's legacy household_id (closed_season_freeze.go).
+		s.freeze.keepLegacyHouseholdID(existing, pbData)
+
 		// Check if update is needed
 		needsUpdate := false
 		for _, field := range compareFields {
@@ -1777,6 +1790,10 @@ func (s *PersonsSync) updatePersonHouseholdRelations(
 				continue
 			}
 			record, exists := householdsByID[rel.cmID]
+			// A closed season never changes an existing row's relations (closed_season_freeze.go).
+			if s.freeze.holds(int(personCMID), person.GetString(rel.field), record) {
+				continue
+			}
 			if !exists || person.GetString(rel.field) == record.Id {
 				continue
 			}
