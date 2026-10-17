@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"os"
@@ -31,8 +32,9 @@ const (
 	// "Try again in N seconds" hint; each further unhinted 429 doubles it.
 	rateLimitBaseBackoff = 5 * time.Second
 	// rateLimitMaxBackoff caps an unhinted wait in makeRequest. A hinted wait is honored as
-	// given, up to rateLimitMaxHintedWait, in every retry loop (rateLimitWait for makeRequest,
-	// parseRateLimitSeconds for authenticateAtURL and makeRequestWithURLRetry).
+	// given, up to rateLimitMaxHintedWait, in every retry loop (rateLimitWaitFor for makeRequest,
+	// parseRateLimitSecondsFor for authenticateAtURL and makeRequestWithURLRetry); jitterWait
+	// then stretches it by up to rateLimitJitterFraction, so a clamped wait sleeps up to 6m.
 	rateLimitMaxBackoff = 60 * time.Second
 	// rateLimitMaxHintedWait caps a hinted wait so a malformed or absurd CampMinder hint
 	// (e.g. "Try again in 999999 seconds") can't sleep for days. Deliberately larger than
@@ -69,6 +71,34 @@ var sleepCtxFn = func(ctx context.Context, d time.Duration) error {
 	case <-timer.C:
 		return nil
 	}
+}
+
+// jitterFn is the random source for rate-limit wait jitter, a value in [0, 1). Override in tests
+// to make waits exact.
+var jitterFn = rand.Float64
+
+// rateLimitJitterFraction is the most a rate-limit wait is stretched, after its clamp: waiters
+// that were limited in the same window must not all wake on the same second and compete for the
+// next one. It applies to every wait in the auth and pre-built-URL loops (their unhinted 60s
+// included) and to makeRequest's hinted waits; makeRequest's unhinted ladder is unjittered.
+const rateLimitJitterFraction = 0.2
+
+// jitterWait stretches d by 0-20 %.
+func jitterWait(d time.Duration) time.Duration {
+	return d + time.Duration(float64(d)*rateLimitJitterFraction*jitterFn())
+}
+
+// retryAfterSeconds reads the Retry-After header as whole seconds (the HTTP-date form is not
+// used by CampMinder's gateway and is ignored).
+func retryAfterSeconds(h http.Header) (int, bool) {
+	if h == nil {
+		return 0, false
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(h.Get("Retry-After")))
+	if err != nil || n <= 0 {
+		return 0, false
+	}
+	return n, true
 }
 
 // Client wraps CampMinder API interactions
@@ -179,14 +209,14 @@ func (c *Client) authenticateAtURL(ctx context.Context, authURL string) error {
 				if attempt == maxRequestRetries {
 					return fmt.Errorf("auth rate limit exceeded after %d retries", maxRequestRetries)
 				}
-				waitTime := c.parseRateLimitSeconds(string(body))
+				waitTime := jitterWait(time.Duration(c.parseRateLimitSecondsFor(string(body), resp.Header)) * time.Second)
 				slog.Warn("CampMinder rate limited during auth",
-					"wait_seconds", waitTime,
+					"wait_seconds", waitTime.Seconds(),
 					"attempt", attempt+1,
 					"max_retries", maxRequestRetries,
 				)
 				// Context-aware: a caller whose ctx ends must not sit out the wait.
-				if err := sleepCtxFn(ctx, time.Duration(waitTime)*time.Second); err != nil {
+				if err := sleepCtxFn(ctx, waitTime); err != nil {
 					return fmt.Errorf("auth retry wait interrupted: %w", err)
 				}
 				continue
@@ -340,14 +370,14 @@ func (c *Client) makeRequestWithURLRetry(method, fullURL string, retryCount int)
 
 	// Handle rate limiting
 	if resp.StatusCode == http.StatusTooManyRequests && retryCount < maxRequestRetries {
-		waitTime := c.parseRateLimitSeconds(string(body))
-		// parseRateLimitSeconds returns hint+5 (clamped at rateLimitMaxHintedWait) or fallback 60.
+		// hint+5 (clamped at rateLimitMaxHintedWait), else Retry-After+5, else 60; then jittered.
+		waitTime := jitterWait(time.Duration(c.parseRateLimitSecondsFor(string(body), resp.Header)) * time.Second)
 		slog.Warn("CampMinder rate limited",
-			"wait_seconds", waitTime,
+			"wait_seconds", waitTime.Seconds(),
 			"retry", retryCount+1,
 			"max_retries", maxRequestRetries,
 		)
-		sleepFn(time.Duration(waitTime) * time.Second)
+		sleepFn(waitTime)
 		// Retry the request
 		return c.makeRequestWithURLRetry(method, fullURL, retryCount+1)
 	}
@@ -430,7 +460,7 @@ func (c *Client) doRequest(
 			if attempt >= maxRequestRetries {
 				return nil, fmt.Errorf("rate limit exceeded (429) after %d retries", maxRequestRetries)
 			}
-			wait := rateLimitWait(string(body), attempt)
+			wait := rateLimitWaitFor(string(body), resp.Header, attempt)
 			slog.Warn("CampMinder rate limited",
 				"endpoint", endpoint, "wait", wait, "retry", attempt+1, "max_retries", maxRequestRetries)
 			sleepFn(wait)
@@ -813,9 +843,20 @@ func parseRateLimitHint(body string) (int, bool) {
 
 // parseRateLimitSeconds returns the hinted wait plus a 5 second buffer (clamped at
 // rateLimitMaxHintedWait against a malformed or absurd hint), or 60 seconds when the body
-// carries no hint. Used by the auth and pre-built-URL retry loops.
+// carries no hint. It is parseRateLimitSecondsFor without a header; the auth and pre-built-URL
+// retry loops call that form.
 func (c *Client) parseRateLimitSeconds(body string) int {
-	if seconds, ok := parseRateLimitHint(body); ok {
+	return c.parseRateLimitSecondsFor(body, nil)
+}
+
+// parseRateLimitSecondsFor is parseRateLimitSeconds that falls back to the Retry-After header
+// (seconds, same +5 buffer and clamp) when the body carries no hint.
+func (c *Client) parseRateLimitSecondsFor(body string, h http.Header) int {
+	seconds, ok := parseRateLimitHint(body)
+	if !ok {
+		seconds, ok = retryAfterSeconds(h)
+	}
+	if ok {
 		maxSeconds := int(rateLimitMaxHintedWait / time.Second)
 		if seconds < 0 || seconds > maxSeconds-5 {
 			return maxSeconds
@@ -841,6 +882,26 @@ func rateLimitWait(body string, attempt int) time.Duration {
 		return rateLimitMaxBackoff
 	}
 	return wait
+}
+
+// rateLimitWaitFor is the wait makeRequest sleeps: the body's hint, else the Retry-After header,
+// each with the 5 second buffer, clamped, and stretched by 0-20 % of jitter. With neither it is
+// rateLimitWait's fixed backoff ladder, unjittered.
+func rateLimitWaitFor(body string, h http.Header, attempt int) time.Duration {
+	seconds, ok := parseRateLimitHint(body)
+	if !ok {
+		seconds, ok = retryAfterSeconds(h)
+	}
+	if !ok {
+		return rateLimitWait(body, attempt)
+	}
+	// Clamp the count before converting: an absurd header (Atoi takes any int64) would wrap
+	// round time.Duration into a short, positive wait.
+	wait := rateLimitMaxHintedWait
+	if maxSeconds := int(rateLimitMaxHintedWait / time.Second); seconds <= maxSeconds-5 {
+		wait = time.Duration(seconds+5) * time.Second
+	}
+	return jitterWait(wait)
 }
 
 // GetSessionGroups retrieves session groupings for the configured season,
