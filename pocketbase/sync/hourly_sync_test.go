@@ -2,9 +2,11 @@ package sync
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"slices"
+	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -90,8 +92,19 @@ func TestHourlySyncRunsTheQueueForBothSeasons(t *testing.T) {
 			t.Errorf("ran %v,\nwant %v", got, want)
 		}
 		for _, id := range hourlyJobs {
-			if st := o.GetStatus(id); st == nil || st.Trigger != triggerHourly {
+			st := o.GetStatus(id)
+			if st == nil || st.Trigger != triggerHourly {
 				t.Errorf("%s must be filed as an hourly run, got %+v", id, st)
+				continue
+			}
+			// The sync-status payload carries it: Manage > Sync's completion toasts skip a run
+			// whose trigger is "hourly" (useSyncCompletionToasts), so it must reach the wire.
+			raw, err := json.Marshal(st)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(raw), `"trigger":"hourly"`) {
+				t.Errorf("%s's status payload must carry trigger \"hourly\", got %s", id, raw)
 			}
 		}
 	})

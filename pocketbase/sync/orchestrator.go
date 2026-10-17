@@ -2021,7 +2021,8 @@ var errHourlySyncYielded = errors.New("hourly sync yielded to a running queue")
 // the highest-volume producer of sync_runs rows, so filing it as "manual" would bury the
 // operator-initiated runs it needs to be told apart from.
 //
-// One job failing does not stop the others, as on the nightly; the failures are returned.
+// One job failing does not stop the others, as on the nightly. The primary season's failures
+// are returned; the prior season's are logged by runPriorSeasons and not returned.
 // Unlike RunSingleSync this blocks until the run completes. Both callers run it on their own
 // goroutine.
 func (o *Orchestrator) RunHourlySync(ctx context.Context) error {
