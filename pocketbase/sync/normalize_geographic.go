@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/pocketbase/dbx"
@@ -572,7 +573,7 @@ type normalizedEntry struct {
 
 // normalizationLookup maps original values to normalized entries per category
 type normalizationLookup struct {
-	city         map[string]normalizedEntry // original → {canonical, confidence}
+	city         map[string]normalizedEntry // cityLookupKey(city, state, country) → {canonical, confidence}
 	school       map[string]normalizedEntry
 	congregation map[string]normalizedEntry
 }
@@ -642,14 +643,7 @@ func (n *NormalizeGeographicSync) normalizeWithPython(
 	}
 
 	// Build context array for API request
-	contextValues := make([]valueWithContext, 0, len(valuesWithContext))
-	for key, geoCtx := range valuesWithContext {
-		contextValues = append(contextValues, valueWithContext{
-			Value:   key.Value,
-			State:   geoCtx.State,
-			Country: geoCtx.Country,
-		})
-	}
+	contextValues := sortedContextValues(valuesWithContext)
 
 	apiURL := getAPIURL()
 	results, err := callGeoNormalizeAPI(ctx, apiURL, category, contextValues)
@@ -663,6 +657,72 @@ func (n *NormalizeGeographicSync) normalizeWithPython(
 		result[original] = normalizedEntry(normalized)
 	}
 
+	return result, nil
+}
+
+// sortedContextValues flattens the unique-value map into a request body in a
+// fixed order. Go map iteration is random, so without the sort two identical
+// runs would send differently ordered requests.
+func sortedContextValues(values map[geoLookupKey]geoContext) []valueWithContext {
+	out := make([]valueWithContext, 0, len(values))
+	for key, geoCtx := range values {
+		out = append(out, valueWithContext{Value: key.Value, State: geoCtx.State, Country: geoCtx.Country})
+	}
+	slices.SortFunc(out, func(a, b valueWithContext) int {
+		return strings.Compare(
+			a.Value+"\x00"+a.State+"\x00"+a.Country,
+			b.Value+"\x00"+b.State+"\x00"+b.Country,
+		)
+	})
+	return out
+}
+
+// cityLookupKey is the identity of a city in the normalization lookup. The
+// normalizer's response is keyed on the bare city value, so two same-named
+// cities in different states cannot share one response; the lookup is keyed
+// on (city, state, country) instead.
+func cityLookupKey(city, state, country string) string {
+	return city + "\x00" + state + "\x00" + country
+}
+
+// normalizeCitiesByContext normalizes cities one (state, country) group per
+// request, so every response is keyed on a bare value that is unique within
+// its request, and returns the entries keyed by cityLookupKey. Groups and the
+// values inside them are sent in sorted order, so the result does not depend
+// on map iteration order.
+func (n *NormalizeGeographicSync) normalizeCitiesByContext(
+	ctx context.Context, cities map[geoLookupKey]geoContext,
+) (map[string]normalizedEntry, error) {
+	result := make(map[string]normalizedEntry)
+	if len(cities) == 0 {
+		return result, nil
+	}
+
+	groups := make(map[geoContext]map[geoLookupKey]geoContext)
+	for key, geoCtx := range cities {
+		if groups[geoCtx] == nil {
+			groups[geoCtx] = make(map[geoLookupKey]geoContext)
+		}
+		groups[geoCtx][key] = geoCtx
+	}
+	contexts := make([]geoContext, 0, len(groups))
+	for geoCtx := range groups {
+		contexts = append(contexts, geoCtx)
+	}
+	slices.SortFunc(contexts, func(a, b geoContext) int {
+		return strings.Compare(a.State+"\x00"+a.Country, b.State+"\x00"+b.Country)
+	})
+
+	apiURL := getAPIURL()
+	for _, geoCtx := range contexts {
+		results, err := callGeoNormalizeAPI(ctx, apiURL, categoryCity, sortedContextValues(groups[geoCtx]))
+		if err != nil {
+			return nil, err
+		}
+		for original, normalized := range results {
+			result[cityLookupKey(original, geoCtx.State, geoCtx.Country)] = normalizedEntry(normalized)
+		}
+	}
 	return result, nil
 }
 
@@ -713,7 +773,7 @@ func (n *NormalizeGeographicSync) buildNormalizationLookup(
 	}
 
 	if len(uniqueCities) > 0 {
-		result, err := n.normalizeWithPython(ctx, uniqueCities, categoryCity)
+		result, err := n.normalizeCitiesByContext(ctx, uniqueCities)
 		if err != nil {
 			return nil, fmt.Errorf("normalizing cities: %w", err)
 		}
@@ -774,8 +834,9 @@ func (n *NormalizeGeographicSync) createPersonSessionMappings(
 
 		// City mapping
 		if d.City != "" {
-			normalized, confidence := resolveValue(
-				d.City, categoryCity, lookup.city, aliasOverrides, mergeOverrides)
+			normalized, confidence := resolveValueKeyed(
+				d.City, cityLookupKey(d.City, d.AddressState, d.AddressCountry),
+				categoryCity, lookup.city, aliasOverrides, mergeOverrides)
 			if normalized != "" {
 				mappings = append(mappings, &personSessionMapping{
 					personPBID:      d.PersonPBID,
@@ -1006,7 +1067,11 @@ func (n *NormalizeGeographicSync) updatePersonsNormalized(
 	// Build person PBID → raw congregation map from attendee data
 	// (congregation comes from person_custom_values, not persons table)
 	congregationByPerson := make(map[string]string)
+	geoByPerson := make(map[string]*attendeeGeoData)
 	for i := range attendeeData {
+		if _, seen := geoByPerson[attendeeData[i].PersonPBID]; !seen {
+			geoByPerson[attendeeData[i].PersonPBID] = &attendeeData[i]
+		}
 		if attendeeData[i].Congregation != "" {
 			congregationByPerson[attendeeData[i].PersonPBID] = attendeeData[i].Congregation
 		}
@@ -1042,7 +1107,13 @@ func (n *NormalizeGeographicSync) updatePersonsNormalized(
 
 			// City
 			if city := record.GetString("address_city"); city != "" {
-				if entry, ok := lookup.city[city]; ok {
+				// Country is not a persons column; take it from the attendee row
+				// the mapping step used, so both resolve the same key.
+				country := ""
+				if g := geoByPerson[record.Id]; g != nil && g.City == city {
+					country = g.AddressCountry
+				}
+				if entry, ok := lookup.city[cityLookupKey(city, record.GetString("address_state"), country)]; ok {
 					if record.GetString("normalized_city") != entry.Canonical {
 						record.Set("normalized_city", entry.Canonical)
 						needsUpdate = true
@@ -1150,6 +1221,16 @@ func resolveValue(
 	rawValue string, category string, lookupMap map[string]normalizedEntry,
 	aliasOverrides, mergeOverrides map[string]map[string]string,
 ) (normalized string, confidence float64) {
+	return resolveValueKeyed(rawValue, rawValue, category, lookupMap, aliasOverrides, mergeOverrides)
+}
+
+// resolveValueKeyed is resolveValue with the fuzzy-lookup key given separately
+// from the raw value (aliases match the raw value; cities look up by
+// cityLookupKey so each address resolves against its own state).
+func resolveValueKeyed(
+	rawValue, lookupKey string, category string, lookupMap map[string]normalizedEntry,
+	aliasOverrides, mergeOverrides map[string]map[string]string,
+) (normalized string, confidence float64) {
 	lowerRaw := strings.ToLower(rawValue)
 
 	// 1. Check alias override first
@@ -1168,7 +1249,7 @@ func resolveValue(
 	}
 
 	// 2. Fall back to Python normalizer result (preserving Python confidence)
-	if entry, ok := lookupMap[rawValue]; ok && entry.Canonical != "" {
+	if entry, ok := lookupMap[lookupKey]; ok && entry.Canonical != "" {
 		normalized = entry.Canonical
 		confidence = entry.Confidence
 	} else {
