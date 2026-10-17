@@ -175,7 +175,7 @@ export function VelocityPaceCard({
           >
             {model.counts.behind > 0 && (
               <Chip
-                swatch={<i className={`inline-block h-2 w-3 rounded-sm ${BAR.bad}`} />}
+                swatch={<i className={`inline-block h-2 w-3 rounded-[2px] ${BAR.bad}`} />}
                 n={model.counts.behind}
                 label="behind"
               />
@@ -189,7 +189,7 @@ export function VelocityPaceCard({
             )}
             {model.counts.ahead > 0 && (
               <Chip
-                swatch={<i className={`inline-block h-2 w-3 rounded-sm ${BAR.good}`} />}
+                swatch={<i className={`inline-block h-2 w-3 rounded-[2px] ${BAR.good}`} />}
                 n={model.counts.ahead}
                 label="ahead"
               />
@@ -197,7 +197,7 @@ export function VelocityPaceCard({
             {model.counts.new > 0 && (
               <Chip
                 swatch={
-                  <i className="border-muted-foreground inline-block h-2 w-3 rounded-sm border border-dashed" />
+                  <i className="border-muted-foreground inline-block h-2 w-3 rounded-[2px] border border-dashed" />
                 }
                 n={model.counts.new}
                 label="new"
