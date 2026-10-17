@@ -72,6 +72,8 @@ import {
   velocityGenderSeries,
 } from '../../../components/velocity/velocityGenderSeries'
 import { VelocityGenderNotes } from '../../../components/velocity/VelocityGenderNotes'
+import { VelocityPaceCard } from '../../../components/velocity/VelocityPaceCard'
+import { useVelocityPace } from '../../../components/velocity/useVelocityPace'
 import { genderNote } from '../../../components/metrics/genderNotes'
 import { MetricsBusy, MetricsLoadError } from '../../../components/metrics/MetricsQueryGuard'
 import { DELTA_INK, deltaInk } from '../../../utils/deltaTokens'
@@ -132,6 +134,16 @@ export default function VelocityPage() {
   // Separate zoom state per chart to avoid cross-contamination (#510)
   const weeklyZoom = useChartZoom(chartData.weeklyChartData.length)
   const dailyZoom = useChartZoom(chartData.dailyChartData.length)
+
+  // #3207 PR 12: the pace card reads the By Session table's own rows and prior lookup
+  const pace = useVelocityPace(
+    data,
+    chartData.sortedBySession,
+    chartData.priorSessionMap,
+    comparisonYear,
+    sessions,
+    controls.paceFold
+  )
 
   // Map week_number -> PhaseMarker for table badge lookup (page-specific)
   const phaseByWeek = useMemo(() => {
@@ -1139,6 +1151,19 @@ export default function VelocityPage() {
             />
           )}
         </div>
+
+        {pace && comparisonYear != null && chartData.sortedBySession.length > 1 && (
+          <VelocityPaceCard
+            model={pace}
+            year={currentYear}
+            priorYear={comparisonYear}
+            basis={data.prior_basis ?? 'same_point'}
+            firstNoteN={pageNotes.length + 1}
+            fold={controls.paceFold}
+            onFold={controls.setPaceFold}
+            pending={deltaPending && (data.prior_basis ?? 'same_point') === 'same_point'}
+          />
+        )}
 
         {/* Per-Session Breakdown */}
         {chartData.sortedBySession.length > 1 && (

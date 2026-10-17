@@ -98,12 +98,16 @@ vi.mock('../../../hooks/useMetricsSession', () => ({
 const mockControls = {
   splitByGender: false,
   selectedPriorYears: [] as number[],
+  paceFold: false,
+  setPaceFold: vi.fn(),
 }
 
 vi.mock('../../../hooks/useVelocityControls', () => ({
   useVelocityControls: () => ({
     splitByGender: mockControls.splitByGender,
     selectedPriorYears: mockControls.selectedPriorYears,
+    paceFold: mockControls.paceFold,
+    setPaceFold: mockControls.setPaceFold,
     toggleGender: vi.fn(),
     togglePriorYear: vi.fn(),
     availablePriorYears: [],
@@ -351,7 +355,10 @@ describe('VelocityPage compares with one year at the same point (#3209)', () => 
     expect(screen.getByRole('columnheader', { name: '2025 Final' })).toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: 'vs 2025' })).toBeInTheDocument()
 
-    const matched = screen.getByText('Session 1').closest('tr')!
+    const matched = screen
+      .getAllByText('Session 1')
+      .find((el) => el.closest('tr'))!
+      .closest('tr')!
     // 30 now vs 25 at the same point last year — not 30 vs the 40 final.
     expect(within(matched).getByText('+5')).toBeInTheDocument()
     expect(within(matched).getByText('40')).toBeInTheDocument()
@@ -488,7 +495,10 @@ describe('VelocityPage priority-day note (decision 45)', () => {
       mockChart.priorSessionMap = new Map([[1, priorSummary({})]])
       render(<VelocityPage />)
 
-      const matched = screen.getByText('Session 1').closest('tr')!
+      const matched = screen
+        .getAllByText('Session 1')
+        .find((el) => el.closest('tr'))!
+        .closest('tr')!
       expect(within(matched).getByText('updates tomorrow')).toBeInTheDocument()
       expect(within(matched).queryByText('+5')).not.toBeInTheDocument()
       const unmatched = screen.getByText('Session 2').closest('tr')!
@@ -684,5 +694,160 @@ describe('VelocityPage labels stored and rebuilt lines (K13)', () => {
     }
     render(<VelocityPage />)
     expect(screen.queryByText(/stored each night/)).not.toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// #3207 PR 12: the pace card (rulings #92–#102)
+// ---------------------------------------------------------------------------
+
+describe('VelocityPage pace card (PR 12)', () => {
+  afterEach(() => {
+    mockControls.selectedPriorYears = []
+    mockControls.paceFold = false
+    mockChart.comparisonYear = null
+    mockChart.sortedBySession = []
+    mockChart.priorSessionMap = new Map()
+    mockState.data = mockVelocityData
+  })
+
+  const s1 = priorSummary({ session_cm_id: 501, current_session_cm_id: 1 })
+  const s2 = priorSummary({
+    session_name: 'Session 2',
+    session_cm_id: 502,
+    current_session_cm_id: 2,
+    enrolled_at_current_week: 20,
+    final_enrolled: 15,
+  })
+  const s3 = priorSummary({
+    session_name: 'Session 3',
+    session_cm_id: 503,
+    current_session_cm_id: 3,
+    enrolled_at_current_week: 61,
+    final_enrolled: 70,
+  })
+  const retired = priorSummary({
+    session_name: 'Session 3b',
+    session_cm_id: 513,
+    current_session_cm_id: null,
+    enrolled_at_current_week: 9,
+    final_enrolled: 11,
+    folds_into_session_cm_id: 3,
+  })
+
+  function usePace(basis: 'same_point' | 'final') {
+    useComparison([2025], 2025)
+    mockState.data = {
+      ...comparedData,
+      prior_basis: basis,
+      prior_year_session_summaries: [s1, s2, s3, retired],
+    }
+    mockChart.sortedBySession = [
+      sessionCurve(1, 'Session 1', 30),
+      sessionCurve(2, 'Session 2', 12),
+      sessionCurve(3, 'Session 3', 60),
+      sessionCurve(4, 'Session 4', 7),
+    ]
+    mockChart.priorSessionMap = new Map<number | string, PriorYearSessionSummary>([
+      [1, s1],
+      [2, s2],
+      [3, s3],
+      ['Session 3b', retired],
+    ])
+  }
+
+  function byHeading(name: string): HTMLElement {
+    return screen.getByRole('heading', { name }).closest('.card-lodge') as HTMLElement
+  }
+
+  /** The By Session table's own cells for a session, by column header. */
+  function tableCells(name: string): Record<string, string> {
+    const table = within(byHeading('By Session')).getByRole('table')
+    const headers = within(table).getAllByRole('columnheader')
+    const tr = within(table).getByText(name).closest('tr')!
+    const cells = within(tr).getAllByRole('cell')
+    const out: Record<string, string> = {}
+    for (const header of ['Latest Enrolled', '2025 (Wk 1)', '2025 Final', 'vs 2025']) {
+      const at = headers.indexOf(within(table).getByRole('columnheader', { name: header }))
+      out[header] = cells[at]?.textContent ?? ''
+    }
+    return out
+  }
+
+  function cardRows(): string[] {
+    return [...byHeading('Pace vs last year').querySelectorAll('[data-pace-row]')].map(
+      (row) => row.querySelector('b')?.textContent ?? ''
+    )
+  }
+
+  function cardSub(name: string): string {
+    const row = [...byHeading('Pace vs last year').querySelectorAll('[data-pace-row]')].find(
+      (r) => r.querySelector('b')?.textContent === name
+    )
+    return row?.querySelector('small')?.textContent ?? ''
+  }
+
+  it('sits after the curves and before By Session (#92)', () => {
+    usePace('same_point')
+    render(<VelocityPage />)
+    const chart = screen.getByTestId('responsive-container')
+    const pace = byHeading('Pace vs last year')
+    const table = byHeading('By Session')
+    expect(chart.compareDocumentPosition(pace) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(pace.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('agrees with By Session while live: Latest Enrolled vs the same-point column', () => {
+    usePace('same_point')
+    render(<VelocityPage />)
+    expect(cardRows()).toEqual(['Session 2', 'Session 3', 'Session 1'])
+    for (const name of cardRows()) {
+      const cells = tableCells(name)
+      expect(cardSub(name)).toBe(`${cells['Latest Enrolled']} vs ${cells['2025 (Wk 1)']}`)
+    }
+    // The change the card ranks is the table's own "vs 2025".
+    expect(tableCells('Session 1')['vs 2025']).toBe('+5')
+    expect(screen.getByTestId('pace-legend')).toHaveTextContent('1 behind1 level1 ahead1 new')
+  })
+
+  it('agrees with By Session once the season is over: Latest Enrolled vs the final column', () => {
+    usePace('final')
+    render(<VelocityPage />)
+    for (const name of cardRows()) {
+      const cells = tableCells(name)
+      expect(cardSub(name)).toBe(`${cells['Latest Enrolled']} vs ${cells['2025 Final']}`)
+    }
+    expect(screen.getByText(/2026 final vs 2025 final/)).toBeInTheDocument()
+  })
+
+  it('folds the retired embedded session only when the link asks (#97)', () => {
+    usePace('same_point')
+    const { unmount } = render(<VelocityPage />)
+    expect(screen.getByText(/^Not offered this year/)).toHaveTextContent('Session 3b (9 last year)')
+    unmount()
+    mockControls.paceFold = true
+    render(<VelocityPage />)
+    expect(cardSub('Session 3')).toBe('60 vs 70 · incl. folded')
+    expect(screen.queryByText(/^Not offered this year/)).toBeNull()
+    // The table keeps its own figure: the fold is the card's.
+    expect(tableCells('Session 3')['2025 (Wk 1)']).toBe('61')
+  })
+
+  it('numbers its notes after the page notes', () => {
+    usePace('same_point')
+    render(<VelocityPage />)
+    const notes = within(byHeading('Pace vs last year'))
+      .getAllByRole('listitem')
+      .map((li) => li.textContent)
+    expect(notes[0]).toMatch(/^1\. Level:/)
+    expect(notes[1]).toMatch(/^2\. Same registration day:/)
+  })
+
+  it('is absent without a comparison year', () => {
+    usePace('same_point')
+    mockChart.comparisonYear = null
+    mockControls.selectedPriorYears = []
+    render(<VelocityPage />)
+    expect(screen.queryByRole('heading', { name: /^Pace vs/ })).toBeNull()
   })
 })

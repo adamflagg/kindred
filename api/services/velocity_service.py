@@ -42,6 +42,8 @@ from api.services.reconstruction import (
     reconstruct_daily_by_group,
     reconstruct_daily_multi,
 )
+from api.services.same_point import live_same_point
+from api.services.today_service import fold_embedded_sessions
 from api.utils.session_metrics import (
     build_ag_parent_map,
     get_person_from_expand,
@@ -855,17 +857,26 @@ class VelocityService:
                 )
 
                 # Build prior year session summaries
-                prior_year_session_summaries.extend(
-                    self._build_prior_session_summaries(
-                        prior_year,
-                        prior_result,
-                        current_max_wn,
-                        current_day_offset,
-                        self._current_session_by_prior_sid(sessions, prior_all),
-                        phase_offsets=phase_offsets,
-                        history_from=history_from,
-                    )
+                current_by_prior_sid = self._current_session_by_prior_sid(sessions, prior_all)
+                summaries = self._build_prior_session_summaries(
+                    prior_year,
+                    prior_result,
+                    current_max_wn,
+                    current_day_offset,
+                    current_by_prior_sid,
+                    phase_offsets=phase_offsets,
+                    history_from=history_from,
                 )
+                # PR 12, ruling #97: where each retired embedded session would fold (Today's rule, reused).
+                folds_into: dict[int, int] = {}
+                for host, folded in fold_embedded_sessions(prior_sessions, set(current_by_prior_sid)).items():
+                    current_host = current_by_prior_sid.get(host)
+                    if current_host is not None:
+                        folds_into.update(dict.fromkeys(folded, current_host))
+                for summary in summaries:
+                    if summary.session_cm_id is not None:
+                        summary.folds_into_session_cm_id = folds_into.get(summary.session_cm_id)
+                prior_year_session_summaries.extend(summaries)
 
                 if identity:
                     prior_gender_curves, _, prior_fallbacks = await self._build_identity_curves(
@@ -939,8 +950,12 @@ class VelocityService:
                 swap_pids = swap_pids & scoped_pids
             session_swap_count = len(swap_pids)
 
+        # PR 12, ruling #98: the viewed season decides; the one live rule PR 11 uses, no second one.
+        live = await live_same_point(self.repo, year, ref_today)
+
         return VelocityResponse(
             year=year,
+            prior_basis="same_point" if live is not None else "final",
             season_start=season_start_dt.strftime("%Y-%m-%d"),
             combined=combined,
             by_session=by_session,
