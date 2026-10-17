@@ -938,11 +938,18 @@ class FinancialAidDevelopmentService:
     async def _groups_from(self, year: int) -> tuple[int, AidRules] | None:
         """RULED (owner 2026-10-16, #53, "go with a"): a report year whose rules aren't approved yet has no groups,
         so its report would lose the program breakdown. It follows the newest approved season's groups instead,
-        until its own are approved. None: no earlier season has approved rules either."""
+        until its own are approved. Extends #53 to past seasons: a season before any approved rules (2025) has no
+        earlier season to follow, so it takes the nearest approved season AFTER it. The backward lookback keeps
+        priority. None: no season has approved rules."""
         for earlier in range(year - 1, FIRST_REQUEST_SEASON - 1, -1):
             found = await self._rules.latest_approved(earlier, ["programs", "budget"])
             if found is not None:
                 return earlier, found.document
+        # Only a season before requests existed looks forward; 2026+ is exactly as before.
+        for later in range(year + 1, max(self._today().year, year) + 2) if year < FIRST_REQUEST_SEASON else ():
+            found = await self._rules.latest_approved(later, ["programs", "budget"])
+            if found is not None:
+                return later, found.document
         return None
 
     async def development(self, year: int, *, column: DatedColumn | None = None) -> DevelopmentResponse:
@@ -1010,11 +1017,13 @@ class FinancialAidDevelopmentService:
         if (note := _rebuild_note(year)) is not None:
             not_built.insert(0, NotBuiltOut(figure="rebuild", reason=note))
         if borrowed is not None and latest.groups:
-            not_built.append(
-                NotBuiltOut(
-                    figure=GROUPS_FROM, reason=f"Groups follow {borrowed[0]}'s rules until {year}'s are approved"
-                )
+            # A past season will never get rules of its own, so it never says "until ... approved".
+            reason = (
+                f"Groups follow {borrowed[0]}'s rules ({year} has no rules of its own)"
+                if borrowed[0] > year
+                else f"Groups follow {borrowed[0]}'s rules until {year}'s are approved"
             )
+            not_built.append(NotBuiltOut(figure=GROUPS_FROM, reason=reason))
         if waiting := sorted(season for season, found in ages.items() if found is None):
             not_built.append(NotBuiltOut(figure="ages_need_sheet", reason=_ages_need_sheet(waiting)))
         rows = _rows(latest.groups, columns, ages)

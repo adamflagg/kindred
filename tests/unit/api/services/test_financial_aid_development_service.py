@@ -1121,6 +1121,49 @@ async def test_with_no_approved_rules_in_any_season_there_are_no_groups_and_no_n
     assert "groups_from" not in {n.figure for n in out.not_built}
 
 
+async def test_a_past_season_with_no_earlier_approved_rules_uses_the_next_approved_seasons_groups() -> None:
+    """Extends #53 to past seasons: the 2025 report had `groups: []` because the lookback only looks backward. With
+    nothing earlier approved it follows the nearest approved season after it (2026), and says so."""
+    out = await _service(_development(), fake_rules=_RulesFrom({2026})).development(2025)
+    assert [g.key for g in out.groups] == ["camp_pool", "weekend_pool", "bmitzvah_pool"]
+    [notice] = [n for n in out.not_built if n.figure == "groups_from"]
+    assert notice.reason == "Groups follow 2026's rules (2025 has no rules of its own)"
+
+
+async def test_a_season_from_the_first_request_season_on_never_borrows_a_later_seasons_groups() -> None:
+    """Only a PAST season (before requests existed) looks forward; 2026+ keeps today's behaviour exactly."""
+    out = await _service(_development(), fake_rules=_RulesFrom({2028})).development(YEAR)
+    assert out.groups == []
+    assert "groups_from" not in {n.figure for n in out.not_built}
+    out = await _service(_development(), fake_rules=_RulesFrom({2027})).development(2026)
+    assert out.groups == []
+    assert "groups_from" not in {n.figure for n in out.not_built}
+
+
+async def test_a_past_season_takes_the_nearest_later_approved_season_not_the_newest() -> None:
+    out = await _service(_development(), fake_rules=_RulesFrom({2026, 2027})).development(2025)
+    [notice] = [n for n in out.not_built if n.figure == "groups_from"]
+    assert notice.reason == "Groups follow 2026's rules (2025 has no rules of its own)"
+
+
+async def test_the_backward_lookback_keeps_priority_over_a_later_approved_season() -> None:
+    out = await _service(_development(), fake_rules=_RulesFrom({2026, 2028})).development(YEAR)
+    [notice] = [n for n in out.not_built if n.figure == "groups_from"]
+    assert notice.reason == "Groups follow 2026's rules until 2027's are approved"
+
+
+async def test_a_past_season_with_its_own_approved_rules_uses_them_with_no_notice() -> None:
+    out = await _service(_development(), fake_rules=_RulesFrom({2025, 2026})).development(2025)
+    assert [g.key for g in out.groups] == ["camp_pool", "weekend_pool", "bmitzvah_pool"]
+    assert "groups_from" not in {n.figure for n in out.not_built}
+
+
+async def test_a_past_season_with_no_approved_rules_anywhere_is_unchanged() -> None:
+    out = await _service(_development(), fake_rules=_RulesFrom(set())).development(2025)
+    assert out.groups == []
+    assert "groups_from" not in {n.figure for n in out.not_built}
+
+
 async def test_a_dated_column_reads_a_reversal_on_its_camp_day_not_its_utc_date() -> None:
     """reversal_date is true UTC (main spec §6.2): reversed the evening of December 31 Pacific (January 1 in UTC),
     the line was no longer money given out at the end of December 31."""
