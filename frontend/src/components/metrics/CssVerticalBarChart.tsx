@@ -50,6 +50,12 @@ interface CssVerticalBarChartProps {
   className?: string
   /** A line inside the card, below the bars (the age chart's camper count). */
   footer?: ReactNode
+  /** Beside the title, right-aligned (Retention's "Change vs same point last year¹"). */
+  headerRight?: ReactNode
+  /** A second, smaller line under each bar's label (Retention's change, #3207 PR 11). */
+  renderSubLabel?: ((item: CssVerticalBarItem) => ReactNode) | undefined
+  /** A value on the bar's axis to mark with a thin line across the bar (last year's rate), or null. */
+  markerValue?: ((item: CssVerticalBarItem) => number | null) | undefined
 }
 
 const DEFAULT_COLOR = 'hsl(200, 70%, 50%)'
@@ -70,6 +76,9 @@ export function CssVerticalBarChart({
   barWidthPercent,
   className = '',
   footer,
+  headerRight,
+  renderSubLabel,
+  markerValue,
 }: CssVerticalBarChartProps) {
   const xAxisHeight = rotateLabels ? X_AXIS_HEIGHT_ROTATED : X_AXIS_HEIGHT_STRAIGHT
   const { barsHeight, drawingHeight } = calculateVerticalLayout(height, { xAxisHeight })
@@ -113,7 +122,15 @@ export function CssVerticalBarChart({
 
   return (
     <div className={`card-lodge flex flex-col px-4 pt-4 pb-4 ${className}`}>
-      {title && <h3 className="text-foreground mb-2 text-base font-semibold">{title}</h3>}
+      {title &&
+        (headerRight ? (
+          <div className="mb-2 flex items-baseline gap-3">
+            <h3 className="text-foreground text-base font-semibold">{title}</h3>
+            <span className="ml-auto">{headerRight}</span>
+          </div>
+        ) : (
+          <h3 className="text-foreground mb-2 text-base font-semibold">{title}</h3>
+        ))}
 
       <div className="relative flex-1">
         {/* Chart area with Y-axis */}
@@ -138,6 +155,8 @@ export function CssVerticalBarChart({
             {data.map((item, index) => {
               const barHeightPx = (item.value / axisMax) * drawingHeight
               const label = labelFormat ? labelFormat(item) : formatCount(item.value)
+              const marker = markerValue ? markerValue(item) : null
+              const markerPx = marker === null ? null : (marker / axisMax) * drawingHeight
 
               const sparseHoverClass =
                 columnSizing.mode === 'sparse'
@@ -164,7 +183,25 @@ export function CssVerticalBarChart({
                   {/* Label above bar */}
                   <span className="text-muted-foreground relative z-[1] mb-1 text-xs tabular-nums">
                     {label}
+                    {renderSubLabel && (
+                      <span className="block text-center text-[10.5px] leading-3 whitespace-nowrap">
+                        {renderSubLabel(item)}
+                      </span>
+                    )}
                   </span>
+
+                  {/* Last year's mark: a thin line across the bar's column at its value */}
+                  {markerPx !== null && (
+                    <div
+                      data-prior-tick
+                      className="bg-foreground pointer-events-none absolute z-[2] h-0.5"
+                      style={{
+                        bottom: `${markerPx}px`,
+                        left: `${columnSizing.columnPadding + halfGap}px`,
+                        right: `${columnSizing.columnPadding + halfGap}px`,
+                      }}
+                    />
+                  )}
 
                   {/* Bar */}
                   <div

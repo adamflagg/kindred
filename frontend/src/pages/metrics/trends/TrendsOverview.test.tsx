@@ -250,8 +250,9 @@ describe('TrendsOverview — no-coverage years render em-dash, not fabricated ze
     const row = within(table).getByText('2026').closest('tr')
     expect(row).not.toBeNull()
     const cells = row ? Array.from(row.querySelectorAll('td')).map((td) => td.textContent) : []
-    expect(cells.at(-2)).toBe('276')
-    expect(cells.at(-1)).toBe('43.9%')
+    // #3207 PR 11 (#90): Retention and Retention change follow Cancel %
+    expect(cells.at(-4)).toBe('276')
+    expect(cells.at(-3)).toBe('43.9%')
   })
 
   it('treats has_cancellation_data as true when the field is absent (backward compat)', () => {
@@ -268,8 +269,9 @@ describe('TrendsOverview — no-coverage years render em-dash, not fabricated ze
     const table = screen.getByRole('table')
     const row = within(table).getByText('2026').closest('tr')
     const cells = row ? Array.from(row.querySelectorAll('td')).map((td) => td.textContent) : []
-    expect(cells.at(-2)).toBe('5')
-    expect(cells.at(-1)).toBe('4.5%')
+    // #3207 PR 11 (#90): Retention and Retention change follow Cancel %
+    expect(cells.at(-4)).toBe('5')
+    expect(cells.at(-3)).toBe('4.5%')
   })
 })
 

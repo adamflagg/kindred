@@ -89,6 +89,10 @@ vi.mock('../../../hooks/useMetricsSession', () => ({
   }),
 }))
 
+// Last year's comparison maps the picked session onto its own list; no QueryClient here (#3207 PR 11)
+vi.mock('../../../hooks/useCompareYearFilter', () => ({
+  useCompareYearFilter: (_p: number, _c: number, options: unknown) => options,
+}))
 vi.mock('../../../hooks/useCurrentYear', () => ({
   useCurrentYear: () => ({ currentYear: 2026 }),
 }))
@@ -144,7 +148,7 @@ describe('RetentionOverview teen-pipeline flag from context', () => {
     render(<RetentionOverview />)
 
     // Teen scope + flag on -> the flag flows into the hook call as true.
-    expect(useRetentionMetricsMock).toHaveBeenLastCalledWith(2025, 2026, expect.anything(), true)
+    expect(useRetentionMetricsMock).toHaveBeenCalledWith(2025, 2026, expect.anything(), true)
   })
 
   it('does NOT forward includeTeenPipeline when the scope has no teens', () => {
@@ -154,7 +158,7 @@ describe('RetentionOverview teen-pipeline flag from context', () => {
 
     // Non-teen scope: the hidden flag must not leak into the hook (and the cache
     // key) — the backend treats it as inert, so it should be passed as false.
-    expect(useRetentionMetricsMock).toHaveBeenLastCalledWith(2025, 2026, expect.anything(), false)
+    expect(useRetentionMetricsMock).toHaveBeenCalledWith(2025, 2026, expect.anything(), false)
   })
 })
 

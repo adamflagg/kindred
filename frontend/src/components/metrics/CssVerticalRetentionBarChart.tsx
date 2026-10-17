@@ -12,6 +12,9 @@ import { sortRetentionBarData, type RetentionSortBy } from '../../utils/retentio
 import type { RetentionRateBarItem } from '../../types/metrics'
 import { chartAxisLabels } from '../../utils/chartLabels'
 import { formatCount, formatPercent } from '../../utils/numberFormat'
+import { isSmallBase, type RetentionCompareView } from '../../utils/retentionCompare'
+import { RetentionChange, RetentionCompareHeader, RetentionCompareLegend } from './RetentionChange'
+import { describeRowChange } from '../../utils/retentionCompare'
 
 interface CssVerticalRetentionBarChartProps {
   data: RetentionRateBarItem[]
@@ -29,6 +32,11 @@ interface CssVerticalRetentionBarChartProps {
    */
   shortenLabel?: (name: string) => string
   className?: string
+  /**
+   * Compare with last year (#3207 PR 11): each bar carries `priorRate`; the chart marks it on the
+   * bar, writes the change under the rate, and heads and names both series.
+   */
+  compare?: RetentionCompareView | undefined
 }
 
 function getBarColor(rate: number): string {
@@ -48,6 +56,7 @@ export function CssVerticalRetentionBarChart({
   barWidthPercent,
   shortenLabel,
   className = '',
+  compare,
 }: CssVerticalRetentionBarChartProps) {
   const sorted = useMemo(() => sortRetentionBarData(data, sortBy, topN), [data, sortBy, topN])
 
@@ -86,21 +95,54 @@ export function CssVerticalRetentionBarChart({
     [showCounts]
   )
 
-  const renderTooltip = useCallback((item: CssVerticalBarItem) => {
-    const returned = item['returnedCount'] as number
-    const base = item['baseCount'] as number
-    return (
-      <>
-        <p className="text-foreground font-medium">{item.name}</p>
-        <p className="text-muted-foreground text-sm">
-          Retention:{' '}
-          <span className="text-foreground font-semibold">{formatPercent(item.value)}</span>
-        </p>
-        <p className="text-muted-foreground text-sm">
-          {formatCount(returned)} of {formatCount(base)} returned
-        </p>
-      </>
-    )
+  const renderTooltip = useCallback(
+    (item: CssVerticalBarItem) => {
+      const returned = item['returnedCount'] as number
+      const base = item['baseCount'] as number
+      return (
+        <>
+          <p className="text-foreground font-medium">{item.name}</p>
+          <p className="text-muted-foreground text-sm">
+            Retention:{' '}
+            <span className="text-foreground font-semibold">{formatPercent(item.value)}</span>
+          </p>
+          <p className="text-muted-foreground text-sm">
+            {formatCount(returned)} of {formatCount(base)} returned
+          </p>
+          {compare && (
+            <p className="text-muted-foreground text-sm">
+              {describeRowChange(
+                item['retentionRate'] as number,
+                item['priorRate'] as number | null | undefined,
+                compare
+              )}
+            </p>
+          )}
+        </>
+      )
+    },
+    [compare]
+  )
+
+  const renderSubLabel = useCallback(
+    (item: CssVerticalBarItem) =>
+      compare ? (
+        <RetentionChange
+          rate={item['retentionRate'] as number}
+          priorRate={item['priorRate'] as number | null | undefined}
+          baseCount={item['baseCount'] as number}
+          compare={compare}
+          compact
+          // The chart face shows no base, so a small row's count goes beside its change (#91)
+          showCount={isSmallBase(item['baseCount'] as number)}
+        />
+      ) : null,
+    [compare]
+  )
+
+  const markerValue = useCallback((item: CssVerticalBarItem) => {
+    const prior = item['priorRate'] as number | null | undefined
+    return prior == null ? null : prior * 100
   }, [])
 
   const handleBarClick = useCallback(
@@ -129,6 +171,14 @@ export function CssVerticalRetentionBarChart({
       onBarClick={onBarClick ? handleBarClick : undefined}
       barWidthPercent={barWidthPercent}
       className={className}
+      {...(compare
+        ? {
+            headerRight: <RetentionCompareHeader compare={compare} />,
+            renderSubLabel,
+            markerValue,
+            footer: <RetentionCompareLegend compare={compare} />,
+          }
+        : {})}
     />
   )
 }

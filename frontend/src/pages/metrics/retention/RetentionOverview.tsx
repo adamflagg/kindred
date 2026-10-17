@@ -47,7 +47,20 @@ import { RetentionGenderTable } from '../../../components/metrics/RetentionGende
 import { GenderFallbackLine } from '../../../components/metrics/genderIdentityNotes'
 import { genderNote } from '../../../components/metrics/genderNotes'
 import { GENDER_DISPLAY_COLORS } from '../../../components/metrics/genderColors'
-import { DefinitionNotes } from '../../../components/camperships/kit/DefinitionNotes'
+import { DefinitionNotes, DefRef } from '../../../components/camperships/kit/DefinitionNotes'
+import { useCompareYearFilter } from '../../../hooks/useCompareYearFilter'
+import { formatSignedCount } from '../../../utils/numberFormat'
+import { RetentionChange } from '../../../components/metrics/RetentionChange'
+import {
+  cityPairKey,
+  describeRetentionBasis,
+  firstSummerPairKeys,
+  regionPriorBars,
+  retentionCompareView,
+  sessionPairKey,
+  withPriorRates,
+  type RetentionBasis,
+} from '../../../utils/retentionCompare'
 
 // P-20 option B (owner, 2026-10-15): the session, school and synagogue charts write
 // shorter names on the axis. City and region names are left as they are.
@@ -103,6 +116,17 @@ export default function RetentionOverview() {
     effectiveTeenPipeline
   )
 
+  // #3207 PR 11 (decision 7): last year's retention, read at this season's registration day while
+  // it is live and final after. A picked session maps onto last year's list by name.
+  const priorFilter = useCompareYearFilter(currentYear, priorYear, filterOptions)
+  const { data: prior, isPlaceholderData: priorPlaceholder } = useRetentionMetrics(
+    priorYear - 1,
+    priorYear,
+    priorFilter,
+    effectiveTeenPipeline,
+    { samePointOf: currentYear }
+  )
+
   // Build date lookup from API response (prior year sessions have start_date)
   const priorSessionDateLookup = useMemo(() => {
     const lookup: Record<string, string> = {}
@@ -135,27 +159,67 @@ export default function RetentionOverview() {
 
   const didNotReturn = data.base_year_total - data.returned_count
 
+  // The basis notes come first (#86); the gender note follows them.
+  const basis = describeRetentionBasis(prior, {
+    year: currentYear,
+    base: data.base_year_total,
+    returned: data.returned_count,
+  })
+  const compare = basis ? retentionCompareView(basis, currentYear) : undefined
+  const live = basis?.live ?? false
+  // With nothing to compare with yet, every chart reads as before (no half-switched page, #87)
+  const pair = <T extends RetentionRateBarItem>(
+    bars: T[],
+    priorBars: RetentionRateBarItem[],
+    keyCurrent?: (b: RetentionRateBarItem) => string,
+    keyPrior?: (b: RetentionRateBarItem) => string
+  ): RetentionRateBarItem[] =>
+    compare ? withPriorRates(bars, priorBars, keyCurrent, keyPrior) : bars
+  const bySession = (b: RetentionRateBarItem) => sessionPairKey(b.name)
+
   // Pre-sort session data chronologically before converting to bar data
   const genderPieData = genderToPieData(data.by_gender)
   // #2898 ruling 58: the base season's campers with no identity answer count by the Gender field, said under the
-  // gender cards and in the page's one note (none at 0, #73 a).
+  // gender cards and in the page's notes (none at 0, #73 a), numbered after the basis notes.
   const fallback = data.gender_fallback_count ?? 0
-  const genderNoteN = fallback > 0 ? 1 : undefined
-  const gradeBars = gradeToBarData(data.by_grade)
-  const sessionBars = sessionToBarData(sortSessionDataByDate(data.by_session, sessionDateLookup))
-  const priorSessionBars = priorSessionToBarData(
-    sortPriorSessionDataByDate(data.by_prior_session ?? [], priorSessionDateLookup)
+  const genderNoteN = fallback > 0 ? (basis?.notes.length ?? 0) + 1 : undefined
+  const gradeBars = pair(gradeToBarData(data.by_grade), gradeToBarData(prior?.by_grade))
+  const sessionBars = pair(
+    sessionToBarData(sortSessionDataByDate(data.by_session, sessionDateLookup)),
+    sessionToBarData(prior?.by_session),
+    bySession
   )
-  const summerYearsBars = summerYearsToBarData(data.by_summer_years)
-  const firstSummerYearBars = firstSummerYearToBarData(data.by_first_summer_year)
-  const cityBars = cityToBarData(data.by_city)
-  const schoolBars = schoolToBarData(data.by_school)
-  const synagogueBars = synagogueToBarData(data.by_synagogue)
+  const priorSessionBars = pair(
+    priorSessionToBarData(
+      sortPriorSessionDataByDate(data.by_prior_session ?? [], priorSessionDateLookup)
+    ),
+    priorSessionToBarData(prior?.by_prior_session),
+    bySession
+  )
+  const summerYearsBars = pair(
+    summerYearsToBarData(data.by_summer_years),
+    summerYearsToBarData(prior?.by_summer_years)
+  )
+  const firstSummerYearBars = pair(
+    firstSummerYearToBarData(data.by_first_summer_year),
+    firstSummerYearToBarData(prior?.by_first_summer_year),
+    firstSummerPairKeys.current,
+    firstSummerPairKeys.prior
+  )
+  const cityBars = pair(cityToBarData(data.by_city), cityToBarData(prior?.by_city), cityPairKey)
+  const schoolBars = pair(schoolToBarData(data.by_school), schoolToBarData(prior?.by_school))
+  const synagogueBars = pair(
+    synagogueToBarData(data.by_synagogue),
+    synagogueToBarData(prior?.by_synagogue)
+  )
   const regionRetention = aggregateCityRetentionByRegion(data.by_city ?? [])
-  const regionBars = regionToBarData(regionRetention).map((b) => ({
-    ...b,
-    name: REGION_DISPLAY_NAMES[b.name] ?? b.name,
-  }))
+  const regionBars = pair(
+    regionToBarData(regionRetention).map((b) => ({
+      ...b,
+      name: REGION_DISPLAY_NAMES[b.name] ?? b.name,
+    })),
+    regionPriorBars(prior?.by_city)
+  )
 
   const cityOutliers = computeRetentionOutliers(cityBars, data.overall_retention_rate)
   const schoolOutliers = computeRetentionOutliers(schoolBars, data.overall_retention_rate)
@@ -163,8 +227,10 @@ export default function RetentionOverview() {
   const regionOutliers = computeRetentionOutliers(regionBars, data.overall_retention_rate)
 
   return (
-    <MetricsBusy busy={isPlaceholderData} what={String(currentYear)}>
+    <MetricsBusy busy={isPlaceholderData || priorPlaceholder === true} what={String(currentYear)}>
       <div className="space-y-6">
+        {basis && <BasisSentence basis={basis} />}
+
         {/* Summary Cards */}
         <div
           className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4"
@@ -186,7 +252,12 @@ export default function RetentionOverview() {
           <MetricCard
             title={`Returned to ${currentYear}`}
             value={data.returned_count}
-            subtitle={`${formatRate(data.overall_retention_rate)} retention rate`}
+            subtitle={`${formatRate(data.overall_retention_rate)} ${live ? 'retention so far' : 'retention rate'}`}
+            detail={
+              live && prior
+                ? `${priorYear} had ${formatCount(prior.returned_count)} by this day of ${priorYear} (${formatSignedCount(data.returned_count - prior.returned_count)})`
+                : undefined
+            }
             onClick={() =>
               setFilter({
                 type: 'retention_returned',
@@ -197,9 +268,14 @@ export default function RetentionOverview() {
             }
           />
           <MetricCard
-            title="Did Not Return"
+            // #88: while registration is open these campers still can return
+            title={live ? 'Not yet returned' : 'Did Not Return'}
             value={didNotReturn}
-            subtitle={`${formatPercent(data.base_year_total > 0 ? (didNotReturn / data.base_year_total) * 100 : 0)} attrition`}
+            subtitle={
+              live
+                ? 'Still can; registration is open'
+                : `${formatPercent(data.base_year_total > 0 ? (didNotReturn / data.base_year_total) * 100 : 0)} attrition`
+            }
             onClick={() =>
               setFilter({
                 type: 'retention_not_returned',
@@ -213,8 +289,21 @@ export default function RetentionOverview() {
             title="Overall Retention Rate"
             value={formatRate(data.overall_retention_rate)}
             subtitle={`${priorYear} → ${currentYear}`}
-            trend={data.overall_retention_rate >= 0.5 ? 'up' : 'down'}
-            trendValue={data.overall_retention_rate >= 0.5 ? 'Good' : 'Low'}
+            // #84 / #85: the change replaces Good / Low, in both states; nothing while it loads
+            badge={
+              compare && prior ? (
+                <>
+                  <RetentionChange
+                    rate={data.overall_retention_rate}
+                    priorRate={prior.overall_retention_rate}
+                    baseCount={data.base_year_total}
+                    compare={compare}
+                    suffix={live ? '' : ' vs final'}
+                  />
+                  <DefRef n={compare.noteN} />
+                </>
+              ) : undefined
+            }
           />
         </div>
 
@@ -300,6 +389,7 @@ export default function RetentionOverview() {
               data={gradeBars}
               title="Retention by Grade"
               tooltipLabelPrefix="Grade "
+              compare={compare}
               onDotClick={(item) => setFilter(makeRetentionFilter('grade', item, 'Grade '))}
             />
           )}
@@ -311,6 +401,8 @@ export default function RetentionOverview() {
             baseYear={priorYear}
             compareYear={currentYear}
             noteN={genderNoteN}
+            prior={compare ? prior : undefined}
+            compare={compare}
           />
         )}
 
@@ -323,6 +415,7 @@ export default function RetentionOverview() {
               sortBy="none"
               barWidthPercent={88}
               shortenLabel={shortSessionName}
+              compare={compare}
               onBarClick={(item) => setFilter(makeRetentionFilter('retention_session', item))}
             />
           )}
@@ -333,6 +426,7 @@ export default function RetentionOverview() {
               sortBy="none"
               barWidthPercent={88}
               shortenLabel={shortSessionName}
+              compare={compare}
             />
           )}
         </div>
@@ -343,6 +437,7 @@ export default function RetentionOverview() {
             <RetentionRateLineChart
               data={summerYearsBars}
               title="Retention by Summers at Camp"
+              compare={compare}
               onDotClick={(item) => setFilter(makeRetentionFilter('summer_years', item))}
             />
           )}
@@ -350,6 +445,7 @@ export default function RetentionOverview() {
             <RetentionRateLineChart
               data={firstSummerYearBars}
               title="Retention by First Summer Year"
+              compare={compare}
               onDotClick={(item) => setFilter(makeRetentionFilter('first_summer_year', item))}
             />
           )}
@@ -365,6 +461,7 @@ export default function RetentionOverview() {
                 topN={15}
                 sortBy="count"
                 barWidthPercent={78}
+                compare={compare}
                 onBarClick={(item) => setFilter(makeRetentionFilter('city', item))}
               />
             </div>
@@ -382,6 +479,7 @@ export default function RetentionOverview() {
                 topN={15}
                 sortBy="count"
                 barWidthPercent={78}
+                compare={compare}
                 shortenLabel={schoolChartName}
                 onBarClick={(item) => setFilter(makeRetentionFilter('school', item))}
               />
@@ -400,6 +498,7 @@ export default function RetentionOverview() {
                 topN={15}
                 sortBy="count"
                 barWidthPercent={78}
+                compare={compare}
                 shortenLabel={synagogueChartName}
                 onBarClick={(item) => setFilter(makeRetentionFilter('synagogue', item))}
               />
@@ -417,27 +516,67 @@ export default function RetentionOverview() {
                 title="Retention by Region"
                 sortBy="count"
                 barWidthPercent={80}
+                compare={compare}
               />
             </div>
             <OutlierSection outliers={regionOutliers} max={5} />
           </div>
         )}
 
-        {genderNoteN !== undefined && (
-          <DefinitionNotes
-            notes={[
-              genderNote(
-                genderNoteN,
-                [{ season: priorYear, count: fallback }],
-                ' Read for the base season.'
-              ),
-            ]}
-          />
-        )}
+        <DefinitionNotes
+          notes={[
+            ...(basis?.notes ?? []),
+            ...(genderNoteN !== undefined
+              ? [
+                  genderNote(
+                    genderNoteN,
+                    [{ season: priorYear, count: fallback }],
+                    ' Read for the base season.'
+                  ),
+                ]
+              : []),
+          ]}
+        />
 
         {/* Drilldown Modal */}
         <DrilldownModal />
       </div>
     </MetricsBusy>
+  )
+}
+
+/**
+ * The basis under the title (#86): "vs same point last year. Compared with 2025 as it stood on
+ * Oct 16, 2025¹, the same registration day² as today." Mark 2 only when the priority-day note is listed.
+ */
+function BasisSentence({ basis }: { basis: RetentionBasis }) {
+  const [first, second] = basis.notes
+  let body: React.ReactNode = basis.text
+  if (basis.live && basis.day && first) {
+    const at = basis.text.indexOf(basis.day) + basis.day.length
+    const rest = basis.text.slice(at)
+    const dayWord = 'registration day'
+    const cut = second ? rest.indexOf(dayWord) : -1
+    const secondN = second?.n
+    body = (
+      <>
+        {basis.text.slice(0, at)}
+        <DefRef n={first.n} />
+        {cut >= 0 && secondN !== undefined ? (
+          <>
+            {rest.slice(0, cut + dayWord.length)}
+            <DefRef n={secondN} />
+            {rest.slice(cut + dayWord.length)}
+          </>
+        ) : (
+          rest
+        )}
+      </>
+    )
+  }
+  return (
+    <p className="text-muted-foreground text-sm">
+      <b className="text-foreground font-semibold">{basis.label}.</b> {body}
+    </p>
   )
 }

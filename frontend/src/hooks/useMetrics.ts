@@ -68,9 +68,15 @@ export function useRetentionMetrics(
   baseYear: number,
   compareYear: number,
   options?: MetricsFilterOptions,
-  includeTeenPipeline = false
+  includeTeenPipeline = false,
+  /**
+   * Read compareYear as this season's comparison (#3207 PR 11, decision 7): at the registration
+   * day `samePointOf` has reached while it is live, final after. The response's prior_basis says which.
+   */
+  compare?: { samePointOf?: number | undefined }
 ) {
   const { fetchWithAuth, isAuthLoading } = useApiWithAuth()
+  const samePointOf = compare?.samePointOf
 
   return useQuery({
     queryKey: queryKeys.retention(
@@ -79,7 +85,8 @@ export function useRetentionMetrics(
       options?.sessionTypes,
       options?.sessionCmId,
       options?.duration,
-      includeTeenPipeline
+      includeTeenPipeline,
+      samePointOf
     ),
     queryFn: async (): Promise<RetentionMetrics> => {
       const params = new URLSearchParams({
@@ -97,6 +104,9 @@ export function useRetentionMetrics(
       }
       if (includeTeenPipeline) {
         params.set('include_teen_pipeline', 'true')
+      }
+      if (samePointOf !== undefined) {
+        params.set('same_point_of', samePointOf.toString())
       }
 
       const response = await fetchWithAuth(`/api/metrics/retention?${params}`)

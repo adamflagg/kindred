@@ -15531,6 +15531,30 @@ export type RetentionMetricsResponse = {
    * Base year campers excluded (aged out of all eligible sessions)
    */
   aged_out_count?: number
+  /**
+   * Prior Basis
+   *
+   * Set when same_point_of was asked: 'same_point' when the compare year was read at the registration day that season has reached (registered by then and not cancelled by then), 'final' when it was read as it stands now (that season is over, or a season has no registration anchor)
+   */
+  prior_basis?: 'same_point' | 'final' | null
+  /**
+   * Day Offset
+   *
+   * Same-point reads: the registration day (days from its anchor) the same_point_of season is on
+   */
+  day_offset?: number | null
+  /**
+   * Prior Day Offset
+   *
+   * Same-point reads: the registration day the compare year was read at. One more than day_offset on a priority, early or open date, where the prior year is read through the next day (decision 45)
+   */
+  prior_day_offset?: number | null
+  /**
+   * As Of Date
+   *
+   * Same-point reads: the last day (YYYY-MM-DD) the compare year was read through
+   */
+  as_of_date?: string | null
 }
 
 /**
@@ -15593,6 +15617,18 @@ export type RetentionTrendYear = {
    * Base year campers excluded (aged out of all eligible sessions)
    */
   aged_out_count?: number
+  /**
+   * Same Point Rate
+   *
+   * While the newest season is live (#3207 PR 11, ruling #89): this transition's retention (0-1) at the registration day the newest season has reached, counted in to_year's own registration (registered by then and not cancelled by then). The live transition's is today's rate. None when not live or to_year has no registration anchor
+   */
+  same_point_rate?: number | null
+  /**
+   * Same Point As Of
+   *
+   * The last day (YYYY-MM-DD) to_year was read through for same_point_rate
+   */
+  same_point_as_of?: string | null
 }
 
 /**
@@ -15607,6 +15643,30 @@ export type RetentionTrendsResponse = {
    * Retention data for each year transition
    */
   years: Array<RetentionTrendYear>
+  /**
+   * Prior Basis
+   *
+   * Set when the same-point series was asked for: 'same_point' while the newest season is live (each transition carries same_point_rate), 'final' when it is over or has no registration anchor
+   */
+  prior_basis?: 'same_point' | 'final' | null
+  /**
+   * Day Offset
+   *
+   * Same-point reads: the registration day (days from its anchor) the newest season is on
+   */
+  day_offset?: number | null
+  /**
+   * Prior Day Offset
+   *
+   * Same-point reads: the registration day earlier seasons were read at (decision 45)
+   */
+  prior_day_offset?: number | null
+  /**
+   * As Of Date
+   *
+   * Same-point reads: the last day (YYYY-MM-DD) the season before the newest was read through
+   */
+  as_of_date?: string | null
   /**
    * Enrollment By Year
    *
@@ -23647,6 +23707,12 @@ export type GetRetentionMetricsApiMetricsRetentionGetData = {
      * Credit grade-10 campers who continue into a summer teen program (main->teen bridge)
      */
     include_teen_pipeline?: boolean
+    /**
+     * Same Point Of
+     *
+     * Read compare_year as a comparison for this season (decision 7): while that season is live, as it stood at the registration day it has reached (registered by then and not cancelled by then); after it, as it stands now. The response's prior_basis says which
+     */
+    same_point_of?: number | null
   }
   url: '/api/metrics/retention'
 }

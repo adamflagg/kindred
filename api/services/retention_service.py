@@ -7,7 +7,8 @@ testable service that uses the MetricsRepository for data access.
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Any, cast
+from datetime import date, timedelta
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from api.schemas.metrics import (
     RetentionByCity,
@@ -37,6 +38,7 @@ from api.utils.session_metrics import (
     resolve_duration_sessions,
 )
 from bunking.gender_identity import NOT_GIVEN, identity_sort_key
+from bunking.logging_config import get_logger
 
 from .breakdown_calculator import compute_breakdown, safe_rate
 from .extractors import (
@@ -51,9 +53,13 @@ from .extractors import (
     is_aged_out,
     summers_at_camp_by_person,
 )
+from .reconstruction import attendees_at_cutoff
+from .same_point import live_same_point, registration_anchor
 
 if TYPE_CHECKING:
     from .metrics_repository import MetricsRepository
+
+logger = get_logger(__name__)
 
 
 class RetentionService:
@@ -75,6 +81,8 @@ class RetentionService:
         session_cm_id: int | None = None,
         duration: str | None = None,
         include_teen_pipeline: bool = False,
+        same_point_of: int | None = None,
+        today: date | None = None,
     ) -> RetentionMetricsResponse:
         """Calculate retention metrics comparing two years.
 
@@ -87,14 +95,41 @@ class RetentionService:
                 sessions by length.
             include_teen_pipeline: credit grade-10 campers who continue into a summer
                 teen program (the main->teen bridge).
+            same_point_of: Read ``compare_year`` as a comparison for this season (decision 7,
+                #3207 PR 11): while that season is live, as it stood at the registration day that
+                season has reached (registered by then and not cancelled by then, as Overview counts
+                it); after it, as ``compare_year`` stands now. Every figure follows the one read.
+            today: Override for the camp today (tests). Only a same-point read uses it.
 
         Returns:
             RetentionMetricsResponse with all breakdown metrics.
         """
+        prior_basis: Literal["same_point", "final"] | None = None
+        day_offset: int | None = None
+        prior_day_offset: int | None = None
+        cutoff: date | None = None
+        if same_point_of is not None:
+            prior_basis = "final"
+            point = await live_same_point(self.repo, same_point_of, today)
+            anchor = await self._fetch_anchor(compare_year) if point is not None else None
+            if point is not None and anchor is not None:
+                prior_basis = "same_point"
+                day_offset = point.day_offset
+                prior_day_offset = point.prior_offset
+                cutoff = anchor + timedelta(days=point.prior_offset)
+
+        # The compare year as it stood at the cutoff (registered by then, not cancelled by then),
+        # or as it stands now
+        compare_fetch = (
+            self._fetch_compare_at_cutoff(compare_year, cutoff)
+            if cutoff is not None
+            else self.repo.fetch_attendees(compare_year)
+        )
+
         # Fetch data in parallel
         _results = await asyncio.gather(
             self.repo.fetch_attendees(base_year),
-            self.repo.fetch_attendees(compare_year),
+            compare_fetch,
             self.repo.fetch_persons(base_year),
             self.repo.fetch_bunk_assignments(base_year),
             self.repo.fetch_sessions(base_year, None),
@@ -342,7 +377,24 @@ class RetentionService:
             by_prior_session=by_prior_session,
             session_flow=session_flow,
             aged_out_count=aged_out_count,
+            prior_basis=prior_basis,
+            day_offset=day_offset,
+            prior_day_offset=prior_day_offset,
+            as_of_date=cutoff.isoformat() if cutoff is not None else None,
         )
+
+    async def _fetch_compare_at_cutoff(self, compare_year: int, cutoff: date) -> list[Any]:
+        """The compare year's records enrolled at the end of ``cutoff`` (decision 7's rule)."""
+        enrolled, _left = attendees_at_cutoff(list(await self.repo.fetch_attendees_with_dates(compare_year)), cutoff)
+        return enrolled
+
+    async def _fetch_anchor(self, year: int) -> date | None:
+        """A season's registration anchor; None (read it as it stands) when unset or unreadable."""
+        try:
+            return registration_anchor(await self.repo.fetch_registration_dates(year))
+        except Exception:
+            logger.warning("Failed to read the %d registration dates, reading it as it stands", year, exc_info=True)
+            return None
 
     def _filter_base_attendees(
         self,

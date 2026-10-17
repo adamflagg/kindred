@@ -229,6 +229,11 @@ export interface RetentionMetrics {
   by_prior_session?: RetentionByPriorSession[]
   session_flow?: SessionFlowItem[]
   aged_out_count?: number
+  /** Asked with same_point_of (#3207 PR 11): which way the compare year was read. */
+  prior_basis?: 'same_point' | 'final' | null
+  day_offset?: number | null
+  prior_day_offset?: number | null
+  as_of_date?: string | null
 }
 
 export interface RegistrationMetrics {
@@ -360,10 +365,17 @@ export interface RetentionTrendYear {
   by_gender: RetentionByGender[]
   by_grade: RetentionByGrade[]
   aged_out_count?: number
+  /** While the newest season is live (ruling #89): this transition at the same registration day. */
+  same_point_rate?: number | null
+  same_point_as_of?: string | null
 }
 
 export interface RetentionTrendsResponse {
   years: RetentionTrendYear[]
+  prior_basis?: 'same_point' | 'final' | null
+  day_offset?: number | null
+  prior_day_offset?: number | null
+  as_of_date?: string | null
   enrollment_by_year?: YearEnrollment[]
 }
 
@@ -374,6 +386,8 @@ export interface RetentionRateBarItem {
   baseCount: number
   returnedCount: number
   id?: string | number // Optional identifier for drilldown (e.g., session_cm_id, grade number)
+  /** Last year's rate for the same row (#3207 PR 11): same point while live, final after. */
+  priorRate?: number | null
 }
 
 // Drilldown types (chart click-through)

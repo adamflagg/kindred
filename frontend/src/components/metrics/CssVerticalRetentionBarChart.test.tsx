@@ -90,3 +90,58 @@ describe('CssVerticalRetentionBarChart shortenLabel (P-20 option B)', () => {
     expect(screen.queryByText('Harbor School')).not.toBeInTheDocument()
   })
 })
+
+describe('CssVerticalRetentionBarChart compare (#3207 PR 11)', () => {
+  const compare = {
+    live: true,
+    noteN: 1,
+    label: 'vs same point last year',
+    pending: false,
+    nowLegend: '2026 so far',
+    priorLegend: '2025 at this registration day',
+    priorYear: 2025,
+  } as const
+  const rows: RetentionRateBarItem[] = [
+    {
+      name: 'Session 2',
+      retentionRate: 0.672,
+      baseCount: 612,
+      returnedCount: 411,
+      priorRate: 0.65,
+    },
+    {
+      name: 'Session 2b',
+      retentionRate: 0.556,
+      baseCount: 18,
+      returnedCount: 10,
+      priorRate: 0.495,
+    },
+    { name: 'New', retentionRate: 0.5, baseCount: 40, returnedCount: 20, priorRate: null },
+  ]
+
+  it('heads the chart with the basis, marks last year on each bar and shows each change', () => {
+    const { container } = render(
+      <CssVerticalRetentionBarChart
+        data={rows}
+        title="By session"
+        sortBy="none"
+        compare={compare}
+      />
+    )
+    expect(container).toHaveTextContent('Change vs same point last year1')
+    expect(screen.getByText('▲ +2.2')).toBeInTheDocument()
+    // the small row keeps its change, muted, with its count (the chart face shows no base)
+    expect(screen.getByText('+6.1 · 18')).toBeInTheDocument()
+    expect(container.querySelectorAll('[data-prior-tick]')).toHaveLength(2)
+    expect(screen.getByText('2026 so far')).toBeInTheDocument()
+    expect(screen.getByText('2025 at this registration day')).toBeInTheDocument()
+  })
+
+  it('is as before without a compare', () => {
+    const { container } = render(
+      <CssVerticalRetentionBarChart data={rows} title="By session" sortBy="none" />
+    )
+    expect(container).not.toHaveTextContent('Change vs')
+    expect(container.querySelectorAll('[data-prior-tick]')).toHaveLength(0)
+  })
+})

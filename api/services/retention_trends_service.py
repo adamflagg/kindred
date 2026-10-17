@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import Counter
+from datetime import date, timedelta
 from typing import TYPE_CHECKING, Any
 
 from api.schemas.metrics import (
@@ -32,6 +33,7 @@ from api.utils.session_metrics import (
     resolve_scope_ids,
 )
 from bunking.gender_identity import NOT_GIVEN, identity_sort_key
+from bunking.logging_config import get_logger
 
 from .breakdown_calculator import compute_breakdown, compute_registration_breakdown, safe_rate
 from .extractors import (
@@ -44,9 +46,13 @@ from .extractors import (
     extract_synagogue,
     summers_at_camp_by_person,
 )
+from .reconstruction import attendees_at_cutoff
+from .same_point import live_same_point, registration_anchor
 
 if TYPE_CHECKING:
     from .metrics_repository import MetricsRepository
+
+logger = get_logger(__name__)
 
 
 class RetentionTrendsService:
@@ -68,6 +74,8 @@ class RetentionTrendsService:
         session_cm_id: int | None = None,
         duration: str | None = None,
         include_teen_pipeline: bool = False,
+        same_point: bool = False,
+        today: date | None = None,
     ) -> RetentionTrendsResponse:
         """Calculate retention trends across multiple year transitions.
 
@@ -82,6 +90,10 @@ class RetentionTrendsService:
                 bridge (so grade-10 campers are kept in the base pool).  Only
                 meaningful when the selected scope includes teen sessions; in a
                 non-teen scope the flag is inert.
+            same_point: While ``current_year`` is live, give each transition its retention at the
+                registration day that season has reached, counted in its own season (decision 7,
+                #3207 PR 11 ruling #89). The response's ``prior_basis`` says whether it was live.
+            today: Override for the camp today (tests). Only the same-point series uses it.
 
         Returns:
             RetentionTrendsResponse with trend data.
@@ -116,6 +128,7 @@ class RetentionTrendsService:
             sessions = year_data["sessions"]
 
             cohort_ids = resolve_scope_ids(sessions, session_types, session_cm_id, duration, reference_name)
+            year_data["cohort_ids"] = cohort_ids
 
             attendees = filter_attendees_by_session(attendees, None, session_cm_ids=cohort_ids)
 
@@ -129,6 +142,8 @@ class RetentionTrendsService:
         retention_years = self._calculate_retention_transitions(
             years, data_by_year, effective_pipeline=effective_pipeline, scope_has_teens=scope_has_teens
         )
+
+        same_point_fields = await self._apply_same_point(years, data_by_year, retention_years, same_point, today)
 
         # Fetch enrollment history for summer metrics (union of all person IDs)
         all_person_ids: set[int] = set()
@@ -145,7 +160,77 @@ class RetentionTrendsService:
         return RetentionTrendsResponse(
             years=retention_years,
             enrollment_by_year=enrollment_by_year,
+            **same_point_fields,
         )
+
+    async def _apply_same_point(
+        self,
+        years: list[int],
+        data_by_year: dict[int, dict[str, Any]],
+        retention_years: list[RetentionTrendYear],
+        same_point: bool,
+        today: date | None,
+    ) -> dict[str, Any]:
+        """Set each transition's same_point_rate while the newest season is live (ruling #89).
+
+        Every earlier transition is read at the same registration day of its own season: the base
+        year's campers registered for to_year by then and not cancelled by then (decision 7, the rule
+        Overview and Retention use). The live transition's own point is today's count. Returns the
+        response's basis fields.
+        """
+        if not same_point:
+            return {}
+        live_year = years[-1]
+        point = await live_same_point(self.repo, live_year, today)
+        if point is None:
+            return {"prior_basis": "final"}
+
+        to_years = [t.to_year for t in retention_years]
+        anchors = dict(zip(to_years, await asyncio.gather(*(self._fetch_anchor(y) for y in to_years)), strict=True))
+        read_years = [y for y in to_years if y != live_year and anchors[y] is not None]
+        dated_by_year = dict(
+            zip(
+                read_years,
+                await asyncio.gather(*(self.repo.fetch_attendees_with_dates(y) for y in read_years)),
+                strict=True,
+            )
+        )
+        as_of_date: str | None = None
+        for transition in retention_years:
+            anchor = anchors[transition.to_year]
+            if transition.to_year == live_year:
+                transition.same_point_rate = transition.retention_rate
+                if anchor is not None:
+                    transition.same_point_as_of = (anchor + timedelta(days=point.day_offset)).isoformat()
+                continue
+            if anchor is None:
+                continue
+            cutoff = anchor + timedelta(days=point.prior_offset)
+            enrolled, _left = attendees_at_cutoff(list(dated_by_year[transition.to_year]), cutoff)
+            scoped = filter_attendees_by_session(
+                enrolled, None, session_cm_ids=data_by_year[transition.to_year]["cohort_ids"]
+            )
+            returned_by_then = {int(getattr(a, "person_id", 0)) for a in scoped if getattr(a, "person_id", None)}
+            base_ids = data_by_year[transition.from_year]["retention_base_ids"]
+            transition.same_point_rate = safe_rate(len(base_ids & returned_by_then), len(base_ids))
+            transition.same_point_as_of = cutoff.isoformat()
+            if transition.to_year == live_year - 1:
+                as_of_date = transition.same_point_as_of
+
+        return {
+            "prior_basis": "same_point",
+            "day_offset": point.day_offset,
+            "prior_day_offset": point.prior_offset,
+            "as_of_date": as_of_date,
+        }
+
+    async def _fetch_anchor(self, year: int) -> date | None:
+        """A season's registration anchor; None when unset or unreadable."""
+        try:
+            return registration_anchor(await self.repo.fetch_registration_dates(year))
+        except Exception:
+            logger.warning("Failed to read the %d registration dates", year, exc_info=True)
+            return None
 
     async def _fetch_all_years_data(
         self,
@@ -229,6 +314,8 @@ class RetentionTrendsService:
             pre_filter_count = len(base_person_ids)
             base_person_ids = exclude_aged_out_persons(base_person_ids, persons_base, effective_pipeline)
             aged_out_count = pre_filter_count - len(base_person_ids)
+            # The headline base, kept for the same-point series (the same campers, read at an earlier day)
+            base_data["retention_base_ids"] = base_person_ids
 
             returned_ids = base_person_ids & compare_person_ids
             base_count = len(base_person_ids)

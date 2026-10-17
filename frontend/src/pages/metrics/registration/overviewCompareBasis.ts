@@ -28,7 +28,7 @@ const LONG_DATE = new Intl.DateTimeFormat('en-US', {
 })
 
 /** "2025-03-02" → "Mar 2, 2025". A calendar date, so it is formatted in UTC and never shifts a day. */
-function formatDay(isoDate: string): string {
+export function formatDay(isoDate: string): string {
   return LONG_DATE.format(new Date(`${isoDate}T00:00:00Z`))
 }
 
