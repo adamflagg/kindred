@@ -28,7 +28,8 @@ export function pickComparisonYear(
 
 /**
  * A session's prior-year summary as the By Session table reads it: by its own id when matched, else by its
- * canonical name. The pace card reads through this too, so the two never disagree (PR 12).
+ * canonical name. The pace card reads through this too, so the two never disagree (PR 12); only the card's
+ * opt-in fold (#97) adds to a host's figure, and the card names what it folded.
  */
 export function sessionPriorOf(
   session: VelocityCurve,

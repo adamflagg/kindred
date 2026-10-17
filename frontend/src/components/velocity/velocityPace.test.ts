@@ -135,6 +135,17 @@ describe('buildPaceModel', () => {
     expect(model.counts.behind).toBe(1)
   })
 
+  it('never lists a session this year runs as not offered, even with no row of its own yet', () => {
+    // Matched to this year's session 7, which has no curve yet (no enrollments): offered, so not "not offered".
+    const matchedNoRow = prior(7, 'Session 4', 15, 18, { current_session_cm_id: 7 })
+    const model = buildPaceModel({ ...base, summaries: [...summaries, matchedNoRow] })
+    expect(model.notOffered.map((p) => p.name)).not.toContain('Session 4')
+    expect(model.notOffered).toEqual([
+      { name: 'Session 5', prior: 40 },
+      { name: 'Session 1b', prior: 20 },
+    ])
+  })
+
   it('a past season compares each session with its final (ruling #98)', () => {
     const model = buildPaceModel({ ...base, basis: 'final' })
     const s1 = model.rows.find((r) => r.name === 'Session 1')

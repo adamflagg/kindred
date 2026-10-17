@@ -3,7 +3,9 @@
  *
  * Every number comes from the By Session table's own reads: "now" is a session's Latest Enrolled, and
  * "last" is its prior summary found by `sessionPriorOf`, read at the same registration day while the
- * viewed season is live and at the final once it is over (#98, the server's `prior_basis`).
+ * viewed season is live and at the final once it is over (#98, the server's `prior_basis`). The one
+ * exception is the fold (#97, only when asked): it adds retired embedded sessions to their host's "last"
+ * on the card alone, so a folded row's "last" is the table's plus the folded sessions it names.
  */
 import type { PriorYearSessionSummary, VelocityCurve } from '../../types/velocity'
 import { sessionPriorOf } from './velocityCompare'
@@ -98,6 +100,8 @@ export function buildPaceModel({
   let canFold = false
   for (const summary of summaries) {
     if (claimed.has(summary)) continue
+    // Matched to a session this year that has no row yet (no enrollments): offered, so never "not offered".
+    if (summary.current_session_cm_id != null) continue
     const prior = priorValue(summary, basis)
     if (prior == null) continue
     const part = { name: summary.session_name ?? `Session ${String(summary.session_cm_id)}`, prior }
