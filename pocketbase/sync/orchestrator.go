@@ -866,7 +866,11 @@ type Orchestrator struct {
 	allSeasonsResyncRunning bool     // The weekly all-seasons re-sync (all_seasons_resync.go)
 	// hourlySyncRunning is the hourly run (RunHourlySync), so the all-seasons re-sync and the
 	// API's admission checks wait for it rather than start a job id under it.
-	hourlySyncRunning   bool
+	hourlySyncRunning bool
+	// dailySyncWaiting is a nightly waiting for an in-flight hourly run (RunDailySync). The
+	// hourly run counts it as a blocker, so it skips its prior-season pass rather than make
+	// the nightly wait through it.
+	dailySyncWaiting    bool
 	pendingUnifiedSyncs []QueuedSync       // Queue of pending unified sync requests (FIFO)
 	activeSyncCancel    context.CancelFunc // Cancel function for the currently running sync
 	currentRunIndex     int                // 0-based index of currently running job in active queue
@@ -2158,6 +2162,8 @@ func (o *Orchestrator) hourlyBlockerLocked() string {
 	switch {
 	case o.dailySyncRunning:
 		return "the nightly or a staff full run"
+	case o.dailySyncWaiting:
+		return "the nightly, waiting for this run"
 	case o.historicalSyncRunning:
 		return "a staff run of another season"
 	case o.allSeasonsResyncRunning:
@@ -2200,8 +2206,16 @@ func (o *Orchestrator) runPriorSeasons(ctx context.Context, jobs []string, trigg
 func (o *Orchestrator) RunDailySync(ctx context.Context) error {
 	// The nightly outranks the hourly run: one that ran past 03:00 (429 waits can stretch it)
 	// would collide with this run on a job id and share its CampMinder rate-limit window.
-	if err := o.waitWhile(ctx, "the nightly", "the hourly run", dailyWaitForHourlyMax, dailyWaitForHourlyPoll,
-		func() bool { return o.hourlySyncRunning }); err != nil {
+	// dailySyncWaiting tells that run the nightly is waiting, so it skips its prior-season pass.
+	o.mu.Lock()
+	o.dailySyncWaiting = true
+	o.mu.Unlock()
+	err := o.waitWhile(ctx, "the nightly", "the hourly run", dailyWaitForHourlyMax, dailyWaitForHourlyPoll,
+		func() bool { return o.hourlySyncRunning })
+	o.mu.Lock()
+	o.dailySyncWaiting = false
+	o.mu.Unlock()
+	if err != nil {
 		return err
 	}
 	o.ensurePrimaryClient()

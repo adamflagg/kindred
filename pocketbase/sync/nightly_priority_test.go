@@ -98,6 +98,47 @@ func TestRunDailySync_HourlyWaitIsBoundedAndCtxAware(t *testing.T) {
 	})
 }
 
+// A nightly waiting on an in-flight hourly run counts as a running nightly to that run: the
+// hourly run skips its prior-season pass (the nightly repeats it) instead of making the nightly
+// wait through it, and the nightly starts once the hourly's primary pass ends.
+func TestRunDailySync_WaitingNightlyCutsTheHourlyRunShort(t *testing.T) {
+	t.Setenv("CAMPMINDER_SEASON_ID", "")
+	withNow(t, afterRollover)
+	client := newTestCampMinderClient(t, 2027)
+
+	runInBubble(t, func(t *testing.T) {
+		o, rec := newRecordingOrchestrator(t, nil, client)
+		release := make(chan struct{})
+		rec.blockDuring("persons", 2027, release)
+		hourly := make(chan error, 1)
+		go func() { hourly <- o.RunHourlySync(context.Background()) }()
+		rec.waitUntilBlocked(t)
+
+		nightly := make(chan error, 1)
+		go func() { nightly <- o.RunDailySync(context.Background()) }()
+		time.Sleep(time.Minute)
+		synctest.Wait()
+
+		close(release)
+		if err := <-hourly; err != nil {
+			t.Fatalf("RunHourlySync: %v", err)
+		}
+		synctest.Wait() // the nightly is still between polls: every run so far is the hourly's
+		for _, run := range rec.Runs() {
+			if run.Year != 2027 {
+				t.Errorf("the hourly run went on to %v while the nightly was waiting for it", run)
+			}
+		}
+
+		if err := <-nightly; err != nil {
+			t.Fatalf("RunDailySync: %v", err)
+		}
+		if !rec.Ran("sessions", 2026) {
+			t.Errorf("the nightly did not run the prior season: %v", rec.Runs())
+		}
+	})
+}
+
 func TestRunCustomValuesSync_WaitsWhileNightlyRuns(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
