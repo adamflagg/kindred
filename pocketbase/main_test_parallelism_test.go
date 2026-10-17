@@ -416,6 +416,8 @@ var serialGroups = []struct {
 			"TestHourlySyncRunsTheQueueForBothSeasons",
 			"TestHourlySyncKeepsGoingAfterAFailedJob",
 			"TestHourlySyncYieldsToARunningQueue",
+			"TestRunDailySync_WaitsForInFlightHourlyRun",
+			"TestRunDailySync_HourlyWaitIsBoundedAndCtxAware",
 			"TestHourlySyncSkipsItsPriorSeasonPassWhenAQueueStarts",
 			"TestHourlySyncRefusesASecondRun",
 			"TestScheduledHourlySkipsTheNightlyWindow",

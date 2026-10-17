@@ -2105,6 +2105,51 @@ func (o *Orchestrator) RunHourlySync(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
+const (
+	// dailyWaitForHourlyMax bounds how long the nightly waits for an hourly run that is still
+	// in flight when its cron fires. Past it the nightly goes ahead (its jobs queue behind a
+	// refusal rather than the whole night being lost).
+	dailyWaitForHourlyMax = 15 * time.Minute
+	// dailyWaitForHourlyPoll is how often that wait looks at the flag.
+	dailyWaitForHourlyPoll = 5 * time.Second
+)
+
+// waitWhile polls busy (under o.mu) every poll until it is false, for at most max. It returns
+// ctx.Err() if ctx ends first, and nil otherwise: a wait that hit its bound is logged and the
+// caller goes ahead.
+func (o *Orchestrator) waitWhile(
+	ctx context.Context, who, forWhat string, maxWait, poll time.Duration, busy func() bool,
+) error {
+	isBusy := func() bool {
+		o.mu.RLock()
+		defer o.mu.RUnlock()
+		return busy()
+	}
+	if !isBusy() {
+		return nil
+	}
+	slog.Info("Waiting before starting", "run", who, "for", forWhat, "max_wait", maxWait)
+	start := time.Now()
+	deadline := time.NewTimer(maxWait)
+	defer deadline.Stop()
+	ticker := time.NewTicker(poll)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-deadline.C:
+			slog.Warn("Gave up waiting, starting anyway", "run", who, "for", forWhat, "waited", time.Since(start))
+			return nil
+		case <-ticker.C:
+			if !isBusy() {
+				slog.Info("Waited, starting now", "run", who, "for", forWhat, "waited", time.Since(start))
+				return nil
+			}
+		}
+	}
+}
+
 // hourlyBlockerLocked names the running queue the hourly run yields to, "" when there is none.
 // Only queues that run the hourly jobs count: the weekly globals and the custom-values pass
 // write other tables, so the hourly run goes ahead beside them. Callers hold o.mu.
@@ -2152,6 +2197,12 @@ func (o *Orchestrator) runPriorSeasons(ctx context.Context, jobs []string, trigg
 // registry. dailySyncRunning stays true until the last season's pass ends, so Manage > Sync
 // shows the nightly run in progress throughout.
 func (o *Orchestrator) RunDailySync(ctx context.Context) error {
+	// The nightly outranks the hourly run: one that ran past 03:00 (429 waits can stretch it)
+	// would collide with this run on a job id and share its CampMinder rate-limit window.
+	if err := o.waitWhile(ctx, "the nightly", "the hourly run", dailyWaitForHourlyMax, dailyWaitForHourlyPoll,
+		func() bool { return o.hourlySyncRunning }); err != nil {
+		return err
+	}
 	o.ensurePrimaryClient()
 
 	// Check if global tables are empty - if so, repair them first (the five PhaseGlobal

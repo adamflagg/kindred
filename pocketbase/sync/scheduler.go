@@ -200,12 +200,26 @@ func (s *Scheduler) runWeeklySync() {
 	processQueuedSyncs(s.orchestrator) // a staff press during the run was queued
 }
 
+const (
+	// customValuesWaitForNightlyMax bounds the wait for a nightly that is still in its N-1 pass at 04:00.
+	customValuesWaitForNightlyMax  = 45 * time.Minute
+	customValuesWaitForNightlyPoll = 5 * time.Second
+)
+
 // runCustomValuesSync runs the weekly custom field values sync for current year.
 // Each sync runs sequentially to prevent doubling API load and hitting rate limits.
 // This fixes the "rate limiter wait: context deadline exceeded" issue.
 func (s *Scheduler) runCustomValuesSync() {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Minute)
 	defer cancel()
+
+	// Sunday 04:00 lands inside the nightly's N-1 pass; the nightly has priority at the
+	// CampMinder rate limit, so this pass starts when it ends (or after the bound).
+	if err := s.orchestrator.waitWhile(ctx, "custom values", "the nightly", customValuesWaitForNightlyMax,
+		customValuesWaitForNightlyPoll, func() bool { return s.orchestrator.dailySyncRunning }); err != nil {
+		slog.Error("Custom values sync abandoned while waiting for the nightly", "error", err)
+		return
+	}
 
 	// The orchestrator's own RunCustomValuesSync is not used here (it runs the jobs in
 	// parallel), so the batch has to be minted directly or these runs would be recorded as
