@@ -675,12 +675,13 @@ func handleIndividualSync(e *core.RequestEvent, scheduler *Scheduler, syncType s
 	}
 
 	// Check if any sync should cause queueing:
-	// 1. Sequence flags (daily/weekly/historical/custom-values) - cover the window between
-	//    sequence start and first job execution (before runningJobs is populated)
+	// 1. Sequence flags (daily/weekly/historical/custom-values/hourly) - cover the window between
+	//    sequence start and first job execution (before runningJobs is populated), and the gaps
+	//    between two of a sequence's jobs. The scheduled runs start the queue when they end.
 	// 2. IsAnyJobRunning() - covers individual jobs that were started outside a sequence
 	if orchestrator.IsDailySyncRunning() || orchestrator.IsWeeklySyncRunning() ||
 		orchestrator.IsHistoricalSyncRunning() || orchestrator.IsCustomValuesSyncRunning() ||
-		orchestrator.IsAnyJobRunning() {
+		orchestrator.IsHourlySyncRunning() || orchestrator.IsAnyJobRunning() {
 		// Queue the individual sync with debug flag
 		// The queue item carries the season, and processQueuedSyncs runs that season's instance.
 		qs, err := orchestrator.EnqueueIndividualSync(year, syncType, nil, debug, requestedBy)
@@ -1595,7 +1596,7 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 	// Check all sync flags to prevent race conditions (e.g., when global sync triggers first)
 	if orchestrator.IsDailySyncRunning() || orchestrator.IsWeeklySyncRunning() ||
 		orchestrator.IsHistoricalSyncRunning() || orchestrator.IsCustomValuesSyncRunning() ||
-		orchestrator.IsAnyJobRunning() {
+		orchestrator.IsHourlySyncRunning() || orchestrator.IsAnyJobRunning() {
 		// Sync is running - try to enqueue
 		qs, err := orchestrator.EnqueueUnifiedSync(year, service, includeCustomValues, debug, dryRun, requestedBy)
 		if err != nil {
@@ -2918,7 +2919,7 @@ func handleRunPhase(e *core.RequestEvent, scheduler *Scheduler) error {
 	// Check if any sync is already running (must match handleIndividualSync check)
 	if orchestrator.IsDailySyncRunning() || orchestrator.IsWeeklySyncRunning() ||
 		orchestrator.IsHistoricalSyncRunning() || orchestrator.IsCustomValuesSyncRunning() ||
-		orchestrator.IsAnyJobRunning() {
+		orchestrator.IsHourlySyncRunning() || orchestrator.IsAnyJobRunning() {
 		// Queue the phase sync instead of returning conflict (pass debug flag)
 		qs, err := orchestrator.EnqueuePhaseSync(year, phase, debug, requestedBy)
 		if err != nil {

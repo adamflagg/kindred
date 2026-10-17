@@ -105,17 +105,20 @@ func TestRegistryIDsAreRegisteredServices(t *testing.T) {
 	}
 }
 
-// TestCadenceBitsetOverlap pins the one job on two crons. A slice-per-cadence cannot express
-// this without listing the job twice, which is why the bitset exists.
+// TestCadenceBitsetOverlap pins the jobs on two crons: every hourly job is on the nightly too.
+// A slice-per-cadence cannot express this without listing each job twice, which is why the
+// bitset exists. Which jobs are hourly is TestHourlyQueueIsEnrollmentsPeopleSessionsAndAssignments.
 func TestCadenceBitsetOverlap(t *testing.T) {
 	t.Parallel()
 
 	hourly := jobsWithCadence(CadenceHourly)
-	if len(hourly) != 1 || hourly[0] != "bunk_assignments" {
-		t.Fatalf("hourly cadence = %v, want [bunk_assignments]", hourly)
+	if len(hourly) == 0 {
+		t.Fatal("no job carries the hourly cadence")
 	}
-	if !slices.Contains(jobsWithCadence(CadenceDaily), "bunk_assignments") {
-		t.Error("bunk_assignments must carry Daily as well as Hourly")
+	for _, id := range hourly {
+		if !slices.Contains(jobsWithCadence(CadenceDaily), id) {
+			t.Errorf("%s must carry Daily as well as Hourly", id)
+		}
 	}
 }
 
@@ -1118,7 +1121,9 @@ func TestBatchChangedEntryDeletedWhenQueueCompletes(t *testing.T) {
 		// for this -- worth its own subtest rather than trusting it by association with the
 		// other four.
 		o := NewOrchestrator(nil)
-		o.RegisterService("bunk_assignments", &MockService{name: "bunk_assignments", stats: Stats{Updated: 1}})
+		for _, id := range cadenceQueue(CadenceHourly) {
+			o.RegisterService(id, &MockService{name: id, stats: Stats{Updated: 1}})
+		}
 
 		if err := o.RunHourlySync(context.Background()); err != nil {
 			t.Fatalf("RunHourlySync: %v", err)

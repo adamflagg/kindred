@@ -441,3 +441,76 @@ describe('useSyncCompletionToasts ignores the old season while the new one loads
     expect(invalidateSyncData).toHaveBeenCalledWith('attendees')
   })
 })
+
+// Coordinator ruling on #3281: the hourly schedule now runs sessions, attendees, persons and
+// bunk_assignments, so a completion toast per job would pop on Manage > Sync every hour. A run
+// the hourly schedule started (`trigger: 'hourly'`, Status.Trigger) toasts nothing. Its card still
+// updates, so the completion still invalidates. Staff-started and nightly runs toast as before.
+describe('useSyncCompletionToasts stays quiet for hourly runs', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockSyncStatus = null
+    mockIsPlaceholderData = false
+  })
+
+  function finish(syncType: string, end: Record<string, unknown>) {
+    mockSyncStatus = {
+      [syncType]: { status: 'running', trigger: end['trigger'] },
+    } as unknown as SyncStatusResponse
+    const { rerender } = renderHook(() => useSyncCompletionToasts())
+    mockSyncStatus = { [syncType]: end } as unknown as SyncStatusResponse
+    rerender()
+  }
+
+  it.each(['sessions', 'attendees', 'persons', 'bunk_assignments'])(
+    'pops no toast when the hourly run of %s succeeds, and still invalidates',
+    (syncType) => {
+      finish(syncType, {
+        status: 'success',
+        trigger: 'hourly',
+        summary: { created: 0, updated: 3, skipped: 0, errors: 0 },
+      })
+
+      expect(toast.success).not.toHaveBeenCalled()
+      expect(toast).not.toHaveBeenCalled()
+      expect(invalidateSyncData).toHaveBeenCalledWith(syncType)
+    }
+  )
+
+  it('pops no toast when an hourly run fails, and still invalidates', () => {
+    finish('attendees', { status: 'failed', trigger: 'hourly', error: 'boom' })
+
+    expect(toast).not.toHaveBeenCalled()
+    expect(toast.success).not.toHaveBeenCalled()
+    expect(invalidateSyncData).toHaveBeenCalledWith('attendees')
+  })
+
+  it('pops no toast for an hourly run that completed with issues', () => {
+    finish('persons', {
+      status: 'success',
+      trigger: 'hourly',
+      summary: { created: 0, updated: 1, skipped: 0, errors: 2 },
+    })
+
+    expect(toast).not.toHaveBeenCalled()
+  })
+
+  it.each(['daily', 'manual'])('still toasts a %s run', (trigger) => {
+    finish('attendees', {
+      status: 'success',
+      trigger,
+      summary: { created: 0, updated: 3, skipped: 0, errors: 0 },
+    })
+
+    expect(toast.success).toHaveBeenCalledTimes(1)
+  })
+
+  it('still toasts a run with no trigger on the payload', () => {
+    finish('attendees', {
+      status: 'success',
+      summary: { created: 0, updated: 3, skipped: 0, errors: 0 },
+    })
+
+    expect(toast.success).toHaveBeenCalledTimes(1)
+  })
+})

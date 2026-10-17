@@ -232,6 +232,8 @@ export const queryKeys = {
       samePointOf,
       includeTeenPipeline,
     ] as const,
+  /** Root prefix of every Analytics query: a finished sync refetches them all (useAnalyticsSyncRefetch). */
+  metricsRoot: () => ['metrics'] as const,
   metricsSessions: (year: number) => ['metrics', 'sessions', year] as const,
   // Does a season have any countable summer attendee rows? Drives Analytics' empty state (PR 4).
   metricsSeasonRows: (year: number) => ['metrics', 'season-rows', year] as const,

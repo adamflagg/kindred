@@ -52,9 +52,10 @@ func (s *Scheduler) Start() error {
 		return fmt.Errorf("initializing sync services: %w", err)
 	}
 
-	// Add hourly schedule for bunk assignments
+	// Hourly: sessions, attendees, persons and bunk assignments, both synced seasons. It skips
+	// the nightly's window and yields to any queue running the same jobs (runHourlySync).
 	_, err := s.cron.AddFunc("0 * * * *", func() {
-		slog.Info("Starting scheduled hourly sync (bunk assignments)")
+		slog.Info("Starting scheduled hourly sync (enrollments, people, sessions, bunk assignments)")
 		s.runHourlySync()
 	})
 	if err != nil {
@@ -125,17 +126,44 @@ func (s *Scheduler) Stop() {
 	slog.Info("Sync scheduler stopped")
 }
 
-// runHourlySync runs the hourly sync tasks
-func (s *Scheduler) runHourlySync() {
-	// Use background context for scheduled jobs
-	ctx := context.Background()
+// The nightly's window, as offsets from local midnight in the container's zone (the cron's zone).
+// The nightly starts at 03:00 and runs about an hour for two seasons. The hourly cron fires on
+// the hour, so the ticks this removes are 03:00, which races the nightly's own start (two cron
+// goroutines with no order between them, so the nightly's running flag may not be set yet), and
+// 04:00, inside its N-1 pass. A nightly that overruns 04:30 still holds its flag, and the hourly
+// run yields to that (RunHourlySync).
+const (
+	nightlyWindowStart = 2*time.Hour + 55*time.Minute
+	nightlyWindowEnd   = 4*time.Hour + 30*time.Minute
+)
 
-	// Run bunk assignments sync only
-	if err := s.orchestrator.RunHourlySync(ctx); err != nil {
+// inNightlyWindow reports whether t falls in the nightly's window, 02:55 to 04:30 local time.
+func inNightlyWindow(t time.Time) bool {
+	local := t.In(time.Local)
+	sinceMidnight := time.Duration(local.Hour())*time.Hour + time.Duration(local.Minute())*time.Minute
+	return sinceMidnight >= nightlyWindowStart && sinceMidnight < nightlyWindowEnd
+}
+
+// runHourlySync runs the hourly sync (sessions, attendees, persons, bunk assignments, for both
+// synced seasons), except in the nightly's window, where the nightly syncs the same jobs. A staff
+// run that arrived meanwhile was queued (the API's admission checks count the hourly run), so it
+// starts here once the hourly run ends: nothing else drains the queue but an API-started run.
+func (s *Scheduler) runHourlySync() {
+	if inNightlyWindow(nowFn()) {
+		slog.Info("Hourly sync skipped: the nightly sync runs the same jobs in this window")
+		return
+	}
+	switch err := s.orchestrator.RunHourlySync(context.Background()); {
+	case errors.Is(err, errHourlySyncYielded):
+		// Logged by RunHourlySync. The running queue drains the staff queue itself, or will
+		// leave it to the next hour.
+		return
+	case err != nil:
 		slog.Error("Hourly sync failed", "error", err)
-	} else {
+	default:
 		slog.Info("Hourly sync completed successfully")
 	}
+	processQueuedSyncs(s.orchestrator)
 }
 
 // runDailySync runs the daily sync tasks
@@ -155,6 +183,7 @@ func (s *Scheduler) runDailySync() {
 	} else {
 		slog.Info("Daily sync completed successfully")
 	}
+	processQueuedSyncs(s.orchestrator) // a staff press during the run was queued
 }
 
 // runWeeklySync runs the weekly sync tasks (global data)
@@ -168,6 +197,7 @@ func (s *Scheduler) runWeeklySync() {
 	} else {
 		slog.Info("Weekly sync completed successfully")
 	}
+	processQueuedSyncs(s.orchestrator) // a staff press during the run was queued
 }
 
 // runCustomValuesSync runs the weekly custom field values sync for current year.
@@ -195,6 +225,7 @@ func (s *Scheduler) runCustomValuesSync() {
 		}
 	}
 	slog.Info("Custom values sync sequence completed")
+	processQueuedSyncs(s.orchestrator) // a staff press during the run was queued
 }
 
 // runAllSeasonsResync runs the weekly all-seasons re-sync. The bound is generous: the pass is a
@@ -205,6 +236,7 @@ func (s *Scheduler) runAllSeasonsResync() {
 	if err := s.orchestrator.RunAllSeasonsResync(ctx); err != nil {
 		slog.Error("All-seasons re-sync failed", "error", err)
 	}
+	processQueuedSyncs(s.orchestrator) // a staff press during the run was queued
 }
 
 // TriggerCustomValuesSync manually triggers the custom values sync
@@ -293,8 +325,7 @@ func (s *Scheduler) IsDailySyncRunning() bool {
 
 // IsHourlySyncRunning checks if hourly sync is currently running
 func (s *Scheduler) IsHourlySyncRunning() bool {
-	// For now, hourly sync only runs bunk_assignments
-	return s.orchestrator.IsRunning("bunk_assignments")
+	return s.orchestrator.IsHourlySyncRunning()
 }
 
 // IsWeeklySyncRunning checks if weekly sync is currently running

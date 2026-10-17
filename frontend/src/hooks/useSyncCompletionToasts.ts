@@ -139,6 +139,14 @@ export function useSyncCompletionToasts(
         // server keep caches this job never writes (kindred#2803).
         invalidateSyncData(syncType)
 
+        // A run the hourly schedule started toasts nothing (#3281): sessions, attendees, persons
+        // and assignments run every hour, and a toast for each would pop all day. The card still
+        // shows the run; the invalidation above still happens.
+        if (status.trigger === 'hourly') {
+          previousStatuses.current[syncType] = currentStatus
+          continue
+        }
+
         const displayName = SYNC_DISPLAY_NAMES[syncType]
         const summary = status.summary
 

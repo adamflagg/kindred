@@ -31,7 +31,8 @@ import (
 //
 // When: Saturday 05:00 in the container's zone (scheduler.go). It also waits, before each
 // season, while any other queue runs (the nightly, the weekly globals, a staff full run or
-// replay), so it does not start a season under one of those. The wait is a check, not a claim:
+// replay, the hourly run), so it does not start a season under one of those. The hourly run
+// yields to it from then on (RunHourlySync). The wait is a check, not a claim:
 // the pass sets no flag the other queues or the API's admission checks read, so a staff run that
 // lands in a gap between this pass's jobs starts at once, and a collision on a job id refuses one
 // side with "sync already in progress" (runSeasonPass logs it; the next Saturday retries). It
@@ -74,7 +75,8 @@ func (b *BaseSyncService) keptOrphans(entityName string) bool {
 	if !b.keepOrphans {
 		return false
 	}
-	slog.Info("Keeping orphans: the all-seasons re-sync deletes no rows of this kind", "entity", entityName)
+	slog.Info("Keeping orphans: this run (the all-seasons re-sync, or an hourly run) deletes no rows of this kind",
+		"entity", entityName)
 	return true
 }
 
@@ -138,11 +140,14 @@ func (o *Orchestrator) RunAllSeasonsResync(ctx context.Context) error {
 
 // waitForQuietQueues returns once no other queue is running: the nightly or a staff full run
 // (dailySyncRunning), a replay or a manual N-1 run (historicalSyncRunning), the weekly globals,
-// or the custom-values queue.
+// the custom-values queue, or the hourly run. The hourly run fires at 05:00 too, and it runs
+// sessions, attendees and persons; it yields to this pass once the pass has started, so this
+// wait is only ever for one hourly run that got there first.
 func (o *Orchestrator) waitForQuietQueues(ctx context.Context) error {
 	for {
 		o.mu.RLock()
-		busy := o.dailySyncRunning || o.historicalSyncRunning || o.weeklySyncRunning || o.customValuesSyncRunning
+		busy := o.dailySyncRunning || o.historicalSyncRunning || o.weeklySyncRunning ||
+			o.customValuesSyncRunning || o.hourlySyncRunning
 		o.mu.RUnlock()
 		if !busy {
 			return nil

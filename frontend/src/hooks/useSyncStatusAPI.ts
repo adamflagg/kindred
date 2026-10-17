@@ -72,6 +72,11 @@ export interface SyncStatus {
    * `weekendHousingSyncedAt` off the weekend's own payload (kindred#2617).
    */
   session?: string
+  /**
+   * How the run was started (`Status.Trigger`): 'hourly', 'daily', 'manual', and so on. The
+   * completion toasts skip 'hourly' runs (useSyncCompletionToasts). Absent on an idle entry.
+   */
+  trigger?: string
   summary?: {
     created: number
     updated: number

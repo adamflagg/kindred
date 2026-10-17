@@ -41,10 +41,11 @@ const (
 	// Hardcoded rather than a `config` table knob, matching LogRetentionDays above it: this
 	// is infrastructure retention, not a business rule anyone should be tuning from a GUI.
 	//
-	// The window is sized from real volume. The hourly cron runs a single service, the 3am
-	// daily sweeps ~26, and two small weeklies run on Sunday — roughly 100 rows a day, so 90
-	// days is about 9,000 rows. That spans a whole summer season plus the shoulder either
-	// side, which is the period the Rejected distribution has to be read over.
+	// The window is sized from real volume. The hourly cron runs four services for two seasons
+	// on 22 ticks a day (epic #3207 PR 5), the 3am daily sweeps ~26 per season, and two small
+	// weeklies run on Sunday — roughly 230 rows a day, so 90 days is about 21,000 rows. That
+	// spans a whole summer season plus the shoulder either side, which is the period the
+	// Rejected distribution has to be read over.
 	SyncRunRetentionDays = 90
 
 	// maxSyncRunErrorLen caps the stored error message, in runes, and matches the `error`
