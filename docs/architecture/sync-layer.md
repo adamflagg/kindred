@@ -408,6 +408,7 @@ of the other queues:
   (`dailySyncRunning`), a staff run of N−1 or a replay (`historicalSyncRunning`), or the all-seasons
   re-sync is running, it starts nothing (`errHourlySyncYielded`), and it checks again before its N−1
   pass. The weekly globals and the custom-values pass write other tables, so it runs beside them.
+- **Its orphan sweeps are off.** Sessions, attendees and persons keep their orphans on an hourly run (`hourlyKeepOrphanJobs`, through `setKeepOrphans`, the all-seasons re-sync's mechanism) and sweep on the nightly only. A short but well-formed feed passes every sweep guard, and the cascade behind a deleted row takes locked group members, original bunk requests and a season's placements with it. `bunk_assignments` keeps its hourly sweep: it deletes placement rows only.
 - **It holds a flag of its own** (`hourlySyncRunning`). The all-seasons re-sync waits on it before each
   season, and the API's admission checks count it, so a staff press during the hourly run is queued
   instead of starting into its next job. Every scheduled run starts the staff queue when it ends

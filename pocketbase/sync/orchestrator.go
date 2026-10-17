@@ -160,8 +160,8 @@ var syncJobMeta = []JobMeta{
 	{ID: "sessions", Phase: PhaseSource,
 		Description: "Sessions from CampMinder",
 		Cadences:    CadenceHourly | CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
-	// Depends on sessions. Hourly as well as nightly; its orphan sweep runs on both, with every
-	// guard it has.
+	// Depends on sessions. Hourly as well as nightly; its orphan sweep runs on the nightly only
+	// (hourlyKeepOrphanJobs), with every guard it has.
 	{ID: "attendees", Phase: PhaseSource,
 		Description: "Attendees from CampMinder",
 		Cadences:    CadenceHourly | CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
@@ -1999,6 +1999,15 @@ func (o *Orchestrator) checkGlobalTablesEmpty() bool {
 // last (see orderQueue). Extracted from RunDailySync so the ordering can be asserted in tests.
 func getDailySyncJobs() []string { return cadenceQueue(CadenceDaily) }
 
+// hourlyKeepOrphanJobs are the hourly jobs whose orphan sweeps run on the nightly only (the
+// coordinator's ruling on epic #3207 PR 5). A short but well-formed feed passes every sweep
+// guard, and the cascade behind a deleted row takes staff data with it: an attendees or persons
+// row takes locked group members, original bunk requests and aid applications, a camp_sessions
+// row its season's bunk assignments, plans and lodging rows. Prod swept 0 attendees in 14
+// nightlies, so waiting a day costs nothing. The mechanism is the all-seasons re-sync's
+// (setKeepOrphans). bunk_assignments keeps its hourly sweep: it deletes placement rows only.
+var hourlyKeepOrphanJobs = []string{"sessions", "attendees", "persons"}
+
 // errHourlySyncYielded is RunHourlySync's answer when it started nothing because another queue
 // that runs the same jobs is in flight (hourlyBlockerLocked), or the previous hour's run is.
 var errHourlySyncYielded = errors.New("hourly sync yielded to a running queue")
@@ -2575,6 +2584,14 @@ func (o *Orchestrator) runSyncAndWaitWithService(
 	svc := override
 	if svc == nil {
 		svc = o.GetService(syncType)
+	}
+	if svc != nil && origin.trigger == triggerHourly && slices.Contains(hourlyKeepOrphanJobs, syncType) {
+		if k, ok := svc.(orphanKeeper); ok {
+			// Reset after the run: the registered instance is shared with every later queue, and
+			// the nightly must sweep. A staff run of the same job cannot overlap (same job id).
+			k.setKeepOrphans(true)
+			defer k.setKeepOrphans(false)
+		}
 	}
 	if svc != nil {
 		if changedAware, ok := svc.(ChangedCollectionsAware); ok {
