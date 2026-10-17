@@ -429,7 +429,8 @@ func newFreezePersonsApp(t *testing.T) core.App {
 		t.Fatalf("find persons: %v", err)
 	}
 	col.Fields.Add(&core.NumberField{Name: "grade"})
-	for _, f := range []string{"grade_name", "gender", "address_city", "address_state", "school"} {
+	col.Fields.Add(&core.NumberField{Name: "years_at_camp"})
+	for _, f := range []string{"grade_name", "gender", "birthdate", "address_city", "address_state", "school"} {
 		col.Fields.Add(&core.TextField{Name: f})
 	}
 	if saveErr := app.Save(col); saveErr != nil {
@@ -439,9 +440,10 @@ func newFreezePersonsApp(t *testing.T) core.App {
 }
 
 // A closed-season re-read of an EXISTING persons row (owner ruling, option A) always takes
-// CampMinder's corrections -- name, gender, birthdate, grade -- and keeps every as-of-that-season
-// field it already holds, filling one only when it is blank. The "any field differs, write every
-// field" update path must not carry a kept field past the rule. An open season overwrites all.
+// CampMinder's corrections -- name, gender, birthdate, grade, grade_name -- and keeps every
+// as-of-that-season field it already holds, filling one only when it is blank. A stored 0 or false
+// is a value, not a blank, so it is kept too. The "any field differs, write every field" update
+// path must not carry a kept field past the rule. An open season overwrites all.
 func TestClosedSeasonReReadCorrectsIdentityButKeepsAsOfSeasonFields(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -451,17 +453,19 @@ func TestClosedSeasonReReadCorrectsIdentityButKeepsAsOfSeasonFields(t *testing.T
 		storedCity string
 		wantCity   string
 		wantSchool string
+		wantYears  int
+		wantCamper bool
 	}{
-		{"closed season keeps a stored city", 2019, true, "Springfield", "Springfield", "Lincoln Elementary"},
-		{"closed season fills a blank city", 2019, true, "", "Shelbyville", "Lincoln Elementary"},
-		{"open season overwrites everything", 2026, false, "Springfield", "Shelbyville", "Roosevelt Middle"},
+		{"closed season keeps a stored city", 2019, true, "Springfield", "Springfield", "Lincoln Elementary", 0, false},
+		{"closed season fills a blank city", 2019, true, "", "Shelbyville", "Lincoln Elementary", 0, false},
+		{"open season overwrites everything", 2026, false, "Springfield", "Shelbyville", "Roosevelt Middle", 3, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app := newFreezePersonsApp(t)
 			id := saveRecord(t, app, "persons", map[string]any{
-				"cm_id": 5001, "year": tc.year, "first_name": "Emma", "last_name": "Johnson", "is_camper": true,
-				"grade": 0, "grade_name": "", "gender": "F",
+				"cm_id": 5001, "year": tc.year, "first_name": "Emma", "last_name": "Johnson", "is_camper": false,
+				"grade": 0, "grade_name": "", "gender": "F", "birthdate": "2012-03-04", "years_at_camp": 0,
 				"address_city": tc.storedCity, "address_state": "", "school": "Lincoln Elementary",
 			})
 
@@ -472,11 +476,13 @@ func TestClosedSeasonReReadCorrectsIdentityButKeepsAsOfSeasonFields(t *testing.T
 			}
 			billing := map[string]any{"BillingAddress": map[string]any{"City": "Shelbyville", "State": "OR"}}
 			payload := map[string]any{
-				"ID":       float64(5001),
-				"Name":     map[string]any{"First": "Emma", "Last": "Johnson-Smith"},
-				"GenderID": float64(1),
+				"ID":          float64(5001),
+				"Name":        map[string]any{"First": "Emma", "Last": "Johnson-Smith"},
+				"GenderID":    float64(1),
+				"DateOfBirth": "2012-04-03",
 				"CamperDetails": map[string]any{
 					"CampGradeID": float64(-1), "CampGradeName": "Toddler", "School": "Roosevelt Middle",
+					"YearsAtCamp": float64(3),
 				},
 				"Households": map[string]any{"PrincipalHousehold": billing, "PrimaryChildhoodHousehold": billing},
 			}
@@ -496,6 +502,16 @@ func TestClosedSeasonReReadCorrectsIdentityButKeepsAsOfSeasonFields(t *testing.T
 			if got.GetString("last_name") != "Johnson-Smith" {
 				t.Errorf("last_name = %q, want the corrected Johnson-Smith", got.GetString("last_name"))
 			}
+			if got.GetString("birthdate") != "2012-04-03" {
+				t.Errorf("birthdate = %q, want the corrected 2012-04-03", got.GetString("birthdate"))
+			}
+			// A stored 0 and a stored false are values: kept on a closed season, overwritten when open.
+			if got.GetInt("years_at_camp") != tc.wantYears {
+				t.Errorf("years_at_camp = %d, want %d", got.GetInt("years_at_camp"), tc.wantYears)
+			}
+			if got.GetBool("is_camper") != tc.wantCamper {
+				t.Errorf("is_camper = %v, want %v", got.GetBool("is_camper"), tc.wantCamper)
+			}
 			// As of that season: kept when stored, filled when blank, overwritten when open.
 			if got.GetString("address_city") != tc.wantCity {
 				t.Errorf("address_city = %q, want %q", got.GetString("address_city"), tc.wantCity)
@@ -510,12 +526,12 @@ func TestClosedSeasonReReadCorrectsIdentityButKeepsAsOfSeasonFields(t *testing.T
 			if !tc.closed {
 				return
 			}
-			wantRefused, wantFilled := 2, 1 // city + school kept; state filled
+			wantRefused, wantFilled := 4, 1 // city, school, years_at_camp, is_camper kept; state filled
 			if tc.storedCity == "" {
-				wantRefused, wantFilled = 1, 2 // school kept; city + state filled
+				wantRefused, wantFilled = 3, 2 // school, years_at_camp, is_camper kept; city + state filled
 			}
-			if s.freeze.correctionsApplied != 4 {
-				t.Errorf("correctionsApplied = %d, want 4 (last_name, gender, grade, grade_name)",
+			if s.freeze.correctionsApplied != 5 {
+				t.Errorf("correctionsApplied = %d, want 5 (last_name, gender, birthdate, grade, grade_name)",
 					s.freeze.correctionsApplied)
 			}
 			if s.freeze.overwritesRefused != wantRefused {

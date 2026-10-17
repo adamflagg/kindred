@@ -28,14 +28,13 @@ import (
 //     season changes no history, so it is linked to the season's household when one exists, and
 //     the household is created, as CampMinder gives it, when none does (both counted);
 //   - never re-derives that season's automatic aid_household_links (AidPostingsSync.seasonClosed).
-//     Staff links were never touched and still are not.
-//
-//   - takes CampMinder's corrections on an existing persons row (name, gender, birthdate, grade:
-//     closedSeasonCorrections), and keeps every other field an existing persons or households
-//     row already holds, filling one only when it is blank (owner ruling, option A). Those
-//     fields -- address, school, years at camp, division, tags, parent names, the household's
-//     billing address and mailing titles -- describe the family as of that season, and today's
-//     answer is not that.
+//     Staff links were never touched and still are not;
+//   - takes CampMinder's corrections on an existing persons row (names, gender, birthdate, grade
+//     and grade_name: closedSeasonCorrections), and keeps every other field an existing persons
+//     or households row already holds, filling one only when it is blank; a stored 0 or false is
+//     a value, not a blank (owner ruling, option A). Those fields -- address, school, years at
+//     camp, division, tags, parent names, the household's billing address and mailing titles --
+//     describe the family as of that season, and today's answer is not that.
 //
 // The open seasons behave exactly as before: everything overwrites.
 //
