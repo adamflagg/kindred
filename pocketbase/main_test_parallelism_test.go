@@ -424,6 +424,8 @@ var serialGroups = []struct {
 			"TestEveryScheduledRunStartsTheStaffQueueAfterwards",
 			"TestHourlyRunSweepsNothing",
 			"TestNightlyRunStillSweeps",
+			"TestHourlyRunKeepsOrphansWhenItStopsWaiting",
+			"TestRefusedHourlyStartLeavesTheRunningInstanceAlone",
 		},
 	},
 	{

@@ -75,7 +75,8 @@ func (b *BaseSyncService) keptOrphans(entityName string) bool {
 	if !b.keepOrphans {
 		return false
 	}
-	slog.Info("Keeping orphans: the all-seasons re-sync deletes no rows of this kind", "entity", entityName)
+	slog.Info("Keeping orphans: this run (the all-seasons re-sync, or an hourly run) deletes no rows of this kind",
+		"entity", entityName)
 	return true
 }
 

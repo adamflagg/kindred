@@ -1688,6 +1688,16 @@ func (o *Orchestrator) startSingleSync(
 	}
 	o.mu.Unlock()
 
+	// An hourly run keeps the orphans of hourlyKeepOrphanJobs. The switch goes on only now that
+	// this run holds the job's slot, so a refused start never touches an instance another run is
+	// executing, and the run itself switches it off before its completion frees the slot: the
+	// registered instance is shared with every later queue, and the nightly must sweep. A waiter
+	// that stops waiting (its ctx ended) leaves the run going, so the reset cannot be the waiter's.
+	keeper := hourlyOrphanKeeper(syncType, origin, service)
+	if keeper != nil {
+		keeper.setKeepOrphans(true)
+	}
+
 	// Run sync with panic recovery
 	// G118 is a false positive here: detaching from the request context is the point.
 	// A handler-scoped ctx is cancelled when the handler returns, which would kill the
@@ -1725,8 +1735,14 @@ func (o *Orchestrator) startSingleSync(
 		syncCtx, cancel = context.WithTimeout(context.Background(), timeout)
 		defer cancel()
 
-		// Execute sync with the appropriately-configured context
-		err := service.Sync(syncCtx)
+		// Execute sync with the appropriately-configured context. The keep-orphans reset is
+		// deferred inside, so it also runs on a panic, before the recover above stores the run.
+		err := func() error {
+			if keeper != nil {
+				defer keeper.setKeepOrphans(false)
+			}
+			return service.Sync(syncCtx)
+		}()
 
 		// Build completed status as a copy — never mutate the shared pointer
 		endTime := time.Now()
@@ -2007,6 +2023,16 @@ func getDailySyncJobs() []string { return cadenceQueue(CadenceDaily) }
 // nightlies, so waiting a day costs nothing. The mechanism is the all-seasons re-sync's
 // (setKeepOrphans). bunk_assignments keeps its hourly sweep: it deletes placement rows only.
 var hourlyKeepOrphanJobs = []string{"sessions", "attendees", "persons"}
+
+// hourlyOrphanKeeper is svc's keep-orphans switch when this run is an hourly run of one of
+// hourlyKeepOrphanJobs, nil otherwise. startSingleSync turns it on for the run's lifetime.
+func hourlyOrphanKeeper(syncType string, origin runOrigin, svc Service) orphanKeeper {
+	if origin.trigger != triggerHourly || !slices.Contains(hourlyKeepOrphanJobs, syncType) {
+		return nil
+	}
+	k, _ := svc.(orphanKeeper)
+	return k
+}
 
 // errHourlySyncYielded is RunHourlySync's answer when it started nothing because another queue
 // that runs the same jobs is in flight (hourlyBlockerLocked), or the previous hour's run is.
@@ -2584,14 +2610,6 @@ func (o *Orchestrator) runSyncAndWaitWithService(
 	svc := override
 	if svc == nil {
 		svc = o.GetService(syncType)
-	}
-	if svc != nil && origin.trigger == triggerHourly && slices.Contains(hourlyKeepOrphanJobs, syncType) {
-		if k, ok := svc.(orphanKeeper); ok {
-			// Reset after the run: the registered instance is shared with every later queue, and
-			// the nightly must sweep. A staff run of the same job cannot overlap (same job id).
-			k.setKeepOrphans(true)
-			defer k.setKeepOrphans(false)
-		}
 	}
 	if svc != nil {
 		if changedAware, ok := svc.(ChangedCollectionsAware); ok {

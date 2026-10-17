@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"slices"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	"github.com/pocketbase/pocketbase/core"
 )
@@ -25,9 +27,21 @@ var hourlySweepJobs = []string{"sessions", "attendees", "persons"}
 type shortFeedSweeper struct {
 	*BaseSyncService
 	id string
+	// gate, when non-nil, holds the run before its sweep until the test closes it.
+	gate chan struct{}
+	// keepCalls records every setKeepOrphans call, in order.
+	keepCalls []bool
+}
+
+func (s *shortFeedSweeper) setKeepOrphans(keep bool) {
+	s.keepCalls = append(s.keepCalls, keep)
+	s.BaseSyncService.setKeepOrphans(keep)
 }
 
 func (s *shortFeedSweeper) Sync(context.Context) error {
+	if s.gate != nil {
+		<-s.gate
+	}
 	s.ProcessedKeys = map[string]bool{"w1": true}
 	s.SyncSuccessful = true
 	return s.DeleteOrphans("widgets",
@@ -147,5 +161,112 @@ func TestHourlyKeepOrphansJobsAreKeepers(t *testing.T) {
 		if _, ok := svc.(orphanKeeper); !ok {
 			t.Errorf("%s does not implement orphanKeeper", id)
 		}
+	}
+}
+
+// TestHourlyRunKeepsOrphansWhenItStopsWaiting: the switch lives as long as the run, not as long
+// as the hourly run waits for it. A run starts on its own context, so when the hourly run's
+// context ends it stops waiting while the job goes on to its sweep, which must still keep the
+// orphans.
+func TestHourlyRunKeepsOrphansWhenItStopsWaiting(t *testing.T) {
+	t.Setenv("CAMPMINDER_SEASON_ID", "")
+	withNow(t, afterRollover)
+	app := newOrphanSweepTestApp(t, "widgets", "name", "job")
+	seedSweepRows(t, app)
+
+	runInBubble(t, func(t *testing.T) {
+		o, registered := newSweepingOrchestrator(t, app)
+		gate := make(chan struct{})
+		for _, svc := range registered {
+			svc.gate = gate
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan error, 1)
+		go func() { done <- o.RunHourlySync(ctx) }()
+		synctest.Wait() // sessions is running, held before its sweep
+		cancel()
+		<-done
+		close(gate) // the runs the hourly run stopped waiting for reach their sweeps now
+		synctest.Wait()
+
+		for _, job := range hourlySweepJobs {
+			if n := countRows(t, app, "widgets", fmt.Sprintf("job = %q", job)); n != 3 {
+				t.Errorf("%s swept after the hourly run stopped waiting: %d rows left, want 3", job, n)
+			}
+			if registered[job].keepOrphans {
+				t.Errorf("%s: the registered instance still keeps orphans after its run ended", job)
+			}
+		}
+	})
+}
+
+// TestRefusedHourlyStartLeavesTheRunningInstanceAlone: when another run holds a job's slot, the
+// hourly run's start is refused, and it must not touch the registered instance that run is
+// executing: switching it on there would skip that run's sweep, and switching it off a
+// switch it does not own.
+func TestRefusedHourlyStartLeavesTheRunningInstanceAlone(t *testing.T) {
+	t.Setenv("CAMPMINDER_SEASON_ID", "")
+	withNow(t, afterRollover)
+	app := newOrphanSweepTestApp(t, "widgets", "name", "job")
+	seedSweepRows(t, app)
+
+	runInBubble(t, func(t *testing.T) {
+		o, registered := newSweepingOrchestrator(t, app)
+		o.mu.Lock()
+		o.runningJobs["attendees"] = &Status{Type: "attendees", Status: statusRunning, StartTime: time.Now()}
+		o.mu.Unlock()
+
+		_ = o.RunHourlySync(context.Background()) // attendees is refused: already in progress
+
+		if calls := registered["attendees"].keepCalls; len(calls) != 0 {
+			t.Errorf("refused hourly start switched the running attendees instance: %v, want no calls", calls)
+		}
+		if calls := registered["persons"].keepCalls; !slices.Equal(calls, []bool{true, false}) {
+			t.Errorf("persons keepCalls = %v, want [true false]", calls)
+		}
+	})
+}
+
+// TestPersonsSweepKeepsOrphansWhenAsked: the real persons sweep (PersonsSync.deleteOrphans)
+// honors the switch. The control shows the same short feed passes every guard and sweeps when
+// the switch is off, which is why the hourly run turns it on.
+func TestPersonsSweepKeepsOrphansWhenAsked(t *testing.T) {
+	t.Parallel()
+	for _, keep := range []bool{true, false} {
+		t.Run(fmt.Sprintf("keep=%v", keep), func(t *testing.T) {
+			t.Parallel()
+			app := newOrphanSweepTestApp(t, "persons")
+			col, err := app.FindCollectionByNameOrId("persons")
+			if err != nil {
+				t.Fatal(err)
+			}
+			col.Fields.Add(&core.NumberField{Name: "cm_id"})
+			if err = app.Save(col); err != nil {
+				t.Fatal(err)
+			}
+			for cmID := 9400301; cmID <= 9400303; cmID++ {
+				rec := core.NewRecord(col)
+				rec.Set("cm_id", cmID)
+				rec.Set("year", 2027)
+				if err = app.Save(rec); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			s := NewPersonsSync(app, nil)
+			s.SyncSuccessful = true
+			s.ProcessedKeys = map[string]bool{CompositeKey(9400301, 2027): true}
+			s.setKeepOrphans(keep)
+			if err := s.deleteOrphans(2027); err != nil {
+				t.Fatal(err)
+			}
+			want := 1
+			if keep {
+				want = 3
+			}
+			if n := countRows(t, app, "persons", "year = 2027"); n != want {
+				t.Errorf("%d persons left, want %d", n, want)
+			}
+		})
 	}
 }
