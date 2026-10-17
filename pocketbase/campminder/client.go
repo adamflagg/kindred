@@ -32,8 +32,9 @@ const (
 	// "Try again in N seconds" hint; each further unhinted 429 doubles it.
 	rateLimitBaseBackoff = 5 * time.Second
 	// rateLimitMaxBackoff caps an unhinted wait in makeRequest. A hinted wait is honored as
-	// given, up to rateLimitMaxHintedWait, in every retry loop (rateLimitWait for makeRequest,
-	// parseRateLimitSeconds for authenticateAtURL and makeRequestWithURLRetry).
+	// given, up to rateLimitMaxHintedWait, in every retry loop (rateLimitWaitFor for makeRequest,
+	// parseRateLimitSecondsFor for authenticateAtURL and makeRequestWithURLRetry); jitterWait
+	// then stretches it by up to rateLimitJitterFraction, so a clamped wait sleeps up to 6m.
 	rateLimitMaxBackoff = 60 * time.Second
 	// rateLimitMaxHintedWait caps a hinted wait so a malformed or absurd CampMinder hint
 	// (e.g. "Try again in 999999 seconds") can't sleep for days. Deliberately larger than
@@ -76,8 +77,10 @@ var sleepCtxFn = func(ctx context.Context, d time.Duration) error {
 // to make waits exact.
 var jitterFn = rand.Float64
 
-// rateLimitJitterFraction is the most a hinted wait is stretched: waiters that were limited in
-// the same window must not all wake on the same second and compete for the next one.
+// rateLimitJitterFraction is the most a rate-limit wait is stretched, after its clamp: waiters
+// that were limited in the same window must not all wake on the same second and compete for the
+// next one. It applies to every wait in the auth and pre-built-URL loops (their unhinted 60s
+// included) and to makeRequest's hinted waits; makeRequest's unhinted ladder is unjittered.
 const rateLimitJitterFraction = 0.2
 
 // jitterWait stretches d by 0-20 %.
@@ -840,7 +843,8 @@ func parseRateLimitHint(body string) (int, bool) {
 
 // parseRateLimitSeconds returns the hinted wait plus a 5 second buffer (clamped at
 // rateLimitMaxHintedWait against a malformed or absurd hint), or 60 seconds when the body
-// carries no hint. Used by the auth and pre-built-URL retry loops.
+// carries no hint. It is parseRateLimitSecondsFor without a header; the auth and pre-built-URL
+// retry loops call that form.
 func (c *Client) parseRateLimitSeconds(body string) int {
 	return c.parseRateLimitSecondsFor(body, nil)
 }
@@ -891,9 +895,11 @@ func rateLimitWaitFor(body string, h http.Header, attempt int) time.Duration {
 	if !ok {
 		return rateLimitWait(body, attempt)
 	}
-	wait := time.Duration(seconds+5) * time.Second
-	if wait <= 0 || wait > rateLimitMaxHintedWait {
-		wait = rateLimitMaxHintedWait
+	// Clamp the count before converting: an absurd header (Atoi takes any int64) would wrap
+	// round time.Duration into a short, positive wait.
+	wait := rateLimitMaxHintedWait
+	if maxSeconds := int(rateLimitMaxHintedWait / time.Second); seconds <= maxSeconds-5 {
+		wait = time.Duration(seconds+5) * time.Second
 	}
 	return jitterWait(wait)
 }

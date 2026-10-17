@@ -2107,8 +2107,9 @@ func (o *Orchestrator) RunHourlySync(ctx context.Context) error {
 
 const (
 	// dailyWaitForHourlyMax bounds how long the nightly waits for an hourly run that is still
-	// in flight when its cron fires. Past it the nightly goes ahead (its jobs queue behind a
-	// refusal rather than the whole night being lost).
+	// in flight when its cron fires. Past it the nightly goes ahead rather than lose the whole
+	// night: a job id the hourly run still holds is refused ("sync already in progress"),
+	// logged and skipped for that pass, not queued or retried.
 	dailyWaitForHourlyMax = 15 * time.Minute
 	// dailyWaitForHourlyPoll is how often that wait looks at the flag.
 	dailyWaitForHourlyPoll = 5 * time.Second

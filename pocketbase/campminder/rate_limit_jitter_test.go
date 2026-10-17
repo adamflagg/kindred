@@ -121,3 +121,28 @@ func TestMakeRequestWithURL_JitterAndRetryAfter(t *testing.T) {
 		t.Errorf("waits = %v, want [12s] (5s header + 5s buffer, +20%%)", *waits)
 	}
 }
+
+// An absurd Retry-After is capped at rateLimitMaxHintedWait and never wraps round into a short
+// wait; the HTTP-date form is ignored, leaving the unhinted wait.
+func TestRateLimitWaitFor_RetryAfterIsCappedAndDateFormIgnored(t *testing.T) {
+	setJitter(t, 0)
+	for _, v := range []string{"999999", "18446744069", "9223372036854775807"} {
+		h := http.Header{}
+		h.Set("Retry-After", v)
+		if got := rateLimitWaitFor("Too Many Requests", h, 0); got != rateLimitMaxHintedWait {
+			t.Errorf("Retry-After %s: wait = %v, want the %v cap", v, got, rateLimitMaxHintedWait)
+		}
+		wantCap := int(rateLimitMaxHintedWait / time.Second)
+		if got := (&Client{}).parseRateLimitSecondsFor("Too Many Requests", h); got != wantCap {
+			t.Errorf("Retry-After %s: auth/URL wait = %ds, want the %ds cap", v, got, wantCap)
+		}
+	}
+	h := http.Header{}
+	h.Set("Retry-After", "Wed, 21 Oct 2015 07:28:00 GMT")
+	if got := rateLimitWaitFor("Too Many Requests", h, 0); got != rateLimitBaseBackoff {
+		t.Errorf("HTTP-date Retry-After: wait = %v, want the unhinted %v", got, rateLimitBaseBackoff)
+	}
+	if got := (&Client{}).parseRateLimitSecondsFor("Too Many Requests", h); got != 60 {
+		t.Errorf("HTTP-date Retry-After: auth/URL wait = %ds, want the unhinted 60s", got)
+	}
+}

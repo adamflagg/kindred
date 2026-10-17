@@ -3,6 +3,7 @@ package sync
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -122,6 +123,78 @@ func TestRunCustomValuesSync_WaitsWhileNightlyRuns(t *testing.T) {
 		<-done
 		if got := mock.callCount.Load(); got != 1 {
 			t.Errorf("custom values ran %d times after the nightly ended, want 1", got)
+		}
+	})
+}
+
+// overlapService records how many custom-values jobs run at once.
+type overlapService struct {
+	delay             time.Duration
+	active, maxActive *atomic.Int32
+	calls             atomic.Int32
+}
+
+func (s *overlapService) Sync(ctx context.Context) error {
+	s.calls.Add(1)
+	n := s.active.Add(1)
+	defer s.active.Add(-1)
+	for {
+		m := s.maxActive.Load()
+		if n <= m || s.maxActive.CompareAndSwap(m, n) {
+			break
+		}
+	}
+	select {
+	case <-time.After(s.delay):
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	return nil
+}
+
+func (s *overlapService) GetStats() Stats { return Stats{} }
+
+// The wait for the nightly does not come out of the pass's own hour: a nightly that ends 44
+// minutes in still leaves the custom-values jobs room to run one after another, as the
+// sequential pass exists to (two at once double the CampMinder rate-limit pressure).
+func TestRunCustomValuesSync_WaitDoesNotEatThePassBudget(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		s := NewScheduler(nil)
+		var active, maxActive atomic.Int32
+		jobs := GetCustomValuesSyncJobs()
+		if len(jobs) < 2 {
+			t.Fatalf("want at least two custom-values jobs to observe overlap, got %v", jobs)
+		}
+		svcs := make([]*overlapService, len(jobs))
+		for i, job := range jobs {
+			svcs[i] = &overlapService{delay: 20 * time.Minute, active: &active, maxActive: &maxActive}
+			s.orchestrator.RegisterService(job, svcs[i])
+		}
+		s.orchestrator.mu.Lock()
+		s.orchestrator.dailySyncRunning = true
+		s.orchestrator.mu.Unlock()
+
+		done := make(chan struct{})
+		go func() { s.runCustomValuesSync(); close(done) }()
+
+		time.Sleep(44 * time.Minute)
+		synctest.Wait()
+		s.orchestrator.mu.Lock()
+		s.orchestrator.dailySyncRunning = false
+		s.orchestrator.mu.Unlock()
+		<-done
+		// Let any job the pass stopped waiting on finish, so the counts below are final.
+		time.Sleep(2 * time.Hour)
+		synctest.Wait()
+
+		if got := maxActive.Load(); got != 1 {
+			t.Errorf("%d custom-values jobs ran at once after the wait, want 1 (sequential)", got)
+		}
+		for i, job := range jobs {
+			if got := svcs[i].calls.Load(); got != 1 {
+				t.Errorf("%s ran %d times, want 1", job, got)
+			}
 		}
 	})
 }
