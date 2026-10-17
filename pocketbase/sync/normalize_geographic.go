@@ -49,6 +49,7 @@ type NormalizeGeographicSync struct {
 	Stats          Stats
 	SyncSuccessful bool
 	ProcessedKeys  map[string]bool // Track processed keys for orphan detection
+	APIURL         string          // FastAPI base URL; empty means the configured default (tests point it at a stub)
 }
 
 // attendeeGeoData holds geographic data for one attendee
@@ -86,6 +87,14 @@ func NewNormalizeGeographicSync(app core.App) *NormalizeGeographicSync {
 		DryRun:        false, // Default: write to database
 		ProcessedKeys: make(map[string]bool),
 	}
+}
+
+// apiBaseURL returns the FastAPI base URL this sync posts to.
+func (n *NormalizeGeographicSync) apiBaseURL() string {
+	if n.APIURL != "" {
+		return n.APIURL
+	}
+	return getAPIURL()
 }
 
 // GetStats returns the current stats
@@ -645,7 +654,7 @@ func (n *NormalizeGeographicSync) normalizeWithPython(
 	// Build context array for API request
 	contextValues := sortedContextValues(valuesWithContext)
 
-	apiURL := getAPIURL()
+	apiURL := n.apiBaseURL()
 	results, err := callGeoNormalizeAPI(ctx, apiURL, category, contextValues)
 	if err != nil {
 		return nil, err
@@ -713,7 +722,7 @@ func (n *NormalizeGeographicSync) normalizeCitiesByContext(
 		return strings.Compare(a.State+"\x00"+a.Country, b.State+"\x00"+b.Country)
 	})
 
-	apiURL := getAPIURL()
+	apiURL := n.apiBaseURL()
 	for _, geoCtx := range contexts {
 		results, err := callGeoNormalizeAPI(ctx, apiURL, categoryCity, sortedContextValues(groups[geoCtx]))
 		if err != nil {

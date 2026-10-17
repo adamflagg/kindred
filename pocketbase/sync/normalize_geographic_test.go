@@ -2841,7 +2841,7 @@ func TestLoadGeoOverrides_NewestYearWins(t *testing.T) {
 // a map keyed by the BARE city value, so two same-named values in one request
 // collapse to whichever the service handled last. The canonical is state-aware
 // ("<city>, <state>"), as the real normalizer's is.
-func collidingGeoServer(t *testing.T, requests *[][]valueWithContext) *httptest.Server {
+func collidingGeoServer(t *testing.T, requests *[][]valueWithContext) string {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req geoNormalizeRequest
@@ -2863,8 +2863,7 @@ func collidingGeoServer(t *testing.T, requests *[][]valueWithContext) *httptest.
 		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	t.Cleanup(server.Close)
-	t.Setenv("API_URL", server.URL)
-	return server
+	return server.URL
 }
 
 func sameNamedCityAttendees() []attendeeGeoData {
@@ -2880,8 +2879,8 @@ func sameNamedCityAttendees() []attendeeGeoData {
 // TestBuildNormalizationLookup_SameNamedCitiesKeepTheirOwnState: each address
 // normalizes against its own state, never another same-named city's.
 func TestBuildNormalizationLookup_SameNamedCitiesKeepTheirOwnState(t *testing.T) {
-	collidingGeoServer(t, nil)
-	n := &NormalizeGeographicSync{}
+	t.Parallel()
+	n := &NormalizeGeographicSync{APIURL: collidingGeoServer(t, nil)}
 
 	lookup, err := n.buildNormalizationLookup(context.Background(), sameNamedCityAttendees())
 	if err != nil {
@@ -2900,17 +2899,18 @@ func TestBuildNormalizationLookup_SameNamedCitiesKeepTheirOwnState(t *testing.T)
 // TestBuildNormalizationLookup_CityResultsDeterministic: the same input in any
 // order gives the same lookup and the same requests, every run.
 func TestBuildNormalizationLookup_CityResultsDeterministic(t *testing.T) {
+	t.Parallel()
 	var firstLookup map[string]normalizedEntry
 	var firstRequests [][]valueWithContext
 	for run := 0; run < 25; run++ {
 		var requests [][]valueWithContext
-		collidingGeoServer(t, &requests)
+		apiURL := collidingGeoServer(t, &requests)
 		data := sameNamedCityAttendees()
 		// Rotate the input so each run sees a different order.
 		rot := run % len(data)
 		data = append(data[rot:], data[:rot]...)
 
-		lookup, err := (&NormalizeGeographicSync{}).buildNormalizationLookup(context.Background(), data)
+		lookup, err := (&NormalizeGeographicSync{APIURL: apiURL}).buildNormalizationLookup(context.Background(), data)
 		if err != nil {
 			t.Fatalf("run %d: %v", run, err)
 		}
@@ -2944,8 +2944,8 @@ func TestCityLookupKeyDistinguishesStateAndCountry(t *testing.T) {
 // TestCreatePersonSessionMappings_SameNamedCities: the per-person mapping uses
 // that person's own state's normalization.
 func TestCreatePersonSessionMappings_SameNamedCities(t *testing.T) {
-	collidingGeoServer(t, nil)
-	n := &NormalizeGeographicSync{}
+	t.Parallel()
+	n := &NormalizeGeographicSync{APIURL: collidingGeoServer(t, nil)}
 	data := sameNamedCityAttendees()
 	lookup, err := n.buildNormalizationLookup(context.Background(), data)
 	if err != nil {
