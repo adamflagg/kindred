@@ -235,6 +235,8 @@ var serialGroups = []struct {
 			"TestAFailedNightlyThenASuccessfulManualRunForAnotherYearStillSkips2026",
 			"TestAFailedManualRunForAnotherYearDoesNotSkipACoveredSeason",
 			"TestAWedgedAPIDelaysPublishingOnlyUntilTheTimeout",
+			"TestPersonsSweepsKeepEverythingOnAReplay",
+			"TestReplayKeepsBaseSweepsAndStillSweepsAttendees",
 		},
 	},
 	{
@@ -429,6 +431,13 @@ var serialGroups = []struct {
 			"TestNightlyRunStillSweeps",
 			"TestHourlyRunKeepsOrphansWhenItStopsWaiting",
 			"TestRefusedHourlyStartLeavesTheRunningInstanceAlone",
+			"TestHandleUnifiedSyncSkipRefusesAnUnknownJob",
+			"TestHandleUnifiedSyncSkipRefusesASyncedSeason",
+			"TestHandleUnifiedSyncSkipRefusesARunOfNothing",
+			"TestHistoricalReplaySkipsTheNamedJobs",
+			"TestQueuedHistoricalReplaySkipsTheNamedJobs",
+			"TestHandleUnifiedSyncDryRunChecksThePostSkipList",
+			"TestHistoricalReplayKeepsSessionAndPersonOrphans",
 		},
 	},
 	{

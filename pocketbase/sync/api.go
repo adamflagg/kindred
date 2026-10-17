@@ -85,6 +85,33 @@ func syncedSeasonsInclude(year int) bool {
 	return err == nil && slices.Contains(seasons, year)
 }
 
+// parseSkipParam reads a historical replay's skip=<comma list of job names>. Blank parts are
+// dropped and names trimmed; the result is sorted and de-duplicated, so the queue's dedupe key
+// compares like with like. nil means no skip. Every name must be a job in the registry
+// (syncJobMeta), or the error names the ones that are not: a typo must be a 400, never a replay
+// that runs the job the operator meant to leave out.
+func parseSkipParam(raw string) ([]string, error) {
+	var skip []string
+	var unknown []string
+	known := allJobIDs()
+	for _, part := range strings.Split(raw, ",") {
+		name := strings.TrimSpace(part)
+		if name == "" || slices.Contains(skip, name) {
+			continue
+		}
+		if !slices.Contains(known, name) {
+			unknown = append(unknown, name)
+			continue
+		}
+		skip = append(skip, name)
+	}
+	if len(unknown) > 0 {
+		return nil, fmt.Errorf("unknown job in skip: %s", strings.Join(unknown, ", "))
+	}
+	slices.Sort(skip)
+	return skip, nil
+}
+
 // seasonYear is the Year a request-built run carries: 0 for the primary, which keeps every
 // primary path exactly as it was (the year resolves when the run is filed), else the season.
 func seasonYear(season, primary int) int {
@@ -1480,7 +1507,8 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 	// Add queue info
 	queue := orchestrator.GetQueuedSyncs()
 	queueInfo := make([]map[string]any, len(queue))
-	for i, qs := range queue {
+	for i := range queue {
+		qs := &queue[i]
 		queueInfo[i] = map[string]any{
 			"id":                    qs.ID,
 			"year":                  qs.Year,
@@ -1590,6 +1618,28 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 		})
 	}
 
+	// skip=<job,job> leaves jobs out of a historical replay, on both paths below. It is refused
+	// for a synced season (N or N-1): that run is the live data's refresh, every job its nightly
+	// pass runs reads what the jobs before it wrote, and a run of N or N-1 must stay exactly what
+	// it was. Like ?service=, it is settled here, before either path can start.
+	skip, err := parseSkipParam(e.Request.URL.Query().Get("skip"))
+	if err != nil {
+		return e.JSON(http.StatusBadRequest, map[string]any{"error": err.Error()})
+	}
+	if len(skip) > 0 {
+		if syncedSeasonsInclude(year) {
+			return e.JSON(http.StatusBadRequest, map[string]any{
+				"error": fmt.Sprintf("skip is for a historical replay only; %d is a synced season", year),
+			})
+		}
+		services = subtractJobs(services, skip)
+		if len(services) == 0 {
+			return e.JSON(http.StatusBadRequest, map[string]any{
+				"error": "skip leaves no job to run",
+			})
+		}
+	}
+
 	orchestrator := scheduler.GetOrchestrator()
 
 	// Reject up front, before either the immediate or the queued path can start, if dry_run
@@ -1614,7 +1664,8 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 		orchestrator.IsHistoricalSyncRunning() || orchestrator.IsCustomValuesSyncRunning() ||
 		orchestrator.IsHourlySyncRunning() || orchestrator.IsAnyJobRunning() {
 		// Sync is running - try to enqueue
-		qs, err := orchestrator.EnqueueUnifiedSync(year, service, includeCustomValues, debug, dryRun, requestedBy)
+		qs, err := orchestrator.EnqueueUnifiedSyncWithSkip(
+			year, service, includeCustomValues, debug, dryRun, skip, requestedBy)
 		if err != nil {
 			// Queue is full
 			return e.JSON(http.StatusConflict, map[string]any{
@@ -1626,7 +1677,7 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 		// item (qs.DryRun), not the local dryRun variable, so a duplicate request that
 		// deduped onto an existing item reports what that item will actually do.
 		position := orchestrator.GetQueuePositionByID(qs.ID)
-		return e.JSON(http.StatusAccepted, map[string]any{
+		queued := map[string]any{
 			"status":              "queued",
 			"queue_id":            qs.ID,
 			"position":            position,
@@ -1635,7 +1686,11 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 			"includeCustomValues": includeCustomValues,
 			"debug":               debug,
 			"dry_run":             qs.DryRun,
-		})
+		}
+		if len(qs.Skip) > 0 {
+			queued["skip"] = qs.Skip
+		}
+		return e.JSON(http.StatusAccepted, queued)
 	}
 
 	// IMPORTANT: Orchestrator uses Year=0 to indicate current year mode
@@ -1657,7 +1712,8 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 	// Set services to sync. services was already resolved above (and validated non-nil), and
 	// for the named-service branch ResolveUnifiedSyncServices returns exactly []string{service}
 	// -- reuse it rather than rebuilding the same one-element slice a second time.
-	if service != DefaultService {
+	// With skip=, the post-skip list is what runs, for "all" too.
+	if service != DefaultService || len(skip) > 0 {
 		opts.Services = services
 	}
 
@@ -1683,6 +1739,9 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 			"dry_run", dryRun,
 			"isCurrentYear", year == currentYear,
 		)
+		if len(skip) > 0 {
+			slog.Info("Unified sync: historical replay skipping jobs", "year", year, "skip", skip)
+		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Minute)
 		defer cancel()
@@ -1699,14 +1758,18 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 		processQueuedSyncs(orchestrator)
 	}()
 
-	return e.JSON(http.StatusOK, map[string]any{
+	started := map[string]any{
 		"message":             "Sync started",
 		"year":                year,
 		"service":             service,
 		"includeCustomValues": includeCustomValues,
 		"debug":               debug,
 		"dry_run":             dryRun,
-	})
+	}
+	if len(skip) > 0 {
+		started["skip"] = skip
+	}
+	return e.JSON(http.StatusOK, started)
 }
 
 // processQueuedSyncs processes the next item in the sync queue
@@ -1908,6 +1971,24 @@ func processQueuedSyncs(orchestrator *Orchestrator) {
 		// Set services to sync
 		if qs.Service != DefaultService {
 			opts.Services = []string{qs.Service}
+		}
+
+		// A queued replay's skip= (validated by handleUnifiedSync before it was queued). The
+		// season is checked again: a rollover while it waited can make it a synced season, and
+		// a run of N or N-1 never skips a job, so that run is refused rather than run short.
+		if len(qs.Skip) > 0 {
+			if syncedSeasonsInclude(qs.Year) {
+				slog.Error("Queued historical replay refused: its season is now synced, and skip is for a replay only",
+					"id", qs.ID, "year", qs.Year, "skip", qs.Skip)
+				break
+			}
+			opts.Services = subtractJobs(
+				ResolveUnifiedSyncServices(qs.Service, qs.IncludeCustomValues, false), qs.Skip)
+			if len(opts.Services) == 0 {
+				slog.Error("Queued historical replay refused: skip leaves no job to run",
+					"id", qs.ID, "year", qs.Year, "skip", qs.Skip)
+				break
+			}
 		}
 
 		if err := orchestrator.RunSyncWithOptions(ctx, opts); err != nil {
