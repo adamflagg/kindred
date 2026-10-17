@@ -1127,7 +1127,23 @@ async def test_a_past_season_with_no_earlier_approved_rules_uses_the_next_approv
     out = await _service(_development(), fake_rules=_RulesFrom({2026})).development(2025)
     assert [g.key for g in out.groups] == ["camp_pool", "weekend_pool", "bmitzvah_pool"]
     [notice] = [n for n in out.not_built if n.figure == "groups_from"]
-    assert notice.reason == "Groups follow 2026's rules until 2025's are approved"
+    assert notice.reason == "Groups follow 2026's rules (2025 has no rules of its own)"
+
+
+async def test_a_season_from_the_first_request_season_on_never_borrows_a_later_seasons_groups() -> None:
+    """Only a PAST season (before requests existed) looks forward; 2026+ keeps today's behaviour exactly."""
+    out = await _service(_development(), fake_rules=_RulesFrom({2028})).development(YEAR)
+    assert out.groups == []
+    assert "groups_from" not in {n.figure for n in out.not_built}
+    out = await _service(_development(), fake_rules=_RulesFrom({2027})).development(2026)
+    assert out.groups == []
+    assert "groups_from" not in {n.figure for n in out.not_built}
+
+
+async def test_a_past_season_takes_the_nearest_later_approved_season_not_the_newest() -> None:
+    out = await _service(_development(), fake_rules=_RulesFrom({2026, 2027})).development(2025)
+    [notice] = [n for n in out.not_built if n.figure == "groups_from"]
+    assert notice.reason == "Groups follow 2026's rules (2025 has no rules of its own)"
 
 
 async def test_the_backward_lookback_keeps_priority_over_a_later_approved_season() -> None:
