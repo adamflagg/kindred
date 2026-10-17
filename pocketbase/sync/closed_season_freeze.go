@@ -22,8 +22,9 @@ import (
 //   - never changes an existing persons row's household pointers: the three relations
 //     (household, primary_childhood_household, alternate_childhood_household) and the legacy
 //     FamilyPersons household_id, which aid attribution also reads (loadPersonHouseholds);
-//   - never creates a household record; a NEW persons row takes a household the season already
-//     has, and is left blank, and counted, for one it does not;
+//   - never creates a household record for a person the season already has. A person NEW to the
+//     season changes no history, so it is linked to the season's household when one exists, and
+//     the household is created, as CampMinder gives it, when none does (both counted);
 //   - never re-derives that season's automatic aid_household_links (AidPostingsSync.seasonClosed).
 //     Staff links were never touched and still are not.
 //
@@ -44,8 +45,38 @@ type closedSeasonFreeze struct {
 
 	relationsKept         int // relation changes refused on existing rows (a re-point, or a fill)
 	householdIDsKept      int // legacy household_id changes refused on existing rows
-	householdsNotCreated  int // households CampMinder named that the season has no record of
-	newRelationsLeftBlank int // a new row's relation left blank: its household is not the season's
+	householdsNotCreated  int // households only existing persons name (today's, for someone the season has)
+	newRelationsLeftBlank int // a new row's relation left blank: its household has no record
+
+	householdsCreatedForNewPersons     int // households created because a new person needs them
+	newPersonLinksToExistingHouseholds int // a new row's relation linked to a household the season had
+
+	// newPersonHouseholds is every household a NEW person's payload names this run: the only
+	// households the freeze lets the run create (allowHouseholdsOfNewPersons). created is the ones
+	// it did create, so a link to one is not counted as a link to a pre-existing household.
+	newPersonHouseholds map[int]bool
+	created             map[int]bool
+}
+
+// allowHouseholdsOfNewPersons records the households this run's NEW persons name, so they may be
+// created: a new person changes no history, and a blank household would throw away the only
+// information there is. A household named only by existing persons is today's household for
+// someone the season already has, and is not created. A nil freeze records nothing.
+func (f *closedSeasonFreeze) allowHouseholdsOfNewPersons(personHouseholds map[int]personHouseholdIDs) {
+	if f == nil {
+		return
+	}
+	f.newPersonHouseholds = map[int]bool{}
+	for personCMID, ids := range personHouseholds {
+		if f.existed(personCMID) {
+			continue
+		}
+		for _, id := range []int{ids.PrincipalID, ids.PrimaryChildhoodID, ids.AlternateChildhoodID} {
+			if id > 0 {
+				f.newPersonHouseholds[id] = true
+			}
+		}
+	}
 }
 
 // startClosedSeasonFreeze freezes year, a season already known to be closed.
@@ -58,7 +89,7 @@ func (s *PersonsSync) seasonFreeze(year int, existing map[int]*core.Record) *clo
 	if !isClosedSeason(year, nowFn()) {
 		return nil
 	}
-	slog.Info("Closed season: this re-read keeps the season's household pointers and creates no households",
+	slog.Info("Closed season: this re-read keeps existing household pointers and creates households only for new persons",
 		"year", year)
 	return startClosedSeasonFreeze(year, existing)
 }
@@ -72,8 +103,8 @@ func (f *closedSeasonFreeze) existed(personCMID int) bool {
 // holds reports whether the freeze decides one of a person's household relations, counting what
 // it refuses. record is the household this run's payload names, nil when the season has no record
 // of it. An existing row's relation never changes, and neither does one that already holds a value
-// (so a row the preload missed is still safe); a new row's is left blank when the season has no
-// such household, and otherwise filled as in an open season. A nil freeze holds nothing.
+// (so a row the preload missed is still safe); a new row's is filled as in an open season, and left
+// blank only when the household has no record (its creation failed). A nil freeze holds nothing.
 func (f *closedSeasonFreeze) holds(personCMID int, current string, record *core.Record) bool {
 	if f == nil {
 		return false
@@ -88,13 +119,25 @@ func (f *closedSeasonFreeze) holds(personCMID int, current string, record *core.
 		f.newRelationsLeftBlank++
 		return true
 	}
+	if !f.created[record.GetInt("cm_id")] {
+		f.newPersonLinksToExistingHouseholds++
+	}
 	return false
 }
 
-// refusesNewHousehold reports, and counts, a household record the freeze will not create. A nil
-// freeze refuses nothing.
-func (f *closedSeasonFreeze) refusesNewHousehold() bool {
+// refusesNewHousehold reports, and counts, whether the freeze refuses to create household
+// householdCMID: it creates only the households a new person needs (allowHouseholdsOfNewPersons).
+// A nil freeze refuses nothing.
+func (f *closedSeasonFreeze) refusesNewHousehold(householdCMID int) bool {
 	if f == nil {
+		return false
+	}
+	if f.newPersonHouseholds[householdCMID] {
+		if f.created == nil {
+			f.created = map[int]bool{}
+		}
+		f.created[householdCMID] = true
+		f.householdsCreatedForNewPersons++
 		return false
 	}
 	f.householdsNotCreated++
@@ -127,6 +170,8 @@ func (f *closedSeasonFreeze) log() {
 		"relation_repoints_refused", f.relationsKept,
 		"household_id_changes_refused", f.householdIDsKept,
 		"households_not_created", f.householdsNotCreated,
+		"households_created_for_new_persons", f.householdsCreatedForNewPersons,
+		"new_person_links_to_existing_households", f.newPersonLinksToExistingHouseholds,
 		"new_person_relations_left_blank", f.newRelationsLeftBlank)
 }
 

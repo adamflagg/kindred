@@ -118,9 +118,11 @@ func TestClosedSeasonReReadKeepsAnExistingPersonsHouseholds(t *testing.T) {
 	}
 }
 
-// A NEW persons row in a closed season takes a household that season already has, and is left
-// blank (and counted) for one it does not: the freeze creates no household to point at.
-func TestClosedSeasonNewPersonGetsOnlyAHouseholdTheSeasonHas(t *testing.T) {
+// A NEW persons row in a closed season changes no history, so it is linked like an open season's:
+// to the season's household when one exists (counted), and to the household created for it when
+// none did (see the households test below). It stays blank only when the household has no record
+// at all, which happens only when its creation failed.
+func TestClosedSeasonNewPersonIsLinkedToTheSeasonsHousehold(t *testing.T) {
 	t.Parallel()
 	const year = 2019
 	app, existing, hh := freezeFixture(t, year)
@@ -129,6 +131,7 @@ func TestClosedSeasonNewPersonGetsOnlyAHouseholdTheSeasonHas(t *testing.T) {
 	s := NewPersonsSync(app, nil)
 	s.freeze = startClosedSeasonFreeze(year, map[int]*core.Record{5001: existing})
 	ids := map[int]personHouseholdIDs{5002: {PrincipalID: 7002, PrimaryChildhoodID: 7999}}
+	s.freeze.allowHouseholdsOfNewPersons(ids)
 	if err := s.updatePersonHouseholdRelations(year, hh, ids); err != nil {
 		t.Fatalf("update: %v", err)
 	}
@@ -136,21 +139,26 @@ func TestClosedSeasonNewPersonGetsOnlyAHouseholdTheSeasonHas(t *testing.T) {
 	if got.GetString("household") != hh[7002].Id {
 		t.Errorf("household = %q, want the season's own household 7002 (%q)", got.GetString("household"), hh[7002].Id)
 	}
+	if s.freeze.newPersonLinksToExistingHouseholds != 1 {
+		t.Errorf("newPersonLinksToExistingHouseholds = %d, want 1", s.freeze.newPersonLinksToExistingHouseholds)
+	}
 	if got.GetString("primary_childhood_household") != "" {
-		t.Errorf("primary_childhood_household = %q, want blank: the season has no household 7999",
+		t.Errorf("primary_childhood_household = %q, want blank: household 7999 has no record",
 			got.GetString("primary_childhood_household"))
 	}
 	if s.freeze.newRelationsLeftBlank != 1 {
 		t.Errorf("newRelationsLeftBlank = %d, want 1", s.freeze.newRelationsLeftBlank)
 	}
 	if s.freeze.relationsKept != 0 {
-		t.Errorf("relationsKept = %d, want 0: filling a new row is not a re-point", s.freeze.relationsKept)
+		t.Errorf("relationsKept = %d, want 0: linking a new row is not a re-point", s.freeze.relationsKept)
 	}
 }
 
-// A closed season creates no household record; an open season does. Either way an EXISTING
-// household row still takes this run's fields (unchanged, and outside the freeze).
-func TestClosedSeasonReReadCreatesNoHousehold(t *testing.T) {
+// A closed season creates no household that only an EXISTING person names (today's household for
+// someone the season already has), and creates, as CampMinder gives it, one a NEW person needs. An
+// open season creates both. Either way an EXISTING household row still takes this run's fields
+// (unchanged, and outside the freeze).
+func TestClosedSeasonCreatesOnlyTheHouseholdsNewPersonsNeed(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		name   string
@@ -166,12 +174,18 @@ func TestClosedSeasonReReadCreatesNoHousehold(t *testing.T) {
 			seedHousehold(t, app, 7001, tc.year)
 			s := NewPersonsSync(app, nil)
 			if tc.closed {
-				s.freeze = startClosedSeasonFreeze(tc.year, nil)
+				// 5001 had a row before this run; 5003 is new.
+				s.freeze = startClosedSeasonFreeze(tc.year, map[int]*core.Record{5001: nil})
+				s.freeze.allowHouseholdsOfNewPersons(map[int]personHouseholdIDs{
+					5001: {PrincipalID: 7002},
+					5003: {PrincipalID: 7003},
+				})
 			}
 			existing := s.preloadExistingHouseholds(fmt.Sprintf("year = %d", tc.year), tc.year)
 			payload := map[int]map[string]any{
 				7001: {"ID": float64(7001), "Greeting": "today's greeting"},
-				7002: {"ID": float64(7002), "Greeting": "a household this season never had"},
+				7002: {"ID": float64(7002), "Greeting": "today's household of a person the season has"},
+				7003: {"ID": float64(7003), "Greeting": "the household of a person new to the season"},
 			}
 			stats := s.processHouseholds(payload, existing, tc.year)
 
@@ -179,11 +193,17 @@ func TestClosedSeasonReReadCreatesNoHousehold(t *testing.T) {
 			if got[7002] == tc.closed {
 				t.Errorf("household 7002 exists = %v, want %v", got[7002], !tc.closed)
 			}
-			wantCreated := 1
+			if !got[7003] {
+				t.Error("household 7003, needed by a new person, was not created")
+			}
+			wantCreated := 2
 			if tc.closed {
-				wantCreated = 0
+				wantCreated = 1
 				if s.freeze.householdsNotCreated != 1 {
 					t.Errorf("householdsNotCreated = %d, want 1", s.freeze.householdsNotCreated)
+				}
+				if s.freeze.householdsCreatedForNewPersons != 1 {
+					t.Errorf("householdsCreatedForNewPersons = %d, want 1", s.freeze.householdsCreatedForNewPersons)
 				}
 			}
 			if stats.Created != wantCreated {

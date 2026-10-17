@@ -166,7 +166,8 @@ func (s *PersonsSync) Sync(ctx context.Context) error {
 		return err
 	}
 
-	// Process households
+	// Process households. A closed season may create only the households its new persons name.
+	s.freeze.allowHouseholdsOfNewPersons(processResult.personHouseholdMap)
 	householdStats := s.processHouseholds(processResult.extractedHouseholds, existingHouseholds, year)
 
 	// Reload households for relation updates
@@ -442,8 +443,8 @@ func (s *PersonsSync) processHouseholds(
 	}
 
 	for householdID, householdData := range households {
-		// A closed season creates no household (closed_season_freeze.go).
-		if existingHouseholds[householdID] == nil && s.freeze.refusesNewHousehold() {
+		// A closed season creates only the households new persons need (closed_season_freeze.go).
+		if existingHouseholds[householdID] == nil && s.freeze.refusesNewHousehold(householdID) {
 			continue
 		}
 		pbData, err := s.transformHouseholdToPB(householdData, year)
