@@ -2968,3 +2968,94 @@ func TestCreatePersonSessionMappings_SameNamedCities(t *testing.T) {
 		t.Errorf("got %v, want %v", got, want)
 	}
 }
+
+// TestUpdatePersonsNormalized_SameNamedCities: persons.normalized_city follows
+// the person's own state. A person with no attendee row this year (a parent, a
+// sibling) has no country, so it falls back to the (city, state) match, but
+// only where every country agrees on one canonical. Before the lookup was keyed
+// by (city, state, country), the bare-city key reached these persons too.
+func TestUpdatePersonsNormalized_SameNamedCities(t *testing.T) {
+	t.Parallel()
+	app := newNormalizeGeographicSyncTestApp(t)
+	personsCol, err := app.FindCollectionByNameOrId("persons")
+	if err != nil {
+		t.Fatalf("find persons: %v", err)
+	}
+	newPerson := func(city, state, normalized string) *core.Record {
+		rec := core.NewRecord(personsCol)
+		rec.Set("year", 2026)
+		rec.Set("address_city", city)
+		rec.Set("address_state", state)
+		rec.Set("normalized_city", normalized)
+		if saveErr := app.Save(rec); saveErr != nil {
+			t.Fatalf("save person: %v", saveErr)
+		}
+		return rec
+	}
+	camperCA := newPerson("Clayton", "CA", "")
+	camperMO := newPerson("Clayton", "MO", "")
+	camperSpringUS := newPerson("Springfield", "IL", "")
+	camperSpringCA := newPerson("Springfield", "IL", "")
+	parentCA := newPerson("Clayton", "CA", "")                  // no attendee row
+	parentMO := newPerson("Clayton", "MO", "stale")             // no attendee row
+	parentSpring := newPerson("Springfield", "IL", "untouched") // no attendee row; countries disagree
+
+	data := []attendeeGeoData{
+		{PersonPBID: camperCA.Id, City: "Clayton", AddressState: "CA", AddressCountry: "US"},
+		{PersonPBID: camperMO.Id, City: "Clayton", AddressState: "MO", AddressCountry: "US"},
+		{PersonPBID: camperSpringUS.Id, City: "Springfield", AddressState: "IL", AddressCountry: "US"},
+		{PersonPBID: camperSpringCA.Id, City: "Springfield", AddressState: "IL", AddressCountry: "CA"},
+	}
+	n := &NormalizeGeographicSync{App: app, APIURL: countryAwareGeoServer(t)}
+	lookup, err := n.buildNormalizationLookup(context.Background(), data)
+	if err != nil {
+		t.Fatalf("buildNormalizationLookup: %v", err)
+	}
+	if err := n.updatePersonsNormalized(context.Background(), lookup, data, 2026); err != nil {
+		t.Fatalf("updatePersonsNormalized: %v", err)
+	}
+
+	want := map[string]string{
+		camperCA.Id:       "Clayton, CA",
+		camperMO.Id:       "Clayton, MO",
+		camperSpringUS.Id: "Springfield, IL",
+		camperSpringCA.Id: "Springfield, IL (CA)",
+		parentCA.Id:       "Clayton, CA",
+		parentMO.Id:       "Clayton, MO",
+		parentSpring.Id:   "untouched",
+	}
+	for id, wantCity := range want {
+		rec, findErr := app.FindRecordById("persons", id)
+		if findErr != nil {
+			t.Fatalf("find %s: %v", id, findErr)
+		}
+		if got := rec.GetString("normalized_city"); got != wantCity {
+			t.Errorf("%s/%s: normalized_city = %q, want %q",
+				rec.GetString("address_city"), rec.GetString("address_state"), got, wantCity)
+		}
+	}
+}
+
+// countryAwareGeoServer is collidingGeoServer whose canonical also names a
+// non-US country, so two countries can disagree on one (city, state).
+func countryAwareGeoServer(t *testing.T) string {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req geoNormalizeRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Errorf("decoding request: %v", err)
+		}
+		resp := make(map[string]pythonNormalizedResult)
+		for _, v := range req.Values {
+			canonical := v.Value + ", " + v.State
+			if v.Country != "" && v.Country != "US" {
+				canonical += " (" + v.Country + ")"
+			}
+			resp[v.Value] = pythonNormalizedResult{Canonical: canonical, Confidence: 1.0}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	t.Cleanup(server.Close)
+	return server.URL
+}

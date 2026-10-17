@@ -583,6 +583,7 @@ type normalizedEntry struct {
 // normalizationLookup maps original values to normalized entries per category
 type normalizationLookup struct {
 	city         map[string]normalizedEntry // cityLookupKey(city, state, country) → {canonical, confidence}
+	cityByState  map[string]normalizedEntry // cityLookupKey(city, state, "") → entry, only where every country agrees
 	school       map[string]normalizedEntry
 	congregation map[string]normalizedEntry
 }
@@ -698,7 +699,8 @@ func cityLookupKey(city, state, country string) string {
 // request, so every response is keyed on a bare value that is unique within
 // its request, and returns the entries keyed by cityLookupKey. Groups and the
 // values inside them are sent in sorted order, so the result does not depend
-// on map iteration order.
+// on map iteration order. The service clusters unknown spellings within one
+// request, so that clustering now runs per (state, country) group.
 func (n *NormalizeGeographicSync) normalizeCitiesByContext(
 	ctx context.Context, cities map[geoLookupKey]geoContext,
 ) (map[string]normalizedEntry, error) {
@@ -733,6 +735,31 @@ func (n *NormalizeGeographicSync) normalizeCitiesByContext(
 		}
 	}
 	return result, nil
+}
+
+// cityStateIndex maps each (city, state) to its entry when every country seen
+// for it normalized to the same canonical, and omits it otherwise. It serves
+// persons with no attendee row this year, whose country is unknown.
+func cityStateIndex(
+	cities map[geoLookupKey]geoContext, lookup map[string]normalizedEntry,
+) map[string]normalizedEntry {
+	index := make(map[string]normalizedEntry)
+	ambiguous := make(map[string]bool)
+	for key := range cities {
+		entry, ok := lookup[cityLookupKey(key.Value, key.State, key.Country)]
+		if !ok {
+			continue
+		}
+		k := cityLookupKey(key.Value, key.State, "")
+		if prev, seen := index[k]; seen && prev.Canonical != entry.Canonical {
+			ambiguous[k] = true
+		}
+		index[k] = entry
+	}
+	for k := range ambiguous {
+		delete(index, k)
+	}
+	return index
 }
 
 // buildNormalizationLookup builds lookup maps from unique values
@@ -787,6 +814,7 @@ func (n *NormalizeGeographicSync) buildNormalizationLookup(
 			return nil, fmt.Errorf("normalizing cities: %w", err)
 		}
 		lookup.city = result
+		lookup.cityByState = cityStateIndex(uniqueCities, result)
 	}
 
 	if len(uniqueSchools) > 0 {
@@ -1117,12 +1145,19 @@ func (n *NormalizeGeographicSync) updatePersonsNormalized(
 			// City
 			if city := record.GetString("address_city"); city != "" {
 				// Country is not a persons column; take it from the attendee row
-				// the mapping step used, so both resolve the same key.
-				country := ""
+				// the mapping step used, so both resolve the same key. A person
+				// with no attendee row this year (a parent, a sibling) has no
+				// country, so it falls back to the (city, state) match, used
+				// only when every country agrees on one canonical.
+				state := record.GetString("address_state")
+				entry, ok := normalizedEntry{}, false
 				if g := geoByPerson[record.Id]; g != nil && g.City == city {
-					country = g.AddressCountry
+					entry, ok = lookup.city[cityLookupKey(city, state, g.AddressCountry)]
 				}
-				if entry, ok := lookup.city[cityLookupKey(city, record.GetString("address_state"), country)]; ok {
+				if !ok {
+					entry, ok = lookup.cityByState[cityLookupKey(city, state, "")]
+				}
+				if ok {
 					if record.GetString("normalized_city") != entry.Canonical {
 						record.Set("normalized_city", entry.Canonical)
 						needsUpdate = true
