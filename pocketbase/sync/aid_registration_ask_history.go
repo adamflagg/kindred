@@ -42,6 +42,12 @@ const (
 	cmIDWWFinancialAssistanceAmount = 209090 // "WW-FA Amount"
 )
 
+// aidAskHistoryFloorYear is the first season the table records (owner ruling: "2024 and prior
+// dont need aid lists"). Only intake reads these rows, and intake takes in no season before
+// AID_INTAKE_FLOOR_YEAR in api/services/financial_aid_intake_service.py; keep the two equal.
+// The FA applications mirror is not floored, only this history.
+const aidAskHistoryFloorYear = 2025
+
 // aidAskFields is the retention scope: the two ask-amount fields.
 var aidAskFields = map[int]bool{
 	cmIDCAFinancialAssistanceAmount: true,
@@ -97,9 +103,10 @@ func askRecorded(app core.App, obs *askObservation) (bool, error) {
 }
 
 // recordAskObservation appends one observation, idempotently. A no-op outside the retention
-// scope and for a genesis observation of an empty value.
+// scope, for a season before aidAskHistoryFloorYear, and for a genesis observation of an empty
+// value.
 func recordAskObservation(app core.App, obs *askObservation) error {
-	if !aidAskFields[obs.FieldCMID] {
+	if !aidAskFields[obs.FieldCMID] || obs.Year < aidAskHistoryFloorYear {
 		return nil
 	}
 	if obs.IsGenesis && obs.NewValue == "" {
@@ -151,6 +158,11 @@ func logAskChange(app core.App, obs *askObservation) {
 func (s *FinancialAidApplicationsSync) reconcileAskHistory(
 	ctx context.Context, year int, personInfo map[string]*personInfoEntry,
 ) error {
+	if year < aidAskHistoryFloorYear {
+		slog.Info("Registration-ask history skipped: the season is before the aid intake floor",
+			"year", year, "floor", aidAskHistoryFloorYear)
+		return nil
+	}
 	defs, err := s.App.FindRecordsByFilter("custom_field_defs",
 		"cm_id = {:ca} || cm_id = {:ww}", "", 0, 0,
 		map[string]any{"ca": cmIDCAFinancialAssistanceAmount, "ww": cmIDWWFinancialAssistanceAmount})

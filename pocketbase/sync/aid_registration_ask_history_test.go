@@ -458,3 +458,29 @@ func TestAskHistory_ReconcileIgnoresOtherFieldsBlanksAndDryRun(t *testing.T) {
 		t.Fatalf("dry run wrote %d rows", got)
 	}
 }
+
+// Owner ruling: "2024 and prior dont need aid lists". Only intake reads this table, and intake
+// takes in no season before AID_INTAKE_FLOOR_YEAR (2025), so no row is written for one. The
+// floor is in recordAskObservation, which both writers (the hook and the reconcile) go through.
+func TestAskHistory_NothingIsWrittenBeforeTheIntakeFloor(t *testing.T) {
+	t.Parallel()
+	app := newAskHookApp(t)
+	for _, year := range []int{2024, 2025} {
+		if err := recordAskObservation(app, &askObservation{Year: year,
+			FieldCMID: cmIDCAFinancialAssistanceAmount, PersonCMID: 4301, NewValue: "300",
+			SourceChangedAt: askAt1, ObservedBy: "person_custom_values", IsGenesis: true}); err != nil {
+			t.Fatalf("record %d: %v", year, err)
+		}
+	}
+	rows := askRows(t, app)
+	if len(rows) != 1 || rows[0].GetInt("year") != 2025 {
+		years := make([]int, 0, len(rows))
+		for _, r := range rows {
+			years = append(years, r.GetInt("year"))
+		}
+		t.Fatalf("ask-history rows for years %v, want only 2025", years)
+	}
+	if aidAskHistoryFloorYear != 2025 {
+		t.Errorf("aidAskHistoryFloorYear = %d, want 2025 (AID_INTAKE_FLOOR_YEAR)", aidAskHistoryFloorYear)
+	}
+}
