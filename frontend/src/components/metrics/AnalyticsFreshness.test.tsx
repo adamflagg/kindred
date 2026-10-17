@@ -80,14 +80,14 @@ describe('AnalyticsFreshness', () => {
     mockFreshness.mockReturnValue({ kind: 'synced', at: '2026-10-27T15:03:00Z', running: false })
     render(<AnalyticsFreshness />)
     const chip = screen.getByText(/^Enrollments synced 2h ago$/)
-    expect(chip.className).toMatch(/text-amber-/)
+    expect(chip).toHaveClass('text-amber-600')
   })
 
   it('stays grey within 2 hours', () => {
     mockFreshness.mockReturnValue({ kind: 'synced', at: '2026-10-27T15:05:00Z', running: false })
     render(<AnalyticsFreshness />)
     const chip = screen.getByText(/^Enrollments synced 1h ago$/)
-    expect(chip.className).not.toMatch(/text-amber-/)
+    expect(chip).not.toHaveClass('text-amber-600')
   })
 
   it('turns amber while the page sits open past the 2 hours', () => {
@@ -96,6 +96,6 @@ describe('AnalyticsFreshness', () => {
     act(() => {
       vi.advanceTimersByTime(2 * 60_000)
     })
-    expect(screen.getByText(/^Enrollments synced 2h ago$/).className).toMatch(/text-amber-/)
+    expect(screen.getByText(/^Enrollments synced 2h ago$/)).toHaveClass('text-amber-600')
   })
 })

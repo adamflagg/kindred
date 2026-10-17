@@ -200,6 +200,7 @@ vi.mock('recharts', () => ({
     </div>
   ),
   ReferenceArea: () => <div />,
+  ReferenceDot: () => <div data-testid="reference-dot" />,
   Brush: () => <div />,
 }))
 

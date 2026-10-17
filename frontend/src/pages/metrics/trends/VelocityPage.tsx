@@ -27,6 +27,7 @@ import {
   ResponsiveContainer,
   ReferenceLine,
   ReferenceArea,
+  ReferenceDot,
   Brush,
 } from 'recharts'
 import { Loader2 } from 'lucide-react'
@@ -1156,12 +1157,10 @@ export default function VelocityPage() {
                       connectNulls={false}
                     />
                     {liveShown && (
-                      // PR 5b (#105, #108): dashed from the 3 a.m. point (solid) to the live point (hollow)
+                      // PR 5b (#105, #108): dashed from the 3 a.m. point (solid) to the live point (hollow).
+                      // Drawn as reference marks, not data, so the chart's rows, tooltip and zoom stay the
+                      // line's own; the empty Line only names the dashed segment in the legend.
                       <Line
-                        data={[
-                          { day_offset: live.storedDay, live: live.stored },
-                          { day_offset: live.x, live: live.enrolled },
-                        ]}
                         dataKey="live"
                         name={LIVE_LINE_NAME}
                         stroke={CURRENT_LINE}
@@ -1170,8 +1169,37 @@ export default function VelocityPage() {
                         legendType="plainline"
                         tooltipType="none"
                         isAnimationActive={false}
+                        dot={false}
                         activeDot={false}
-                        dot={velocityLiveDot({
+                      />
+                    )}
+                    {liveShown && (
+                      <ReferenceLine
+                        segment={[
+                          { x: live.storedDay, y: live.stored },
+                          { x: live.x, y: live.enrolled },
+                        ]}
+                        stroke={CURRENT_LINE}
+                        strokeWidth={3}
+                        strokeDasharray="4 3"
+                        ifOverflow="extendDomain"
+                      />
+                    )}
+                    {liveShown && (
+                      <ReferenceDot
+                        x={live.storedDay}
+                        y={live.stored}
+                        r={4}
+                        fill={CURRENT_LINE}
+                        stroke="none"
+                      />
+                    )}
+                    {liveShown && (
+                      <ReferenceDot
+                        x={live.x}
+                        y={live.enrolled}
+                        ifOverflow="extendDomain"
+                        shape={velocityLiveDot({
                           color: CURRENT_LINE,
                           lines: liveLabelLines(
                             live,

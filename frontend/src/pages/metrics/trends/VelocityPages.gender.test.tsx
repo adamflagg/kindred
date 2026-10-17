@@ -145,6 +145,7 @@ vi.mock('recharts', () => {
     Legend: () => null,
     ReferenceLine: () => null,
     ReferenceArea: () => null,
+    ReferenceDot: () => null,
     Brush: () => null,
   }
 })

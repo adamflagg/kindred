@@ -1,14 +1,11 @@
 /**
- * PR 5b (#3207): Velocity's recharts `dot` for the live segment (LiveMark holds the shared SVG pieces).
+ * PR 5b (#3207): Velocity's live point as a recharts ReferenceDot `shape`: the hollow dot and its words
+ * (LiveMark holds the SVG pieces shared with Pace). Recharts hands the point's pixel position in.
  */
 import type { ReactElement } from 'react'
 import { LiveLabelText } from './LiveMark'
 import type { LiveLabelLine } from './velocityLive'
 
-/**
- * Velocity's recharts `dot` for the two-point live line: index 0 is the stored point (solid), index 1 the
- * live point (hollow) with its words. Recharts hands each point's pixel position in.
- */
 export function velocityLiveDot({
   color,
   lines,
@@ -18,14 +15,11 @@ export function velocityLiveDot({
   lines: readonly LiveLabelLine[]
   anchor: 'start' | 'end'
 }) {
-  return function LiveDot(props: { cx?: number; cy?: number; index?: number }): ReactElement {
-    const { cx, cy, index } = props
-    if (cx == null || cy == null) return <g key={`live-${String(index)}`} />
-    if (index === 0) {
-      return <circle key="live-stored" data-live-dot="stored" cx={cx} cy={cy} r={4} fill={color} />
-    }
+  return function LiveDot(props: { cx?: number; cy?: number }): ReactElement<SVGElement> {
+    const { cx, cy } = props
+    if (cx == null || cy == null) return <g />
     return (
-      <g key="live-now">
+      <g>
         <circle
           data-live-dot="live"
           cx={cx}

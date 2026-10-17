@@ -29,7 +29,11 @@ export function FreshnessChip({
   const Icon = verb === 'synced' ? RefreshCw : Upload
   return (
     <span
-      className={`flex items-center gap-1.5 whitespace-nowrap${warn ? 'text-amber-600 dark:text-amber-400' : ''}`}
+      className={
+        warn
+          ? 'flex items-center gap-1.5 whitespace-nowrap text-amber-600 dark:text-amber-400'
+          : 'flex items-center gap-1.5 whitespace-nowrap'
+      }
       title={title}
     >
       <Icon className="h-3 w-3" />
