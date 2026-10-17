@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from api.schemas.velocity import VelocityResponse
 from api.services.velocity_service import VelocityService
 from tests.unit.api.conftest import create_mock_session
 
@@ -97,7 +98,7 @@ def repo() -> Any:
     return r
 
 
-async def velocity(repo: Any, **kw: Any):
+async def velocity(repo: Any, **kw: Any) -> VelocityResponse:
     return await VelocityService(repo).get_velocity(year=YEAR, today=kw.pop("today", TODAY), **kw)
 
 
