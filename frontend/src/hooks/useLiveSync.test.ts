@@ -128,6 +128,33 @@ describe('useLiveSync', () => {
       expect(mockRefetch).toHaveBeenCalledTimes(2)
     })
 
+    // Scan of the #3283 fix delta: the once-per guard dated by the last SUCCESS pinned a tab after a
+    // failed run, since the success time never moves; nothing polls an idle status and window focus
+    // does not refetch (queryClient), so the next good run never reached it. Dated by the latest
+    // finished run instead, a failure is re-read once it is 65 minutes old too.
+    it('re-reads after a failed run once that run is 65 minutes old, not pinned to the last success', () => {
+      scoped[2027] = { attendees: job('success', '2026-12-14T21:30:00Z') } // 70 min before 22:40
+      const { rerender } = renderHook(() => useLiveSync(2027))
+      expect(mockRefetch).toHaveBeenCalledTimes(1)
+      // The refetch brings a failed run at 22:35; the last success is still 21:30.
+      scoped[2027] = {
+        attendees: {
+          ...job('failed', '2026-12-14T22:35:00Z'),
+          last_success_at: '2026-12-14T21:30:00Z',
+        },
+      }
+      rerender()
+      expect(mockRefetch).toHaveBeenCalledTimes(1)
+      act(() => {
+        vi.advanceTimersByTime(66 * 60_000) // 23:46: the failed run is 71 min old
+      })
+      expect(mockRefetch).toHaveBeenCalledTimes(2)
+      act(() => {
+        vi.advanceTimersByTime(5 * 60_000)
+      })
+      expect(mockRefetch).toHaveBeenCalledTimes(2)
+    })
+
     it('does nothing when no sync time is known', () => {
       renderHook(() => useLiveSync(2024))
       expect(mockRefetch).not.toHaveBeenCalled()

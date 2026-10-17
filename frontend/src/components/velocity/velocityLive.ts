@@ -22,9 +22,9 @@ const STORED_STALE_MS = 26 * 60 * 60 * 1000
 
 /** What the sync status says about the viewed season's enrollment (attendees) run. */
 export interface LiveSync {
-  /** When its last finished run ended; null when none is known. */
+  /** When its last SUCCESSFUL run ended (#111: the last good sync); null when none is known. */
   at: string | null
-  /** That run failed, so it vouches for nothing. */
+  /** A run after that success failed, so the count may hold its partial writes and vouches for nothing. */
   failed: boolean
   /** The nightly run is going (from 3:00 to its end): the stored count only. */
   nightly: boolean

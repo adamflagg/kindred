@@ -22,17 +22,20 @@ export type AnalyticsFreshness =
   | { kind: 'never' }
   /**
    * `at` is the last SUCCESSFUL run (row 2 of the #3283 scan: #111 says "last good sync"), and `failed` is
-   * whether the run after it failed, kept through the run that follows so the live point stays hidden.
+   * whether the run after it failed, kept through the run that follows so the live point stays hidden. The
+   * keeping is this session's memory (lastFinished): a page first opened while that next run is going
+   * cannot know the one before it failed, and reads false.
    */
   | { kind: 'synced'; at: string; running: boolean; failed: boolean }
   /** A run is live and no finished time has been seen this session: "Enrollments syncing now". */
   | { kind: 'syncing' }
 
 /**
- * The last finished attendees run seen per season, this session. A live (running or queued) run
- * arrives WITHOUT end_time: the backend returns that entry in place of the last finished one
- * (orchestrator.go statusLocked). Remembering the finished time keeps "Enrollments synced 7h
- * ago · syncing now" true through a run. Module-level, so it survives navigation.
+ * What the last finished attendees run seen per season, this session, said: the last success's time
+ * (`at`) and whether that finished run failed. A live (running or queued) run arrives WITHOUT end_time:
+ * the backend returns that entry in place of the last finished one (orchestrator.go statusLocked).
+ * Remembering both keeps "Enrollments synced 7h ago · syncing now" true through a run, and the live
+ * point hidden through the run after a failure. Module-level, so it survives navigation.
  */
 const lastFinished = new Map<number, { at: string | undefined; failed: boolean }>()
 
