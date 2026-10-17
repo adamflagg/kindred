@@ -637,11 +637,16 @@ func (s *AidPostingsSync) syncHouseholdLinks(year int, auto []aidHouseholdLink) 
 		existingAuto[key] = r
 		storedAuto = append(storedAuto, l)
 	}
-	// A closed season's auto links stay as stored, never re-derived from today's family
-	// structure (closed_season_freeze.go).
+	// A closed season's auto links stay as stored, never re-derived (closed_season_freeze.go). A
+	// closed season with none stored derives them once, below: auto is computed from the season's
+	// own stored persons and households (buildAttributionContext), never from CampMinder.
+	firstDerivation := false
 	if s.seasonClosed(year) {
-		logHouseholdLinksKept(year, auto, existingAuto, staffKeys)
-		return mergeHouseholdLinks(storedAuto, staff), nil
+		if len(existingAuto) > 0 {
+			logHouseholdLinksKept(year, auto, existingAuto, staffKeys)
+			return mergeHouseholdLinks(storedAuto, staff), nil
+		}
+		firstDerivation = true
 	}
 	effective := mergeHouseholdLinks(auto, staff)
 	if s.DryRun {
@@ -652,6 +657,7 @@ func (s *AidPostingsSync) syncHouseholdLinks(year int, auto []aidHouseholdLink) 
 		return nil, fmt.Errorf("finding %s: %w", colAidHouseholdLinks, err)
 	}
 	wanted := map[string]bool{}
+	derived := 0
 	for _, l := range auto {
 		key := aidLinkKey(l.HouseholdCMID, l.FamilyKey)
 		if staffKeys[key] {
@@ -672,6 +678,11 @@ func (s *AidPostingsSync) syncHouseholdLinks(year int, auto []aidHouseholdLink) 
 			return nil, fmt.Errorf("saving household link %s: %w", key, err)
 		}
 		s.Stats.Created++
+		derived++
+	}
+	if firstDerivation {
+		slog.Info("Closed season: no automatic household links stored, derived once from the stored family",
+			"year", year, "links_derived_first_time", derived)
 	}
 	// An empty computed set is a season with no multi-household family, not a
 	// collapse to refuse on; skip the sweep then, as camper_dietary does.

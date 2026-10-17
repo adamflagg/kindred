@@ -606,3 +606,77 @@ func TestClosedSeasonKeepsADisagreeingRelationAndHouseholdIDTogether(t *testing.
 		t.Errorf("pointerDisagreements = %d, want 1", s.freeze.pointerDisagreements)
 	}
 }
+
+// A closed season with NO stored automatic aid_household_links derives them once, from the
+// season's own stored (frozen) persons and households; from then on they are kept as stored, so
+// a later change to the local family structure does not regroup them. The fixture's live season
+// is 2026, so 2024 is closed.
+func TestClosedSeasonWithNoAutoLinksDerivesThemOnce(t *testing.T) {
+	t.Parallel()
+	const year = 2024
+	type link struct {
+		h   int
+		key string
+	}
+	links := func(f *aidFixture) []link {
+		rows := f.rows(colAidHouseholdLinks, year)
+		got := make([]link, 0, len(rows))
+		for _, r := range rows {
+			got = append(got, link{r.GetInt("household_cm_id"), r.GetString("family_key")})
+		}
+		slices.SortFunc(got, func(a, b link) int { return a.h - b.h })
+		return got
+	}
+	f := newAidFixture(t)
+	f.session(11, "Session 2", "main", year)
+	for _, h := range []int{100, 200, 300} {
+		f.household(h, year)
+	}
+	f.person(1001, year, 100, 200)
+	f.attend(1001, 11, 2, year)
+	f.txn(9001, year, -500, aidCategoryFinancialAssistance, aidTestCampAid, 200, 0, 0, false)
+
+	f.run("", year)
+	want := []link{{100, "hh-100"}, {200, "hh-100"}}
+	if got := links(f); !slices.Equal(got, want) {
+		t.Fatalf("first run: links = %v, want %v derived from the stored family", got, want)
+	}
+	if p := f.posting(9001); p.GetInt("attributed_person_cm_id") != 1001 {
+		t.Errorf("posting on household 200 attributed to %d, want 1001 through the derived link",
+			p.GetInt("attributed_person_cm_id"))
+	}
+
+	// The season's stored family changes (another person joins 100 with 300); the links exist
+	// now, so a second run keeps them as they are.
+	f.person(1002, year, 100, 300)
+	f.attend(1002, 11, 2, year)
+	f.run("", year)
+	if got := links(f); !slices.Equal(got, want) {
+		t.Errorf("second run: links = %v, want %v kept, not re-derived", got, want)
+	}
+}
+
+// A refused re-point counts whenever CampMinder names a different household from the stored
+// one, whether or not the season has a record of CampMinder's household (the freeze does not
+// create it, so most refusals are of exactly that kind).
+func TestClosedSeasonCountsARefusedRepointToAHouseholdTheSeasonLacks(t *testing.T) {
+	t.Parallel()
+	const year = 2019
+	app, person, hh := freezeFixture(t, year)
+	s := NewPersonsSync(app, nil)
+	s.freeze = startClosedSeasonFreeze(year, map[int]*core.Record{5001: person})
+	ids := map[int]personHouseholdIDs{5001: {PrincipalID: 7999, PrimaryChildhoodID: 7999, AlternateChildhoodID: 7001}}
+	if err := s.updatePersonHouseholdRelations(year, hh, ids); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	got := reload(t, app, person.Id)
+	for _, f := range []string{"household", "primary_childhood_household", "alternate_childhood_household"} {
+		if got.GetString(f) != hh[7001].Id {
+			t.Errorf("%s = %q, want kept %q", f, got.GetString(f), hh[7001].Id)
+		}
+	}
+	// 7999 on two relations differs from the stored 7001; the third already matches.
+	if s.freeze.relationsKept != 2 {
+		t.Errorf("relationsKept = %d, want 2", s.freeze.relationsKept)
+	}
+}

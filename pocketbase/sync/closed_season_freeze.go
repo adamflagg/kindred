@@ -28,7 +28,8 @@ import (
 //     season changes no history, so it is linked to the season's household when one exists, and
 //     the household is created, as CampMinder gives it, when none does (both counted);
 //   - never re-derives that season's automatic aid_household_links (AidPostingsSync.seasonClosed).
-//     Staff links were never touched and still are not;
+//     A closed season with none stored derives them once, from its own stored persons and
+//     households, never from CampMinder. Staff links were never touched and still are not;
 //   - takes CampMinder's corrections on an existing persons row (names, gender, birthdate, grade
 //     and grade_name: closedSeasonCorrections), and keeps every other field an existing persons
 //     or households row already holds, filling one only when it is blank; a stored 0 or false is
@@ -50,7 +51,7 @@ type closedSeasonFreeze struct {
 	// id). A row in it is frozen; a row this run created is not.
 	existingPersons map[int]*core.Record
 
-	relationsKept         int // relation changes refused on existing rows (a re-point, or a fill)
+	relationsKept         int // relation changes refused on existing rows: CampMinder named another household
 	householdIDsKept      int // legacy household_id changes refused on existing rows
 	householdsNotCreated  int // households only existing persons name (today's, for someone the season has)
 	newRelationsLeftBlank int // a new row's relation left blank: its household has no record
@@ -128,7 +129,9 @@ func (f *closedSeasonFreeze) holds(personCMID int, current string, record *core.
 		return false
 	}
 	if f.existed(personCMID) || current != "" {
-		if record != nil && current != record.Id {
+		// A refused re-point is any CampMinder household other than the stored one, whether or
+		// not the season has a record of it (the freeze does not create it, so most do not).
+		if record == nil || current != record.Id {
 			f.relationsKept++
 		}
 		return true
