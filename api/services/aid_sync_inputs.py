@@ -60,6 +60,7 @@ from api.dependencies import pb as default_pb
 from api.services.lodging_cache import cached_by_year
 from api.services.pb_precise_datetime import aid_collection
 from api.services.pb_read import pb_read
+from api.services.warm_settle import SettleDeadline
 from api.utils.pb_filters import pb_escape
 from bunking.logging_config import get_logger
 
@@ -260,6 +261,8 @@ _rerun_requested = False
 # recorded once per season.
 _record_years: set[int] = set()
 _record_every_season = False
+# When the next warm may start: at once, unless a finished sync asked it to settle (schedule_aid_warm).
+_settle = SettleDeadline()
 
 # schedule_aid_warm's ask for a record of every register season: a season-spanning write.
 EVERY_REGISTER_SEASON: Final = "every"
@@ -353,6 +356,7 @@ async def _warm_live_seasons() -> None:
 async def _warm_until_settled() -> None:
     global _rerun_requested, _record_every_season
     while True:
+        await _settle.wait()  # a sync-triggered warm waits for the run's clears to stop (warm_settle.py)
         _rerun_requested = False
         years, every = set(_record_years), _record_every_season
         _record_years.clear()
@@ -363,21 +367,29 @@ async def _warm_until_settled() -> None:
             return
 
 
-def schedule_aid_warm(record: RecordAsk = ()) -> None:
+def schedule_aid_warm(record: RecordAsk = (), *, settle: float = 0.0) -> None:
     """Start a background fill of every synced season, and return at once. One warm at a time: a request that
     lands mid-warm becomes a single rerun after it (see schedule_lodging_warm).
 
     `record`: the seasons whose grant placements the warm records first, or EVERY_REGISTER_SEASON (on_aid_commit
-    passes a staff write's). Asks gather until the warm that takes them, so none is lost to the coalescing."""
+    passes a staff write's). Asks gather until the warm that takes them, so none is lost to the coalescing.
+
+    `settle`: a finished sync's warm (invalidate_server_caches) waits until no further sync has asked for one for
+    this long, so one sync run's clears are warmed once, after its last (warm_settle.py). Without it the warm starts
+    at once, and cuts short any settle in progress: a staff write's warm, which records placements first, never
+    waits on a sync."""
     global _rerun_requested, _record_every_season, _warm_task
     if isinstance(record, str):  # EVERY_REGISTER_SEASON
         _record_every_season = True
     else:
         _record_years.update(int(y) for y in record)
+    _settle.ask(settle)
     loop = asyncio.get_running_loop()
     # A task from another event loop (a finished pytest loop) can never complete here.
     if _warm_task is not None and not _warm_task.done() and _warm_task.get_loop() is loop:
-        _rerun_requested = True
+        # Still settling, it has read nothing yet: the ask above only moved its start.
+        if not _settle.settling:
+            _rerun_requested = True
         return
     _warm_task = loop.create_task(_warm_until_settled())
 
