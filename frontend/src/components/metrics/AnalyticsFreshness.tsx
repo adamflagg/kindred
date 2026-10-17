@@ -1,12 +1,14 @@
 import { RefreshCw } from 'lucide-react'
 import { FreshnessChip } from '../FreshnessChip'
 import { useAnalyticsFreshness } from '../../hooks/useAnalyticsFreshness'
+import { useAnalyticsSyncRefetch } from '../../hooks/useAnalyticsSyncRefetch'
 import { useCurrentYear } from '../../hooks/useCurrentYear'
 
 /**
- * "Enrollments synced 7h ago" on Analytics' season bar (PR 4, pick 3A), beside Season. It reads
- * the viewed season's own enrollment (attendees) run, never the hourly bunk-assignment run, so it
- * never claims hour-old freshness for night-old numbers. " · syncing now" while that run is going.
+ * "Enrollments synced 40m ago" on Analytics' season bar (PR 4, pick 3A), beside Season. It reads
+ * the viewed season's own enrollment (attendees) run, which is hourly since PR 5, never the
+ * bunk-assignment run. " · syncing now" while that run is going. When the run finishes, every
+ * Analytics query refetches (useAnalyticsSyncRefetch): the chip is on every Analytics page, once.
  *
  * Nothing for a season the regular schedule doesn't cover (older seasons re-sync weekly, Saturday
  * 05:00; N and N−1 run on the regular schedule), and
@@ -16,6 +18,7 @@ import { useCurrentYear } from '../../hooks/useCurrentYear'
 export function AnalyticsFreshness() {
   const { currentYear } = useCurrentYear()
   const freshness = useAnalyticsFreshness(currentYear)
+  useAnalyticsSyncRefetch(currentYear)
   if (freshness.kind === 'syncing') {
     // A live run with no finished time known this session: the payload carries none to show.
     return (

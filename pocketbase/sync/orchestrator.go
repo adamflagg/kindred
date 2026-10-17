@@ -152,20 +152,26 @@ var syncJobMeta = []JobMeta{
 	{ID: "session_groups", Phase: PhaseSource,
 		Description: "Session groups from CampMinder",
 		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
-	// Depends on session_groups (for the session_group relation).
+	// Depends on session_groups (for the session_group relation). Hourly as well as nightly,
+	// with attendees and persons below (epic #3207 PR 5, decision 1): analytics reads all three
+	// live. The hourly run does not take session_groups with it: a group CampMinder adds during
+	// the day is preloaded by the next nightly, and until then the session just has no group
+	// relation (sessions.go logs it and carries on).
 	{ID: "sessions", Phase: PhaseSource,
 		Description: "Sessions from CampMinder",
-		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
-	// Depends on sessions.
+		Cadences:    CadenceHourly | CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
+	// Depends on sessions. Hourly as well as nightly; its orphan sweep runs on both, with every
+	// guard it has.
 	{ID: "attendees", Phase: PhaseSource,
 		Description: "Attendees from CampMinder",
-		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
+		Cadences:    CadenceHourly | CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
 	// Depends on attendees and divisions. Combined sync: a single CampMinder API call
 	// populates both the persons and households tables (tags are stored as a multi-select
-	// relation on persons).
+	// relation on persons). Hourly as well as nightly; the transform jobs that read persons
+	// (demographics, transportation, geography) stay nightly.
 	{ID: "persons", Phase: PhaseSource,
 		Description: "Persons + households from CampMinder",
-		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
+		Cadences:    CadenceHourly | CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
 	// No dependencies.
 	{ID: "bunks", Phase: PhaseSource,
 		Description: "Bunks from CampMinder",
@@ -174,9 +180,9 @@ var syncJobMeta = []JobMeta{
 	{ID: "bunk_plans", Phase: PhaseSource,
 		Description: "Bunk plans from CampMinder",
 		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
-	// bunk_assignments is the ONLY job on two crons: the hourly refresh (RunHourlySync)
-	// as well as the daily sweep, which is what CadenceHourly's bitset exists to express
-	// without listing this row twice. Depends on sessions, persons, bunks.
+	// On two crons, the hourly refresh (RunHourlySync) as well as the daily sweep, like the
+	// three rows above it; that is what the Cadence bitset exists to express without listing a
+	// row twice. Depends on sessions, persons, bunks, so in the hourly queue it runs last.
 	{ID: "bunk_assignments", Phase: PhaseSource,
 		Description: "Bunk assignments from CampMinder",
 		Cadences:    CadenceHourly | CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
@@ -292,6 +298,10 @@ var syncJobMeta = []JobMeta{
 	{ID: "normalize_geographic", Phase: PhaseTransform,
 		Description: "Normalize geographic data (cities, schools, congregations)",
 		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
+	// Nightly only, never hourly (decision 1: "the 3 a.m. run stays each day's stored snapshot
+	// point; 'now' is served separately"). It upserts one row per session per UTC day, so an
+	// hourly run would overwrite the 3 a.m. count with a mid-day one. "Now" is the attendees
+	// rows, which the hourly run keeps fresh.
 	{ID: "enrollment_snapshots", Phase: PhaseTransform,
 		Description: "Capture daily enrollment counts per session",
 		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
@@ -849,14 +859,17 @@ type Orchestrator struct {
 	// replay: a manual Run Sync of the prior season. It still runs as a year queue (its own
 	// instances, the primary's registry untouched), but it reports as a season run, not historical.
 	historicalSyncSeason    bool
-	weeklySyncRunning       bool               // Track if weekly sync sequence is in progress
-	weeklySyncQueue         []string           // Services queued for weekly sync
-	customValuesSyncRunning bool               // Track if custom values sync sequence is in progress
-	customValuesSyncQueue   []string           // Services queued for custom values sync
-	allSeasonsResyncRunning bool               // The weekly all-seasons re-sync (all_seasons_resync.go)
-	pendingUnifiedSyncs     []QueuedSync       // Queue of pending unified sync requests (FIFO)
-	activeSyncCancel        context.CancelFunc // Cancel function for the currently running sync
-	currentRunIndex         int                // 0-based index of currently running job in active queue
+	weeklySyncRunning       bool     // Track if weekly sync sequence is in progress
+	weeklySyncQueue         []string // Services queued for weekly sync
+	customValuesSyncRunning bool     // Track if custom values sync sequence is in progress
+	customValuesSyncQueue   []string // Services queued for custom values sync
+	allSeasonsResyncRunning bool     // The weekly all-seasons re-sync (all_seasons_resync.go)
+	// hourlySyncRunning is the hourly run (RunHourlySync), so the all-seasons re-sync and the
+	// API's admission checks wait for it rather than start a job id under it.
+	hourlySyncRunning   bool
+	pendingUnifiedSyncs []QueuedSync       // Queue of pending unified sync requests (FIFO)
+	activeSyncCancel    context.CancelFunc // Cancel function for the currently running sync
+	currentRunIndex     int                // 0-based index of currently running job in active queue
 	// runCompletedNotifier is told the job id of every run that finishes, success or failure,
 	// so FastAPI can clear the server caches that job's writes made stale (kindred#2803). Nil
 	// on an orchestrator built by NewOrchestrator -- every test's -- and wired to
@@ -1986,44 +1999,97 @@ func (o *Orchestrator) checkGlobalTablesEmpty() bool {
 // last (see orderQueue). Extracted from RunDailySync so the ordering can be asserted in tests.
 func getDailySyncJobs() []string { return cadenceQueue(CadenceDaily) }
 
-// RunHourlySync runs the hourly refresh — cadenceQueue(CadenceHourly), which today is the
-// single service bunk_assignments — for the primary season, then for the prior season (spec
-// §5), and waits for each to finish.
+// errHourlySyncYielded is RunHourlySync's answer when it started nothing because another queue
+// that runs the same jobs is in flight (hourlyBlockerLocked), or the previous hour's run is.
+var errHourlySyncYielded = errors.New("hourly sync yielded to a running queue")
+
+// RunHourlySync runs the hourly refresh, cadenceQueue(CadenceHourly): sessions, attendees,
+// persons and bunk_assignments (epic #3207 PR 5), for the primary season, then for the prior
+// season (spec §5), and waits for each to finish. enrollment_snapshots is not among them: the
+// nightly's row stays each day's stored point.
 //
-// It exists so the hourly cron has an origin the orchestrator can see. Every other queue is
-// identifiable from a *SyncRunning flag, but the hourly job drove RunSingleSync directly and
-// so was indistinguishable from an operator refreshing bunk_assignments by hand. That matters
-// more than it sounds: the hourly cron is by far the highest-volume producer of sync_runs
-// rows, so filing it as "manual" would bury the operator-initiated runs it needs to be told
-// apart from.
+// It YIELDS rather than collide. A queue that runs the same job ids -- the nightly or a staff
+// full run (dailySyncRunning), a staff run of N-1 or a replay (historicalSyncRunning), the
+// all-seasons re-sync -- would have one side of each collision refused with "sync already in
+// progress", and that queue syncs the same jobs anyway. So while one runs, this starts nothing
+// and returns errHourlySyncYielded, and it checks again before the prior season's pass. Its own
+// flag (hourlySyncRunning) is what the all-seasons re-sync and the API's admission checks wait
+// on, which also keeps a late hour from overlapping the next. The nightly's 03:00 start races
+// this run's own cron goroutine, so the scheduler keeps out of that window (inNightlyWindow).
 //
-// Unlike RunSingleSync this blocks until the run completes, matching every other Run*Sync
-// method here. Both callers already run it on their own goroutine.
+// It exists so the hourly cron has an origin the orchestrator can see: the hourly cron is by far
+// the highest-volume producer of sync_runs rows, so filing it as "manual" would bury the
+// operator-initiated runs it needs to be told apart from.
+//
+// One job failing does not stop the others, as on the nightly; the failures are returned.
+// Unlike RunSingleSync this blocks until the run completes. Both callers run it on their own
+// goroutine.
 func (o *Orchestrator) RunHourlySync(ctx context.Context) error {
-	o.ensurePrimaryClient()
+	o.mu.Lock()
+	if blocker := o.hourlyBlockerLocked(); blocker != "" || o.hourlySyncRunning {
+		o.mu.Unlock()
+		if blocker == "" {
+			blocker = "the previous hourly run"
+		}
+		slog.Info("Hourly sync yielded: another queue runs the same jobs", "running", blocker)
+		return errHourlySyncYielded
+	}
+	o.hourlySyncRunning = true
+	o.mu.Unlock()
+
 	batch := newBatch(triggerHourly)
 	o.registerBatch(batch.batchID)
-	// Unlike the other queues below, this one has no *SyncRunning flag/defer of its own to
-	// piggyback on -- but it accumulates into batchChanged exactly like they do (bunk_assignments
-	// is CadenceHourly's one job, and it does map to a collection in SyncJobToCollections), so
-	// without this the map leaks one entry every hour, forever, in a long-lived container. Same
-	// reasoning as RunDailySync's identical cleanup.
+	// The batch accumulates into batchChanged like every queue's, so without this the map leaks
+	// one entry every hour, forever, in a long-lived container.
 	defer func() {
 		o.mu.Lock()
+		o.hourlySyncRunning = false
 		delete(o.batchChanged, batch.batchID)
 		o.mu.Unlock()
 	}()
-	var primaryErr error
+	o.ensurePrimaryClient()
+
+	var errs []error
 	for _, job := range cadenceQueue(CadenceHourly) {
 		if err := o.runSyncAndWait(ctx, job, batch); err != nil {
-			primaryErr = err
-			break
+			slog.Error("Hourly sync: service failed", "service", job, "error", err)
+			errs = append(errs, fmt.Errorf("%s: %w", job, err))
 		}
 	}
-	// The prior season's hourly jobs run whatever the primary's outcome: the two seasons are
-	// independent, and the primary has already had its turn.
+	// The prior season's jobs run whatever the primary's outcome (the two seasons are
+	// independent), unless a queue started meanwhile: the re-sync is waiting on this run.
+	o.mu.RLock()
+	blocker := o.hourlyBlockerLocked()
+	o.mu.RUnlock()
+	if blocker != "" {
+		slog.Info("Hourly sync: skipping the prior season, another queue is waiting", "running", blocker)
+		return errors.Join(errs...)
+	}
 	o.runPriorSeasons(ctx, secondarySeasonQueue(CadenceHourly), triggerHourly)
-	return primaryErr
+	return errors.Join(errs...)
+}
+
+// hourlyBlockerLocked names the running queue the hourly run yields to, "" when there is none.
+// Only queues that run the hourly jobs count: the weekly globals and the custom-values pass
+// write other tables, so the hourly run goes ahead beside them. Callers hold o.mu.
+func (o *Orchestrator) hourlyBlockerLocked() string {
+	switch {
+	case o.dailySyncRunning:
+		return "the nightly or a staff full run"
+	case o.historicalSyncRunning:
+		return "a staff run of another season"
+	case o.allSeasonsResyncRunning:
+		return "the all-seasons re-sync"
+	}
+	return ""
+}
+
+// IsHourlySyncRunning reports whether the hourly run is in progress, gaps between its jobs
+// included (IsAnyJobRunning sees only a job that is running).
+func (o *Orchestrator) IsHourlySyncRunning() bool {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	return o.hourlySyncRunning
 }
 
 // runPriorSeasons runs jobs once for each synced season after the primary (spec §5), through

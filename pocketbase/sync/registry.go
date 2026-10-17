@@ -3,12 +3,14 @@ package sync
 import "log/slog"
 
 // Cadence is the set of crons that run a job. A bitset rather than one slice per cron
-// because a job may be on more than one -- bunk_assignments is both hourly and daily, and a
-// slice-per-cadence can only say that by listing it twice.
+// because a job may be on more than one -- the hourly jobs (sessions, attendees, persons,
+// bunk_assignments) are daily too, and a slice-per-cadence can only say that by listing each
+// twice.
 type Cadence uint8
 
 const (
-	// CadenceHourly is scheduler.go's hourly cron, "0 * * * *".
+	// CadenceHourly is scheduler.go's hourly cron, "0 * * * *". It skips the nightly's window
+	// and yields to any queue that runs the same jobs (RunHourlySync).
 	CadenceHourly Cadence = 1 << iota
 	// CadenceDaily is scheduler.go's nightly cron, "0 3 * * *".
 	CadenceDaily

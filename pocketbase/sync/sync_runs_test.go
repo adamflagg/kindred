@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -25,11 +26,26 @@ import (
 // restart and there was no sync_runs table at all, so a season of Rejected counts would have
 // amounted to whatever happened to be in memory the moment someone looked.
 
-// hourlySyncJob mirrors the registry's sole CadenceHourly job. It is test-local rather than a
-// production constant now that RunHourlySync loops over cadenceQueue(CadenceHourly) directly;
-// TestCadenceBitsetOverlap (registry_test.go) is what pins the two together, so a change to
-// the hourly cadence's membership fails there rather than silently going stale here.
+// hourlySyncJob is the hourly queue's last job, the one these tests gate on or look up. It is
+// test-local rather than a production constant now that RunHourlySync loops over
+// cadenceQueue(CadenceHourly) directly; TestHourlyQueueIsEnrollmentsPeopleSessionsAndAssignments
+// (hourly_sync_test.go) is what pins the queue, so a change to its membership fails there rather
+// than silently going stale here.
 const hourlySyncJob = "bunk_assignments"
+
+// registerHourlyMocks registers a MockService for every hourly job but the ones in except, so
+// RunHourlySync finds each job it queues. It returns how many it registered.
+func registerHourlyMocks(o *Orchestrator, except ...string) int {
+	n := 0
+	for _, id := range cadenceQueue(CadenceHourly) {
+		if slices.Contains(except, id) {
+			continue
+		}
+		o.RegisterService(id, &MockService{name: id})
+		n++
+	}
+	return n
+}
 
 // newSyncRunsApp returns a test app carrying the sync_runs collection.
 //
@@ -371,19 +387,18 @@ func TestHourlySyncRecordsHourlyTrigger(t *testing.T) {
 
 	app := newSyncRunsApp(t)
 	o := NewOrchestrator(app)
-	o.RegisterService(hourlySyncJob, &MockService{name: hourlySyncJob})
+	n := registerHourlyMocks(o)
 
 	if err := o.RunHourlySync(context.Background()); err != nil {
 		t.Fatalf("RunHourlySync: %v", err)
 	}
 
-	rec := waitForSyncRuns(t, app, 1)[0]
-	if got := rec.GetString("trigger"); got != triggerHourly {
-		t.Errorf("trigger = %q, want %q", got, triggerHourly)
+	for _, rec := range waitForSyncRuns(t, app, n) {
+		if got := rec.GetString("trigger"); got != triggerHourly {
+			t.Errorf("%s trigger = %q, want %q", rec.GetString("service"), got, triggerHourly)
+		}
 	}
-	if got := rec.GetString("service"); got != hourlySyncJob {
-		t.Errorf("service = %q, want %q", got, hourlySyncJob)
-	}
+	waitForSyncRunByService(t, app, hourlySyncJob)
 }
 
 // TestBatchesAreSequentialNotNested corrects a false premise this file used to encode.
@@ -412,12 +427,12 @@ func TestBatchesAreSequentialNotNested(t *testing.T) {
 		t.Fatalf("RunWeeklySync: %v", err)
 	}
 
-	o.RegisterService(hourlySyncJob, &MockService{name: hourlySyncJob})
+	hourly := registerHourlyMocks(o)
 	if err := o.RunHourlySync(context.Background()); err != nil {
 		t.Fatalf("RunHourlySync: %v", err)
 	}
 
-	recs := waitForSyncRuns(t, app, len(weekly)+1)
+	recs := waitForSyncRuns(t, app, len(weekly)+hourly)
 
 	batches := map[string]string{} // trigger -> batch id
 	for _, rec := range recs {
@@ -664,6 +679,7 @@ func TestConcurrentBatchesKeepTheirOwnOrigin(t *testing.T) {
 
 	hourlyGate := newGateService(hourlySyncJob)
 	o.RegisterService(hourlySyncJob, hourlyGate)
+	hourly := 1 + registerHourlyMocks(o, hourlySyncJob)
 
 	weekly := GetWeeklySyncJobs()
 	weeklyGate := newGateService(weekly[0])
@@ -691,7 +707,7 @@ func TestConcurrentBatchesKeepTheirOwnOrigin(t *testing.T) {
 	}
 
 	// One row per weekly job plus the hourly's.
-	recs := waitForSyncRuns(t, app, len(weekly)+1)
+	recs := waitForSyncRuns(t, app, len(weekly)+hourly)
 
 	byService := map[string]*core.Record{}
 	for _, rec := range recs {
@@ -891,7 +907,7 @@ func TestSyncRunYearComesFromTheRunNotTheProcess(t *testing.T) {
 
 	app := newSyncRunsApp(t)
 	o := NewOrchestrator(app)
-	o.RegisterService(hourlySyncJob, &MockService{name: hourlySyncJob})
+	registerHourlyMocks(o)
 
 	// Stand in for a historical backfill holding the process-global year.
 	o.mu.Lock()

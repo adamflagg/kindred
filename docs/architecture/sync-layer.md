@@ -387,12 +387,37 @@ unset). `SyncedSeasons` is `[N, N−1]`. Each run does the primary first, then a
 (`runPriorSeasons`) over `secondarySeasonQueue`, which drops every `PrimaryOnly` job and every
 global job, so an N−1 failure never costs the primary.
 
-| Cron (`sync/scheduler.go`, container `TZ`) | Primary (N)                           | N−1                                                                         |
-| ------------------------------------------ | ------------------------------------- | --------------------------------------------------------------------------- |
-| Hourly, `0 * * * *`                        | `bunk_assignments`                    | `bunk_assignments`                                                          |
-| Daily, `0 3 * * *`                         | every daily job                       | every daily job except `financial_transactions`, `aid_postings` and globals |
-| Sunday 02:00, `0 2 * * 0`                  | the global tables + workbook export   | `multi_workbook_export` only (when Google Sheets is configured)            |
-| Sunday 04:00, `0 4 * * 0`                  | full person/household custom values   | none: the scoped daily `*_family_camp` passes keep N−1 current             |
+| Cron (`sync/scheduler.go`, container `TZ`) | Primary (N)                                            | N−1                                                                         |
+| ------------------------------------------ | ------------------------------------------------------ | --------------------------------------------------------------------------- |
+| Hourly, `0 * * * *` (not 03:00 or 04:00)   | `sessions`, `attendees`, `persons`, `bunk_assignments` | the same four                                                               |
+| Daily, `0 3 * * *`                         | every daily job                                        | every daily job except `financial_transactions`, `aid_postings` and globals |
+| Sunday 02:00, `0 2 * * 0`                  | the global tables + workbook export                    | `multi_workbook_export` only (when Google Sheets is configured)             |
+| Sunday 04:00, `0 4 * * 0`                  | full person/household custom values                    | none: the scoped daily `*_family_camp` passes keep N−1 current              |
+
+**The hourly run** (`RunHourlySync`, epic #3207 PR 5) keeps enrollments, people and sessions as fresh
+as bunk assignments. It runs no derived job: `enrollment_snapshots` stays nightly, because it upserts one
+row per session per UTC day and an hourly run would overwrite the 3 a.m. count with a mid-day one (the
+nightly row is each day's stored point; "now" is the live `attendees` rows). The demographics,
+transportation and geography transforms that read `persons` stay nightly too. Three rules keep it clear
+of the other queues:
+
+- **The nightly's window.** The scheduler skips the hourly cron's ticks between 02:55 and 04:30 local
+  (`inNightlyWindow`), so 03:00 and 04:00. 03:00 races the nightly's own start, two cron goroutines with no
+  order between them, and 04:00 falls in its N−1 pass.
+- **It yields to a queue that runs the same jobs.** While the nightly or a staff full run
+  (`dailySyncRunning`), a staff run of N−1 or a replay (`historicalSyncRunning`), or the all-seasons
+  re-sync is running, it starts nothing (`errHourlySyncYielded`), and it checks again before its N−1
+  pass. The weekly globals and the custom-values pass write other tables, so it runs beside them.
+- **It holds a flag of its own** (`hourlySyncRunning`). The all-seasons re-sync waits on it before each
+  season, and the API's admission checks count it, so a staff press during the hourly run is queued
+  instead of starting into its next job. Every scheduled run starts the staff queue when it ends
+  (`processQueuedSyncs` in `scheduler.go`); before PR 5 only an API-started run did.
+
+Each hourly run clears FastAPI's caches per job as any run does: six of its eight jobs (sessions,
+attendees, persons, each season) clear the Camperships, lodging, Form intake, development-history and
+social-graph caches as well as metrics, and bunk_assignments clears metrics and the social graph. With
+#3280 the background warms those clears start settle until 30 s after the last one, which keeps the hour's
+cost to about one warm; without it each clear restarts the warm, about 3.6× the cost (#3199 bench).
 
 **Seasons older than N−1** get one more cron: **Saturday 05:00 (`0 5 * * 6`), the all-seasons re-sync**
 (`sync/all_seasons_resync.go`). For each season from N−2 back to 2017, newest first, it re-runs

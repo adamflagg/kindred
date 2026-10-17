@@ -12,6 +12,10 @@ const mockFreshness = vi.fn((_year: number): Freshness => ({ kind: 'none' }))
 vi.mock('../../hooks/useAnalyticsFreshness', () => ({
   useAnalyticsFreshness: (year: number) => mockFreshness(year),
 }))
+const mockRefetch = vi.fn((_year: number) => undefined)
+vi.mock('../../hooks/useAnalyticsSyncRefetch', () => ({
+  useAnalyticsSyncRefetch: (year: number) => mockRefetch(year),
+}))
 vi.mock('../../hooks/useCurrentYear', () => ({
   useCurrentYear: () => ({ currentYear: 2027 }),
 }))
@@ -31,6 +35,13 @@ describe('AnalyticsFreshness', () => {
   it('asks about the viewed season', () => {
     render(<AnalyticsFreshness />)
     expect(mockFreshness).toHaveBeenCalledWith(2027)
+  })
+
+  // PR 5: enrollments sync hourly, so the chip that dates them also refetches Analytics when the
+  // viewed season's run finishes. It is on every Analytics page, once.
+  it("refetches Analytics after the viewed season's sync", () => {
+    render(<AnalyticsFreshness />)
+    expect(mockRefetch).toHaveBeenCalledWith(2027)
   })
 
   it('reads "Enrollments synced 7h ago"', () => {

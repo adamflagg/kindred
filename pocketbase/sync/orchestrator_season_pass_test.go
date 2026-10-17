@@ -381,13 +381,15 @@ func TestSyncRunsRowsCarryTheirSeason(t *testing.T) {
 	}
 }
 
-// TestHourlyRunCollidingWithThePriorSeasonPassIsRefusedNotMisfiled pins what happens when the
-// hourly cron's bunk_assignments (primary, registry instance) starts while the nightly N-1 pass
-// is running bunk_assignments (2026, its own instance). Both use the job id's one status slot.
-// The second must be refused and logged, not adopt the running slot: adopting it used to
-// restamp the 2026 run as an hourly 2027 run, run both at once, and leave the N-1 pass waiting
+// TestHourlyRunCollidingWithAPriorSeasonRunIsRefusedNotMisfiled pins what happens when the
+// hourly cron's bunk_assignments starts while a run of bunk_assignments for 2026, on its own
+// instance, holds the job id's one status slot. The nightly's N-1 pass no longer gets here (the
+// hourly run yields to it, TestHourlySyncYieldsToARunningQueue), but a staff refresh for N-1 is a
+// sequence with no queue flag, so the job-level guard is still what stands between them. The
+// second must be refused and logged, not adopt the running slot: adopting it used to restamp the
+// 2026 run as an hourly 2027 run, run both at once, and leave the 2026 run's caller waiting
 // forever for a completion token that had been overwritten.
-func TestHourlyRunCollidingWithThePriorSeasonPassIsRefusedNotMisfiled(t *testing.T) {
+func TestHourlyRunCollidingWithAPriorSeasonRunIsRefusedNotMisfiled(t *testing.T) {
 	t.Setenv("CAMPMINDER_SEASON_ID", "")
 	withNow(t, time.Date(2026, time.October, 20, 10, 0, 0, 0, time.UTC))
 	client := newTestCampMinderClient(t, 2027)
@@ -400,32 +402,40 @@ func TestHourlyRunCollidingWithThePriorSeasonPassIsRefusedNotMisfiled(t *testing
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Hour)
 		defer cancel()
 		done := make(chan error, 1)
-		go func() { done <- o.RunDailySync(ctx) }()
+		staff := map[string]Service{"bunk_assignments": o.seasonInstance("bunk_assignments", 2026, false)}
+		go func() {
+			done <- o.runSyncSequence(ctx, []string{"bunk_assignments"}, staff, newBatch(triggerManual).forYear(2026))
+		}()
 		rec.waitUntilBlocked(t)
 
-		primaryRuns := rec.count("bunk_assignments", 2027)
 		err := o.RunHourlySync(ctx)
 		if err == nil || !strings.Contains(err.Error(), "already in progress") {
 			t.Errorf("the colliding hourly run must be refused, got %v", err)
 		}
-		if got := rec.count("bunk_assignments", 2027); got != primaryRuns {
-			t.Errorf("the refused hourly run still ran bunk_assignments for 2027 (%d runs, was %d)", got, primaryRuns)
+		if rec.Ran("bunk_assignments", 2027) {
+			t.Error("the refused hourly run still ran bunk_assignments for 2027")
 		}
-		if st := o.GetStatus("bunk_assignments"); st == nil || st.Year != 2026 || st.Trigger != triggerDaily {
-			t.Errorf("the running N-1 slot was restamped: %+v", st)
+		if !rec.Ran("persons", 2027) {
+			t.Error("the hourly run's other jobs must still run")
+		}
+		if st := o.GetStatus("bunk_assignments"); st == nil || st.Year != 2026 || st.Trigger != triggerManual {
+			t.Errorf("the running 2026 slot was restamped: %+v", st)
 		}
 
 		close(release)
 		select {
-		case <-done:
+		case err := <-done:
+			if err != nil {
+				t.Fatalf("the 2026 run: %v", err)
+			}
 		case <-time.After(time.Hour):
-			t.Fatal("the N-1 pass never saw its bunk_assignments run complete")
+			t.Fatal("the 2026 run never saw its bunk_assignments run complete")
 		}
 		o.mu.RLock()
 		last := o.lastCompletedStatus["bunk_assignments"]
 		o.mu.RUnlock()
-		if last == nil || last.Year != 2026 || last.Trigger != triggerDaily {
-			t.Errorf("the N-1 bunk_assignments run was filed as %+v, want year 2026, trigger daily", last)
+		if last == nil || last.Year != 2026 || last.Trigger != triggerManual {
+			t.Errorf("the 2026 bunk_assignments run was filed as %+v, want year 2026, trigger manual", last)
 		}
 	})
 }
@@ -599,29 +609,6 @@ func TestScopedCustomValuesAreANoOpForASeasonWithNoWeekends(t *testing.T) {
 	}
 }
 
-// TestHourlySyncCoversBothSeasons is spec §5's hourly row: bunk_assignments for both seasons.
-func TestHourlySyncCoversBothSeasons(t *testing.T) {
-	t.Setenv("CAMPMINDER_SEASON_ID", "")
-	withNow(t, time.Date(2026, time.October, 20, 10, 0, 0, 0, time.UTC))
-	client := newTestCampMinderClient(t, 2027)
-
-	runInBubble(t, func(t *testing.T) {
-		o, rec := newRecordingOrchestrator(t, nil, client)
-		if err := o.RunHourlySync(context.Background()); err != nil {
-			t.Fatal(err)
-		}
-		if !rec.Ran("bunk_assignments", 2027) || !rec.Ran("bunk_assignments", 2026) {
-			t.Fatalf("hourly bunk_assignments must run for 2027 and 2026: %+v", rec.Runs())
-		}
-		if runs := rec.Runs(); runs[0] != (seasonRun{ID: "bunk_assignments", Year: 2027}) {
-			t.Errorf("the primary must run first, got %+v", runs)
-		}
-		if st := o.GetStatus("bunk_assignments"); st == nil || st.Year != 2026 || st.Trigger != triggerHourly {
-			t.Errorf("the N-1 hourly run must be filed as an hourly 2026 run, got %+v", st)
-		}
-	})
-}
-
 // TestWeeklyExportCoversBothSeasonsButCustomValuesStayPrimary is spec §5's weekly row: the
 // export writes the prior season's workbook too, while the full custom-values passes are primary
 // only (ruling 4).
@@ -671,83 +658,54 @@ func registrySnapshot(o *Orchestrator) map[string]Service {
 
 // TestHourlyRunDuringAManualPriorSeasonRunSyncsThePrimary is the plan's Review Focus 2 for a
 // staff-started run: after the rollover, Manage > Sync "run all" for N-1 (RunSyncWithOptions
-// with Year 2026, primary 2027) is a normal action. The hourly cron firing while it runs must
-// sync the season it means to. A replay that registered its own instances for the run made the
-// hourly primary pass pick up 2026's bunk_assignments and file it as the hourly primary run.
+// with Year 2026, primary 2027) is a normal action. A replay that registered its own instances
+// for the run made an hourly run during it pick up 2026's bunk_assignments and file it as the
+// hourly primary run. The hourly run now yields while it runs (PR 5); the one after it must still
+// sync the primary with the primary's instance.
 func TestHourlyRunDuringAManualPriorSeasonRunSyncsThePrimary(t *testing.T) {
 	t.Setenv("CAMPMINDER_SEASON_ID", "")
 	withNow(t, time.Date(2026, time.October, 20, 10, 0, 0, 0, time.UTC)) // primary 2027
 	client := newTestCampMinderClient(t, 2027)
 
-	t.Run("a different job is running", func(t *testing.T) {
-		runInBubble(t, func(t *testing.T) {
-			o, rec := newRecordingOrchestrator(t, nil, client)
-			primaryBunks := o.GetService("bunk_assignments")
+	runInBubble(t, func(t *testing.T) {
+		o, rec := newRecordingOrchestrator(t, nil, client)
+		primaryBunks := o.GetService("bunk_assignments")
 
-			release := make(chan struct{})
-			rec.blockDuring("attendees", 2026, release) // pause the manual N-1 run mid-way
-			done := make(chan error, 1)
-			go func() { done <- o.RunSyncWithOptions(context.Background(), Options{Year: 2026}) }()
-			rec.waitUntilBlocked(t)
+		release := make(chan struct{})
+		rec.blockDuring("attendees", 2026, release) // pause the manual N-1 run mid-way
+		done := make(chan error, 1)
+		go func() { done <- o.RunSyncWithOptions(context.Background(), Options{Year: 2026}) }()
+		rec.waitUntilBlocked(t)
 
-			if got := o.GetService("bunk_assignments"); got != primaryBunks {
-				t.Errorf("the registry's bunk_assignments changed during the manual 2026 run: an hourly " +
-					"run would sync the replay's season and file it under the primary")
-			}
+		if got := o.GetService("bunk_assignments"); got != primaryBunks {
+			t.Errorf("the registry's bunk_assignments changed during the manual 2026 run: an hourly " +
+				"run would sync the replay's season and file it under the primary")
+		}
+		if err := o.RunHourlySync(context.Background()); !errors.Is(err, errHourlySyncYielded) {
+			t.Errorf("the hourly run during the manual 2026 run = %v, want it to yield", err)
+		}
+		if rec.Ran("bunk_assignments", 2027) {
+			t.Errorf("the yielding hourly run synced 2027: %+v", rec.Runs())
+		}
 
-			before2026 := rec.count("bunk_assignments", 2026)
-			if err := o.RunHourlySync(context.Background()); err != nil {
-				t.Fatalf("RunHourlySync: %v", err)
-			}
-			if got := rec.count("bunk_assignments", 2027); got != 1 {
-				t.Errorf("the hourly primary pass must sync bunk_assignments for 2027 once, ran %d times: %+v",
-					got, rec.Runs())
-			}
-			if got := rec.count("bunk_assignments", 2026) - before2026; got != 1 {
-				t.Errorf("the hourly run must sync 2026 once (its N-1 pass), ran %d times: the primary pass "+
-					"must not sync the replay's season", got)
-			}
-
-			close(release)
-			if err := <-done; err != nil {
-				t.Fatalf("RunSyncWithOptions: %v", err)
-			}
-		})
-	})
-
-	t.Run("the same job is running", func(t *testing.T) {
-		runInBubble(t, func(t *testing.T) {
-			o, rec := newRecordingOrchestrator(t, nil, client)
-
-			release := make(chan struct{})
-			rec.blockDuring("bunk_assignments", 2026, release)
-			done := make(chan error, 1)
-			go func() { done <- o.RunSyncWithOptions(context.Background(), Options{Year: 2026}) }()
-			rec.waitUntilBlocked(t)
-
-			err := o.RunHourlySync(context.Background())
-			if err == nil || !strings.Contains(err.Error(), "already in progress") {
-				t.Errorf("the colliding hourly run must be refused, got %v", err)
-			}
-			if got := rec.count("bunk_assignments", 2027); got != 0 {
-				t.Errorf("the refused hourly run still ran bunk_assignments for 2027 (%d runs)", got)
-			}
-			// A manual run of the prior synced season is filed as manual, not historical (scan fix).
-			if st := o.GetStatus("bunk_assignments"); st == nil || st.Year != 2026 || st.Trigger != triggerManual {
-				t.Errorf("the manual 2026 run's slot was restamped: %+v", st)
-			}
-
-			close(release)
-			if err := <-done; err != nil {
-				t.Fatalf("RunSyncWithOptions: %v", err)
-			}
-			o.mu.RLock()
-			last := o.lastCompletedStatus["bunk_assignments"]
-			o.mu.RUnlock()
-			if last == nil || last.Year != 2026 || last.Trigger != triggerManual {
-				t.Errorf("the manual 2026 bunk_assignments run was filed as %+v, want year 2026, trigger manual", last)
-			}
-		})
+		close(release)
+		if err := <-done; err != nil {
+			t.Fatalf("RunSyncWithOptions: %v", err)
+		}
+		before2026 := rec.count("bunk_assignments", 2026)
+		if err := o.RunHourlySync(context.Background()); err != nil {
+			t.Fatalf("RunHourlySync: %v", err)
+		}
+		if got := rec.count("bunk_assignments", 2027); got != 1 {
+			t.Errorf("the hourly primary pass must sync bunk_assignments for 2027 once, ran %d times: %+v",
+				got, rec.Runs())
+		}
+		if got := rec.count("bunk_assignments", 2026) - before2026; got != 1 {
+			t.Errorf("the hourly run must sync 2026 once (its N-1 pass), ran %d times", got)
+		}
+		if st := o.GetStatus("bunk_assignments"); st == nil || st.Year != 2026 || st.Trigger != triggerHourly {
+			t.Errorf("the N-1 hourly run must be filed as an hourly 2026 run, got %+v", st)
+		}
 	})
 }
 

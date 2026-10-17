@@ -1,19 +1,18 @@
 /**
- * How fresh are the enrollments Analytics is showing? (PR 4, pick 3A: "Enrollments synced 7h ago")
+ * How fresh are the enrollments Analytics is showing? (PR 4, pick 3A: "Enrollments synced 40m ago")
  *
- * Reads the ENROLLMENT (attendees) sync's own last run, which runs nightly at 3 am. Never the
- * hourly bunk-assignment run: that would claim an hour-old freshness for numbers that are a
- * night old.
+ * Reads the ENROLLMENT (attendees) sync's own last run. It runs every hour (PR 5) outside the
+ * nightly's window, and in the 3 am nightly. Never the bunk-assignment run, which also runs
+ * hourly but is not what Analytics counts.
  *
- * Scoped to the season being viewed. Without `?year=` the status payload holds each job's latest
- * run of ANY season, so 2026's nightly pass would vouch for an empty 2027. Only the two synced
- * seasons can be asked for (the backend 400s any other year). An older season re-syncs weekly
+ * Scoped to the season being viewed (useViewedSeasonSyncStatus). An older season re-syncs weekly
  * (Saturday 05:00), while N and N−1 run on the regular schedule, so for it the chip shows
  * nothing rather than overstate.
  */
 
 import { freshnessRun } from '../utils/syncFreshness'
-import { useSyncStatusAPI, type SyncStatusResponse } from './useSyncStatusAPI'
+import type { SyncStatusResponse } from './useSyncStatusAPI'
+import { useViewedSeasonSyncStatus } from './useViewedSeasonSyncStatus'
 
 export type AnalyticsFreshness =
   | { kind: 'loading' }
@@ -29,7 +28,7 @@ export type AnalyticsFreshness =
  * The last finished attendees run seen per season, this session. A live (running or queued) run
  * arrives WITHOUT end_time: the backend returns that entry in place of the last finished one
  * (orchestrator.go statusLocked). Remembering the finished time keeps "Enrollments synced 7h
- * ago · syncing now" true through the nightly pass. Module-level, so it survives navigation.
+ * ago · syncing now" true through a run. Module-level, so it survives navigation.
  */
 const lastFinished = new Map<number, string>()
 
@@ -39,21 +38,10 @@ export function forgetFinishedRuns(): void {
 }
 
 export function useAnalyticsFreshness(year: number): AnalyticsFreshness {
-  const { data: status } = useSyncStatusAPI()
-  // An older backend omits _synced_years; the scheduled runs cover the primary and the one before.
-  const configured = status?._configured_year
-  const syncedYears =
-    status?._synced_years ?? (configured !== undefined ? [configured, configured - 1] : undefined)
-  const inSynced = syncedYears?.includes(year) ?? false
-
-  const { data: scoped } = useSyncStatusAPI({
-    enabled: inSynced,
-    year: inSynced ? year : undefined,
-  })
-
-  if (!status || !syncedYears) return { kind: 'loading' }
-  if (!inSynced) return { kind: 'none' }
-  if (!scoped) return { kind: 'loading' }
+  const season = useViewedSeasonSyncStatus(year)
+  if (season.kind === 'loading') return { kind: 'loading' }
+  if (season.kind === 'unsynced') return { kind: 'none' }
+  const { scoped } = season
 
   // A job that has never run for this season is absent from the payload. A dry run dates
   // nothing: freshnessRun answers it with the last real run, or nothing.

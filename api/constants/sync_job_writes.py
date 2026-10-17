@@ -76,7 +76,8 @@ SYNC_JOB_WRITES: dict[str, frozenset[str]] = {
     "persons": frozenset({PERSONS, HOUSEHOLDS, ATTENDEES}),
     "bunks": frozenset({BUNKS}),
     "bunk_plans": frozenset({BUNK_PLANS}),
-    # The HOURLY job (`0 * * * *`). Writes its own table and nothing else.
+    # Hourly (`0 * * * *`) with sessions, attendees and persons (epic #3207 PR 5), and the
+    # one of the four that writes its own table and nothing else.
     "bunk_assignments": frozenset({BUNK_ASSIGNMENTS}),
     "staff": frozenset({"staff"}),
     "financial_transactions": frozenset({"financial_transactions"}),
