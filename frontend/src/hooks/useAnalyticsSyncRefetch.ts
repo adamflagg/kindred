@@ -20,6 +20,7 @@ export function useAnalyticsSyncRefetch(year: number): void {
   useSyncFinishInvalidation(
     season.kind === 'synced' ? season.scoped : null,
     ANALYTICS_JOBS,
-    queryKeys.metricsRoot()
+    queryKeys.metricsRoot(),
+    year
   )
 }

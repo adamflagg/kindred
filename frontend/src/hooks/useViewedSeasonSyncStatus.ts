@@ -21,13 +21,14 @@ export function useViewedSeasonSyncStatus(year: number): ViewedSeasonSyncStatus 
     status?._synced_years ?? (configured !== undefined ? [configured, configured - 1] : undefined)
   const inSynced = syncedYears?.includes(year) ?? false
 
-  const { data: scoped } = useSyncStatusAPI({
+  const { data: scoped, isPlaceholderData } = useSyncStatusAPI({
     enabled: inSynced,
     year: inSynced ? year : undefined,
   })
 
   if (!status || !syncedYears) return { kind: 'loading' }
   if (!inSynced) return { kind: 'unsynced' }
-  if (!scoped) return { kind: 'loading' }
+  // keepPreviousData hands back the last year's payload while this year's loads: not its status.
+  if (!scoped || isPlaceholderData) return { kind: 'loading' }
   return { kind: 'synced', scoped }
 }

@@ -25,15 +25,21 @@ function finishedAt(job: SyncStatus | undefined): string | null {
  * 30-minute staleTime and polls only while a job runs (or on window focus), so a tab left open
  * notices a sync only when the status is next fetched. Don't shorten the staleTime to buy this
  * back (frontend/CLAUDE.md "Caching").
+ *
+ * `scope` names what the status is about (the viewed year). When it changes the baseline is
+ * dropped, so the first status of the new scope only sets a baseline instead of reading the
+ * difference between two scopes' finish times as a sync.
  */
 export function useSyncFinishInvalidation(
   status: SyncStatusResponse | null | undefined,
   jobs: readonly string[],
-  queryKey: QueryKey
+  queryKey: QueryKey,
+  scope?: string | number
 ): void {
   const queryClient = useQueryClient()
   // Each job's last finished end time; undefined until the first status sets the baseline.
   const seen = useRef<Record<string, string | null> | undefined>(undefined)
+  const seenScope = useRef(scope)
   // The server leaves out a job that has never run, whatever the type says; Partial makes the
   // optional chain honest (Ruling 2026-10-01 (plan review): no unnecessary `?.`).
   const payload: Partial<Record<string, SyncStatus>> | null =
@@ -45,6 +51,10 @@ export function useSyncFinishInvalidation(
   const keyStamp = JSON.stringify(queryKey)
 
   useEffect(() => {
+    if (seenScope.current !== scope) {
+      seenScope.current = scope
+      seen.current = undefined
+    }
     if (stamp === null) return
     const names = JSON.parse(jobsKey) as string[]
     const now = JSON.parse(stamp) as Array<string | null>
@@ -63,5 +73,5 @@ export function useSyncFinishInvalidation(
     }
     if (completed)
       void queryClient.invalidateQueries({ queryKey: JSON.parse(keyStamp) as QueryKey })
-  }, [stamp, jobsKey, keyStamp, queryClient])
+  }, [stamp, jobsKey, keyStamp, scope, queryClient])
 }
