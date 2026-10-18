@@ -71,3 +71,26 @@ jobs:
       run: |
         gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" --jq '.[].filename' \
           | python3 scripts/ci/check_title_type.py
+
+    # Lives in this job, not in ci.yml, because this workflow re-runs when a PR
+    # body is edited (`edited`) and ci.yml does not -- and the body becomes the
+    # squash commit message on main, so a private name written there lands in
+    # the public history. Title, body and commit messages are scanned for the
+    # guide repo's name (GUIDE_REPO secret); only WHICH part matched is printed.
+    # Fork and Dependabot PRs get no secret, so it skips with a notice.
+    - name: No private names in the PR's text
+      env:
+        GUIDE_REPO: ${{ secrets.GUIDE_REPO }}
+        GH_TOKEN: ${{ github.token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+      # Title and body are read from the event payload at run time, never from
+      # `env:`, whose values print in the public log header. `shell: bash`
+      # turns on pipefail, so a failed `gh api` cannot read as an empty list.
+      shell: bash
+      run: |
+        terms="$RUNNER_TEMP/pr-text-terms"
+        : > "$terms"
+        if [ -n "$GUIDE_REPO" ]; then
+          printf '%s\n%s\n' "$GUIDE_REPO" "${GUIDE_REPO#*/}" >> "$terms"
+        fi
+        PR_TEXT_TERMS_FILE="$terms" bash scripts/ci/check-pr-text-private-names.sh

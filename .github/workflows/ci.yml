@@ -647,6 +647,10 @@ jobs:
           bash scripts/ci/check-private-names.sh
     - name: Guard self-test
       run: bash scripts/ci/test-check-private-names.sh
+    # The PR-text twin of the guard above runs in semantic-pr.yml (it must re-run
+    # on a body edit); its self-test runs here with the other private-names guard.
+    - name: PR-text guard self-test
+      run: bash scripts/ci/test-check-pr-text-private-names.sh
 
   # kindred#2370: scripts/dev/verify-migration-history.sh gates local
   # start_dev.sh boots and stands between a renumbered migration and a
