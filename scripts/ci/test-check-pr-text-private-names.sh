@@ -83,6 +83,16 @@ mkdir "$TMP/badgh"
 printf '#!/usr/bin/env bash\nexit 1\n' > "$TMP/badgh/gh"; chmod +x "$TMP/badgh/gh"
 run 3 "gh fetch fails" "$T" "$E" "PATH=$TMP/badgh:$PATH" GITHUB_REPOSITORY=o/r PR_NUMBER=1
 
+# GitHub's PR-commits endpoint stops at 250, so a list that long may be cut
+# short: fail closed rather than pass messages that were never read.
+event "ci: tidy" '"clean"'
+: > "$TMP/commits250"
+for _ in $(seq 250); do printf '{"sha":"abc1234def","message":"fine"}\n' >> "$TMP/commits250"; done
+run 3 "250 commits is a possibly truncated list" "$T" "$E" "PR_TEXT_COMMITS_FILE=$TMP/commits250"
+expect 'commit' "250 commits"
+head -249 "$TMP/commits250" > "$TMP/commits249"
+run 0 "249 commits is a complete list" "$T" "$E" "PR_TEXT_COMMITS_FILE=$TMP/commits249"
+
 # No run above ever printed a term.
 for leaked in example-docs example-owner EXAMPLE-DOCS; do
   if grep -qi -- "$leaked" <<<"$all_out"; then echo "FAIL some run echoed '$leaked'"; fail=1; fi

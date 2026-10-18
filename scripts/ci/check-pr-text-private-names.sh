@@ -71,6 +71,9 @@ matches "$work/body" && hit "PR body"
 
 # jq -s tolerates both a stream of objects and an empty list.
 n="$(jq -s 'length' "$work/commits" 2>/dev/null)" || die "PR-text guard could not parse the commit list"
+# GitHub's PR-commits endpoint returns at most 250 commits, however it is paged,
+# so a list that long may have been cut short. Fail closed, not clean.
+[ "$n" -lt 250 ] || die "PR-text guard cannot tell the commit list is complete (250 or more commits)"
 i=0
 while [ "$i" -lt "$n" ]; do
   jq -s -r ".[$i].message // \"\"" "$work/commits" > "$work/msg" || die "PR-text guard could not parse the commit list"
