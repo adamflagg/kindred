@@ -274,6 +274,12 @@ OUT=$(PATH="$STUBBIN" "$VERIFY_SCRIPT" --db "$SCRATCH/nope.db" --migrations-dir 
 rc=$?
 set -e
 [[ $rc -eq 0 ]] || fail "expected exit 0 for an absent DB with no sqlite3 on PATH, got $rc" "$OUT"
+# Exit 0 alone is not enough. Under bash 5.2 a failed `$(dirname …)` left
+# `cd ""` as a silent no-op, so this test passed while the script was already
+# reaching for an external it could not find; bash 5.3 (ubuntu-26.04) rejects
+# `cd ""` and the latent dependency surfaced as exit 1.
+! grep -q "command not found" <<<"$OUT" \
+  || fail "the absent-DB path must use only shell builtins" "$OUT"
 echo "PASS: absent DB short-circuits before the tool check"
 
 echo
