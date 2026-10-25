@@ -35,7 +35,11 @@
 
 set -euo pipefail
 
-HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# Parameter expansion, not `dirname`: the absent-DB early return below must work
+# with nothing but bash on PATH (test-verify-migration-history.sh TEST 12).
+SELF="${BASH_SOURCE[0]}"
+[[ "$SELF" == */* ]] || SELF="./$SELF"
+HERE=$(cd "${SELF%/*}" && pwd)
 REPO_ROOT=$(cd "$HERE/../.." && pwd)
 
 DB=""
