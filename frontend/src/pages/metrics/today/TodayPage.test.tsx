@@ -543,24 +543,66 @@ describe('Today › notes', () => {
   })
 })
 
-describe('Today › a finished season', () => {
-  it('every change reads "vs 2026 final", the hero and Session fill alike', () => {
-    const final = {
-      prior_basis: 'final',
+describe('Today › never "vs final" (PM-8 A)', () => {
+  it('asks for last year at the same registration day all year, never its final', () => {
+    withHero()
+    renderPage()
+    const calls = vi.mocked(useComparisonRegistrationData).mock.calls
+    expect(calls.length).toBeGreaterThan(0)
+    for (const call of calls) expect(call[3]?.samePoint).toBe('allYear')
+  })
+
+  it('after the last session started, every change still reads "vs same point 2026"', () => {
+    // Late October: the season is over, and last year is still read at the same day
+    const late = { day_offset: 347, prior_day_offset: 347, as_of_date: '2026-10-24' }
+    withHero({ prior: reg(2026, { ...PRIOR_SAME_POINT, ...late }) })
+    vi.mocked(useTodaySessions).mockReturnValue(
+      q({ ...SESSIONS, ...late }) as unknown as ReturnType<typeof useTodaySessions>
+    )
+    renderPage()
+    expect(hero()).toHaveTextContent('vs same point 2026')
+    expect(hero()).not.toHaveTextContent('final')
+    expect(
+      within(fill()).getByRole('columnheader', { name: /vs same point 2026/ })
+    ).toBeInTheDocument()
+  })
+
+  it('with no anchor shows no comparison and says why, never a final in its place', () => {
+    const none = {
+      prior_basis: 'unavailable',
+      prior_unavailable_reason: 'no_registration_anchor',
       day_offset: null,
       prior_day_offset: null,
       as_of_date: null,
+      total_enrolled: 1211,
     }
-    withHero({
-      prior: reg(2026, { ...PRIOR_SAME_POINT, ...final } as Partial<RegistrationMetrics>),
-    })
+    withHero({ prior: reg(2026, none as Partial<RegistrationMetrics>) })
     vi.mocked(useTodaySessions).mockReturnValue(
-      q({ ...SESSIONS, ...final }) as unknown as ReturnType<typeof useTodaySessions>
+      q({
+        ...SESSIONS,
+        prior_basis: null,
+        prior_unavailable_reason: 'no_registration_anchor',
+        day_offset: null,
+        prior_day_offset: null,
+        as_of_date: null,
+        rows: SESSIONS.rows.map((r) => ({ ...r, prior: null, prior_parts: null })),
+        pace_prior: null,
+      }) as unknown as ReturnType<typeof useTodaySessions>
     )
     renderPage()
-    expect(hero()).toHaveTextContent('vs 2026 final')
+    expect(screen.getByTestId('hero-change')).toHaveTextContent('—')
+    expect(hero()).not.toHaveTextContent('1,211')
     expect(hero()).not.toHaveTextContent('same point')
-    expect(within(fill()).getByRole('columnheader', { name: /vs 2026 final/ })).toBeInTheDocument()
+    // Pace's curve keeps its end label ("2026 final N"): a line's end, not a comparison
+    expect(screen.queryByText(/vs 2026 final/)).toBeNull()
+    expect(screen.queryByText(/new this year/)).toBeNull()
+    expect(
+      screen.getByText(/there is no same registration day to read 2026 at/)
+    ).toBeInTheDocument()
+    // Owner call 2026-10-26 (item 6): no "vs" header over columns that compare with nothing
+    expect(screen.queryByText(/^vs /)).toBeNull()
+    expect(within(fill()).queryByRole('columnheader', { name: /^vs / })).toBeNull()
+    expect(hero()).not.toHaveTextContent('vs 2026')
   })
 })
 

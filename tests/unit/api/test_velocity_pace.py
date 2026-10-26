@@ -83,8 +83,8 @@ class TestPacePriorBasis:
         [
             (date(2025, 10, 15), "same_point"),  # before the priority date: the season is still ahead
             (date(2026, 1, 20), "same_point"),  # live
-            (date(2026, 8, 14), "same_point"),  # the season's last day (priority date + SEASON_WEEKS weeks - 1)
-            (date(2026, 8, 15), "final"),  # over: compare with the prior final
+            (date(2026, 7, 5), "same_point"),  # the day before the season's last session starts (PM-8)
+            (date(2026, 7, 6), "final"),  # its last session starts: compare with the prior final
             (date(2027, 3, 1), "final"),
         ],
     )
@@ -92,3 +92,29 @@ class TestPacePriorBasis:
         _wire_fold_years(mock_repository)
         result = await service.get_velocity(year=2026, compare_years=[2025], today=today)
         assert result.prior_basis == basis
+
+
+class TestTodayLineEndsWithTheSeason:
+    """Owner call 2026-10-26 (item 8): the TODAY line and live point end where the comparison does.
+
+    The season is over the day its last summer session starts (``season_end``, PM-8), not
+    SEASON_WEEKS weeks after the anchor: one end date for the whole chart.
+    """
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("today", "drawn"),
+        [
+            (date(2026, 1, 20), True),
+            (date(2026, 7, 5), True),  # the day before the last session starts
+            (date(2026, 7, 6), False),  # the last session starts: the season is over
+            (date(2026, 8, 1), False),  # still inside anchor + SEASON_WEEKS, but past season_end
+        ],
+    )
+    async def test_today_day_offset_and_live_point_stop_at_season_end(self, service, mock_repository, today, drawn):
+        _wire_fold_years(mock_repository)
+        result = await service.get_velocity(year=2026, compare_years=[2025], today=today)
+        assert (result.today_day_offset is not None) is drawn
+        assert (result.prior_basis == "same_point") is drawn
+        if not drawn:
+            assert result.live is None

@@ -10,8 +10,8 @@ Implements four use cases:
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from datetime import date, datetime
+from typing import TYPE_CHECKING, Any, Literal
 
 from api.schemas.metrics import (
     GenderBreakdown,
@@ -22,6 +22,7 @@ from api.schemas.metrics import (
 )
 from api.services.breakdown_calculator import calculate_percentage, compute_registration_breakdown
 from api.services.extractors import count_binary_fallbacks, extract_gender_identity, extract_grade
+from api.services.same_point import live_same_point
 from api.utils.session_metrics import (
     DEFAULT_SUMMER_SESSION_TYPES,
     SUMMER_TEEN_TYPES,
@@ -56,6 +57,8 @@ class WaitlistService:
         session_types: list[str] | None = None,
         session_cm_id: int | None = None,
         duration: str | None = None,
+        same_point_of: int | None = None,
+        today: date | None = None,
     ) -> WaitlistMetricsResponse:
         """Calculate waitlist metrics for all four use cases.
 
@@ -63,10 +66,18 @@ class WaitlistService:
             year: The year to analyze.
             session_types: Optional session type filter (default: all summer).
             session_cm_id: Optional specific session filter.
+            same_point_of: Read ``year`` as a comparison for this season (PM-8 A). A past waitlist can't
+                be rebuilt for a day, so while that season is live the response says the comparison is
+                unavailable; after it, ``year`` as it stands is the comparison ("final").
+            today: Override for the camp today (tests). Only a same_point_of read uses it.
 
         Returns:
             WaitlistMetricsResponse with summary counts and breakdowns.
         """
+        prior_basis: Literal["final", "unavailable"] | None = None
+        if same_point_of is not None:
+            live = await live_same_point(self.repository, same_point_of, today) is not None
+            prior_basis = "unavailable" if live else "final"
         # Fetch ALL summer sessions for display + cross-session enrollment lookup.
         all_sessions = await self.repository.fetch_sessions(year, list(SUMMER_SESSION_TYPES))
 
@@ -280,6 +291,8 @@ class WaitlistService:
             by_grade=by_grade,
             by_gender=by_gender,
             gender_fallback_count=count_binary_fallbacks(all_waitlisted_pids, persons),
+            prior_basis=prior_basis,
+            prior_unavailable_reason="waitlist_not_rebuildable" if prior_basis == "unavailable" else None,
         )
 
     def _filter_to_sessions(

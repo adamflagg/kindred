@@ -34,7 +34,15 @@ export type RegistrationFilterOptions = MetricsFilterOptions & {
    * that season is live, at its final after. The response's `prior_basis` says which.
    */
   samePointOf?: number
+  /** Today's rule (PM-8 A): the same day all year, never the final. Needs `samePointOf`. */
+  samePointAllYear?: boolean
 }
+
+/**
+ * A compare year read against a season (PM-8 A): Cancellations at the same day while it is live,
+ * Waitlist with no comparison then. The response's `prior_basis` says which.
+ */
+export type CompareFilterOptions = MetricsFilterOptions & { samePointOf?: number }
 
 export type HistoricalFilterOptions = MetricsFilterOptions & { years?: string }
 
@@ -135,7 +143,8 @@ export function useRegistrationMetrics(year: number, options?: RegistrationFilte
       options?.statuses,
       options?.sessionCmId,
       options?.duration,
-      options?.samePointOf
+      options?.samePointOf,
+      options?.samePointAllYear
     ),
     queryFn: async (): Promise<RegistrationMetrics> => {
       const params = new URLSearchParams({
@@ -155,6 +164,9 @@ export function useRegistrationMetrics(year: number, options?: RegistrationFilte
       }
       if (options?.samePointOf !== undefined) {
         params.set('same_point_of', options.samePointOf.toString())
+      }
+      if (options?.samePointAllYear) {
+        params.set('same_point_all_year', 'true')
       }
 
       const response = await fetchWithAuth(`/api/metrics/registration?${params}`)
@@ -226,7 +238,7 @@ export function useHistoricalTrends(options?: HistoricalFilterOptions) {
 /**
  * Fetch waitlist analysis metrics for a single year.
  */
-export function useWaitlistMetrics(year: number, options?: MetricsFilterOptions) {
+export function useWaitlistMetrics(year: number, options?: CompareFilterOptions) {
   const { fetchWithAuth, isAuthLoading } = useApiWithAuth()
 
   return useQuery({
@@ -234,7 +246,8 @@ export function useWaitlistMetrics(year: number, options?: MetricsFilterOptions)
       year,
       options?.sessionTypes,
       options?.sessionCmId,
-      options?.duration
+      options?.duration,
+      options?.samePointOf
     ),
     queryFn: async (): Promise<WaitlistMetrics> => {
       const params = new URLSearchParams({
@@ -248,6 +261,10 @@ export function useWaitlistMetrics(year: number, options?: MetricsFilterOptions)
       }
       if (options?.duration) {
         params.set('duration', options.duration)
+      }
+
+      if (options?.samePointOf !== undefined) {
+        params.set('same_point_of', options.samePointOf.toString())
       }
 
       const response = await fetchWithAuth(`/api/metrics/waitlist?${params}`)
@@ -266,7 +283,7 @@ export function useWaitlistMetrics(year: number, options?: MetricsFilterOptions)
 /**
  * Fetch cancellation analysis metrics for a single year.
  */
-export function useCancellationMetrics(year: number, options?: MetricsFilterOptions) {
+export function useCancellationMetrics(year: number, options?: CompareFilterOptions) {
   const { fetchWithAuth, isAuthLoading } = useApiWithAuth()
 
   return useQuery({
@@ -274,7 +291,8 @@ export function useCancellationMetrics(year: number, options?: MetricsFilterOpti
       year,
       options?.sessionTypes,
       options?.sessionCmId,
-      options?.duration
+      options?.duration,
+      options?.samePointOf
     ),
     queryFn: async (): Promise<CancellationMetrics> => {
       const params = new URLSearchParams({
@@ -288,6 +306,10 @@ export function useCancellationMetrics(year: number, options?: MetricsFilterOpti
       }
       if (options?.duration) {
         params.set('duration', options.duration)
+      }
+
+      if (options?.samePointOf !== undefined) {
+        params.set('same_point_of', options.samePointOf.toString())
       }
 
       const response = await fetchWithAuth(`/api/metrics/cancellations?${params}`)

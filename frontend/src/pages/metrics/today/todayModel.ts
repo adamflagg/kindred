@@ -11,14 +11,25 @@ import type {
 } from '../../../types/api-types'
 import { PRIORITY_DAY_NOTE } from '../../../utils/priorityDay'
 
-export type PriorBasis = 'same_point' | 'final'
+/**
+ * PM-8 A: Today compares with last year at the same registration day all year and never with its
+ * final. 'none' is the one exception: a season with no anchor has no same day, so no comparison.
+ */
+export type PriorBasis = 'same_point' | 'none'
 export type FillBasis = 'plan' | 'goal'
 
-/** Every change on the page says what it compares with: always the same point while registration runs. */
+/**
+ * Every change on the page says what it compares with: always the same point, all year. With no
+ * same day ('none') it says "no comparison" and the "vs" headers are hidden (owner call 2026-10-26):
+ * never another year's date in its place.
+ */
 export function basisWords(basis: PriorBasis, priorYear: number): string {
-  return basis === 'same_point'
-    ? `vs same point ${String(priorYear)}`
-    : `vs ${String(priorYear)} final`
+  return basis === 'same_point' ? `vs same point ${String(priorYear)}` : 'no comparison'
+}
+
+/** The page's basis from a compare answer: the same point, or none when there is no day to read. */
+export function priorBasisOf(prior: { prior_basis?: string | null } | undefined): PriorBasis {
+  return prior?.prior_basis === 'unavailable' || prior?.prior_basis === null ? 'none' : 'same_point'
 }
 
 /** "Registration day 91" (the priority date is day 1), or the days before it, or nothing without an anchor. */
@@ -252,8 +263,8 @@ export function todayNotes(i: NoteInputs): TodayNote[] {
           i.dayOffset != null && i.dayOffset >= 0
             ? ` (today is day ${String(i.dayOffset + 1)})`
             : ''
-        }. Enrolled then means registered by that day and not cancelled by it. Registration never closes: families come off waitlists until the day before a session starts, so every change on this page compares this way, all season. Each session compares with its own match in ${String(i.priorYear)} (the same session, a renamed one, or the same name; teen programs by program), and the total adds only those, so a ${String(i.priorYear)} session not offered this year is not counted. ${fold}`
-      : `${String(i.priorYear)} final: this season's registration year is over, so every change compares with ${String(i.priorYear)}'s final numbers. Each session compares with its own match, and the total adds only those. ${fold}`
+        }. Enrolled then means registered by that day and not cancelled by it. Registration never closes: families come off waitlists until the day before a session starts, so every change on this page compares this way, all year, even after the season. Each session compares with its own match in ${String(i.priorYear)} (the same session, a renamed one, or the same name; teen programs by program), and the total adds only those, so a ${String(i.priorYear)} session not offered this year is not counted. ${fold}`
+      : `No comparison: this season's or ${py}'s registration dates aren't set in Kindred, so there is no same registration day to read ${py} at. Today never compares with another day in its place.`
   const fill =
     i.fill === 'plan'
       ? 'Fill: Beds are the bunk plan, cabins planned times beds per cabin, as Overview\'s Capacity counts them, with all-gender cabins in their session. They answer "is there a bed?". Quests and teen programs have no cabins and use the places set in Manage. A group is "full" at its beds and shows the places left once Availability calls it limited.'

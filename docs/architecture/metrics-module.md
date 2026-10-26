@@ -76,9 +76,19 @@ cancelled or withdrawn record's `enrollment_date`). After the season, prior seas
 their final. One rule, one place:
 
 - `api/services/same_point.py` `live_same_point(repo, year, today)` — the season's registration day
-  while it is live (from before the anchor through `SEASON_WEEKS` weeks after it), with the
-  prior-side read day clamped by `same_point_offset` (decision 45: on a priority, early or open date
-  the prior is read through the next day). None means "compare with finals".
+  while it is live, with the prior-side read day clamped by `same_point_offset` (decision 45: on a
+  priority, early or open date the prior is read through the next day). None means "compare with
+  finals". **Live ends the day the season's last summer session starts** (PM-8 A, owner 2026-10-25;
+  `season_end`): the latest `start_date` among the sessions summer metrics count
+  (`DISPLAY_SESSION_TYPES`, SCIT/TLI only inside the summer window, never Family Camp). A season with
+  no readable session start dates falls back to `SEASON_WEEKS` weeks from the anchor, and logs it.
+  `SEASON_WEEKS` is otherwise only a chart extent (Velocity's x-axis, Forecast's week options, Today's
+  Pace curve).
+- `same_day_point(repo, year, today)` — the same registration day with no season end: **Today**'s
+  rule. Today never compares with last year's final; with no anchor on either season it has no
+  comparison and says so (`prior_unavailable_reason`), never a substitute. Today's hero asks
+  `/registration?same_point_of=<season>&same_point_all_year=true`, which answers `prior_basis:
+  'unavailable'` instead of a final when there is no day to read.
 - **Forecast** live mode takes its prior read day (`prior_offset`, already clamped) and
   `prior_basis` from it, and drops the Week-0 lower bound, since a negative day there is a real
   "N days before the anchor". Week mode is always same point.
@@ -87,7 +97,23 @@ their final. One rule, one place:
   session, so every breakdown can use it. The response says `prior_basis`, `day_offset`,
   `prior_day_offset` and `as_of_date`. A past waitlist cannot be rebuilt, so `total_waitlisted` is
   None on a same-point read. Cancelled counts the Cancelled status only, as Overview's final does.
-- **Velocity** compares each prior line at `same_point_offset(current_day_offset)`.
+- **Geo** reads the same `/registration?same_point_of=` compare as Overview, and says which basis in
+  Overview's grammar (`describeGeoCompareBasis`); on the priority date its Change cells read "updates
+  tomorrow", as Overview's and Cancellations' deltas do.
+- **Cancellations** (`/cancellations?same_point_of=<season>`): cancelled by day N = a cancelled,
+  withdrawn or dismissed record whose `enrollment_date` (the date `attendees_at_cutoff` reads "left by
+  N" from) is on or before the cutoff; "has other sessions", swaps and departures read who was enrolled
+  then (`attendees_at_cutoff`); by session, grade, gender, time to cancel and registration month are
+  computed over that set. The status before cancelling and Re-enrolled need status history: they read
+  the changes detected by the cutoff only when the year's history starts by its anchor, and are None
+  (no comparison, never a final) otherwise. The response carries the same basis fields as Overview.
+- **Waitlist** (`/waitlist?same_point_of=<season>`): a past waitlist can't be rebuilt for a day, so
+  while the season is live the answer is `prior_basis: 'unavailable'` and the tab shows no comparison;
+  after it, or for a season with no registration anchor, `'final'`. Overview's Total Waitlisted keeps
+  its own "no compare".
+- **Velocity** compares each prior line at `same_point_offset(current_day_offset)`. Its TODAY line
+  and live point (`today_day_offset`) end on the same day the comparison does, the day the last
+  summer session starts (`same_point.season_end`), not `SEASON_WEEKS` after the anchor.
 
 **Two bases (K13).** Velocity's current season reads the nightly `enrollment_snapshots` from the
 first snapshot on (main, embedded and AG sessions only); everything else is rebuilt: every season

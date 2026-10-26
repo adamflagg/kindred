@@ -36,6 +36,7 @@ async def _call(calls: list[dict[str, Any]], today: date, **params: Any) -> None
                 "session_cm_id": None,
                 "duration": None,
                 "same_point_of": None,
+                "same_point_all_year": False,
                 "user": _user(),
                 **params,
             }
@@ -73,5 +74,29 @@ async def test_same_point_rejects_other_statuses() -> None:
 
     with pytest.raises(HTTPException) as exc:
         await _call([], date(2026, 3, 2), same_point_of=2026, statuses="waitlisted")
+
+    assert exc.value.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_route_forwards_all_year_and_keys_the_cache_by_it() -> None:
+    """Today's read (PM-8 A) is the same day all year: its own cache entry, beside the live-only one."""
+    metrics_cache.invalidate_all()
+    calls: list[dict[str, Any]] = []
+
+    await _call(calls, date(2026, 3, 2), same_point_of=2026, same_point_all_year=True)
+    await _call(calls, date(2026, 3, 2), same_point_of=2026)
+
+    assert len(calls) == 2
+    assert calls[0]["all_year"] is True
+    assert calls[1]["all_year"] is False
+
+
+@pytest.mark.asyncio
+async def test_all_year_needs_same_point_of() -> None:
+    metrics_cache.invalidate_all()
+
+    with pytest.raises(HTTPException) as exc:
+        await _call([], date(2026, 3, 2), same_point_all_year=True)
 
     assert exc.value.status_code == 422

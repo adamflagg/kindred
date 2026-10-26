@@ -43,7 +43,7 @@ from api.services.reconstruction import (
     reconstruct_daily_by_group,
     reconstruct_daily_multi,
 )
-from api.services.same_point import live_same_point
+from api.services.same_point import live_same_point, season_end
 from api.services.today_service import fold_embedded_sessions
 from api.utils.session_metrics import (
     build_ag_parent_map,
@@ -774,8 +774,12 @@ class VelocityService:
         # Prior years are compared on the same registration DAY, not the same whole week.
         current_day_offset = combined.daily[-1].day_offset if combined.daily else None
         season_start_date = season_start_dt.date()
+        # Owner call 2026-10-26: the TODAY line and the live point end where the comparison does, the
+        # day the last summer session starts (same_point.season_end, PM-8), not SEASON_WEEKS after the
+        # anchor: one end date for the whole chart.
+        comparison_end = await season_end(self.repo, year, season_start_date)
         today_day_offset = (
-            (ctx.today - season_start_date).days if season_start_date <= ctx.today < season_end_dt.date() else None
+            (ctx.today - season_start_date).days if season_start_date <= ctx.today < comparison_end else None
         )
 
         # Each season's own earliest row, never another year's (a pill and a "-" cutoff are per season).

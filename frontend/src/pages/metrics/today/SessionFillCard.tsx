@@ -23,6 +23,7 @@ import { Change, FoldedFigure } from './todayParts'
 import {
   analyticsHref,
   basisWords,
+  priorBasisOf,
   fillGroups,
   fillTotal,
   openPlaces,
@@ -156,7 +157,8 @@ export function SessionFillTable({
   const showGoal = !plan && (rows.some((r) => r.goal != null) || sessionGoal != null)
   const hasPills = showBeds && rows.some((r) => openPlaces(r, data.limited_threshold).length > 0)
   const basisCols = showBeds ? 3 : showGoal ? 3 : 0
-  const same = basisWords(data.prior_basis, data.prior_year)
+  const compared = priorBasisOf(data)
+  const same = basisWords(compared, data.prior_year)
   const colCount = 1 + 1 + basisCols + (hasPills ? 1 : 0) + 1 + 1
 
   // A row whose basis can't be read says why across the basis columns, with no hover needed.
@@ -225,7 +227,12 @@ export function SessionFillTable({
         )}
         <td className={`${TD_NUMBER} text-muted-foreground`}>{formatCount(r.waitlisted)}</td>
         <td className={TD_NUMBER}>
-          {sameCell(r.enrolled, r.prior, r.prior == null, r.priorParts)}
+          {sameCell(
+            r.enrolled,
+            r.prior,
+            compared === 'same_point' && r.prior == null,
+            r.priorParts
+          )}
         </td>
       </tr>
     )
@@ -272,9 +279,10 @@ export function SessionFillTable({
             )}
             {hasPills && <th className={TH_LABEL}>Open places</th>}
             <th className={TH_NUMBER}>Waitlist</th>
+            {/* With no same day the column's header is hidden (owner call 2026-10-26) */}
             <th className={TH_NUMBER}>
-              {same}
-              {notes.same !== undefined && <DefRef n={notes.same} />}
+              {compared === 'same_point' && same}
+              {compared === 'same_point' && notes.same !== undefined && <DefRef n={notes.same} />}
             </th>
           </tr>
         </thead>

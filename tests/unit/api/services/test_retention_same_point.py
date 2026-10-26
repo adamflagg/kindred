@@ -9,7 +9,7 @@ it reads B as it stands now ("final"). Retention and Trends pair these figures w
 transition's retention at the same registration day of its own season (ruling #89's dashed line).
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 from typing import Any
 from unittest.mock import AsyncMock
@@ -89,6 +89,11 @@ PRIOR_ROWS = [
 ]
 
 
+async def _sessions_of(year: int, session_types: Any = None) -> dict[int, _Session]:
+    """The session, dated in the year asked for: PM-8 reads a season's end from its own session dates."""
+    return {1000: replace(SESSION, start_date=f"{year}-06-15", end_date=f"{year}-07-05")}
+
+
 def _repo(rows: list[_Att], anchors: dict[int, str] | None = None) -> AsyncMock:
     anchors = ANCHORS if anchors is None else anchors
     repo = AsyncMock()
@@ -105,7 +110,7 @@ def _repo(rows: list[_Att], anchors: dict[int, str] | None = None) -> AsyncMock:
     repo.fetch_attendees.side_effect = fetch_attendees
     repo.fetch_attendees_with_dates.side_effect = with_dates
     repo.fetch_registration_dates.side_effect = fetch_dates
-    repo.fetch_sessions.return_value = {1000: SESSION}
+    repo.fetch_sessions.side_effect = _sessions_of
     repo.fetch_persons.return_value = {i: _Person(i, grade=5 if i < 4 else 6) for i in range(1, 10)}
     repo.fetch_bunk_assignments.return_value = []
     repo.fetch_summer_enrollment_history.return_value = []
@@ -246,7 +251,7 @@ class TestRetentionSamePoint:
 def _trend_repo(rows: list[_Att], anchors: dict[int, str] | None = None) -> AsyncMock:
     repo = _repo(rows, anchors)
     # The trends service reads every year's sessions unfiltered and gates the summer window from main
-    repo.fetch_sessions.return_value = {1000: SESSION}
+    # (_repo's fetch_sessions already returns that year's main session)
     return repo
 
 

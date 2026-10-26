@@ -10,8 +10,8 @@ Analyzes cancelled/withdrawn/dismissed attendees to understand:
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from datetime import date, datetime, timedelta
+from typing import TYPE_CHECKING, Any, Literal
 
 from api.schemas.metrics import (
     CancellationMetricsResponse,
@@ -22,7 +22,10 @@ from api.schemas.metrics import (
     TimeBucket,
 )
 from api.services.breakdown_calculator import calculate_percentage, compute_registration_breakdown
+from api.services.camp_calendar import get_camp_date
 from api.services.extractors import count_binary_fallbacks, extract_gender_identity, extract_grade
+from api.services.reconstruction import attendees_at_cutoff, parse_date_only
+from api.services.same_point import live_same_point, registration_anchor
 from api.utils.session_metrics import (
     DEFAULT_SUMMER_SESSION_TYPES,
     SUMMER_TEEN_TYPES,
@@ -64,6 +67,8 @@ class CancellationService:
         session_types: list[str] | None = None,
         session_cm_id: int | None = None,
         duration: str | None = None,
+        same_point_of: int | None = None,
+        today: date | None = None,
     ) -> CancellationMetricsResponse:
         """Calculate cancellation metrics.
 
@@ -71,10 +76,32 @@ class CancellationService:
             year: The year to analyze.
             session_types: Optional session type filter (default: all summer).
             session_cm_id: Optional specific session filter.
+            same_point_of: Read ``year`` as a comparison for this season (PM-8 A, decision 7): while that
+                season is live, at the registration day it has reached; after it, as ``year`` stands now.
+                Cancelled by then = a cancellation dated (``enrollment_date``) on or before the cutoff;
+                still attending = enrolled elsewhere then (``attendees_at_cutoff``). The status before
+                cancelling and Re-enrolled need status history: they read the same day only when the
+                history covers ``year``'s whole registration year, and are None otherwise.
+            today: Override for the camp today (tests). Only a same-point read uses it.
 
         Returns:
             CancellationMetricsResponse with summary counts and breakdowns.
         """
+        prior_basis: Literal["same_point", "final"] | None = None
+        day_offset: int | None = None
+        prior_day_offset: int | None = None
+        anchor: date | None = None
+        cutoff: date | None = None
+        if same_point_of is not None:
+            prior_basis = "final"
+            point = await live_same_point(self.repository, same_point_of, today)
+            anchor = await self._fetch_anchor(year) if point is not None else None
+            if point is not None and anchor is not None:
+                prior_basis = "same_point"
+                day_offset = point.day_offset
+                prior_day_offset = point.prior_offset
+                cutoff = anchor + timedelta(days=point.prior_offset)
+
         # Fetch ALL summer sessions for display + cross-session enrollment lookup.
         all_sessions = await self.repository.fetch_sessions(year, list(SUMMER_SESSION_TYPES))
 
@@ -96,7 +123,13 @@ class CancellationService:
 
         # --- Fetch cancelled and enrolled attendees ---
         cancelled_attendees = await self.repository.fetch_attendees(year, status_filter=CANCELLED_STATUSES)
-        enrolled_attendees = await self.repository.fetch_attendees(year, status_filter="enrolled")
+        if cutoff is None:
+            enrolled_attendees = await self.repository.fetch_attendees(year, status_filter="enrolled")
+        else:
+            # Same point: the cancellations dated by the cutoff, and who was enrolled then
+            cancelled_attendees = [a for a in cancelled_attendees if self._cancelled_by(a, cutoff)]
+            dated = await self.repository.fetch_attendees_with_dates(year)
+            enrolled_attendees, _left = attendees_at_cutoff(list(dated), cutoff)
 
         # Filter cancelled to selected sessions, enrolled to ALL session types
         # (summer + teen) so cross-session retention spans teen programs too.
@@ -111,9 +144,21 @@ class CancellationService:
                 enrolled_person_ids.add(int(pid))
 
         # --- Fetch ALL status transitions to cancelled in a single call ---
-        all_to_cancelled = await self.repository.fetch_status_history(
-            year, old_status=None, new_statuses=CANCELLED_STATUSES
-        )
+        # A same-point read uses the changes recorded by the cutoff, and only when the history covers
+        # the whole registration year; otherwise those figures are None (no comparison, never a final).
+        history_rebuilt = cutoff is None or (anchor is not None and await self._history_covers(year, anchor))
+        all_to_cancelled: list[Any] = []
+        re_enrolled_history: list[Any] = []
+        if history_rebuilt:
+            all_to_cancelled = await self.repository.fetch_status_history(
+                year, old_status=None, new_statuses=CANCELLED_STATUSES
+            )
+            re_enrolled_history = await self.repository.fetch_status_history(
+                year, old_status="cancelled", new_statuses=["enrolled"]
+            )
+            if cutoff is not None:
+                all_to_cancelled = [r for r in all_to_cancelled if self._detected_by(r, cutoff)]
+                re_enrolled_history = [r for r in re_enrolled_history if self._detected_by(r, cutoff)]
 
         # Build per-person and per-session lookups for all prior statuses
         prior_status_persons: dict[str, set[int]] = {
@@ -142,10 +187,7 @@ class CancellationService:
             if session_cmid:
                 prior_status_by_session[category][session_cmid].add(pid)
 
-        # --- Fetch re-enrolled (cancelled -> enrolled) ---
-        re_enrolled_history = await self.repository.fetch_status_history(
-            year, old_status="cancelled", new_statuses=["enrolled"]
-        )
+        # --- Re-enrolled (cancelled -> enrolled) ---
         re_enrolled_persons: set[int] = set()
         for record in re_enrolled_history:
             pid = int(getattr(record, "person_id", 0))
@@ -258,16 +300,17 @@ class CancellationService:
         # --- Registration month breakdown ---
         by_registration_month = self._compute_registration_month_breakdown(cancelled_attendees, seen_for_summary)
 
+        total_re_enrolled = len(re_enrolled_persons & seen_for_summary) if duration else len(re_enrolled_persons)
         return CancellationMetricsResponse(
             year=year,
             total_cancelled=len(seen_for_summary),
-            was_enrolled=summary_was_enrolled,
-            was_waitlisted=summary_was_waitlisted,
-            was_applied=summary_was_applied,
-            other_prior_status=summary_other_prior,
+            was_enrolled=summary_was_enrolled if history_rebuilt else None,
+            was_waitlisted=summary_was_waitlisted if history_rebuilt else None,
+            was_applied=summary_was_applied if history_rebuilt else None,
+            other_prior_status=summary_other_prior if history_rebuilt else None,
             has_other_sessions=summary_has_other,
             no_other_sessions=summary_no_other,
-            total_re_enrolled=len(re_enrolled_persons & seen_for_summary) if duration else len(re_enrolled_persons),
+            total_re_enrolled=total_re_enrolled if history_rebuilt else None,
             session_swap_count=session_swap_count,
             true_departure_count=true_departure_count,
             avg_days_to_cancellation=timing_data["avg"],
@@ -278,7 +321,51 @@ class CancellationService:
             by_grade=by_grade,
             by_gender=by_gender,
             gender_fallback_count=count_binary_fallbacks(seen_for_summary, persons),
+            prior_basis=prior_basis,
+            day_offset=day_offset,
+            prior_day_offset=prior_day_offset,
+            as_of_date=cutoff.isoformat() if cutoff is not None else None,
         )
+
+    async def _fetch_anchor(self, year: int) -> date | None:
+        """This year's registration anchor; None (read as it stands) when unset or unreadable."""
+        try:
+            return registration_anchor(await self.repository.fetch_registration_dates(year))
+        except Exception:
+            logger.warning("Failed to read the %d registration dates, reading it as it stands", year, exc_info=True)
+            return None
+
+    async def _history_covers(self, year: int, anchor: date) -> bool:
+        """True when ``year``'s status history starts by its anchor, so any day of its registration year can be read."""
+        start = self._camp_day(await self.repository.fetch_status_history_start(year))
+        return start is not None and start <= anchor
+
+    @staticmethod
+    def _camp_day(value: Any) -> date | None:
+        """The camp date of a UTC timestamp string, or None when it can't be read."""
+        if not value:
+            return None
+        try:
+            return get_camp_date(datetime.fromisoformat(str(value)))
+        except ValueError:
+            return None
+
+    @classmethod
+    def _detected_by(cls, record: Any, cutoff: date) -> bool:
+        day = cls._camp_day(getattr(record, "detected_at", None))
+        return day is not None and day <= cutoff
+
+    @staticmethod
+    def _cancelled_by(att: Any, cutoff: date) -> bool:
+        """A cancelled, withdrawn or dismissed record dated (enrollment_date, its PostDate) by ``cutoff``.
+
+        The date ``attendees_at_cutoff`` reads "left by N" from; a record with none can't be placed on a day.
+        """
+        raw = getattr(att, "enrollment_date", "") or ""
+        try:
+            return bool(raw) and date.fromisoformat(parse_date_only(raw)) <= cutoff
+        except ValueError:
+            return False
 
     @staticmethod
     def _classify_prior_status(old_status: str) -> str:

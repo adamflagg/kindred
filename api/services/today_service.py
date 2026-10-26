@@ -4,7 +4,7 @@ Session fill lists this year's sessions in session order (ruling 1, B) and nothi
 session last year ran that this year does not is not drawn). Each row's beds, cabin groups and waitlist
 come from the Availability page's own read (``SessionAvailabilityService``), its goal from the budget
 config (Forecast's), and its comparison from its own match last year (ruling #15), read at the same
-registration day while the season is live (decision 7):
+registration day all year (decision 7; PM-8 A: Today never switches to finals, ``same_day_point``):
 
 - a session matches by ``match_session_in_year`` (CampMinder id, then alias group, then exact name), with
   its all-gender cabins riding along; teen programs (SCIT, TLI) match by program;
@@ -41,7 +41,7 @@ from api.schemas.today import (
 from api.services.camp_calendar import CAMP_TZ, SEASON_WEEKS, get_camp_today
 from api.services.extractors import is_new_camper
 from api.services.reconstruction import attendees_at_cutoff, reconstruct_daily_multi, registered_day
-from api.services.same_point import live_same_point, registration_anchor
+from api.services.same_point import registration_anchor, same_day_point
 from api.services.session_availability_service import SessionAvailabilityService
 from api.utils.session_metrics import (
     DISPLAY_SESSION_TYPES,
@@ -579,19 +579,30 @@ class TodayService:
             self.repo.fetch_sessions(year, None),
             self.repo.fetch_sessions(prior_year, None),
             self.repo.fetch_budget_config(year),
-            live_same_point(self.repo, year, today),
+            same_day_point(self.repo, year, today),
         )
 
-        cutoff: date | None = None
+        # PM-8 A: Today reads last year at the same registration day all year, never at its final. With
+        # no anchor on either side there is no same day, so there is no comparison (PM-4 A: no substitute).
         anchor = await self._anchor(prior_year)
-        if point is not None and anchor is not None:
-            cutoff = anchor + timedelta(days=point.prior_offset)
+        cutoff = anchor + timedelta(days=point.prior_offset) if point is not None and anchor is not None else None
+        if cutoff is None or anchor is None or point is None:
+            return TodaySessionsResponse(
+                year=year,
+                prior_year=prior_year,
+                rows=build_session_fill_rows(
+                    availability=availability,
+                    current_sessions=current_sessions,
+                    goals=goals,
+                    prior_sessions={},
+                    prior_counts={},
+                ),
+                limited_threshold=availability.limited_threshold,
+                prior_unavailable_reason="no_registration_anchor",
+            )
 
-        dated = list(await self.repo.fetch_attendees_with_dates(prior_year, expand_person=True)) if anchor else []
-        if cutoff is not None:
-            prior_enrolled, _left = attendees_at_cutoff(dated, cutoff)
-        else:
-            prior_enrolled = await self.repo.fetch_attendees(prior_year, "enrolled", expand_person=True)
+        dated = list(await self.repo.fetch_attendees_with_dates(prior_year, expand_person=True))
+        prior_enrolled, _left = attendees_at_cutoff(dated, cutoff)
 
         rows = build_session_fill_rows(
             availability=availability,
@@ -609,20 +620,16 @@ class TodayService:
             # #51: one session picked, embedded sessions folded into it: its campers and theirs, once each
             headline_prior = headline_prior_campers(prior_enrolled, _with_ag(prior_sessions, [host, *folds[host]]))
 
-        pace_prior = (
-            build_pace_prior(dated, anchor, compared_prior_ids(availability, prior_sessions, matched, folds))
-            if anchor is not None
-            else None
-        )
+        pace_prior = build_pace_prior(dated, anchor, compared_prior_ids(availability, prior_sessions, matched, folds))
         return TodaySessionsResponse(
             year=year,
             prior_year=prior_year,
             rows=rows,
             limited_threshold=availability.limited_threshold,
-            prior_basis="same_point" if cutoff is not None else "final",
-            day_offset=point.day_offset if cutoff is not None and point is not None else None,
-            prior_day_offset=point.prior_offset if cutoff is not None and point is not None else None,
-            as_of_date=cutoff.isoformat() if cutoff is not None else None,
+            prior_basis="same_point",
+            day_offset=point.day_offset,
+            prior_day_offset=point.prior_offset,
+            as_of_date=cutoff.isoformat(),
             headline_prior=headline_prior,
             pace_prior=pace_prior,
         )
@@ -631,7 +638,7 @@ class TodayService:
         try:
             return registration_anchor(await self.repo.fetch_registration_dates(year))
         except Exception:
-            logger.warning("Failed to read the %d registration dates, comparing with its final", year, exc_info=True)
+            logger.warning("Failed to read the %d registration dates: no comparison", year, exc_info=True)
             return None
 
     async def recent_signups(

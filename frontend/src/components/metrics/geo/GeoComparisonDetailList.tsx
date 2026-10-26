@@ -17,6 +17,7 @@ import { useTableSort } from '../../../hooks/useTableSort'
 import { MetricSortHeader } from '../MetricSortHeader'
 import { TableExportButtons } from '../TableExportButtons'
 import { csvFilename } from '../exportFilename'
+import { PRIORITY_DAY_PENDING, PRIORITY_DAY_PENDING_CLASS } from '../../../utils/priorityDay'
 
 interface GeoDataItem {
   name: string
@@ -35,6 +36,11 @@ interface GeoComparisonDetailListProps {
   isOpen?: boolean | undefined
   /** Callback when header is clicked (for controlled mode) */
   onToggle?: (() => void) | undefined
+  /**
+   * On the priority date itself the change waits a day (ruling 9): it reads "updates tomorrow", is
+   * blank in the CSV and sorts with the blanks. NEW and GONE still show; they are not changes.
+   */
+  pending?: boolean | undefined
 }
 
 const CATEGORY_PLURALS: Record<GeoCategoryExtended, string> = {
@@ -53,6 +59,7 @@ export function GeoComparisonDetailList({
   className = '',
   isOpen,
   onToggle,
+  pending = false,
 }: GeoComparisonDetailListProps) {
   const [internalExpanded, setInternalExpanded] = useState(false)
   const isExpanded = isOpen ?? internalExpanded
@@ -90,7 +97,9 @@ export function GeoComparisonDetailList({
         ? row.primaryValue
         : field === 'compare'
           ? row.compareValue
-          : row.change
+          : pending
+            ? null
+            : row.change
   )
   const singular = CATEGORY_PLURALS[category].slice(0, -1)
 
@@ -122,7 +131,12 @@ export function GeoComparisonDetailList({
             <TableExportButtons
               filename={csvFilename(primaryYear, CATEGORY_PLURALS[category])}
               headers={[singular, String(primaryYear), String(compareYear), 'Change']}
-              rows={sorted.map((row) => [row.name, row.primaryValue, row.compareValue, row.change])}
+              rows={sorted.map((row) => [
+                row.name,
+                row.primaryValue,
+                row.compareValue,
+                pending ? null : row.change,
+              ])}
             />
           </div>
           <div className="max-h-80 overflow-y-auto">
@@ -165,7 +179,8 @@ export function GeoComparisonDetailList({
                   const isNew = row.compareValue === 0 && row.primaryValue > 0
                   const isGone = row.primaryValue === 0 && row.compareValue > 0
 
-                  const changeClass = deltaInk(row.change, 'up-good')
+                  const changeClass =
+                    pending && !isNew && !isGone ? '' : deltaInk(row.change, 'up-good')
                   const Icon = row.change > 0 ? TrendingUp : row.change < 0 ? TrendingDown : Minus
 
                   return (
@@ -189,6 +204,10 @@ export function GeoComparisonDetailList({
                           ) : isGone ? (
                             <span className="rounded bg-red-100 px-1.5 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:text-red-400">
                               GONE
+                            </span>
+                          ) : pending ? (
+                            <span className={PRIORITY_DAY_PENDING_CLASS}>
+                              {PRIORITY_DAY_PENDING}
                             </span>
                           ) : (
                             <>

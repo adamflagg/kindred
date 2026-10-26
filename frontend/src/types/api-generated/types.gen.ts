@@ -2500,27 +2500,27 @@ export type CancellationMetricsResponse = {
   /**
    * Was Enrolled
    *
-   * Cancelled after being enrolled
+   * Cancelled after being enrolled. None on a same-point read the status history can't rebuild
    */
-  was_enrolled: number
+  was_enrolled: number | null
   /**
    * Was Waitlisted
    *
-   * Cancelled after being waitlisted
+   * Cancelled after being waitlisted. None on a same-point read the status history can't rebuild
    */
-  was_waitlisted: number
+  was_waitlisted: number | null
   /**
    * Was Applied
    *
-   * Cancelled after applying
+   * Cancelled after applying (None as was_enrolled)
    */
-  was_applied?: number
+  was_applied?: number | null
   /**
    * Other Prior Status
    *
-   * Cancelled from other prior status (inquiry, incomplete, etc.)
+   * Cancelled from other prior status (inquiry, incomplete, etc.; None as was_enrolled)
    */
-  other_prior_status?: number
+  other_prior_status?: number | null
   /**
    * Has Other Sessions
    *
@@ -2536,9 +2536,9 @@ export type CancellationMetricsResponse = {
   /**
    * Total Re Enrolled
    *
-   * Cancelled then later re-enrolled (recovery)
+   * Cancelled then later re-enrolled (recovery). None on a same-point read the status history can't rebuild
    */
-  total_re_enrolled?: number
+  total_re_enrolled?: number | null
   /**
    * Session Swap Count
    *
@@ -2599,6 +2599,30 @@ export type CancellationMetricsResponse = {
    * Campers in the gender split with no Gender Identity answer, counted by the binary Gender field (owner ruling 58): the number the split's note states
    */
   gender_fallback_count?: number
+  /**
+   * Prior Basis
+   *
+   * Set when same_point_of was asked (PM-8 A): 'same_point' when this year was read at the registration day that season has reached (cancelled by then, and enrolled elsewhere then), 'final' when it was read as it stands now (that season is over, or a season has no registration anchor)
+   */
+  prior_basis?: 'same_point' | 'final' | null
+  /**
+   * Day Offset
+   *
+   * Same-point reads: the registration day (days from its anchor) the same_point_of season is on
+   */
+  day_offset?: number | null
+  /**
+   * Prior Day Offset
+   *
+   * Same-point reads: the registration day this year was read at (decision 45: one more on a phase date)
+   */
+  prior_day_offset?: number | null
+  /**
+   * As Of Date
+   *
+   * Same-point reads: the last day (YYYY-MM-DD) this year was read through
+   */
+  as_of_date?: string | null
 }
 
 /**
@@ -14055,9 +14079,15 @@ export type RegistrationMetricsResponse = {
   /**
    * Prior Basis
    *
-   * Set when same_point_of was asked: 'same_point' when this year was read at the registration day that season has reached (registered by then and not cancelled by then), 'final' when it was read as it stands now (that season is over, or a season has no registration anchor)
+   * Set when same_point_of was asked: 'same_point' when this year was read at the registration day that season has reached (registered by then and not cancelled by then), 'final' when it was read as it stands now (that season is over, or a season has no registration anchor), 'unavailable' on an all_year read with no anchor to read a day from (see prior_unavailable_reason): no comparison
    */
-  prior_basis?: 'same_point' | 'final' | null
+  prior_basis?: 'same_point' | 'final' | 'unavailable' | null
+  /**
+   * Prior Unavailable Reason
+   *
+   * Why prior_basis is 'unavailable'
+   */
+  prior_unavailable_reason?: 'no_registration_anchor' | null
   /**
    * Day Offset
    *
@@ -19609,9 +19639,15 @@ export type TodaySessionsResponse = {
   /**
    * Prior Basis
    *
-   * same_point: last year at the same registration day; final: last year's final
+   * same_point: last year at the same registration day, all year (PM-8 A: Today never compares with last year's final). None: no comparison, see prior_unavailable_reason
    */
-  prior_basis: 'same_point' | 'final'
+  prior_basis?: 'same_point' | null
+  /**
+   * Prior Unavailable Reason
+   *
+   * Why there is no comparison: this season or last has no registration anchor to read a day from
+   */
+  prior_unavailable_reason?: 'no_registration_anchor' | null
   /**
    * Day Offset
    *
@@ -20657,6 +20693,18 @@ export type WaitlistMetricsResponse = {
    * Campers in the gender split with no Gender Identity answer, counted by the binary Gender field (owner ruling 58): the number the split's note states
    */
   gender_fallback_count?: number
+  /**
+   * Prior Basis
+   *
+   * Set when same_point_of was asked (PM-8 A): 'final' once that season is over, or when it has no registration anchor (this year as it stands is the comparison), 'unavailable' while it is live: a past waitlist can't be rebuilt for a day, so this year's figures (as they stand) are no comparison for it
+   */
+  prior_basis?: 'final' | 'unavailable' | null
+  /**
+   * Prior Unavailable Reason
+   *
+   * Why prior_basis is 'unavailable'
+   */
+  prior_unavailable_reason?: 'waitlist_not_rebuildable' | null
 }
 
 /**
@@ -23831,6 +23879,12 @@ export type GetRegistrationMetricsApiMetricsRegistrationGetData = {
      * Read this year as a comparison for that season (decision 7): while it is live, at the same registration day (registered by then, not cancelled by then); after it, as this year stands now. The response's prior_basis says which. Enrolled status only
      */
     same_point_of?: number | null
+    /**
+     * Same Point All Year
+     *
+     * Today's rule (PM-8 A): read at the same registration day even after that season is over, never at its final; with no anchor to read a day from, prior_basis is 'unavailable'. Needs same_point_of
+     */
+    same_point_all_year?: boolean
   }
   url: '/api/metrics/registration'
 }
@@ -23999,6 +24053,12 @@ export type GetWaitlistMetricsApiMetricsWaitlistGetData = {
      * Filter by session duration category (1-week, 2-week, 3-week, 4-week+)
      */
     duration?: '1-week' | '2-week' | '3-week' | '4-week+' | null
+    /**
+     * Same Point Of
+     *
+     * Read this year as a comparison for that season (PM-8 A). A past waitlist can't be rebuilt for a day: while that season is live the response's prior_basis is 'unavailable'; after it, 'final'
+     */
+    same_point_of?: number | null
   }
   url: '/api/metrics/waitlist'
 }
@@ -24051,6 +24111,12 @@ export type GetCancellationMetricsApiMetricsCancellationsGetData = {
      * Filter by session duration category (1-week, 2-week, 3-week, 4-week+)
      */
     duration?: '1-week' | '2-week' | '3-week' | '4-week+' | null
+    /**
+     * Same Point Of
+     *
+     * Read this year as a comparison for that season (PM-8 A, decision 7): while it is live, at the same registration day (cancelled by then; enrolled elsewhere then); after it, as this year stands now. The response's prior_basis says which
+     */
+    same_point_of?: number | null
   }
   url: '/api/metrics/cancellations'
 }

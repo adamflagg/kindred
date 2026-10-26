@@ -44,6 +44,7 @@ import {
   basisWords,
   noteNumber,
   pacePrior,
+  priorBasisOf,
   registrationDayWords,
   todayNotes,
   type FillBasis,
@@ -71,7 +72,8 @@ function StatusRows({
   dashNote,
 }: {
   rows: StatusRow[]
-  basis: string
+  /** The "vs" header, or null with no comparison (hidden). */
+  basis: string | null
   pending: boolean
   sameNote: number | undefined
   dashNote: number | undefined
@@ -85,9 +87,10 @@ function StatusRows({
         <span>Other statuses · campers</span>
         <span />
         <span className="text-right">Now</span>
+        {/* With no same day there is nothing to head: the column says "—" per row (owner call 2026-10-26) */}
         <span className="text-right">
-          {basis}
-          {sameNote !== undefined && <DefRef n={sameNote} />}
+          {basis !== null && basis}
+          {basis !== null && sameNote !== undefined && <DefRef n={sameNote} />}
         </span>
       </div>
       {rows.map((r) => {
@@ -179,7 +182,7 @@ function Hero({
   const vs = basisWords(basis, priorYear)
   const point = vs.replace(/^vs /, '')
   const enrolled = current.total_enrolled
-  const priorEnrolled = headlinePrior ?? prior?.total_enrolled ?? null
+  const priorEnrolled = basis === 'none' ? null : (headlinePrior ?? prior?.total_enrolled ?? null)
   const behind = priorEnrolled != null && priorEnrolled > enrolled ? priorEnrolled - enrolled : 0
   const segments: HeroSegment[] = [
     {
@@ -236,7 +239,8 @@ function Hero({
       href: null,
     })
 
-  const description = [dayWords, 'counted in campers', `changes ${vs}`].filter(Boolean).join(' · ')
+  const changes = basis === 'none' ? vs : `changes ${vs}`
+  const description = [dayWords, 'counted in campers', changes].filter(Boolean).join(' · ')
   return (
     <AidHeroCard
       title={title}
@@ -292,7 +296,7 @@ function Hero({
       </div>
       <StatusRows
         rows={statusRows}
-        basis={vs}
+        basis={basis === 'none' ? null : vs}
         pending={pending}
         sameNote={notes.same}
         dashNote={notes.dash}
@@ -332,7 +336,8 @@ export default function TodayPage() {
     year,
     priorYear,
     { ...filterOptions, statuses: 'enrolled' },
-    { samePoint: true }
+    // PM-8 A: the same registration day all year, never last year's final
+    { samePoint: 'allYear' }
   )
   const applied = useRegistrationMetrics(year, { ...filterOptions, statuses: 'applied' })
   const incomplete = useRegistrationMetrics(year, { ...filterOptions, statuses: 'incomplete' })
@@ -356,8 +361,9 @@ export default function TodayPage() {
     duration: durationParam,
   })
 
-  const prior = comparison?.data
-  const basis: PriorBasis = prior?.prior_basis === 'final' ? 'final' : 'same_point'
+  // With no anchor there is no same day: no comparison, and never another figure in its place (PM-4 A)
+  const basis: PriorBasis = priorBasisOf(comparison?.data)
+  const prior = basis === 'same_point' ? comparison?.data : undefined
   const pending = basis === 'same_point' && prior?.day_offset === 0
   const throughNextDay = readsThroughNextDay(prior?.day_offset, prior?.prior_day_offset)
   const appliedCount = applied.data?.total_enrolled ?? 0
@@ -370,7 +376,9 @@ export default function TodayPage() {
     dayOffset: prior?.day_offset,
     priorYear,
     throughNextDay,
-    dash: prior?.total_waitlisted == null || appliedCount > 0 || incompleteCount > 0,
+    dash:
+      basis === 'same_point' &&
+      (prior?.total_waitlisted == null || appliedCount > 0 || incompleteCount > 0),
     fill,
     recent: recentShown,
   })

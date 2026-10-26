@@ -51,6 +51,8 @@ import { MetricsQueryGuard } from '../../../components/metrics/MetricsQueryGuard
 import { DefinitionNotes, DefRef } from '../../../components/camperships/kit/DefinitionNotes'
 import { formatCount, formatPercent, formatSignedCount } from '../../../utils/numberFormat'
 import { CANCELLATIONS_NOTES } from '../cancelledNotes'
+import { describeCancellationsCompareBasis } from './cancellationsCompareBasis'
+import { PRIORITY_DAY_PENDING } from '../../../utils/priorityDay'
 import { deltaInk } from '../../../utils/deltaTokens'
 
 const CANCEL_SEGMENTS: StackedSegment[] = [
@@ -164,6 +166,22 @@ export default function CancellationAnalysis() {
   const fallbackLine = (count: number | undefined) =>
     genderNoteN !== undefined && <GenderFallbackLine n={genderNoteN} count={count ?? 0} />
 
+  // PM-8 A: the compare year is read at the same registration day while this season is live, at its
+  // final after (Overview's grammar). The status figures the history can't rebuild come back null and
+  // show no comparison; on the priority date itself the card deltas wait a day (ruling 9).
+  const compareBasis = describeCancellationsCompareBasis(
+    compareYear,
+    compData,
+    pageNotes.length + 1
+  )
+  const pending = compareBasis?.pending ?? false
+  const vsCompare = (value: number | null | undefined) =>
+    pending || value == null ? undefined : value
+  const pendingTrend = pending
+    ? { trend: 'neutral' as const, trendValue: PRIORITY_DAY_PENDING }
+    : {}
+  const comparedTrend = (value: number | null | undefined) => (value == null ? {} : pendingTrend)
+
   const { setFilter, DrilldownModal } = useDrilldown({
     year: currentYear,
     sessionCmId: selectedSessionCmId ?? undefined,
@@ -206,6 +224,17 @@ export default function CancellationAnalysis() {
       {(data) => {
         return (
           <div className="space-y-6">
+            {compareBasis && (
+              <p className="text-muted-foreground -mb-3 text-sm">
+                <span className="text-foreground font-medium">{compareBasis.label}</span>
+                {': '}
+                <span>{compareBasis.text}</span>
+                {compareBasis.notes.map((note) => (
+                  <DefRef key={note.n} n={note.n} />
+                ))}
+              </p>
+            )}
+
             {/* Summary Cards */}
             <div
               className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6"
@@ -216,7 +245,8 @@ export default function CancellationAnalysis() {
                 note={1}
                 value={data.total_cancelled}
                 className="border-red-200 dark:border-red-800"
-                compareValue={compData?.total_cancelled}
+                compareValue={vsCompare(compData?.total_cancelled)}
+                {...comparedTrend(compData?.total_cancelled)}
                 compareYear={compareYear ?? undefined}
                 sentiment="inverse"
                 onClick={() =>
@@ -229,14 +259,15 @@ export default function CancellationAnalysis() {
               />
               <MetricCard
                 title="Was Enrolled"
-                value={data.was_enrolled}
+                value={data.was_enrolled ?? '\u2014'}
                 subtitle="Lost confirmed spot"
                 className={
-                  data.was_enrolled > 0
+                  (data.was_enrolled ?? 0) > 0
                     ? 'border-red-300 bg-red-50/50 dark:border-red-800 dark:bg-red-950/30'
                     : ''
                 }
-                compareValue={compData?.was_enrolled}
+                compareValue={vsCompare(compData?.was_enrolled)}
+                {...comparedTrend(compData?.was_enrolled)}
                 compareYear={compareYear ?? undefined}
                 sentiment="inverse"
                 onClick={() =>
@@ -250,9 +281,10 @@ export default function CancellationAnalysis() {
               />
               <MetricCard
                 title="Was Waitlisted"
-                value={data.was_waitlisted}
+                value={data.was_waitlisted ?? '\u2014'}
                 subtitle="Left the waitlist"
-                compareValue={compData?.was_waitlisted}
+                compareValue={vsCompare(compData?.was_waitlisted)}
+                {...comparedTrend(compData?.was_waitlisted)}
                 compareYear={compareYear ?? undefined}
                 sentiment="inverse"
                 onClick={() =>
@@ -264,22 +296,24 @@ export default function CancellationAnalysis() {
                   })
                 }
               />
-              {data.was_applied > 0 && (
+              {(data.was_applied ?? 0) > 0 && (
                 <MetricCard
                   title="Was Applied"
-                  value={data.was_applied}
+                  value={data.was_applied ?? '\u2014'}
                   subtitle="Left after applying"
-                  compareValue={compData?.was_applied}
+                  compareValue={vsCompare(compData?.was_applied)}
+                  {...comparedTrend(compData?.was_applied)}
                   compareYear={compareYear ?? undefined}
                   sentiment="inverse"
                 />
               )}
-              {data.other_prior_status > 0 && (
+              {(data.other_prior_status ?? 0) > 0 && (
                 <MetricCard
                   title="Other Prior"
-                  value={data.other_prior_status}
+                  value={data.other_prior_status ?? '\u2014'}
                   subtitle="Inquiry, incomplete, etc."
-                  compareValue={compData?.other_prior_status}
+                  compareValue={vsCompare(compData?.other_prior_status)}
+                  {...comparedTrend(compData?.other_prior_status)}
                   compareYear={compareYear ?? undefined}
                   sentiment="inverse"
                 />
@@ -288,7 +322,8 @@ export default function CancellationAnalysis() {
                 title="Has Other Sessions"
                 value={data.has_other_sessions}
                 subtitle="Still attending"
-                compareValue={compData?.has_other_sessions}
+                compareValue={vsCompare(compData?.has_other_sessions)}
+                {...comparedTrend(compData?.has_other_sessions)}
                 compareYear={compareYear ?? undefined}
                 onClick={() =>
                   setFilter({
@@ -307,7 +342,8 @@ export default function CancellationAnalysis() {
                     ? 'border-red-300 bg-red-50/50 dark:border-red-800 dark:bg-red-950/30'
                     : ''
                 }
-                compareValue={compData?.no_other_sessions}
+                compareValue={vsCompare(compData?.no_other_sessions)}
+                {...comparedTrend(compData?.no_other_sessions)}
                 compareYear={compareYear ?? undefined}
                 sentiment="inverse"
                 onClick={() =>
@@ -320,9 +356,10 @@ export default function CancellationAnalysis() {
               />
               <MetricCard
                 title="Re-enrolled"
-                value={data.total_re_enrolled}
+                value={data.total_re_enrolled ?? '\u2014'}
                 subtitle="Recovery rate"
-                compareValue={compData?.total_re_enrolled}
+                compareValue={vsCompare(compData?.total_re_enrolled)}
+                {...comparedTrend(compData?.total_re_enrolled)}
                 compareYear={compareYear ?? undefined}
                 onClick={() =>
                   setFilter({
@@ -795,7 +832,7 @@ export default function CancellationAnalysis() {
               </div>
             )}
 
-            <DefinitionNotes notes={pageNotes} />
+            <DefinitionNotes notes={[...pageNotes, ...(compareBasis?.notes ?? [])]} />
             <DrilldownModal />
           </div>
         )

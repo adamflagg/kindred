@@ -4,9 +4,10 @@
  * Calls useRegistrationMetrics twice — once for the primary year and once for
  * the compare year. The compare query is disabled when compareYear is null.
  *
- * By default the compare year is read at its final. A page that opts in with `samePoint` (decision
- * 7 covers Registration › Overview only) gets it at the same point of the primary season while that
- * season is live, and at its final after; the comparison's `prior_basis` says which.
+ * By default the compare year is read at its final. A page that opts in with `samePoint: true`
+ * (Overview, Geo: decision 7, PM-8 A) gets it at the same point of the primary season while that
+ * season is live, and at its final after; `samePoint: 'allYear'` (Today, PM-8 A) reads the same day
+ * all year and never the final. The comparison's `prior_basis` says which.
  */
 
 import { useRegistrationMetrics } from './useMetrics'
@@ -17,7 +18,7 @@ export function useComparisonRegistrationData(
   primaryYear: number,
   compareYear: number | null,
   options?: RegistrationFilterOptions,
-  { samePoint = false }: { samePoint?: boolean } = {}
+  { samePoint = false }: { samePoint?: boolean | 'allYear' } = {}
 ) {
   const primary = useRegistrationMetrics(primaryYear, options)
 
@@ -26,7 +27,11 @@ export function useComparisonRegistrationData(
   const compareOptions = useCompareYearFilter(primaryYear, compareYear, options)
   const comparison = useRegistrationMetrics(
     compareYear ?? 0,
-    samePoint ? { ...compareOptions, samePointOf: primaryYear } : compareOptions
+    samePoint === 'allYear'
+      ? { ...compareOptions, samePointOf: primaryYear, samePointAllYear: true }
+      : samePoint
+        ? { ...compareOptions, samePointOf: primaryYear }
+        : compareOptions
   )
 
   return {

@@ -27,7 +27,10 @@ REGISTRATION_TIERS: list[tuple[str, str, str]] = [
 
 # Maximum weeks from season start containing meaningful registration data.
 # Camp historically ends between week 39.6 and 41.3 relative to season start
-# (derived from 2017-2026 data).
+# (derived from 2017-2026 data). A chart extent (Velocity's x-axis, Forecast's week
+# options, Today's Pace curve). It no longer decides when a season stops being live:
+# that is the day its last summer session starts (same_point.season_end, PM-8 A), with
+# this window only as the fallback for a season with no readable session dates.
 SEASON_WEEKS = 41
 
 
