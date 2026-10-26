@@ -70,7 +70,7 @@ from api.constants.collections import (
     CAMP_SESSIONS,
 )
 from api.services.financial_aid_change_log_reads import fetch_change_log
-from api.services.financial_aid_intake_types import INTAKE_RULES_SECTIONS
+from api.services.financial_aid_intake_types import FLAG_AWAITING_RULES, INTAKE_RULES_SECTIONS
 from api.services.financial_aid_rules_effect import EFFECT_ACTION, RULES_EFFECT_ENTITY, ApprovalEffects
 from api.services.pb_precise_datetime import aid_collection
 from api.services.pb_read import pb_read
@@ -213,7 +213,8 @@ class NoDraftToDiscardError(FinancialAidError, ValueError):
 
 # What reads a season's rules, by the words a refusal uses (owner ruling R27-9): intake prices its requests, a round
 # posts as decisions (and locks the sections it read), placements spend what was decided, and every scenario names
-# the version it started from. A row of any of them means the season is in use.
+# the version it started from. A row of any of them means the season is in use, except a request still waiting for
+# approved rules (`request_read_rules`).
 SEASON_READERS: Final[dict[str, str]] = {
     AID_REQUESTS: "aid requests",
     AID_DECISIONS: "decisions or posted rounds",
@@ -222,6 +223,16 @@ SEASON_READERS: Final[dict[str, str]] = {
     AID_SCENARIO_OPTIONS: "kept scenario options",
     AID_SCENARIO_TRAIL: "scenario drafts",
 }
+
+
+def request_read_rules(record: Any) -> bool:
+    """Whether intake checked this aid_requests row against approved rules. Intake records a request before finance
+    approves programs and cost, flagged FLAG_AWAITING_RULES, and that request has read no rules (R27-9: "no request
+    ... has read it"); any other request counts as a reader. `flags` is a list, or PocketBase's raw JSON text."""
+    flags = getattr(record, "flags", None)
+    if isinstance(flags, str):
+        flags = json.loads(flags) if flags.strip() else None
+    return not any(isinstance(flag, dict) and flag.get("code") == FLAG_AWAITING_RULES for flag in flags or ())
 
 
 class FirstDraftInUseError(FinancialAidError, ValueError):
@@ -654,9 +665,15 @@ class AidRulesRepository:
         return await fetch_change_log(self.pb, year, AID_RULES)
 
     async def season_readers(self, year: int) -> list[str]:
-        """The SEASON_READERS collections holding any row for `year`, in that order: one row of each is read."""
+        """The SEASON_READERS collections holding a row for `year` that read its rules, in that order: the season's
+        requests' flags (`request_read_rules`: one still waiting for rules is no reader), one row of each other."""
         found: list[str] = []
         for collection in SEASON_READERS:
+            if collection == AID_REQUESTS:
+                requests = await self._page(AID_REQUESTS, {"filter": f"year = {int(year)}", "fields": "id,flags"})
+                if any(request_read_rules(row) for row in requests):
+                    found.append(collection)
+                continue
             page = await pb_read(
                 aid_collection(self.pb, collection).get_list, 1, 1, {"filter": f"year = {int(year)}", "fields": "id"}
             )
@@ -1669,9 +1686,10 @@ class FinancialAidRulesService:
         draft that moved on since is NotLatestVersionError. The normal case, a draft newer than the version in
         effect, is `discard_draft`'s.
 
-        The SEASON_READERS check is not in the commit's batch. An approval or lock moves a version's revision, which
-        the writes guard, and decisions, placements and scenarios need one; intake's request on a season with no
-        approved programs and cost only waits for rules and has read none."""
+        A request intake recorded while it waits for approved rules has read none, so it does not refuse
+        (`request_read_rules`). The SEASON_READERS check is not in the commit's batch. An approval or lock moves a
+        version's revision, which the writes guard, and decisions, placements and scenarios need one; intake, on a
+        season with no approved programs and cost, only records requests that wait."""
         reason = await self._done_reason(year, past_season_reason)
         current = await self._rules_draft(year, base_version)
         versions = [_to_version(row) for row in await self._store.list_versions(year)]

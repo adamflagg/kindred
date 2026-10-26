@@ -6,6 +6,7 @@ save never reuses its number."""
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 
@@ -330,6 +331,33 @@ async def test_a_first_draft_something_in_the_season_has_read_is_refused(collect
         await service.discard_first_draft(2031, 1, actor=ADMIN)
     assert len(store.operations) == before
     assert (await service.load(2031)).version == 1
+
+
+# How intake stores a request it recorded before finance approved programs and cost (Flag.as_dict).
+_WAITING = {"code": "awaiting_approved_rules", "detail": {"sections": ["programs", "cost"]}}
+
+
+@pytest.mark.asyncio
+async def test_requests_still_waiting_for_rules_do_not_refuse_a_first_draft_discard() -> None:
+    """Intake runs before the rules are approved and records each request as waiting for them. Those requests have
+    read nothing (R27-9: "no request ... has read it"), so the first draft can still go."""
+    store = FakeStore()
+    service = await _first_draft(store)
+    store.requests = {
+        2031: [SimpleNamespace(id="req1", flags=[_WAITING]), SimpleNamespace(id="req2", flags=[_WAITING])]
+    }
+    await service.discard_first_draft(2031, 1, actor=ADMIN)
+    assert await service.discarded_versions(2031) == frozenset({1})
+
+
+@pytest.mark.asyncio
+async def test_a_request_the_rules_were_read_for_refuses_a_first_draft_discard() -> None:
+    store = FakeStore()
+    service = await _first_draft(store)
+    store.requests = {2031: [SimpleNamespace(id="req1", flags=[_WAITING]), SimpleNamespace(id="req2", flags=[])]}
+    with pytest.raises(FirstDraftInUseError, match="aid requests"):
+        await service.discard_first_draft(2031, 1, actor=ADMIN)
+    assert await service.discarded_versions(2031) == frozenset()
 
 
 @pytest.mark.asyncio
