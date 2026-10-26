@@ -485,7 +485,7 @@ def test_an_admin_discards_a_first_draft_naming_the_version_it_saw() -> None:
 @pytest.mark.parametrize(
     ("refusal", "status"),
     [
-        (FirstDraftInUseError("2031 has aid requests that read its rules"), 409),
+        (FirstDraftInUseError("2031 already has scenario drafts that read its rules, so its first draft stays"), 409),
         (NotLatestVersionError("Version 1 of 2031 is not the rules draft any more"), 409),
         (RulesNotFoundError("No aid rules for 2031"), 404),
     ],
