@@ -155,8 +155,7 @@ func (o *Orchestrator) RunAllSeasonsResync(ctx context.Context) error {
 // (historicalSyncRunning), the weekly globals, the custom-values queue, the hourly run, a phase
 // run (claimPhaseRun), or a job started on its own. While the hold is taken those queues wait
 // in claimQueue, the hourly run yields (hourlyBlockerLocked), and the API queues a staff press
-// (IsAnyQueueBusy). The caller
-// lets go with the returned func, once.
+// (IsAnyQueueBusy). The caller lets go with the returned func, once.
 //
 // The hourly run fires at 05:00 too; it yields to this pass once the pass has started, so this
 // wait is only ever for one hourly run that got there first.
