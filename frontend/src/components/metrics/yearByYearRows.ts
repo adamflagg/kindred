@@ -58,8 +58,9 @@ export function buildYearRows(
     const before = transitions.get(year.year - 1)
     const liveRetention = retentionLive && year.year === newestTo
     const priorRate = liveRetention ? before?.same_point_rate : before?.retention_rate
+    const intoRate = into?.retention_rate ?? null
     const retentionChange =
-      into && priorRate != null ? (into.retention_rate - priorRate) * 100 : null
+      intoRate !== null && priorRate != null ? (intoRate - priorRate) * 100 : null
     const prev = ordered[i - 1]
     const isLive = live !== null && year.year === live.year
     const base = isLive ? live.priorTotal : (prev?.total_enrolled ?? null)
@@ -82,7 +83,8 @@ export function buildYearRows(
       cancelled: hasCancel ? (year.total_cancelled ?? 0) : null,
       cancelPct: hasCancel && !noEnrollment ? (year.cancellation_rate ?? 0) : null,
       noEnrollment,
-      retention: into ? into.retention_rate * 100 : null,
+      // Null when the server sends no rate (PM-4: a season nobody attended, or the one after it with no base)
+      retention: intoRate === null ? null : intoRate * 100,
       retentionChange,
       retentionBasis: retentionChange === null ? null : liveRetention ? 'same point' : 'final',
     }

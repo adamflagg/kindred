@@ -403,7 +403,7 @@ class RetentionService:
 
         A failure to read the dates raises: the caller says the comparison is unavailable.
         """
-        return registration_anchor(await self.repo.fetch_registration_dates(year))
+        return registration_anchor(await self.repo.fetch_registration_dates(year, strict=True))
 
     def _filter_base_attendees(
         self,

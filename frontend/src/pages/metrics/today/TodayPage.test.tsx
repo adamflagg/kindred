@@ -463,6 +463,14 @@ describe('Today › Pace live point (PR 5b)', () => {
     vi.mocked(useVelocity).mockReturnValue(
       q({
         ...VELOCITY,
+        // The stored point is the Feb 7 nightly's: the Feb 8 and Feb 9 runs never landed
+        combined: {
+          ...VELOCITY.combined,
+          daily: [
+            ...VELOCITY.combined.daily.slice(0, -1),
+            { ...VELOCITY.combined.daily.at(-1)!, date: '2027-02-07', day_offset: 88 },
+          ],
+        },
         live: { enrolled: 1577, stored_at: new Date(2027, 1, 7, 3, 40).toISOString() },
       }) as unknown as ReturnType<typeof useVelocity>
     )
@@ -472,7 +480,7 @@ describe('Today › Pace live point (PR 5b)', () => {
       nightly: false,
     }
     renderPage()
-    expect(screen.getByTestId('today-pace')).toHaveTextContent('951 · Feb 9, 3 a.m. count')
+    expect(screen.getByTestId('today-pace')).toHaveTextContent('951 · Feb 7, 3 a.m. count')
   })
 
   it('a sync more than 2 hours old leaves the 3 a.m. count (#111)', () => {

@@ -753,8 +753,11 @@ class MetricsSQLRepository:
     # 16. fetch_registration_dates
     # ------------------------------------------------------------------
 
-    async def fetch_registration_dates(self, year: int) -> dict[str, str]:
-        """Fetch registration phase dates from config table."""
+    async def fetch_registration_dates(self, year: int, *, strict: bool = False) -> dict[str, str]:
+        """Fetch registration phase dates from config table.
+
+        A failed read always raises here, so ``strict`` (the PocketBase repository's switch) changes nothing.
+        """
         rows = self._query(
             """SELECT config_key, value FROM config
                WHERE category = 'registration' AND subcategory = ?""",

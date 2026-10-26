@@ -136,3 +136,52 @@ describe('YearByYearTable retention columns', () => {
     expect(y2024.slice(-2)).toEqual(['69.7', '0.8'])
   })
 })
+
+// PM-4 A (owner, 2026-10-25; coordinator ruling on the #3304 scan): 2020 reads 'no camp' and is left off
+// lines. Retention into a season nobody attended, and out of it (no base), is not a real 0%.
+describe('Retention around a year with nobody enrolled', () => {
+  const noCamp = {
+    ...y(2020, 0),
+    by_gender: [],
+    new_vs_returning: {
+      new_count: 0,
+      returning_count: 0,
+      new_percentage: 0,
+      returning_percentage: 0,
+    },
+    total_cancelled: 1400,
+    cancellation_rate: null,
+  } as YearMetrics
+  const GAP_YEARS = [y(2019, 2000), noCamp, y(2021, 1800), y(2022, 2000)]
+  const GAP_RETENTION: RetentionTrendsResponse = {
+    years: [
+      { ...t(2019, 0), retention_rate: null, returned_count: 0 },
+      { ...t(2020, 0), retention_rate: null, base_count: 0, returned_count: 0 },
+      t(2021, 0.7),
+    ],
+    prior_basis: 'final',
+  }
+
+  it('has no retention, and no retention change, into or out of that year', () => {
+    const rows = buildYearRows(GAP_YEARS, null, GAP_RETENTION)
+    const at = (year: number) => rows.find((r) => r.year === year)!
+    expect(at(2020).retention).toBeNull()
+    expect(at(2020).retentionChange).toBeNull()
+    expect(at(2021).retention).toBeNull()
+    expect(at(2021).retentionChange).toBeNull()
+    expect(at(2022).retention).toBeCloseTo(70, 5)
+    expect(at(2022).retentionChange).toBeNull()
+  })
+
+  it("reads No camp in 2020's Retention cell, never 0.0%, and a dash the year after", () => {
+    render(<YearByYearTable years={GAP_YEARS} live={null} retention={GAP_RETENTION} />)
+    // Retention and Retention change are the last two cells
+    const tail = (year: string) =>
+      Array.from(screen.getByText(year).closest('tr')!.querySelectorAll('td'))
+        .slice(-2)
+        .map((td) => td.textContent)
+    expect(tail('2020')).toEqual(['No camp', '—'])
+    expect(tail('2021')).toEqual(['—', '—'])
+    expect(tail('2022')).toEqual(['70.0%', '—'])
+  })
+})

@@ -230,8 +230,9 @@ export default function CancellationVelocityPage() {
     ...priorityDayNotes,
     ...(genderNoteN !== undefined ? [genderNote(genderNoteN, fallbackSeasons)] : []),
   ]
-  // Gender lines come from status history; campers already cancelled when the dashboard first saw them are in the
-  // total only. The server counts them per season (gender_history_gaps); numbered after the page's own notes.
+  // Gender lines come from status history; campers already cancelled when the dashboard first saw them (no date),
+  // and on the Gender field a camper with no boy/girl answer, are in the total only. The server counts them per
+  // season (gender_history_gaps); numbered after the page's own notes.
   const historyGap = controls.splitByGender
     ? historyGapNotes(data.gender_history_gaps, pageNotes.length + 1, genderBasis)
     : { notes: [], noHistory: [] }

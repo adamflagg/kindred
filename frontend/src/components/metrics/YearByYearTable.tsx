@@ -56,7 +56,12 @@ function liveNote(live: LiveCompare, retention?: RetentionTrendsResponse): strin
   const base = `${String(live.year)} is still registering, so it is compared with ${String(live.priorYear)} at the same registration day (${day}). Earlier rows compare final to final.`
   // #90: the live row's retention reads against the year before on that day, not its final
   const before = retentionByYear(retention).get(live.priorYear)
-  if (retention?.prior_basis !== 'same_point' || before?.same_point_rate == null) return base
+  if (
+    retention?.prior_basis !== 'same_point' ||
+    before?.same_point_rate == null ||
+    before.retention_rate === null
+  )
+    return base
   const p = String(live.priorYear)
   return `${base} Its retention is today's, against ${p}'s on that day (${formatPercent(before.same_point_rate * 100)}) rather than ${p}'s final (${formatPercent(before.retention_rate * 100)}).`
 }
@@ -312,7 +317,11 @@ export function YearByYearTable({
                   </td>
                   {hasRetention && (
                     <td className="text-foreground px-1.5 py-3 text-right tabular-nums first:pl-4 last:pr-4">
-                      {r.retention === null ? '—' : formatPercent(r.retention)}
+                      {r.retention !== null
+                        ? formatPercent(r.retention)
+                        : r.noEnrollment
+                          ? noEnrollmentText
+                          : '—'}
                     </td>
                   )}
                   {hasRetention && (

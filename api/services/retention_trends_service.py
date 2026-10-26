@@ -203,7 +203,7 @@ class RetentionTrendsService:
                 if anchor is not None:
                     transition.same_point_as_of = (anchor + timedelta(days=point.day_offset)).isoformat()
                 continue
-            if anchor is None:
+            if anchor is None or transition.retention_rate is None:
                 continue
             cutoff = anchor + timedelta(days=point.prior_offset)
             enrolled, _left = attendees_at_cutoff(list(dated_by_year[transition.to_year]), cutoff)
@@ -320,7 +320,10 @@ class RetentionTrendsService:
             returned_ids = base_person_ids & compare_person_ids
             base_count = len(base_person_ids)
             returned_count = len(returned_ids)
-            retention_rate = safe_rate(returned_count, base_count)
+            # PM-4 A (owner, 2026-10-25): never a substituted 0. With no base there is nothing to retain, and a
+            # past season nobody attended (2020) has no retention into it. The newest season's 0 is "so far".
+            no_rate = base_count == 0 or (not compare_person_ids and compare_year != years[-1])
+            retention_rate = None if no_rate else safe_rate(returned_count, base_count)
 
             # by_grade carve-out: when the scope includes teen sessions, always show
             # grade-10 in the breakdown regardless of the headline flag, so staff can

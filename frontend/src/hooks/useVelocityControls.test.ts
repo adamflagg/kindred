@@ -86,6 +86,30 @@ describe('useVelocityControls', () => {
     expect(result.current.droppedDefaultPrior).toBe(2025)
   })
 
+  // CodeRabbit on #3304: the "2025 has no cancellation history" notice belongs to the season it was dropped
+  // in and to the untouched default; it must not follow staff to another season or come back after a pick.
+  it('forgets the dropped year when the viewed season changes', () => {
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(MemoryRouter, { initialEntries: ['/'] }, children)
+    const { result, rerender } = renderHook(
+      ({ year }: { year: number }) => useVelocityControls(availableYears, year),
+      { wrapper, initialProps: { year: 2026 } }
+    )
+    act(() => result.current.dropDefaultPrior(2025))
+    expect(result.current.droppedDefaultPrior).toBe(2025)
+    rerender({ year: 2025 })
+    expect(result.current.droppedDefaultPrior).toBeNull()
+  })
+
+  it('forgets the dropped year once staff tick a year themselves', () => {
+    const { result } = renderControls('/')
+    act(() => result.current.dropDefaultPrior(2025))
+    act(() => result.current.togglePriorYear(2024))
+    act(() => result.current.togglePriorYear(2024))
+    expect(result.current.selectedPriorYears).toEqual([])
+    expect(result.current.droppedDefaultPrior).toBeNull()
+  })
+
   it('ticks nothing when priors is present and empty', () => {
     const { result } = renderControls(NONE)
     expect(result.current.selectedPriorYears).toEqual([])

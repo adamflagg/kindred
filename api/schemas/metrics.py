@@ -598,7 +598,13 @@ class RetentionTrendYear(BaseModel):
 
     from_year: int = Field(description="Base year")
     to_year: int = Field(description="Compare year")
-    retention_rate: float = Field(description="Overall retention rate (0-1)")
+    retention_rate: float | None = Field(
+        description=(
+            "Overall retention rate (0-1); null when it cannot be worked out (PM-4): the base year had nobody "
+            "enrolled, or to_year is a past season nobody attended (camp did not run, or the scoped view had "
+            "no such session). The newest season keeps its rate so far, 0 before anyone registers"
+        )
+    )
     base_count: int = Field(description="Total campers in base year")
     returned_count: int = Field(description="Campers who returned")
     by_gender: list[RetentionByGender] = Field(default_factory=list, description="Retention by gender")

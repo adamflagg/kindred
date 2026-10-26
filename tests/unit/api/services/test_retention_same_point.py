@@ -99,7 +99,7 @@ def _repo(rows: list[_Att], anchors: dict[int, str] | None = None) -> AsyncMock:
     async def with_dates(year: int, session_cm_id: int | None = None, expand_person: bool = False) -> list[Any]:
         return [a for a in rows if a.year == year]
 
-    async def fetch_dates(year: int) -> dict[str, str]:
+    async def fetch_dates(year: int, strict: bool = False) -> dict[str, str]:
         return {"priority_reg_date": anchors[year]} if year in anchors else {}
 
     repo.fetch_attendees.side_effect = fetch_attendees
@@ -197,7 +197,7 @@ class TestRetentionSamePoint:
         repo = _repo(BASE_ROWS + PRIOR_ROWS)
         working = repo.fetch_registration_dates.side_effect
 
-        async def fetch_dates(year: int) -> dict[str, str]:
+        async def fetch_dates(year: int, strict: bool = False) -> dict[str, str]:
             if year == PRIOR:
                 raise RuntimeError("PocketBase is down")
             dates: dict[str, str] = await working(year)
@@ -211,6 +211,16 @@ class TestRetentionSamePoint:
         assert result.prior_basis == "unavailable"
         assert result.prior_unavailable_reason == "registration_dates_unreadable"
         assert result.as_of_date is None
+
+    @pytest.mark.asyncio
+    async def test_the_compare_year_dates_are_read_strictly(self) -> None:
+        """CodeRabbit on #3304: the PocketBase repository reads a failure as {} unless asked to raise, which
+        would leave a failed read looking like 'no anchor configured' (a quiet final-vs-final)."""
+        repo = _repo(BASE_ROWS + PRIOR_ROWS)
+
+        await RetentionService(repo).calculate_retention(BASE, PRIOR, same_point_of=CURRENT, today=date(2026, 3, 2))
+
+        repo.fetch_registration_dates.assert_any_await(PRIOR, strict=True)
 
     @pytest.mark.asyncio
     async def test_a_configured_anchor_leaves_no_unavailable_reason(self) -> None:

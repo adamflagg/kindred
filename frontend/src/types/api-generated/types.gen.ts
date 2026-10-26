@@ -6251,7 +6251,8 @@ export type GenderEnrollment = {
  *
  * Cancellation Velocity, split by gender: how much of a season's total the gender lines cannot show.
  *
- * Campers already cancelled when the dashboard first saw them have no status history row, so they are in the
+ * Campers already cancelled when the dashboard first saw them have no status history row (no date), and on the
+ * Gender field's boys and girls lines a camper with another or no answer has no line: either way they are in the
  * snapshot total but never on a line.
  */
 export type GenderHistoryGap = {
@@ -15613,9 +15614,9 @@ export type RetentionTrendYear = {
   /**
    * Retention Rate
    *
-   * Overall retention rate (0-1)
+   * Overall retention rate (0-1); null when it cannot be worked out (PM-4): the base year had nobody enrolled, or to_year is a past season nobody attended (camp did not run, or the scoped view had no such session). The newest season keeps its rate so far, 0 before anyone registers
    */
-  retention_rate: number
+  retention_rate: number | null
   /**
    * Base Count
    *

@@ -365,7 +365,8 @@ export interface RetentionTrendYear {
   gender_fallback_count?: number
   from_year: number
   to_year: number
-  retention_rate: number
+  /** Null when it can't be worked out (PM-4): no base, or a past season nobody attended (2020). */
+  retention_rate: number | null
   base_count: number
   returned_count: number
   by_gender: RetentionByGender[]

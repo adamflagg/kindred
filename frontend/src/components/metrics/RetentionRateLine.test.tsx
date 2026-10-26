@@ -59,3 +59,17 @@ describe('RetentionRateLine legend and note', () => {
     expect(screen.queryByText(/dashed/)).not.toBeInTheDocument()
   })
 })
+
+describe('retentionLineData — a year with no rate (PM-4 A)', () => {
+  it('leaves it off the line: a gap, never a dip to 0', () => {
+    const rows = retentionLineData(
+      [
+        t(2019, 0.65),
+        { ...t(2020, 0), retention_rate: null },
+        { ...t(2021, 0), retention_rate: null },
+      ],
+      false
+    )
+    expect(rows.map((r) => r.retentionRate)).toEqual([65, null, null])
+  })
+})

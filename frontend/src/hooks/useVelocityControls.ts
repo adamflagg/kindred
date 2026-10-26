@@ -34,8 +34,10 @@ export function useVelocityControls(availableYears: number[], currentYear: numbe
   // True until staff pick a prior year themselves: the link carried no `priors=` when the page opened.
   // The default is written into the link right away, so the link alone cannot tell it from a pick.
   const [priorsAreDefault, setPriorsAreDefault] = useState(() => !searchParams.has(PRIORS_PARAM))
-  // The default prior year this page dropped for having nothing to compare with (the page says so once).
-  const [droppedDefaultPrior, setDroppedDefaultPrior] = useState<number | null>(null)
+  // The default prior year this page dropped for having nothing to compare with (the page says so once),
+  // with the season it was dropped in: the notice is that season's, and a pick of staff's own ends it.
+  const [dropped, setDropped] = useState<{ year: number; season: number } | null>(null)
+  const droppedDefaultPrior = dropped?.season === currentYear ? dropped.year : null
 
   const priorsRaw = searchParams.get(PRIORS_PARAM)
   const selectedPriorYears = useMemo(
@@ -71,7 +73,10 @@ export function useVelocityControls(availableYears: number[], currentYear: numbe
   // Read-modify-write against the latest params, so consecutive updates compose.
   const updatePriors = useCallback(
     (update: (current: number[]) => number[], picked = true) => {
-      if (picked) setPriorsAreDefault(false)
+      if (picked) {
+        setPriorsAreDefault(false)
+        setDropped(null)
+      }
       setSearchParams(
         (prev) => {
           const newParams = new URLSearchParams(prev)
@@ -87,7 +92,7 @@ export function useVelocityControls(availableYears: number[], currentYear: numbe
 
   // Untick the default comparison year without it counting as a pick (it had nothing to compare with).
   const dropDefaultPrior = (year: number) => {
-    setDroppedDefaultPrior(year)
+    setDropped({ year, season: currentYear })
     setPriorsAreDefault(false)
     updatePriors(() => [], false)
   }

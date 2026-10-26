@@ -477,8 +477,12 @@ class MetricsRepository:
             logger.warning(f"Could not fetch budget config for year {year}: {e}")
             return {}
 
-    async def fetch_registration_dates(self, year: int) -> dict[str, str]:
-        """Fetch registration phase dates from config table."""
+    async def fetch_registration_dates(self, year: int, *, strict: bool = False) -> dict[str, str]:
+        """Fetch registration phase dates from config table.
+
+        A failed read returns ``{}`` (no dates) unless ``strict``, when it raises: a caller that must tell
+        "none configured" from "could not be read" (Retention's comparison, PM-4) asks for strict.
+        """
         try:
             records = await asyncio.to_thread(
                 self.pb.collection(CONFIG).get_full_list,
@@ -488,6 +492,8 @@ class MetricsRepository:
             )
             return {getattr(r, "config_key", ""): getattr(r, "value", "") for r in records}
         except Exception:
+            if strict:
+                raise
             return {}
 
     async def fetch_availability_config(self, year: int) -> list[Any]:

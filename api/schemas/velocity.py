@@ -144,7 +144,8 @@ class PriorYearSessionSummary(BaseModel):
 class GenderHistoryGap(BaseModel):
     """Cancellation Velocity, split by gender: how much of a season's total the gender lines cannot show.
 
-    Campers already cancelled when the dashboard first saw them have no status history row, so they are in the
+    Campers already cancelled when the dashboard first saw them have no status history row (no date), and on the
+    Gender field's boys and girls lines a camper with another or no answer has no line: either way they are in the
     snapshot total but never on a line.
     """
 
