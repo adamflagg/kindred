@@ -144,3 +144,59 @@ func TestAllSeasonsHoldWaitsForAQueueThatClaimedFirst(t *testing.T) {
 		release()
 	})
 }
+
+// TestPhaseRunAndAllSeasonsHoldExcludeEachOther: a phase run (Run Phase, or one dequeued) starts
+// its jobs one at a time with no job running in between, so it holds a queue slot of its own for
+// its whole length. The pass waits for that slot, and a phase run waits for the pass's hold
+// (CodeRabbit on #3303).
+func TestPhaseRunAndAllSeasonsHoldExcludeEachOther(t *testing.T) {
+	runInBubble(t, func(t *testing.T) {
+		o, _, _ := newAllSeasonsOrchestrator(t)
+
+		// A phase run first: the API reads busy between its jobs, and the pass waits.
+		releasePhase, err := o.claimPhaseRun(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !o.IsAnyQueueBusy() {
+			t.Error("a phase run is in flight, but the API's admission check reads idle")
+		}
+		held := make(chan func(), 1)
+		go func() {
+			release, holdErr := o.holdQueuesForAllSeasons(context.Background())
+			if holdErr != nil {
+				t.Error(holdErr)
+			}
+			held <- release
+		}()
+		synctest.Wait()
+		select {
+		case <-held:
+			t.Fatal("the pass took the hold while a phase run was between two jobs")
+		default:
+		}
+		releasePhase()
+		releaseHold := <-held
+
+		// Then the pass holds: a phase run waits for it to let go.
+		claimed := make(chan func(), 1)
+		go func() {
+			release, claimErr := o.claimPhaseRun(context.Background())
+			if claimErr != nil {
+				t.Error(claimErr)
+			}
+			claimed <- release
+		}()
+		synctest.Wait()
+		select {
+		case <-claimed:
+			t.Fatal("a phase run started while the pass held the queues")
+		default:
+		}
+		releaseHold()
+		(<-claimed)()
+		if o.IsAnyQueueBusy() {
+			t.Error("everything was released, but the API still reads busy")
+		}
+	})
+}

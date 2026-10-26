@@ -1801,6 +1801,15 @@ func processQueuedSyncs(orchestrator *Orchestrator) {
 		// GetStatus's "pending" rendering; the runs themselves take their year from here.
 		batch := newBatch(triggerManual).forYear(qs.Year)
 
+		// The phase holds a queue slot for its whole run, so the all-seasons re-sync cannot start
+		// in a gap between two of its jobs. Released after the loop, not deferred: a defer here
+		// would hold the slot through the recursive processQueuedSyncs below.
+		releasePhase, claimErr := orchestrator.claimPhaseRun(ctx)
+		if claimErr != nil {
+			slog.Error("Queued phase sync abandoned while waiting for the queues", "phase", phase, "error", claimErr)
+			break
+		}
+
 		// Set the current sync year so services use correct year
 		orchestrator.mu.Lock()
 		orchestrator.currentSyncYear = qs.Year
@@ -1868,6 +1877,7 @@ func processQueuedSyncs(orchestrator *Orchestrator) {
 				}
 			}
 		}
+		releasePhase()
 		slog.Info("Queued phase sync completed", "id", qs.ID, "phase", phase, "year", qs.Year)
 
 	case "individual":
@@ -3027,6 +3037,14 @@ func handleRunPhase(e *core.RequestEvent, scheduler *Scheduler) error {
 		// One phase is one queue and so one batch, filed under the requested year rather
 		// than read back off the process-global currentSyncYear below.
 		batch := newBatch(triggerManual).forYear(year)
+
+		// The phase holds a queue slot for its whole run (see the queued path above).
+		releasePhase, claimErr := orchestrator.claimPhaseRun(ctx)
+		if claimErr != nil {
+			slog.Error("Phase sync abandoned while waiting for the queues", "phase", phase, "error", claimErr)
+			return
+		}
+		defer releasePhase()
 
 		// Set the current sync year so services use correct year
 		// (same pattern as RunSyncWithOptions)

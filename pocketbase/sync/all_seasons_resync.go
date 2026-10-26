@@ -152,8 +152,8 @@ func (o *Orchestrator) RunAllSeasonsResync(ctx context.Context) error {
 // holdQueuesForAllSeasons waits until no other queue and no job is running, then takes the hold
 // on the sync queues in the same critical section as that check, so nothing can claim a queue in
 // between: the nightly or a staff full run (dailySyncRunning), a replay or a manual N-1 run
-// (historicalSyncRunning), the weekly globals, the custom-values queue, the hourly run, or a job
-// started on its own. While the hold is taken those queues wait in claimQueue, the hourly run
+// (historicalSyncRunning), the weekly globals, the custom-values queue, the hourly run, a phase
+// run (claimPhaseRun), or a job started on its own. While the hold is taken those queues wait in claimQueue, the hourly run
 // yields (hourlyBlockerLocked), and the API queues a staff press (IsAnyQueueBusy). The caller
 // lets go with the returned func, once.
 //
@@ -163,7 +163,7 @@ func (o *Orchestrator) holdQueuesForAllSeasons(ctx context.Context) (release fun
 	for {
 		o.mu.Lock()
 		busy := o.dailySyncRunning || o.historicalSyncRunning || o.weeklySyncRunning ||
-			o.customValuesSyncRunning || o.hourlySyncRunning || o.anyJobRunningLocked()
+			o.customValuesSyncRunning || o.hourlySyncRunning || o.phaseRuns > 0 || o.anyJobRunningLocked()
 		if !busy {
 			hold := make(chan struct{})
 			o.allSeasonsHold = hold
@@ -230,5 +230,21 @@ func (o *Orchestrator) IsAnyQueueBusy() bool {
 	defer o.mu.RUnlock()
 	return o.dailySyncRunning || o.weeklySyncRunning || o.historicalSyncRunning ||
 		o.customValuesSyncRunning || o.hourlySyncRunning || o.allSeasonsHold != nil ||
-		o.anyJobRunningLocked()
+		o.phaseRuns > 0 || o.anyJobRunningLocked()
+}
+
+// claimPhaseRun holds a queue slot for one phase run (Run Phase, immediate or dequeued) for its
+// whole length, through claimQueue: it waits while the all-seasons re-sync holds the queues, and
+// the pass and the API's admission check count it until the returned func lets go.
+func (o *Orchestrator) claimPhaseRun(ctx context.Context) (release func(), err error) {
+	if err := o.claimQueue(ctx, "a phase run", func() { o.phaseRuns++ }); err != nil {
+		return nil, err
+	}
+	return func() {
+		o.mu.Lock()
+		if o.phaseRuns > 0 { // ClearSyncFlags may have zeroed it under a live run
+			o.phaseRuns--
+		}
+		o.mu.Unlock()
+	}, nil
 }
