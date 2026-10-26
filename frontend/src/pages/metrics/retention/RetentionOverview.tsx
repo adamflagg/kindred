@@ -52,12 +52,13 @@ import { useCompareYearFilter } from '../../../hooks/useCompareYearFilter'
 import { formatSignedCount } from '../../../utils/numberFormat'
 import { RetentionChange } from '../../../components/metrics/RetentionChange'
 import {
-  cityPairKey,
   describeRetentionBasis,
   firstSummerPairKeys,
   regionPriorBars,
   retentionCompareView,
+  retentionUnavailableText,
   sessionPairKey,
+  withPriorCityRates,
   withPriorRates,
   type RetentionBasis,
 } from '../../../utils/retentionCompare'
@@ -165,6 +166,7 @@ export default function RetentionOverview() {
     base: data.base_year_total,
     returned: data.returned_count,
   })
+  const unavailableText = retentionUnavailableText(prior, currentYear)
   const compare = basis ? retentionCompareView(basis, currentYear) : undefined
   const live = basis?.live ?? false
   // With nothing to compare with yet, every chart reads as before (no half-switched page, #87)
@@ -206,7 +208,9 @@ export default function RetentionOverview() {
     firstSummerPairKeys.current,
     firstSummerPairKeys.prior
   )
-  const cityBars = pair(cityToBarData(data.by_city), cityToBarData(prior?.by_city), cityPairKey)
+  const cityBars = compare
+    ? withPriorCityRates(cityToBarData(data.by_city), cityToBarData(prior?.by_city))
+    : cityToBarData(data.by_city)
   const schoolBars = pair(schoolToBarData(data.by_school), schoolToBarData(prior?.by_school))
   const synagogueBars = pair(
     synagogueToBarData(data.by_synagogue),
@@ -230,6 +234,7 @@ export default function RetentionOverview() {
     <MetricsBusy busy={isPlaceholderData || priorPlaceholder === true} what={String(currentYear)}>
       <div className="space-y-6">
         {basis && <BasisSentence basis={basis} />}
+        {unavailableText && <p className="text-muted-foreground text-sm">{unavailableText}</p>}
 
         {/* Summary Cards */}
         <div
@@ -280,7 +285,9 @@ export default function RetentionOverview() {
               setFilter({
                 type: 'retention_not_returned',
                 value: 'all',
-                label: `Did Not Return to ${currentYear}`,
+                label: live
+                  ? `Not yet returned to ${currentYear}`
+                  : `Did Not Return to ${currentYear}`,
                 retentionContext: { baseYear: priorYear, compareYear: currentYear },
               })
             }

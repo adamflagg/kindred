@@ -79,7 +79,12 @@ import { genderNote } from '../../../components/metrics/genderNotes'
 import { MetricsBusy, MetricsLoadError } from '../../../components/metrics/MetricsQueryGuard'
 import { DELTA_INK, deltaInk } from '../../../utils/deltaTokens'
 import { useLiveSync } from '../../../hooks/useLiveSync'
-import { liveLabelLines, livePoint } from '../../../components/velocity/velocityLive'
+import {
+  liveLabelLines,
+  livePoint,
+  staleStoredDate,
+  storedCountWhen,
+} from '../../../components/velocity/velocityLive'
 import { velocityLiveDot } from '../../../components/velocity/velocityLiveDot'
 
 type VelocityViewMode = 'gross' | 'net' | 'delta'
@@ -92,8 +97,11 @@ const VIEW_MODE_LABELS: Record<VelocityViewMode, string> = {
 
 /** PR 5b: the current line's colour, which the live segment continues. */
 const CURRENT_LINE = 'hsl(160, 100%, 35%)'
-/** PR 5b: the live segment's legend entry (the dashed part after the 3 a.m. count). */
-const LIVE_LINE_NAME = 'since the 3 a.m. count (hourly sync)'
+/**
+ * PR 5b: the live segment's legend entry (the dashed part after the 3 a.m. count), naming the stored
+ * count's date after a missed nightly (OD-48).
+ */
+const liveLineName = (storedWhen: string) => `since the ${storedWhen} count (hourly sync)`
 
 const Y_AXIS_LABELS: Record<VelocityViewMode, string> = {
   gross: 'Gross Enrollment',
@@ -142,6 +150,8 @@ export default function VelocityPage() {
   // PR 5b: the count after the 3 a.m. stored point, drawn only after a fresh hourly sync (velocityLive)
   const { sync, now } = useLiveSync(currentYear)
   const live = useMemo(() => (data ? livePoint(data, sync, now) : null), [data, sync, now])
+  // "3 a.m.", or the stored count's date after a missed nightly, whether or not the point draws (OD-48)
+  const storedWhen = storedCountWhen(data ? staleStoredDate(data, now) : null)
 
   // Separate zoom state per chart to avoid cross-contamination (#510)
   const weeklyZoom = useChartZoom(chartData.weeklyChartData.length)
@@ -557,7 +567,7 @@ export default function VelocityPage() {
               </p>
               <p className="text-muted-foreground text-xs">
                 camper-sessions
-                {live ? ' · as of the hourly sync' : data.live ? ' · 3 a.m. count' : ''}
+                {live ? ' · as of the hourly sync' : data.live ? ` · ${storedWhen} count` : ''}
               </p>
             </div>
             <div className="card-lodge p-3">
@@ -599,7 +609,7 @@ export default function VelocityPage() {
                 {formatCount(summaryCards.cancelledToDate)}
               </p>
               {data.live && (
-                <p className="text-muted-foreground text-xs">3 a.m. count (not live)</p>
+                <p className="text-muted-foreground text-xs">{storedWhen} count (not live)</p>
               )}
             </div>
             <div className="card-lodge p-3">
@@ -1162,7 +1172,7 @@ export default function VelocityPage() {
                       // line's own; the empty Line only names the dashed segment in the legend.
                       <Line
                         dataKey="live"
-                        name={LIVE_LINE_NAME}
+                        name={liveLineName(storedWhen)}
                         stroke={CURRENT_LINE}
                         strokeWidth={3}
                         strokeDasharray="4 3"

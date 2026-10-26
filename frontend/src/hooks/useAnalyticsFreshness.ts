@@ -6,8 +6,8 @@
  * hourly but is not what Analytics counts.
  *
  * Scoped to the season being viewed (useViewedSeasonSyncStatus). An older season re-syncs weekly
- * (Saturday 05:00), while N and N−1 run on the regular schedule, so for it the chip shows
- * nothing rather than overstate.
+ * (Saturday 05:00), while N and N−1 run on the regular schedule, so for it the chip says "Not synced"
+ * rather than overstate.
  */
 
 import { freshnessRun } from '../utils/syncFreshness'
@@ -16,28 +16,28 @@ import { useViewedSeasonSyncStatus } from './useViewedSeasonSyncStatus'
 
 export type AnalyticsFreshness =
   | { kind: 'loading' }
-  /** The viewed season is not one the scheduled runs cover: show no chip. */
+  /** The viewed season is not one the scheduled runs cover: the chip says "Not synced". */
   | { kind: 'none' }
   /** A synced season whose attendees job has never run for it. */
   | { kind: 'never' }
   /**
    * `at` is the last SUCCESSFUL run (row 2 of the #3283 scan: #111 says "last good sync"), and `failed` is
-   * whether the run after it failed, kept through the run that follows so the live point stays hidden. The
-   * keeping is this session's memory (lastFinished): a page first opened while that next run is going
-   * cannot know the one before it failed, and reads false.
+   * whether a real run since it failed. `failed` comes from the payload (`last_run_failed`, ti:P-35), so it
+   * holds through the dry run or the live run that follows and for a page first opened mid-run.
    */
   | { kind: 'synced'; at: string; running: boolean; failed: boolean }
-  /** A run is live and no finished time has been seen this session: "Enrollments syncing now". */
+  /** A run is live and no finished time is known: "Enrollments syncing now". */
   | { kind: 'syncing' }
 
 /**
- * What the last finished attendees run seen per season, this session, said: the last success's time
- * (`at`) and whether that finished run failed. A live (running or queued) run arrives WITHOUT end_time:
- * the backend returns that entry in place of the last finished one (orchestrator.go statusLocked).
- * Remembering both keeps "Enrollments synced 7h ago · syncing now" true through a run, and the live
- * point hidden through the run after a failure. Module-level, so it survives navigation.
+ * The last success's time seen per season, this session. A live (running or queued) run arrives WITHOUT
+ * end_time: the backend returns that entry in place of the last finished one (orchestrator.go
+ * statusLocked). The backend now stamps last_success_at on every entry, so this only keeps "Enrollments
+ * synced 7h ago · syncing now" true against a payload that lacks it. Whether a run failed is NOT kept
+ * here: the payload says it (last_run_failed), so a page opened mid-run cannot miss it. Module-level, so
+ * it survives navigation.
  */
-const lastFinished = new Map<number, { at: string | undefined; failed: boolean }>()
+const lastFinished = new Map<number, string | undefined>()
 
 /** Tests only: start each case with nothing remembered. */
 export function forgetFinishedRuns(): void {
@@ -52,20 +52,23 @@ export function useAnalyticsFreshness(year: number): AnalyticsFreshness {
 
   // A job that has never run for this season is absent from the payload. A dry run dates
   // nothing: freshnessRun answers it with the last real run, or nothing.
-  const attendees = freshnessRun((scoped as Partial<SyncStatusResponse>).attendees)
+  const entry = (scoped as Partial<SyncStatusResponse>).attendees
+  const attendees = freshnessRun(entry)
   if (!attendees) return { kind: 'never' }
   const live = attendees.status === 'running' || attendees.status === 'pending'
   // The last success: the backend's last_success_at, or, from an older backend, a success dating itself.
   const successAt =
     attendees.last_success_at ?? (attendees.status === 'success' ? attendees.end_time : undefined)
-  const prev = lastFinished.get(year)
+  // Read off the job's own entry (a dry run's last_real_run is a success and carries no flag); a finished
+  // real failure also says it of itself.
+  const failed =
+    entry?.last_run_failed === true || (!live && !entry?.dry_run && attendees.status === 'failed')
   if (attendees.end_time && !live) {
-    const failed = attendees.status === 'failed'
-    const at = successAt ?? (failed ? prev?.at : undefined)
-    lastFinished.set(year, { at, failed })
+    const at = successAt ?? (failed ? lastFinished.get(year) : undefined)
+    lastFinished.set(year, at)
     return at ? { kind: 'synced', at, running: false, failed } : { kind: 'never' }
   }
-  const at = successAt ?? prev?.at
-  if (at) return { kind: 'synced', at, running: live, failed: prev?.failed ?? false }
+  const at = successAt ?? lastFinished.get(year)
+  if (at) return { kind: 'synced', at, running: live, failed }
   return live ? { kind: 'syncing' } : { kind: 'never' }
 }

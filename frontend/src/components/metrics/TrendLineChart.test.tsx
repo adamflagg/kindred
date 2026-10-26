@@ -5,14 +5,22 @@ import { computeCoverageBands } from './cssChartUtils'
 import type { YearMetrics } from '../../types/metrics'
 
 let capturedStrokeLinecaps: string[] = []
+let capturedChartData: Array<Record<string, number | null>> = []
 
 vi.mock('recharts', () => ({
   ResponsiveContainer: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="responsive-container">{children}</div>
   ),
-  LineChart: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="line-chart">{children}</div>
-  ),
+  LineChart: ({
+    children,
+    data,
+  }: {
+    children: React.ReactNode
+    data?: Array<Record<string, number | null>>
+  }) => {
+    capturedChartData = data ?? []
+    return <div data-testid="line-chart">{children}</div>
+  },
   Line: ({ strokeLinecap }: { strokeLinecap?: string }) => {
     if (strokeLinecap) capturedStrokeLinecaps.push(strokeLinecap)
     return <div data-testid="line" />
@@ -187,5 +195,48 @@ describe('TrendLineChart — coverage band rendering (#2443)', () => {
     // total_enrolled has no coverage concept -- the band is scoped to cancellation data only.
     render(<TrendLineChart data={coverageData} title="Total Enrolled" metric="total" />)
     expect(screen.queryByTestId('coverage-band')).not.toBeInTheDocument()
+  })
+})
+
+describe('TrendLineChart — cancellation rate axis and years with nobody enrolled', () => {
+  const year = (
+    y: number,
+    enrolled: number,
+    cancelled: number,
+    rate: number | null
+  ): YearMetrics => ({
+    year: y,
+    total_enrolled: enrolled,
+    by_gender: [],
+    new_vs_returning: {
+      new_count: 0,
+      returning_count: 0,
+      new_percentage: 0,
+      returning_percentage: 0,
+    },
+    total_cancelled: cancelled,
+    cancellation_rate: rate,
+    has_cancellation_data: true,
+  })
+
+  it('sizes the percent axis from the rate, not the cancelled count', () => {
+    const data = [year(2024, 1000, 350, 25), year(2025, 1000, 200, 16.7)]
+    render(<TrendLineChart data={data} title="Cancellation Rate" metric="cancellation_rate" />)
+    expect(screen.queryByText('350%')).not.toBeInTheDocument()
+    expect(screen.queryByText('300%')).not.toBeInTheDocument()
+    expect(screen.getByText('25%')).toBeInTheDocument()
+  })
+
+  it('leaves a year with no rate off the line: a gap, not a 0 and not a 100', () => {
+    const data = [year(2019, 1000, 150, 13), year(2020, 0, 1400, null), year(2021, 700, 380, 35.3)]
+    render(<TrendLineChart data={data} title="Cancellation Rate" metric="cancellation_rate" />)
+    expect(capturedChartData.map((d) => d['cancellation_rate'])).toEqual([13, null, 35.3])
+  })
+
+  it("keeps the axis off the empty year's cancelled count", () => {
+    const data = [year(2019, 1000, 150, 13), year(2020, 0, 1400, null)]
+    render(<TrendLineChart data={data} title="Cancellation Rate" metric="cancellation_rate" />)
+    expect(screen.queryByText('1400%')).not.toBeInTheDocument()
+    expect(screen.queryByText('1,400%')).not.toBeInTheDocument()
   })
 })

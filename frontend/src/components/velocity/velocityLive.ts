@@ -60,6 +60,22 @@ export function syncBehind(at: string | null, now: number): boolean {
   return at != null && now - parseTime(at) > LIVE_SYNC_MAX_AGE_MS
 }
 
+/**
+ * The stored point's date ('2026-12-14') when the stored count is more than ~26 h old, i.e. a nightly was
+ * missed; null otherwise, and null with no live count to date it by. From the data alone, so the captions
+ * that show while the live point is hidden can name it too (ub:PR#3283:5, OD-48).
+ */
+export function staleStoredDate(
+  data: Pick<VelocityResponse, 'live' | 'combined'>,
+  now: number
+): string | null {
+  const live = data.live
+  if (!live || now - parseTime(live.stored_at) <= STORED_STALE_MS) return null
+  // A point with no date ('') falls back to the stored count's own day.
+  const date = data.combined.daily.at(-1)?.date
+  return date !== undefined && date !== '' ? date : live.stored_at.slice(0, 10)
+}
+
 export function livePoint(
   data: Pick<VelocityResponse, 'live' | 'combined' | 'today_day_offset'>,
   sync: LiveSync,
@@ -79,10 +95,7 @@ export function livePoint(
     storedDay: last.day_offset,
     x: last.day_offset + Math.min(since / DAY_MS, 1),
     at: sync.at,
-    storedDate:
-      now - parseTime(live.stored_at) > STORED_STALE_MS
-        ? last.date || live.stored_at.slice(0, 10)
-        : null,
+    storedDate: staleStoredDate(data, now),
   }
 }
 
@@ -103,14 +116,18 @@ function shortDate(date: string): string {
   })
 }
 
+/** When the stored count was taken: "3 a.m.", or "Dec 14, 3 a.m." after a missed nightly (staleStoredDate). */
+export function storedCountWhen(storedDate: string | null | undefined): string {
+  return storedDate ? `${shortDate(storedDate)}, 3 a.m.` : '3 a.m.'
+}
+
 /**
  * #108: "+626 since 3 a.m.", or null at zero (the callout disappears). With the stored point's date
  * (a missed nightly), "+626 since Dec 14, 3 a.m.".
  */
 export function sinceStoredLabel(added: number, storedDate?: string | null): string | null {
   if (added === 0) return null
-  const when = storedDate ? `${shortDate(storedDate)}, 3 a.m.` : '3 a.m.'
-  return `${formatSignedCount(added)} since ${when}`
+  return `${formatSignedCount(added)} since ${storedCountWhen(storedDate)}`
 }
 
 export interface LiveLabelLine {

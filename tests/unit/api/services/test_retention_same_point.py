@@ -192,6 +192,36 @@ class TestRetentionSamePoint:
         assert result.as_of_date is None
 
     @pytest.mark.asyncio
+    async def test_unreadable_compare_year_dates_say_the_comparison_is_unavailable(self) -> None:
+        """A read FAILURE is not "no anchor configured": the page must not quietly show final-vs-final."""
+        repo = _repo(BASE_ROWS + PRIOR_ROWS)
+        working = repo.fetch_registration_dates.side_effect
+
+        async def fetch_dates(year: int) -> dict[str, str]:
+            if year == PRIOR:
+                raise RuntimeError("PocketBase is down")
+            dates: dict[str, str] = await working(year)
+            return dates
+
+        repo.fetch_registration_dates.side_effect = fetch_dates
+        service = RetentionService(repo)
+
+        result = await service.calculate_retention(BASE, PRIOR, same_point_of=CURRENT, today=date(2026, 3, 2))
+
+        assert result.prior_basis == "unavailable"
+        assert result.prior_unavailable_reason == "registration_dates_unreadable"
+        assert result.as_of_date is None
+
+    @pytest.mark.asyncio
+    async def test_a_configured_anchor_leaves_no_unavailable_reason(self) -> None:
+        service = RetentionService(_repo(BASE_ROWS + PRIOR_ROWS))
+
+        result = await service.calculate_retention(BASE, PRIOR, same_point_of=CURRENT, today=date(2026, 3, 2))
+
+        assert result.prior_basis == "same_point"
+        assert result.prior_unavailable_reason is None
+
+    @pytest.mark.asyncio
     async def test_without_same_point_of_the_read_is_unchanged(self) -> None:
         repo = _repo(BASE_ROWS + PRIOR_ROWS)
         service = RetentionService(repo)

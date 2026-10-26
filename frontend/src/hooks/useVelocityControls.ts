@@ -31,6 +31,12 @@ export function useVelocityControls(availableYears: number[], currentYear: numbe
     [availableYears, currentYear]
   )
 
+  // True until staff pick a prior year themselves: the link carried no `priors=` when the page opened.
+  // The default is written into the link right away, so the link alone cannot tell it from a pick.
+  const [priorsAreDefault, setPriorsAreDefault] = useState(() => !searchParams.has(PRIORS_PARAM))
+  // The default prior year this page dropped for having nothing to compare with (the page says so once).
+  const [droppedDefaultPrior, setDroppedDefaultPrior] = useState<number | null>(null)
+
   const priorsRaw = searchParams.get(PRIORS_PARAM)
   const selectedPriorYears = useMemo(
     () => parsePriors(priorsRaw, priorYearOptions),
@@ -41,6 +47,14 @@ export function useVelocityControls(availableYears: number[], currentYear: numbe
   // keeps its comparison year after a newer season exists. Never while options are still empty:
   // that would write `priors=` (none ticked) over the default.
   const defaultPrior = priorYearOptions[0]
+  // The default prior year while it is still only the default; null once staff pick, or when none applies.
+  const implicitDefaultPrior =
+    priorsAreDefault &&
+    defaultPrior != null &&
+    selectedPriorYears.length === 1 &&
+    selectedPriorYears[0] === defaultPrior
+      ? defaultPrior
+      : null
   useEffect(() => {
     if (priorsRaw !== null || defaultPrior == null) return
     setSearchParams(
@@ -56,7 +70,8 @@ export function useVelocityControls(availableYears: number[], currentYear: numbe
 
   // Read-modify-write against the latest params, so consecutive updates compose.
   const updatePriors = useCallback(
-    (update: (current: number[]) => number[]) => {
+    (update: (current: number[]) => number[], picked = true) => {
+      if (picked) setPriorsAreDefault(false)
       setSearchParams(
         (prev) => {
           const newParams = new URLSearchParams(prev)
@@ -69,6 +84,13 @@ export function useVelocityControls(availableYears: number[], currentYear: numbe
     },
     [setSearchParams, priorYearOptions]
   )
+
+  // Untick the default comparison year without it counting as a pick (it had nothing to compare with).
+  const dropDefaultPrior = (year: number) => {
+    setDroppedDefaultPrior(year)
+    setPriorsAreDefault(false)
+    updatePriors(() => [], false)
+  }
 
   const togglePriorYear = (year: number) => {
     if (splitByGender) {
@@ -131,6 +153,9 @@ export function useVelocityControls(availableYears: number[], currentYear: numbe
     genderBasis,
     setGenderBasis,
     priorYearOptions,
+    implicitDefaultPrior,
+    dropDefaultPrior,
+    droppedDefaultPrior,
     togglePriorYear,
     handleGenderToggle,
     paceFold,

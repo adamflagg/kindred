@@ -63,6 +63,12 @@ export interface SyncStatus {
    */
   last_success_at?: string
   /**
+   * A real run since the last success failed (`Status.LastRunFailed`): the job's newest finished real
+   * run, dry runs skipped, failed. On every entry whatever its own outcome, so it holds through the dry
+   * run or the live run that follows. Absent means no. The live point stays hidden while it is set.
+   */
+  last_run_failed?: boolean
+  /**
    * The weekend this run was started FOR, absent when it covers everything
    * (kindred#2601, `Status.Session` in pocketbase/sync/orchestrator.go).
    *

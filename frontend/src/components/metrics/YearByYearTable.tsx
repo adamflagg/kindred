@@ -157,13 +157,17 @@ export function YearByYearTable({
   years,
   live,
   retention,
+  scoped = false,
 }: {
   years: readonly YearMetrics[]
   live: LiveCompare | null
+  /** A single session or duration is picked: a year with nobody enrolled may only lack that session. */
+  scoped?: boolean
   /** Trends' retention transitions (#3207 PR 11, ruling #90): adds Retention and Retention change. */
   retention?: RetentionTrendsResponse | undefined
 }) {
   const hasRetention = retention !== undefined
+  const noEnrollmentText = scoped ? 'None enrolled' : 'No camp'
   const liveN = liveNoteN(hasRetention)
   const natural = buildYearRows(years, live, retention)
   const fallbackSeasons = years.map((y) => ({
@@ -300,7 +304,11 @@ export function YearByYearTable({
                     {r.cancelled === null ? '—' : formatCount(r.cancelled)}
                   </td>
                   <td className="text-muted-foreground px-1.5 py-3 text-right first:pl-4 last:pr-4">
-                    {r.cancelPct === null ? '—' : formatPercent(r.cancelPct)}
+                    {r.noEnrollment
+                      ? noEnrollmentText
+                      : r.cancelPct === null
+                        ? '—'
+                        : formatPercent(r.cancelPct)}
                   </td>
                   {hasRetention && (
                     <td className="text-foreground px-1.5 py-3 text-right tabular-nums first:pl-4 last:pr-4">

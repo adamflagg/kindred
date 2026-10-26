@@ -90,8 +90,10 @@ const state = {
   priorYears: [] as number[],
 }
 
-const GAP = (n: number) =>
-  `The gender lines count each cancellation on the day the dashboard first saw it. ${n} this season were already cancelled when the dashboard first saw them, so they're in the total but not in these lines.`
+// The Gender field's lines are boys and girls only, so a camper with another or no answer lands in N too; the
+// identity lines hold every answer, so only the date cause applies there.
+const GAP = (n: number, basis: 'field' | 'identity') =>
+  `The gender lines count each cancellation on the day the dashboard first saw it. ${n} cancellations this season have no date${basis === 'field' ? ' or no boy/girl answer' : ''}, so they're in the total but not in these lines.`
 const NO_HISTORY =
   'No day-by-day cancellation history for this season: the dashboard first saw every cancellation already made.'
 
@@ -173,7 +175,7 @@ describe.each(['field', 'identity'] as const)(
     it('shows the numbered note with N when cancellations are missing from the lines', () => {
       state.data = withGaps(basis, [{ year: 2026, unseen_count: 75, no_history: false }])
       show()
-      const note = screen.getByText(GAP(75)).closest('li') as HTMLElement
+      const note = screen.getByText(GAP(75, basis)).closest('li') as HTMLElement
       expect(note.textContent).toMatch(/^\d+\. /)
       expect(screen.queryByText(NO_HISTORY)).toBeNull()
     })
@@ -181,7 +183,7 @@ describe.each(['field', 'identity'] as const)(
     it('shows no note at 0', () => {
       state.data = withGaps(basis, [{ year: 2026, unseen_count: 0, no_history: false }])
       show()
-      expect(screen.queryByText(/already cancelled when the dashboard first saw them/)).toBeNull()
+      expect(screen.queryByText(/cancellations this season have no date/)).toBeNull()
       expect(screen.queryByText(NO_HISTORY)).toBeNull()
     })
 
@@ -192,7 +194,7 @@ describe.each(['field', 'identity'] as const)(
       }
       show()
       expect(screen.getByText(NO_HISTORY)).toBeInTheDocument()
-      expect(screen.queryByText(/already cancelled when the dashboard first saw them/)).toBeNull()
+      expect(screen.queryByText(/cancellations this season have no date/)).toBeNull()
       // The total keeps its column in the weekly table; only the gender lines are replaced.
       expect(screen.getAllByRole('columnheader', { name: 'Total' }).length).toBeGreaterThan(0)
     })
@@ -204,7 +206,7 @@ describe.each(['field', 'identity'] as const)(
         { year: 2025, unseen_count: 233, no_history: true },
       ])
       show()
-      expect(screen.getByText(`2026: ${GAP(75)}`)).toBeInTheDocument()
+      expect(screen.getByText(`2026: ${GAP(75, basis)}`)).toBeInTheDocument()
       expect(screen.getByText(`2025: ${NO_HISTORY}`)).toBeInTheDocument()
     })
 
@@ -215,7 +217,7 @@ describe.each(['field', 'identity'] as const)(
         { year: 2025, unseen_count: 0, no_history: false },
       ])
       show()
-      expect(screen.getByText(GAP(75))).toBeInTheDocument()
+      expect(screen.getByText(GAP(75, basis))).toBeInTheDocument()
     })
 
     it('numbers several history notes one after another, after the page notes', () => {
@@ -225,8 +227,8 @@ describe.each(['field', 'identity'] as const)(
         { year: 2025, unseen_count: 12, no_history: false },
       ])
       show()
-      const first = screen.getByText(`2026: ${GAP(75)}`).closest('li') as HTMLElement
-      const second = screen.getByText(`2025: ${GAP(12)}`).closest('li') as HTMLElement
+      const first = screen.getByText(`2026: ${GAP(75, basis)}`).closest('li') as HTMLElement
+      const second = screen.getByText(`2025: ${GAP(12, basis)}`).closest('li') as HTMLElement
       const numberOf = (li: HTMLElement) => Number(/^(\d+)\./.exec(li.textContent ?? '')?.[1])
       expect(numberOf(second)).toBe(numberOf(first) + 1)
       // Every note on the page is numbered once, so the two never share a number.
@@ -238,7 +240,7 @@ describe.each(['field', 'identity'] as const)(
       state.splitByGender = false
       state.data = withGaps(basis, [{ year: 2026, unseen_count: 75, no_history: false }])
       show()
-      expect(screen.queryByText(/already cancelled when the dashboard first saw them/)).toBeNull()
+      expect(screen.queryByText(/cancellations this season have no date/)).toBeNull()
     })
   }
 )
@@ -254,7 +256,7 @@ describe('Cancellation Velocity › history gap numbering after the page notes',
     }
     show()
     const items = Array.from(document.querySelectorAll('li')).map((li) => li.textContent ?? '')
-    const gap = items.findIndex((t) => t.includes(GAP(75)))
+    const gap = items.findIndex((t) => t.includes(GAP(75, 'identity')))
     expect(gap).toBeGreaterThan(0)
     expect(items[gap]).toMatch(new RegExp(`^${gap + 1}\\. `))
   })

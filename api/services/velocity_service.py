@@ -255,8 +255,8 @@ def _value_at_day_offset(
 def _history_start_offset(status_history_start: str | None, season_start: datetime) -> int | None:
     """The registration day a season's status history starts on; None when it is unknown.
 
-    Ruling 8 (owner, 2026-10-14): a year whose history starts partway through its season has no
-    same-day cancellation figure before that day, so the read is None ("-"), never 0.
+    Ruled 2026-10-14 with PR 3b (#3207, gap-plan row 22, V5): a year whose history starts
+    mid-season reads "-" not 0, so the read is None before that day.
     """
     if not status_history_start:
         return None
@@ -264,7 +264,7 @@ def _history_start_offset(status_history_start: str | None, season_start: dateti
 
 
 def _before_history(day_offset: int | None, history_from: int | None) -> bool:
-    """True when a same-day read falls before the prior year's status history starts (ruling 8)."""
+    """True when a same-day read falls before the prior year's status history starts (gap-plan row 22, V5)."""
     return day_offset is not None and history_from is not None and day_offset < history_from
 
 
@@ -778,7 +778,9 @@ class VelocityService:
             (ctx.today - season_start_date).days if season_start_date <= ctx.today < season_end_dt.date() else None
         )
 
-        status_history_start = await self._status_history_start() if metric == "cancellation" else None
+        # Each season's own earliest row, never another year's (a pill and a "-" cutoff are per season).
+        status_history_start = await self._status_history_start(year) if metric == "cancellation" else None
+        prior_history_starts: dict[int, str] = {}
 
         # PR 5b (#110): only the live season gets a live point; a closed season's line is history.
         live = (
@@ -849,7 +851,10 @@ class VelocityService:
                     )
                 )
 
-                history_from = _history_start_offset(status_history_start, prior_season_start)
+                prior_history_start = await self._status_history_start(prior_year) if metric == "cancellation" else None
+                if prior_history_start:
+                    prior_history_starts[prior_year] = prior_history_start
+                history_from = _history_start_offset(prior_history_start, prior_season_start)
 
                 # Build prior year cancelled summary
                 prior_year_cancelled_to_date.append(
@@ -991,6 +996,7 @@ class VelocityService:
             else same_point_offset(current_day_offset, phase_offsets),
             today_day_offset=today_day_offset,
             status_history_start=status_history_start,
+            prior_year_history_starts=prior_history_starts,
             snapshots_start=await self._snapshots_start() if metric != "cancellation" else None,
         )
 
@@ -1054,10 +1060,10 @@ class VelocityService:
             return None
         return parse_date_only(raw) if isinstance(raw, str) and raw else None
 
-    async def _status_history_start(self) -> str | None:
-        """ISO date of the earliest status-history row of any year; None when unknown."""
+    async def _status_history_start(self, year: int) -> str | None:
+        """ISO date of the earliest status-history row of that season; None when unknown."""
         try:
-            raw = await self.repo.fetch_status_history_start()
+            raw = await self.repo.fetch_status_history_start(year)
         except Exception:
             logger.warning("Could not read the status history start", exc_info=True)
             return None

@@ -1,8 +1,8 @@
 /**
  * AnalyticsFreshness — the season bar's chip on Analytics (PR 4, pick 3A): "Enrollments synced 7h
  * ago", read from the viewed season's own enrollment (attendees) run, never the hourly bunk run.
- * " · syncing now" while that run is going (owner, 2026-10-14). Nothing for a season the scheduled
- * runs don't cover, or one never synced (the empty state says that instead).
+ * " · syncing now" while that run is going (owner, 2026-10-14). "Not synced" for a season the scheduled
+ * runs don't cover; nothing for one never synced (the empty state says that instead).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act, render, screen } from '@testing-library/react'
@@ -90,7 +90,17 @@ describe('AnalyticsFreshness', () => {
     expect(screen.getByText(/^Enrollments syncing now$/)).toBeInTheDocument()
   })
 
-  it.each([['none'], ['never'], ['loading']] as const)('renders nothing for %s', (kind) => {
+  // ub:PR#3219:5 (owner, 2026-10-25): a season outside the two synced seasons says so, muted, rather
+  // than showing nothing.
+  it('reads "Not synced", muted, for a season outside the synced pair', () => {
+    mockFreshness.mockReturnValue({ kind: 'none' })
+    render(<AnalyticsFreshness />)
+    const chip = screen.getByText(/^Not synced$/)
+    expect(chip).not.toHaveClass('text-amber-600')
+    expect(chip.closest('.text-muted-foreground')).not.toBeNull()
+  })
+
+  it.each([['never'], ['loading']] as const)('renders nothing for %s', (kind) => {
     mockFreshness.mockReturnValue({ kind })
     const { container } = render(<AnalyticsFreshness />)
     expect(container).toBeEmptyDOMElement()

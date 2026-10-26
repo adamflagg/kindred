@@ -84,7 +84,9 @@ export function TrendLineChart({
         return {
           ...base,
           cancelled: yearData.total_cancelled ?? 0,
-          cancellation_rate: yearData.cancellation_rate ?? 0,
+          // null = nobody enrolled that year: no rate, so no point on the line (a gap, not 0 or 100)
+          cancellation_rate:
+            yearData.cancellation_rate === null ? null : (yearData.cancellation_rate ?? 0),
         }
       }),
     [data, metric]
@@ -106,9 +108,12 @@ export function TrendLineChart({
   const { barsHeight, drawingHeight } = calculateVerticalLayout(height)
 
   const { ticks, axisMax } = useMemo(() => {
+    // The % axis is sized by the plotted rate only: the row also carries the cancelled COUNT.
     const allValues = chartData.flatMap((d) =>
       Object.entries(d)
-        .filter(([k]) => k !== 'year')
+        .filter(
+          ([k]) => k !== 'year' && (metric !== 'cancellation_rate' || k === 'cancellation_rate')
+        )
         .map(([, v]) => Number(v) || 0)
     )
     const dataMax = allValues.length > 0 ? Math.max(...allValues) : 1

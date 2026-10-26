@@ -37,6 +37,8 @@ vi.mock('../../hooks/useMetricsSessions', () => ({
 interface SeasonRowsResult {
   hasRows: boolean | undefined
   isLoading: boolean
+  error?: Error | null
+  refetch?: () => void
 }
 const mockSeasonRows = vi.fn((_year: number): SeasonRowsResult => ({
   hasRows: true,
@@ -313,6 +315,26 @@ describe('MetricsLayout', () => {
       renderWithRouter('/analytics/retention/bunks')
       expect(screen.queryByTestId('child')).not.toBeInTheDocument()
       expect(screen.getByText(/No enrollments yet for 2026/)).toBeInTheDocument()
+    })
+
+    // ub:PR#3219:0 (owner, 2026-10-25): the check fails closed. On an error it shows an error, never a
+    // normal-looking page (or the empty state), and "Try again" re-asks.
+    it('shows an error, not the page or the empty state, when the count fails', () => {
+      const refetch = vi.fn()
+      mockSeasonRows.mockReturnValue({
+        hasRows: undefined,
+        isLoading: false,
+        error: new Error('boom'),
+        refetch,
+      })
+      renderWithRouter('/analytics/registration/overview')
+      expect(screen.queryByTestId('child')).not.toBeInTheDocument()
+      expect(screen.queryByText(/No enrollments yet/)).not.toBeInTheDocument()
+      expect(screen.queryByTestId('season-rows-loading')).not.toBeInTheDocument()
+      expect(screen.getByText(/Failed to load .*boom/)).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Registration' })).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+      expect(refetch).toHaveBeenCalled()
     })
 
     it('shows no page and no empty state while the count loads, so no zeros flash', () => {

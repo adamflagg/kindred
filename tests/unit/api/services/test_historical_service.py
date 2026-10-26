@@ -306,7 +306,37 @@ class TestHistoricalServiceFromAttendees:
         year_metric = result.years[0]
         assert year_metric.total_cancelled == 5
         # cancellation_rate = 5 / (1 + 5) = 83.33%
+        assert year_metric.cancellation_rate is not None
         assert abs(year_metric.cancellation_rate - 83.33) < 0.01
+
+    @pytest.mark.asyncio
+    async def test_a_year_with_nobody_enrolled_has_no_cancellation_rate(self, mock_repository: MagicMock) -> None:
+        """Camp did not run in a year (the 2020 shape): nobody enrolled, a few cancelled. Cancelled over
+        (0 + cancelled) would read 100%, a rate of a camp that never ran. The counts stay as ruled
+        (decisions 10/11/46); only the rate is withheld, and a normal year beside it reads as before."""
+        from api.services.historical_service import HistoricalService
+
+        sessions = {5001: make_mock_session(5001, "Session 1")}
+        _route_attendees(
+            mock_repository,
+            {
+                2020: [],
+                2021: [make_mock_attendee(1001, 5001), make_mock_attendee(1002, 5001), make_mock_attendee(1003, 5001)],
+            },
+            {2020: [make_mock_attendee(2001 + i, 5001) for i in range(3)], 2021: [make_mock_attendee(2101, 5001)]},
+        )
+        mock_repository.fetch_persons = AsyncMock(
+            return_value={i: make_mock_person(i, "M") for i in (1001, 1002, 1003)}
+        )
+        mock_repository.fetch_sessions = AsyncMock(return_value=sessions)
+
+        result = await HistoricalService(mock_repository).calculate_historical_trends(years=[2020, 2021])
+
+        by_year = {y.year: y for y in result.years}
+        assert by_year[2020].total_enrolled == 0
+        assert by_year[2020].total_cancelled == 3
+        assert by_year[2020].cancellation_rate is None
+        assert by_year[2021].cancellation_rate == 25.0  # 1 / (3 + 1), unchanged
 
     @pytest.mark.asyncio
     async def test_cancelled_reads_the_cancelled_status_only_like_overview(self, mock_repository: MagicMock) -> None:

@@ -136,3 +136,50 @@ describe('YearByYearTable gender identity (#2898)', () => {
     expect(screen.queryByText(/gender identity from CampMinder/)).not.toBeInTheDocument()
   })
 })
+
+describe('YearByYearTable — a year with nobody enrolled', () => {
+  const noCamp = y(2020, 0, {
+    by_gender: [],
+    new_vs_returning: {
+      new_count: 0,
+      returning_count: 0,
+      new_percentage: 0,
+      returning_percentage: 0,
+    },
+    total_cancelled: 1400,
+    cancellation_rate: null,
+  })
+  const YEARS_WITH_GAP = [y(2019, 2000), noCamp, y(2021, 1800)]
+
+  it('says No camp in the rate cell, never 100%, and keeps the real cancelled count', () => {
+    render(<YearByYearTable years={YEARS_WITH_GAP} live={null} />)
+    const row = screen.getByText('2020').closest('tr')!
+    expect(within(row).getAllByText('No camp')).toHaveLength(1)
+    expect(within(row).queryByText(/^100(\.0)?%$/)).not.toBeInTheDocument()
+    expect(within(row).getByText('1,400')).toBeInTheDocument()
+  })
+
+  it('uses plainer words when the view is a single session or duration', () => {
+    render(<YearByYearTable years={YEARS_WITH_GAP} live={null} scoped />)
+    const row = screen.getByText('2020').closest('tr')!
+    expect(within(row).getAllByText('None enrolled')).toHaveLength(1)
+    expect(within(row).queryByText('No camp')).not.toBeInTheDocument()
+  })
+
+  it('leaves every other year as it was', () => {
+    render(<YearByYearTable years={YEARS_WITH_GAP} live={null} />)
+    const row = screen.getByText('2021').closest('tr')!
+    expect(within(row).getByText('5')).toBeInTheDocument()
+    expect(within(row).getByText('1.2%')).toBeInTheDocument()
+    expect(within(row).queryByText('No camp')).not.toBeInTheDocument()
+  })
+
+  it('flags the row for the builder, with its cancelled count and no rate', () => {
+    const rows = buildYearRows(YEARS_WITH_GAP, null)
+    const row = rows.find((r) => r.year === 2020)!
+    expect(row.noEnrollment).toBe(true)
+    expect(row.cancelled).toBe(1400)
+    expect(row.cancelPct).toBeNull()
+    expect(rows.find((r) => r.year === 2021)!.noEnrollment).toBe(false)
+  })
+})

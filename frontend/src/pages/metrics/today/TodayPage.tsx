@@ -34,7 +34,7 @@ import { readsThroughNextDay } from '../../../utils/priorityDay'
 import { formatShortDate } from '../../../components/camperships/kit/dates'
 import type { RegistrationMetrics } from '../../../types/metrics'
 import { useLiveSync } from '../../../hooks/useLiveSync'
-import { livePoint } from '../../../components/velocity/velocityLive'
+import { livePoint, staleStoredDate } from '../../../components/velocity/velocityLive'
 import { PaceCard, PaceHead } from './PaceCard'
 import { RecentSignupsCard } from './RecentSignupsCard'
 import { SessionFillHead, SessionFillTable } from './SessionFillCard'
@@ -386,7 +386,7 @@ export default function TodayPage() {
   const oneSession = selectedSession?.name ?? null
   // #51: only a one-session scope folds the headline; whole-scope views keep Overview's own figure
   const headlinePrior = oneSession !== null ? (sessions.data?.headline_prior ?? null) : null
-  // Pace compares what the fill total compares (PR 8b); Velocity's own prior if Session fill failed
+  // Pace compares what the fill total compares (PR 8b); if Session fill failed, Pace shows an error (ti:P-36)
   const paceFold = sessions.data ? pacePrior(sessions.data, oneSession !== null) : null
   const title = selectedSession
     ? `${selectedSession.name}, ${String(year)}`
@@ -398,6 +398,7 @@ export default function TodayPage() {
     void comparison?.refetch()
     void applied.refetch()
     void incomplete.refetch()
+    if (oneSession !== null) void sessions.refetch()
   }
 
   return (
@@ -408,7 +409,13 @@ export default function TodayPage() {
           query={{
             data: primary.data,
             isLoading: primary.isLoading || (oneSession !== null && sessions.isLoading),
-            error: primary.error ?? comparison?.error ?? null,
+            // ti:P-36: the one-session headline reads Session fill, so its failure is the hero's (never
+            // last year's unfolded count in its place); with no session picked the hero does not read it
+            error:
+              primary.error ??
+              comparison?.error ??
+              (oneSession !== null ? sessions.error : null) ??
+              null,
             // #51's headline reads Session fill, which may still hold the previous session's figure
             isPlaceholderData:
               primary.isPlaceholderData ||
@@ -484,10 +491,14 @@ export default function TodayPage() {
                 query={{
                   data: velocity.data,
                   isLoading: velocity.isLoading || sessions.isLoading,
-                  error: velocity.error,
+                  // ti:P-36: Pace's prior is Session fill's comparison, so its failure is Pace's
+                  error: velocity.error ?? sessions.error ?? null,
                   isPlaceholderData: velocity.isPlaceholderData || sessions.isPlaceholderData,
                 }}
-                onRetry={() => void velocity.refetch()}
+                onRetry={() => {
+                  if (velocity.error) void velocity.refetch()
+                  if (sessions.error) void sessions.refetch()
+                }}
                 busyWhat={busyWhat}
               >
                 {(data) => (
@@ -496,6 +507,7 @@ export default function TodayPage() {
                     year={year}
                     fold={paceFold}
                     live={livePoint(data, liveSync, now)}
+                    storedDate={staleStoredDate(data, now)}
                   />
                 )}
               </CardState>

@@ -454,6 +454,42 @@ func (o *Orchestrator) lastRecordedRuns(year int) map[string]*Status {
 	return out
 }
 
+// lastRunFailures says, per service, whether its newest finished REAL run in sync_runs (dry runs
+// skipped, any outcome) failed: a real run since the last success failed, so the count may hold its
+// partial writes (Status.LastRunFailed). Over every season's rows when year is 0, else that
+// season's, matching lastRecordedRuns. ONE query for every service, for the same reason.
+//
+// Failure is logged and swallowed to an empty map, like lastRecordedRuns: every entry then reads
+// not-failed, which is what the payload said before this field existed.
+func (o *Orchestrator) lastRunFailures(year int) map[string]bool {
+	out := make(map[string]bool)
+	if o.app == nil {
+		return out
+	}
+	var rows []struct {
+		Service string `db:"service"`
+		Status  string `db:"status"`
+	}
+	query := o.app.DB().NewQuery(`
+		SELECT service, status
+		FROM (
+			SELECT service, status,
+			       ROW_NUMBER() OVER (PARTITION BY service ORDER BY started DESC, id DESC) AS rn
+			FROM ` + syncRunsCollection + `
+			WHERE dry_run = 0 AND ({:year} = 0 OR year = {:year})
+		)
+		WHERE rn = 1`).Bind(dbx.Params{"year": year})
+	if err := query.All(&rows); err != nil {
+		slog.Warn("Failed to read sync_runs for the last run's outcome", "error", err)
+		return out
+	}
+	for _, row := range rows {
+		// Through rehydratedStatus: a half-written row reads as failed, as it does on rehydration.
+		out[row.Service] = rehydratedStatus(row.Status) == statusFailed
+	}
+	return out
+}
+
 // rehydratedStatus maps a stored status onto one safe to publish for a run that is over.
 //
 // A row can only be written by finishCompletedRun, from a finished run, so this is already

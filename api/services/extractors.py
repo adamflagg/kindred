@@ -125,7 +125,7 @@ def extract_age_band(person: Any, season_year: int) -> str:
     """The camper's age band in `season_year`: the season year minus the birth year.
 
     Never `persons.age`, a stored snapshot that drifts from the season (wrong for
-    319 of 1,291 campers in 2026). So a camper born in late 2016 is 10 all of 2026.
+    279 of 1,291 campers in 2026). So a camper born in late 2016 is 10 all of 2026.
     No readable birth year reads "none". An age under 5 folds into "5-7": none was
     enrolled in 2025 or 2026, so the youngest bar is "7 and under" in practice.
     """
@@ -168,9 +168,8 @@ def is_returning_camper(years_at_camp: int | None) -> bool:
 
     Meant for enrolled rows. The drill-down R badge keeps `years_at_camp > 1` for
     waitlisted, cancelled and other non-enrolled rows: about half of them carry
-    0 years, and whether those count as returning is an open owner decision.
-    One exception predates this helper: the drill-down `returning_status` filter
-    applies it to every status, waitlisted rows included.
+    0 years, and the owner ruled they are not returning (decision 35, 2026-10-14).
+    The drill-down `returning_status` filter follows the same split by row status.
     """
     return not is_new_camper(years_at_camp)
 

@@ -650,6 +650,23 @@ class TestFetchStatusHistoryStart:
         repo = _make_repo(sql_db)
         assert await repo.fetch_status_history_start() is None
 
+    @pytest.mark.asyncio
+    async def test_year_scopes_the_start_to_that_season(self, sql_db: sqlite3.Connection) -> None:
+        sql_db.execute("DELETE FROM attendee_status_history")
+        for row_id, year, day in (
+            ("ash_a", 2024, "2024-11-09"),
+            ("ash_b", 2026, "2026-02-11"),
+            ("ash_c", 2026, "2026-03-01"),
+        ):
+            sql_db.execute(
+                "INSERT INTO attendee_status_history VALUES (?,?,?,?,?,?,?,?)",
+                (row_id, 1003, year, "enrolled", "cancelled", day, "ses_s1", "per_emma"),
+            )
+        repo = _make_repo(sql_db)
+        assert await repo.fetch_status_history_start() == "2024-11-09"
+        assert await repo.fetch_status_history_start(2026) == "2026-02-11"
+        assert await repo.fetch_status_history_start(2030) is None
+
 
 class TestFetchSnapshotsStart:
     """The first nightly snapshot of any year: before it, every Velocity point is rebuilt (K13)."""

@@ -4,6 +4,8 @@ import {
   liveLabelLines,
   livePoint,
   sinceStoredLabel,
+  staleStoredDate,
+  storedCountWhen,
   syncBehind,
   syncTimeLabel,
   type LiveSync,
@@ -151,6 +153,21 @@ describe('a stored count more than ~26 h old', () => {
     }
     expect(at(25)?.storedDate).toBeNull()
     expect(at(27)?.storedDate).toBe('2026-12-12')
+  })
+
+  // ub:PR#3283:5 / OD-48: the captions show while the point is hidden too, so the stale date comes from
+  // the data alone (live.stored_at), whatever the sync says.
+  it('the stale date comes from the data, independent of whether the point draws', () => {
+    const failed: LiveSync = { ...fresh, failed: true }
+    expect(livePoint(stale(), failed, NOW)).toBeNull()
+    expect(staleStoredDate(stale(), NOW)).toBe('2026-12-12')
+    expect(staleStoredDate(data(), NOW)).toBeNull()
+    expect(staleStoredDate(data({ live: null }), NOW)).toBeNull()
+  })
+
+  it('names the stored count by its date after a missed nightly, "3 a.m." otherwise', () => {
+    expect(storedCountWhen('2026-12-12')).toBe('Dec 12, 3 a.m.')
+    expect(storedCountWhen(null)).toBe('3 a.m.')
   })
 
   it('dates the callout, and keeps the point (the count is still right)', () => {

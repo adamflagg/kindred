@@ -10,6 +10,7 @@ import {
   isSmallBase,
   pointsBetween,
   regionPriorBars,
+  retentionUnavailableText,
   sessionPairKey,
   withPriorRates,
 } from './retentionCompare'
@@ -66,6 +67,26 @@ describe('points', () => {
     expect(changeArrow(1.9)).toBe('▲ ')
     expect(changeArrow(-0.2)).toBe('▼ ')
     expect(changeArrow(0.04)).toBe('')
+  })
+})
+
+describe('an unreadable comparison year', () => {
+  it('has no basis, and says why in one line', () => {
+    const unreadable = prior({
+      prior_basis: 'unavailable',
+      prior_unavailable_reason: 'registration_dates_unreadable',
+    })
+    expect(
+      describeRetentionBasis(unreadable, { year: 2026, base: 1862, returned: 1220 })
+    ).toBeNull()
+    expect(retentionUnavailableText(unreadable, 2026)).toBe(
+      "No comparison: 2025's registration dates couldn't be read."
+    )
+  })
+
+  it('says nothing for a readable comparison', () => {
+    expect(retentionUnavailableText(prior({ prior_basis: 'final' }), 2026)).toBeNull()
+    expect(retentionUnavailableText(undefined, 2026)).toBeNull()
   })
 })
 

@@ -235,7 +235,14 @@ class VelocityResponse(BaseModel):
     )
     status_history_start: str | None = Field(
         None,
-        description="ISO date of the earliest attendee_status_history row of any year; cancellation metric only",
+        description="ISO date of the requested season's own earliest attendee_status_history row; cancellation metric only",
+    )
+    prior_year_history_starts: dict[int, str] = Field(
+        default_factory=dict,
+        description=(
+            "Each compared season's own earliest attendee_status_history date (ISO), keyed by year; a year with "
+            "no history is absent. Cancellation metric only"
+        ),
     )
     snapshots_start: str | None = Field(
         None,

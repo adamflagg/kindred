@@ -15563,9 +15563,15 @@ export type RetentionMetricsResponse = {
   /**
    * Prior Basis
    *
-   * Set when same_point_of was asked: 'same_point' when the compare year was read at the registration day that season has reached (registered by then and not cancelled by then), 'final' when it was read as it stands now (that season is over, or a season has no registration anchor)
+   * Set when same_point_of was asked: 'same_point' when the compare year was read at the registration day that season has reached (registered by then and not cancelled by then), 'final' when it was read as it stands now (that season is over, or a season has no registration anchor), 'unavailable' when the compare year's registration dates could not be read (see prior_unavailable_reason); the figures are then the final read and must not be shown as a comparison
    */
-  prior_basis?: 'same_point' | 'final' | null
+  prior_basis?: 'same_point' | 'final' | 'unavailable' | null
+  /**
+   * Prior Unavailable Reason
+   *
+   * Set with prior_basis 'unavailable': why the comparison cannot be worked out
+   */
+  prior_unavailable_reason?: 'registration_dates_unreadable' | null
   /**
    * Day Offset
    *
@@ -20449,9 +20455,17 @@ export type VelocityResponse = {
   /**
    * Status History Start
    *
-   * ISO date of the earliest attendee_status_history row of any year; cancellation metric only
+   * ISO date of the requested season's own earliest attendee_status_history row; cancellation metric only
    */
   status_history_start?: string | null
+  /**
+   * Prior Year History Starts
+   *
+   * Each compared season's own earliest attendee_status_history date (ISO), keyed by year; a year with no history is absent. Cancellation metric only
+   */
+  prior_year_history_starts?: {
+    [key: string]: string
+  }
   /**
    * Snapshots Start
    *
@@ -21370,9 +21384,9 @@ export type YearMetrics = {
   /**
    * Cancellation Rate
    *
-   * Cancelled / (enrolled + cancelled)
+   * Cancelled / (enrolled + cancelled); null when nobody was enrolled that year (camp did not run, or the scoped view had no such session), where the ratio would read 100% of nothing
    */
-  cancellation_rate?: number
+  cancellation_rate?: number | null
   /**
    * Has Cancellation Data
    *

@@ -407,7 +407,12 @@ export default function TrendsOverview() {
         )}
 
         {/* Data Table */}
-        <YearByYearTable years={data.years} live={live} retention={retention} />
+        <YearByYearTable
+          years={data.years}
+          live={live}
+          retention={retention}
+          scoped={filterOptions.sessionCmId != null || filterOptions.duration != null}
+        />
 
         {/* Retention Rate + Cancellation Rate side-by-side */}
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">

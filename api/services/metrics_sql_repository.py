@@ -521,13 +521,17 @@ class MetricsSQLRepository:
             for r in rows
         ]
 
-    async def fetch_status_history_start(self) -> str | None:
-        """Earliest ``detected_at`` of any attendee_status_history row (any year), or None."""
+    async def fetch_status_history_start(self, year: int | None = None) -> str | None:
+        """Earliest ``detected_at`` of an attendee_status_history row, or None.
+
+        ``year`` scopes it to that season's own rows; omitted, it is the earliest of any year.
+        """
+        sql = (
+            "SELECT MIN(detected_at) AS first_seen FROM attendee_status_history"
+            " WHERE detected_at IS NOT NULL AND detected_at != ''"
+        )
         try:
-            rows = self._query(
-                "SELECT MIN(detected_at) AS first_seen FROM attendee_status_history"
-                " WHERE detected_at IS NOT NULL AND detected_at != ''"
-            )
+            rows = self._query(sql) if year is None else self._query(sql + " AND year = ?", (year,))
         except Exception as e:
             logger.warning(f"Could not fetch status history start: {e}")
             return None

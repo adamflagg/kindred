@@ -32,9 +32,12 @@ export function seasonRowsFilter(year: number): string {
 }
 
 export interface SeasonRows {
-  /** undefined while the count loads, so a caller never flashes the empty state. */
+  /** undefined while the count loads or when it failed, so a caller never flashes the empty state. */
   hasRows: boolean | undefined
   isLoading: boolean
+  /** The count failed: the caller shows an error, never the page or the empty state. */
+  error: Error | null
+  refetch: () => void
 }
 
 export function useSeasonHasRows(year: number): SeasonRows {
@@ -55,8 +58,13 @@ export function useSeasonHasRows(year: number): SeasonRows {
     ...syncDataOptions,
   })
 
-  // Fail open: if the count errors, show the pages (their own guards handle errors)
-  // rather than claiming a season is empty when it may not be.
-  const hasRows = query.isError ? true : query.data
-  return { hasRows, isLoading: query.isPending && query.fetchStatus !== 'idle' }
+  // Fail closed (ub:PR#3219:0, owner 2026-10-25): if the count errors, say so. Showing the pages would
+  // put a normal-looking page over a check that never answered; the empty state would claim a season
+  // is empty when it may not be.
+  return {
+    hasRows: query.isError ? undefined : query.data,
+    isLoading: query.isPending && query.fetchStatus !== 'idle',
+    error: query.error,
+    refetch: () => void query.refetch(),
+  }
 }
