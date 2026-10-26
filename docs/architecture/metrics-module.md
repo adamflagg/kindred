@@ -98,7 +98,8 @@ their final. One rule, one place:
   `prior_day_offset` and `as_of_date`. A past waitlist cannot be rebuilt, so `total_waitlisted` is
   None on a same-point read. Cancelled counts the Cancelled status only, as Overview's final does.
 - **Geo** reads the same `/registration?same_point_of=` compare as Overview, and says which basis in
-  Overview's grammar (`describeGeoCompareBasis`).
+  Overview's grammar (`describeGeoCompareBasis`); on the priority date its Change cells read "updates
+  tomorrow", as Overview's and Cancellations' deltas do.
 - **Cancellations** (`/cancellations?same_point_of=<season>`): cancelled by day N = a cancelled,
   withdrawn or dismissed record whose `enrollment_date` (the date `attendees_at_cutoff` reads "left by
   N" from) is on or before the cutoff; "has other sessions", swaps and departures read who was enrolled
@@ -110,7 +111,9 @@ their final. One rule, one place:
   while the season is live the answer is `prior_basis: 'unavailable'` and the tab shows no comparison;
   after it, or for a season with no registration anchor, `'final'`. Overview's Total Waitlisted keeps
   its own "no compare".
-- **Velocity** compares each prior line at `same_point_offset(current_day_offset)`.
+- **Velocity** compares each prior line at `same_point_offset(current_day_offset)`. Its TODAY line
+  and live point (`today_day_offset`) end on the same day the comparison does, the day the last
+  summer session starts (`same_point.season_end`), not `SEASON_WEEKS` after the anchor.
 
 **Two bases (K13).** Velocity's current season reads the nightly `enrollment_snapshots` from the
 first snapshot on (main, embedded and AG sessions only); everything else is rebuilt: every season

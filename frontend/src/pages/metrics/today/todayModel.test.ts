@@ -90,8 +90,9 @@ describe('basisWords', () => {
   it('reads "vs same point" while the season is live', () => {
     expect(basisWords('same_point', 2026)).toBe('vs same point 2026')
   })
-  it('never reads "final" (PM-8 A): with no same day there is no comparison', () => {
-    expect(basisWords('none', 2026)).toBe('vs 2026')
+  // Owner call 2026-10-26 (item 6): with no same day it says so, never "vs <year>" over nothing.
+  it('never reads "final" (PM-8 A): with no same day it reads "no comparison"', () => {
+    expect(basisWords('none', 2026)).toBe('no comparison')
   })
 })
 

@@ -18,9 +18,13 @@ import { PRIORITY_DAY_NOTE } from '../../../utils/priorityDay'
 export type PriorBasis = 'same_point' | 'none'
 export type FillBasis = 'plan' | 'goal'
 
-/** Every change on the page says what it compares with: always the same point, all year. */
+/**
+ * Every change on the page says what it compares with: always the same point, all year. With no
+ * same day ('none') it says "no comparison" and the "vs" headers are hidden (owner call 2026-10-26):
+ * never another year's date in its place.
+ */
 export function basisWords(basis: PriorBasis, priorYear: number): string {
-  return basis === 'same_point' ? `vs same point ${String(priorYear)}` : `vs ${String(priorYear)}`
+  return basis === 'same_point' ? `vs same point ${String(priorYear)}` : 'no comparison'
 }
 
 /** The page's basis from a compare answer: the same point, or none when there is no day to read. */

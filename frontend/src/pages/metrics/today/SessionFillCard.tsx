@@ -279,9 +279,10 @@ export function SessionFillTable({
             )}
             {hasPills && <th className={TH_LABEL}>Open places</th>}
             <th className={TH_NUMBER}>Waitlist</th>
+            {/* With no same day the column's header is hidden (owner call 2026-10-26) */}
             <th className={TH_NUMBER}>
-              {same}
-              {notes.same !== undefined && <DefRef n={notes.same} />}
+              {compared === 'same_point' && same}
+              {compared === 'same_point' && notes.same !== undefined && <DefRef n={notes.same} />}
             </th>
           </tr>
         </thead>

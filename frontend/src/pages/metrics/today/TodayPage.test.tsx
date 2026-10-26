@@ -599,6 +599,10 @@ describe('Today › never "vs final" (PM-8 A)', () => {
     expect(
       screen.getByText(/there is no same registration day to read 2026 at/)
     ).toBeInTheDocument()
+    // Owner call 2026-10-26 (item 6): no "vs" header over columns that compare with nothing
+    expect(screen.queryByText(/^vs /)).toBeNull()
+    expect(within(fill()).queryByRole('columnheader', { name: /^vs / })).toBeNull()
+    expect(hero()).not.toHaveTextContent('vs 2026')
   })
 })
 

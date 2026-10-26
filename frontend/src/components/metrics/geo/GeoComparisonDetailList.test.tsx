@@ -261,4 +261,24 @@ describe('GeoComparisonDetailList', () => {
 
     expect(screen.getByText(/no data/i)).toBeInTheDocument()
   })
+
+  // Owner call 2026-10-26 (item 7, ruling 9): on the priority date the change waits a day.
+  it('reads "updates tomorrow" in each change cell when pending, keeping NEW and GONE', () => {
+    render(
+      <GeoComparisonDetailList
+        category="city"
+        primaryData={primaryData}
+        compareData={compareData}
+        primaryYear={2025}
+        compareYear={2024}
+        isOpen
+        pending
+      />
+    )
+    // Oakland and San Francisco are in both years; Berkeley is NEW, Los Angeles GONE.
+    expect(screen.getAllByText('updates tomorrow')).toHaveLength(2)
+    expect(screen.queryByText('+5')).not.toBeInTheDocument()
+    expect(screen.getByText('NEW')).toBeInTheDocument()
+    expect(screen.getByText('GONE')).toBeInTheDocument()
+  })
 })

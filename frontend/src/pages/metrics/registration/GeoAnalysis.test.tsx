@@ -46,12 +46,17 @@ vi.mock('../../../hooks/useMetricsSession', () => ({
   })),
 }))
 
+const comparisonListProps = vi.hoisted(() => [] as Array<{ category: string; pending?: boolean }>)
+
 vi.mock('../../../components/metrics/geo', () => ({
   GeoMap: () => null,
   GeoSummaryCards: () => null,
   GeoDetailList: () => null,
   GeoLayerToggles: () => null,
-  GeoComparisonDetailList: () => null,
+  GeoComparisonDetailList: (props: { category: string; pending?: boolean }) => {
+    comparisonListProps.push(props)
+    return null
+  },
 }))
 
 describe('GeoAnalysis — busy cue (D-UNCOVERED)', () => {
@@ -102,5 +107,50 @@ describe('GeoAnalysis — same point last year (PM-8 A)', () => {
     expect(
       screen.getByText(/registered by Mar 2, 2024 and not cancelled by then/)
     ).toBeInTheDocument()
+  })
+})
+
+// Owner call 2026-10-26 (item 7): on the priority date itself Geo's changes wait a day, exactly as
+// Overview's and Cancellations' do (ruling 9, compareBasis.pending).
+describe('GeoAnalysis — priority date (ruling 9)', () => {
+  const geo = { ...emptyGeo, by_city: [{ city: 'Riverside, CA', count: 12, percentage: 10 }] }
+  const withDayOffset = (dayOffset: number) =>
+    vi.mocked(useComparisonRegistrationData).mockReturnValue({
+      primary: {
+        data: geo,
+        isLoading: false,
+        error: null,
+        isPlaceholderData: false,
+        refetch: vi.fn(),
+      },
+      comparison: {
+        data: {
+          ...geo,
+          year: 2024,
+          prior_basis: 'same_point',
+          day_offset: dayOffset,
+          prior_day_offset: dayOffset,
+          as_of_date: '2024-03-02',
+        },
+        isPlaceholderData: false,
+      },
+    } as unknown as ReturnType<typeof useComparisonRegistrationData>)
+
+  it('marks the comparison tables pending on the priority date', () => {
+    comparisonListProps.length = 0
+    withDayOffset(0)
+    render(<GeoAnalysis />)
+    const city = comparisonListProps.filter((p) => p.category === 'city')
+    expect(city.length).toBeGreaterThan(0)
+    expect(city.every((p) => p.pending === true)).toBe(true)
+  })
+
+  it('leaves them live on any other day', () => {
+    comparisonListProps.length = 0
+    withDayOffset(110)
+    render(<GeoAnalysis />)
+    const city = comparisonListProps.filter((p) => p.category === 'city')
+    expect(city.length).toBeGreaterThan(0)
+    expect(city.every((p) => p.pending !== true)).toBe(true)
   })
 })

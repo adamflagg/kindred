@@ -92,3 +92,29 @@ class TestPacePriorBasis:
         _wire_fold_years(mock_repository)
         result = await service.get_velocity(year=2026, compare_years=[2025], today=today)
         assert result.prior_basis == basis
+
+
+class TestTodayLineEndsWithTheSeason:
+    """Owner call 2026-10-26 (item 8): the TODAY line and live point end where the comparison does.
+
+    The season is over the day its last summer session starts (``season_end``, PM-8), not
+    SEASON_WEEKS weeks after the anchor: one end date for the whole chart.
+    """
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("today", "drawn"),
+        [
+            (date(2026, 1, 20), True),
+            (date(2026, 7, 5), True),  # the day before the last session starts
+            (date(2026, 7, 6), False),  # the last session starts: the season is over
+            (date(2026, 8, 1), False),  # still inside anchor + SEASON_WEEKS, but past season_end
+        ],
+    )
+    async def test_today_day_offset_and_live_point_stop_at_season_end(self, service, mock_repository, today, drawn):
+        _wire_fold_years(mock_repository)
+        result = await service.get_velocity(year=2026, compare_years=[2025], today=today)
+        assert (result.today_day_offset is not None) is drawn
+        assert (result.prior_basis == "same_point") is drawn
+        if not drawn:
+            assert result.live is None

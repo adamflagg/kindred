@@ -72,7 +72,8 @@ function StatusRows({
   dashNote,
 }: {
   rows: StatusRow[]
-  basis: string
+  /** The "vs" header, or null with no comparison (hidden). */
+  basis: string | null
   pending: boolean
   sameNote: number | undefined
   dashNote: number | undefined
@@ -86,9 +87,10 @@ function StatusRows({
         <span>Other statuses · campers</span>
         <span />
         <span className="text-right">Now</span>
+        {/* With no same day there is nothing to head: the column says "—" per row (owner call 2026-10-26) */}
         <span className="text-right">
-          {basis}
-          {sameNote !== undefined && <DefRef n={sameNote} />}
+          {basis !== null && basis}
+          {basis !== null && sameNote !== undefined && <DefRef n={sameNote} />}
         </span>
       </div>
       {rows.map((r) => {
@@ -180,7 +182,7 @@ function Hero({
   const vs = basisWords(basis, priorYear)
   const point = vs.replace(/^vs /, '')
   const enrolled = current.total_enrolled
-  const priorEnrolled = headlinePrior ?? prior?.total_enrolled ?? null
+  const priorEnrolled = basis === 'none' ? null : (headlinePrior ?? prior?.total_enrolled ?? null)
   const behind = priorEnrolled != null && priorEnrolled > enrolled ? priorEnrolled - enrolled : 0
   const segments: HeroSegment[] = [
     {
@@ -237,7 +239,8 @@ function Hero({
       href: null,
     })
 
-  const description = [dayWords, 'counted in campers', `changes ${vs}`].filter(Boolean).join(' · ')
+  const changes = basis === 'none' ? vs : `changes ${vs}`
+  const description = [dayWords, 'counted in campers', changes].filter(Boolean).join(' · ')
   return (
     <AidHeroCard
       title={title}
@@ -293,7 +296,7 @@ function Hero({
       </div>
       <StatusRows
         rows={statusRows}
-        basis={vs}
+        basis={basis === 'none' ? null : vs}
         pending={pending}
         sameNote={notes.same}
         dashNote={notes.dash}

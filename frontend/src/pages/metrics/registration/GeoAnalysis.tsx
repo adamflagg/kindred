@@ -75,6 +75,8 @@ export default function GeoAnalysis() {
   const { data, isLoading, error, refetch, isPlaceholderData } = primary
   const compData = comparison?.data
   const compareBasis = describeGeoCompareBasis(compareYear, compData)
+  // On the priority date itself the changes wait a day (ruling 9), as on Overview and Cancellations.
+  const pending = compareBasis?.pending ?? false
   // The compare query keeps its previous result too, so a new compare year gets the busy cue
   // as well: its label must not sit over the last compare year's numbers (D-UNCOVERED, #3207).
   const busy = isPlaceholderData || comparison?.isPlaceholderData === true
@@ -333,6 +335,7 @@ export default function GeoAnalysis() {
                         compareYear={compareYear}
                         isOpen={expandedCategories.has('city')}
                         onToggle={() => handleDetailToggle('city')}
+                        pending={pending}
                       />
                     )}
                   {activeLayers.has('school') &&
@@ -345,6 +348,7 @@ export default function GeoAnalysis() {
                         compareYear={compareYear}
                         isOpen={expandedCategories.has('school')}
                         onToggle={() => handleDetailToggle('school')}
+                        pending={pending}
                       />
                     )}
                   {activeLayers.has('synagogue') &&
@@ -357,6 +361,7 @@ export default function GeoAnalysis() {
                         compareYear={compareYear}
                         isOpen={expandedCategories.has('synagogue')}
                         onToggle={() => handleDetailToggle('synagogue')}
+                        pending={pending}
                       />
                     )}
                   {activeLayers.has('region') &&
@@ -369,6 +374,7 @@ export default function GeoAnalysis() {
                         compareYear={compareYear}
                         isOpen={expandedCategories.has('region')}
                         onToggle={() => handleDetailToggle('region')}
+                        pending={pending}
                       />
                     )}
                 </div>
