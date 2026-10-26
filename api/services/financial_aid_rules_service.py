@@ -58,7 +58,16 @@ from typing import Any, Final, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from api.constants.collections import AID_RULES, CAMP_SESSIONS
+from api.constants.collections import (
+    AID_DECISIONS,
+    AID_GRANT_PLACEMENTS,
+    AID_REQUESTS,
+    AID_RULES,
+    AID_SCENARIO_OPTIONS,
+    AID_SCENARIO_SNAPSHOTS,
+    AID_SCENARIO_TRAIL,
+    CAMP_SESSIONS,
+)
 from api.services.financial_aid_change_log_reads import fetch_change_log
 from api.services.financial_aid_intake_types import INTAKE_RULES_SECTIONS
 from api.services.financial_aid_rules_effect import EFFECT_ACTION, RULES_EFFECT_ENTITY, ApprovalEffects
@@ -198,6 +207,24 @@ class PricingVersionInUseError(FinancialAidError, ValueError):
 class NoDraftToDiscardError(FinancialAidError, ValueError):
     """Discard the rules draft with nothing to discard: no version newer than the one in effect, or nothing in effect
     to go back to (a new season's first draft; Start from last year is its way back)."""
+
+
+# What reads a season's rules, by the words a refusal uses (owner ruling R27-9): intake prices its requests, a round
+# posts as decisions (and locks the sections it read), placements spend what was decided, and every scenario names
+# the version it started from. A row of any of them means the season is in use.
+SEASON_READERS: Final[dict[str, str]] = {
+    AID_REQUESTS: "aid requests",
+    AID_DECISIONS: "decisions or posted rounds",
+    AID_GRANT_PLACEMENTS: "grant placements",
+    AID_SCENARIO_SNAPSHOTS: "scenario snapshots",
+    AID_SCENARIO_OPTIONS: "kept scenario options",
+    AID_SCENARIO_TRAIL: "scenario drafts",
+}
+
+
+class FirstDraftInUseError(FinancialAidError, ValueError):
+    """Discard a season's first draft (owner ruling R27-9) when it is not one: a section of some version is approved
+    or locked, or something in the season has read its rules (SEASON_READERS)."""
 
 
 class DraftApprovedError(FinancialAidError, ValueError):
@@ -552,6 +579,8 @@ class AidRulesStore(Protocol):
 
     async def fetch_log(self, year: int) -> list[LogRow]: ...
 
+    async def season_readers(self, year: int) -> list[str]: ...
+
     async def record(
         self,
         *,
@@ -621,6 +650,17 @@ class AidRulesRepository:
 
     async def fetch_log(self, year: int) -> list[LogRow]:
         return await fetch_change_log(self.pb, year, AID_RULES)
+
+    async def season_readers(self, year: int) -> list[str]:
+        """The SEASON_READERS collections holding any row for `year`, in that order: one row of each is read."""
+        found: list[str] = []
+        for collection in SEASON_READERS:
+            page = await pb_read(
+                aid_collection(self.pb, collection).get_list, 1, 1, {"filter": f"year = {int(year)}", "fields": "id"}
+            )
+            if page.items:
+                found.append(collection)
+        return found
 
     async def record(
         self,
@@ -1610,6 +1650,50 @@ class FinancialAidRulesService:
                 expected_revision=version.revision,
             )
             for version in newer
+        ]
+        await self._store.commit(writes, actor=actor, reason=reason)
+
+    async def discard_first_draft(
+        self, year: int, base_version: int, *, actor: str, past_season_reason: str | None = None
+    ) -> None:
+        """Throw away a season's first draft (owner ruling R27-9 = A, 2026-10-25), so the reviewed file loads with
+        `bootstrap`. Admin only, at the route; never a button. Every live version of `year` is marked discarded, so
+        the season reads as having no rules; nothing is deleted, and the next version takes a new number.
+
+        Refused (FirstDraftInUseError) unless every section of every live version is a draft -- which also means
+        nothing prices the season, intake has no approved programs and cost to read, and no round has locked
+        anything -- and no row in SEASON_READERS names the season. `base_version` is the draft the caller read: a
+        draft that moved on since is NotLatestVersionError. The normal case, a draft newer than the version in
+        effect, is `discard_draft`'s."""
+        reason = await self._done_reason(year, past_season_reason)
+        await self._rules_draft(year, base_version)
+        versions = [_to_version(row) for row in await self._store.list_versions(year)]
+        held = sorted(
+            {name for version in versions for name in SECTION_NAMES if version.section_status[name].state in _HELD},
+            key=SECTION_NAMES.index,
+        )
+        if held:
+            titles = ", ".join(CARD_TITLES[name] for name in held)
+            raise FirstDraftInUseError(
+                f"{year}'s rules hold approved or locked sections ({titles}), so they aren't a first draft to discard"
+            )
+        readers = await self._store.season_readers(year)
+        if readers:
+            words = ", ".join(SEASON_READERS.get(name, name) for name in readers)
+            raise FirstDraftInUseError(f"{year} already has {words} that read its rules, so its first draft stays")
+        writes = [
+            AidWrite(
+                collection=AID_RULES,
+                action="update",
+                year=year,
+                record_id=version.record_id,
+                before={"discarded": False},
+                data={"discarded": True},
+                log_action="discard",
+                entity_id=_entity_id(year, version.version),
+                expected_revision=version.revision,
+            )
+            for version in versions
         ]
         await self._store.commit(writes, actor=actor, reason=reason)
 

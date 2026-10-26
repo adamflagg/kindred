@@ -10,6 +10,7 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from api.services.financial_aid_rules_service import (
@@ -21,6 +22,7 @@ from api.services.financial_aid_rules_service import (
     BudgetTotalMissingError,
     DraftApprovedError,
     DraftSection,
+    FirstDraftInUseError,
     NoDraftToDiscardError,
     NotLatestVersionError,
     RulesDraft,
@@ -121,6 +123,7 @@ def _stub() -> Any:
     service.validate_document = AsyncMock(return_value=ValidationReport())
     service.approved_view = AsyncMock(return_value=APPROVED)
     service.discard_draft = AsyncMock(return_value=None)
+    service.discard_first_draft = AsyncMock(return_value=None)
     return service
 
 
@@ -436,3 +439,65 @@ def test_a_discard_without_the_version_it_showed_is_422_before_the_service() -> 
     assert _client().post(DISCARD, json={}).status_code == 422
     assert _client().post(DISCARD, json={"base_version": 2, "extra": 1}).status_code == 422
     service.discard_draft.assert_not_called()
+
+
+# --- a season's first draft, admin only (owner ruling R27-9 = A, 2026-10-25) ---------------------------------------
+
+DISCARD_FIRST = "/api/financial-aid/rules/2031/draft/discard-first"
+
+
+def _admin_client() -> TestClient:
+    from api.routers.financial_aid import router
+    from bunking.auth_middleware import AuthUser, get_current_user
+
+    admin = AuthUser(username="admin", email="admin@example.com", display_name="Test admin", groups=[], is_admin=True)
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_current_user] = lambda: admin
+    return TestClient(app, raise_server_exceptions=False)
+
+
+def test_the_first_draft_discard_is_gated_on_admin() -> None:
+    from api.routers.financial_aid import discard_aid_rules_first_draft
+    from tests.unit.rbac.test_endpoint_permissions import _assert_endpoint_has_admin_dep
+
+    _assert_endpoint_has_admin_dep(discard_aid_rules_first_draft)
+
+
+@pytest.mark.parametrize("persona", sorted(PERSONAS))
+def test_no_staff_persona_may_discard_a_first_draft(persona: str) -> None:
+    """Finance included: staff get no new way to empty a season."""
+    service = _stub()
+    assert _client(persona).post(DISCARD_FIRST, json={"base_version": 1}).status_code == 403
+    service.discard_first_draft.assert_not_called()
+
+
+def test_an_admin_discards_a_first_draft_naming_the_version_it_saw() -> None:
+    service = _stub()
+    response = _admin_client().post(DISCARD_FIRST, json={"base_version": 1, "past_season_reason": "Reload"})
+    assert response.status_code == 204
+    call = service.discard_first_draft.await_args
+    assert call.args == (2031, 1)
+    assert call.kwargs == {"actor": "admin@example.com", "past_season_reason": "Reload"}
+    service.discard_draft.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("refusal", "status"),
+    [
+        (FirstDraftInUseError("2031 has aid requests that read its rules"), 409),
+        (NotLatestVersionError("Version 1 of 2031 is not the rules draft any more"), 409),
+        (RulesNotFoundError("No aid rules for 2031"), 404),
+    ],
+)
+def test_a_refused_first_draft_discard_answers_in_the_servers_words(refusal: Exception, status: int) -> None:
+    service = _stub()
+    service.discard_first_draft = AsyncMock(side_effect=refusal)
+    response = _admin_client().post(DISCARD_FIRST, json={"base_version": 1})
+    assert (response.status_code, response.json()["detail"]) == (status, str(refusal))
+
+
+def test_a_first_draft_discard_without_the_version_it_showed_is_422_before_the_service() -> None:
+    service = _stub()
+    assert _admin_client().post(DISCARD_FIRST, json={}).status_code == 422
+    service.discard_first_draft.assert_not_called()

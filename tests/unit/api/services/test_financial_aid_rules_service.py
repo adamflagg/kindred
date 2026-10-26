@@ -497,6 +497,42 @@ async def test_session_refs_come_from_the_seasons_camp_sessions() -> None:
     ]
 
 
+@pytest.mark.asyncio
+async def test_season_readers_names_each_collection_holding_a_row_for_the_season() -> None:
+    """What reads a season's rules (owner ruling R27-9): its requests, decisions and posted rounds, grant
+    placements, and scenarios (snapshots, kept options, drafts). One row of each, year-scoped."""
+    pb = MagicMock()
+    holding = {"aid_requests", "aid_scenario_trail"}
+
+    def collection(name: str) -> MagicMock:
+        handle = MagicMock()
+        handle.get_list.return_value = SimpleNamespace(items=[SimpleNamespace(id="rec1")] if name in holding else [])
+        return handle
+
+    pb.collection.side_effect = collection
+    found = await AidRulesRepository(pb).season_readers(2031)
+    assert found == ["aid_requests", "aid_scenario_trail"]
+    asked = [call.args[0] for call in pb.collection.call_args_list]
+    assert asked == [
+        "aid_requests",
+        "aid_decisions",
+        "aid_grant_placements",
+        "aid_scenario_snapshots",
+        "aid_scenario_options",
+        "aid_scenario_trail",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_season_readers_reads_one_row_of_the_season_only() -> None:
+    pb = MagicMock()
+    pb.collection.return_value.get_list.return_value = SimpleNamespace(items=[])
+    assert await AidRulesRepository(pb).season_readers(2031) == []
+    args = pb.collection.return_value.get_list.call_args.args
+    assert args[:2] == (1, 1)
+    assert args[2]["filter"] == "year = 2031"
+
+
 def _batch_failure(field_errors: dict[str, str]) -> BatchRequestFailedError:
     return BatchRequestFailedError(
         index=0,
