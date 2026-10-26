@@ -4,7 +4,7 @@ Session fill lists this year's sessions in session order (ruling 1, B) and nothi
 session last year ran that this year does not is not drawn). Each row's beds, cabin groups and waitlist
 come from the Availability page's own read (``SessionAvailabilityService``), its goal from the budget
 config (Forecast's), and its comparison from its own match last year (ruling #15), read at the same
-registration day while the season is live (decision 7):
+registration day all year (decision 7; PM-8 A: Today never switches to finals, ``same_day_point``):
 
 - a session matches by ``match_session_in_year`` (CampMinder id, then alias group, then exact name), with
   its all-gender cabins riding along; teen programs (SCIT, TLI) match by program;

@@ -20696,7 +20696,7 @@ export type WaitlistMetricsResponse = {
   /**
    * Prior Basis
    *
-   * Set when same_point_of was asked (PM-8 A): 'final' once that season is over (this year as it stands is the comparison), 'unavailable' while it is live: a past waitlist can't be rebuilt for a day, so this year's figures (as they stand) are no comparison for it
+   * Set when same_point_of was asked (PM-8 A): 'final' once that season is over, or when it has no registration anchor (this year as it stands is the comparison), 'unavailable' while it is live: a past waitlist can't be rebuilt for a day, so this year's figures (as they stand) are no comparison for it
    */
   prior_basis?: 'final' | 'unavailable' | null
   /**

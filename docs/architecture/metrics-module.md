@@ -108,7 +108,8 @@ their final. One rule, one place:
   (no comparison, never a final) otherwise. The response carries the same basis fields as Overview.
 - **Waitlist** (`/waitlist?same_point_of=<season>`): a past waitlist can't be rebuilt for a day, so
   while the season is live the answer is `prior_basis: 'unavailable'` and the tab shows no comparison;
-  after it, `'final'`. Overview's Total Waitlisted keeps its own "no compare".
+  after it, or for a season with no registration anchor, `'final'`. Overview's Total Waitlisted keeps
+  its own "no compare".
 - **Velocity** compares each prior line at `same_point_offset(current_day_offset)`.
 
 **Two bases (K13).** Velocity's current season reads the nightly `enrollment_snapshots` from the
