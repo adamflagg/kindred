@@ -13,13 +13,13 @@ import pytest
 from api.constants.collections import (
     AID_DECISIONS,
     AID_GRANT_PLACEMENTS,
-    AID_REQUESTS,
     AID_SCENARIO_OPTIONS,
     AID_SCENARIO_SNAPSHOTS,
     AID_SCENARIO_TRAIL,
 )
 from api.services.financial_aid_rules_service import (
     PRICING_SECTIONS,
+    AidRulesRepository,
     DraftApprovedError,
     FinancialAidRulesService,
     FirstDraftInUseError,
@@ -29,7 +29,7 @@ from api.services.financial_aid_rules_service import (
 )
 from bunking.financial_aid.rules import AidRules
 from bunking.financial_aid.rules.schema import SECTION_NAMES
-from tests.unit.api.services.rules_fakes import FakeStore
+from tests.unit.api.services.rules_fakes import FakeStore, readers_pb
 from tests.unit.bunking.financial_aid.fixtures import fictional_rules, with_lever, with_levers
 
 AT = datetime(2031, 1, 15, 18, 0, tzinfo=UTC)
@@ -310,10 +310,18 @@ async def test_an_approval_in_an_earlier_version_of_the_season_refuses_too() -> 
         await service.discard_first_draft(2031, 2, actor=ADMIN)
 
 
+_FIVE_READERS = [
+    (AID_DECISIONS, "decisions or posted rounds"),
+    (AID_GRANT_PLACEMENTS, "grant placements"),
+    (AID_SCENARIO_SNAPSHOTS, "scenario snapshots"),
+    (AID_SCENARIO_OPTIONS, "kept scenario options"),
+    (AID_SCENARIO_TRAIL, "scenario drafts"),
+]
+
+
 @pytest.mark.parametrize(
     ("collection", "words"),
     [
-        (AID_REQUESTS, "aid requests"),
         (AID_DECISIONS, "decisions or posted rounds"),
         (AID_GRANT_PLACEMENTS, "grant placements"),
         (AID_SCENARIO_SNAPSHOTS, "scenario snapshots"),
@@ -333,38 +341,77 @@ async def test_a_first_draft_something_in_the_season_has_read_is_refused(collect
     assert (await service.load(2031)).version == 1
 
 
-# How intake stores a request it recorded before finance approved programs and cost (Flag.as_dict).
+# A season's aid_requests rows as intake writes them (Flag.as_dict).
 _WAITING = {"code": "awaiting_approved_rules", "detail": {"sections": ["programs", "cost"]}}
+_UNMATCHED = {"code": "unmatched_session", "detail": {"candidates": []}}
+
+
+def _with_real_readers(
+    store: FakeStore, requests: list[SimpleNamespace], holding: frozenset[str] = frozenset()
+) -> None:
+    """Answer the guard's reader check with the real repository over a PocketBase double, so these tests hold the
+    shipped rule rather than the fake's."""
+    store.season_readers = AidRulesRepository(readers_pb(requests, holding)).season_readers  # type: ignore[method-assign]
 
 
 @pytest.mark.asyncio
-async def test_requests_still_waiting_for_rules_do_not_refuse_a_first_draft_discard() -> None:
-    """Intake runs before the rules are approved and records each request as waiting for them. Those requests have
-    read nothing (R27-9: "no request ... has read it"), so the first draft can still go."""
+async def test_a_request_whose_session_never_resolved_does_not_refuse_a_first_draft_discard() -> None:
+    """A request intake recorded with no session (flags unmatched_session only, never awaiting_approved_rules, since
+    intake checks no rules without a session) has read no rules, and must not hold the first draft (R27-9)."""
     store = FakeStore()
     service = await _first_draft(store)
-    store.requests = {
-        2031: [SimpleNamespace(id="req1", flags=[_WAITING]), SimpleNamespace(id="req2", flags=[_WAITING])]
-    }
+    _with_real_readers(store, [SimpleNamespace(id="req1", flags=[_UNMATCHED])])
     await service.discard_first_draft(2031, 1, actor=ADMIN)
     assert await service.discarded_versions(2031) == frozenset({1})
 
 
+@pytest.mark.parametrize("flags", [[], None, [_WAITING], [_WAITING, _UNMATCHED]])
 @pytest.mark.asyncio
-async def test_a_request_the_rules_were_read_for_refuses_a_first_draft_discard() -> None:
+async def test_no_request_refuses_a_first_draft_discard_while_every_section_is_a_draft(flags: object) -> None:
+    """Intake reads rules only through load_intake_rules, never a draft, so while every section is a draft no request
+    has read them, whatever its flags."""
     store = FakeStore()
     service = await _first_draft(store)
-    store.requests = {2031: [SimpleNamespace(id="req1", flags=[_WAITING]), SimpleNamespace(id="req2", flags=[])]}
-    with pytest.raises(FirstDraftInUseError, match="aid requests"):
+    _with_real_readers(store, [SimpleNamespace(id="req1", flags=flags), SimpleNamespace(id="req2", flags=[_WAITING])])
+    await service.discard_first_draft(2031, 1, actor=ADMIN)
+    assert await service.discarded_versions(2031) == frozenset({1})
+
+
+@pytest.mark.parametrize("state", ["approved", "locked"])
+@pytest.mark.asyncio
+async def test_an_approved_or_locked_section_still_refuses_with_the_seasons_requests_present(state: str) -> None:
+    """The section guard is what keeps a request from having read the rules, so it is unchanged: approving programs
+    and cost is what lets intake read them."""
+    store = FakeStore()
+    service = await _first_draft(store)
+    await service.approve_sections(2031, 1, ["programs", "cost"], actor=FINANCE, note="Board, Jan 8")
+    if state == "locked":
+        await service.lock_section(2031, 1, "programs", actor=FINANCE)
+    _with_real_readers(store, [SimpleNamespace(id="req1", flags=[])])
+    before = len(store.operations)
+    with pytest.raises(FirstDraftInUseError, match="approved or locked"):
         await service.discard_first_draft(2031, 1, actor=ADMIN)
-    assert await service.discarded_versions(2031) == frozenset()
+    assert len(store.operations) == before
+
+
+@pytest.mark.parametrize(("collection", "words"), _FIVE_READERS)
+@pytest.mark.asyncio
+async def test_each_other_reader_still_refuses_through_the_repository(collection: str, words: str) -> None:
+    store = FakeStore()
+    service = await _first_draft(store)
+    _with_real_readers(store, [SimpleNamespace(id="req1", flags=[_UNMATCHED])], frozenset({collection}))
+    before = len(store.operations)
+    with pytest.raises(FirstDraftInUseError, match=words):
+        await service.discard_first_draft(2031, 1, actor=ADMIN)
+    assert len(store.operations) == before
+    assert (await service.load(2031)).version == 1
 
 
 @pytest.mark.asyncio
 async def test_another_seasons_readers_do_not_refuse() -> None:
     store = FakeStore()
     service = await _first_draft(store)
-    store.readers = {2030: [AID_REQUESTS, AID_SCENARIO_OPTIONS]}
+    store.readers = {2030: [AID_DECISIONS, AID_SCENARIO_OPTIONS]}
     await service.discard_first_draft(2031, 1, actor=ADMIN)
     assert await service.discarded_versions(2031) == frozenset({1})
 

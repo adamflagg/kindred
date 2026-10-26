@@ -8,9 +8,9 @@ from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import MagicMock
 
-from api.constants.collections import AID_REQUESTS
-from api.services.financial_aid_rules_service import VersionExistsError, request_read_rules
+from api.services.financial_aid_rules_service import VersionExistsError
 from bunking.financial_aid.change_log import (
     AidGuard,
     AidOperationResult,
@@ -26,6 +26,28 @@ from bunking.financial_aid.rules import SessionRef
 from tests.unit.bunking.financial_aid.fixtures import FICTIONAL_SESSION_IDS
 
 AT = datetime(2031, 1, 15, 18, 0, tzinfo=UTC)
+
+
+def readers_pb(requests: list[SimpleNamespace], holding: frozenset[str] = frozenset()) -> MagicMock:
+    """A PocketBase double for `AidRulesRepository.season_readers`: the season's aid_requests rows, and which other
+    collections hold a row for it (one row each)."""
+    pb = MagicMock()
+    handles: dict[str, MagicMock] = {}
+
+    def collection(name: str) -> MagicMock:
+        if name not in handles:
+            handle = MagicMock()
+            handle.get_full_list.return_value = list(requests) if name == "aid_requests" else []
+            rows = [SimpleNamespace(id="req1")] if name == "aid_requests" and requests else []
+            handle.get_list.return_value = SimpleNamespace(
+                items=[SimpleNamespace(id="rec1")] if name in holding else rows
+            )
+            handles[name] = handle
+        return handles[name]
+
+    pb.collection.side_effect = collection
+    pb.handles = handles
+    return pb
 
 
 class FakeStore:
@@ -54,8 +76,6 @@ class FakeStore:
         self._after_read: list[Callable[[], Awaitable[object]]] = []
         # The collections holding a row for a season that reads its rules (`season_readers`), by year.
         self.readers: dict[int, list[str]] = {}
-        # A season's aid_requests rows (their `flags`), by year: one counts as a reader unless it waits for rules.
-        self.requests: dict[int, list[SimpleNamespace]] = {}
 
     def before_next_commit(self, action: Callable[[], Awaitable[object]]) -> None:
         """Run `action` once, as the next commit starts: after that commit's caller read, before it writes."""
@@ -87,10 +107,7 @@ class FakeStore:
         return list(self.sessions)
 
     async def season_readers(self, year: int) -> list[str]:
-        found = list(self.readers.get(year, []))
-        if AID_REQUESTS not in found and any(request_read_rules(r) for r in self.requests.get(year, [])):
-            found.insert(0, AID_REQUESTS)
-        return found
+        return list(self.readers.get(year, []))
 
     async def fetch_log(self, year: int) -> list[LogRow]:
         return [r for r in self.log_rows if r.entity == "aid_rules" and r.entity_id.startswith(f"{year}:")]

@@ -53,7 +53,7 @@ from bunking.financial_aid.rules.lifecycle import (
     status_to_json,
 )
 from bunking.pocketbase_batch import BatchRequestFailedError
-from tests.unit.api.services.rules_fakes import FakeStore
+from tests.unit.api.services.rules_fakes import FakeStore, readers_pb
 from tests.unit.bunking.financial_aid.fixtures import (
     FICTIONAL_SESSION_IDS,
     app,
@@ -497,80 +497,58 @@ async def test_session_refs_come_from_the_seasons_camp_sessions() -> None:
     ]
 
 
-# How intake stores a request it recorded before finance approved programs and cost (Flag.as_dict).
+# A season's aid_requests rows as intake writes them (Flag.as_dict): waiting for approved rules; a session that never
+# resolved (intake checks no rules without a session); no flags at all; and PocketBase's raw JSON text.
 _WAITING = {"code": "awaiting_approved_rules", "detail": {"sections": ["programs", "cost"]}}
-
-
-def _readers_pb(requests: list[SimpleNamespace], holding: frozenset[str] = frozenset()) -> MagicMock:
-    """A PocketBase double for `season_readers`: the season's aid_requests rows, and which other collections hold
-    a row for it."""
-    pb = MagicMock()
-    handles: dict[str, MagicMock] = {}
-
-    def collection(name: str) -> MagicMock:
-        if name not in handles:
-            handle = MagicMock()
-            handle.get_full_list.return_value = list(requests) if name == "aid_requests" else []
-            handle.get_list.return_value = SimpleNamespace(
-                items=[SimpleNamespace(id="rec1")] if name in holding else []
-            )
-            handles[name] = handle
-        return handles[name]
-
-    pb.collection.side_effect = collection
-    pb.handles = handles
-    return pb
+_UNMATCHED = {"code": "unmatched_session", "detail": {"candidates": []}}
+_FIVE_READERS = [
+    "aid_decisions",
+    "aid_grant_placements",
+    "aid_scenario_snapshots",
+    "aid_scenario_options",
+    "aid_scenario_trail",
+]
 
 
 @pytest.mark.asyncio
 async def test_season_readers_names_each_collection_holding_a_row_for_the_season() -> None:
-    """What reads a season's rules (owner ruling R27-9): its requests, decisions and posted rounds, grant
-    placements, and scenarios (snapshots, kept options, drafts). Year-scoped."""
-    pb = _readers_pb([SimpleNamespace(id="req1", flags=[])], frozenset({"aid_scenario_trail"}))
+    """What reads a season's rules (owner ruling R27-9): decisions and posted rounds, grant placements, and scenarios
+    (snapshots, kept options, drafts). Year-scoped, in that order."""
+    pb = readers_pb([], frozenset({"aid_scenario_trail", "aid_decisions"}))
     found = await AidRulesRepository(pb).season_readers(2031)
-    assert found == ["aid_requests", "aid_scenario_trail"]
-    asked = [call.args[0] for call in pb.collection.call_args_list]
-    assert asked == [
-        "aid_requests",
-        "aid_decisions",
-        "aid_grant_placements",
-        "aid_scenario_snapshots",
-        "aid_scenario_options",
-        "aid_scenario_trail",
-    ]
-
-
-@pytest.mark.asyncio
-async def test_a_request_still_waiting_for_rules_has_read_none_so_it_is_no_reader() -> None:
-    """Intake records a request before finance approves programs and cost, flagged as waiting for them: it has
-    read no rules (R27-9: "no request ... has read it"), as a list or as PocketBase's raw JSON text."""
-    infant = {"code": "infant_age_reclassified", "detail": {"count": 1}}
-    pb = _readers_pb(
-        [SimpleNamespace(id="req1", flags=[_WAITING]), SimpleNamespace(id="req2", flags=json.dumps([infant, _WAITING]))]
-    )
-    assert await AidRulesRepository(pb).season_readers(2031) == []
+    assert found == ["aid_decisions", "aid_scenario_trail"]
+    assert [call.args[0] for call in pb.collection.call_args_list] == _FIVE_READERS
 
 
 @pytest.mark.parametrize(
     "flags",
-    [[], None, "", [{"code": "no_program_for_session", "detail": {}}], json.dumps([{"code": "x", "detail": {}}])],
+    [
+        [_UNMATCHED],
+        [],
+        None,
+        "",
+        [_WAITING],
+        [{"code": "no_program_for_session", "detail": {}}],
+        json.dumps([{"code": "infant_age_reclassified", "detail": {"count": 1}}, _UNMATCHED]),
+    ],
 )
 @pytest.mark.asyncio
-async def test_a_request_not_waiting_for_rules_has_read_them(flags: Any) -> None:
-    """Without the waiting flag, intake checked the request against approved rules: the season is in use."""
-    pb = _readers_pb([SimpleNamespace(id="req1", flags=[_WAITING]), SimpleNamespace(id="req2", flags=flags)])
-    assert await AidRulesRepository(pb).season_readers(2031) == ["aid_requests"]
+async def test_no_aid_request_is_a_reader_of_its_seasons_rules_whatever_its_flags(flags: Any) -> None:
+    """Intake reads rules only through load_intake_rules, which never returns a draft (owner ruling 2026-09-25), and
+    the first-draft discard already refuses while any section is approved or locked. So no request can have read a
+    first draft (R27-9: "no request ... has read it"), and aid_requests is not asked at all: a request whose session
+    never resolved, which intake checks against no rules and so never flags as waiting, must not hold the season."""
+    pb = readers_pb([SimpleNamespace(id="req1", flags=flags), SimpleNamespace(id="req2", flags=[_WAITING])])
+    assert await AidRulesRepository(pb).season_readers(2031) == []
+    assert "aid_requests" not in [call.args[0] for call in pb.collection.call_args_list]
 
 
 @pytest.mark.asyncio
-async def test_season_readers_reads_the_seasons_requests_flags_and_one_row_of_each_other_reader() -> None:
-    pb = _readers_pb([])
+async def test_season_readers_reads_one_row_of_each_reader_for_the_year() -> None:
+    pb = readers_pb([])
     assert await AidRulesRepository(pb).season_readers(2031) == []
-    requests = pb.handles["aid_requests"].get_full_list.call_args.kwargs["query_params"]
-    assert (requests["filter"], requests["fields"]) == ("year = 2031", "id,flags")
-    for name, handle in pb.handles.items():
-        if name == "aid_requests":
-            continue
+    assert sorted(pb.handles) == sorted(_FIVE_READERS)
+    for handle in pb.handles.values():
         args = handle.get_list.call_args.args
         assert args[:2] == (1, 1)
         assert args[2]["filter"] == "year = 2031"
