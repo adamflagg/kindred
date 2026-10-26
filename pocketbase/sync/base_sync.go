@@ -270,11 +270,12 @@ func (b *BaseSyncService) DeleteOrphansGuarded(
 // is gone (kindred#2295).
 //
 // These four entry points -- the three DeleteOrphans forms and RetireOrphansGuarded --
-// are the whole exposed surface. The one hand-rolled sweep a rejecting service owns, PersonsSync.deleteHouseholdOrphans, is structurally
-// exempt rather than overlooked -- it builds its key set upstream of the transform
-// that rejects, so nothing is ever missing from it. The reasoning is at that
-// function. Ten OTHER services carry their own deleteOrphans without embedding
-// this type at all and are out of reach entirely; see OrphanSweepGuard's doc.
+// are the whole exposed surface. The one hand-rolled sweep a rejecting service owns,
+// PersonsSync.deleteHouseholdOrphans, is structurally exempt rather than overlooked --
+// it builds its key set upstream of the transform that rejects, so nothing is ever
+// missing from it. The reasoning is at that function. Ten OTHER services carry their
+// own deleteOrphans without embedding this type at all and are out of reach entirely;
+// see OrphanSweepGuard's doc.
 //
 // The count is service-scoped, not collection-scoped, so in a service that syncs
 // several collections from one Stats -- staff_lookups syncs three, financial_lookups

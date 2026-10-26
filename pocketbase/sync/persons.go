@@ -1366,7 +1366,7 @@ func (s *PersonsSync) deleteOrphans(year int) error {
 
 	staffLinked, err := s.staffLinkedPersonIDs(year)
 	if err != nil {
-		return fmt.Errorf("reading which persons have a staff record: %w", err)
+		return err
 	}
 
 	return s.RetireOrphansGuarded(
@@ -1400,7 +1400,7 @@ func (s *PersonsSync) staffLinkedPersonIDs(year int) (map[string]bool, error) {
 		if errors.Is(err, sql.ErrNoRows) {
 			return map[string]bool{}, nil
 		}
-		return nil, err
+		return nil, fmt.Errorf("finding the staff collection: %w", err)
 	}
 	var rows []struct {
 		Person string `db:"person"`
@@ -1408,7 +1408,7 @@ func (s *PersonsSync) staffLinkedPersonIDs(year int) (map[string]bool, error) {
 	if err := s.App.DB().NewQuery(
 		"SELECT DISTINCT person FROM staff WHERE year = {:year} AND person != ''",
 	).Bind(dbx.Params{"year": year}).All(&rows); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("reading staff.person for %d: %w", year, err)
 	}
 	linked := make(map[string]bool, len(rows))
 	for _, r := range rows {
