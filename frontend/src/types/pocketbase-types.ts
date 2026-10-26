@@ -1207,7 +1207,6 @@ export type CampSessionsRecord = {
   is_residential?: boolean
   name: string
   parent_id?: number
-  retired_at?: IsoDateString
   session_group?: RecordIdString
   session_type: CampSessionsSessionTypeOptions
   sort_order?: number

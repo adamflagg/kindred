@@ -212,39 +212,31 @@ func (b *BaseSyncService) DeleteOrphans(
 	entityName string,
 	filter string,
 ) error {
-	return b.deleteOrphans(collection, getIDFunc, entityName, filter, nil, false)
+	return b.deleteOrphans(collection, getIDFunc, entityName, filter, nil, nil)
 }
 
-// retiredAtField is the marker the persons and camp_sessions sweeps stamp on a row CampMinder
-// stopped returning, instead of deleting it (owner ruling OD-05 = B, PM-7 = A). Empty means live.
-// The row keeps every link; a later sync that sees it again clears the marker.
+// retiredAtField is the marker the persons sweep stamps on a staff-linked person CampMinder
+// stopped returning, instead of deleting the row (owner ruling C, 2026-10-26, narrowing OD-05 = B
+// and PM-7 = A). Empty means live. The row keeps every link; a later sync that sees it again
+// clears the marker.
 const retiredAtField = "retired_at"
 
-// RetireOrphans is DeleteOrphans for a collection whose rows are retired rather than deleted:
-// each orphan gets retired_at stamped, and a row already retired is left as it is (it keeps the
-// date it was first retired, and does not count toward the sweep's denominator). Every guard
-// DeleteOrphans applies still applies: a run that keeps its orphans, a failed sync and a
-// rejection all leave the rows untouched. The collection must carry a retiredAtField date field.
-func (b *BaseSyncService) RetireOrphans(
-	collection string,
-	getIDFunc func(record *core.Record) (string, bool),
-	entityName string,
-	filter string,
-) error {
-	return b.deleteOrphans(collection, getIDFunc, entityName, filter, nil, true)
-}
-
-// RetireOrphansGuarded is RetireOrphans with DeleteOrphansGuarded's collapse guard. A retirement
-// is reversible, but a collapsed feed would still hide a season's rows from every screen until
-// the next good run, so the guard stays.
+// RetireOrphansGuarded is DeleteOrphansGuarded for a collection some of whose orphans are retired
+// rather than deleted: retireIf decides per orphan. A retired orphan gets retired_at stamped and
+// keeps every link; the rest are deleted exactly as DeleteOrphansGuarded deletes them. The scan
+// reads only live rows, so a row already retired keeps the date it was first retired and does not
+// count toward the guard's denominator. Every guard still applies: a run that keeps its orphans,
+// a failed sync, a rejection and a collapse all leave every row as it is. The collection must
+// carry a retiredAtField date field.
 func (b *BaseSyncService) RetireOrphansGuarded(
 	collection string,
 	getIDFunc func(record *core.Record) (string, bool),
 	entityName string,
 	filter string,
 	guard OrphanSweepGuard,
+	retireIf func(record *core.Record) bool,
 ) error {
-	return b.deleteOrphans(collection, getIDFunc, entityName, filter, &guard, true)
+	return b.deleteOrphans(collection, getIDFunc, entityName, filter, &guard, retireIf)
 }
 
 // DeleteOrphansGuarded is DeleteOrphans with a collapse guard in front of the
@@ -265,7 +257,7 @@ func (b *BaseSyncService) DeleteOrphansGuarded(
 	filter string,
 	guard OrphanSweepGuard,
 ) error {
-	return b.deleteOrphans(collection, getIDFunc, entityName, filter, &guard, false)
+	return b.deleteOrphans(collection, getIDFunc, entityName, filter, &guard, nil)
 }
 
 // skipSweepForRejections reports whether this run rejected a record, which makes
@@ -277,8 +269,8 @@ func (b *BaseSyncService) DeleteOrphansGuarded(
 // service has to remember, and forgetting it is silent: the sweep runs and the row
 // is gone (kindred#2295).
 //
-// These three entry points are the whole exposed surface. The one hand-rolled sweep
-// a rejecting service owns, PersonsSync.deleteHouseholdOrphans, is structurally
+// These four entry points -- the three DeleteOrphans forms and RetireOrphansGuarded --
+// are the whole exposed surface. The one hand-rolled sweep a rejecting service owns, PersonsSync.deleteHouseholdOrphans, is structurally
 // exempt rather than overlooked -- it builds its key set upstream of the transform
 // that rejects, so nothing is ever missing from it. The reasoning is at that
 // function. Ten OTHER services carry their own deleteOrphans without embedding
@@ -342,17 +334,18 @@ type orphanCandidate struct {
 // such boundary, and it keeps the sweep correct if anyone ever moves a delete
 // back inside the scan.
 //
-// retire turns the delete into a retirement (RetireOrphans): the scan reads only live rows, and
-// each orphan is stamped retired_at and saved instead of deleted.
+// retireIf, when set (RetireOrphansGuarded), turns the delete into a retirement for the orphans it
+// picks: the scan reads only live rows, and a picked orphan is stamped retired_at and saved
+// instead of deleted. Nil deletes every orphan.
 func (b *BaseSyncService) deleteOrphans(
 	collection string,
 	getIDFunc func(record *core.Record) (string, bool),
 	entityName string,
 	filter string,
 	guard *OrphanSweepGuard,
-	retire bool,
+	retireIf func(record *core.Record) bool,
 ) error {
-	if retire {
+	if retireIf != nil {
 		filter = liveRowsFilter(filter)
 	}
 	if b.keptOrphans(entityName, func() (int, error) {
@@ -420,7 +413,7 @@ func (b *BaseSyncService) deleteOrphans(
 		return nil
 	}
 
-	orphanCount := 0
+	orphanCount, retiredCount := 0, 0
 	for _, candidate := range orphans {
 		record, findErr := b.App.FindRecordById(collection, candidate.id)
 		if findErr != nil {
@@ -429,6 +422,7 @@ func (b *BaseSyncService) deleteOrphans(
 			continue
 		}
 
+		retire := retireIf != nil && retireIf(record)
 		if retire {
 			slog.Info("Retiring orphaned record", "entity", entityName, "name", candidate.name, "id", candidate.key)
 		} else {
@@ -437,6 +431,9 @@ func (b *BaseSyncService) deleteOrphans(
 
 		if b.DryRun {
 			orphanCount++
+			if retire {
+				retiredCount++
+			}
 			continue
 		}
 
@@ -450,6 +447,7 @@ func (b *BaseSyncService) deleteOrphans(
 				continue
 			}
 			orphanCount++
+			retiredCount++
 			b.Stats.Updated++
 			continue
 		}
@@ -468,8 +466,9 @@ func (b *BaseSyncService) deleteOrphans(
 	}
 
 	switch {
-	case orphanCount > 0 && retire:
-		slog.Info("Retired orphaned records", "entity", entityName, "count", orphanCount)
+	case retiredCount > 0:
+		slog.Info("Swept orphaned records", "entity", entityName,
+			"deleted", orphanCount-retiredCount, "retired", retiredCount)
 	case orphanCount > 0:
 		slog.Info("Deleted orphaned records", "entity", entityName, "count", orphanCount)
 	default:

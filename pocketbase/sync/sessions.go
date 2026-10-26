@@ -250,11 +250,29 @@ func (s *SessionsSync) Sync(ctx context.Context) error {
 			s.Stats.Rejected++
 			continue
 		}
-		s.upsertSession(key, year, pbData, existingRecords)
+		s.TrackProcessedKey(key, year)
+
+		// Process the record - specify fields to compare (including parent_id and all new fields)
+		compareFields := []string{
+			"cm_id", "name", "start_date", "end_date", "session_type", "parent_id",
+			"description", "is_active", "sort_order", "session_group",
+			"is_day", "is_residential", "is_for_children", "is_for_adults",
+			"start_grade_id", "end_grade_id", "gender_id",
+		}
+		if err := s.ProcessSimpleRecord("camp_sessions", key, pbData, existingRecords, compareFields); err != nil {
+			if errors.Is(err, errRejectedRecord) {
+				slog.Warn("Rejected session", "error", err)
+				s.Stats.Rejected++
+			} else {
+				slog.Error("Error processing session", "error", err)
+				s.Stats.Errors++
+			}
+		}
 	}
 
+	// Delete orphans using base class tracking
 	if err := s.sweepOrphans(filter); err != nil {
-		slog.Error("Error retiring orphaned sessions", "error", err)
+		slog.Error("Error deleting orphans", "error", err)
 	}
 
 	// Force WAL checkpoint
@@ -863,36 +881,11 @@ func (s *SessionsSync) isAGSession(session sessionInfo, allSessions []sessionInf
 	return false
 }
 
-// upsertSession tracks one session CampMinder returned and writes it. A returned session is live,
-// so a retired row is un-retired by the compare like any other changed field.
-func (s *SessionsSync) upsertSession(key, year int, pbData map[string]any, existingRecords map[any]*core.Record) {
-	s.TrackProcessedKey(key, year)
-	pbData[retiredAtField] = ""
-
-	// Process the record - specify fields to compare (including parent_id and all new fields)
-	compareFields := []string{
-		"cm_id", "name", "start_date", "end_date", "session_type", "parent_id",
-		"description", "is_active", "sort_order", "session_group",
-		"is_day", "is_residential", "is_for_children", "is_for_adults",
-		"start_grade_id", "end_grade_id", "gender_id", retiredAtField,
-	}
-	if err := s.ProcessSimpleRecord("camp_sessions", key, pbData, existingRecords, compareFields); err != nil {
-		if errors.Is(err, errRejectedRecord) {
-			slog.Warn("Rejected session", "error", err)
-			s.Stats.Rejected++
-		} else {
-			slog.Error("Error processing session", "error", err)
-			s.Stats.Errors++
-		}
-	}
-}
-
-// sweepOrphans retires the sessions this season holds that CampMinder no longer returned,
-// instead of deleting them (owner ruling OD-05 = B, PM-7 = A): a delete took that season's
-// bunk_assignments, bunk_plans and lodging rows with it. The row and every link stay, and
-// upsertSession un-retires a session CampMinder sends again.
+// sweepOrphans deletes the sessions this season holds that CampMinder no longer returned. Sessions
+// are deleted, not retired: owner ruling C (2026-10-26) keeps retire-not-delete to staff-linked
+// persons until the general retire work (PERSON-RETIRE) settles what staff see for a retired row.
 func (s *SessionsSync) sweepOrphans(filter string) error {
-	return s.RetireOrphans(
+	return s.DeleteOrphans(
 		"camp_sessions",
 		func(record *core.Record) (string, bool) {
 			cmID, cmOK := record.Get("cm_id").(float64)

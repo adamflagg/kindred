@@ -469,26 +469,31 @@ A historical replay differs from a synced season's run in two more ways:
   post-skip list, and the queue's dedupe key includes it. A run of N or N−1 refuses `skip=` with
   400: it is the live data's refresh and keeps its full job list.
 
-### Rows CampMinder stops returning: staff kept, persons and sessions retired
+### Rows CampMinder stops returning: staff kept, staff-linked persons retired
 
 Owner ruling OD-05 = B (PM-7 = A): staff records stay after a staff member is fired, even in the
-current season, so the record is there to look back at.
+current season, so the record is there to look back at. Owner ruling C (2026-10-26) narrowed the
+first cut to what is safe without touching any screen:
 
 - **`staff`, `staff_applications`, `staff_vehicle_info` and `staff_skills` have no orphan sweep**, in
   any season or run. A row the run did not find keeps its last values (`TestStaffSyncsHaveNoDeletePath`
   pins that none of the four files can delete).
-- **`persons` and `camp_sessions` are retired, not deleted.** Where their sweep used to delete (the
-  nightly and a staff run of N or N−1), it stamps `retired_at` (`RetireOrphans` /
-  `RetireOrphansGuarded` in `base_sync.go`); every guard the delete had still applies, and a row
-  already retired keeps its first date. The row keeps every link, so `staff.person` is no longer
-  blanked (which collided on staff's `UNIQUE(year, person)`). A run that sees the row again clears
-  `retired_at`. The runs that kept their orphans (hourly, a replay, the all-seasons re-sync) still
-  neither delete nor retire.
+- **A person with a staff record that season is retired, not deleted.** Where the persons sweep
+  deletes (the nightly and a staff run of N or N−1), a person some `staff` row of the same year
+  points at gets `retired_at` stamped instead (`RetireOrphansGuarded` in `base_sync.go`); every
+  guard the delete had still applies, and a person already retired keeps its first date. The row
+  keeps `staff.person`, which a delete used to blank (and the second blank collided on staff's
+  `UNIQUE(year, person)`). A run that sees the person again clears `retired_at`.
+- **Every other person, and every session, is deleted as before.** `camp_sessions` has no
+  `retired_at`. Retiring them too is the PERSON-RETIRE follow-up: it waits on what staff should see
+  for a retired row (owner question OD-08), because many list reads would start showing them.
+- The runs that keep their orphans (hourly, a replay, the all-seasons re-sync) still neither delete
+  nor retire.
 - **`attendees` is unchanged:** a stale enrollment is still deleted, so a person CampMinder merged
   into another does not count twice.
 
-What staff see for a retired person or session is not decided yet; nothing in the UI reads
-`retired_at` today.
+Nothing in the UI reads `retired_at` today. A retired staff person has no attendee row that
+season, so camper lists keyed off attendees do not show them.
 
 ### Financial transactions: rolling seasons and the one-off backfill
 

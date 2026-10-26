@@ -9,17 +9,20 @@ import (
 	"github.com/pocketbase/pocketbase/tools/types"
 )
 
-// The tests in this file pin owner ruling OD-05 = B (PM-7 = A): the persons and camp_sessions
-// sweeps RETIRE a row CampMinder stops returning instead of deleting it, so the record and every
-// link to it stay and staff can look back; a row CampMinder returns again is un-retired.
+// The tests in this file pin owner ruling C (2026-10-26), the narrowed form of OD-05 = B and
+// PM-7 = A: the persons sweep RETIRES a person CampMinder stops returning only when that person
+// has a staff record, so the record and staff.person survive and fired staff stay in Staff
+// Analysis. Every other orphan person is deleted exactly as before, and the camp_sessions sweep
+// still deletes. A retired person CampMinder returns again is un-retired.
 //
 // They also pin the end of bug B1: a persons delete blanked staff.person on every staff row
 // that pointed at the person, and the second blank in a season collided on staff's
 // UNIQUE(year, person), failing the delete and leaving the season half-swept.
 
-// newRetireTestApp builds persons and camp_sessions as production declares the fields these
-// paths touch -- retired_at is a date field (migration 1500000252) -- and a staff collection
-// whose person relation and UNIQUE(year, person) index are production's, the pair B1 broke on.
+// newRetireTestApp builds persons as production declares the fields these paths touch --
+// retired_at is a date field (migration 1500000252) -- a staff collection whose person relation
+// and UNIQUE(year, person) index are production's, the pair B1 broke on, and camp_sessions
+// WITHOUT retired_at, as production keeps it.
 func newRetireTestApp(t *testing.T) core.App {
 	t.Helper()
 	app, err := pbtests.NewTestApp()
@@ -53,7 +56,6 @@ func newRetireTestApp(t *testing.T) core.App {
 	sessions.Fields.Add(&core.NumberField{Name: "cm_id", Required: true})
 	sessions.Fields.Add(&core.TextField{Name: "name"})
 	sessions.Fields.Add(&core.NumberField{Name: "year", Required: true})
-	sessions.Fields.Add(&core.DateField{Name: retiredAtField})
 	if err := app.Save(sessions); err != nil {
 		t.Fatalf("save camp_sessions: %v", err)
 	}
@@ -77,10 +79,29 @@ func findByCMID(t *testing.T, app core.App, collection string, cmID, year int) *
 	return rec
 }
 
-// TestPersonsSweepRetiresAndKeepsStaffLinks: two people CampMinder no longer returns, each the
-// person of a staff row, are retired rather than deleted. Both rows stay, both staff rows keep
-// their person, and nothing fails (B1).
-func TestPersonsSweepRetiresAndKeepsStaffLinks(t *testing.T) {
+func existsByCMID(t *testing.T, app core.App, collection string, cmID, year int) bool {
+	t.Helper()
+	return countRows(t, app, collection, fmt.Sprintf("cm_id = %d && year = %d", cmID, year)) > 0
+}
+
+// processThreeCampers runs three campers through the real write path, so the sweep's collapse
+// guard sees a believable computed set.
+func processThreeCampers(t *testing.T, s *PersonsSync, year int) {
+	t.Helper()
+	existing := s.preloadExistingPersons(fmt.Sprintf("year = %d", year), year)
+	for i, name := range []string{"Emma", "Liam", "Noah"} {
+		if err := s.processPerson(camperData(9300001+i, name), true, existing,
+			map[string]string{}, map[int]string{}, year); err != nil {
+			t.Fatalf("processPerson: %v", err)
+		}
+	}
+	s.SyncSuccessful = true
+}
+
+// TestPersonsSweepRetiresStaffLinkedPersonsAndKeepsTheirLinks: two people CampMinder no longer
+// returns, each the person of a staff row, are retired rather than deleted. Both rows stay, both
+// staff rows keep their person, and nothing fails (B1).
+func TestPersonsSweepRetiresStaffLinkedPersonsAndKeepsTheirLinks(t *testing.T) {
 	t.Parallel()
 	app := newRetireTestApp(t)
 	const year = 2026
@@ -93,23 +114,15 @@ func TestPersonsSweepRetiresAndKeepsStaffLinks(t *testing.T) {
 	}
 
 	s := NewPersonsSync(app, nil)
-	existing := s.preloadExistingPersons(fmt.Sprintf("year = %d", year), year)
-	for i, name := range []string{"Emma", "Liam", "Noah"} {
-		if err := s.processPerson(camperData(9300001+i, name), true, existing,
-			map[string]string{}, map[int]string{}, year); err != nil {
-			t.Fatalf("processPerson: %v", err)
-		}
-	}
-	s.SyncSuccessful = true
-
-	if err := s.retireOrphans(year); err != nil {
+	processThreeCampers(t, s, year)
+	if err := s.deleteOrphans(year); err != nil {
 		t.Fatalf("persons sweep: %v", err)
 	}
 	if s.Stats.Errors != 0 {
 		t.Errorf("Stats.Errors = %d, want 0", s.Stats.Errors)
 	}
 	if s.Stats.Deleted != 0 {
-		t.Errorf("Stats.Deleted = %d, want 0: the persons sweep never deletes", s.Stats.Deleted)
+		t.Errorf("Stats.Deleted = %d, want 0: a staff-linked person is never deleted", s.Stats.Deleted)
 	}
 
 	for _, cmID := range gone {
@@ -132,23 +145,54 @@ func TestPersonsSweepRetiresAndKeepsStaffLinks(t *testing.T) {
 	}
 }
 
+// TestPersonsSweepDeletesAnOrphanWithNoStaffRecord: an orphan person with no staff record is
+// deleted exactly as before ruling C -- beside a staff-linked orphan the same sweep retires.
+// A staff row of ANOTHER season pointing at the person does not count: only the same year does.
+func TestPersonsSweepDeletesAnOrphanWithNoStaffRecord(t *testing.T) {
+	t.Parallel()
+	app := newRetireTestApp(t)
+	const year = 2026
+
+	saveRecord(t, app, "persons", map[string]any{"cm_id": 9300151, "first_name": "Mia", "year": year})
+	otherSeason := saveRecord(t, app, "persons", map[string]any{"cm_id": 9300152, "first_name": "Ava", "year": year})
+	saveRecord(t, app, "staff", map[string]any{"person": otherSeason, "year": year - 1})
+	linked := saveRecord(t, app, "persons", map[string]any{"cm_id": 9300153, "first_name": "Ava", "year": year})
+	saveRecord(t, app, "staff", map[string]any{"person": linked, "year": year})
+
+	s := NewPersonsSync(app, nil)
+	processThreeCampers(t, s, year)
+	if err := s.deleteOrphans(year); err != nil {
+		t.Fatalf("persons sweep: %v", err)
+	}
+	if s.Stats.Errors != 0 {
+		t.Errorf("Stats.Errors = %d, want 0", s.Stats.Errors)
+	}
+	if s.Stats.Deleted != 2 {
+		t.Errorf("Stats.Deleted = %d, want 2 (the two orphans with no staff record this season)", s.Stats.Deleted)
+	}
+	for _, cmID := range []int{9300151, 9300152} {
+		if existsByCMID(t, app, "persons", cmID, year) {
+			t.Errorf("person %d has no staff record this season but was kept: it must be deleted as before", cmID)
+		}
+	}
+	if findByCMID(t, app, "persons", 9300153, year).GetDateTime(retiredAtField).IsZero() {
+		t.Error("the staff-linked orphan was not retired")
+	}
+}
+
 // TestPersonsSweepDoesNotRestampARetiredPerson: a person already retired keeps the date it was
-// first retired; the sweep stamps only a live row.
+// first retired; the sweep reads only live rows.
 func TestPersonsSweepDoesNotRestampARetiredPerson(t *testing.T) {
 	t.Parallel()
 	app := newRetireTestApp(t)
 	const year = 2026
 	first, _ := types.ParseDateTime("2026-07-01 03:00:00.000Z")
-	saveRecord(t, app, "persons", map[string]any{"cm_id": 9300201, "year": year, retiredAtField: first})
+	pid := saveRecord(t, app, "persons", map[string]any{"cm_id": 9300201, "year": year, retiredAtField: first})
+	saveRecord(t, app, "staff", map[string]any{"person": pid, "year": year})
 
 	s := NewPersonsSync(app, nil)
-	existing := s.preloadExistingPersons(fmt.Sprintf("year = %d", year), year)
-	if err := s.processPerson(camperData(9300202, "Emma"), true, existing,
-		map[string]string{}, map[int]string{}, year); err != nil {
-		t.Fatal(err)
-	}
-	s.SyncSuccessful = true
-	if err := s.retireOrphans(year); err != nil {
+	processThreeCampers(t, s, year)
+	if err := s.deleteOrphans(year); err != nil {
 		t.Fatal(err)
 	}
 	if got := findByCMID(t, app, "persons", 9300201, year).GetDateTime(retiredAtField); !got.Equal(first) {
@@ -156,16 +200,17 @@ func TestPersonsSweepDoesNotRestampARetiredPerson(t *testing.T) {
 	}
 }
 
-// TestPersonsUnretireWhenCampMinderReturnsThem: a retired person CampMinder sends again is live
-// again, on any run that processes them.
+// TestPersonsUnretireWhenCampMinderReturnsThem: a retired staff-linked person CampMinder sends
+// again is live again, on any run that processes them, and keeps the staff link.
 func TestPersonsUnretireWhenCampMinderReturnsThem(t *testing.T) {
 	t.Parallel()
 	app := newRetireTestApp(t)
 	const year = 2026
-	saveRecord(t, app, "persons", map[string]any{
+	pid := saveRecord(t, app, "persons", map[string]any{
 		"cm_id": 9300301, "first_name": "Emma", "last_name": "Johnson", "year": year, "is_camper": true,
 		retiredAtField: types.NowDateTime(),
 	})
+	staffID := saveRecord(t, app, "staff", map[string]any{"person": pid, "year": year})
 
 	s := NewPersonsSync(app, nil)
 	existing := s.preloadExistingPersons(fmt.Sprintf("year = %d", year), year)
@@ -176,11 +221,14 @@ func TestPersonsUnretireWhenCampMinderReturnsThem(t *testing.T) {
 	if got := findByCMID(t, app, "persons", 9300301, year).GetDateTime(retiredAtField); !got.IsZero() {
 		t.Errorf("retired_at = %v, want empty: CampMinder returned this person", got)
 	}
+	if st, err := app.FindRecordById("staff", staffID); err != nil || st.GetString("person") != pid {
+		t.Errorf("staff row lost its person on un-retire (err %v)", err)
+	}
 }
 
-// TestSessionsSweepRetiresInsteadOfDeleting: a session CampMinder stops returning is retired, so
-// its season's bunk assignments, plans and lodging rows keep their session.
-func TestSessionsSweepRetiresInsteadOfDeleting(t *testing.T) {
+// TestSessionsSweepStillDeletes: ruling C leaves camp_sessions exactly as before -- an orphan
+// session is deleted, on a schema with no retired_at field.
+func TestSessionsSweepStillDeletes(t *testing.T) {
 	t.Parallel()
 	app := newRetireTestApp(t)
 	const year = 2026
@@ -193,57 +241,35 @@ func TestSessionsSweepRetiresInsteadOfDeleting(t *testing.T) {
 	if err := s.sweepOrphans(fmt.Sprintf("year = %d", year)); err != nil {
 		t.Fatal(err)
 	}
-	if s.Stats.Deleted != 0 {
-		t.Errorf("Stats.Deleted = %d, want 0", s.Stats.Deleted)
+	if s.Stats.Deleted != 1 {
+		t.Errorf("Stats.Deleted = %d, want 1", s.Stats.Deleted)
 	}
-	if got := findByCMID(t, app, "camp_sessions", 1002, year).GetDateTime(retiredAtField); got.IsZero() {
-		t.Error("session 1002: retired_at empty, want the sweep's stamp")
+	if existsByCMID(t, app, "camp_sessions", 1002, year) {
+		t.Error("orphan session 1002 survived the sweep: sessions are deleted under ruling C")
 	}
-	if got := findByCMID(t, app, "camp_sessions", 1001, year).GetDateTime(retiredAtField); !got.IsZero() {
-		t.Error("session 1001 was returned this run but is retired")
-	}
-}
-
-// TestSessionsUnretireWhenCampMinderReturnsThem: a retired session CampMinder sends again is
-// live again.
-func TestSessionsUnretireWhenCampMinderReturnsThem(t *testing.T) {
-	t.Parallel()
-	app := newRetireTestApp(t)
-	const year = 2026
-	saveRecord(t, app, "camp_sessions", map[string]any{
-		"cm_id": 1003, "name": "Session 3", "year": year, retiredAtField: types.NowDateTime()})
-
-	s := &SessionsSync{BaseSyncService: NewBaseSyncService(app, nil)}
-	existing, err := s.PreloadRecords("camp_sessions", fmt.Sprintf("year = %d", year), func(r *core.Record) (any, bool) {
-		return int(r.GetFloat("cm_id")), true
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	s.upsertSession(1003, year, map[string]any{"cm_id": 1003, "name": "Session 3", "year": year}, existing)
-	if s.Stats.Errors != 0 || s.Stats.Rejected != 0 {
-		t.Fatalf("errors=%d rejected=%d", s.Stats.Errors, s.Stats.Rejected)
-	}
-	if got := findByCMID(t, app, "camp_sessions", 1003, year).GetDateTime(retiredAtField); !got.IsZero() {
-		t.Errorf("retired_at = %v, want empty: CampMinder returned this session", got)
+	if !existsByCMID(t, app, "camp_sessions", 1001, year) {
+		t.Error("session 1001 was returned this run but is gone")
 	}
 }
 
 // TestKeptRunsNeitherDeleteNorRetire: the runs that keep their orphans -- the hourly run, a
-// historical replay and the Saturday all-seasons pass -- still leave persons and sessions exactly
-// as they are, retired_at included. Retiring is the nightly sweep's job, as deleting was.
+// historical replay and the Saturday all-seasons pass -- still leave persons (staff-linked or not)
+// and sessions exactly as they are, retired_at included. Retiring is the nightly sweep's job, as
+// deleting is.
 func TestKeptRunsNeitherDeleteNorRetire(t *testing.T) {
 	t.Parallel()
 	app := newRetireTestApp(t)
 	const year = 2021
 	saveRecord(t, app, "persons", map[string]any{"cm_id": 9300401, "year": year})
+	linked := saveRecord(t, app, "persons", map[string]any{"cm_id": 9300402, "year": year})
+	saveRecord(t, app, "staff", map[string]any{"person": linked, "year": year})
 	saveRecord(t, app, "camp_sessions", map[string]any{"cm_id": 1004, "year": year})
 
 	p := NewPersonsSync(app, nil)
 	p.setKeepOrphans(true)
 	p.SyncSuccessful = true
 	p.TrackProcessedKey(9300499, year)
-	if err := p.retireOrphans(year); err != nil {
+	if err := p.deleteOrphans(year); err != nil {
 		t.Fatal(err)
 	}
 	s := &SessionsSync{BaseSyncService: NewBaseSyncService(app, nil)}
@@ -252,10 +278,12 @@ func TestKeptRunsNeitherDeleteNorRetire(t *testing.T) {
 	if err := s.sweepOrphans(fmt.Sprintf("year = %d", year)); err != nil {
 		t.Fatal(err)
 	}
-	if got := findByCMID(t, app, "persons", 9300401, year).GetDateTime(retiredAtField); !got.IsZero() {
-		t.Error("a kept run retired a person")
+	for _, cmID := range []int{9300401, 9300402} {
+		if got := findByCMID(t, app, "persons", cmID, year).GetDateTime(retiredAtField); !got.IsZero() {
+			t.Errorf("a kept run retired person %d", cmID)
+		}
 	}
-	if got := findByCMID(t, app, "camp_sessions", 1004, year).GetDateTime(retiredAtField); !got.IsZero() {
-		t.Error("a kept run retired a session")
+	if !existsByCMID(t, app, "camp_sessions", 1004, year) {
+		t.Error("a kept run deleted a session")
 	}
 }

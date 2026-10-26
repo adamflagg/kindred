@@ -203,7 +203,7 @@ var serviceGrainDeclarations = []ServiceGrain{
 
 	{Service: "sessions", Writes: []CollectionGrain{{
 		Collection: "camp_sessions",
-		NoGrain:    "upsertSession (ProcessSimpleRecord) + unguarded RetireOrphans (sessions.go): retired, never deleted",
+		NoGrain:    "ProcessSimpleRecord + unguarded DeleteOrphans (sessions.go)",
 	}}},
 
 	{Service: serviceNameAttendees, Writes: []CollectionGrain{

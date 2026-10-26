@@ -433,7 +433,7 @@ func seedCMIDRows(t *testing.T, collection string, year int, cmIDs ...int) core.
 		t.Fatal(err)
 	}
 	col.Fields.Add(&core.NumberField{Name: "cm_id"})
-	col.Fields.Add(&core.DateField{Name: retiredAtField}) // persons retires; households ignores it
+	col.Fields.Add(&core.DateField{Name: retiredAtField}) // persons retires staff-linked rows; households ignores it
 	if err = app.Save(col); err != nil {
 		t.Fatal(err)
 	}
@@ -463,7 +463,7 @@ func TestPersonsSweepsKeepEverythingOnAReplay(t *testing.T) {
 			if replay {
 				s.keepOrphansForReplay()
 			}
-			if err := s.retireOrphans(2021); err != nil {
+			if err := s.deleteOrphans(2021); err != nil {
 				t.Fatal(err)
 			}
 
@@ -481,7 +481,7 @@ func TestPersonsSweepsKeepEverythingOnAReplay(t *testing.T) {
 			if replay {
 				want = 3
 			}
-			if n := countRows(t, persons, "persons", liveRowsFilter("year = 2021")); n != want {
+			if n := countRows(t, persons, "persons", "year = 2021"); n != want {
 				t.Errorf("%d persons left, want %d", n, want)
 			}
 			if n := countRows(t, households, "households", "year = 2021"); n != want {

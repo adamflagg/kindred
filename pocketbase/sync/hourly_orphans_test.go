@@ -227,7 +227,7 @@ func TestRefusedHourlyStartLeavesTheRunningInstanceAlone(t *testing.T) {
 	})
 }
 
-// TestPersonsSweepKeepsOrphansWhenAsked: the real persons sweep (PersonsSync.retireOrphans)
+// TestPersonsSweepKeepsOrphansWhenAsked: the real persons sweep (PersonsSync.deleteOrphans)
 // honors the switch. The control shows the same short feed passes every guard and sweeps when
 // the switch is off, which is why the hourly run turns it on.
 func TestPersonsSweepKeepsOrphansWhenAsked(t *testing.T) {
@@ -258,14 +258,14 @@ func TestPersonsSweepKeepsOrphansWhenAsked(t *testing.T) {
 			s.SyncSuccessful = true
 			s.ProcessedKeys = map[string]bool{CompositeKey(9400301, 2027): true}
 			s.setKeepOrphans(keep)
-			if err := s.retireOrphans(2027); err != nil {
+			if err := s.deleteOrphans(2027); err != nil {
 				t.Fatal(err)
 			}
 			want := 1
 			if keep {
 				want = 3
 			}
-			if n := countRows(t, app, "persons", liveRowsFilter("year = 2027")); n != want {
+			if n := countRows(t, app, "persons", "year = 2027"); n != want {
 				t.Errorf("%d persons left, want %d", n, want)
 			}
 		})

@@ -30,7 +30,6 @@ export const mockSession = (overrides?: Partial<Session>): Session => ({
   is_for_children: true,
   is_residential: true,
   parent_id: 0,
-  retired_at: '',
   session_group: '',
   sort_order: 0,
   start_grade_id: 0,
