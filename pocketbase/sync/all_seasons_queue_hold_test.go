@@ -200,3 +200,85 @@ func TestPhaseRunAndAllSeasonsHoldExcludeEachOther(t *testing.T) {
 		}
 	})
 }
+
+// TestIndividualRunAdmissionAndAllSeasonsHoldExcludeEachOther: a job a staff member runs on its
+// own is admitted in the same critical section as the busy check, so the pass cannot take its
+// hold between the API's check and the job starting. While the job is admitted the pass waits;
+// while the pass holds, the job is refused admission and the API queues it (CodeRabbit on #3303).
+func TestIndividualRunAdmissionAndAllSeasonsHoldExcludeEachOther(t *testing.T) {
+	runInBubble(t, func(t *testing.T) {
+		o, _, _ := newAllSeasonsOrchestrator(t)
+
+		releaseRun, admitted := o.admitIndividualRun()
+		if !admitted {
+			t.Fatal("an idle orchestrator refused an individual run")
+		}
+		if again, ok := o.admitIndividualRun(); ok {
+			again()
+			t.Error("a second individual run was admitted while the first had not started its job")
+		}
+		held := make(chan func(), 1)
+		go func() {
+			release, holdErr := o.holdQueuesForAllSeasons(context.Background())
+			if holdErr != nil {
+				t.Error(holdErr)
+			}
+			held <- release
+		}()
+		synctest.Wait()
+		select {
+		case <-held:
+			t.Fatal("the pass took the hold between an individual run's admission and its job")
+		default:
+		}
+		releaseRun()
+		releaseRun() // idempotent: a deferred release after an explicit one is a no-op
+		releaseHold := <-held
+
+		if release, ok := o.admitIndividualRun(); ok {
+			release()
+			t.Error("an individual run was admitted while the pass held the queues")
+		}
+		releaseHold()
+		release, ok := o.admitIndividualRun()
+		if !ok {
+			t.Fatal("the hold was released, but an individual run is still refused")
+		}
+		release()
+		if o.IsAnyQueueBusy() {
+			t.Error("everything was released, but the API still reads busy")
+		}
+	})
+}
+
+// TestQueuedIndividualRunWaitsForTheAllSeasonsHold: a staff press queued while something ran is
+// drained by processQueuedSyncs, and when the pass holds the queues by then the job waits for
+// the hold to be let go instead of starting under the pass.
+func TestQueuedIndividualRunWaitsForTheAllSeasonsHold(t *testing.T) {
+	runInBubble(t, func(t *testing.T) {
+		o, rec, _ := newAllSeasonsOrchestrator(t)
+		releaseHold, err := o.holdQueuesForAllSeasons(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := o.EnqueueIndividualSync(2027, "sessions", nil, false, "staff@example.com"); err != nil {
+			t.Fatal(err)
+		}
+
+		drained := make(chan struct{})
+		go func() {
+			processQueuedSyncs(o)
+			close(drained)
+		}()
+		synctest.Wait()
+		if runs := rec.Runs(); len(runs) != 0 {
+			t.Errorf("while the pass held the queues, the queued individual run ran %v", runs)
+		}
+
+		releaseHold()
+		<-drained
+		if runs, want := rec.Runs(), []seasonRun{{ID: "sessions", Year: 2027}}; !slices.Equal(runs, want) {
+			t.Errorf("after the hold was let go, ran %v; want %v", runs, want)
+		}
+	})
+}

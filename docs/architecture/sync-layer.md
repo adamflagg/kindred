@@ -440,8 +440,9 @@ household its `family_camp_registrations` and `household_demographics`. It waits
 or job runs (the nightly, the weekly globals, a staff full run or a replay, the hourly run), then **holds
 the queues** until its last season is done (`holdQueuesForAllSeasons`): the quiet check and the hold are
 one critical section, every queue that claims a running flag waits in `claimQueue` while the hold is
-taken, the hourly run yields, and the API queues a staff press (`IsAnyQueueBusy`), which the scheduler
-starts when the pass ends. So a staff run can no longer land between two of the pass's jobs and collide on
+taken, a phase run or a job run on its own holds a queue slot for its length (`claimPhaseRun`,
+`admitIndividualRun`), the hourly run yields, and the API queues a staff press (`IsAnyQueueBusy`), which
+the scheduler starts when the pass ends. So a staff run can no longer land between two of the pass's jobs and collide on
 a job id, and a season no longer finishes half-refreshed (PM-7 = A). Its runs
 are filed as `historical`, under their own year. Each job it finishes clears FastAPI's caches as any sync
 does, scoped by job rather than season, so the live seasons' metrics, lodging and Camperships caches are

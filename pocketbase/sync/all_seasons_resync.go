@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"sync"
 	"time"
 )
 
@@ -153,9 +154,10 @@ func (o *Orchestrator) RunAllSeasonsResync(ctx context.Context) error {
 // on the sync queues in the same critical section as that check, so nothing can claim a queue in
 // between: the nightly or a staff full run (dailySyncRunning), a replay or a manual N-1 run
 // (historicalSyncRunning), the weekly globals, the custom-values queue, the hourly run, a phase
-// run (claimPhaseRun), or a job started on its own. While the hold is taken those queues wait
-// in claimQueue, the hourly run yields (hourlyBlockerLocked), and the API queues a staff press
-// (IsAnyQueueBusy). The caller lets go with the returned func, once.
+// run (claimPhaseRun), a job a staff member runs on its own (admitIndividualRun,
+// claimIndividualRun), or any other job. While the hold is taken those queues wait in
+// claimQueue, the hourly run yields (hourlyBlockerLocked), and the API queues a staff press
+// (IsAnyQueueBusy, admitIndividualRun). The caller lets go with the returned func, once.
 //
 // The hourly run fires at 05:00 too; it yields to this pass once the pass has started, so this
 // wait is only ever for one hourly run that got there first.
@@ -163,7 +165,7 @@ func (o *Orchestrator) holdQueuesForAllSeasons(ctx context.Context) (release fun
 	for {
 		o.mu.Lock()
 		busy := o.dailySyncRunning || o.historicalSyncRunning || o.weeklySyncRunning ||
-			o.customValuesSyncRunning || o.hourlySyncRunning || o.phaseRuns > 0 ||
+			o.customValuesSyncRunning || o.hourlySyncRunning || o.runSlots > 0 ||
 			o.anyJobRunningLocked()
 		if !busy {
 			hold := make(chan struct{})
@@ -229,23 +231,63 @@ func (o *Orchestrator) dropBatch(batchID string) {
 func (o *Orchestrator) IsAnyQueueBusy() bool {
 	o.mu.RLock()
 	defer o.mu.RUnlock()
+	return o.anyQueueBusyLocked()
+}
+
+// anyQueueBusyLocked is IsAnyQueueBusy for a caller that holds o.mu.
+func (o *Orchestrator) anyQueueBusyLocked() bool {
 	return o.dailySyncRunning || o.weeklySyncRunning || o.historicalSyncRunning ||
 		o.customValuesSyncRunning || o.hourlySyncRunning || o.allSeasonsHold != nil ||
-		o.phaseRuns > 0 || o.anyJobRunningLocked()
+		o.runSlots > 0 || o.anyJobRunningLocked()
 }
 
 // claimPhaseRun holds a queue slot for one phase run (Run Phase, immediate or dequeued) for its
 // whole length, through claimQueue: it waits while the all-seasons re-sync holds the queues, and
 // the pass and the API's admission check count it until the returned func lets go.
 func (o *Orchestrator) claimPhaseRun(ctx context.Context) (release func(), err error) {
-	if err := o.claimQueue(ctx, "a phase run", func() { o.phaseRuns++ }); err != nil {
+	return o.claimRunSlot(ctx, "a phase run")
+}
+
+// claimIndividualRun is claimPhaseRun for a queued job run on its own (processQueuedSyncs): the
+// job starts its runner after the queue's busy flags are gone, so without a slot the pass could
+// take its hold first and the job would run under it.
+func (o *Orchestrator) claimIndividualRun(ctx context.Context) (release func(), err error) {
+	return o.claimRunSlot(ctx, "a queued individual run")
+}
+
+// admitIndividualRun is the API's admission for a job a staff member runs on its own. It checks
+// that nothing is busy and takes a queue slot in one critical section, so the all-seasons re-sync
+// cannot take its hold between the check and the job registering as running (CodeRabbit on
+// #3303). Not admitted, the caller queues the press. The release is safe to call more than once.
+func (o *Orchestrator) admitIndividualRun() (release func(), admitted bool) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.anyQueueBusyLocked() {
+		return nil, false
+	}
+	o.runSlots++
+	return o.runSlotRelease(), true
+}
+
+// claimRunSlot holds a queue slot through claimQueue, waiting while the all-seasons re-sync holds
+// the queues.
+func (o *Orchestrator) claimRunSlot(ctx context.Context, who string) (release func(), err error) {
+	if err := o.claimQueue(ctx, who, func() { o.runSlots++ }); err != nil {
 		return nil, err
 	}
+	return o.runSlotRelease(), nil
+}
+
+// runSlotRelease lets one queue slot go, once however often it is called.
+func (o *Orchestrator) runSlotRelease() func() {
+	var once sync.Once
 	return func() {
-		o.mu.Lock()
-		if o.phaseRuns > 0 { // ClearSyncFlags may have zeroed it under a live run
-			o.phaseRuns--
-		}
-		o.mu.Unlock()
-	}, nil
+		once.Do(func() {
+			o.mu.Lock()
+			if o.runSlots > 0 { // ClearSyncFlags may have zeroed it under a live run
+				o.runSlots--
+			}
+			o.mu.Unlock()
+		})
+	}
 }

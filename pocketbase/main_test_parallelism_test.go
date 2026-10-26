@@ -398,6 +398,8 @@ var serialGroups = []struct {
 			"TestAllSeasonsHoldCountsAsBusyForTheAPI",
 			"TestAllSeasonsHoldWaitsForAQueueThatClaimedFirst",
 			"TestPhaseRunAndAllSeasonsHoldExcludeEachOther",
+			"TestIndividualRunAdmissionAndAllSeasonsHoldExcludeEachOther",
+			"TestQueuedIndividualRunWaitsForTheAllSeasonsHold",
 			"TestPriorSeasonPassNeverSwapsTheRegistry",
 			"TestPriorSeasonFailureLeavesPrimaryRecorded",
 			"TestSyncRunsRowsCarryTheirSeason",

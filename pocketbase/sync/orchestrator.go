@@ -891,10 +891,11 @@ type Orchestrator struct {
 	// its last: every queue that claims a running flag waits on it (claimQueue), and the API's
 	// admission check queues a staff press (IsAnyQueueBusy). Closed when the pass lets go.
 	allSeasonsHold chan struct{}
-	// phaseRuns counts the phase runs in flight (claimPhaseRun). A phase run starts its jobs one
-	// at a time with no job running in between, so without this the all-seasons re-sync could
-	// take its hold in a gap and run under the phase's next job.
-	phaseRuns int
+	// runSlots counts the phase runs (claimPhaseRun) and the individual runs (admitIndividualRun,
+	// claimIndividualRun) in flight. A phase run starts its jobs one at a time with no job running
+	// in between, and an individual run registers its job only once its runner starts, so without
+	// this the all-seasons re-sync could take its hold in that gap and run under the job.
+	runSlots int
 	// hourlySyncRunning is the hourly run (RunHourlySync), so the all-seasons re-sync and the
 	// API's admission checks wait for it rather than start a job id under it.
 	hourlySyncRunning bool
@@ -3704,7 +3705,7 @@ func (o *Orchestrator) ClearSyncFlags() {
 	o.weeklySyncQueue = nil
 	o.customValuesSyncRunning = false
 	o.customValuesSyncQueue = nil
-	o.phaseRuns = 0 // a panicking phase run never reached its release
+	o.runSlots = 0 // a panicking phase or individual run never reached its release
 	o.activeSyncCancel = nil
 
 	slog.Warn("Cleared all sync flags (panic recovery)")
