@@ -313,6 +313,7 @@ func newPersonsTestApp(t *testing.T) core.App {
 	col.Fields.Add(&core.TextField{Name: "last_name"})
 	col.Fields.Add(&core.NumberField{Name: "year"})
 	col.Fields.Add(&core.BoolField{Name: "is_camper"})
+	col.Fields.Add(&core.DateField{Name: retiredAtField}) // the persons sweep retires (OD-05 = B)
 	if saveErr := app.Save(col); saveErr != nil {
 		t.Fatalf("save persons: %v", saveErr)
 	}

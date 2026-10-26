@@ -909,14 +909,26 @@ func TestQuestRegistrationsSyncPropagatesSweepRefusal(t *testing.T) {
 	assertSweepRefusalReachesCaller(t, app, "quest_registrations", OrphanSweepMinRows+5, s.Sync(context.Background()))
 }
 
-func TestStaffSkillsSyncPropagatesSweepRefusal(t *testing.T) {
+// TestStaffSkillsSyncKeepsRowsItDidNotFind is the staff_skills half of owner ruling OD-05 = B:
+// the same short feed that makes the three sweeps above refuse leaves every staff_skills row in
+// place, and the run succeeds -- staff_skills has no sweep to refuse.
+func TestStaffSkillsSyncKeepsRowsItDidNotFind(t *testing.T) {
 	t.Parallel()
 	app := newCustomValuesSyncTestApp(t, "staff_skills", "skill_name", "raw_value")
 	seedCustomValuesRun(t, app, "staff_skills", "Skills-Archery", partitionStaff, 3, OrphanSweepMinRows+5)
 
 	s := NewStaffSkillsSync(app)
 	s.Year = 2026
-	assertSweepRefusalReachesCaller(t, app, "staff_skills", OrphanSweepMinRows+5, s.Sync(context.Background()))
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	remaining, err := app.FindRecordsByFilter("staff_skills", "year = 2026 && person_id >= 900", "", 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(remaining) != OrphanSweepMinRows+5 {
+		t.Errorf("%d seeded rows survived, want %d -- staff_skills never deletes", len(remaining), OrphanSweepMinRows+5)
+	}
 }
 
 // TestDeleteOrphansReturnsContextErrorOnCancellation closes the loop on the

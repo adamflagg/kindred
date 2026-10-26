@@ -2,7 +2,6 @@ package sync
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -23,12 +22,11 @@ const serviceNameStaffApplications = "staff_applications"
 // Field mapping: 44 App-* prefixed fields covering work availability, qualifications,
 // position preferences, essays, references, and reflection prompts.
 type StaffApplicationsSync struct {
-	App            core.App
-	Year           int
-	DryRun         bool
-	Debug          bool
-	Stats          Stats
-	SyncSuccessful bool
+	App    core.App
+	Year   int
+	DryRun bool
+	Debug  bool
+	Stats  Stats
 }
 
 // NewStaffApplicationsSync creates a new staff applications sync service
@@ -139,7 +137,6 @@ type staffApplicationRecord struct {
 // Sync executes the staff applications extraction
 func (s *StaffApplicationsSync) Sync(ctx context.Context) error {
 	s.Stats = Stats{}
-	s.SyncSuccessful = false
 
 	// Determine year
 	year := s.Year
@@ -182,16 +179,6 @@ func (s *StaffApplicationsSync) Sync(ctx context.Context) error {
 	}
 	slog.Info("Extracted staff application records", "count", len(records))
 
-	// The extraction finished without error, so len(records) is now a fact about
-	// the SOURCE rather than about whether this run worked. Gate the sweep on it:
-	// a year in which nobody has an application yet is a legitimately empty
-	// upstream, not a collapse, and refusing there wedged the table -- a refused
-	// sweep never clears the rows, so `existing` stayed high and every later run
-	// refused again. This mirrors camper_dietary.go / camper_transportation.go /
-	// quest_registrations.go / household_demographics.go (kindred#2283,
-	// kindred#2301): deleteOrphans reads this instead of running unconditionally.
-	s.SyncSuccessful = len(records) > 0
-
 	if s.DryRun {
 		slog.Info("Dry run mode - extracted but not writing",
 			"records", len(records),
@@ -219,33 +206,19 @@ func (s *StaffApplicationsSync) Sync(ctx context.Context) error {
 	s.Stats.Skipped += upsertSkipped
 	s.Stats.Errors = upsertErrors
 
-	// Step 6: Delete orphans
-	deleted, err := s.deleteOrphans(ctx, records, existingRecords, year)
-	s.Stats.Deleted = deleted
-
-	// WAL checkpoint BEFORE the error return below: upsertRecords has already
-	// written by this point, and both error paths return with those writes still
-	// in the WAL. That includes the refusal path -- widening the guard to catch a
-	// PARTIAL collapse (kindred#2279) means it can refuse on a non-empty computed
-	// set, which is exactly the case where upsertRecords did write.
-	if s.Stats.Created > 0 || s.Stats.Updated > 0 || s.Stats.Deleted > 0 {
+	// No orphan sweep, deliberately (owner ruling OD-05 = B, PM-7 = A): a row this run did not
+	// find -- a staff member CampMinder stopped returning, fired or not -- keeps its last values,
+	// so Staff Analysis can still look back at them.
+	if s.Stats.Created > 0 || s.Stats.Updated > 0 {
 		if cpErr := s.forceWALCheckpoint(); cpErr != nil {
 			slog.Warn("WAL checkpoint failed", "error", cpErr)
 		}
-	}
-
-	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return fmt.Errorf("orphan sweep interrupted: %w", err)
-		}
-		return fmt.Errorf("orphan sweep refused: %w", err)
 	}
 
 	slog.Info("Staff applications extraction completed",
 		"year", year,
 		"created", s.Stats.Created,
 		"updated", s.Stats.Updated,
-		"deleted", s.Stats.Deleted,
 		"skipped", s.Stats.Skipped,
 		"skipped_values", s.Stats.SkippedValues,
 		"errors", s.Stats.Errors,
@@ -1150,75 +1123,6 @@ func (s *StaffApplicationsSync) upsertRecords(
 	}
 
 	return created, updated, skipped, errCount
-}
-
-// deleteOrphans removes records that exist in DB but not in computed set.
-//
-// Refuses when the computed set is too small to be believed against the rows on
-// disk: that combination is always a broken input, and sweeping on it deletes
-// the year and reports success (kindred#2279 Gap 2). The rule itself lives in
-// OrphanSweepGuard -- this was one of two hand-written copies, and it now shares
-// the one implementation, which also widened it from "empty" to "suspiciously
-// small" (kindred#2279 Gap 1).
-//
-// This service shares staff_vehicle_info's loadPersonStaffMapping(ctx, year)
-// gate exactly, so it has the identical year-wipe path and the same two
-// upstream causes: a collapsed personToStaff mapping (values fail the staff
-// gate), or a collapsed fieldNameMap after an upstream rename of the App-*
-// definitions (values route nowhere).
-func (s *StaffApplicationsSync) deleteOrphans(
-	ctx context.Context,
-	records map[string]*staffApplicationRecord,
-	existingRecords map[string]string,
-	year int,
-) (int, error) {
-	// An orphan sweep that runs after a PARTIAL fetch deletes rows the feed
-	// simply did not return. Sync() sets SyncSuccessful from the size of this
-	// run's extraction, so a year nobody has applied for yet skips the sweep
-	// and succeeds rather than refusing forever (kindred#2301). The guard below
-	// still owns the case that matters: a source that came back SHORT.
-	if !s.SyncSuccessful {
-		slog.Info("Skipping orphan deletion: the source returned no rows for this year",
-			"entity", "staff_applications", "year", year)
-		return 0, nil
-	}
-
-	guard := OrphanSweepGuard{
-		Entity:   "staff_applications",
-		Year:     year,
-		Computed: len(records),
-		Hint:     "check the staff table for that year, and that the App-* field definitions still exist upstream",
-	}
-	if err := guard.Check(len(existingRecords)); err != nil {
-		return 0, err
-	}
-
-	deleted := 0
-
-	for key, recordID := range existingRecords {
-		select {
-		case <-ctx.Done():
-			return deleted, ctx.Err()
-		default:
-		}
-
-		if _, exists := records[key]; !exists {
-			record, err := s.App.FindRecordById("staff_applications", recordID)
-			if err != nil {
-				slog.Warn("Error finding orphan record", "id", recordID, "error", err)
-				continue
-			}
-
-			if err := s.App.Delete(record); err != nil {
-				slog.Error("Error deleting orphan record", "id", recordID, "error", err)
-				s.Stats.Errors++
-				continue
-			}
-			deleted++
-		}
-	}
-
-	return deleted, nil
 }
 
 // forceWALCheckpoint forces a SQLite WAL checkpoint

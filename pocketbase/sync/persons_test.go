@@ -2175,11 +2175,11 @@ func TestStaffOnlyPersonSurvivesOrphanSweep(t *testing.T) {
 		t.Fatalf("processPerson: %v", err)
 	}
 
-	if err := s.deleteOrphans(year); err != nil {
+	if err := s.retireOrphans(year); err != nil {
 		t.Fatalf("deleteOrphans: %v", err)
 	}
 
-	if _, err := app.FindFirstRecordByFilter("persons", "cm_id = 2001"); err != nil {
+	if _, err := app.FindFirstRecordByFilter("persons", liveRowsFilter("cm_id = 2001")); err != nil {
 		t.Errorf("the staff-only person's row was swept as an orphan (%v) -- "+
 			"the run fetched them from CampMinder, so they are not missing from it. "+
 			"In production this is 26 staff a night, and it severs staff.person", err)
@@ -2188,7 +2188,7 @@ func TestStaffOnlyPersonSurvivesOrphanSweep(t *testing.T) {
 	// The campers are untouched, so the assertion above is about the tracking and
 	// not about a sweep that did nothing at all.
 	for _, filter := range []string{"cm_id = 1001", "cm_id = 1002"} {
-		if _, err := app.FindFirstRecordByFilter("persons", filter); err != nil {
+		if _, err := app.FindFirstRecordByFilter("persons", liveRowsFilter(filter)); err != nil {
 			t.Errorf("a tracked camper was swept (%s): %v", filter, err)
 		}
 	}
@@ -2271,11 +2271,12 @@ func TestOrphanSweepSkippedWhenStaffFetchFailed(t *testing.T) {
 			// processPerson at all, because the run never learned they existed.
 			s.TrackProcessedKey(camperCMID, year)
 
-			if err := s.deleteOrphans(year); err != nil {
+			if err := s.retireOrphans(year); err != nil {
 				t.Fatalf("deleteOrphans: %v", err)
 			}
 
-			_, err := app.FindFirstRecordByFilter("persons", "cm_id = 2001")
+			// Swept now means retired: the row stays, with retired_at stamped (OD-05 = B).
+			_, err := app.FindFirstRecordByFilter("persons", liveRowsFilter("cm_id = 2001"))
 			swept := err != nil
 
 			if swept != tc.wantSwept {
@@ -2285,7 +2286,7 @@ func TestOrphanSweepSkippedWhenStaffFetchFailed(t *testing.T) {
 			// The skip must not fail the run: updateRelationsAndCleanup turns a
 			// deleteOrphans error into Stats.Errors++, and a deliberate skip is not
 			// an error. (deleteOrphans returning nil is asserted above.)
-			if _, err := app.FindFirstRecordByFilter("persons", "cm_id = 1001"); err != nil {
+			if _, err := app.FindFirstRecordByFilter("persons", liveRowsFilter("cm_id = 1001")); err != nil {
 				t.Errorf("the tracked camper was swept: %v", err)
 			}
 		})

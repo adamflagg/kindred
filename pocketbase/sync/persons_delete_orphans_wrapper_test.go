@@ -31,6 +31,7 @@ func newMinimalPersonsTestApp(t *testing.T) core.App {
 	col := core.NewBaseCollection("persons")
 	col.Fields.Add(&core.NumberField{Name: "cm_id"})
 	col.Fields.Add(&core.NumberField{Name: "year"})
+	col.Fields.Add(&core.DateField{Name: retiredAtField})
 	for _, f := range []string{"household", "primary_childhood_household", "alternate_childhood_household"} {
 		col.Fields.Add(&core.TextField{Name: f})
 	}

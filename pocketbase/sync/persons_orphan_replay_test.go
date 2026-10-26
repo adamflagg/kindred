@@ -30,6 +30,7 @@ func setupPersonsReplayCollections(t *testing.T, app core.App, grain *Collection
 	persons.Fields.Add(&core.NumberField{Name: "year", Required: true})
 	persons.Fields.Add(&core.BoolField{Name: "is_camper"})
 	persons.Fields.Add(&core.AutodateField{Name: "created", OnCreate: true})
+	persons.Fields.Add(&core.DateField{Name: retiredAtField})
 	persons.Indexes = []string{fmt.Sprintf(
 		"CREATE UNIQUE INDEX %#q ON `persons` (`cm_id`, `year`)", grain.UniqueIndex)}
 	if err := app.Save(persons); err != nil {
@@ -89,7 +90,7 @@ func TestPersonsOrphanSweep_SurvivesReplay(t *testing.T) {
 	assertOrphanSweepSurvivesReplay(t, replayOrphanSweepConfig{
 		// Positive control: one person the fixture never processes. cm_id is
 		// non-zero so the sweep's getIDFunc keys it, and nothing tracks that
-		// key, so a LIVE sweep must delete it. Without this the whole test
+		// key, so a LIVE sweep must retire it. Without this the whole test
 		// passes with the sweep switched off -- see SeedOrphan.
 		SeedOrphan: func(_ replayT) error {
 			saveRecord(t, app, "persons", map[string]any{
@@ -119,7 +120,7 @@ func TestPersonsOrphanSweep_SurvivesReplay(t *testing.T) {
 			return nil
 		},
 		Sweep: func(t replayT) error {
-			if err := s.deleteOrphans(year); err != nil {
+			if err := s.retireOrphans(year); err != nil {
 				return fmt.Errorf("deleteOrphans: %w", err)
 			}
 			if s.Stats.Errors != 0 {
@@ -128,7 +129,8 @@ func TestPersonsOrphanSweep_SurvivesReplay(t *testing.T) {
 			return nil
 		},
 		CountRows: func(t replayT) int {
-			rows, err := app.FindRecordsByFilter("persons", filter, "", 0, 0)
+			// Live rows: the sweep retires the orphan rather than deleting it (OD-05 = B).
+			rows, err := app.FindRecordsByFilter("persons", liveRowsFilter(filter), "", 0, 0)
 			if err != nil {
 				t.Fatalf("query persons: %v", err)
 			}

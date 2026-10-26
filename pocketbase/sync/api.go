@@ -701,14 +701,13 @@ func handleIndividualSync(e *core.RequestEvent, scheduler *Scheduler, syncType s
 		requestedBy = e.Auth.GetString("email")
 	}
 
-	// Check if any sync should cause queueing:
-	// 1. Sequence flags (daily/weekly/historical/custom-values/hourly) - cover the window between
-	//    sequence start and first job execution (before runningJobs is populated), and the gaps
-	//    between two of a sequence's jobs. The scheduled runs start the queue when they end.
-	// 2. IsAnyJobRunning() - covers individual jobs that were started outside a sequence
-	if orchestrator.IsDailySyncRunning() || orchestrator.IsWeeklySyncRunning() ||
-		orchestrator.IsHistoricalSyncRunning() || orchestrator.IsCustomValuesSyncRunning() ||
-		orchestrator.IsHourlySyncRunning() || orchestrator.IsAnyJobRunning() {
+	// Check if any sync should cause queueing (IsAnyQueueBusy):
+	// 1. Sequence flags (daily/weekly/historical/custom-values/hourly, and the all-seasons
+	//    re-sync's hold) - cover the window between sequence start and first job execution
+	//    (before runningJobs is populated), and the gaps between two of a sequence's jobs. The
+	//    scheduled runs start the queue when they end.
+	// 2. A running job - covers individual jobs that were started outside a sequence
+	if orchestrator.IsAnyQueueBusy() {
 		// Queue the individual sync with debug flag
 		// The queue item carries the season, and processQueuedSyncs runs that season's instance.
 		qs, err := orchestrator.EnqueueIndividualSync(year, syncType, nil, debug, requestedBy)
@@ -1646,9 +1645,7 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 
 	// Check if any sync is already running.
 	// Check all sync flags to prevent race conditions (e.g., when global sync triggers first)
-	if orchestrator.IsDailySyncRunning() || orchestrator.IsWeeklySyncRunning() ||
-		orchestrator.IsHistoricalSyncRunning() || orchestrator.IsCustomValuesSyncRunning() ||
-		orchestrator.IsHourlySyncRunning() || orchestrator.IsAnyJobRunning() {
+	if orchestrator.IsAnyQueueBusy() {
 		// Sync is running - try to enqueue
 		qs, err := orchestrator.EnqueueUnifiedSyncWithSkip(
 			year, service, includeCustomValues, debug, dryRun, skip, requestedBy)
@@ -3000,9 +2997,7 @@ func handleRunPhase(e *core.RequestEvent, scheduler *Scheduler) error {
 	}
 
 	// Check if any sync is already running (must match handleIndividualSync check)
-	if orchestrator.IsDailySyncRunning() || orchestrator.IsWeeklySyncRunning() ||
-		orchestrator.IsHistoricalSyncRunning() || orchestrator.IsCustomValuesSyncRunning() ||
-		orchestrator.IsHourlySyncRunning() || orchestrator.IsAnyJobRunning() {
+	if orchestrator.IsAnyQueueBusy() {
 		// Queue the phase sync instead of returning conflict (pass debug flag)
 		qs, err := orchestrator.EnqueuePhaseSync(year, phase, debug, requestedBy)
 		if err != nil {

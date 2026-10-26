@@ -1207,6 +1207,7 @@ export type CampSessionsRecord = {
   is_residential?: boolean
   name: string
   parent_id?: number
+  retired_at?: IsoDateString
   session_group?: RecordIdString
   session_type: CampSessionsSessionTypeOptions
   sort_order?: number
@@ -2317,6 +2318,7 @@ export type PersonsRecord<Tparent_names = unknown, Traw_data = unknown, Trelativ
   primary_email?: string
   raw_data?: null | Traw_data
   relatives?: null | Trelatives
+  retired_at?: IsoDateString
   school?: string
   secondary_email?: string
   tags?: RecordIdString[]

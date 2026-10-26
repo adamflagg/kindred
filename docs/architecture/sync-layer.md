@@ -417,8 +417,8 @@ of the other queues:
   run itself (`startSingleSync`), so a refused start or a waiter that stops waiting cannot leave it on or
   clear it under a live run. `bunk_assignments` keeps its hourly sweep: nothing cascades from a placement
   row.
-- **It holds a flag of its own** (`hourlySyncRunning`). The all-seasons re-sync waits on it before each
-  season, and the API's admission checks count it, so a staff press during the hourly run is queued
+- **It holds a flag of its own** (`hourlySyncRunning`). The all-seasons re-sync waits on it before it
+  starts, and the API's admission checks count it, so a staff press during the hourly run is queued
   instead of starting into its next job. Every scheduled run starts the staff queue when it ends
   (`processQueuedSyncs` in `scheduler.go`); before PR 5 only an API-started run did.
 
@@ -436,10 +436,13 @@ example the enrollment of a person CampMinder merged into another, which would o
 Every other job in the pass keeps its orphans (`setKeepOrphans`), because those deletes cascade into
 history an older season never rebuilds. A `camp_sessions` row takes that season's `bunk_assignments`,
 `bunk_plans` and lodging rows with it, a `persons` row its `bunk_assignments` and aid applications, and a
-household its `family_camp_registrations` and `household_demographics`. Before each season it waits while
-any other queue runs (the nightly, the weekly globals, a staff full run or a replay). The wait is a check,
-not a claim: a staff run that lands between two of the pass's jobs starts at once, and a collision on a job
-id refuses one side ("sync already in progress"), which is logged and retried the next Saturday. Its runs
+household its `family_camp_registrations` and `household_demographics`. It waits while any other queue
+or job runs (the nightly, the weekly globals, a staff full run or a replay, the hourly run), then **holds
+the queues** until its last season is done (`holdQueuesForAllSeasons`): the quiet check and the hold are
+one critical section, every queue that claims a running flag waits in `claimQueue` while the hold is
+taken, the hourly run yields, and the API queues a staff press (`IsAnyQueueBusy`), which the scheduler
+starts when the pass ends. So a staff run can no longer land between two of the pass's jobs and collide on
+a job id, and a season no longer finishes half-refreshed (PM-7 = A). Its runs
 are filed as `historical`, under their own year. Each job it finishes clears FastAPI's caches as any sync
 does, scoped by job rather than season, so the live seasons' metrics, lodging and Camperships caches are
 cleared and re-warmed once per job, four a season and up to 36 each Saturday.
@@ -453,7 +456,7 @@ payload reports the season as `_configured_year` (the primary), `_synced_years` 
 
 A historical replay differs from a synced season's run in two more ways:
 
-- **It deletes no session groups, sessions, persons or households** (`sync/replay_orphans.go`),
+- **It deletes or retires no session groups, sessions, persons or households** (`sync/replay_orphans.go`),
   the same keep set as the all-seasons re-sync below. Those sweeps scan read-only and log how many
   rows they kept ("Keeping orphans on a historical replay"). CampMinder's answer for an old season
   drifts from what Kindred stored (merges, purges, staff-only people the feed no longer returns),
@@ -465,6 +468,27 @@ A historical replay differs from a synced season's run in two more ways:
   Every name must be a registry job, or the request is a 400. The dry-run check judges the
   post-skip list, and the queue's dedupe key includes it. A run of N or N−1 refuses `skip=` with
   400: it is the live data's refresh and keeps its full job list.
+
+### Rows CampMinder stops returning: staff kept, persons and sessions retired
+
+Owner ruling OD-05 = B (PM-7 = A): staff records stay after a staff member is fired, even in the
+current season, so the record is there to look back at.
+
+- **`staff`, `staff_applications`, `staff_vehicle_info` and `staff_skills` have no orphan sweep**, in
+  any season or run. A row the run did not find keeps its last values (`TestStaffSyncsHaveNoDeletePath`
+  pins that none of the four files can delete).
+- **`persons` and `camp_sessions` are retired, not deleted.** Where their sweep used to delete (the
+  nightly and a staff run of N or N−1), it stamps `retired_at` (`RetireOrphans` /
+  `RetireOrphansGuarded` in `base_sync.go`); every guard the delete had still applies, and a row
+  already retired keeps its first date. The row keeps every link, so `staff.person` is no longer
+  blanked (which collided on staff's `UNIQUE(year, person)`). A run that sees the row again clears
+  `retired_at`. The runs that kept their orphans (hourly, a replay, the all-seasons re-sync) still
+  neither delete nor retire.
+- **`attendees` is unchanged:** a stale enrollment is still deleted, so a person CampMinder merged
+  into another does not count twice.
+
+What staff see for a retired person or session is not decided yet; nothing in the UI reads
+`retired_at` today.
 
 ### Financial transactions: rolling seasons and the one-off backfill
 

@@ -203,7 +203,7 @@ var serviceGrainDeclarations = []ServiceGrain{
 
 	{Service: "sessions", Writes: []CollectionGrain{{
 		Collection: "camp_sessions",
-		NoGrain:    "ProcessSimpleRecord + unguarded DeleteOrphans (sessions.go)",
+		NoGrain:    "upsertSession (ProcessSimpleRecord) + unguarded RetireOrphans (sessions.go): retired, never deleted",
 	}}},
 
 	{Service: serviceNameAttendees, Writes: []CollectionGrain{
@@ -291,7 +291,7 @@ var serviceGrainDeclarations = []ServiceGrain{
 
 	{Service: "staff", Writes: []CollectionGrain{{
 		Collection: "staff",
-		NoGrain:    "ProcessSimpleRecord + unguarded DeleteOrphans (staff.go)",
+		NoGrain:    "ProcessSimpleRecord, never swept (staff.go; owner ruling OD-05 = B)",
 	}}},
 
 	{Service: "financial_transactions", Writes: []CollectionGrain{{
@@ -409,8 +409,7 @@ var serviceGrainDeclarations = []ServiceGrain{
 
 	{Service: "staff_skills", Writes: []CollectionGrain{{
 		Collection: "staff_skills",
-		NoGrain: "StaffSkillsSync.deleteOrphans is hand-rolled -- one of the ten " +
-			"services OrphanSweepGuard's doc names as not embedding BaseSyncService",
+		NoGrain:    "upserted, never swept (staff_skills.go; owner ruling OD-05 = B)",
 	}}},
 
 	{Service: "financial_aid_applications", Writes: []CollectionGrain{{
@@ -464,16 +463,12 @@ var serviceGrainDeclarations = []ServiceGrain{
 
 	{Service: "staff_applications", Writes: []CollectionGrain{{
 		Collection: "staff_applications",
-		NoGrain: "StaffApplicationsSync.deleteOrphans is hand-rolled -- one of the ten " +
-			"services that do not embed BaseSyncService (it shipped one of the two " +
-			"hand-written guard copies OrphanSweepGuard replaced)",
+		NoGrain:    "upserted, never swept (staff_applications.go; owner ruling OD-05 = B)",
 	}}},
 
 	{Service: "staff_vehicle_info", Writes: []CollectionGrain{{
 		Collection: "staff_vehicle_info",
-		NoGrain: "StaffVehicleInfoSync.deleteOrphans is hand-rolled -- one of the ten " +
-			"services that do not embed BaseSyncService (it shipped the other " +
-			"hand-written guard copy)",
+		NoGrain:    "upserted, never swept (staff_vehicle_info.go; owner ruling OD-05 = B)",
 	}}},
 
 	{Service: "normalize_geographic", Writes: []CollectionGrain{{

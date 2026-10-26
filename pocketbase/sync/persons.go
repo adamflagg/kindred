@@ -46,7 +46,7 @@ type PersonsSync struct {
 
 	// staffFetchFailed records that this run could not read the CampMinder staff
 	// feed, so its computed set is known-incomplete and the orphan sweep must not
-	// run. Set from gatherPersonIDs, read by deleteOrphans. See kindred#2394.
+	// run. Set from gatherPersonIDs, read by retireOrphans. See kindred#2394.
 	staffFetchFailed bool
 
 	// Sub-entity stats for combined sync (households)
@@ -486,7 +486,7 @@ func (s *PersonsSync) updateRelationsAndCleanup(
 	// problem that has already left the data intact.
 	//
 	// One caveat, recorded so the next reader does not think it was overlooked:
-	// deleteOrphans returns the collapse guard's REFUSAL as well as real query
+	// retireOrphans returns the collapse guard's REFUSAL as well as real query
 	// failures, and household_demographics.go's deleteOrphans doc argues a refusal
 	// is not an infrastructure failure and must not be counted (kindred#2293).
 	// That argument rests on the refusal already reaching the operator as the error
@@ -494,8 +494,8 @@ func (s *PersonsSync) updateRelationsAndCleanup(
 	// refusal's own message -- thresholds, ratio and hint -- is preserved in the
 	// Error log line below; only the run's summary string generalises to
 	// "N database operations failed".
-	if err := s.deleteOrphans(year); err != nil {
-		slog.Error("Failed to delete orphaned persons", "error", err)
+	if err := s.retireOrphans(year); err != nil {
+		slog.Error("Failed to retire orphaned persons", "error", err)
 		s.Stats.Errors++
 	}
 
@@ -550,8 +550,8 @@ func (s *PersonsSync) processPerson(
 		// fetched from CampMinder ON PURPOSE -- getPersonIDsFromStaff pulls staff
 		// person IDs in so staff.person can be populated -- who then get no row
 		// because they have never been a camper. Returning here without tracking
-		// left their stored row untracked, and deleteOrphans reads untracked as
-		// "CampMinder no longer returns this person" and deletes it. That is the
+		// left their stored row untracked, and the sweep reads untracked as
+		// "CampMinder no longer returns this person" and retires it (it used to delete it). That is the
 		// opposite of what the run observed: it saw them. 26 staff a night, every
 		// night, each delete blanking staff.person as it went.
 		//
@@ -560,9 +560,23 @@ func (s *PersonsSync) processPerson(
 		// branch only ever meant the first one.
 		if personID, ok := personData["ID"].(float64); ok {
 			s.TrackProcessedKey(int(personID), year)
+			// Seen, so live: a row this person already has is un-retired, as the write path
+			// below does for a camper.
+			if existing := existingPersons[int(personID)]; existing != nil &&
+				!existing.GetDateTime(retiredAtField).IsZero() && !s.DryRun {
+				existing.Set(retiredAtField, "")
+				if err := s.App.Save(existing); err != nil {
+					return fmt.Errorf("un-retiring person %d: %w", int(personID), err)
+				}
+				s.Stats.Updated++
+			}
 		}
 		return nil
 	}
+
+	// CampMinder returned this person, so the row is live: a retired one is un-retired by the
+	// compare below like any other changed field.
+	pbData[retiredAtField] = ""
 
 	// Extract tags and populate multi-select relation field
 	// Use year-filtered extraction to exclude future-year tags (e.g., "2026 Early Registration" on 2025 records)
@@ -606,7 +620,7 @@ func (s *PersonsSync) processPerson(
 		"address_city", "address_state", "primary_email", "secondary_email",
 		"household_id", "is_camper", "year", "parent_names", "relatives",
 		"division", "partition_id", "lead_date", "tshirt_size", "cm_lead_date",
-		"tags"}
+		"tags", retiredAtField}
 
 	if existing != nil {
 		// A closed season keeps an existing row's legacy household_id and as-of-season fields, and
@@ -1287,7 +1301,6 @@ func (s *PersonsSync) printDataQualitySummary() {
 	)
 }
 
-// deleteOrphans deletes persons that exist in PocketBase but weren't processed from CampMinder
 // skipSweepForStaffFetchFailure reports whether a sweep must be abandoned because
 // this run could not read the CampMinder staff feed, and logs why when it must.
 //
@@ -1296,7 +1309,7 @@ func (s *PersonsSync) printDataQualitySummary() {
 // caller supplies that half of the message; everything else is shared.
 //
 // It warns rather than returning an error on purpose. updateRelationsAndCleanup
-// turns a deleteOrphans error into Stats.Errors++, and a deliberate skip is not an
+// turns a retireOrphans error into Stats.Errors++, and a deliberate skip is not an
 // operational failure. That is the same verdict OrphanSweepGuard.SkipReason gives a
 // rejection, and it carries the same accepted cost, stated there: a run that keeps
 // skipping lets genuine orphans accumulate, and the signal to go fix the upstream is
@@ -1311,7 +1324,14 @@ func (s *PersonsSync) skipSweepForStaffFetchFailure(entity, consequence string, 
 	return true
 }
 
-func (s *PersonsSync) deleteOrphans(year int) error {
+// retireOrphans retires the persons this season holds that CampMinder no longer returned: it
+// stamps retired_at instead of deleting the row (owner ruling OD-05 = B, PM-7 = A). The row keeps
+// every link -- staff.person, bunk_assignments, original_bunk_requests, aid applications -- so
+// staff can look back at a person CampMinder dropped, and a delete no longer blanks staff.person
+// and collides on staff's UNIQUE(year, person) (bug B1). processPerson un-retires a person
+// CampMinder sends again. The guards are the delete's: a kept run, a failed sync, a rejection,
+// a collapse and a failed staff fetch all leave every row as it is.
+func (s *PersonsSync) retireOrphans(year int) error {
 	// A swallowed staff-feed failure makes the computed set known-incomplete, so
 	// abandon the sweep rather than narrow it (kindred#2394). gatherPersonIDs
 	// deliberately continues with attendees only when getPersonIDsFromStaff errors
@@ -1335,7 +1355,7 @@ func (s *PersonsSync) deleteOrphans(year int) error {
 
 	filter := fmt.Sprintf("year = %d", year)
 
-	return s.DeleteOrphansGuarded(
+	return s.RetireOrphansGuarded(
 		"persons",
 		func(record *core.Record) (string, bool) {
 			cmID, ok := record.Get("cm_id").(float64)
