@@ -51,17 +51,18 @@ const (
 // fifteenth, every guarded service now fills in this struct.
 //
 // The COLLAPSE arm reaches every sweep in the package. BaseSyncService fills this
-// struct in for the sweeps it owns, and the eleven services that do not embed it --
+// struct in for the sweeps it owns, and the eight services that do not embed it --
 // aid_postings, camper_dietary, camper_transportation, family_camp_derived, financial_aid_applications,
-// household_demographics, normalize_geographic, quest_registrations, staff_skills,
-// staff_applications and staff_vehicle_info -- each construct one inside their own
-// deleteOrphans (kindred#2280, kindred#2296). camper_history was once among them until
-// it was removed entirely in kindred#2366. family_camp_derived performs THREE sweeps
+// household_demographics, normalize_geographic and quest_registrations -- each construct
+// one inside their own deleteOrphans (kindred#2280, kindred#2296). camper_history was once
+// among them until it was removed entirely in kindred#2366, and staff_skills,
+// staff_applications and staff_vehicle_info until their sweeps were removed (owner ruling
+// OD-05 = B: staff rows are never deleted). family_camp_derived performs THREE sweeps
 // rather than one, so it builds three guards, one per derived table.
 // aid_postings is the latest to arrive.
 //
 // The REJECTION arm is narrower, and that is the part to watch. Only BaseSyncService
-// fills in Rejected, so for those eleven SkipReason and RejectionsExplainShortfall can
+// fills in Rejected, so for those eight SkipReason and RejectionsExplainShortfall can
 // never fire -- they build the guard without it. That is harmless today because none
 // of them counts a rejection, and nothing pins it: a future reclassification into one
 // of those files gets the collapse guard but no rejection protection and no warning.

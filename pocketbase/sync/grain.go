@@ -29,7 +29,7 @@ package sync
 // Only the six BaseSyncService.DeleteOrphansGuarded callers carry that shape,
 // because they are the only services where both halves are readable from a
 // single call site (ruled 2026-08-31). Deriving a key for the other 30
-// collection-writers was considered and rejected: ten of them carry their own
+// collection-writers was considered and rejected: several of them carry their own
 // deleteOrphans without embedding BaseSyncService at all (see OrphanSweepGuard's
 // doc comment), so a key declared for those would be asserted here and read
 // nowhere -- it would drift from the real write path with nothing to catch it,
@@ -440,25 +440,25 @@ var serviceGrainDeclarations = []ServiceGrain{
 	{Service: "household_demographics", Writes: []CollectionGrain{{
 		Collection: "household_demographics",
 		NoGrain: "HouseholdDemographicsSync.deleteOrphans is hand-rolled -- one of the " +
-			"ten services that do not embed BaseSyncService",
+			"services that do not embed BaseSyncService",
 	}}},
 
 	{Service: "camper_dietary", Writes: []CollectionGrain{{
 		Collection: "camper_dietary",
-		NoGrain: "CamperDietarySync.deleteOrphans is hand-rolled -- one of the ten " +
+		NoGrain: "CamperDietarySync.deleteOrphans is hand-rolled -- one of the " +
 			"services that do not embed BaseSyncService",
 	}}},
 
 	{Service: "camper_transportation", Writes: []CollectionGrain{{
 		Collection: "camper_transportation",
 		NoGrain: "CamperTransportationSync.deleteOrphans is hand-rolled -- one of the " +
-			"ten services that do not embed BaseSyncService",
+			"services that do not embed BaseSyncService",
 	}}},
 
 	{Service: "quest_registrations", Writes: []CollectionGrain{{
 		Collection: "quest_registrations",
 		NoGrain: "QuestRegistrationsSync.deleteOrphans is hand-rolled -- one of the " +
-			"ten services that do not embed BaseSyncService",
+			"services that do not embed BaseSyncService",
 	}}},
 
 	{Service: "staff_applications", Writes: []CollectionGrain{{
@@ -474,7 +474,7 @@ var serviceGrainDeclarations = []ServiceGrain{
 	{Service: "normalize_geographic", Writes: []CollectionGrain{{
 		Collection: "normalized_mappings",
 		NoGrain: "NormalizeGeographicSync.deleteOrphans is hand-rolled -- one of the " +
-			"ten services that do not embed BaseSyncService",
+			"services that do not embed BaseSyncService",
 	}}},
 
 	{Service: "enrollment_snapshots", Writes: []CollectionGrain{{
