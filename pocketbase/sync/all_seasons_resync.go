@@ -153,8 +153,9 @@ func (o *Orchestrator) RunAllSeasonsResync(ctx context.Context) error {
 // on the sync queues in the same critical section as that check, so nothing can claim a queue in
 // between: the nightly or a staff full run (dailySyncRunning), a replay or a manual N-1 run
 // (historicalSyncRunning), the weekly globals, the custom-values queue, the hourly run, a phase
-// run (claimPhaseRun), or a job started on its own. While the hold is taken those queues wait in claimQueue, the hourly run
-// yields (hourlyBlockerLocked), and the API queues a staff press (IsAnyQueueBusy). The caller
+// run (claimPhaseRun), or a job started on its own. While the hold is taken those queues wait
+// in claimQueue, the hourly run yields (hourlyBlockerLocked), and the API queues a staff press
+// (IsAnyQueueBusy). The caller
 // lets go with the returned func, once.
 //
 // The hourly run fires at 05:00 too; it yields to this pass once the pass has started, so this
@@ -163,7 +164,8 @@ func (o *Orchestrator) holdQueuesForAllSeasons(ctx context.Context) (release fun
 	for {
 		o.mu.Lock()
 		busy := o.dailySyncRunning || o.historicalSyncRunning || o.weeklySyncRunning ||
-			o.customValuesSyncRunning || o.hourlySyncRunning || o.phaseRuns > 0 || o.anyJobRunningLocked()
+			o.customValuesSyncRunning || o.hourlySyncRunning || o.phaseRuns > 0 ||
+			o.anyJobRunningLocked()
 		if !busy {
 			hold := make(chan struct{})
 			o.allSeasonsHold = hold
