@@ -104,14 +104,23 @@ class RetentionService:
         Returns:
             RetentionMetricsResponse with all breakdown metrics.
         """
-        prior_basis: Literal["same_point", "final"] | None = None
+        prior_basis: Literal["same_point", "final", "unavailable"] | None = None
+        prior_unavailable_reason: Literal["registration_dates_unreadable"] | None = None
         day_offset: int | None = None
         prior_day_offset: int | None = None
         cutoff: date | None = None
         if same_point_of is not None:
             prior_basis = "final"
             point = await live_same_point(self.repo, same_point_of, today)
-            anchor = await self._fetch_anchor(compare_year) if point is not None else None
+            anchor: date | None = None
+            if point is not None:
+                try:
+                    anchor = await self._fetch_anchor(compare_year)
+                except Exception:
+                    # A read FAILURE is not "no anchor configured": say so, never a quiet final-vs-final.
+                    logger.warning("Failed to read the %d registration dates", compare_year, exc_info=True)
+                    prior_basis = "unavailable"
+                    prior_unavailable_reason = "registration_dates_unreadable"
             if point is not None and anchor is not None:
                 prior_basis = "same_point"
                 day_offset = point.day_offset
@@ -378,6 +387,7 @@ class RetentionService:
             session_flow=session_flow,
             aged_out_count=aged_out_count,
             prior_basis=prior_basis,
+            prior_unavailable_reason=prior_unavailable_reason,
             day_offset=day_offset,
             prior_day_offset=prior_day_offset,
             as_of_date=cutoff.isoformat() if cutoff is not None else None,
@@ -389,12 +399,11 @@ class RetentionService:
         return enrolled
 
     async def _fetch_anchor(self, year: int) -> date | None:
-        """A season's registration anchor; None (read it as it stands) when unset or unreadable."""
-        try:
-            return registration_anchor(await self.repo.fetch_registration_dates(year))
-        except Exception:
-            logger.warning("Failed to read the %d registration dates, reading it as it stands", year, exc_info=True)
-            return None
+        """A season's registration anchor; None (read it as it stands) when none is configured.
+
+        A failure to read the dates raises: the caller says the comparison is unavailable.
+        """
+        return registration_anchor(await self.repo.fetch_registration_dates(year, strict=True))
 
     def _filter_base_attendees(
         self,

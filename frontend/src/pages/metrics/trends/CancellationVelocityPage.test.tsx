@@ -97,12 +97,22 @@ vi.mock('../../../hooks/useMetricsSession', () => ({
 const mockControls = {
   splitByGender: false,
   selectedPriorYears: [] as number[],
+  implicitDefaultPrior: null as number | null,
+  droppedDefaultPrior: null as number | null,
+  dropDefaultPrior: vi.fn((year: number) => {
+    mockControls.selectedPriorYears = []
+    mockControls.implicitDefaultPrior = null
+    mockControls.droppedDefaultPrior = year
+  }),
 }
 
 vi.mock('../../../hooks/useVelocityControls', () => ({
   useVelocityControls: () => ({
     splitByGender: mockControls.splitByGender,
     selectedPriorYears: mockControls.selectedPriorYears,
+    implicitDefaultPrior: mockControls.implicitDefaultPrior,
+    droppedDefaultPrior: mockControls.droppedDefaultPrior,
+    dropDefaultPrior: mockControls.dropDefaultPrior,
     toggleGender: vi.fn(),
     togglePriorYear: vi.fn(),
     availablePriorYears: [],
@@ -296,6 +306,7 @@ describe('CancellationVelocityPage compares with one year at the same point (#32
     useComparison({
       ...comparedData,
       prior_years: [],
+      prior_year_history_starts: { 2025: '2026-02-11' },
       prior_year_cancelled_to_date: [
         cancelledSummary({
           cancelled_at_current_week: null,
@@ -308,6 +319,33 @@ describe('CancellationVelocityPage compares with one year at the same point (#32
     const card = screen.getByText('2025 Final Cancelled').parentElement!
     expect(within(card).getByText('—')).toBeInTheDocument()
     expect(within(card).getByText('no history before 11 Feb 2026')).toBeInTheDocument()
+  })
+
+  it("uses the comparison year's own history start, not the viewed season's or any year's", () => {
+    useComparison({
+      ...comparedData,
+      status_history_start: '2026-02-11',
+      prior_year_history_starts: { 2025: '2025-03-02' },
+      prior_year_cancelled_to_date: [
+        cancelledSummary({ cancelled_final: null, has_cancellation_data: false }),
+      ],
+    })
+    render(<CancellationVelocityPage />)
+    expect(screen.getByText('no history before 2 Mar 2025')).toBeInTheDocument()
+  })
+
+  it('reads plain "no history" when the comparison year has no history start of its own', () => {
+    // The viewed season starts 11 Feb 2026, but that is not 2025's start: 2025 has no rows at all.
+    useComparison({
+      ...comparedData,
+      status_history_start: '2026-02-11',
+      prior_year_history_starts: {},
+      prior_year_cancelled_to_date: [
+        cancelledSummary({ cancelled_final: null, has_cancellation_data: false }),
+      ],
+    })
+    render(<CancellationVelocityPage />)
+    expect(screen.getByText('no history')).toBeInTheDocument()
   })
 
   it('reads plain "no history" when the history start is unknown', () => {
@@ -621,5 +659,58 @@ describe('CancellationVelocityPage number format', () => {
     render(<CancellationVelocityPage />)
     expect(screen.getByText('−1,200')).toBeInTheDocument()
     expect(screen.getAllByText('1,293').length).toBeGreaterThan(0)
+  })
+})
+
+describe('CancellationVelocityPage default comparison year with no history (MR-VIS-04)', () => {
+  const noHistory: VelocityResponse = {
+    ...comparedData,
+    prior_years: [],
+    prior_year_cancelled_to_date: [
+      cancelledSummary({
+        cancelled_at_current_week: null,
+        cancelled_final: null,
+        has_cancellation_data: false,
+      }),
+    ],
+  }
+
+  afterEach(() => {
+    mockControls.selectedPriorYears = []
+    mockControls.implicitDefaultPrior = null
+    mockControls.droppedDefaultPrior = null
+    mockControls.dropDefaultPrior.mockClear()
+    mockChart.comparisonYear = null
+    mockState.data = mockVelocityData
+  })
+
+  it('drops a default comparison year that has no history and says so once, with the year', () => {
+    useComparison(noHistory)
+    mockControls.implicitDefaultPrior = 2025
+    const { rerender } = render(<CancellationVelocityPage />)
+    // the real hook re-renders the page when it drops the year
+    rerender(<CancellationVelocityPage />)
+    expect(mockControls.dropDefaultPrior).toHaveBeenCalledTimes(1)
+    expect(mockControls.dropDefaultPrior).toHaveBeenCalledWith(2025)
+    expect(screen.getAllByText('2025 has no cancellation history.')).toHaveLength(1)
+    // no comparison cards and no per-cell dashes for a year nobody asked for
+    expect(screen.queryByText('2025 Final Cancelled')).not.toBeInTheDocument()
+  })
+
+  it('honours a comparison year staff picked themselves', () => {
+    useComparison(noHistory)
+    mockControls.implicitDefaultPrior = null
+    render(<CancellationVelocityPage />)
+    expect(mockControls.dropDefaultPrior).not.toHaveBeenCalled()
+    expect(screen.queryByText('2025 has no cancellation history.')).not.toBeInTheDocument()
+    expect(screen.getByText('2025 Final Cancelled')).toBeInTheDocument()
+  })
+
+  it('keeps a default comparison year that has history', () => {
+    useComparison()
+    mockControls.implicitDefaultPrior = 2025
+    render(<CancellationVelocityPage />)
+    expect(mockControls.dropDefaultPrior).not.toHaveBeenCalled()
+    expect(screen.queryByText(/has no cancellation history/)).not.toBeInTheDocument()
   })
 })

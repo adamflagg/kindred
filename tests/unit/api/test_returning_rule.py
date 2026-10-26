@@ -9,8 +9,9 @@ but the rules must not drift.
 
 Waitlisted, cancelled and other non-enrolled rows deliberately keep `> 1`:
 about half of them carry 0 years, and moving them to `!= 1` would flip all of
-them to "returning". That is an open owner decision (plan decision 35), so
-these tests pin today's waitlist behaviour.
+them to "returning". The owner ruled that on 2026-10-14 (plan decision 35,
+"35 - agreed"), so these tests pin it: the R badge and the `returning_status`
+list agree for every status.
 """
 
 from unittest.mock import AsyncMock, Mock
@@ -110,7 +111,7 @@ class TestEnrolledSitesAgree:
 
 
 class TestWaitlistBadgeUnchanged:
-    """Pin: a waitlisted years_at_camp=0 camper still shows no R badge (decision 35 open)."""
+    """Pin: a waitlisted years_at_camp=0 camper still shows no R badge (decision 35, ruled)."""
 
     @pytest.mark.asyncio
     async def test_waitlist_session_gender_badge_for_zero_years(self, repo: Mock) -> None:
@@ -190,3 +191,40 @@ class TestWaitlistBadgeUnchanged:
         )
 
         assert [(r.person_id, r.is_returning) for r in result] == [(102, False)]
+
+
+class TestNonEnrolledReturningList:
+    """Decision 35 (ruled 2026-10-14): a non-enrolled "returning" camper has years_at_camp > 1."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("status", ["waitlisted", "cancelled"])
+    async def test_returning_list_uses_greater_than_one(
+        self, repo: Mock, session: Mock, persons: dict[int, Mock], status: str
+    ) -> None:
+        repo.fetch_sessions.return_value = {1001: session}
+        repo.fetch_persons.return_value = persons
+        repo.fetch_attendees.return_value = [_attendee(pid, session, status=status, status_id=8) for pid in persons]
+
+        returning = await DrilldownService(repo).get_attendees_for_breakdown(
+            year=2026, breakdown_type="returning_status", breakdown_value="returning", status_filter=[status]
+        )
+
+        # Liam (0 years) is not returning; Olivia (4 years) is. Emma (1 year) is new.
+        assert {r.person_id for r in returning} == {103}
+        assert all(r.is_returning for r in returning)
+
+    @pytest.mark.asyncio
+    async def test_new_list_for_waitlisted_is_still_first_year_only(
+        self, repo: Mock, session: Mock, persons: dict[int, Mock]
+    ) -> None:
+        repo.fetch_sessions.return_value = {1001: session}
+        repo.fetch_persons.return_value = persons
+        repo.fetch_attendees.return_value = [
+            _attendee(pid, session, status="waitlisted", status_id=8) for pid in persons
+        ]
+
+        new = await DrilldownService(repo).get_attendees_for_breakdown(
+            year=2026, breakdown_type="returning_status", breakdown_value="new", status_filter=["waitlisted"]
+        )
+
+        assert {r.person_id for r in new} == {101}

@@ -56,7 +56,12 @@ function liveNote(live: LiveCompare, retention?: RetentionTrendsResponse): strin
   const base = `${String(live.year)} is still registering, so it is compared with ${String(live.priorYear)} at the same registration day (${day}). Earlier rows compare final to final.`
   // #90: the live row's retention reads against the year before on that day, not its final
   const before = retentionByYear(retention).get(live.priorYear)
-  if (retention?.prior_basis !== 'same_point' || before?.same_point_rate == null) return base
+  if (
+    retention?.prior_basis !== 'same_point' ||
+    before?.same_point_rate == null ||
+    before.retention_rate === null
+  )
+    return base
   const p = String(live.priorYear)
   return `${base} Its retention is today's, against ${p}'s on that day (${formatPercent(before.same_point_rate * 100)}) rather than ${p}'s final (${formatPercent(before.retention_rate * 100)}).`
 }
@@ -157,13 +162,17 @@ export function YearByYearTable({
   years,
   live,
   retention,
+  scoped = false,
 }: {
   years: readonly YearMetrics[]
   live: LiveCompare | null
+  /** Any view but the default At Camp one (quests, teens, a session, a duration): a year with nobody enrolled may only lack that program. */
+  scoped?: boolean
   /** Trends' retention transitions (#3207 PR 11, ruling #90): adds Retention and Retention change. */
   retention?: RetentionTrendsResponse | undefined
 }) {
   const hasRetention = retention !== undefined
+  const noEnrollmentText = scoped ? 'None enrolled' : 'No camp'
   const liveN = liveNoteN(hasRetention)
   const natural = buildYearRows(years, live, retention)
   const fallbackSeasons = years.map((y) => ({
@@ -300,11 +309,19 @@ export function YearByYearTable({
                     {r.cancelled === null ? '—' : formatCount(r.cancelled)}
                   </td>
                   <td className="text-muted-foreground px-1.5 py-3 text-right first:pl-4 last:pr-4">
-                    {r.cancelPct === null ? '—' : formatPercent(r.cancelPct)}
+                    {r.noEnrollment
+                      ? noEnrollmentText
+                      : r.cancelPct === null
+                        ? '—'
+                        : formatPercent(r.cancelPct)}
                   </td>
                   {hasRetention && (
                     <td className="text-foreground px-1.5 py-3 text-right tabular-nums first:pl-4 last:pr-4">
-                      {r.retention === null ? '—' : formatPercent(r.retention)}
+                      {r.retention !== null
+                        ? formatPercent(r.retention)
+                        : r.noEnrollment
+                          ? noEnrollmentText
+                          : '—'}
                     </td>
                   )}
                   {hasRetention && (

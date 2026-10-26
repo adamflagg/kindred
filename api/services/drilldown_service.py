@@ -663,16 +663,17 @@ class DrilldownService:
 
             elif breakdown_type == "returning_status":
                 if person:
-                    # The enrolled rule for every status, waitlisted rows included (the
-                    # waitlist drill-down calls this too). Pre-existing: it was `!= 1`
-                    # before the shared helper, so a 0-year waitlister lands under
-                    # "returning" while its R badge (> 1) says not. Open owner decision 35.
+                    # Enrolled rows use the card's rule (is_returning_camper, != 1). Waitlisted,
+                    # cancelled and other non-enrolled rows keep "returning" = years_at_camp > 1,
+                    # the same as their R badge (decision 35, ruled 2026-10-14). "new" is
+                    # years_at_camp == 1 for every status.
                     years = getattr(person, "years_at_camp", None)
+                    enrolled_row = getattr(a, "status", "enrolled") == "enrolled"
                     if breakdown_value == "new":
                         if is_new_camper(years):
                             filtered.append(a)
                     elif breakdown_value == "returning":
-                        if is_returning_camper(years):
+                        if is_returning_camper(years) if enrolled_row else (years is not None and years > 1):
                             filtered.append(a)
 
             elif breakdown_type == "session_length":
@@ -935,8 +936,8 @@ class DrilldownService:
                 # The Registration card's rule, so the R badge matches the card.
                 is_returning = is_returning_camper(years_at_camp)
             else:
-                # Non-enrolled rows keep > 1 until the owner rules on what "returning"
-                # means for a camper who is not enrolled (many carry 0 years).
+                # Non-enrolled rows keep > 1 (decision 35, ruled 2026-10-14): many carry
+                # 0 years, and those are not "returning".
                 is_returning = years_at_camp is not None and years_at_camp > 1
 
             # City/state for display -- normalized_city, when present, IS the

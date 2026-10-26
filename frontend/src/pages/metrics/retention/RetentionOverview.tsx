@@ -52,12 +52,13 @@ import { useCompareYearFilter } from '../../../hooks/useCompareYearFilter'
 import { formatSignedCount } from '../../../utils/numberFormat'
 import { RetentionChange } from '../../../components/metrics/RetentionChange'
 import {
-  cityPairKey,
   describeRetentionBasis,
   firstSummerPairKeys,
   regionPriorBars,
   retentionCompareView,
+  retentionUnavailableText,
   sessionPairKey,
+  withPriorCityRates,
   withPriorRates,
   type RetentionBasis,
 } from '../../../utils/retentionCompare'
@@ -165,8 +166,11 @@ export default function RetentionOverview() {
     base: data.base_year_total,
     returned: data.returned_count,
   })
+  const unavailableText = retentionUnavailableText(prior, currentYear)
   const compare = basis ? retentionCompareView(basis, currentYear) : undefined
-  const live = basis?.live ?? false
+  // 'unavailable' is only sent while the season is open, so this year's cards still read live
+  // even with nothing to compare with; the "by this day" line needs a real comparison.
+  const live = basis?.live ?? prior?.prior_basis === 'unavailable'
   // With nothing to compare with yet, every chart reads as before (no half-switched page, #87)
   const pair = <T extends RetentionRateBarItem>(
     bars: T[],
@@ -206,7 +210,9 @@ export default function RetentionOverview() {
     firstSummerPairKeys.current,
     firstSummerPairKeys.prior
   )
-  const cityBars = pair(cityToBarData(data.by_city), cityToBarData(prior?.by_city), cityPairKey)
+  const cityBars = compare
+    ? withPriorCityRates(cityToBarData(data.by_city), cityToBarData(prior?.by_city))
+    : cityToBarData(data.by_city)
   const schoolBars = pair(schoolToBarData(data.by_school), schoolToBarData(prior?.by_school))
   const synagogueBars = pair(
     synagogueToBarData(data.by_synagogue),
@@ -230,6 +236,7 @@ export default function RetentionOverview() {
     <MetricsBusy busy={isPlaceholderData || priorPlaceholder === true} what={String(currentYear)}>
       <div className="space-y-6">
         {basis && <BasisSentence basis={basis} />}
+        {unavailableText && <p className="text-muted-foreground text-sm">{unavailableText}</p>}
 
         {/* Summary Cards */}
         <div
@@ -254,7 +261,7 @@ export default function RetentionOverview() {
             value={data.returned_count}
             subtitle={`${formatRate(data.overall_retention_rate)} ${live ? 'retention so far' : 'retention rate'}`}
             detail={
-              live && prior
+              basis?.live && prior
                 ? `${priorYear} had ${formatCount(prior.returned_count)} by this day of ${priorYear} (${formatSignedCount(data.returned_count - prior.returned_count)})`
                 : undefined
             }
@@ -280,7 +287,9 @@ export default function RetentionOverview() {
               setFilter({
                 type: 'retention_not_returned',
                 value: 'all',
-                label: `Did Not Return to ${currentYear}`,
+                label: live
+                  ? `Not yet returned to ${currentYear}`
+                  : `Did Not Return to ${currentYear}`,
                 retentionContext: { baseYear: priorYear, compareYear: currentYear },
               })
             }

@@ -14,7 +14,7 @@
 
 import { csvFilename } from '../../../components/metrics/exportFilename'
 import { formatCount, formatPercent, formatSignedCount } from '../../../utils/numberFormat'
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import {
   LineChart,
   Line,
@@ -159,6 +159,22 @@ export default function CancellationVelocityPage() {
     }
   }, [data, comparisonYear, controls.selectedPriorYears])
 
+  // The default comparison year (the latest) with no cancellation history compares with nothing: it is
+  // dropped and the page says so once. A year staff tick themselves is honoured, with its per-cell dashes.
+  const defaultPrior = controls.implicitDefaultPrior
+  const dropYear =
+    defaultPrior !== null &&
+    !isPlaceholderData &&
+    data?.prior_year_cancelled_to_date.find((c) => c.year === defaultPrior)
+      ?.has_cancellation_data === false
+      ? defaultPrior
+      : null
+  const { dropDefaultPrior } = controls
+  useEffect(() => {
+    if (dropYear !== null) dropDefaultPrior(dropYear)
+  }, [dropYear, dropDefaultPrior])
+  const droppedYear = controls.droppedDefaultPrior
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -191,7 +207,12 @@ export default function CancellationVelocityPage() {
   const hasPriorYear = controls.selectedPriorYears.length > 0
   // Headers name the comparison year (#3209 row 20)
   const priorLabel = summaryCards?.priorYear != null ? String(summaryCards.priorYear) : null
-  const historyStart = formatHistoryStart(data.status_history_start)
+  // The pill names the compared season's OWN first history row, never another year's earliest.
+  const historyStart = formatHistoryStart(
+    summaryCards?.priorYear != null
+      ? (data.prior_year_history_starts?.[summaryCards.priorYear] ?? null)
+      : null
+  )
   const todayDayOffset = data.today_day_offset ?? null
   // On a priority, early or open date the prior year is read through the next day (decision 45): say so.
   const priorityDayMark = readsThroughNextDay(data.current_day_offset, data.prior_day_offset) ? (
@@ -209,10 +230,11 @@ export default function CancellationVelocityPage() {
     ...priorityDayNotes,
     ...(genderNoteN !== undefined ? [genderNote(genderNoteN, fallbackSeasons)] : []),
   ]
-  // Gender lines come from status history; campers already cancelled when the dashboard first saw them are in the
-  // total only. The server counts them per season (gender_history_gaps); numbered after the page's own notes.
+  // Gender lines come from status history; campers already cancelled when the dashboard first saw them (no date),
+  // and on the Gender field a camper with no boy/girl answer, are in the total only. The server counts them per
+  // season (gender_history_gaps); numbered after the page's own notes.
   const historyGap = controls.splitByGender
-    ? historyGapNotes(data.gender_history_gaps, pageNotes.length + 1)
+    ? historyGapNotes(data.gender_history_gaps, pageNotes.length + 1, genderBasis)
     : { notes: [], noHistory: [] }
   // Ruling 9: only the priority date itself waits a day for this year's data.
   const deltaPending = isPriorityDayOffset(data.current_day_offset)
@@ -425,6 +447,12 @@ export default function CancellationVelocityPage() {
             onGenderBasisChange={controls.setGenderBasis}
           />
         </div>
+
+        {droppedYear !== null && !hasPriorYear && (
+          <p className="text-muted-foreground text-sm">
+            {droppedYear} has no cancellation history.
+          </p>
+        )}
 
         {/* Summary Cards (4 cards, inverted colors) */}
         {summaryCards && hasPriorYear && (

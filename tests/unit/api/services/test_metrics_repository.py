@@ -455,3 +455,35 @@ class TestMetricsRepositorySessionTypeEscaping:
 
         filter_str = mock_collection.get_full_list.call_args[1]["query_params"]["filter"]
         assert filter_str == '(year = 2025) && (session_type = "main" || session_type = "x\\" || year != \\"0")'
+
+
+class TestMetricsRepositoryFetchRegistrationDates:
+    """A failed read is not an empty config: a caller that must tell them apart asks for strict."""
+
+    @pytest.mark.asyncio
+    async def test_a_failed_read_reads_as_no_dates_by_default(self) -> None:
+        from api.services.metrics_repository import MetricsRepository
+
+        mock_pb = MagicMock()
+        mock_pb.collection.return_value.get_full_list.side_effect = RuntimeError("PocketBase is down")
+
+        assert await MetricsRepository(mock_pb).fetch_registration_dates(2025) == {}
+
+    @pytest.mark.asyncio
+    async def test_a_strict_read_raises_the_failure(self) -> None:
+        from api.services.metrics_repository import MetricsRepository
+
+        mock_pb = MagicMock()
+        mock_pb.collection.return_value.get_full_list.side_effect = RuntimeError("PocketBase is down")
+
+        with pytest.raises(RuntimeError):
+            await MetricsRepository(mock_pb).fetch_registration_dates(2025, strict=True)
+
+    @pytest.mark.asyncio
+    async def test_a_strict_read_of_no_config_is_still_empty(self) -> None:
+        from api.services.metrics_repository import MetricsRepository
+
+        mock_pb = MagicMock()
+        mock_pb.collection.return_value.get_full_list.return_value = []
+
+        assert await MetricsRepository(mock_pb).fetch_registration_dates(2025, strict=True) == {}

@@ -89,7 +89,8 @@ export function describeRetentionBasis(
   current: { year: number; base: number; returned: number },
   firstNote = 1
 ): RetentionBasis | null {
-  if (!priorResponse?.prior_basis) return null
+  // 'unavailable' is not a comparison at all: the page says why instead (retentionUnavailableText).
+  if (!priorResponse?.prior_basis || priorResponse.prior_basis === 'unavailable') return null
   const C = current.year
   const B = C - 1
 
@@ -126,6 +127,15 @@ export function describeRetentionBasis(
     pending: isPriorityDayOffset(priorResponse.day_offset),
     day,
   }
+}
+
+/** The one line shown instead of a comparison when last year's registration dates could not be read. */
+export function retentionUnavailableText(
+  priorResponse: Pick<RetentionMetrics, 'prior_basis'> | undefined,
+  currentYear: number
+): string | null {
+  if (priorResponse?.prior_basis !== 'unavailable') return null
+  return `No comparison: ${currentYear - 1}'s registration dates couldn't be read.`
 }
 
 /** What every chart and table that compares with last year needs to say so. */
@@ -182,16 +192,55 @@ export function withPriorRates(
   return bars.map((b) => ({ ...b, priorRate: pooled.get(keyCurrent(b))?.rate ?? null }))
 }
 
+/** A city label split into its folded name and its two-letter state ('' when it has none). */
+function splitCity(name: string): { city: string; state: string } {
+  const folded = name.trim().replace(/\s+/g, ' ')
+  const m = /^(.*?)\s*,\s*([A-Za-z]{2})$/.exec(folded)
+  return m
+    ? { city: (m[1] ?? '').toLowerCase(), state: (m[2] ?? '').toUpperCase() }
+    : { city: folded.toLowerCase(), state: '' }
+}
+
 /**
- * Cities pair by name without a trailing state: CampMinder holds a city as "Springfield" one year
- * and "Springfield, CA" the next, so the exact name would leave most rows unpaired.
+ * Each city bar with last year's rate for the same city. Cities pair on city plus state wherever
+ * both years carry a state, so "Lafayette, CA" and "Lafayette, CO" never share a rate (#3286).
+ * The state is dropped only when one side lacks it: CampMinder holds "Springfield" one year and
+ * "Springfield, CA" the next. A stateless city borrows a stated one only when last year held a
+ * single state of that name; with two it pairs with nothing rather than guess. Last year's rows that
+ * qualify pool their campers, so a 1-camper row never stands in for the 60-camper one; a stateless
+ * row pools into a stated city only when last year held at most one state of that name.
  */
-export const cityPairKey: PairKey = (b) =>
-  b.name
-    .trim()
-    .replace(/\s+/g, ' ')
-    .replace(/,\s*[A-Za-z]{2}$/, '')
-    .toLowerCase()
+export function withPriorCityRates<T extends RetentionRateBarItem>(
+  bars: T[],
+  priorBars: RetentionRateBarItem[] | undefined
+): Array<T & { priorRate: number | null }> {
+  const byCity = new Map<string, Map<string, RetentionRateBarItem[]>>()
+  for (const b of priorBars ?? []) {
+    const { city, state } = splitCity(b.name)
+    const states = byCity.get(city) ?? new Map<string, RetentionRateBarItem[]>()
+    states.set(state, [...(states.get(state) ?? []), b])
+    byCity.set(city, states)
+  }
+  return bars.map((b) => {
+    const { city, state } = splitCity(b.name)
+    const states = byCity.get(city)
+    if (!states) return { ...b, priorRate: null }
+    const stated = [...states.keys()].filter((k) => k !== '')
+    const onlyState = stated.length === 1 ? stated[0] : undefined
+    const borrowed = state !== '' ? state : onlyState
+    // A stateless row joins a stated city only when last year held at most one state of that name.
+    const stateless = state === '' || stated.length <= 1 ? (states.get('') ?? []) : []
+    const rows = [...stateless, ...(borrowed ? (states.get(borrowed) ?? []) : [])]
+    const [first] = rows
+    if (!first) return { ...b, priorRate: null }
+    const base = rows.reduce((n, r) => n + r.baseCount, 0)
+    const returned = rows.reduce((n, r) => n + r.returnedCount, 0)
+    return {
+      ...b,
+      priorRate: rows.length === 1 || base === 0 ? first.retentionRate : returned / base,
+    }
+  })
+}
 
 /** Sessions pair by name through their alias group (a renamed session is the same row). */
 export const sessionPairKey = resolveSessionAlias
@@ -200,8 +249,8 @@ const firstSummerYear = (b: RetentionRateBarItem) => Number(b.id ?? b.name)
 const FOLD = 'fold'
 
 /**
- * First Summer Year pairs by summers in, not by the literal year (a judgement call, pending with
- * the owner): this year's first-timers (id F) against last year's (F − 1). The "2017 or earlier"
+ * First Summer Year pairs by summers in, not by the literal year (a judgement call the owner ruled,
+ * "pr11 a"): this year's first-timers (id F) against last year's (F − 1). The "2017 or earlier"
  * bucket pairs with itself, so 2018 has no exact match. To pair by the literal year instead, make
  * `prior` the same as `current`.
  */

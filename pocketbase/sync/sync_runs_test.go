@@ -1915,3 +1915,149 @@ func TestTheDedicatedDryRunEndpointsRecordTheirRunsAsDryRuns(t *testing.T) {
 		})
 	}
 }
+
+// ── last_run_failed (ti:P-35, the #3283 scan's "failed" memory) ─────────────────────────
+//
+// The live point must stay hidden while the newest REAL run since the last success failed:
+// the count may hold that run's partial writes. The browser used to remember it per session,
+// so a page first opened during the next run, or the dry run after it, read "not failed".
+// The payload says it now, on every entry, whatever the entry itself is.
+
+// failRun runs a failing svc and waits until it is recorded (want rows) and published.
+func failRun(t *testing.T, app core.App, o *Orchestrator, origin runOrigin, want int) {
+	t.Helper()
+	failing := &MockService{name: "svc", shouldFail: true}
+	_ = o.RunSingleSyncWithService(context.Background(), failing.name, failing, origin)
+	waitForSyncRuns(t, app, want)
+	waitForJobIdle(t, o, "svc")
+}
+
+func lastRunFailedIn(t *testing.T, payloads map[string]map[string]any) map[string]bool {
+	t.Helper()
+	out := make(map[string]bool, len(payloads))
+	for name, payload := range payloads {
+		got, ok := payload["svc"].(*Status)
+		if !ok {
+			t.Fatalf("%s: svc entry is %T, want *Status", name, payload["svc"])
+		}
+		out[name] = got.LastRunFailed
+	}
+	return out
+}
+
+func bothPayloads(o *Orchestrator) map[string]map[string]any {
+	return map[string]map[string]any{
+		"any season": resolveServiceStatuses(o, []string{"svc"}),
+		"?year=":     resolveServiceStatusesForSeason(o, []string{"svc"}, 2025, 2026),
+	}
+}
+
+func TestAFailedRunIsRememberedThroughTheDryRunAfterIt(t *testing.T) {
+	t.Parallel()
+
+	app := newSyncRunsApp(t)
+	o := NewOrchestrator(app)
+	runAndPublish(t, app, o, &MockService{name: "svc", stats: Stats{Created: 1}},
+		newBatch(triggerManual).forYear(2025), 1)
+	failRun(t, app, o, newBatch(triggerManual).forYear(2025), 2)
+	for name, failed := range lastRunFailedIn(t, bothPayloads(o)) {
+		if !failed {
+			t.Errorf("%s: the failed run itself does not read last_run_failed", name)
+		}
+	}
+
+	runAndPublish(t, app, o, &MockService{name: "svc", stats: Stats{Created: 99}},
+		newBatch(triggerManual).forYear(2025).forDryRun(true), 3)
+	for name, failed := range lastRunFailedIn(t, bothPayloads(o)) {
+		if !failed {
+			t.Errorf("%s: a dry run after a failed run cleared last_run_failed; it wrote nothing", name)
+		}
+	}
+	for name, failed := range lastRunFailedIn(t, bothPayloads(NewOrchestrator(app))) {
+		if !failed {
+			t.Errorf("%s, after a restart: the failure since the last success was forgotten", name)
+		}
+	}
+}
+
+func TestASuccessAfterAFailedRunClearsLastRunFailed(t *testing.T) {
+	t.Parallel()
+
+	app := newSyncRunsApp(t)
+	o := NewOrchestrator(app)
+	failRun(t, app, o, newBatch(triggerManual).forYear(2025), 1)
+	runAndPublish(t, app, o, &MockService{name: "svc", stats: Stats{Created: 1}},
+		newBatch(triggerManual).forYear(2025), 2)
+	for name, failed := range lastRunFailedIn(t, bothPayloads(o)) {
+		if failed {
+			t.Errorf("%s: the success after the failure still reads last_run_failed", name)
+		}
+	}
+	for name, failed := range lastRunFailedIn(t, bothPayloads(NewOrchestrator(app))) {
+		if failed {
+			t.Errorf("%s, after a restart: the success after the failure still reads last_run_failed", name)
+		}
+	}
+}
+
+// A failed DRY run vouches for nothing either way: it wrote nothing, so it neither fails nor clears.
+func TestAFailedDryRunDoesNotSetLastRunFailed(t *testing.T) {
+	t.Parallel()
+
+	app := newSyncRunsApp(t)
+	o := NewOrchestrator(app)
+	runAndPublish(t, app, o, &MockService{name: "svc", stats: Stats{Created: 1}},
+		newBatch(triggerManual).forYear(2025), 1)
+	failRun(t, app, o, newBatch(triggerManual).forYear(2025).forDryRun(true), 2)
+	for name, failed := range lastRunFailedIn(t, bothPayloads(o)) {
+		if failed {
+			t.Errorf("%s: a failed dry run set last_run_failed", name)
+		}
+	}
+}
+
+// The page first opened while the run after a failed run is going: the entry is that live run,
+// with no outcome yet, and must still say the run before it failed.
+func TestARunGoingAfterAFailedRunStillReadsFailed(t *testing.T) {
+	t.Parallel()
+
+	app := newSyncRunsApp(t)
+	o := NewOrchestrator(app)
+	o.RegisterService("svc", &MockService{name: "svc"})
+	runAndPublish(t, app, o, &MockService{name: "svc", stats: Stats{Created: 1}},
+		newBatch(triggerManual).forYear(2025), 1)
+	failRun(t, app, o, newBatch(triggerManual).forYear(2025), 2)
+
+	restarted := NewOrchestrator(app)
+	restarted.RegisterService("svc", &MockService{name: "svc"})
+	for name, orch := range map[string]*Orchestrator{"same process": o, "after a restart": restarted} {
+		if err := orch.markSyncRunningForYear("svc", 2025); err != nil {
+			t.Fatalf("%s: markSyncRunningForYear: %v", name, err)
+		}
+		for payload, entry := range bothPayloads(orch) {
+			got := entry["svc"].(*Status)
+			if got.Status != statusRunning {
+				t.Fatalf("%s, %s: entry is %q, want the live run", name, payload, got.Status)
+			}
+			if !got.LastRunFailed {
+				t.Errorf("%s, %s: a run going after a failed run reads last_run_failed false", name, payload)
+			}
+		}
+	}
+}
+
+// The ?year= payload reads only that season's rows: a failure in another season says nothing.
+func TestLastRunFailedIsScopedToTheViewedSeason(t *testing.T) {
+	t.Parallel()
+
+	app := newSyncRunsApp(t)
+	o := NewOrchestrator(app)
+	runAndPublish(t, app, o, &MockService{name: "svc", stats: Stats{Created: 1}},
+		newBatch(triggerManual).forYear(2025), 1)
+	failRun(t, app, o, newBatch(triggerManual).forYear(2024), 2)
+
+	got := resolveServiceStatusesForSeason(NewOrchestrator(app), []string{"svc"}, 2025, 2026)["svc"].(*Status)
+	if got.LastRunFailed {
+		t.Error("2025's entry reads last_run_failed off a 2024 failure")
+	}
+}

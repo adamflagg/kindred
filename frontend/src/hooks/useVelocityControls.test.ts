@@ -63,6 +63,53 @@ describe('useVelocityControls', () => {
     expect(result.current.selectedPriorYears).toEqual([2025])
   })
 
+  // The Cancellation Velocity page drops a default comparison year that has no history, but honours a year
+  // staff ticked themselves: it needs to know which one the selection is.
+  it('names the default prior year while the selection is only the default', () => {
+    expect(renderControls('/').result.current.implicitDefaultPrior).toBe(2025)
+    expect(renderControls('/?priors=2025').result.current.implicitDefaultPrior).toBeNull()
+    expect(renderControls(NONE).result.current.implicitDefaultPrior).toBeNull()
+  })
+
+  it('stops calling it the default once staff tick a year', () => {
+    const { result } = renderControls('/')
+    act(() => result.current.togglePriorYear(2024))
+    expect(result.current.implicitDefaultPrior).toBeNull()
+  })
+
+  it('dropDefaultPrior unticks the default and leaves a link with no comparison', () => {
+    const { result } = renderControls('/')
+    act(() => result.current.dropDefaultPrior(2025))
+    expect(result.current.selectedPriorYears).toEqual([])
+    expect(new URLSearchParams(result.current.search).get('priors')).toBe('')
+    expect(result.current.implicitDefaultPrior).toBeNull()
+    expect(result.current.droppedDefaultPrior).toBe(2025)
+  })
+
+  // CodeRabbit on #3304: the "2025 has no cancellation history" notice belongs to the season it was dropped
+  // in and to the untouched default; it must not follow staff to another season or come back after a pick.
+  it('forgets the dropped year when the viewed season changes', () => {
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(MemoryRouter, { initialEntries: ['/'] }, children)
+    const { result, rerender } = renderHook(
+      ({ year }: { year: number }) => useVelocityControls(availableYears, year),
+      { wrapper, initialProps: { year: 2026 } }
+    )
+    act(() => result.current.dropDefaultPrior(2025))
+    expect(result.current.droppedDefaultPrior).toBe(2025)
+    rerender({ year: 2025 })
+    expect(result.current.droppedDefaultPrior).toBeNull()
+  })
+
+  it('forgets the dropped year once staff tick a year themselves', () => {
+    const { result } = renderControls('/')
+    act(() => result.current.dropDefaultPrior(2025))
+    act(() => result.current.togglePriorYear(2024))
+    act(() => result.current.togglePriorYear(2024))
+    expect(result.current.selectedPriorYears).toEqual([])
+    expect(result.current.droppedDefaultPrior).toBeNull()
+  })
+
   it('ticks nothing when priors is present and empty', () => {
     const { result } = renderControls(NONE)
     expect(result.current.selectedPriorYears).toEqual([])

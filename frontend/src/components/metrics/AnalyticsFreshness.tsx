@@ -12,9 +12,10 @@ import { syncBehind } from '../velocity/velocityLive'
  * bunk-assignment run. " · syncing now" while that run is going. When the run finishes, every
  * Analytics query refetches (useAnalyticsSyncRefetch): the chip is on every Analytics page, once.
  *
- * Nothing for a season the regular schedule doesn't cover (older seasons re-sync weekly, Saturday
- * 05:00; N and N−1 run on the regular schedule), and
- * nothing for one never synced: the empty state says "hasn't synced from CampMinder yet" instead.
+ * "Synced weekly", muted, for a season the regular schedule doesn't cover (older seasons re-sync weekly,
+ * Saturday 05:00; N and N−1 run on the regular schedule): owner, 2026-10-25, ub:PR#3219:5, rather than
+ * nothing, worded "Synced weekly" by owner call 2026-10-26. No run time beside it: the status endpoint
+ * answers only the two synced seasons and sync_runs is admin-only, so it would need a new endpoint. Nothing for one never synced: the empty state says "hasn't synced from CampMinder yet" instead.
  * Summer's grammar: grey, relative inline, the absolute time in the tooltip (#1706). Amber once the
  * last SUCCESSFUL sync is more than 2 hours old (PR 5b ruling #111: the hourly sync is behind, and Velocity's and
  * Pace's live point is hidden for the same reason).
@@ -32,6 +33,16 @@ export function AnalyticsFreshness() {
         <span className="flex items-center gap-1.5 whitespace-nowrap">
           <RefreshCw className="h-3 w-3" />
           Enrollments syncing now
+        </span>
+      </div>
+    )
+  }
+  if (freshness.kind === 'none') {
+    return (
+      <div className="text-muted-foreground flex items-center gap-3 text-xs">
+        <span className="flex items-center gap-1.5 whitespace-nowrap">
+          <RefreshCw className="h-3 w-3" />
+          Synced weekly
         </span>
       </div>
     )

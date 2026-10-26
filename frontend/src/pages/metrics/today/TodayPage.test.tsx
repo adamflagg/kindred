@@ -458,6 +458,31 @@ describe('Today › Pace live point (PR 5b)', () => {
     expect(pace.querySelector('[data-live-dot="live"]')).not.toBeNull()
   })
 
+  // ub:PR#3283:5 / OD-48: a missed nightly leaves a days-old stored count; hidden point, so name its date.
+  it('after a missed nightly, a hidden live point leaves the stored count named by its date', () => {
+    vi.mocked(useVelocity).mockReturnValue(
+      q({
+        ...VELOCITY,
+        // The stored point is the Feb 7 nightly's: the Feb 8 and Feb 9 runs never landed
+        combined: {
+          ...VELOCITY.combined,
+          daily: [
+            ...VELOCITY.combined.daily.slice(0, -1),
+            { ...VELOCITY.combined.daily.at(-1)!, date: '2027-02-07', day_offset: 88 },
+          ],
+        },
+        live: { enrolled: 1577, stored_at: new Date(2027, 1, 7, 3, 40).toISOString() },
+      }) as unknown as ReturnType<typeof useVelocity>
+    )
+    liveSync.sync = {
+      at: new Date(2027, 1, 9, 12, 30).toISOString(),
+      failed: false,
+      nightly: false,
+    }
+    renderPage()
+    expect(screen.getByTestId('today-pace')).toHaveTextContent("951 · as of Feb 7's 3 a.m. count")
+  })
+
   it('a sync more than 2 hours old leaves the 3 a.m. count (#111)', () => {
     withLive(new Date(2027, 1, 9, 12, 30).toISOString())
     renderPage()
@@ -674,10 +699,43 @@ describe('Today › the embedded add (PR 8b)', () => {
     expect(screen.getByTestId('today-pace')).toHaveTextContent('Loading pace')
   })
 
-  it("Pace keeps Velocity's own prior when Session fill failed to load", () => {
+  // ti:P-36 / MR-PAR-23 (owner, 2026-10-25, option A) reverses the old fallback to Velocity's own prior:
+  // "Pace shows an error if Session fill fails", rather than a comparison Session fill does not make.
+  it('Pace shows an error when Session fill failed to load, and "Try again" re-asks it', () => {
+    const refetch = vi.fn()
+    withSessions(undefined, { error: new Error('boom'), refetch })
+    renderPage()
+    const pace = screen.getByTestId('today-pace')
+    expect(pace).toHaveTextContent(/Failed to load pace data: boom/)
+    expect(pace).not.toHaveTextContent('2026: 1,109')
+    expect(pace).not.toHaveTextContent('today')
+    fireEvent.click(within(pace).getByRole('button', { name: 'Try again' }))
+    expect(refetch).toHaveBeenCalled()
+  })
+
+  // "Today's one-session hero shows an error when Session fill fails": never last year's unfolded count.
+  it('one session picked: the hero shows an error when Session fill failed to load', () => {
+    vi.mocked(useMetricsSession).mockReturnValue(
+      session({
+        selectedSessionCmId: 1000200,
+        selectedSession: { cm_id: 1000200, name: 'Session 2' },
+      })
+    )
+    const refetch = vi.fn()
+    withSessions(undefined, { error: new Error('boom'), refetch })
+    renderPage()
+    expect(hero()).toHaveTextContent(/Failed to load enrollment data: boom/)
+    expect(hero()).not.toHaveTextContent('902')
+    expect(within(hero()).queryByTestId('hero-figure')).toBeNull()
+    fireEvent.click(within(hero()).getByRole('button', { name: 'Try again' }))
+    expect(refetch).toHaveBeenCalled()
+  })
+
+  it('no session picked: the hero does not depend on Session fill, so its failure leaves it as is', () => {
     withSessions(undefined, { error: new Error('boom') })
     renderPage()
-    expect(screen.getByTestId('today-pace')).toHaveTextContent('2026: 1,109')
+    expect(within(hero()).getByTestId('hero-figure')).toHaveTextContent('880')
+    expect(hero()).toHaveTextContent('same point 2026 902')
   })
 
   it('one session picked: the headline compares with its folded campers, each once (#51)', () => {

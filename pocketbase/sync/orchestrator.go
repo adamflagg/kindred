@@ -582,6 +582,12 @@ type Status struct {
 	// date the enrollments by this, so two failed runs in a row go amber and a failed run's partial
 	// count never reads as fresh. Nil when the job has no real success on record. Never persisted.
 	LastSuccessAt *time.Time `json:"last_success_at,omitempty"`
+	// LastRunFailed is true when the job's newest finished REAL run (dry runs skipped, any outcome)
+	// failed, i.e. a real run since the last success failed: stamped on every sync-status payload
+	// entry (withLastRunFailed), whatever the entry itself is, so it holds through the dry run or the
+	// live run that follows and for a page first opened mid-run. Analytics' live point stays hidden
+	// while it is true (the count may hold that run's partial writes). Never persisted.
+	LastRunFailed bool `json:"last_run_failed,omitempty"`
 	// BatchID groups every service execution of one queue — a whole nightly run — under one
 	// id. Minted when the queue starts.
 	//

@@ -6251,7 +6251,8 @@ export type GenderEnrollment = {
  *
  * Cancellation Velocity, split by gender: how much of a season's total the gender lines cannot show.
  *
- * Campers already cancelled when the dashboard first saw them have no status history row, so they are in the
+ * Campers already cancelled when the dashboard first saw them have no status history row (no date), and on the
+ * Gender field's boys and girls lines a camper with another or no answer has no line: either way they are in the
  * snapshot total but never on a line.
  */
 export type GenderHistoryGap = {
@@ -15563,9 +15564,15 @@ export type RetentionMetricsResponse = {
   /**
    * Prior Basis
    *
-   * Set when same_point_of was asked: 'same_point' when the compare year was read at the registration day that season has reached (registered by then and not cancelled by then), 'final' when it was read as it stands now (that season is over, or a season has no registration anchor)
+   * Set when same_point_of was asked: 'same_point' when the compare year was read at the registration day that season has reached (registered by then and not cancelled by then), 'final' when it was read as it stands now (that season is over, or a season has no registration anchor), 'unavailable' when the compare year's registration dates could not be read (see prior_unavailable_reason); the figures are then the final read and must not be shown as a comparison
    */
-  prior_basis?: 'same_point' | 'final' | null
+  prior_basis?: 'same_point' | 'final' | 'unavailable' | null
+  /**
+   * Prior Unavailable Reason
+   *
+   * Set with prior_basis 'unavailable': why the comparison cannot be worked out
+   */
+  prior_unavailable_reason?: 'registration_dates_unreadable' | null
   /**
    * Day Offset
    *
@@ -15607,9 +15614,9 @@ export type RetentionTrendYear = {
   /**
    * Retention Rate
    *
-   * Overall retention rate (0-1)
+   * Overall retention rate (0-1); null when it cannot be worked out (PM-4): the base year had nobody enrolled, or to_year is a past season nobody attended (camp did not run, or the scoped view had no such session). The newest season keeps its rate so far, 0 before anyone registers
    */
-  retention_rate: number
+  retention_rate: number | null
   /**
    * Base Count
    *
@@ -20449,9 +20456,17 @@ export type VelocityResponse = {
   /**
    * Status History Start
    *
-   * ISO date of the earliest attendee_status_history row of any year; cancellation metric only
+   * ISO date of the requested season's own earliest attendee_status_history row; cancellation metric only
    */
   status_history_start?: string | null
+  /**
+   * Prior Year History Starts
+   *
+   * Each compared season's own earliest attendee_status_history date (ISO), keyed by year; a year with no history is absent. Cancellation metric only
+   */
+  prior_year_history_starts?: {
+    [key: string]: string
+  }
   /**
    * Snapshots Start
    *
@@ -21370,9 +21385,9 @@ export type YearMetrics = {
   /**
    * Cancellation Rate
    *
-   * Cancelled / (enrolled + cancelled)
+   * Cancelled / (enrolled + cancelled); null when nobody was enrolled that year (camp did not run, or the scoped view had no such session), where the ratio would read 100% of nothing
    */
-  cancellation_rate?: number
+  cancellation_rate?: number | null
   /**
    * Has Cancellation Data
    *

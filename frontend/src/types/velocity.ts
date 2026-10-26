@@ -143,8 +143,10 @@ export interface VelocityResponse {
   prior_day_offset?: number | null
   /** Today's day offset while the season is live, else null. Drives the TODAY line. */
   today_day_offset?: number | null
-  /** ISO date of the earliest status-history row (cancellation metric only). */
+  /** ISO date of the viewed season's own earliest status-history row (cancellation metric only). */
   status_history_start?: string | null
+  /** Each compared season's own earliest status-history date, by year; a year with none is absent. */
+  prior_year_history_starts?: Record<number, string>
   /** ISO date of the first nightly snapshot of any year (enrollment metric): every season before it is rebuilt (K13). */
   snapshots_start?: string | null
   /** PR 5b: the count after the last stored point, live season only; the page gates it on the sync (velocityLive). */

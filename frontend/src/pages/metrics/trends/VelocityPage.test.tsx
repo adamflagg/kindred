@@ -955,6 +955,42 @@ describe('VelocityPage live point (PR 5b)', () => {
     expect(screen.getByTestId('legend')).toHaveTextContent('2026 (100 at Wk 1)')
   })
 
+  // ub:PR#3283:5 / OD-48 (owner, 2026-10-25): after a missed nightly the stored count is days old, so
+  // the legend and captions name its date instead of "3 a.m.". The normal wording is unchanged.
+  describe('after a missed nightly (stored count more than ~26 h old)', () => {
+    const staleStored = (daysAgo: number) => ({
+      combined: {
+        ...liveData.combined,
+        daily: [dailyPoint(5, 90), { ...dailyPoint(6, 100), date: '2026-12-12' }],
+      },
+      live: {
+        enrolled: 160,
+        stored_at: new Date(
+          Date.parse('2026-12-14T11:40:00Z') - daysAgo * 86_400_000
+        ).toISOString(),
+      },
+    })
+
+    it('the legend names the stored date when the point draws', () => {
+      useLive(staleStored(2))
+      render(<VelocityPage />)
+      const names = screen.getAllByTestId('chart-line').map((l) => l.getAttribute('data-name'))
+      expect(names).toContain('since the Dec 12, 3 a.m. count (hourly sync)')
+      expect(names).not.toContain(LIVE_LINE)
+    })
+
+    it('the captions name the stored date while the point is hidden', () => {
+      useLive(staleStored(2), '2026-12-14T20:35:00Z')
+      render(<VelocityPage />)
+      expect(screen.getByText('Enrolled (2026, Wk 1)').parentElement).toHaveTextContent(
+        'camper-sessions · Dec 12, 3 a.m. count'
+      )
+      expect(screen.getByText('Cancelled to Date').parentElement).toHaveTextContent(
+        'Dec 12, 3 a.m. count (not live)'
+      )
+    })
+  })
+
   it('the nightly window shows the stored count only (#111)', () => {
     useLive()
     mockLiveSync.sync = { ...mockLiveSync.sync, nightly: true }

@@ -23,6 +23,7 @@ vi.mock('./useSyncStatusAPI', () => ({
 
 import { forgetFinishedRuns } from './useAnalyticsFreshness'
 import { forgetStaleRefetches, useLiveSync } from './useLiveSync'
+import { livePoint } from '../components/velocity/velocityLive'
 
 const job = (status: string, end_time?: string) => ({ status, ...(end_time ? { end_time } : {}) })
 
@@ -87,10 +88,40 @@ describe('useLiveSync', () => {
     const { result, rerender } = renderHook(() => useLiveSync(2027))
     expect(result.current.sync).toMatchObject({ at: '2026-12-14T20:05:00Z', failed: true })
     scoped[2027] = {
-      attendees: { ...job('running'), last_success_at: '2026-12-14T20:05:00Z' },
+      attendees: {
+        ...job('running'),
+        last_success_at: '2026-12-14T20:05:00Z',
+        last_run_failed: true,
+      },
     }
     rerender()
     expect(result.current.sync).toMatchObject({ at: '2026-12-14T20:05:00Z', failed: true })
+  })
+
+  // ti:P-35 / oq:111: a page first opened mid-run after a failed run hides the live point.
+  it('hides the live point on a page first opened while the run after a failed run is going', () => {
+    const data = {
+      live: { enrolled: 1040, stored_at: '2026-12-14T11:00:00Z' },
+      combined: { daily: [{ day_offset: 10, enrolled: 1000, date: '2026-12-14' }] },
+      today_day_offset: 10,
+    } as unknown as Parameters<typeof livePoint>[0]
+    const running = (failed: boolean) => ({
+      attendees: {
+        ...job('running'),
+        last_success_at: '2026-12-14T22:05:00Z',
+        ...(failed ? { last_run_failed: true } : {}),
+      },
+    })
+    scoped[2027] = running(false)
+    const control = renderHook(() => useLiveSync(2027))
+    expect(livePoint(data, control.result.current.sync, control.result.current.now)).not.toBeNull()
+    control.unmount()
+
+    forgetFinishedRuns()
+    scoped[2027] = running(true)
+    const { result } = renderHook(() => useLiveSync(2027))
+    expect(result.current.sync.failed).toBe(true)
+    expect(livePoint(data, result.current.sync, result.current.now)).toBeNull()
   })
 
   // Row 1 of the scan: a tab left open past a missed refetch reads amber off a status that is only

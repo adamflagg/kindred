@@ -3,7 +3,7 @@
  * While registration is live every figure reads against last year as it stood on the same
  * registration day; after it, final against final. Good / Low retires in both states.
  */
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import RetentionOverview from './RetentionOverview'
@@ -123,8 +123,9 @@ vi.mock('../../../hooks/useMetricsSession', () => ({
   }),
 }))
 vi.mock('../../../hooks/useCurrentYear', () => ({ useCurrentYear: () => ({ currentYear: 2026 }) }))
+const setFilterMock = vi.fn()
 vi.mock('../../../hooks/useDrilldown', () => ({
-  useDrilldown: () => ({ setFilter: vi.fn(), DrilldownModal: () => null }),
+  useDrilldown: () => ({ setFilter: setFilterMock, DrilldownModal: () => null }),
 }))
 vi.mock('../../../components/metrics/BreakdownChart', () => ({ BreakdownChart: () => null }))
 
@@ -198,6 +199,14 @@ describe('while registration is live (#84, #86, #87, #88)', () => {
     expect(screen.queryByText(/attrition/)).not.toBeInTheDocument()
   })
 
+  it('opens the Not yet returned card as a list with the same name (A-20)', () => {
+    render(<RetentionOverview />)
+    fireEvent.click(card(/^Not yet returned$/))
+    expect(setFilterMock).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'retention_not_returned', label: 'Not yet returned to 2026' })
+    )
+  })
+
   it('lists the basis note first and the gender note after it', () => {
     render(<RetentionOverview />)
     expect(
@@ -267,11 +276,51 @@ describe('after registration (#85)', () => {
     expect(screen.queryByText('Good')).not.toBeInTheDocument()
   })
 
+  it('opens Did Not Return as a list with the same name', () => {
+    render(<RetentionOverview />)
+    fireEvent.click(card(/^Did Not Return$/))
+    expect(setFilterMock).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'retention_not_returned', label: 'Did Not Return to 2026' })
+    )
+  })
+
   it('goes back to Did Not Return with its attrition', () => {
     render(<RetentionOverview />)
     expect(screen.getByText('Did Not Return')).toBeInTheDocument()
     expect(screen.getByText('34.5% attrition')).toBeInTheDocument()
     expect(screen.getByText('65.5% retention rate')).toBeInTheDocument()
+    expect(screen.queryByText(/by this day/)).not.toBeInTheDocument()
+  })
+})
+
+describe("when last year's registration dates cannot be read", () => {
+  beforeEach(() => {
+    prior = {
+      ...priorFinal,
+      prior_basis: 'unavailable',
+      prior_unavailable_reason: 'registration_dates_unreadable',
+    }
+  })
+
+  it('shows no comparison figures and says why, once', () => {
+    render(<RetentionOverview />)
+    expect(
+      screen.getAllByText("No comparison: 2025's registration dates couldn't be read.")
+    ).toHaveLength(1)
+    expect(screen.queryByText(/pts/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/vs last year's final/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/by this day/)).not.toBeInTheDocument()
+    expect(charts.get('Retention by Grade')!.compare).toBeUndefined()
+  })
+
+  // Owner call 2026-10-26 (item 2): 'unavailable' is only sent while the season is open,
+  // so this year's own cards still read live.
+  it('still shows this year on its own, in the live wording', () => {
+    render(<RetentionOverview />)
+    expect(screen.getByText('65.5% retention so far')).toBeInTheDocument()
+    expect(screen.getByText('Not yet returned')).toBeInTheDocument()
+    expect(screen.getByText('Still can; registration is open')).toBeInTheDocument()
+    expect(screen.queryByText('Did Not Return')).not.toBeInTheDocument()
     expect(screen.queryByText(/by this day/)).not.toBeInTheDocument()
   })
 })

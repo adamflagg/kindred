@@ -6,8 +6,8 @@
  *
  * PR 8b: last year's line compares what Session fill's total compares (matched sessions plus the embedded
  * sessions folded into them, #15), not Velocity's whole scope, so "{year}: N" reads the total's own figure
- * and, when anything folded in, opens the same breakdown. If Session fill failed to load, Pace falls back to
- * Velocity's own prior rather than going blank.
+ * and, when anything folded in, opens the same breakdown. If Session fill failed to load, Pace shows an error
+ * (TodayPage, ti:P-36) rather than a comparison Session fill does not make.
  */
 import { Link, useLocation } from 'react-router'
 import { DefRef } from '../../../components/camperships/kit/DefinitionNotes'
@@ -21,7 +21,11 @@ import {
 import { formatCount } from '../../../utils/numberFormat'
 import type { VelocityResponse } from '../../../types/velocity'
 import { LiveDots, LiveLabelText } from '../../../components/velocity/LiveMark'
-import { liveLabelLines, type LivePoint } from '../../../components/velocity/velocityLive'
+import {
+  liveLabelLines,
+  storedCountAsOf,
+  type LivePoint,
+} from '../../../components/velocity/velocityLive'
 import { analyticsHref, type PacePrior } from './todayModel'
 import { FoldedFigure } from './todayParts'
 
@@ -55,12 +59,14 @@ function PaceChart({
   priorYear,
   fold,
   live,
+  storedDate,
 }: {
   data: VelocityResponse
   year: number
   priorYear: number
   fold: PacePrior | null
   live: LivePoint | null
+  storedDate: string | null
 }) {
   const current = [...data.combined.daily].sort((a, b) => a.day_offset - b.day_offset)
   const priorSource = fold
@@ -85,7 +91,17 @@ function PaceChart({
 
   const x0 = Math.min(0, current[0]?.day_offset ?? 0)
   const x1 = Math.max(prior.at(-1)?.day_offset ?? 0, nowDay + 28)
-  const top = niceTop(Math.max(priorFinal ?? 0, now))
+  // Every drawn value: last year's curve, this year's line to today (the stored count with it) and the
+  // live point. Sized from the live count and last year's final alone, a count that fell after 3 a.m.
+  // clipped the stored point and the line at the top (MR-PAR-09 finding 1).
+  const top = niceTop(
+    Math.max(
+      ...prior.map((p) => p.enrolled),
+      ...current.filter((p) => p.day_offset <= nowDay).map((p) => p.enrolled),
+      stored,
+      now
+    )
+  )
   const plotW = W - PAD.left - PAD.right
   const plotH = H - PAD.top - PAD.bottom
   const x = (d: number) => PAD.left + ((d - x0) / (x1 - x0 || 1)) * plotW
@@ -117,11 +133,14 @@ function PaceChart({
   const ticks = [0, top / 3, (2 * top) / 3, top]
   const dx = x(nowDay)
   const dy = y(stored)
-  const left = dx < W / 2
-  const lx = left ? dx + 8 : dx - 8
+  // The "N today" label sits by the point it reads: the live dot when drawn, else the stored one (finding 2)
+  const labelX = live ? x(live.x) : dx
+  const labelY = live ? y(live.enrolled) : dy
+  const left = labelX < W / 2
+  const lx = left ? labelX + 8 : labelX - 8
   const anchor = left ? 'start' : 'end'
   const lineH = FONT + 3
-  const ly = Math.min(dy + 16, y(0) - 18 - liveLines.length * lineH)
+  const ly = Math.min(labelY + 16, y(0) - 18 - liveLines.length * lineH)
   const priorY = ly + 12 + liveLines.length * lineH
   const finalX = dx > W - PAD.right - 130 ? dx - 6 : W - PAD.right
 
@@ -217,7 +236,10 @@ function PaceChart({
           <circle cx={dx} cy={dy} r={3.5} className="fill-forest-700 dark:fill-forest-400" />
         )}
         <text x={lx} y={ly} textAnchor={anchor} fontSize={FONT} fontWeight={700} fill={STRONG}>
-          {formatCount(now)} today
+          {/* After a missed nightly the stored count is not today's: name its date (OD-48) */}
+          {!live && storedDate
+            ? `${formatCount(now)} · ${storedCountAsOf(storedDate)}`
+            : `${formatCount(now)} today`}
         </text>
         <LiveLabelText x={lx} y={ly + lineH} anchor={anchor} fontSize={FONT} lines={liveLines} />
         {priorNow != null &&
@@ -268,14 +290,26 @@ export function PaceCard({
   year,
   fold,
   live = null,
+  storedDate = null,
 }: {
   data: VelocityResponse
   year: number
   fold: PacePrior | null
   /** PR 5b: the live point (velocityLive.livePoint), or null to end at the 3 a.m. count. */
   live?: LivePoint | null
+  /** The stored count's date after a missed nightly (velocityLive.staleStoredDate), else null. */
+  storedDate?: string | null
 }) {
-  return <PaceChart data={data} year={year} priorYear={year - 1} fold={fold} live={live} />
+  return (
+    <PaceChart
+      data={data}
+      year={year}
+      priorYear={year - 1}
+      fold={fold}
+      live={live}
+      storedDate={storedDate}
+    />
+  )
 }
 
 export function PaceHead({ sessionsNote }: { sessionsNote: number | undefined }) {

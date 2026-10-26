@@ -4,6 +4,7 @@ These tests define the expected behavior of the RetentionTrendsService.
 Implementation must conform to these tests, not the other way around.
 """
 
+from datetime import date
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -173,7 +174,7 @@ class TestRetentionTrendsServiceBasic:
         assert len(result.years) == 1
         assert result.years[0].base_count == 10
         assert result.years[0].returned_count == 6
-        assert abs(result.years[0].retention_rate - 0.6) < 0.001
+        assert result.years[0].retention_rate == pytest.approx(0.6, abs=0.001)
 
 
 # ============================================================================
@@ -560,10 +561,70 @@ class TestRetentionTrendsServiceEdgeCases:
             num_years=1,
         )
 
-        # With 0 base campers, retention rate should be 0
+        # PM-4 A (owner, 2026-10-25): with 0 base campers there is no rate to work out, so none is sent
+        # (it read 0.0, which drew a camp nobody attended as a 0% year)
         assert result.years[0].base_count == 0
         assert result.years[0].returned_count == 0
+        assert result.years[0].retention_rate is None
+
+    @pytest.mark.asyncio
+    async def test_a_past_season_nobody_attended_has_no_retention_into_it(self, mock_repository: MagicMock) -> None:
+        """PM-4 A: 2020 reads 'no camp' and is left off lines; retention into it is not a real 0%."""
+        from api.services.retention_trends_service import RetentionTrendsService
+
+        by_year: dict[int, list[Any]] = {
+            2019: [make_mock_attendee(i, 100) for i in range(1, 5)],
+            2020: [],  # camp did not run
+            2021: [make_mock_attendee(i, 100) for i in range(1, 3)],
+        }
+        persons = {i: make_mock_person(i, "M") for i in range(1, 5)}
+
+        mock_repository.fetch_attendees = AsyncMock(side_effect=lambda year: by_year[year])
+        mock_repository.fetch_persons = AsyncMock(return_value=persons)
+        mock_repository.fetch_sessions = AsyncMock(return_value={100: make_mock_session(100)})
+
+        result = await RetentionTrendsService(mock_repository).calculate_retention_trends(
+            current_year=2021, num_years=2
+        )
+
+        into_2020, out_of_2020 = result.years
+        assert (into_2020.from_year, into_2020.to_year) == (2019, 2020)
+        assert into_2020.base_count == 4
+        assert into_2020.retention_rate is None
+        assert out_of_2020.base_count == 0
+        assert out_of_2020.retention_rate is None
+
+    @pytest.mark.asyncio
+    async def test_the_newest_season_with_nobody_yet_keeps_its_so_far_rate(self, mock_repository: MagicMock) -> None:
+        """Before registration opens the newest season has nobody yet: 0% so far is a real read, not 'no camp'."""
+        from api.services.retention_trends_service import RetentionTrendsService
+
+        by_year: dict[int, list[Any]] = {2026: [make_mock_attendee(i, 100) for i in range(1, 5)], 2027: []}
+        mock_repository.fetch_attendees = AsyncMock(side_effect=lambda year: by_year[year])
+        mock_repository.fetch_persons = AsyncMock(return_value={i: make_mock_person(i, "M") for i in range(1, 5)})
+        mock_repository.fetch_sessions = AsyncMock(return_value={100: make_mock_session(100)})
+
+        result = await RetentionTrendsService(mock_repository).calculate_retention_trends(
+            current_year=2027, num_years=1, today=date(2026, 10, 25)
+        )
+
         assert result.years[0].retention_rate == 0.0
+
+    @pytest.mark.asyncio
+    async def test_viewing_the_no_camp_year_itself_still_has_no_rate(self, mock_repository: MagicMock) -> None:
+        """CodeRabbit on #3304: the 'so far' exception is for a season still to come, not the newest year asked for."""
+        from api.services.retention_trends_service import RetentionTrendsService
+
+        by_year: dict[int, list[Any]] = {2019: [make_mock_attendee(i, 100) for i in range(1, 5)], 2020: []}
+        mock_repository.fetch_attendees = AsyncMock(side_effect=lambda year: by_year[year])
+        mock_repository.fetch_persons = AsyncMock(return_value={i: make_mock_person(i, "M") for i in range(1, 5)})
+        mock_repository.fetch_sessions = AsyncMock(return_value={100: make_mock_session(100)})
+
+        result = await RetentionTrendsService(mock_repository).calculate_retention_trends(
+            current_year=2020, num_years=1, today=date(2026, 10, 25)
+        )
+
+        assert result.years[0].retention_rate is None
 
 
 # ============================================================================

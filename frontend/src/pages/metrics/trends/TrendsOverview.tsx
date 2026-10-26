@@ -32,6 +32,7 @@ import { formatSignedCount, formatSignedPercent } from '../../../utils/numberFor
 import { YearByYearTable } from '../../../components/metrics/YearByYearTable'
 import { yearNoteCount, type LiveCompare } from '../../../components/metrics/yearByYearRows'
 import { readsThroughNextDay } from '../../../utils/priorityDay'
+import { AT_CAMP_TYPES } from '../../../utils/sessionTypePredicates'
 
 const MONTH_DAY = new Intl.DateTimeFormat('en-US', {
   month: 'short',
@@ -407,7 +408,18 @@ export default function TrendsOverview() {
         )}
 
         {/* Data Table */}
-        <YearByYearTable years={data.years} live={live} retention={retention} />
+        <YearByYearTable
+          years={data.years}
+          live={live}
+          retention={retention}
+          // Only the default At Camp view can say a year had no camp; any other view
+          // (quests, teens, one session, a duration) may just lack that program that year.
+          scoped={
+            filterOptions.sessionTypes !== AT_CAMP_TYPES.join(',') ||
+            filterOptions.sessionCmId != null ||
+            filterOptions.duration != null
+          }
+        />
 
         {/* Retention Rate + Cancellation Rate side-by-side */}
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">

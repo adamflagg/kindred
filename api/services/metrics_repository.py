@@ -347,14 +347,18 @@ class MetricsRepository:
             logger.warning(f"Could not fetch status history: {e}")
             return []
 
-    async def fetch_status_history_start(self) -> str | None:
-        """Earliest ``detected_at`` of any attendee_status_history row (any year), or None."""
+    async def fetch_status_history_start(self, year: int | None = None) -> str | None:
+        """Earliest ``detected_at`` of an attendee_status_history row, or None.
+
+        ``year`` scopes it to that season's own rows; omitted, it is the earliest of any year.
+        """
+        filter_str = "detected_at != ''" if year is None else f"detected_at != '' && year = {int(year)}"
         try:
             page = await asyncio.to_thread(
                 self.pb.collection(ATTENDEE_STATUS_HISTORY).get_list,
                 1,
                 1,
-                {"sort": "detected_at", "filter": "detected_at != ''", "fields": "detected_at"},
+                {"sort": "detected_at", "filter": filter_str, "fields": "detected_at"},
             )
         except Exception as e:
             logger.warning(f"Could not fetch status history start: {e}")
@@ -473,8 +477,12 @@ class MetricsRepository:
             logger.warning(f"Could not fetch budget config for year {year}: {e}")
             return {}
 
-    async def fetch_registration_dates(self, year: int) -> dict[str, str]:
-        """Fetch registration phase dates from config table."""
+    async def fetch_registration_dates(self, year: int, *, strict: bool = False) -> dict[str, str]:
+        """Fetch registration phase dates from config table.
+
+        A failed read returns ``{}`` (no dates) unless ``strict``, when it raises: a caller that must tell
+        "none configured" from "could not be read" (Retention's comparison, PM-4) asks for strict.
+        """
         try:
             records = await asyncio.to_thread(
                 self.pb.collection(CONFIG).get_full_list,
@@ -484,6 +492,8 @@ class MetricsRepository:
             )
             return {getattr(r, "config_key", ""): getattr(r, "value", "") for r in records}
         except Exception:
+            if strict:
+                raise
             return {}
 
     async def fetch_availability_config(self, year: int) -> list[Any]:

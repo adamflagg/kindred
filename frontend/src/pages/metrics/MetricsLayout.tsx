@@ -11,6 +11,7 @@ import type { SubNavItem } from '../../components/metrics/MetricsSubNav'
 import { MetricsSessionProvider } from '../../contexts/MetricsSessionContext'
 import { RETENTION_SUB_NAV, REGISTRATION_SUB_NAV, TRENDS_SUB_NAV } from './metricsNav'
 import { SeasonEmptyState } from '../../components/metrics/SeasonEmptyState'
+import { MetricsLoadError } from '../../components/metrics/MetricsQueryGuard'
 import { useCurrentYear } from '../../hooks/useCurrentYear'
 import { useSeasonHasRows } from '../../hooks/useSeasonHasRows'
 import { useAnalyticsFreshness } from '../../hooks/useAnalyticsFreshness'
@@ -75,16 +76,21 @@ function PrintableBody({
  * The page body, gated on the viewed season having countable summer rows (PR 4, board 9 A).
  * After the Oct 26 rollover the new season has no sign-ups for weeks, and every page would
  * otherwise draw zeros under it. One gate here covers every page; the header, tabs, sub-nav,
- * picker and season bar stay. While the count loads, a spinner stands in so no zeros flash.
+ * picker and season bar stay. While the count loads, a spinner stands in so no zeros flash; if it
+ * fails, an error with "Try again" does.
  */
 function SeasonGatedOutlet() {
   const { currentYear } = useCurrentYear()
-  const { hasRows } = useSeasonHasRows(currentYear)
+  const { hasRows, error, refetch } = useSeasonHasRows(currentYear)
   const freshness = useAnalyticsFreshness(currentYear)
   // Asked for only while the season is empty: year 0 leaves the query off.
   const priorityDate = usePriorityRegDate(hasRows === false ? currentYear : 0)
   const viewSeason = useViewSeason()
 
+  // Fails closed: a count that errored shows an error, never a normal-looking page (ub:PR#3219:0).
+  if (error) {
+    return <MetricsLoadError label="season" error={error} onRetry={refetch} />
+  }
   if (hasRows === undefined) {
     return (
       <div className="flex items-center justify-center py-12" data-testid="season-rows-loading">

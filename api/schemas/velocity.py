@@ -144,7 +144,8 @@ class PriorYearSessionSummary(BaseModel):
 class GenderHistoryGap(BaseModel):
     """Cancellation Velocity, split by gender: how much of a season's total the gender lines cannot show.
 
-    Campers already cancelled when the dashboard first saw them have no status history row, so they are in the
+    Campers already cancelled when the dashboard first saw them have no status history row (no date), and on the
+    Gender field's boys and girls lines a camper with another or no answer has no line: either way they are in the
     snapshot total but never on a line.
     """
 
@@ -235,7 +236,14 @@ class VelocityResponse(BaseModel):
     )
     status_history_start: str | None = Field(
         None,
-        description="ISO date of the earliest attendee_status_history row of any year; cancellation metric only",
+        description="ISO date of the requested season's own earliest attendee_status_history row; cancellation metric only",
+    )
+    prior_year_history_starts: dict[int, str] = Field(
+        default_factory=dict,
+        description=(
+            "Each compared season's own earliest attendee_status_history date (ISO), keyed by year; a year with "
+            "no history is absent. Cancellation metric only"
+        ),
     )
     snapshots_start: str | None = Field(
         None,

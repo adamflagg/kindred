@@ -3,7 +3,7 @@
  *
  * Tests are written FIRST before implementation (TDD).
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, within, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
@@ -375,5 +375,73 @@ describe('TrendsOverview — live season compares at the same registration day (
     expect(
       screen.getByText(/compared with 2025 at the same registration day \(Oct 15\)/)
     ).toBeInTheDocument()
+  })
+})
+
+describe('TrendsOverview — a year with nobody enrolled: "No camp" only on the default At Camp view', () => {
+  const emptyYear = {
+    ...mockHistoricalYear,
+    year: 2020,
+    total_enrolled: 0,
+    new_campers: 0,
+    returning_campers: 0,
+    total_cancelled: 0,
+    cancellation_rate: null,
+    has_cancellation_data: true,
+  }
+  const original = { ...mockMetricsSession.filterOptions }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockMetricsSession.includeTeenPipeline = false
+    vi.mocked(useRetentionTrends).mockReturnValue(
+      mockRetentionTrends as unknown as ReturnType<typeof useRetentionTrends>
+    )
+    vi.mocked(useHistoricalTrends).mockReturnValue({
+      data: { years: [emptyYear, mockHistoricalYear] },
+      isLoading: false,
+      error: null,
+    } as unknown as ReturnType<typeof useHistoricalTrends>)
+  })
+  afterEach(() => {
+    mockMetricsSession.filterOptions = original
+  })
+
+  function row2020Text() {
+    const table = screen.getByRole('table')
+    return within(table).getByText('2020').closest('tr')?.textContent ?? ''
+  }
+
+  it('reads "No camp" on the default At Camp view', () => {
+    mockMetricsSession.filterOptions = { sessionTypes: 'main,embedded,ag' }
+    renderWithClient()
+    expect(row2020Text()).toContain('No camp')
+    expect(row2020Text()).not.toContain('None enrolled')
+  })
+
+  it.each([
+    ['quests', { sessionTypes: 'quest' }],
+    ['teens', { sessionTypes: 'scit,tli' }],
+  ])('reads "None enrolled" in the %s view', (_label, options) => {
+    mockMetricsSession.filterOptions = options
+    renderWithClient()
+    expect(row2020Text()).toContain('None enrolled')
+    expect(row2020Text()).not.toContain('No camp')
+  })
+
+  it('reads "None enrolled" for a single session or a duration filter', () => {
+    mockMetricsSession.filterOptions = {
+      sessionTypes: 'main,embedded,ag',
+      sessionCmId: 1001,
+    } as typeof mockMetricsSession.filterOptions
+    const { unmount } = renderWithClient()
+    expect(row2020Text()).toContain('None enrolled')
+    unmount()
+    mockMetricsSession.filterOptions = {
+      sessionTypes: 'main,embedded,ag',
+      duration: '2wk',
+    } as typeof mockMetricsSession.filterOptions
+    renderWithClient()
+    expect(row2020Text()).toContain('None enrolled')
   })
 })

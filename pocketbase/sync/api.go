@@ -1301,6 +1301,7 @@ func handleBunkRequestsUpload(e *core.RequestEvent, scheduler *Scheduler) error 
 // LastRecordedRuns, which also explains why this does not live inside GetStatus.
 func resolveServiceStatuses(orchestrator *Orchestrator, syncTypes []string) map[string]any {
 	recorded := orchestrator.LastRecordedRuns()
+	failures := orchestrator.lastRunFailures(0)
 
 	statuses := make(map[string]any, len(syncTypes))
 	for _, syncType := range syncTypes {
@@ -1310,9 +1311,11 @@ func resolveServiceStatuses(orchestrator *Orchestrator, syncTypes []string) map[
 		live := orchestrator.GetStatus(syncType)
 		switch {
 		case live != nil:
-			statuses[syncType] = withLastSuccess(withLastRealRun(live, recorded[syncType]), recorded[syncType])
+			statuses[syncType] = withLastRunFailed(
+				withLastSuccess(withLastRealRun(live, recorded[syncType]), recorded[syncType]), failures[syncType], true)
 		case recorded[syncType] != nil:
-			statuses[syncType] = withLastSuccess(recorded[syncType], recorded[syncType])
+			statuses[syncType] = withLastRunFailed(
+				withLastSuccess(recorded[syncType], recorded[syncType]), failures[syncType], false)
 		default:
 			// Never run, or pruned past the retention window. Genuinely nothing to say.
 			statuses[syncType] = map[string]string{
@@ -1359,21 +1362,39 @@ func withLastSuccess(status, recorded *Status) *Status {
 	return status
 }
 
+// withLastRunFailed stamps an entry with whether a real run since the job's last success failed
+// (Status.LastRunFailed). A live entry that is itself a finished REAL run answers for itself; any
+// other entry -- a run still going, a dry run, a rehydrated last success -- takes recordedFailed,
+// the newest real run in sync_runs (lastRunFailures). That is what keeps the flag through the dry
+// run or the live run after a failure, and for a page first opened mid-run. status is GetStatus's
+// copy or a freshly read row, so stamping it never reaches the stored slot.
+func withLastRunFailed(status *Status, recordedFailed, isLive bool) *Status {
+	if isLive && !status.DryRun && (status.Status == statusFailed || status.Status == statusSuccess) {
+		status.LastRunFailed = status.Status == statusFailed
+	} else {
+		status.LastRunFailed = recordedFailed
+	}
+	return status
+}
+
 // resolveServiceStatusesForSeason is resolveServiceStatuses for one synced season's Manage >
 // Sync cards (?year=): each job's live run or last completion of THAT season
 // (GetStatusForSeason), falling back to that season's rows in sync_runs. primary is the primary
 // season.
 func resolveServiceStatusesForSeason(orchestrator *Orchestrator, syncTypes []string, year, primary int) map[string]any {
 	recorded := orchestrator.LastRecordedRunsForSeason(year)
+	failures := orchestrator.lastRunFailures(year)
 
 	statuses := make(map[string]any, len(syncTypes))
 	for _, syncType := range syncTypes {
 		live := orchestrator.GetStatusForSeason(syncType, year, primary)
 		switch {
 		case live != nil:
-			statuses[syncType] = withLastSuccess(withLastRealRun(live, recorded[syncType]), recorded[syncType])
+			statuses[syncType] = withLastRunFailed(
+				withLastSuccess(withLastRealRun(live, recorded[syncType]), recorded[syncType]), failures[syncType], true)
 		case recorded[syncType] != nil:
-			statuses[syncType] = withLastSuccess(recorded[syncType], recorded[syncType])
+			statuses[syncType] = withLastRunFailed(
+				withLastSuccess(recorded[syncType], recorded[syncType]), failures[syncType], false)
 		default:
 			statuses[syncType] = map[string]string{
 				"status": "idle",

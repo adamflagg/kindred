@@ -29,6 +29,8 @@ export interface YearRow {
   groups: Record<string, number>
   cancelled: number | null
   cancelPct: number | null
+  /** Nobody enrolled that year (the server sends no rate): the camp did not run, or the view had no such session. */
+  noEnrollment: boolean
   /** Retention into this year, percent (#3207 PR 11): of the year before's campers, the share enrolled now. */
   retention: number | null
   /** In points: against the year before's final, or, on the live row, the year before at the same registration day. */
@@ -56,13 +58,17 @@ export function buildYearRows(
     const before = transitions.get(year.year - 1)
     const liveRetention = retentionLive && year.year === newestTo
     const priorRate = liveRetention ? before?.same_point_rate : before?.retention_rate
+    const intoRate = into?.retention_rate ?? null
     const retentionChange =
-      into && priorRate != null ? (into.retention_rate - priorRate) * 100 : null
+      intoRate !== null && priorRate != null ? (intoRate - priorRate) * 100 : null
     const prev = ordered[i - 1]
     const isLive = live !== null && year.year === live.year
     const base = isLive ? live.priorTotal : (prev?.total_enrolled ?? null)
     const change = base === null ? null : year.total_enrolled - base
     const hasCancel = year.has_cancellation_data !== false
+    // The server withholds the rate of a year with nobody enrolled (PM-4: 'No camp', never 100.0%). Its
+    // cancelled count is real and stays.
+    const noEnrollment = hasCancel && year.cancellation_rate === null
     return {
       year: year.year,
       total: year.total_enrolled,
@@ -75,8 +81,10 @@ export function buildYearRows(
       newPct: year.new_vs_returning.new_percentage,
       groups: groupCounts(Object.fromEntries(year.by_gender.map((g) => [g.gender, g.count]))),
       cancelled: hasCancel ? (year.total_cancelled ?? 0) : null,
-      cancelPct: hasCancel ? (year.cancellation_rate ?? 0) : null,
-      retention: into ? into.retention_rate * 100 : null,
+      cancelPct: hasCancel && !noEnrollment ? (year.cancellation_rate ?? 0) : null,
+      noEnrollment,
+      // Null when the server sends no rate (PM-4: a season nobody attended, or the one after it with no base)
+      retention: intoRate === null ? null : intoRate * 100,
       retentionChange,
       retentionBasis: retentionChange === null ? null : liveRetention ? 'same point' : 'final',
     }

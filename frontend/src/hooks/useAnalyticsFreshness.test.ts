@@ -191,10 +191,17 @@ describe('useAnalyticsFreshness', () => {
       expect(result.current).toMatchObject({ at: '2026-10-27T10:04:00Z', failed: true })
     })
 
+    // The backend carries the flag through the next run (last_run_failed, ti:P-35), not this session.
     it('keeps the failed flag through the next run', () => {
       scoped[2027] = { attendees: failedRun('2026-10-27T10:04:00Z') }
       const { result, rerender } = renderHook(() => useAnalyticsFreshness(2027))
-      scoped[2027] = { attendees: { ...job('running'), last_success_at: '2026-10-27T10:04:00Z' } }
+      scoped[2027] = {
+        attendees: {
+          ...job('running'),
+          last_success_at: '2026-10-27T10:04:00Z',
+          last_run_failed: true,
+        },
+      }
       rerender()
       expect(result.current).toEqual({
         kind: 'synced',
@@ -219,6 +226,44 @@ describe('useAnalyticsFreshness', () => {
         at: '2026-10-27T14:04:00Z',
         running: false,
         failed: false,
+      })
+    })
+
+    // ti:P-35: the "failed" memory moved out of the page into the payload (last_run_failed), so it
+    // holds for a page first opened mid-run and through the dry run after a failure.
+    it('a page first opened while the run after a failed run is going reads failed', () => {
+      scoped[2027] = {
+        attendees: {
+          ...job('running'),
+          last_success_at: '2026-10-27T10:04:00Z',
+          last_run_failed: true,
+        },
+      }
+      const { result } = renderHook(() => useAnalyticsFreshness(2027))
+      expect(result.current).toEqual({
+        kind: 'synced',
+        at: '2026-10-27T10:04:00Z',
+        running: true,
+        failed: true,
+      })
+    })
+
+    it('a dry run after a failed run still reads failed', () => {
+      scoped[2027] = {
+        attendees: {
+          ...job('success', '2026-10-27T13:04:00Z'),
+          dry_run: true,
+          last_real_run: job('success', '2026-10-27T10:04:00Z'),
+          last_success_at: '2026-10-27T10:04:00Z',
+          last_run_failed: true,
+        },
+      }
+      const { result } = renderHook(() => useAnalyticsFreshness(2027))
+      expect(result.current).toEqual({
+        kind: 'synced',
+        at: '2026-10-27T10:04:00Z',
+        running: false,
+        failed: true,
       })
     })
 

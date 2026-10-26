@@ -229,8 +229,13 @@ export interface RetentionMetrics {
   by_prior_session?: RetentionByPriorSession[]
   session_flow?: SessionFlowItem[]
   aged_out_count?: number
-  /** Asked with same_point_of (#3207 PR 11): which way the compare year was read. */
-  prior_basis?: 'same_point' | 'final' | null
+  /**
+   * Asked with same_point_of (#3207 PR 11): which way the compare year was read. 'unavailable' means its
+   * registration dates could not be read: the figures are not a comparison and must not be shown as one.
+   */
+  prior_basis?: 'same_point' | 'final' | 'unavailable' | null
+  /** Set with prior_basis 'unavailable': why. */
+  prior_unavailable_reason?: 'registration_dates_unreadable' | null
   day_offset?: number | null
   prior_day_offset?: number | null
   as_of_date?: string | null
@@ -283,7 +288,8 @@ export interface YearMetrics {
   by_gender: GenderBreakdown[]
   new_vs_returning: NewVsReturning
   total_cancelled?: number
-  cancellation_rate?: number
+  /** null when nobody was enrolled that year (camp did not run): there is no rate to show. */
+  cancellation_rate?: number | null
   /**
    * Whether attendee_status_history holds any rows for this year at all.
    * When false, total_cancelled/cancellation_rate were never measured (not
@@ -359,7 +365,8 @@ export interface RetentionTrendYear {
   gender_fallback_count?: number
   from_year: number
   to_year: number
-  retention_rate: number
+  /** Null when it can't be worked out (PM-4): no base, or a past season nobody attended (2020). */
+  retention_rate: number | null
   base_count: number
   returned_count: number
   by_gender: RetentionByGender[]

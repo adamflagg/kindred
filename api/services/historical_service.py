@@ -179,9 +179,10 @@ class HistoricalService:
             returning_percentage=calculate_percentage(returning_count, total_enrolled),
         )
 
-        # Cancellation rate: cancelled / (enrolled + cancelled)
+        # Cancellation rate: cancelled / (enrolled + cancelled). A year with nobody enrolled has none
+        # (camp did not run: 2020 would read 100%); the counts stay as ruled, only the rate is withheld.
         denominator = total_enrolled + total_cancelled
-        cancellation_rate = round((total_cancelled / denominator) * 100, 2) if denominator > 0 else 0.0
+        cancellation_rate = round((total_cancelled / denominator) * 100, 2) if total_enrolled > 0 else None
 
         return YearMetrics(
             year=year,

@@ -355,13 +355,19 @@ class RetentionMetricsResponse(BaseModel):
     )
     aged_out_count: int = Field(0, description="Base year campers excluded (aged out of all eligible sessions)")
     # #3207 PR 11 (decision 7): a prior year's retention asked for with same_point_of
-    prior_basis: Literal["same_point", "final"] | None = Field(
+    prior_basis: Literal["same_point", "final", "unavailable"] | None = Field(
         default=None,
         description=(
             "Set when same_point_of was asked: 'same_point' when the compare year was read at the registration "
             "day that season has reached (registered by then and not cancelled by then), 'final' when it was "
-            "read as it stands now (that season is over, or a season has no registration anchor)"
+            "read as it stands now (that season is over, or a season has no registration anchor), 'unavailable' "
+            "when the compare year's registration dates could not be read (see prior_unavailable_reason); the "
+            "figures are then the final read and must not be shown as a comparison"
         ),
+    )
+    prior_unavailable_reason: Literal["registration_dates_unreadable"] | None = Field(
+        default=None,
+        description="Set with prior_basis 'unavailable': why the comparison cannot be worked out",
     )
     day_offset: int | None = Field(
         default=None,
@@ -482,7 +488,13 @@ class YearMetrics(BaseModel):
     total_cancelled: int = Field(
         default=0, description="Campers whose final status is cancelled this year (same count as Overview)"
     )
-    cancellation_rate: float = Field(default=0.0, description="Cancelled / (enrolled + cancelled)")
+    cancellation_rate: float | None = Field(
+        default=0.0,
+        description=(
+            "Cancelled / (enrolled + cancelled); null when nobody was enrolled that year (camp did not run, "
+            "or the scoped view had no such session), where the ratio would read 100% of nothing"
+        ),
+    )
     has_cancellation_data: bool = Field(
         default=True,
         description=(
@@ -586,7 +598,13 @@ class RetentionTrendYear(BaseModel):
 
     from_year: int = Field(description="Base year")
     to_year: int = Field(description="Compare year")
-    retention_rate: float = Field(description="Overall retention rate (0-1)")
+    retention_rate: float | None = Field(
+        description=(
+            "Overall retention rate (0-1); null when it cannot be worked out (PM-4): the base year had nobody "
+            "enrolled, or to_year is a past season nobody attended (camp did not run, or the scoped view had "
+            "no such session). The newest season keeps its rate so far, 0 before anyone registers"
+        )
+    )
     base_count: int = Field(description="Total campers in base year")
     returned_count: int = Field(description="Campers who returned")
     by_gender: list[RetentionByGender] = Field(default_factory=list, description="Retention by gender")

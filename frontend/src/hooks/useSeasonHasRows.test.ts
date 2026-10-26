@@ -98,10 +98,13 @@ describe('useSeasonHasRows', () => {
     expect(mockGetList).not.toHaveBeenCalled()
   })
 
-  it('fails open on an error: a broken count must not hide real data', async () => {
+  // ub:PR#3219:0 (owner, 2026-10-25) reverses the old fail-open: on an error the check reports the
+  // error and claims neither rows nor an empty season, so the layout shows an error.
+  it('fails closed on an error: reports it and never claims the season has rows', async () => {
     mockGetList.mockRejectedValue(new Error('boom'))
     const { result } = renderHook(() => useSeasonHasRows(2027), { wrapper: createWrapper() })
-    await waitFor(() => expect(result.current.isLoading).toBe(false))
-    expect(result.current.hasRows).toBe(true)
+    await waitFor(() => expect(result.current.error).toBeInstanceOf(Error))
+    expect(result.current.hasRows).toBeUndefined()
+    expect(result.current.error?.message).toBe('boom')
   })
 })
