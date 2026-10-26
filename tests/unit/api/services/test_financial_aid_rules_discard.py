@@ -368,8 +368,8 @@ async def test_a_request_whose_session_never_resolved_does_not_refuse_a_first_dr
 @pytest.mark.parametrize("flags", [[], None, [_WAITING], [_WAITING, _UNMATCHED]])
 @pytest.mark.asyncio
 async def test_no_request_refuses_a_first_draft_discard_while_every_section_is_a_draft(flags: object) -> None:
-    """Intake reads rules only through load_intake_rules, never a draft, so while every section is a draft no request
-    has read them, whatever its flags."""
+    """Intake reads only approved or locked rules (load_intake_rules, load_equity_rules), never a draft, so while every
+    section is a draft no request has read them, whatever its flags."""
     store = FakeStore()
     service = await _first_draft(store)
     _with_real_readers(store, [SimpleNamespace(id="req1", flags=flags), SimpleNamespace(id="req2", flags=[_WAITING])])

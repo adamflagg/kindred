@@ -216,7 +216,8 @@ class NoDraftToDiscardError(FinancialAidError, ValueError):
 #
 # aid_requests is deliberately not here. Intake reads rules only through `load_intake_rules`
 # (financial_aid_intake_repository), which returns the newest version whose programs and cost are approved or locked,
-# never a draft (owner ruling 2026-09-25); casework's Add a Request and form intake read the same way. And
+# never a draft (owner ruling 2026-09-25), and `load_equity_rules`, approved or locked equity only, for a report
+# warning that writes no request; casework's Add a Request and form intake read through `load_intake_rules` too. And
 # `discard_first_draft` refuses unless every section of every live version is a draft, so while that guard holds no
 # request can have read the season's rules (R27-9: "no request ... has read it"). Counting requests refused a first
 # draft for a request whose session never resolved: intake checks no rules without a session, so it was never flagged
@@ -1675,8 +1676,8 @@ class FinancialAidRulesService:
         draft that moved on since is NotLatestVersionError. The normal case, a draft newer than the version in
         effect, is `discard_draft`'s.
 
-        No aid_request refuses: intake reads only approved programs and cost (`load_intake_rules`), so while every
-        section is a draft no request has read the rules (see SEASON_READERS). The SEASON_READERS check is not in the
+        No aid_request refuses: intake reads only approved or locked sections (`load_intake_rules`,
+        `load_equity_rules`), so while every section is a draft no request has read the rules (see SEASON_READERS). The SEASON_READERS check is not in the
         commit's batch. An approval or lock moves a version's revision, which the writes guard, and decisions,
         placements and scenarios need one."""
         reason = await self._done_reason(year, past_season_reason)

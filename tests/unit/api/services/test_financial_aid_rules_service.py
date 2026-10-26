@@ -534,10 +534,11 @@ async def test_season_readers_names_each_collection_holding_a_row_for_the_season
 )
 @pytest.mark.asyncio
 async def test_no_aid_request_is_a_reader_of_its_seasons_rules_whatever_its_flags(flags: Any) -> None:
-    """Intake reads rules only through load_intake_rules, which never returns a draft (owner ruling 2026-09-25), and
-    the first-draft discard already refuses while any section is approved or locked. So no request can have read a
-    first draft (R27-9: "no request ... has read it"), and aid_requests is not asked at all: a request whose session
-    never resolved, which intake checks against no rules and so never flags as waiting, must not hold the season."""
+    """Intake reads only approved or locked rules (load_intake_rules, load_equity_rules), never a draft (owner ruling
+    2026-09-25), and the first-draft discard already refuses while any section is approved or locked. So no request
+    can have read a first draft (R27-9: "no request ... has read it"), and aid_requests is not asked at all: a request
+    whose session never resolved, which intake checks against no rules and so never flags as waiting, must not hold
+    the season."""
     pb = readers_pb([SimpleNamespace(id="req1", flags=flags), SimpleNamespace(id="req2", flags=[_WAITING])])
     assert await AidRulesRepository(pb).season_readers(2031) == []
     assert "aid_requests" not in [call.args[0] for call in pb.collection.call_args_list]
