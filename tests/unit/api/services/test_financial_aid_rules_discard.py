@@ -374,3 +374,20 @@ async def test_the_normal_discard_still_refuses_a_first_draft() -> None:
     service = await _first_draft(store)
     with pytest.raises(NoDraftToDiscardError):
         await service.discard_draft(2031, 1, actor=FINANCE)
+
+
+@pytest.mark.asyncio
+async def test_a_version_made_after_the_page_read_is_not_discarded_unseen() -> None:
+    """The draft the caller named is checked on one read and the versions to discard come from the next: a version
+    another writer makes between the two must refuse the discard, not go with it unseen."""
+    store = FakeStore()
+    service = await _first_draft(store)
+
+    async def another_writer_makes_v2() -> None:
+        await service.create_version(fictional_rules(), actor=FINANCE)
+
+    store.after_next_read(another_writer_makes_v2)  # lands right after the discard reads the draft it was named
+    with pytest.raises(NotLatestVersionError):
+        await service.discard_first_draft(2031, 1, actor=ADMIN)
+    assert await service.discarded_versions(2031) == frozenset()
+    assert (await service.load(2031)).version == 2

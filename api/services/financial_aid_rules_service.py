@@ -3,8 +3,9 @@
 Reads and writes go through FastAPI's superuser client: all five PocketBase rules
 on `aid_rules` are null, so nothing else can reach the table. The routes in
 api/routers/financial_aid.py gate every call on `financial_aid.rules`, except
-D76's approved read (`approved_view`), which needs `financial_aid.view`; this
-module does no permission check of its own.
+D76's approved read (`approved_view`), which needs `financial_aid.view`, and
+`discard_first_draft`, which is admin only; this module does no permission check
+of its own.
 
 A version is (year, version). Each section has its own lifecycle (bunking.financial_aid.rules.lifecycle): saving a
 change to an approved section sends it back to draft, and a change to a locked section is refused -- that change
@@ -206,7 +207,8 @@ class PricingVersionInUseError(FinancialAidError, ValueError):
 
 class NoDraftToDiscardError(FinancialAidError, ValueError):
     """Discard the rules draft with nothing to discard: no version newer than the one in effect, or nothing in effect
-    to go back to (a new season's first draft; Start from last year is its way back)."""
+    to go back to (a new season's first draft; Start from last year is its way back, and an admin can discard it with
+    `discard_first_draft`)."""
 
 
 # What reads a season's rules, by the words a refusal uses (owner ruling R27-9): intake prices its requests, a round
@@ -1116,8 +1118,9 @@ class FinancialAidRulesService:
         return await self._create(body, log_action="create", actor=actor, supersedes=latest, reason=_done_log(done))
 
     async def bootstrap(self, document: AidRules, *, actor: str, past_season_reason: str | None = None) -> RulesVersion:
-        """Version 1 of a season that has no rules yet, from a whole document (loading 2026 as history).
-        Refused when the season already has rules: a retried load must not make a second version, and
+        """The first live version of a season that has no rules yet, from a whole document (loading 2026 as history):
+        v1, or the next number when `discard_first_draft` discarded the season's first draft. Refused when the season
+        already has rules: a retried load must not make a second version, and
         every later change is a section editor's save over the latest version (owner ruling 2026-09-28; the
         whole-document PUT is retired, queue 23)."""
         done = await self._done_reason(document.year, past_season_reason)
@@ -1664,10 +1667,20 @@ class FinancialAidRulesService:
         nothing prices the season, intake has no approved programs and cost to read, and no round has locked
         anything -- and no row in SEASON_READERS names the season. `base_version` is the draft the caller read: a
         draft that moved on since is NotLatestVersionError. The normal case, a draft newer than the version in
-        effect, is `discard_draft`'s."""
+        effect, is `discard_draft`'s.
+
+        The SEASON_READERS check is not in the commit's batch. An approval or lock moves a version's revision, which
+        the writes guard, and decisions, placements and scenarios need one; intake's request on a season with no
+        approved programs and cost only waits for rules and has read none."""
         reason = await self._done_reason(year, past_season_reason)
-        await self._rules_draft(year, base_version)
+        current = await self._rules_draft(year, base_version)
         versions = [_to_version(row) for row in await self._store.list_versions(year)]
+        if versions[-1].version != current.version:
+            # A version another writer made after the draft was checked would otherwise go with it, unseen.
+            raise NotLatestVersionError(
+                f"Version {base_version} of {year} is not the rules draft any more (version {versions[-1].version} "
+                "is); reload it and make the change again"
+            )
         held = sorted(
             {name for version in versions for name in SECTION_NAMES if version.section_status[name].state in _HELD},
             key=SECTION_NAMES.index,
