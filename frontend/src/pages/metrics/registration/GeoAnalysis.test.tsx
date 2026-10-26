@@ -62,11 +62,45 @@ describe('GeoAnalysis — busy cue (D-UNCOVERED)', () => {
   })
 })
 
-describe('GeoAnalysis — compare basis (decision 7 covers Overview only)', () => {
-  it("compares with the compare year's final, never the same point", () => {
+describe('GeoAnalysis — same point last year (PM-8 A)', () => {
+  it('asks for the compare year at the same point of this season', () => {
     render(<GeoAnalysis />)
     const calls = vi.mocked(useComparisonRegistrationData).mock.calls
     expect(calls.length).toBeGreaterThan(0)
-    for (const call of calls) expect(call[3]?.samePoint).not.toBe(true)
+    for (const call of calls) expect(call[3]?.samePoint).toBe(true)
+  })
+
+  it("says which, in Overview's grammar", () => {
+    const geo = { ...emptyGeo, by_city: [{ city: 'Riverside, CA', count: 12, percentage: 10 }] }
+    vi.mocked(useComparisonRegistrationData).mockReturnValue({
+      primary: {
+        data: geo,
+        isLoading: false,
+        error: null,
+        isPlaceholderData: false,
+        refetch: vi.fn(),
+      },
+      comparison: {
+        data: {
+          ...geo,
+          year: 2024,
+          prior_basis: 'same_point',
+          day_offset: 110,
+          prior_day_offset: 110,
+          as_of_date: '2024-03-02',
+        },
+        isPlaceholderData: false,
+      },
+    } as unknown as ReturnType<typeof useComparisonRegistrationData>)
+    render(<GeoAnalysis />)
+    expect(screen.getByText('vs same point')).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'Compared with 2024 as it stood on Mar 2, 2024, the same registration day as today.'
+      )
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/registered by Mar 2, 2024 and not cancelled by then/)
+    ).toBeInTheDocument()
   })
 })

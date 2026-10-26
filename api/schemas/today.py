@@ -60,8 +60,16 @@ class TodaySessionsResponse(BaseModel):
     prior_year: int
     rows: list[TodaySessionRow] = Field(description="This year's sessions in session order (ruling #14)")
     limited_threshold: int = Field(description="The Availability page's 'limited' threshold, in percent")
-    prior_basis: Literal["same_point", "final"] = Field(
-        description="same_point: last year at the same registration day; final: last year's final"
+    prior_basis: Literal["same_point"] | None = Field(
+        None,
+        description=(
+            "same_point: last year at the same registration day, all year (PM-8 A: Today never compares with "
+            "last year's final). None: no comparison, see prior_unavailable_reason"
+        ),
+    )
+    prior_unavailable_reason: Literal["no_registration_anchor"] | None = Field(
+        None,
+        description="Why there is no comparison: this season or last has no registration anchor to read a day from",
     )
     day_offset: int | None = Field(None, description="This season's registration day (0 = the priority date)")
     prior_day_offset: int | None = Field(None, description="The registration day last year was read at")

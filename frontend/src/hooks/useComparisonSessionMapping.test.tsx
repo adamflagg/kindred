@@ -29,12 +29,13 @@ vi.mock('./useMetricsSessions', () => ({
   useMetricsSessions: (year: number) => ({ data: byYear[year] ?? [] }),
 }))
 
-// Registration reads its compare year at the same point only when the page opts in (decision 7
-// covers Overview, not Geo); by default every compare year is read at its final
+// Registration reads its compare year at the same point only when the page opts in (Overview, Geo,
+// Today); Cancellations and Waitlist always ask against the primary season (PM-8 A), so the server
+// says whether the compare is the same day, the final, or none
 const cases = [
   ['registration', useComparisonRegistrationData, reg, {}],
-  ['waitlist', useComparisonWaitlistData, wait, {}],
-  ['cancellation', useComparisonCancellationData, canc, {}],
+  ['waitlist', useComparisonWaitlistData, wait, { samePointOf: 2026 }],
+  ['cancellation', useComparisonCancellationData, canc, { samePointOf: 2026 }],
 ] as const
 
 describe.each(cases)('useComparison %s data session mapping', (_n, useHook, spy, extra) => {
@@ -85,5 +86,41 @@ describe('useComparisonRegistrationData same point (decision 7, PR 7)', () => {
     )
     const primaryCall = reg.mock.calls.find((c) => c[0] === 2026)
     expect(primaryCall?.[1]).not.toHaveProperty('samePointOf')
+  })
+})
+
+describe('same point against the primary season (PM-8 A)', () => {
+  beforeEach(() => {
+    reg.mockReset().mockReturnValue({})
+    wait.mockReset().mockReturnValue({})
+    canc.mockReset().mockReturnValue({})
+  })
+
+  it('reads the Cancellations compare year against the primary season, the primary as it stands', () => {
+    renderHook(() => useComparisonCancellationData(2026, 2025, { sessionTypes: 'main' }))
+    expect(canc).toHaveBeenCalledWith(2025, expect.objectContaining({ samePointOf: 2026 }))
+    expect(canc.mock.calls.find((c) => c[0] === 2026)?.[1]).not.toHaveProperty('samePointOf')
+  })
+
+  it('asks the Waitlist compare year against the primary season', () => {
+    renderHook(() => useComparisonWaitlistData(2026, 2025, { sessionTypes: 'main' }))
+    expect(wait).toHaveBeenCalledWith(2025, expect.objectContaining({ samePointOf: 2026 }))
+  })
+
+  it("reads Today's compare year at the same day all year", () => {
+    renderHook(() =>
+      useComparisonRegistrationData(2026, 2025, { sessionTypes: 'main' }, { samePoint: 'allYear' })
+    )
+    expect(reg).toHaveBeenCalledWith(
+      2025,
+      expect.objectContaining({ samePointOf: 2026, samePointAllYear: true })
+    )
+  })
+
+  it('the live-only opt-in does not ask for all year', () => {
+    renderHook(() =>
+      useComparisonRegistrationData(2026, 2025, { sessionTypes: 'main' }, { samePoint: true })
+    )
+    expect(reg.mock.calls.find((c) => c[0] === 2025)?.[1]).not.toHaveProperty('samePointAllYear')
   })
 })

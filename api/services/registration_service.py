@@ -61,7 +61,7 @@ from .extractors import (
     summers_at_camp_by_person,
 )
 from .reconstruction import attendees_at_cutoff
-from .same_point import live_same_point, registration_anchor
+from .same_point import live_same_point, registration_anchor, same_day_point
 
 if TYPE_CHECKING:
     from .metrics_repository import MetricsRepository
@@ -94,6 +94,7 @@ class RegistrationService:
         duration: str | None = None,
         same_point_of: int | None = None,
         today: date | None = None,
+        all_year: bool = False,
     ) -> RegistrationMetricsResponse:
         """Calculate registration metrics for a year.
 
@@ -109,6 +110,9 @@ class RegistrationService:
                 cancelled by then, as Velocity and Forecast count it); after it, as ``year`` stands now.
                 Needs the enrolled status filter.
             today: Override for the camp today (tests). Only a same-point read uses it.
+            all_year: Today's rule (PM-8 A): read ``year`` at the same registration day even after
+                ``same_point_of``'s season is over, never at its final. With no anchor to read a day
+                from, ``prior_basis`` is 'unavailable' (no comparison, never a substitute).
 
         Returns:
             RegistrationMetricsResponse with all breakdown metrics.
@@ -118,17 +122,24 @@ class RegistrationService:
             status_filter = ["enrolled"]
         if same_point_of is not None and status_filter != ["enrolled"]:
             raise ValueError("A same-point read counts enrolled campers only: use the enrolled status filter")
+        if all_year and same_point_of is None:
+            raise ValueError("all_year reads at the same day of a season: pass same_point_of")
 
-        prior_basis: Literal["same_point", "final"] | None = None
+        prior_basis: Literal["same_point", "final", "unavailable"] | None = None
+        prior_unavailable_reason: Literal["no_registration_anchor"] | None = None
         day_offset: int | None = None
         prior_day_offset: int | None = None
         cutoff: date | None = None
         if same_point_of is not None:
-            prior_basis = "final"
-            point = await live_same_point(self.repo, same_point_of, today)
+            if all_year:
+                prior_basis, prior_unavailable_reason = "unavailable", "no_registration_anchor"
+                point = await same_day_point(self.repo, same_point_of, today)
+            else:
+                prior_basis = "final"
+                point = await live_same_point(self.repo, same_point_of, today)
             anchor = await self._fetch_anchor(year) if point is not None else None
             if point is not None and anchor is not None:
-                prior_basis = "same_point"
+                prior_basis, prior_unavailable_reason = "same_point", None
                 day_offset = point.day_offset
                 prior_day_offset = point.prior_offset
                 cutoff = anchor + timedelta(days=point.prior_offset)
@@ -285,6 +296,7 @@ class RegistrationService:
             average_summers_at_camp=average_summers_at_camp,
             by_first_summer_year=by_first_summer_year,
             prior_basis=prior_basis,
+            prior_unavailable_reason=prior_unavailable_reason,
             day_offset=day_offset,
             prior_day_offset=prior_day_offset,
             as_of_date=cutoff.isoformat() if cutoff is not None else None,

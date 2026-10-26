@@ -243,7 +243,8 @@ export const queryKeys = {
     statuses?: string,
     sessionCmId?: number,
     duration?: string,
-    samePointOf?: number
+    samePointOf?: number,
+    samePointAllYear?: boolean
   ) =>
     [
       'metrics',
@@ -254,6 +255,7 @@ export const queryKeys = {
       sessionCmId,
       duration,
       samePointOf,
+      samePointAllYear,
     ] as const,
   historical: (years?: string, sessionTypes?: string, sessionCmId?: number, duration?: string) =>
     ['metrics', 'historical', years, sessionTypes, sessionCmId, duration] as const,
@@ -275,10 +277,21 @@ export const queryKeys = {
       duration,
       includeTeenPipeline,
     ] as const,
-  waitlist: (year: number, sessionTypes?: string, sessionCmId?: number, duration?: string) =>
-    ['metrics', 'waitlist', year, sessionTypes, sessionCmId, duration] as const,
-  cancellations: (year: number, sessionTypes?: string, sessionCmId?: number, duration?: string) =>
-    ['metrics', 'cancellations', year, sessionTypes, sessionCmId, duration] as const,
+  waitlist: (
+    year: number,
+    sessionTypes?: string,
+    sessionCmId?: number,
+    duration?: string,
+    samePointOf?: number
+  ) => ['metrics', 'waitlist', year, sessionTypes, sessionCmId, duration, samePointOf] as const,
+  cancellations: (
+    year: number,
+    sessionTypes?: string,
+    sessionCmId?: number,
+    duration?: string,
+    samePointOf?: number
+  ) =>
+    ['metrics', 'cancellations', year, sessionTypes, sessionCmId, duration, samePointOf] as const,
   drilldown: (
     year: number,
     breakdownType?: string,

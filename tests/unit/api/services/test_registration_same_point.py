@@ -55,7 +55,9 @@ class _Att:
     expand: dict[str, Any]
 
 
-SESSION = _Session(1000, "Session 2")
+# PM-8: the viewed season stays live until its last summer session starts, so the one session the
+# repo returns for every year starts after every "today" these tests read 2026 at.
+SESSION = _Session(1000, "Session 2", start_date="2026-06-14", end_date="2026-07-03")
 STATUS_IDS = {"enrolled": 2, "cancelled": 32, "withdrawn": 256, "waitlisted": 8}
 
 
@@ -193,6 +195,56 @@ class TestRegistrationSamePoint:
             await service.calculate_registration(
                 PRIOR, status_filter=["waitlisted"], same_point_of=CURRENT, today=date(2026, 3, 2)
             )
+
+
+class TestRegistrationSameDayAllYear:
+    """Today reads last year at the same registration day all year (PM-8 A): ``all_year=True``."""
+
+    @pytest.mark.asyncio
+    async def test_after_the_season_still_reads_the_same_day(self) -> None:
+        service = RegistrationService(_repo(PRIOR_ATTENDEES))
+
+        result = await service.calculate_registration(
+            PRIOR, same_point_of=CURRENT, today=date(2026, 9, 1), all_year=True
+        )
+
+        assert result.prior_basis == "same_point"
+        assert result.day_offset == (date(2026, 9, 1) - date(2025, 11, 12)).days
+        assert result.as_of_date == "2025-09-01"
+        # 1, 2, 3 registered by then; 4 and 5 cancelled by then
+        assert result.total_enrolled == 3
+        assert result.prior_unavailable_reason is None
+
+    @pytest.mark.asyncio
+    async def test_live_reads_the_same_day_as_without_it(self) -> None:
+        service = RegistrationService(_repo(PRIOR_ATTENDEES))
+
+        result = await service.calculate_registration(
+            PRIOR, same_point_of=CURRENT, today=date(2026, 3, 2), all_year=True
+        )
+
+        assert result.prior_basis == "same_point"
+        assert result.as_of_date == "2025-03-02"
+        assert result.total_enrolled == 3
+
+    @pytest.mark.asyncio
+    async def test_no_anchor_is_no_comparison_never_the_final(self) -> None:
+        service = RegistrationService(_repo(PRIOR_ATTENDEES, dates={CURRENT: ANCHORS[CURRENT]}))
+
+        result = await service.calculate_registration(
+            PRIOR, same_point_of=CURRENT, today=date(2026, 3, 2), all_year=True
+        )
+
+        assert result.prior_basis == "unavailable"
+        assert result.prior_unavailable_reason == "no_registration_anchor"
+        assert result.as_of_date is None
+
+    @pytest.mark.asyncio
+    async def test_all_year_needs_same_point_of(self) -> None:
+        service = RegistrationService(_repo(PRIOR_ATTENDEES))
+
+        with pytest.raises(ValueError, match="same_point_of"):
+            await service.calculate_registration(PRIOR, today=date(2026, 3, 2), all_year=True)
 
 
 class TestMetricsDoesNotFold:

@@ -27,6 +27,8 @@ import {
 } from '../../../components/metrics/geo'
 import { useGeoOverrideCoords } from '../../../hooks/useGeoOverrideCoords'
 import { MetricsQueryGuard } from '../../../components/metrics/MetricsQueryGuard'
+import { DefinitionNotes, DefRef } from '../../../components/camperships/kit/DefinitionNotes'
+import { describeGeoCompareBasis } from './overviewCompareBasis'
 import { aggregateCityCountsByRegion, REGION_DISPLAY_NAMES } from '../../../utils/regionUtils'
 
 /** Default status filter for enrolled campers */
@@ -62,12 +64,17 @@ export default function GeoAnalysis() {
   })
 
   // Fetch registration data with geographic breakdowns + optional comparison
-  const { primary, comparison } = useComparisonRegistrationData(currentYear, compareYear, {
-    ...filterOptions,
-    statuses: 'enrolled',
-  })
+  // PM-8 A: the compare year is read at the same registration day while this season is live, at its
+  // final after (Overview's rule and grammar)
+  const { primary, comparison } = useComparisonRegistrationData(
+    currentYear,
+    compareYear,
+    { ...filterOptions, statuses: 'enrolled' },
+    { samePoint: true }
+  )
   const { data, isLoading, error, refetch, isPlaceholderData } = primary
   const compData = comparison?.data
+  const compareBasis = describeGeoCompareBasis(compareYear, compData)
   // The compare query keeps its previous result too, so a new compare year gets the busy cue
   // as well: its label must not sit over the last compare year's numbers (D-UNCOVERED, #3207).
   const busy = isPlaceholderData || comparison?.isPlaceholderData === true
@@ -255,6 +262,17 @@ export default function GeoAnalysis() {
 
           return (
             <>
+              {compareBasis && (
+                <p className="text-muted-foreground -mb-3 text-sm">
+                  <span className="text-foreground font-medium">{compareBasis.label}</span>
+                  {': '}
+                  <span>{compareBasis.text}</span>
+                  {compareBasis.notes.map((note) => (
+                    <DefRef key={note.n} n={note.n} />
+                  ))}
+                </p>
+              )}
+
               {/* Summary Cards */}
               <GeoSummaryCards
                 cityCount={geoData.city.length}
@@ -402,6 +420,10 @@ export default function GeoAnalysis() {
                     />
                   )}
                 </div>
+              )}
+
+              {compareBasis && compareBasis.notes.length > 0 && (
+                <DefinitionNotes notes={compareBasis.notes} />
               )}
             </>
           )

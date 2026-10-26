@@ -206,3 +206,77 @@ describe('CancellationAnalysis — busy cue and Try again (D-UNCOVERED)', () => 
     ).not.toBeNull()
   })
 })
+
+describe('CancellationAnalysis — same point last year (PM-8 A)', () => {
+  const comparing = () =>
+    vi.mocked(useMetricsSession).mockReturnValue({
+      selectedSessionCmId: null,
+      sessions: [],
+      activeSessionTypes: ['main', 'embedded', 'ag'],
+      compareYear: 2025,
+      isComparing: true,
+      durationParam: undefined,
+      filterOptions: {},
+    } as unknown as ReturnType<typeof useMetricsSession>)
+  const withComparison = (comp: Record<string, unknown>) =>
+    vi.mocked(useComparisonCancellationData).mockReturnValue({
+      primary: { data: mockData, isLoading: false, error: null },
+      comparison: { data: { ...mockData, year: 2025, ...comp } },
+    } as unknown as ReturnType<typeof useComparisonCancellationData>)
+  const samePoint = {
+    prior_basis: 'same_point',
+    day_offset: 110,
+    prior_day_offset: 110,
+    as_of_date: '2025-03-02',
+    total_cancelled: 1000,
+    has_other_sessions: 70,
+  }
+  const card = (title: string) =>
+    screen.getByText(title, { exact: false, selector: 'p' }).closest('.card-lodge') as HTMLElement
+
+  it('says it compares with the same registration day, in one line', () => {
+    comparing()
+    withComparison({ ...samePoint, was_enrolled: 50 })
+    render(<CancellationAnalysis />)
+    expect(screen.getByText('vs same point')).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'Compared with 2025 as it stood on Mar 2, 2025, the same registration day as today.'
+      )
+    ).toBeInTheDocument()
+    expect(screen.getByText(/cancellations dated by Mar 2, 2025/)).toBeInTheDocument()
+  })
+
+  it('compares the figures rebuilt for the day', () => {
+    comparing()
+    withComparison({ ...samePoint, was_enrolled: null })
+    render(<CancellationAnalysis />)
+    expect(within(card('Total Cancelled')).getByText(/vs 2025/)).toBeInTheDocument()
+    expect(within(card('Has Other Sessions')).getByText(/vs 2025/)).toBeInTheDocument()
+  })
+
+  it('shows no comparison on the status figures the history cannot rebuild, and says why', () => {
+    comparing()
+    withComparison({
+      ...samePoint,
+      was_enrolled: null,
+      was_waitlisted: null,
+      was_applied: null,
+      other_prior_status: null,
+      total_re_enrolled: null,
+    })
+    render(<CancellationAnalysis />)
+    for (const title of ['Was Enrolled', 'Was Waitlisted', 'Re-enrolled']) {
+      expect(within(card(title)).queryByText(/vs 2025/)).toBeNull()
+    }
+    expect(screen.getByText(/Re-enrolled have no comparison/)).toBeInTheDocument()
+  })
+
+  it('reads "vs final" once the season is over', () => {
+    comparing()
+    withComparison({ prior_basis: 'final', was_enrolled: 50 })
+    render(<CancellationAnalysis />)
+    expect(screen.getByText('vs final')).toBeInTheDocument()
+    expect(within(card('Was Enrolled')).getByText(/vs 2025/)).toBeInTheDocument()
+  })
+})

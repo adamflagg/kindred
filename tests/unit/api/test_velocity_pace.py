@@ -83,8 +83,8 @@ class TestPacePriorBasis:
         [
             (date(2025, 10, 15), "same_point"),  # before the priority date: the season is still ahead
             (date(2026, 1, 20), "same_point"),  # live
-            (date(2026, 8, 14), "same_point"),  # the season's last day (priority date + SEASON_WEEKS weeks - 1)
-            (date(2026, 8, 15), "final"),  # over: compare with the prior final
+            (date(2026, 7, 5), "same_point"),  # the day before the season's last session starts (PM-8)
+            (date(2026, 7, 6), "final"),  # its last session starts: compare with the prior final
             (date(2027, 3, 1), "final"),
         ],
     )

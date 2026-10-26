@@ -90,8 +90,8 @@ describe('basisWords', () => {
   it('reads "vs same point" while the season is live', () => {
     expect(basisWords('same_point', 2026)).toBe('vs same point 2026')
   })
-  it("reads last year's final once the season is over", () => {
-    expect(basisWords('final', 2026)).toBe('vs 2026 final')
+  it('never reads "final" (PM-8 A): with no same day there is no comparison', () => {
+    expect(basisWords('none', 2026)).toBe('vs 2026')
   })
 })
 
@@ -209,7 +209,7 @@ describe('todayNotes', () => {
 
   it('drops the dash note when nothing reads a dash, and the recent note when the card has folded', () => {
     const notes = todayNotes({
-      basis: 'final',
+      basis: 'same_point',
       dayOffset: null,
       priorYear: 2026,
       throughNextDay: false,
@@ -231,6 +231,35 @@ describe('todayNotes', () => {
       recent: true,
     })
     expect(notes.at(-1)?.key).toBe('nextDay')
+  })
+
+  it('says the same day holds all year, never a final (PM-8 A)', () => {
+    const same = todayNotes({
+      basis: 'same_point',
+      dayOffset: 347,
+      priorYear: 2026,
+      throughNextDay: false,
+      dash: false,
+      fill: 'plan',
+      recent: false,
+    }).find((n) => n.key === 'same')
+    expect(same?.text).toMatch(/all year/)
+    expect(same?.text).not.toMatch(/final/)
+  })
+
+  it('with no same day, the same note says there is no comparison and why', () => {
+    const same = todayNotes({
+      basis: 'none',
+      dayOffset: null,
+      priorYear: 2026,
+      throughNextDay: false,
+      dash: false,
+      fill: 'plan',
+      recent: false,
+    }).find((n) => n.key === 'same')
+    expect(same?.text).toMatch(/^No comparison: /)
+    expect(same?.text).toMatch(/registration dates/)
+    expect(same?.text).not.toMatch(/final/)
   })
 
   it('says the fill total counts only sessions matched last year (ruling #15)', () => {

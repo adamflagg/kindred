@@ -15,6 +15,7 @@ import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { useDrilldown } from '../../../hooks/useDrilldown'
 import { useComparisonWaitlistData } from '../../../hooks/useComparisonWaitlistData'
+import { waitlistCompareView } from './waitlistCompare'
 import { MetricCard } from '../../../components/metrics/MetricCard'
 import { WaitlistGenderChart } from '../../../components/metrics/WaitlistGenderChart'
 import {
@@ -132,21 +133,30 @@ export default function WaitlistAnalysis() {
     selectedSessionCmId,
     sessions,
     activeSessionTypes,
-    compareYear,
-    isComparing,
+    compareYear: pickedCompareYear,
     durationParam,
     filterOptions,
   } = useMetricsSession()
   const sessionDateLookup = useMemo(() => buildSessionDateLookup(sessions), [sessions])
   const sessionTypeLookup = useMemo(() => buildSessionTypeLookup(sessions), [sessions])
 
-  const { primary, comparison } = useComparisonWaitlistData(currentYear, compareYear, filterOptions)
+  const { primary, comparison } = useComparisonWaitlistData(
+    currentYear,
+    pickedCompareYear,
+    filterOptions
+  )
   const { data, isLoading, error, refetch, isPlaceholderData } = primary
-  const compData = comparison?.data
+  // PM-8 A: a past waitlist can't be rebuilt for a day, so while registration is live the tab has no
+  // comparison at all (one plain line says why); after the season it compares with the final. The
+  // compare picker stays as it is: it is shared by every Registration tab, which do compare.
+  const compareView = waitlistCompareView(pickedCompareYear, comparison?.data)
+  const compareYear = compareView.comparable ? pickedCompareYear : null
+  const isComparing = compareYear !== null
+  const compData = compareView.comparable ? comparison?.data : undefined
   // The compare query keeps its previous result too, so a new compare year gets the busy cue
   // as well: its label must not sit over the last compare year's numbers (D-UNCOVERED, #3207).
   const busy = isPlaceholderData || comparison?.isPlaceholderData === true
-  const busyYear = isPlaceholderData || compareYear === null ? currentYear : compareYear
+  const busyYear = isPlaceholderData || pickedCompareYear === null ? currentYear : pickedCompareYear
 
   // #2898 ruling 58: campers with no identity answer count by the Gender field; a visible line under each
   // gender chart and a page-foot note say how many, only when a season shown has any (#73 a).
@@ -204,6 +214,10 @@ export default function WaitlistAnalysis() {
       {(data) => {
         return (
           <div className="space-y-6">
+            {compareView.line && (
+              <p className="text-muted-foreground -mb-3 text-sm">{compareView.line}</p>
+            )}
+
             {/* Summary Cards */}
             <div
               className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5"

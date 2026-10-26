@@ -44,6 +44,7 @@ import {
   basisWords,
   noteNumber,
   pacePrior,
+  priorBasisOf,
   registrationDayWords,
   todayNotes,
   type FillBasis,
@@ -332,7 +333,8 @@ export default function TodayPage() {
     year,
     priorYear,
     { ...filterOptions, statuses: 'enrolled' },
-    { samePoint: true }
+    // PM-8 A: the same registration day all year, never last year's final
+    { samePoint: 'allYear' }
   )
   const applied = useRegistrationMetrics(year, { ...filterOptions, statuses: 'applied' })
   const incomplete = useRegistrationMetrics(year, { ...filterOptions, statuses: 'incomplete' })
@@ -356,8 +358,9 @@ export default function TodayPage() {
     duration: durationParam,
   })
 
-  const prior = comparison?.data
-  const basis: PriorBasis = prior?.prior_basis === 'final' ? 'final' : 'same_point'
+  // With no anchor there is no same day: no comparison, and never another figure in its place (PM-4 A)
+  const basis: PriorBasis = priorBasisOf(comparison?.data)
+  const prior = basis === 'same_point' ? comparison?.data : undefined
   const pending = basis === 'same_point' && prior?.day_offset === 0
   const throughNextDay = readsThroughNextDay(prior?.day_offset, prior?.prior_day_offset)
   const appliedCount = applied.data?.total_enrolled ?? 0
@@ -370,7 +373,9 @@ export default function TodayPage() {
     dayOffset: prior?.day_offset,
     priorYear,
     throughNextDay,
-    dash: prior?.total_waitlisted == null || appliedCount > 0 || incompleteCount > 0,
+    dash:
+      basis === 'same_point' &&
+      (prior?.total_waitlisted == null || appliedCount > 0 || incompleteCount > 0),
     fill,
     recent: recentShown,
   })

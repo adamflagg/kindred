@@ -606,16 +606,59 @@ class TestSessionFillSamePoint:
         assert s2.prior == 2
 
     @pytest.mark.asyncio
-    async def test_no_anchor_compares_with_last_years_final(self) -> None:
+    async def test_after_the_season_still_reads_the_same_day(self) -> None:
+        """PM-8 A: Today never switches to last year's final, even after the last session started."""
+        prior_dated = [
+            _prior_attendee(1000001, 1000200, "2025-11-12"),
+            # cancelled after the same day of 2026's registration year: still enrolled then
+            _prior_attendee(1000002, 1000200, "2025-11-12", status="cancelled", left="2026-10-01 18:00:00.000Z"),
+            # registered after that day: not yet
+            _prior_attendee(1000003, 1000200, "2026-09-25"),
+        ]
+        reg_dates = {2027: {"priority_reg_date": "2026-11-11"}, 2026: {"priority_reg_date": "2025-11-12"}}
+        service = TodayService(_repo_for_fill(prior_dated, reg_dates))
+        service._availability = AsyncMock(return_value=_availability_2027())  # type: ignore[method-assign]
+        result = await service.session_fill(2027, ["main", "embedded", "ag", "quest"], today=date(2027, 9, 20))
+        assert result.prior_basis == "same_point"
+        assert result.day_offset == (date(2027, 9, 20) - date(2026, 11, 11)).days
+        assert result.as_of_date == "2026-09-21"
+        assert next(r for r in result.rows if r.session_name == "Session 2").prior == 2
+
+    @pytest.mark.asyncio
+    async def test_no_anchor_has_no_comparison_and_says_why(self) -> None:
+        """PM-4 A / PM-8 A: with no anchor there is no same day, and Today never substitutes the final."""
         prior_enrolled = [_prior_attendee(1000001, 1000200, "2026-01-05")]
         repo = _repo_for_fill([], {})
         repo.fetch_attendees = AsyncMock(return_value=prior_enrolled)
         service = TodayService(repo)
         service._availability = AsyncMock(return_value=_availability_2027())  # type: ignore[method-assign]
         result = await service.session_fill(2027, ["main", "embedded", "ag", "quest"], today=date(2026, 11, 21))
-        assert result.prior_basis == "final"
+        assert result.prior_basis is None
+        assert result.prior_unavailable_reason == "no_registration_anchor"
         assert result.as_of_date is None
-        assert next(r for r in result.rows if r.session_name == "Session 2").prior == 1
+        assert all(r.prior is None for r in result.rows)
+        assert result.headline_prior is None
+        assert result.pace_prior is None
+
+    @pytest.mark.asyncio
+    async def test_last_years_missing_anchor_has_no_comparison_either(self) -> None:
+        repo = _repo_for_fill(
+            [_prior_attendee(1000001, 1000200, "2025-11-12")], {2027: {"priority_reg_date": "2026-11-11"}}
+        )
+        service = TodayService(repo)
+        service._availability = AsyncMock(return_value=_availability_2027())  # type: ignore[method-assign]
+        result = await service.session_fill(2027, ["main", "embedded", "ag", "quest"], today=date(2026, 11, 21))
+        assert result.prior_basis is None
+        assert result.prior_unavailable_reason == "no_registration_anchor"
+        assert all(r.prior is None for r in result.rows)
+
+    @pytest.mark.asyncio
+    async def test_a_same_day_read_leaves_no_unavailable_reason(self) -> None:
+        reg_dates = {2027: {"priority_reg_date": "2026-11-11"}, 2026: {"priority_reg_date": "2025-11-12"}}
+        service = TodayService(_repo_for_fill([], reg_dates))
+        service._availability = AsyncMock(return_value=_availability_2027())  # type: ignore[method-assign]
+        result = await service.session_fill(2027, ["main", "embedded", "ag", "quest"], today=date(2026, 11, 21))
+        assert result.prior_unavailable_reason is None
 
 
 # ---------------------------------------------------------------------------

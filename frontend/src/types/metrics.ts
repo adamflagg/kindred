@@ -267,8 +267,12 @@ export interface RegistrationMetrics {
   average_summers_at_camp?: number | null
   by_first_summer_year?: FirstSummerYearBreakdown[]
   // A comparison year read with same_point_of (decision 7)
-  /** 'same_point' while the primary season is live, 'final' after; absent on a plain read. */
-  prior_basis?: 'same_point' | 'final' | null
+  /**
+   * 'same_point' while the primary season is live, 'final' after; absent on a plain read. Today's
+   * all-year read (PM-8 A) is never 'final': 'unavailable' when there is no anchor to read a day from.
+   */
+  prior_basis?: 'same_point' | 'final' | 'unavailable' | null
+  prior_unavailable_reason?: 'no_registration_anchor' | null
   /** The primary season's registration day (days from its anchor). */
   day_offset?: number | null
   /** The day this year was read at: day_offset + 1 on an opening day (decision 45). */
@@ -522,6 +526,12 @@ export interface WaitlistMetrics {
   by_session: WaitlistSessionBreakdown[]
   by_grade: GradeBreakdown[]
   by_gender: GenderBreakdown[]
+  /**
+   * Set when asked with same_point_of (PM-8 A): 'unavailable' while that season is live (a past
+   * waitlist can't be rebuilt for a day: no comparison), 'final' after it.
+   */
+  prior_basis?: 'final' | 'unavailable' | null
+  prior_unavailable_reason?: 'waitlist_not_rebuildable' | null
 }
 
 // Cancellation analysis types
@@ -555,13 +565,14 @@ export interface CancellationMetrics {
   gender_fallback_count?: number
   year: number
   total_cancelled: number
-  was_enrolled: number
-  was_waitlisted: number
-  was_applied: number
-  other_prior_status: number
+  /** The status-history figures are null on a same-point read the history can't rebuild (PM-8 A). */
+  was_enrolled: number | null
+  was_waitlisted: number | null
+  was_applied: number | null
+  other_prior_status: number | null
   has_other_sessions: number
   no_other_sessions: number
-  total_re_enrolled: number
+  total_re_enrolled: number | null
   session_swap_count?: number
   true_departure_count?: number
   avg_days_to_cancellation?: number | null
@@ -571,4 +582,9 @@ export interface CancellationMetrics {
   by_session: CancellationSessionBreakdown[]
   by_grade: GradeBreakdown[]
   by_gender: GenderBreakdown[]
+  /** Set when asked with same_point_of (PM-8 A): the same day while that season is live, final after. */
+  prior_basis?: 'same_point' | 'final' | null
+  day_offset?: number | null
+  prior_day_offset?: number | null
+  as_of_date?: string | null
 }

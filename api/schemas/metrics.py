@@ -436,13 +436,17 @@ class RegistrationMetricsResponse(BaseModel):
         default_factory=list, description="Enrollment by first summer year (cohort analysis)"
     )
     # Decision 7: a comparison year asked for with same_point_of
-    prior_basis: Literal["same_point", "final"] | None = Field(
+    prior_basis: Literal["same_point", "final", "unavailable"] | None = Field(
         default=None,
         description=(
             "Set when same_point_of was asked: 'same_point' when this year was read at the registration day "
             "that season has reached (registered by then and not cancelled by then), 'final' when it was read "
-            "as it stands now (that season is over, or a season has no registration anchor)"
+            "as it stands now (that season is over, or a season has no registration anchor), 'unavailable' on "
+            "an all_year read with no anchor to read a day from (see prior_unavailable_reason): no comparison"
         ),
+    )
+    prior_unavailable_reason: Literal["no_registration_anchor"] | None = Field(
+        default=None, description="Why prior_basis is 'unavailable'"
     )
     day_offset: int | None = Field(
         default=None,
@@ -715,6 +719,17 @@ class WaitlistMetricsResponse(BaseModel):
         description="Campers in the gender split with no Gender Identity answer, counted by the binary Gender field "
         "(owner ruling 58): the number the split's note states",
     )
+    prior_basis: Literal["final", "unavailable"] | None = Field(
+        default=None,
+        description=(
+            "Set when same_point_of was asked (PM-8 A): 'final' once that season is over (this year as it stands "
+            "is the comparison), 'unavailable' while it is live: a past waitlist can't be rebuilt for a day, so "
+            "this year's figures (as they stand) are no comparison for it"
+        ),
+    )
+    prior_unavailable_reason: Literal["waitlist_not_rebuildable"] | None = Field(
+        default=None, description="Why prior_basis is 'unavailable'"
+    )
 
 
 # ============================================================================
@@ -760,15 +775,23 @@ class CancellationMetricsResponse(BaseModel):
 
     year: int = Field(description="Year for metrics")
     total_cancelled: int = Field(description="Total cancelled (unique persons)")
-    was_enrolled: int = Field(description="Cancelled after being enrolled")
-    was_waitlisted: int = Field(description="Cancelled after being waitlisted")
-    was_applied: int = Field(default=0, description="Cancelled after applying")
-    other_prior_status: int = Field(
-        default=0, description="Cancelled from other prior status (inquiry, incomplete, etc.)"
+    was_enrolled: int | None = Field(
+        description="Cancelled after being enrolled. None on a same-point read the status history can't rebuild"
+    )
+    was_waitlisted: int | None = Field(
+        description="Cancelled after being waitlisted. None on a same-point read the status history can't rebuild"
+    )
+    was_applied: int | None = Field(default=0, description="Cancelled after applying (None as was_enrolled)")
+    other_prior_status: int | None = Field(
+        default=0, description="Cancelled from other prior status (inquiry, incomplete, etc.; None as was_enrolled)"
     )
     has_other_sessions: int = Field(description="Cancelled but enrolled in other session")
     no_other_sessions: int = Field(description="Cancelled with no remaining enrollment")
-    total_re_enrolled: int = Field(default=0, description="Cancelled then later re-enrolled (recovery)")
+    total_re_enrolled: int | None = Field(
+        default=0,
+        description="Cancelled then later re-enrolled (recovery). None on a same-point read the status history "
+        "can't rebuild",
+    )
     session_swap_count: int = Field(default=0, description="Cancellations that are session swaps")
     true_departure_count: int = Field(default=0, description="True departures (not session swaps)")
     avg_days_to_cancellation: float | None = Field(
@@ -792,6 +815,25 @@ class CancellationMetricsResponse(BaseModel):
         default=0,
         description="Campers in the gender split with no Gender Identity answer, counted by the binary Gender field "
         "(owner ruling 58): the number the split's note states",
+    )
+    prior_basis: Literal["same_point", "final"] | None = Field(
+        default=None,
+        description=(
+            "Set when same_point_of was asked (PM-8 A): 'same_point' when this year was read at the registration "
+            "day that season has reached (cancelled by then, and enrolled elsewhere then), 'final' when it was read "
+            "as it stands now (that season is over, or a season has no registration anchor)"
+        ),
+    )
+    day_offset: int | None = Field(
+        default=None,
+        description="Same-point reads: the registration day (days from its anchor) the same_point_of season is on",
+    )
+    prior_day_offset: int | None = Field(
+        default=None,
+        description="Same-point reads: the registration day this year was read at (decision 45: one more on a phase date)",
+    )
+    as_of_date: str | None = Field(
+        default=None, description="Same-point reads: the last day (YYYY-MM-DD) this year was read through"
     )
 
 

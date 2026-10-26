@@ -20,6 +20,21 @@ type BasisFields = Pick<
   'prior_basis' | 'day_offset' | 'prior_day_offset' | 'as_of_date' | 'total_waitlisted'
 >
 
+/** The fields every same-point read carries (Overview, Geo, Cancellations: PM-8 A). */
+export type SamePointFields = Pick<
+  RegistrationMetrics,
+  'prior_basis' | 'day_offset' | 'prior_day_offset' | 'as_of_date'
+>
+
+/** The first note: how the compare year was rebuilt for the day (`day` is "Mar 2, 2025"). */
+type RebuiltNote = (compareYear: number, day: string) => string
+
+const OVERVIEW_REBUILT: RebuiltNote = (compareYear, day) =>
+  `${String(compareYear)} is rebuilt from each camper's registration date: campers registered by ${day} and not cancelled by then. This season's numbers are today's. A waitlist can't be rebuilt, so Total Waitlisted has no comparison.`
+
+const GEO_REBUILT: RebuiltNote = (compareYear, day) =>
+  `${String(compareYear)} is rebuilt from each camper's registration date: campers registered by ${day} and not cancelled by then. This season's numbers are today's.`
+
 const LONG_DATE = new Intl.DateTimeFormat('en-US', {
   month: 'short',
   day: 'numeric',
@@ -43,7 +58,32 @@ export function describeCompareBasis(
   /** The first note number free on the page: these notes follow the page's own (decision 11). */
   firstNote = 1
 ): CompareBasis | null {
-  if (compareYear === null || !comparison?.prior_basis) return null
+  return describeSamePointBasis(compareYear, comparison, firstNote, OVERVIEW_REBUILT)
+}
+
+/** Geo's comparison (PM-8 A): Overview's grammar, read off the same registration endpoint. */
+export function describeGeoCompareBasis(
+  compareYear: number | null,
+  comparison: SamePointFields | undefined,
+  firstNote = 1
+): CompareBasis | null {
+  return describeSamePointBasis(
+    compareYear,
+    comparison && { ...comparison, total_waitlisted: null },
+    firstNote,
+    GEO_REBUILT
+  )
+}
+
+/** The one grammar every same-point page shares; `rebuilt` words the page's first note. */
+export function describeSamePointBasis(
+  compareYear: number | null,
+  comparison: BasisFields | undefined,
+  firstNote: number,
+  rebuilt: RebuiltNote
+): CompareBasis | null {
+  if (compareYear === null || !comparison?.prior_basis || comparison.prior_basis === 'unavailable')
+    return null
 
   if (comparison.prior_basis === 'final' || !comparison.as_of_date) {
     return {
@@ -56,12 +96,7 @@ export function describeCompareBasis(
   }
 
   const day = formatDay(comparison.as_of_date)
-  const notes: DefinitionNote[] = [
-    {
-      n: firstNote,
-      text: `${compareYear} is rebuilt from each camper's registration date: campers registered by ${day} and not cancelled by then. This season's numbers are today's. A waitlist can't be rebuilt, so Total Waitlisted has no comparison.`,
-    },
-  ]
+  const notes: DefinitionNote[] = [{ n: firstNote, text: rebuilt(compareYear, day) }]
   const throughNextDay =
     comparison.prior_day_offset != null &&
     comparison.day_offset != null &&

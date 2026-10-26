@@ -181,6 +181,13 @@ async def get_registration_metrics(
             "The response's prior_basis says which. Enrolled status only"
         ),
     ),
+    same_point_all_year: bool = Query(
+        False,
+        description=(
+            "Today's rule (PM-8 A): read at the same registration day even after that season is over, never at "
+            "its final; with no anchor to read a day from, prior_basis is 'unavailable'. Needs same_point_of"
+        ),
+    ),
     user: AuthUser = Depends(get_current_user),
 ) -> RegistrationMetricsResponse:
     """Get registration breakdown metrics for a specific year.
@@ -197,6 +204,8 @@ async def get_registration_metrics(
     status_filter = [s.strip() for s in (statuses or "enrolled").split(",")]
     if same_point_of is not None and status_filter != ["enrolled"]:
         raise HTTPException(status_code=422, detail="same_point_of reads enrolled campers only")
+    if same_point_all_year and same_point_of is None:
+        raise HTTPException(status_code=422, detail="same_point_all_year needs same_point_of")
     # A same-point read moves every camp day, so the day is part of its cache key
     camp_today = get_camp_today() if same_point_of is not None else None
 
@@ -207,6 +216,7 @@ async def get_registration_metrics(
         "session_cm_id": session_cm_id,
         "duration": duration,
         "same_point_of": same_point_of,
+        "same_point_all_year": same_point_all_year,
         "camp_today": camp_today,
     }
     cached: RegistrationMetricsResponse | None = metrics_cache.get("registration", **cache_params)
@@ -224,6 +234,7 @@ async def get_registration_metrics(
         duration=duration,
         same_point_of=same_point_of,
         today=camp_today,
+        all_year=same_point_all_year,
     )
     metrics_cache.set("registration", result, **cache_params)
     return result
@@ -374,6 +385,12 @@ async def get_waitlist_metrics(
     duration: Literal["1-week", "2-week", "3-week", "4-week+"] | None = Query(
         None, description="Filter by session duration category (1-week, 2-week, 3-week, 4-week+)"
     ),
+    same_point_of: int | None = Query(
+        None,
+        ge=2000,
+        le=2100,
+        description="Read this year as a comparison for that season (PM-8 A). A past waitlist can't be rebuilt for a day: while that season is live the response's prior_basis is 'unavailable'; after it, 'final'",
+    ),
     user: AuthUser = Depends(get_current_user),
 ) -> WaitlistMetricsResponse:
     """Get waitlist analysis metrics.
@@ -386,7 +403,16 @@ async def get_waitlist_metrics(
     """
     check_duration_session_exclusive(duration, session_cm_id)
 
-    cache_params = {"year": year, "session_types": session_types, "session_cm_id": session_cm_id, "duration": duration}
+    # A same-point read moves every camp day, so the day is part of its cache key
+    camp_today = get_camp_today() if same_point_of is not None else None
+    cache_params = {
+        "year": year,
+        "session_types": session_types,
+        "session_cm_id": session_cm_id,
+        "duration": duration,
+        "same_point_of": same_point_of,
+        "camp_today": camp_today,
+    }
     cached: WaitlistMetricsResponse | None = metrics_cache.get("waitlist", **cache_params)
     if cached is not None:
         return cached
@@ -399,6 +425,8 @@ async def get_waitlist_metrics(
         session_types=type_filter,
         session_cm_id=session_cm_id,
         duration=duration,
+        same_point_of=same_point_of,
+        today=camp_today,
     )
     metrics_cache.set("waitlist", result, **cache_params)
     return result
@@ -423,6 +451,12 @@ async def get_cancellation_metrics(
     duration: Literal["1-week", "2-week", "3-week", "4-week+"] | None = Query(
         None, description="Filter by session duration category (1-week, 2-week, 3-week, 4-week+)"
     ),
+    same_point_of: int | None = Query(
+        None,
+        ge=2000,
+        le=2100,
+        description="Read this year as a comparison for that season (PM-8 A, decision 7): while it is live, at the same registration day (cancelled by then; enrolled elsewhere then); after it, as this year stands now. The response's prior_basis says which",
+    ),
     user: AuthUser = Depends(get_current_user),
 ) -> CancellationMetricsResponse:
     """Get cancellation analysis metrics.
@@ -434,7 +468,16 @@ async def get_cancellation_metrics(
     """
     check_duration_session_exclusive(duration, session_cm_id)
 
-    cache_params = {"year": year, "session_types": session_types, "session_cm_id": session_cm_id, "duration": duration}
+    # A same-point read moves every camp day, so the day is part of its cache key
+    camp_today = get_camp_today() if same_point_of is not None else None
+    cache_params = {
+        "year": year,
+        "session_types": session_types,
+        "session_cm_id": session_cm_id,
+        "duration": duration,
+        "same_point_of": same_point_of,
+        "camp_today": camp_today,
+    }
     cached: CancellationMetricsResponse | None = metrics_cache.get("cancellations", **cache_params)
     if cached is not None:
         return cached
@@ -447,6 +490,8 @@ async def get_cancellation_metrics(
         session_types=type_filter,
         session_cm_id=session_cm_id,
         duration=duration,
+        same_point_of=same_point_of,
+        today=camp_today,
     )
     metrics_cache.set("cancellations", result, **cache_params)
     return result

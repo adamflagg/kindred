@@ -469,3 +469,48 @@ describe('WaitlistAnalysis number format', () => {
     expect(screen.getByText('Session Details').closest('[inert]')).not.toBeNull()
   })
 })
+
+describe('WaitlistAnalysis — no comparison while registration is live (PM-8 A)', () => {
+  const comparing = () =>
+    vi.mocked(useMetricsSession).mockReturnValue({
+      selectedSessionCmId: null,
+      selectedSession: undefined,
+      sessions: [],
+      activeSessionTypes: ['main', 'embedded', 'ag'],
+      compareYear: 2025,
+      isComparing: true,
+      durationParam: undefined,
+      filterOptions: {},
+    } as unknown as ReturnType<typeof useMetricsSession>)
+
+  it('drops every compare figure, column and delta and says why once', () => {
+    mockUseWaitlistMetrics.mockImplementation((year: number) => ({
+      data: {
+        ...mockWaitlistData,
+        year,
+        ...(year === 2025 ? { prior_basis: 'unavailable' } : {}),
+      },
+      isLoading: false,
+      error: null,
+    }))
+    comparing()
+    renderWithClient()
+    expect(
+      screen.getAllByText("No comparison: a past waitlist can't be rebuilt for a day.")
+    ).toHaveLength(1)
+    expect(screen.queryByText(/vs 2025/)).toBeNull()
+    expect(screen.queryByText(/2025/)).toBeNull()
+  })
+
+  it("compares with the compare year's final once the season is over", () => {
+    mockUseWaitlistMetrics.mockImplementation((year: number) => ({
+      data: { ...mockWaitlistData, year, ...(year === 2025 ? { prior_basis: 'final' } : {}) },
+      isLoading: false,
+      error: null,
+    }))
+    comparing()
+    renderWithClient()
+    expect(screen.queryByText(/No comparison/)).toBeNull()
+    expect(screen.getAllByText(/2025/).length).toBeGreaterThan(0)
+  })
+})

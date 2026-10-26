@@ -3,7 +3,7 @@
  * season is live, "vs final" after. Numbered notes, never hover text (decision 11).
  */
 import { describe, it, expect } from 'vitest'
-import { describeCompareBasis } from './overviewCompareBasis'
+import { describeCompareBasis, describeGeoCompareBasis } from './overviewCompareBasis'
 
 const samePoint = {
   prior_basis: 'same_point' as const,
@@ -85,5 +85,30 @@ describe('describeCompareBasis note numbers', () => {
       3
     )
     expect(basis?.notes.map((n) => n.n)).toEqual([3, 4])
+  })
+})
+
+describe('describeGeoCompareBasis (PM-8 A: Geo moves to the same day)', () => {
+  it('reads "vs same point" in Overview\'s grammar, with a note on how the compare year is rebuilt', () => {
+    const basis = describeGeoCompareBasis(2025, samePoint, 1)
+    expect(basis?.label).toBe('vs same point')
+    expect(basis?.text).toBe(
+      'Compared with 2025 as it stood on Mar 2, 2025, the same registration day as today.'
+    )
+    expect(basis?.notes).toHaveLength(1)
+    expect(basis?.notes[0]?.text).toMatch(/registered by Mar 2, 2025 and not cancelled by then/)
+    // Geo has no waitlist figure: its note never mentions one
+    expect(basis?.notes[0]?.text).not.toMatch(/waitlist/i)
+  })
+
+  it('reads "vs final" once the season is over', () => {
+    const basis = describeGeoCompareBasis(2025, {
+      prior_basis: 'final',
+      day_offset: null,
+      prior_day_offset: null,
+      as_of_date: null,
+    })
+    expect(basis?.label).toBe('vs final')
+    expect(basis?.notes).toEqual([])
   })
 })
