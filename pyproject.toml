@@ -23,7 +23,7 @@ classifiers = [
 ]
 dependencies = [
     # Web framework
-    "fastapi>=0.143.2",
+    "fastapi>=0.161.1",
     "python-multipart>=0.0.32",
     "uvicorn[standard]>=0.54.0",
     # Database
@@ -33,15 +33,15 @@ dependencies = [
     "aiohttp>=3.14.5",
     "requests>=2.34.2",
     # AI/ML
-    "openai>=3.31.0",
+    "openai>=3.37.0",
     "ortools>=9.15.6755",
     # Data processing
-    "pandas>=3.0.6",
+    "pandas>=3.1.0",
     "tzdata>=2026.5",
     "networkx>=3.7",
     # Configuration & validation
     "pydantic>=2.14.1",
-    "pydantic-settings>=2.16.0",
+    "pydantic-settings>=2.16.1",
     "python-dotenv>=1.2.4",
     "PyYAML>=6.0.3",
     # Auth
