@@ -9,7 +9,8 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
 
-from api.services.financial_aid_rules_service import VersionExistsError
+from api.constants.collections import AID_REQUESTS
+from api.services.financial_aid_rules_service import VersionExistsError, request_read_rules
 from bunking.financial_aid.change_log import (
     AidGuard,
     AidOperationResult,
@@ -51,6 +52,10 @@ class FakeStore:
         self.fail_record = False
         self._interleaved: list[Callable[[], Awaitable[object]]] = []
         self._after_read: list[Callable[[], Awaitable[object]]] = []
+        # The collections holding a row for a season that reads its rules (`season_readers`), by year.
+        self.readers: dict[int, list[str]] = {}
+        # A season's aid_requests rows (their `flags`), by year: one counts as a reader unless it waits for rules.
+        self.requests: dict[int, list[SimpleNamespace]] = {}
 
     def before_next_commit(self, action: Callable[[], Awaitable[object]]) -> None:
         """Run `action` once, as the next commit starts: after that commit's caller read, before it writes."""
@@ -80,6 +85,12 @@ class FakeStore:
 
     async def fetch_session_refs(self, year: int) -> list[SessionRef]:
         return list(self.sessions)
+
+    async def season_readers(self, year: int) -> list[str]:
+        found = list(self.readers.get(year, []))
+        if AID_REQUESTS not in found and any(request_read_rules(r) for r in self.requests.get(year, [])):
+            found.insert(0, AID_REQUESTS)
+        return found
 
     async def fetch_log(self, year: int) -> list[LogRow]:
         return [r for r in self.log_rows if r.entity == "aid_rules" and r.entity_id.startswith(f"{year}:")]

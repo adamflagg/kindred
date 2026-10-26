@@ -302,6 +302,7 @@ from api.services.financial_aid_rules_service import (
     ApprovedRules,
     DraftApprovedError,
     FinancialAidRulesService,
+    FirstDraftInUseError,
     NoDraftToDiscardError,
     NotLatestVersionError,
     PricingVersionInUseError,
@@ -364,7 +365,7 @@ from bunking.financial_aid.scenarios import (
     round2_by_tier_totals,
 )
 from bunking.logging_config import get_logger
-from bunking.rbac.dependencies import require_any_permission, require_permission
+from bunking.rbac.dependencies import require_admin, require_any_permission, require_permission
 from bunking.rbac.permissions import Permission
 
 from ..dependencies import aid_season_cache, form_intake_cache, pb
@@ -460,6 +461,7 @@ def _rules_http(exc: FinancialAidError) -> HTTPException:
             AidWriteConflictError,
             NoDraftToDiscardError,
             DraftApprovedError,
+            FirstDraftInUseError,
         ),
     ):
         return HTTPException(status_code=409, detail=str(exc))
@@ -1127,6 +1129,21 @@ async def discard_aid_rules_draft(year: _Year, body: DiscardDraftIn, user: AuthU
             year, body.base_version, actor=user.email, past_season_reason=body.past_season_reason
         )
         return _draft_out(await service.draft_view(year))
+    except FinancialAidError as exc:
+        raise _rules_http(exc) from exc
+
+
+@router.post("/rules/{year}/draft/discard-first", status_code=204)
+async def discard_aid_rules_first_draft(
+    year: _Year, body: DiscardDraftIn, user: AuthUser = Depends(require_admin)
+) -> None:
+    """Admin only, API only (owner ruling R27-9 = A): throw away a season's first draft -- every section draft, and
+    nothing in the season has read it -- so it reads as having no rules and the reviewed file loads as the next
+    version. 409 when it is not a first draft or the draft moved on; 404 when the season has no rules."""
+    try:
+        await _rules().discard_first_draft(
+            year, body.base_version, actor=user.email, past_season_reason=body.past_season_reason
+        )
     except FinancialAidError as exc:
         raise _rules_http(exc) from exc
 

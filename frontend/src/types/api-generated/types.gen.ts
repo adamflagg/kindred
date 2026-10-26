@@ -27053,6 +27053,38 @@ export type DiscardAidRulesDraftApiFinancialAidRulesYearDraftDiscardPostResponse
 export type DiscardAidRulesDraftApiFinancialAidRulesYearDraftDiscardPostResponse =
   DiscardAidRulesDraftApiFinancialAidRulesYearDraftDiscardPostResponses[keyof DiscardAidRulesDraftApiFinancialAidRulesYearDraftDiscardPostResponses]
 
+export type DiscardAidRulesFirstDraftApiFinancialAidRulesYearDraftDiscardFirstPostData = {
+  body: DiscardDraftIn
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: never
+  url: '/api/financial-aid/rules/{year}/draft/discard-first'
+}
+
+export type DiscardAidRulesFirstDraftApiFinancialAidRulesYearDraftDiscardFirstPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type DiscardAidRulesFirstDraftApiFinancialAidRulesYearDraftDiscardFirstPostError =
+  DiscardAidRulesFirstDraftApiFinancialAidRulesYearDraftDiscardFirstPostErrors[keyof DiscardAidRulesFirstDraftApiFinancialAidRulesYearDraftDiscardFirstPostErrors]
+
+export type DiscardAidRulesFirstDraftApiFinancialAidRulesYearDraftDiscardFirstPostResponses = {
+  /**
+   * Successful Response
+   */
+  204: void
+}
+
+export type DiscardAidRulesFirstDraftApiFinancialAidRulesYearDraftDiscardFirstPostResponse =
+  DiscardAidRulesFirstDraftApiFinancialAidRulesYearDraftDiscardFirstPostResponses[keyof DiscardAidRulesFirstDraftApiFinancialAidRulesYearDraftDiscardFirstPostResponses]
+
 export type StartAidRulesVersionApiFinancialAidRulesYearVersionsVersionNewVersionPostData = {
   body: NewVersionIn
   path: {
