@@ -480,7 +480,7 @@ describe('Today › Pace live point (PR 5b)', () => {
       nightly: false,
     }
     renderPage()
-    expect(screen.getByTestId('today-pace')).toHaveTextContent('951 · Feb 7, 3 a.m. count')
+    expect(screen.getByTestId('today-pace')).toHaveTextContent("951 · as of Feb 7's 3 a.m. count")
   })
 
   it('a sync more than 2 hours old leaves the 3 a.m. count (#111)', () => {

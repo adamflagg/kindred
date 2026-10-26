@@ -121,7 +121,8 @@ describe('PaceCard after a missed nightly', () => {
         storedDate="2027-02-09"
       />
     )
-    expect(getByText('951 · Feb 9, 3 a.m. count')).toBeInTheDocument()
+    // Owner call 2026-10-26 (item 5): number · "as of <date>'s 3 a.m. count"
+    expect(getByText("951 · as of Feb 9's 3 a.m. count")).toBeInTheDocument()
     expect(queryByText('951 today')).toBeNull()
   })
 

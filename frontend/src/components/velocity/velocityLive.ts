@@ -121,6 +121,11 @@ export function storedCountWhen(storedDate: string | null | undefined): string {
   return storedDate ? `${shortDate(storedDate)}, 3 a.m.` : '3 a.m.'
 }
 
+/** Pace's caption after a missed nightly (owner call 2026-10-26): "as of Feb 9's 3 a.m. count". */
+export function storedCountAsOf(storedDate: string): string {
+  return `as of ${shortDate(storedDate)}'s 3 a.m. count`
+}
+
 /**
  * #108: "+626 since 3 a.m.", or null at zero (the callout disappears). With the stored point's date
  * (a missed nightly), "+626 since Dec 14, 3 a.m.".

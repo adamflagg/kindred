@@ -1,7 +1,7 @@
 /**
  * AnalyticsFreshness — the season bar's chip on Analytics (PR 4, pick 3A): "Enrollments synced 7h
  * ago", read from the viewed season's own enrollment (attendees) run, never the hourly bunk run.
- * " · syncing now" while that run is going (owner, 2026-10-14). "Not synced" for a season the scheduled
+ * " · syncing now" while that run is going (owner, 2026-10-14). "Synced weekly" for a season the regular
  * runs don't cover; nothing for one never synced (the empty state says that instead).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
@@ -91,11 +91,13 @@ describe('AnalyticsFreshness', () => {
   })
 
   // ub:PR#3219:5 (owner, 2026-10-25): a season outside the two synced seasons says so, muted, rather
-  // than showing nothing.
-  it('reads "Not synced", muted, for a season outside the synced pair', () => {
+  // than showing nothing. Owner call 2026-10-26 (item 4): it reads "Synced weekly", since those
+  // seasons do re-sync every week.
+  it('reads "Synced weekly", muted, for a season outside the synced pair', () => {
     mockFreshness.mockReturnValue({ kind: 'none' })
     render(<AnalyticsFreshness />)
-    const chip = screen.getByText(/^Not synced$/)
+    expect(screen.queryByText(/Not synced/)).not.toBeInTheDocument()
+    const chip = screen.getByText(/^Synced weekly$/)
     expect(chip).not.toHaveClass('text-amber-600')
     expect(chip.closest('.text-muted-foreground')).not.toBeNull()
   })

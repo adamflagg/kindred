@@ -6,7 +6,7 @@
  * hourly but is not what Analytics counts.
  *
  * Scoped to the season being viewed (useViewedSeasonSyncStatus). An older season re-syncs weekly
- * (Saturday 05:00), while N and N−1 run on the regular schedule, so for it the chip says "Not synced"
+ * (Saturday 05:00), while N and N−1 run on the regular schedule, so for it the chip says "Synced weekly"
  * rather than overstate.
  */
 
@@ -16,7 +16,7 @@ import { useViewedSeasonSyncStatus } from './useViewedSeasonSyncStatus'
 
 export type AnalyticsFreshness =
   | { kind: 'loading' }
-  /** The viewed season is not one the scheduled runs cover: the chip says "Not synced". */
+  /** The viewed season is not one the regular runs cover (it re-syncs weekly): the chip says "Synced weekly". */
   | { kind: 'none' }
   /** A synced season whose attendees job has never run for it. */
   | { kind: 'never' }

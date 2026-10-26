@@ -313,10 +313,15 @@ describe("when last year's registration dates cannot be read", () => {
     expect(charts.get('Retention by Grade')!.compare).toBeUndefined()
   })
 
-  it('still shows this year on its own', () => {
+  // Owner call 2026-10-26 (item 2): 'unavailable' is only sent while the season is open,
+  // so this year's own cards still read live.
+  it('still shows this year on its own, in the live wording', () => {
     render(<RetentionOverview />)
-    expect(screen.getByText('65.5% retention rate')).toBeInTheDocument()
-    expect(screen.getByText('Did Not Return')).toBeInTheDocument()
+    expect(screen.getByText('65.5% retention so far')).toBeInTheDocument()
+    expect(screen.getByText('Not yet returned')).toBeInTheDocument()
+    expect(screen.getByText('Still can; registration is open')).toBeInTheDocument()
+    expect(screen.queryByText('Did Not Return')).not.toBeInTheDocument()
+    expect(screen.queryByText(/by this day/)).not.toBeInTheDocument()
   })
 })
 

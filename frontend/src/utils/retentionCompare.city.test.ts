@@ -59,6 +59,15 @@ describe('withPriorCityRates', () => {
     )
     expect(paired[0]!.priorRate).toBeCloseTo(42 / 61, 10)
   })
+
+  it('pools a stateless row into a stated city only when last year held at most one state', () => {
+    // With CA and CO both stated, the stateless row could be either; it joins neither.
+    const paired = withPriorCityRates(
+      [bar('Shelby Falls, CA', 50, 35), bar('Shelby Falls, CO', 20, 5)],
+      [bar('Shelby Falls, CA', 40, 24), bar('Shelby Falls, CO', 30, 24), bar('Shelby Falls', 10, 0)]
+    )
+    expect(paired.map((b) => b.priorRate)).toEqual([0.6, 0.8])
+  })
 })
 
 describe('withPriorRates', () => {

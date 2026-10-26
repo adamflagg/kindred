@@ -207,7 +207,8 @@ function splitCity(name: string): { city: string; state: string } {
  * The state is dropped only when one side lacks it: CampMinder holds "Springfield" one year and
  * "Springfield, CA" the next. A stateless city borrows a stated one only when last year held a
  * single state of that name; with two it pairs with nothing rather than guess. Last year's rows that
- * qualify pool their campers, so a 1-camper row never stands in for the 60-camper one.
+ * qualify pool their campers, so a 1-camper row never stands in for the 60-camper one; a stateless
+ * row pools into a stated city only when last year held at most one state of that name.
  */
 export function withPriorCityRates<T extends RetentionRateBarItem>(
   bars: T[],
@@ -227,7 +228,9 @@ export function withPriorCityRates<T extends RetentionRateBarItem>(
     const stated = [...states.keys()].filter((k) => k !== '')
     const onlyState = stated.length === 1 ? stated[0] : undefined
     const borrowed = state !== '' ? state : onlyState
-    const rows = [...(states.get('') ?? []), ...(borrowed ? (states.get(borrowed) ?? []) : [])]
+    // A stateless row joins a stated city only when last year held at most one state of that name.
+    const stateless = state === '' || stated.length <= 1 ? (states.get('') ?? []) : []
+    const rows = [...stateless, ...(borrowed ? (states.get(borrowed) ?? []) : [])]
     const [first] = rows
     if (!first) return { ...b, priorRate: null }
     const base = rows.reduce((n, r) => n + r.baseCount, 0)

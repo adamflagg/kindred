@@ -6,6 +6,7 @@ import {
   sinceStoredLabel,
   staleStoredDate,
   storedCountWhen,
+  storedCountAsOf,
   syncBehind,
   syncTimeLabel,
   type LiveSync,
@@ -168,6 +169,10 @@ describe('a stored count more than ~26 h old', () => {
   it('names the stored count by its date after a missed nightly, "3 a.m." otherwise', () => {
     expect(storedCountWhen('2026-12-12')).toBe('Dec 12, 3 a.m.')
     expect(storedCountWhen(null)).toBe('3 a.m.')
+  })
+
+  it('names a missed nightly\'s count as "as of Dec 12\'s 3 a.m. count"', () => {
+    expect(storedCountAsOf('2026-12-12')).toBe("as of Dec 12's 3 a.m. count")
   })
 
   it('dates the callout, and keeps the point (the count is still right)', () => {

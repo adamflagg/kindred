@@ -23,7 +23,7 @@ import type { VelocityResponse } from '../../../types/velocity'
 import { LiveDots, LiveLabelText } from '../../../components/velocity/LiveMark'
 import {
   liveLabelLines,
-  storedCountWhen,
+  storedCountAsOf,
   type LivePoint,
 } from '../../../components/velocity/velocityLive'
 import { analyticsHref, type PacePrior } from './todayModel'
@@ -238,7 +238,7 @@ function PaceChart({
         <text x={lx} y={ly} textAnchor={anchor} fontSize={FONT} fontWeight={700} fill={STRONG}>
           {/* After a missed nightly the stored count is not today's: name its date (OD-48) */}
           {!live && storedDate
-            ? `${formatCount(now)} · ${storedCountWhen(storedDate)} count`
+            ? `${formatCount(now)} · ${storedCountAsOf(storedDate)}`
             : `${formatCount(now)} today`}
         </text>
         <LiveLabelText x={lx} y={ly + lineH} anchor={anchor} fontSize={FONT} lines={liveLines} />

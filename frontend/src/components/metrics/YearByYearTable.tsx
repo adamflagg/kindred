@@ -166,7 +166,7 @@ export function YearByYearTable({
 }: {
   years: readonly YearMetrics[]
   live: LiveCompare | null
-  /** A single session or duration is picked: a year with nobody enrolled may only lack that session. */
+  /** Any view but the default At Camp one (quests, teens, a session, a duration): a year with nobody enrolled may only lack that program. */
   scoped?: boolean
   /** Trends' retention transitions (#3207 PR 11, ruling #90): adds Retention and Retention change. */
   retention?: RetentionTrendsResponse | undefined

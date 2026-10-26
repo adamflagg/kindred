@@ -168,7 +168,9 @@ export default function RetentionOverview() {
   })
   const unavailableText = retentionUnavailableText(prior, currentYear)
   const compare = basis ? retentionCompareView(basis, currentYear) : undefined
-  const live = basis?.live ?? false
+  // 'unavailable' is only sent while the season is open, so this year's cards still read live
+  // even with nothing to compare with; the "by this day" line needs a real comparison.
+  const live = basis?.live ?? prior?.prior_basis === 'unavailable'
   // With nothing to compare with yet, every chart reads as before (no half-switched page, #87)
   const pair = <T extends RetentionRateBarItem>(
     bars: T[],
@@ -259,7 +261,7 @@ export default function RetentionOverview() {
             value={data.returned_count}
             subtitle={`${formatRate(data.overall_retention_rate)} ${live ? 'retention so far' : 'retention rate'}`}
             detail={
-              live && prior
+              basis?.live && prior
                 ? `${priorYear} had ${formatCount(prior.returned_count)} by this day of ${priorYear} (${formatSignedCount(data.returned_count - prior.returned_count)})`
                 : undefined
             }
