@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"sync"
 	"time"
 )
 
@@ -29,15 +30,17 @@ import (
 // another would count twice; its cascade is that enrollment's own transportation and solver-lock
 // rows. The attendees sweep keeps every guard it has (sync failure, rejections, collapse).
 //
-// When: Saturday 05:00 in the container's zone (scheduler.go). It also waits, before each
-// season, while any other queue runs (the nightly, the weekly globals, a staff full run or
-// replay, the hourly run), so it does not start a season under one of those. The hourly run
-// yields to it from then on (RunHourlySync). The wait is a check, not a claim:
-// the pass sets no flag the other queues or the API's admission checks read, so a staff run that
-// lands in a gap between this pass's jobs starts at once, and a collision on a job id refuses one
-// side with "sync already in progress" (runSeasonPass logs it; the next Saturday retries). It
-// costs CampMinder about what one season of the nightly's source phase does, per season, run
-// sequentially with the usual job spacing; the client's own 429 handling applies.
+// When: Saturday 05:00 in the container's zone (scheduler.go). It first waits while any other
+// queue or job runs (the nightly, the weekly globals, a staff full run or replay, the hourly
+// run), then HOLDS the queues until its last season is done (holdQueuesForAllSeasons). The check
+// and the hold are one critical section, and every queue that claims a running flag goes through
+// claimQueue, which waits while the hold is taken; the hourly run yields to it (RunHourlySync)
+// and the API queues a staff press (IsAnyQueueBusy), which the scheduler starts when the pass
+// ends. So a staff run can no longer land in a gap between the pass's jobs, collide on a job id
+// and be refused "sync already in progress", and a season no longer finishes half-refreshed
+// (PM-7 = A, the CodeRabbit Major on #3240). It costs CampMinder about what one season of the
+// nightly's source phase does, per season, run sequentially with the usual job spacing; the
+// client's own 429 handling applies.
 //
 // Caches: every job it finishes asks FastAPI to clear the caches that job's tables feed, as any
 // sync run does (notifyRunCompleted). That clear is scoped by job, not by season, so each of the
@@ -132,10 +135,12 @@ func (o *Orchestrator) RunAllSeasonsResync(ctx context.Context) error {
 			k.setKeepOrphans(job != allSeasonsSweepingJob)
 		}
 	}
+	release, err := o.holdQueuesForAllSeasons(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
 	for _, year := range seasons {
-		if err := o.waitForQuietQueues(ctx); err != nil {
-			return err
-		}
 		slog.Info("All-seasons re-sync: season", "year", year)
 		if err := o.runSeasonPassWith(ctx, year, allSeasonsResyncJobs, triggerHistorical, nil, keepOrphans); err != nil {
 			return err
@@ -145,24 +150,144 @@ func (o *Orchestrator) RunAllSeasonsResync(ctx context.Context) error {
 	return nil
 }
 
-// waitForQuietQueues returns once no other queue is running: the nightly or a staff full run
-// (dailySyncRunning), a replay or a manual N-1 run (historicalSyncRunning), the weekly globals,
-// the custom-values queue, or the hourly run. The hourly run fires at 05:00 too, and it runs
-// sessions, attendees and persons; it yields to this pass once the pass has started, so this
+// holdQueuesForAllSeasons waits until no other queue and no job is running, then takes the hold
+// on the sync queues in the same critical section as that check, so nothing can claim a queue in
+// between: the nightly or a staff full run (dailySyncRunning), a replay or a manual N-1 run
+// (historicalSyncRunning), the weekly globals, the custom-values queue, the hourly run, a phase
+// run (claimPhaseRun), a job a staff member runs on its own (admitIndividualRun,
+// claimIndividualRun), or any other job. While the hold is taken those queues wait in
+// claimQueue, the hourly run yields (hourlyBlockerLocked), and the API queues a staff press
+// (IsAnyQueueBusy, admitIndividualRun). The caller lets go with the returned func, once.
+//
+// The hourly run fires at 05:00 too; it yields to this pass once the pass has started, so this
 // wait is only ever for one hourly run that got there first.
-func (o *Orchestrator) waitForQuietQueues(ctx context.Context) error {
+func (o *Orchestrator) holdQueuesForAllSeasons(ctx context.Context) (release func(), err error) {
 	for {
-		o.mu.RLock()
+		o.mu.Lock()
 		busy := o.dailySyncRunning || o.historicalSyncRunning || o.weeklySyncRunning ||
-			o.customValuesSyncRunning || o.hourlySyncRunning
-		o.mu.RUnlock()
+			o.customValuesSyncRunning || o.hourlySyncRunning || o.runSlots > 0 ||
+			o.anyJobRunningLocked()
 		if !busy {
+			hold := make(chan struct{})
+			o.allSeasonsHold = hold
+			o.mu.Unlock()
+			return func() {
+				o.mu.Lock()
+				o.allSeasonsHold = nil
+				o.mu.Unlock()
+				close(hold)
+			}, nil
+		}
+		o.mu.Unlock()
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(allSeasonsQuietPoll):
+		}
+	}
+}
+
+// claimQueue runs claim, which sets a queue's running flag, under o.mu, once the all-seasons
+// re-sync does not hold the queues; while it does, the caller waits for it to let go. Checking
+// the hold and setting the flag in one critical section is what makes the two exclusive: the
+// pass takes the hold only while no flag is set, and no flag is set while the pass holds.
+//
+// Waiting rather than refusing is deliberate. The pass is a few minutes of CampMinder calls, and
+// the callers are the nightly, the weekly queues and a staff run the API already accepted, none
+// of which should be lost to it.
+func (o *Orchestrator) claimQueue(ctx context.Context, who string, claim func()) error {
+	logged := false
+	for {
+		o.mu.Lock()
+		hold := o.allSeasonsHold
+		if hold == nil {
+			claim()
+			o.mu.Unlock()
 			return nil
+		}
+		o.mu.Unlock()
+		if !logged {
+			slog.Info("Waiting for the all-seasons re-sync to release the sync queues", "run", who)
+			logged = true
 		}
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(allSeasonsQuietPoll):
+		case <-hold:
 		}
+	}
+}
+
+// dropBatch forgets a batch that never ran (its queue gave up waiting in claimQueue).
+func (o *Orchestrator) dropBatch(batchID string) {
+	o.mu.Lock()
+	delete(o.batchChanged, batchID)
+	o.mu.Unlock()
+}
+
+// IsAnyQueueBusy is the API's admission check: true while any queue or job runs, or the
+// all-seasons re-sync holds the queues (gaps between its jobs included). A staff press that
+// lands then is queued, and starts when the running queue ends.
+func (o *Orchestrator) IsAnyQueueBusy() bool {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	return o.anyQueueBusyLocked()
+}
+
+// anyQueueBusyLocked is IsAnyQueueBusy for a caller that holds o.mu.
+func (o *Orchestrator) anyQueueBusyLocked() bool {
+	return o.dailySyncRunning || o.weeklySyncRunning || o.historicalSyncRunning ||
+		o.customValuesSyncRunning || o.hourlySyncRunning || o.allSeasonsHold != nil ||
+		o.runSlots > 0 || o.anyJobRunningLocked()
+}
+
+// claimPhaseRun holds a queue slot for one phase run (Run Phase, immediate or dequeued) for its
+// whole length, through claimQueue: it waits while the all-seasons re-sync holds the queues, and
+// the pass and the API's admission check count it until the returned func lets go.
+func (o *Orchestrator) claimPhaseRun(ctx context.Context) (release func(), err error) {
+	return o.claimRunSlot(ctx, "a phase run")
+}
+
+// claimIndividualRun is claimPhaseRun for a queued job run on its own (processQueuedSyncs): the
+// job starts its runner after the queue's busy flags are gone, so without a slot the pass could
+// take its hold first and the job would run under it.
+func (o *Orchestrator) claimIndividualRun(ctx context.Context) (release func(), err error) {
+	return o.claimRunSlot(ctx, "a queued individual run")
+}
+
+// admitIndividualRun is the API's admission for a job a staff member runs on its own. It checks
+// that nothing is busy and takes a queue slot in one critical section, so the all-seasons re-sync
+// cannot take its hold between the check and the job registering as running (CodeRabbit on
+// #3303). Not admitted, the caller queues the press. The release is safe to call more than once.
+func (o *Orchestrator) admitIndividualRun() (release func(), admitted bool) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.anyQueueBusyLocked() {
+		return nil, false
+	}
+	o.runSlots++
+	return o.runSlotRelease(), true
+}
+
+// claimRunSlot holds a queue slot through claimQueue, waiting while the all-seasons re-sync holds
+// the queues.
+func (o *Orchestrator) claimRunSlot(ctx context.Context, who string) (release func(), err error) {
+	if err := o.claimQueue(ctx, who, func() { o.runSlots++ }); err != nil {
+		return nil, err
+	}
+	return o.runSlotRelease(), nil
+}
+
+// runSlotRelease lets one queue slot go, once however often it is called.
+func (o *Orchestrator) runSlotRelease() func() {
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			o.mu.Lock()
+			if o.runSlots > 0 { // ClearSyncFlags may have zeroed it under a live run
+				o.runSlots--
+			}
+			o.mu.Unlock()
+		})
 	}
 }

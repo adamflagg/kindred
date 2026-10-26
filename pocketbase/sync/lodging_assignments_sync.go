@@ -245,7 +245,7 @@ func (s *LodgingAssignmentsSync) Sync(ctx context.Context) error {
 	// deleteLodgingOrphans repeats the SyncSuccessful half of this guard
 	// itself, matching the idiom every other derived sync in this package
 	// uses before its own orphan pass (e.g. FamilyCampDerivedSync.
-	// deleteOrphanedAdults, NormalizeGeographicSync, StaffSkillsSync) -- so the
+	// deleteOrphanedAdults, NormalizeGeographicSync) -- so the
 	// check travels with the delete even if this call site is ever moved.
 	if synced := s.sweepSeasons(); !slices.Contains(synced, year) {
 		slog.Info("lodging_assignments_sync: skipping orphan sweep -- year is not a synced season",
@@ -1214,7 +1214,7 @@ func (s *LodgingAssignmentsSync) sweepSeasons() []int {
 // checked again here regardless, matching the shared idiom every other
 // derived sync in this package uses before its own orphan pass
 // (BaseSyncService.DeleteOrphans; FamilyCampDerivedSync.deleteOrphanedAdults;
-// NormalizeGeographicSync; StaffSkillsSync) -- deletion only ever runs once the
+// NormalizeGeographicSync) -- deletion only ever runs once the
 // read it is trusting has actually completed, and the check travels with the
 // delete rather than living only at one call site.
 //

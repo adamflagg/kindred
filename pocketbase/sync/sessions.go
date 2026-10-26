@@ -271,25 +271,7 @@ func (s *SessionsSync) Sync(ctx context.Context) error {
 	}
 
 	// Delete orphans using base class tracking
-	if err := s.DeleteOrphans(
-		"camp_sessions",
-		func(record *core.Record) (string, bool) {
-			// Build composite key from record for comparison
-			cmIDValue := record.Get("cm_id")
-			yearValue := record.Get("year")
-
-			cmID, cmOK := cmIDValue.(float64)
-			year, yearOK := yearValue.(float64)
-
-			if cmOK && yearOK {
-				// Return composite key for comparison
-				return CompositeKey(int(cmID), int(year)), true
-			}
-			return "", false
-		},
-		"session",
-		filter, // Use the same year filter
-	); err != nil {
+	if err := s.sweepOrphans(filter); err != nil {
 		slog.Error("Error deleting orphans", "error", err)
 	}
 
@@ -897,4 +879,23 @@ func (s *SessionsSync) isAGSession(session sessionInfo, allSessions []sessionInf
 	}
 
 	return false
+}
+
+// sweepOrphans deletes the sessions this season holds that CampMinder no longer returned. Sessions
+// are deleted, not retired: owner ruling C (2026-10-26) keeps retire-not-delete to staff-linked
+// persons until the general retire work (PERSON-RETIRE) settles what staff see for a retired row.
+func (s *SessionsSync) sweepOrphans(filter string) error {
+	return s.DeleteOrphans(
+		"camp_sessions",
+		func(record *core.Record) (string, bool) {
+			cmID, cmOK := record.Get("cm_id").(float64)
+			year, yearOK := record.Get("year").(float64)
+			if cmOK && yearOK {
+				return CompositeKey(int(cmID), int(year)), true
+			}
+			return "", false
+		},
+		"session",
+		filter,
+	)
 }

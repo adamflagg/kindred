@@ -2317,6 +2317,7 @@ export type PersonsRecord<Tparent_names = unknown, Traw_data = unknown, Trelativ
   primary_email?: string
   raw_data?: null | Traw_data
   relatives?: null | Trelatives
+  retired_at?: IsoDateString
   school?: string
   secondary_email?: string
   tags?: RecordIdString[]

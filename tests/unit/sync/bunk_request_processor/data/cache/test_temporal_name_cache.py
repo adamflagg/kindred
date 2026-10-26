@@ -675,6 +675,22 @@ class TestTemporalNameCache:
             record.levelno == logging.WARNING and "Loaded 0 persons" in record.message for record in caplog.records
         )
 
+    def test_load_person_cache_skips_retired_persons(self):
+        """A retired person (a staff member CampMinder stopped returning; the nightly sweep keeps the
+        row instead of deleting it) is not a name-match candidate, as it was not when the row was
+        deleted. The filter asks PocketBase for the season's live rows only."""
+        from bunking.sync.bunk_request_processor.data.cache.temporal_name_cache import (
+            TemporalNameCache,
+        )
+
+        pb = Mock()
+        pb.collection.return_value.get_full_list.return_value = []
+        TemporalNameCache(pb, year=2025)._load_person_cache()
+
+        pb.collection.assert_called_with("persons")
+        query_filter = pb.collection.return_value.get_full_list.call_args.kwargs["query_params"]["filter"]
+        assert query_filter == "year = 2025 && retired_at = ''"
+
 
 def _bunk_assignment(
     person_cm_id: int,

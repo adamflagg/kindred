@@ -366,7 +366,7 @@ func makeStaffApplicationsKey(personID, year int) string {
 	return makeStaffAppKey(personID, year)
 }
 
-// newStaffApplicationsTestApp builds the one collection deleteOrphans touches,
+// newStaffApplicationsTestApp builds the one collection upsertRecords writes,
 // plus the four columns added for the live 2026 App-* fields (see #2271) so
 // that TestUpsertRecordsWritesTheFourLive2026Columns can read them back.
 //
@@ -400,67 +400,6 @@ func newStaffApplicationsTestApp(t *testing.T) core.App {
 	}
 
 	return app
-}
-
-// seedStaffApplication writes one staff_applications row and returns its PB ID.
-func seedStaffApplication(t *testing.T, app core.App, cmID, year int) string {
-	t.Helper()
-
-	col, err := app.FindCollectionByNameOrId("staff_applications")
-	if err != nil {
-		t.Fatalf("find staff_applications: %v", err)
-	}
-	rec := core.NewRecord(col)
-	rec.Set("person_id", cmID)
-	rec.Set("year", year)
-	if saveErr := app.Save(rec); saveErr != nil {
-		t.Fatalf("save staff_applications row: %v", saveErr)
-	}
-	return rec.Id
-}
-
-// TestStaffApplicationsDeleteOrphansRefusesEmptyComputedSet is kindred#2279
-// Gap 2. staff_applications builds its computed set from the SAME
-// loadPersonStaffMapping(ctx, year) gate as staff_vehicle_info, so it has the
-// identical year-wipe path: an empty staff mapping makes every value fail the
-// gate, the computed set comes back empty, and (pre-kindred#2279) the
-// unguarded sweep deleted the whole year and reported success.
-//
-// NOTE since kindred#2301: this pins OrphanSweepGuard's CONTRACT, not a state
-// Sync() can now produce on its own -- Sync() sets SyncSuccessful from
-// len(records), so an empty computed set skips the sweep before the guard is
-// even consulted. SyncSuccessful is set explicitly here because this drives
-// deleteOrphans directly rather than through Sync().
-func TestStaffApplicationsDeleteOrphansRefusesEmptyComputedSet(t *testing.T) {
-	t.Parallel()
-	app := newStaffApplicationsTestApp(t)
-	recID := seedStaffApplication(t, app, 1001, 2026)
-
-	s := NewStaffApplicationsSync(app)
-	s.Year = 2026
-	s.SyncSuccessful = true
-
-	existing := map[string]string{makeStaffAppKey(1001, 2026): recID}
-	deleted, err := s.deleteOrphans(context.Background(),
-		map[string]*staffApplicationRecord{}, existing, 2026)
-
-	if err == nil {
-		t.Fatal("expected an error when the computed set is empty and rows exist, got nil")
-	}
-	if !strings.Contains(err.Error(), "2026") {
-		t.Errorf("error %q does not name the year -- an operator has no way to tell which season refused", err.Error())
-	}
-	if deleted != 0 {
-		t.Errorf("deleted = %d, want 0 -- nothing may be removed on the refusal path", deleted)
-	}
-
-	remaining, err := app.FindRecordsByFilter("staff_applications", "year = 2026", "", 0, 0)
-	if err != nil {
-		t.Fatalf("re-query: %v", err)
-	}
-	if len(remaining) != 1 {
-		t.Errorf("%d rows survived, want 1 -- the guard must not delete", len(remaining))
-	}
 }
 
 // unroutedAppFieldNames is the 44 App-* / Position Preference field names
@@ -1205,95 +1144,6 @@ func TestUpsertRecordsWritesTheFourLive2026Columns(t *testing.T) {
 	}
 	if got := rec.GetString(colJediNewStaff); got != wantNewStaff {
 		t.Errorf("%s = %q, want %q", colJediNewStaff, got, wantNewStaff)
-	}
-}
-
-// TestStaffApplicationsDeleteOrphansStillSweepsGenuineOrphans proves the guard
-// did not disable orphan deletion for the normal case.
-func TestStaffApplicationsDeleteOrphansStillSweepsGenuineOrphans(t *testing.T) {
-	t.Parallel()
-	app := newStaffApplicationsTestApp(t)
-	keepID := seedStaffApplication(t, app, 1001, 2026)
-	orphanID := seedStaffApplication(t, app, 1002, 2026)
-
-	s := NewStaffApplicationsSync(app)
-	s.Year = 2026
-	// Set explicitly because this drives deleteOrphans directly rather than
-	// through Sync(), which is what normally sets it from the size of the
-	// extraction (kindred#2301).
-	s.SyncSuccessful = true
-
-	// 1001 is still computed; 1002 is not, and must be swept.
-	computed := map[string]*staffApplicationRecord{
-		makeStaffAppKey(1001, 2026): {personID: 1001, year: 2026},
-	}
-	existing := map[string]string{
-		makeStaffAppKey(1001, 2026): keepID,
-		makeStaffAppKey(1002, 2026): orphanID,
-	}
-
-	deleted, err := s.deleteOrphans(context.Background(), computed, existing, 2026)
-	if err != nil {
-		t.Fatalf("unexpected error on a non-empty computed set: %v", err)
-	}
-	if deleted != 1 {
-		t.Errorf("deleted = %d, want 1 -- the guard must not block a genuine sweep", deleted)
-	}
-
-	remaining, err := app.FindRecordsByFilter("staff_applications", "year = 2026", "", 0, 0)
-	if err != nil {
-		t.Fatalf("re-query: %v", err)
-	}
-	if len(remaining) != 1 {
-		t.Errorf("%d rows survived, want 1", len(remaining))
-	}
-}
-
-// TestStaffApplicationsDeleteOrphansSkipsWhenSyncNotSuccessful pins
-// kindred#2301: deleteOrphans must not sweep when SyncSuccessful is false.
-// Before this fix, deleteOrphans read nothing on SyncSuccessful at all -- the
-// field existed and Sync() set it, but only AFTER the sweep already ran, so a
-// PARTIAL fetch (records came back, but not enough of the run to be trusted)
-// still deleted every row the feed did not happen to return this run. Here
-// SyncSuccessful is left at its zero value (false), simulating exactly that:
-// deleteOrphans is invoked directly, the way Sync() would if it had not yet
-// reached the point where SyncSuccessful is set.
-func TestStaffApplicationsDeleteOrphansSkipsWhenSyncNotSuccessful(t *testing.T) {
-	t.Parallel()
-	app := newStaffApplicationsTestApp(t)
-	keepID := seedStaffApplication(t, app, 1001, 2026)
-	orphanID := seedStaffApplication(t, app, 1002, 2026)
-
-	s := NewStaffApplicationsSync(app)
-	s.Year = 2026
-	// s.SyncSuccessful left false (zero value) -- deliberately not set.
-
-	// 1001 is still computed; 1002 is not. Without the SyncSuccessful gate,
-	// 1002 would be swept -- the computed set is non-empty and well above
-	// OrphanSweepMinRows, so OrphanSweepGuard's collapse checks would not
-	// refuse this sweep on their own.
-	computed := map[string]*staffApplicationRecord{
-		makeStaffAppKey(1001, 2026): {personID: 1001, year: 2026},
-	}
-	existing := map[string]string{
-		makeStaffAppKey(1001, 2026): keepID,
-		makeStaffAppKey(1002, 2026): orphanID,
-	}
-
-	deleted, err := s.deleteOrphans(context.Background(), computed, existing, 2026)
-	if err != nil {
-		t.Fatalf("unexpected error when SyncSuccessful is false: %v", err)
-	}
-	if deleted != 0 {
-		t.Errorf("deleted = %d, want 0 -- deleteOrphans must not sweep when SyncSuccessful is false", deleted)
-	}
-
-	remaining, err := app.FindRecordsByFilter("staff_applications", "year = 2026", "", 0, 0)
-	if err != nil {
-		t.Fatalf("re-query: %v", err)
-	}
-	if len(remaining) != 2 {
-		t.Errorf("%d rows survived, want 2 -- nothing may be swept when SyncSuccessful is false", len(remaining))
 	}
 }
 

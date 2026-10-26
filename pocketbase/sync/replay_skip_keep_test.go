@@ -433,6 +433,7 @@ func seedCMIDRows(t *testing.T, collection string, year int, cmIDs ...int) core.
 		t.Fatal(err)
 	}
 	col.Fields.Add(&core.NumberField{Name: "cm_id"})
+	col.Fields.Add(&core.DateField{Name: retiredAtField}) // persons retires staff-linked rows; households ignores it
 	if err = app.Save(col); err != nil {
 		t.Fatal(err)
 	}

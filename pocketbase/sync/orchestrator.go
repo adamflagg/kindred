@@ -887,6 +887,15 @@ type Orchestrator struct {
 	customValuesSyncRunning bool     // Track if custom values sync sequence is in progress
 	customValuesSyncQueue   []string // Services queued for custom values sync
 	allSeasonsResyncRunning bool     // The weekly all-seasons re-sync (all_seasons_resync.go)
+	// allSeasonsHold is non-nil while that re-sync holds the sync queues, from its first job to
+	// its last: every queue that claims a running flag waits on it (claimQueue), and the API's
+	// admission check queues a staff press (IsAnyQueueBusy). Closed when the pass lets go.
+	allSeasonsHold chan struct{}
+	// runSlots counts the phase runs (claimPhaseRun) and the individual runs (admitIndividualRun,
+	// claimIndividualRun) in flight. A phase run starts its jobs one at a time with no job running
+	// in between, and an individual run registers its job only once its runner starts, so without
+	// this the all-seasons re-sync could take its hold in that gap and run under the job.
+	runSlots int
 	// hourlySyncRunning is the hourly run (RunHourlySync), so the all-seasons re-sync and the
 	// API's admission checks wait for it rather than start a job id under it.
 	hourlySyncRunning bool
@@ -1467,6 +1476,11 @@ func (o *Orchestrator) GetCurrentRunProgress() (runType string, remaining []stri
 func (o *Orchestrator) IsAnyJobRunning() bool {
 	o.mu.RLock()
 	defer o.mu.RUnlock()
+	return o.anyJobRunningLocked()
+}
+
+// anyJobRunningLocked is IsAnyJobRunning for a caller that holds o.mu.
+func (o *Orchestrator) anyJobRunningLocked() bool {
 	for _, status := range o.runningJobs {
 		if status.Status == statusRunning {
 			return true
@@ -2275,11 +2289,14 @@ func (o *Orchestrator) RunDailySync(ctx context.Context) error {
 
 	// Set daily sync flag and queue. The queue spans every season's pass, so the progress
 	// readout keeps counting through the prior season instead of ending at the primary's.
-	o.mu.Lock()
-	o.dailySyncRunning = true
-	o.dailySyncQueue = progressQueue
-	o.currentRunIndex = 0 // Reset index at start
-	o.mu.Unlock()
+	if err := o.claimQueue(ctx, "the nightly", func() {
+		o.dailySyncRunning = true
+		o.dailySyncQueue = progressQueue
+		o.currentRunIndex = 0 // Reset index at start
+	}); err != nil {
+		o.dropBatch(batch.batchID)
+		return err
+	}
 
 	// Ensure flag and queue are cleared on exit. delete(o.batchChanged, batch.batchID) here
 	// is what keeps that map from growing without bound in a long-lived container -- the
@@ -2518,11 +2535,14 @@ func (o *Orchestrator) runWeeklyJobs(ctx context.Context, weeklyJobs []string) e
 	o.registerBatch(batch.batchID)
 
 	// Set weekly sync flag and queue
-	o.mu.Lock()
-	o.weeklySyncRunning = true
-	o.weeklySyncQueue = weeklyJobs
-	o.currentRunIndex = 0 // Reset index at start
-	o.mu.Unlock()
+	if err := o.claimQueue(ctx, "the weekly globals", func() {
+		o.weeklySyncRunning = true
+		o.weeklySyncQueue = weeklyJobs
+		o.currentRunIndex = 0 // Reset index at start
+	}); err != nil {
+		o.dropBatch(batch.batchID)
+		return err
+	}
 
 	// Ensure flag and queue are cleared on exit. See RunDailySync's identical defer for why
 	// batchChanged is cleaned up here too.
@@ -2587,11 +2607,14 @@ func (o *Orchestrator) RunCustomValuesSync(ctx context.Context) error {
 
 	// Set custom values sync flag and queue
 	// Note: currentRunIndex is 0 for parallel syncs (all jobs run simultaneously)
-	o.mu.Lock()
-	o.customValuesSyncRunning = true
-	o.customValuesSyncQueue = customValuesJobs
-	o.currentRunIndex = 0
-	o.mu.Unlock()
+	if err := o.claimQueue(ctx, "custom values", func() {
+		o.customValuesSyncRunning = true
+		o.customValuesSyncQueue = customValuesJobs
+		o.currentRunIndex = 0
+	}); err != nil {
+		o.dropBatch(batch.batchID)
+		return err
+	}
 
 	// Ensure flag and queue are cleared on exit. See RunDailySync's identical defer for why
 	// batchChanged is cleaned up here too.
@@ -3212,13 +3235,16 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		}
 
 		// Year-queue tracking (a replay, or the prior synced season)
-		o.mu.Lock()
-		o.historicalSyncRunning = true
-		o.historicalSyncQueue = servicesToRun
-		o.historicalSyncYear = opts.Year
-		o.historicalSyncSeason = syncedSeason
-		o.currentRunIndex = 0 // Reset index at start
-		o.mu.Unlock()
+		if err := o.claimQueue(ctx, "a staff run of another season", func() {
+			o.historicalSyncRunning = true
+			o.historicalSyncQueue = servicesToRun
+			o.historicalSyncYear = opts.Year
+			o.historicalSyncSeason = syncedSeason
+			o.currentRunIndex = 0 // Reset index at start
+		}); err != nil {
+			o.dropBatch(batch.batchID)
+			return err
+		}
 
 		defer func() {
 			o.mu.Lock()
@@ -3242,11 +3268,14 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		}
 
 		// Current year sync - use daily sync tracking so UI shows progress
-		o.mu.Lock()
-		o.dailySyncRunning = true
-		o.dailySyncQueue = servicesToRun
-		o.currentRunIndex = 0 // Reset index at start
-		o.mu.Unlock()
+		if err := o.claimQueue(ctx, "a staff full run", func() {
+			o.dailySyncRunning = true
+			o.dailySyncQueue = servicesToRun
+			o.currentRunIndex = 0 // Reset index at start
+		}); err != nil {
+			o.dropBatch(batch.batchID)
+			return err
+		}
 
 		defer func() {
 			o.mu.Lock()
@@ -3676,6 +3705,7 @@ func (o *Orchestrator) ClearSyncFlags() {
 	o.weeklySyncQueue = nil
 	o.customValuesSyncRunning = false
 	o.customValuesSyncQueue = nil
+	o.runSlots = 0 // a panicking phase or individual run never reached its release
 	o.activeSyncCancel = nil
 
 	slog.Warn("Cleared all sync flags (panic recovery)")

@@ -72,6 +72,7 @@ export const mockPerson = (overrides?: Partial<PersonsResponse>): PersonsRespons
   years_at_camp: 2,
   age: 10,
   raw_data: null,
+  retired_at: '',
   primary_email: '',
   secondary_email: '',
   address_city: '',

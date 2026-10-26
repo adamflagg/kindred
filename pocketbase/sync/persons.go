@@ -3,6 +3,7 @@ package sync
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -550,7 +551,7 @@ func (s *PersonsSync) processPerson(
 		// fetched from CampMinder ON PURPOSE -- getPersonIDsFromStaff pulls staff
 		// person IDs in so staff.person can be populated -- who then get no row
 		// because they have never been a camper. Returning here without tracking
-		// left their stored row untracked, and deleteOrphans reads untracked as
+		// left their stored row untracked, and the sweep reads untracked as
 		// "CampMinder no longer returns this person" and deletes it. That is the
 		// opposite of what the run observed: it saw them. 26 staff a night, every
 		// night, each delete blanking staff.person as it went.
@@ -560,9 +561,23 @@ func (s *PersonsSync) processPerson(
 		// branch only ever meant the first one.
 		if personID, ok := personData["ID"].(float64); ok {
 			s.TrackProcessedKey(int(personID), year)
+			// Seen, so live: a row this person already has is un-retired, as the write path
+			// below does for a camper.
+			if existing := existingPersons[int(personID)]; existing != nil &&
+				!existing.GetDateTime(retiredAtField).IsZero() && !s.DryRun {
+				existing.Set(retiredAtField, "")
+				if err := s.App.Save(existing); err != nil {
+					return fmt.Errorf("un-retiring person %d: %w", int(personID), err)
+				}
+				s.Stats.Updated++
+			}
 		}
 		return nil
 	}
+
+	// CampMinder returned this person, so the row is live: a retired one is un-retired by the
+	// compare below like any other changed field.
+	pbData[retiredAtField] = ""
 
 	// Extract tags and populate multi-select relation field
 	// Use year-filtered extraction to exclude future-year tags (e.g., "2026 Early Registration" on 2025 records)
@@ -606,7 +621,7 @@ func (s *PersonsSync) processPerson(
 		"address_city", "address_state", "primary_email", "secondary_email",
 		"household_id", "is_camper", "year", "parent_names", "relatives",
 		"division", "partition_id", "lead_date", "tshirt_size", "cm_lead_date",
-		"tags"}
+		"tags", retiredAtField}
 
 	if existing != nil {
 		// A closed season keeps an existing row's legacy household_id and as-of-season fields, and
@@ -1287,7 +1302,6 @@ func (s *PersonsSync) printDataQualitySummary() {
 	)
 }
 
-// deleteOrphans deletes persons that exist in PocketBase but weren't processed from CampMinder
 // skipSweepForStaffFetchFailure reports whether a sweep must be abandoned because
 // this run could not read the CampMinder staff feed, and logs why when it must.
 //
@@ -1311,6 +1325,21 @@ func (s *PersonsSync) skipSweepForStaffFetchFailure(entity, consequence string, 
 	return true
 }
 
+// deleteOrphans sweeps the persons this season holds that CampMinder no longer returned.
+//
+// A person with a staff record this season is RETIRED -- retired_at stamped, the row kept --
+// instead of deleted (owner ruling C, 2026-10-26, the narrowed form of OD-05 = B and PM-7 = A).
+// The row keeps staff.person, so a dismissed staff member stays in Staff Analysis, and a delete no
+// longer blanks staff.person and collides on staff's UNIQUE(year, person) (bug B1). processPerson
+// un-retires a person CampMinder sends again.
+//
+// Every other orphan is deleted exactly as before. Retiring them too waits on PERSON-RETIRE: about
+// fifteen persons reads would start showing retired rows, and what staff should see for one is
+// open owner question OD-08. A retired staff person has no attendee row this season, so the
+// camper-facing reads keyed off attendees do not surface them.
+//
+// The guards are unchanged: a kept run, a failed sync, a rejection, a collapse and a failed staff
+// fetch all leave every row as it is.
 func (s *PersonsSync) deleteOrphans(year int) error {
 	// A swallowed staff-feed failure makes the computed set known-incomplete, so
 	// abandon the sweep rather than narrow it (kindred#2394). gatherPersonIDs
@@ -1335,7 +1364,12 @@ func (s *PersonsSync) deleteOrphans(year int) error {
 
 	filter := fmt.Sprintf("year = %d", year)
 
-	return s.DeleteOrphansGuarded(
+	staffLinked, err := s.staffLinkedPersonIDs(year)
+	if err != nil {
+		return err
+	}
+
+	return s.RetireOrphansGuarded(
 		"persons",
 		func(record *core.Record) (string, bool) {
 			cmID, ok := record.Get("cm_id").(float64)
@@ -1354,7 +1388,33 @@ func (s *PersonsSync) deleteOrphans(year int) error {
 			Computed: len(s.ProcessedKeys),
 			Hint:     "check that the CampMinder person feed returned this season",
 		},
+		func(record *core.Record) bool { return staffLinked[record.Id] },
 	)
+}
+
+// staffLinkedPersonIDs returns the persons record ids a staff row of this season points at. A
+// database with no staff collection has no staff records, so nobody is staff-linked; any other
+// read failure is returned, and the sweep is abandoned rather than deleting a staff person.
+func (s *PersonsSync) staffLinkedPersonIDs(year int) (map[string]bool, error) {
+	if _, err := s.App.FindCollectionByNameOrId("staff"); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return map[string]bool{}, nil
+		}
+		return nil, fmt.Errorf("finding the staff collection: %w", err)
+	}
+	var rows []struct {
+		Person string `db:"person"`
+	}
+	if err := s.App.DB().NewQuery(
+		"SELECT DISTINCT person FROM staff WHERE year = {:year} AND person != ''",
+	).Bind(dbx.Params{"year": year}).All(&rows); err != nil {
+		return nil, fmt.Errorf("reading staff.person for %d: %w", year, err)
+	}
+	linked := make(map[string]bool, len(rows))
+	for _, r := range rows {
+		linked[r.Person] = true
+	}
+	return linked, nil
 }
 
 // updateAttendeeRelations updates attendee records to populate the person relation field

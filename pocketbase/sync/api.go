@@ -701,14 +701,16 @@ func handleIndividualSync(e *core.RequestEvent, scheduler *Scheduler, syncType s
 		requestedBy = e.Auth.GetString("email")
 	}
 
-	// Check if any sync should cause queueing:
-	// 1. Sequence flags (daily/weekly/historical/custom-values/hourly) - cover the window between
-	//    sequence start and first job execution (before runningJobs is populated), and the gaps
-	//    between two of a sequence's jobs. The scheduled runs start the queue when they end.
-	// 2. IsAnyJobRunning() - covers individual jobs that were started outside a sequence
-	if orchestrator.IsDailySyncRunning() || orchestrator.IsWeeklySyncRunning() ||
-		orchestrator.IsHistoricalSyncRunning() || orchestrator.IsCustomValuesSyncRunning() ||
-		orchestrator.IsHourlySyncRunning() || orchestrator.IsAnyJobRunning() {
+	// Check if any sync should cause queueing (admitIndividualRun, IsAnyQueueBusy's check):
+	// 1. Sequence flags (daily/weekly/historical/custom-values/hourly, and the all-seasons
+	//    re-sync's hold) - cover the window between sequence start and first job execution
+	//    (before runningJobs is populated), and the gaps between two of a sequence's jobs. The
+	//    scheduled runs start the queue when they end.
+	// 2. A running job - covers individual jobs that were started outside a sequence
+	// Admitted, the run holds a queue slot until its job ends, so the all-seasons re-sync cannot
+	// take its hold between this check and the job registering as running.
+	releaseRun, admitted := orchestrator.admitIndividualRun()
+	if !admitted {
 		// Queue the individual sync with debug flag
 		// The queue item carries the season, and processQueuedSyncs runs that season's instance.
 		qs, err := orchestrator.EnqueueIndividualSync(year, syncType, nil, debug, requestedBy)
@@ -734,6 +736,7 @@ func handleIndividualSync(e *core.RequestEvent, scheduler *Scheduler, syncType s
 	var seasonSvc Service
 	if year != primary {
 		if seasonSvc = orchestrator.seasonInstance(syncType, year, debug); seasonSvc == nil {
+			releaseRun()
 			return e.JSON(http.StatusBadRequest, map[string]any{
 				"error": fmt.Sprintf("%s cannot be run for %d, only for the current season %d", syncType, year, primary),
 			})
@@ -742,6 +745,7 @@ func handleIndividualSync(e *core.RequestEvent, scheduler *Scheduler, syncType s
 
 	// Run in background
 	go func() {
+		defer releaseRun()
 		// Create context inside goroutine so it doesn't get canceled immediately
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 		defer cancel()
@@ -752,6 +756,9 @@ func handleIndividualSync(e *core.RequestEvent, scheduler *Scheduler, syncType s
 		} else {
 			runErr = orchestrator.RunSingleSync(ctx, syncType)
 		}
+		// The job has ended: let the slot go before draining the queue, so the drain does not
+		// hold the all-seasons re-sync off for its whole length.
+		releaseRun()
 		if runErr != nil {
 			// Log error (could also store in DB)
 			e.App.Logger().Error("Individual sync failed", "syncType", syncType, "year", year, "error", runErr)
@@ -1646,9 +1653,7 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 
 	// Check if any sync is already running.
 	// Check all sync flags to prevent race conditions (e.g., when global sync triggers first)
-	if orchestrator.IsDailySyncRunning() || orchestrator.IsWeeklySyncRunning() ||
-		orchestrator.IsHistoricalSyncRunning() || orchestrator.IsCustomValuesSyncRunning() ||
-		orchestrator.IsHourlySyncRunning() || orchestrator.IsAnyJobRunning() {
+	if orchestrator.IsAnyQueueBusy() {
 		// Sync is running - try to enqueue
 		qs, err := orchestrator.EnqueueUnifiedSyncWithSkip(
 			year, service, includeCustomValues, debug, dryRun, skip, requestedBy)
@@ -1804,6 +1809,15 @@ func processQueuedSyncs(orchestrator *Orchestrator) {
 		// GetStatus's "pending" rendering; the runs themselves take their year from here.
 		batch := newBatch(triggerManual).forYear(qs.Year)
 
+		// The phase holds a queue slot for its whole run, so the all-seasons re-sync cannot start
+		// in a gap between two of its jobs. Released after the loop, not deferred: a defer here
+		// would hold the slot through the recursive processQueuedSyncs below.
+		releasePhase, claimErr := orchestrator.claimPhaseRun(ctx)
+		if claimErr != nil {
+			slog.Error("Queued phase sync abandoned while waiting for the queues", "phase", phase, "error", claimErr)
+			break
+		}
+
 		// Set the current sync year so services use correct year
 		orchestrator.mu.Lock()
 		orchestrator.currentSyncYear = qs.Year
@@ -1871,9 +1885,18 @@ func processQueuedSyncs(orchestrator *Orchestrator) {
 				}
 			}
 		}
+		releasePhase()
 		slog.Info("Queued phase sync completed", "id", qs.ID, "phase", phase, "year", qs.Year)
 
 	case "individual":
+		// The job holds a queue slot while it runs, so the all-seasons re-sync cannot take its
+		// hold before the job registers as running and then run under it.
+		releaseRun, claimErr := orchestrator.claimIndividualRun(ctx)
+		if claimErr != nil {
+			slog.Error("Queued individual sync abandoned while waiting for the queues",
+				"job", qs.Service, "error", claimErr)
+			break
+		}
 		// Run single job
 		slog.Info("Queued individual sync: Running job", "job", qs.Service, "year", qs.Year, "debug", qs.Debug)
 
@@ -1894,6 +1917,7 @@ func processQueuedSyncs(orchestrator *Orchestrator) {
 				slog.Info("Queued individual sync completed",
 					"id", qs.ID, "job", qs.Service, "year", qs.Year)
 			}
+			releaseRun()
 			break
 		}
 
@@ -1920,6 +1944,9 @@ func processQueuedSyncs(orchestrator *Orchestrator) {
 			slog.Info("Queued individual sync completed",
 				"id", qs.ID, "job", qs.Service, "year", qs.Year)
 		}
+		// Released here, not deferred: a defer would hold the slot through the recursive
+		// processQueuedSyncs below.
+		releaseRun()
 
 		// Clear debug flag after job completes
 		if qs.Debug {
@@ -3000,9 +3027,7 @@ func handleRunPhase(e *core.RequestEvent, scheduler *Scheduler) error {
 	}
 
 	// Check if any sync is already running (must match handleIndividualSync check)
-	if orchestrator.IsDailySyncRunning() || orchestrator.IsWeeklySyncRunning() ||
-		orchestrator.IsHistoricalSyncRunning() || orchestrator.IsCustomValuesSyncRunning() ||
-		orchestrator.IsHourlySyncRunning() || orchestrator.IsAnyJobRunning() {
+	if orchestrator.IsAnyQueueBusy() {
 		// Queue the phase sync instead of returning conflict (pass debug flag)
 		qs, err := orchestrator.EnqueuePhaseSync(year, phase, debug, requestedBy)
 		if err != nil {
@@ -3032,6 +3057,14 @@ func handleRunPhase(e *core.RequestEvent, scheduler *Scheduler) error {
 		// One phase is one queue and so one batch, filed under the requested year rather
 		// than read back off the process-global currentSyncYear below.
 		batch := newBatch(triggerManual).forYear(year)
+
+		// The phase holds a queue slot for its whole run (see the queued path above).
+		releasePhase, claimErr := orchestrator.claimPhaseRun(ctx)
+		if claimErr != nil {
+			slog.Error("Phase sync abandoned while waiting for the queues", "phase", phase, "error", claimErr)
+			return
+		}
+		defer releasePhase()
 
 		// Set the current sync year so services use correct year
 		// (same pattern as RunSyncWithOptions)

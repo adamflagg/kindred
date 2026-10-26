@@ -56,13 +56,10 @@ func (s *StaffSync) SetDryRun(dryRun bool) {
 func (s *StaffSync) Sync(ctx context.Context) error {
 	s.LogSyncStart(serviceNameStaff)
 	s.Stats = Stats{}
-	s.SyncSuccessful = false
 
 	if err := s.syncStaff(ctx); err != nil {
 		return fmt.Errorf("syncing staff: %w", err)
 	}
-
-	// Note: SyncSuccessful is set inside syncStaff() before DeleteOrphans
 
 	// Force WAL checkpoint
 	if err := s.ForceWALCheckpoint(); err != nil {
@@ -197,29 +194,10 @@ func (s *StaffSync) syncStaff(ctx context.Context) error {
 		"dismissed", statusCounts[3], "cancelled", statusCounts[4],
 		"duplicate_status_dropped", s.Stats.DuplicateStaffStatus)
 
-	// Mark sync as successful before orphan deletion (DeleteOrphans checks this flag)
-	s.SyncSuccessful = true
-
-	// Delete orphans
-	if err := s.DeleteOrphans(
-		"staff",
-		func(record *core.Record) (string, bool) {
-			personRel := record.GetString("person")
-			yearValue := record.Get("year")
-
-			y, yOK := yearValue.(float64)
-
-			if personRel != "" && yOK {
-				return CompositeKey(personRel, int(y)), true
-			}
-			return "", false
-		},
-		"staff record",
-		filter,
-	); err != nil {
-		slog.Error("Error deleting orphan staff records", "error", err)
-	}
-
+	// No orphan sweep, deliberately (owner ruling OD-05 = B, PM-7 = A): "we want to prevent
+	// staff from being removed after they're fired even during current season so we have the
+	// record and can look back at metrics." A staff row CampMinder stops returning keeps its last
+	// values, in every season and every run.
 	return nil
 }
 

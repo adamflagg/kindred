@@ -241,6 +241,7 @@ func TestPersonsSweepKeepsOrphansWhenAsked(t *testing.T) {
 				t.Fatal(err)
 			}
 			col.Fields.Add(&core.NumberField{Name: "cm_id"})
+			col.Fields.Add(&core.DateField{Name: retiredAtField})
 			if err = app.Save(col); err != nil {
 				t.Fatal(err)
 			}

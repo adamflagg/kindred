@@ -97,10 +97,12 @@ class TemporalNameCache:
         logger.info("Loading persons cache...")
 
         try:
-            # Load all persons for the current year
-
-            # This is more efficient and prevents duplicate entries across years
-            persons = self.pb.collection("persons").get_full_list(query_params={"filter": f"year = {self.year}"})
+            # Load the live persons for the current year. A retired person (a staff member
+            # CampMinder stopped returning, kept rather than deleted by the nightly sweep) is not a
+            # name-match candidate, as it was not when the sweep deleted the row.
+            persons = self.pb.collection("persons").get_full_list(
+                query_params={"filter": f"year = {self.year} && retired_at = ''"}
+            )
 
             for person_record in persons:
                 cm_id = getattr(person_record, "cm_id", None)

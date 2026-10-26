@@ -15,6 +15,7 @@ import (
 	"github.com/camp/kindred/pocketbase/campminder"
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/tools/types"
 )
 
 // errRejectedRecord is the sentinel kindred#2292 gives to wrapper functions whose
@@ -211,7 +212,31 @@ func (b *BaseSyncService) DeleteOrphans(
 	entityName string,
 	filter string,
 ) error {
-	return b.deleteOrphans(collection, getIDFunc, entityName, filter, nil)
+	return b.deleteOrphans(collection, getIDFunc, entityName, filter, nil, nil)
+}
+
+// retiredAtField is the marker the persons sweep stamps on a staff-linked person CampMinder
+// stopped returning, instead of deleting the row (owner ruling C, 2026-10-26, narrowing OD-05 = B
+// and PM-7 = A). Empty means live. The row keeps every link; a later sync that sees it again
+// clears the marker.
+const retiredAtField = "retired_at"
+
+// RetireOrphansGuarded is DeleteOrphansGuarded for a collection some of whose orphans are retired
+// rather than deleted: retireIf decides per orphan. A retired orphan gets retired_at stamped and
+// keeps every link; the rest are deleted exactly as DeleteOrphansGuarded deletes them. The scan
+// reads only live rows, so a row already retired keeps the date it was first retired and does not
+// count toward the guard's denominator. Every guard still applies: a run that keeps its orphans,
+// a failed sync, a rejection and a collapse all leave every row as it is. The collection must
+// carry a retiredAtField date field.
+func (b *BaseSyncService) RetireOrphansGuarded(
+	collection string,
+	getIDFunc func(record *core.Record) (string, bool),
+	entityName string,
+	filter string,
+	guard OrphanSweepGuard,
+	retireIf func(record *core.Record) bool,
+) error {
+	return b.deleteOrphans(collection, getIDFunc, entityName, filter, &guard, retireIf)
 }
 
 // DeleteOrphansGuarded is DeleteOrphans with a collapse guard in front of the
@@ -232,7 +257,7 @@ func (b *BaseSyncService) DeleteOrphansGuarded(
 	filter string,
 	guard OrphanSweepGuard,
 ) error {
-	return b.deleteOrphans(collection, getIDFunc, entityName, filter, &guard)
+	return b.deleteOrphans(collection, getIDFunc, entityName, filter, &guard, nil)
 }
 
 // skipSweepForRejections reports whether this run rejected a record, which makes
@@ -244,12 +269,13 @@ func (b *BaseSyncService) DeleteOrphansGuarded(
 // service has to remember, and forgetting it is silent: the sweep runs and the row
 // is gone (kindred#2295).
 //
-// These three entry points are the whole exposed surface. The one hand-rolled sweep
-// a rejecting service owns, PersonsSync.deleteHouseholdOrphans, is structurally
-// exempt rather than overlooked -- it builds its key set upstream of the transform
-// that rejects, so nothing is ever missing from it. The reasoning is at that
-// function. Ten OTHER services carry their own deleteOrphans without embedding
-// this type at all and are out of reach entirely; see OrphanSweepGuard's doc.
+// These four entry points -- the three DeleteOrphans forms and RetireOrphansGuarded --
+// are the whole exposed surface. The one hand-rolled sweep a rejecting service owns,
+// PersonsSync.deleteHouseholdOrphans, is structurally exempt rather than overlooked --
+// it builds its key set upstream of the transform that rejects, so nothing is ever
+// missing from it. The reasoning is at that function. The services that carry their own
+// deleteOrphans without embedding this type at all are out of reach entirely; see
+// OrphanSweepGuard's doc, which names them.
 //
 // The count is service-scoped, not collection-scoped, so in a service that syncs
 // several collections from one Stats -- staff_lookups syncs three, financial_lookups
@@ -308,13 +334,21 @@ type orphanCandidate struct {
 // across page boundaries entirely on its own. Keyset over the primary key has no
 // such boundary, and it keeps the sweep correct if anyone ever moves a delete
 // back inside the scan.
+//
+// retireIf, when set (RetireOrphansGuarded), turns the delete into a retirement for the orphans it
+// picks: the scan reads only live rows, and a picked orphan is stamped retired_at and saved
+// instead of deleted. Nil deletes every orphan.
 func (b *BaseSyncService) deleteOrphans(
 	collection string,
 	getIDFunc func(record *core.Record) (string, bool),
 	entityName string,
 	filter string,
 	guard *OrphanSweepGuard,
+	retireIf func(record *core.Record) bool,
 ) error {
+	if retireIf != nil {
+		filter = liveRowsFilter(filter)
+	}
 	if b.keptOrphans(entityName, func() (int, error) {
 		orphans, _, _, err := b.collectOrphans(collection, getIDFunc, entityName, filter)
 		return len(orphans), err
@@ -380,7 +414,7 @@ func (b *BaseSyncService) deleteOrphans(
 		return nil
 	}
 
-	orphanCount := 0
+	orphanCount, retiredCount := 0, 0
 	for _, candidate := range orphans {
 		record, findErr := b.App.FindRecordById(collection, candidate.id)
 		if findErr != nil {
@@ -389,10 +423,33 @@ func (b *BaseSyncService) deleteOrphans(
 			continue
 		}
 
-		slog.Info("Deleting orphaned record", "entity", entityName, "name", candidate.name, "id", candidate.key)
+		retire := retireIf != nil && retireIf(record)
+		if retire {
+			slog.Info("Retiring orphaned record", "entity", entityName, "name", candidate.name, "id", candidate.key)
+		} else {
+			slog.Info("Deleting orphaned record", "entity", entityName, "name", candidate.name, "id", candidate.key)
+		}
 
 		if b.DryRun {
 			orphanCount++
+			if retire {
+				retiredCount++
+			}
+			continue
+		}
+
+		if retire {
+			// A save, not a delete, so every link to the row survives. Counted as an update:
+			// the row changed, and the run's caches are invalidated like any other change.
+			record.Set(retiredAtField, types.NowDateTime())
+			if err := b.App.Save(record); err != nil {
+				slog.Error("Failed to retire orphaned record", "entity", entityName, "id", candidate.key, "error", err)
+				b.Stats.Errors++
+				continue
+			}
+			orphanCount++
+			retiredCount++
+			b.Stats.Updated++
 			continue
 		}
 
@@ -409,13 +466,27 @@ func (b *BaseSyncService) deleteOrphans(
 		b.Stats.Deleted++
 	}
 
-	if orphanCount > 0 {
+	switch {
+	case retiredCount > 0:
+		slog.Info("Swept orphaned records", "entity", entityName,
+			"deleted", orphanCount-retiredCount, "retired", retiredCount)
+	case orphanCount > 0:
 		slog.Info("Deleted orphaned records", "entity", entityName, "count", orphanCount)
-	} else {
+	default:
 		slog.Info("No orphaned records found", "entity", entityName)
 	}
 
 	return nil
+}
+
+// liveRowsFilter narrows a sweep's filter to rows not yet retired. It stays parameter-free, as
+// collectOrphans requires.
+func liveRowsFilter(filter string) string {
+	live := retiredAtField + " = ''"
+	if filter == "" {
+		return live
+	}
+	return "(" + filter + ") && " + live
 }
 
 // collectOrphans walks the whole filtered set read-only and returns the records

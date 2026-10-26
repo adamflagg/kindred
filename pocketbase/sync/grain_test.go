@@ -497,12 +497,12 @@ var stringConstRe = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*"([a-z0-
 // guardedSweepCollections would fail its callSites/len(found) comparison
 // pointing at a declaration rather than a sweep.
 var guardedSweepNameRe = regexp.MustCompile(
-	`\.DeleteOrphansGuarded\(\s*(?:"([a-z0-9_]+)"|([A-Za-z_][A-Za-z0-9_]*))`)
+	`\.(?:Delete|Retire)OrphansGuarded\(\s*(?:"([a-z0-9_]+)"|([A-Za-z_][A-Za-z0-9_]*))`)
 
 // guardedSweepCallRe counts call sites whatever their first argument looks like.
 // The leading "." is what excludes BaseSyncService's own method DECLARATION in
 // base_sync.go, which is not a call.
-var guardedSweepCallRe = regexp.MustCompile(`\.DeleteOrphansGuarded\(`)
+var guardedSweepCallRe = regexp.MustCompile(`\.(?:Delete|Retire)OrphansGuarded\(`)
 
 // isUniqueIndexDDL reports whether a sqlite_master `sql` column describes a
 // UNIQUE index.
