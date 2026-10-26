@@ -79,10 +79,10 @@ func TestStaffVehicleInfoKeepsARowCampMinderStoppedReturning(t *testing.T) {
 func TestStaffApplicationsKeepsARowCampMinderStoppedReturning(t *testing.T) {
 	t.Parallel()
 	app := newStaffApplicationsSyncTestApp(t)
-	seedStaffApp(t, app, 4101, 2026, true, map[string]string{"App-Why Tawonga?": "friends"})
+	seedStaffApp(t, app, 4101, 2026, true, map[string]string{"App-Why work at camp again?": "friends"})
 	seedStaffApp(t, app, 4102, 2026, true, nil) // fired: no answers this run
 	saveRecord(t, app, "staff_applications", map[string]any{
-		"person_id": 4102, "year": 2026, "why_tawonga": "the lake"})
+		"person_id": 4102, "year": 2026, "why_work_again": "the lake"})
 
 	s := NewStaffApplicationsSync(app)
 	s.Year = 2026
@@ -96,7 +96,7 @@ func TestStaffApplicationsKeepsARowCampMinderStoppedReturning(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the fired staff member's application is gone: %v", err)
 	}
-	if got := kept.GetString("why_tawonga"); got != "the lake" {
-		t.Errorf("why_tawonga = %q, want the last value %q", got, "the lake")
+	if got := kept.GetString("why_work_again"); got != "the lake" {
+		t.Errorf("why_work_again = %q, want the last value %q", got, "the lake")
 	}
 }
