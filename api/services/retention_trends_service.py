@@ -36,6 +36,7 @@ from bunking.gender_identity import NOT_GIVEN, identity_sort_key
 from bunking.logging_config import get_logger
 
 from .breakdown_calculator import compute_breakdown, compute_registration_breakdown, safe_rate
+from .camp_calendar import get_camp_today
 from .extractors import (
     count_binary_fallbacks,
     exclude_aged_out_persons,
@@ -140,7 +141,11 @@ class RetentionTrendsService:
 
         # Calculate retention for each year transition
         retention_years = self._calculate_retention_transitions(
-            years, data_by_year, effective_pipeline=effective_pipeline, scope_has_teens=scope_has_teens
+            years,
+            data_by_year,
+            effective_pipeline=effective_pipeline,
+            scope_has_teens=scope_has_teens,
+            camp_year=(today if today is not None else get_camp_today()).year,
         )
 
         same_point_fields = await self._apply_same_point(years, data_by_year, retention_years, same_point, today)
@@ -279,6 +284,7 @@ class RetentionTrendsService:
         data_by_year: dict[int, dict[str, Any]],
         effective_pipeline: bool = False,
         scope_has_teens: bool = False,
+        camp_year: int | None = None,
     ) -> list[RetentionTrendYear]:
         """Calculate retention for each year transition.
 
@@ -291,6 +297,8 @@ class RetentionTrendsService:
                 When True, by_grade always includes a grade-10 row (carve-out)
                 even when effective_pipeline=False, so staff can see the
                 pipeline even with the toggle off.
+            camp_year: The camp calendar's current year. A season from it on with nobody enrolled has
+                not happened yet, so its 0 is "so far"; an earlier one with nobody did not run.
 
         Returns:
             List of RetentionTrendYear objects.
@@ -321,8 +329,9 @@ class RetentionTrendsService:
             base_count = len(base_person_ids)
             returned_count = len(returned_ids)
             # PM-4 A (owner, 2026-10-25): never a substituted 0. With no base there is nothing to retain, and a
-            # past season nobody attended (2020) has no retention into it. The newest season's 0 is "so far".
-            no_rate = base_count == 0 or (not compare_person_ids and compare_year != years[-1])
+            # past season nobody attended (2020) has no retention into it. A season still to come reads 0 so far.
+            not_run = not compare_person_ids and (camp_year is None or compare_year < camp_year)
+            no_rate = base_count == 0 or not_run
             retention_rate = None if no_rate else safe_rate(returned_count, base_count)
 
             # by_grade carve-out: when the scope includes teen sessions, always show

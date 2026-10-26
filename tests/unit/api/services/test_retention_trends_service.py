@@ -4,6 +4,7 @@ These tests define the expected behavior of the RetentionTrendsService.
 Implementation must conform to these tests, not the other way around.
 """
 
+from datetime import date
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -604,10 +605,26 @@ class TestRetentionTrendsServiceEdgeCases:
         mock_repository.fetch_sessions = AsyncMock(return_value={100: make_mock_session(100)})
 
         result = await RetentionTrendsService(mock_repository).calculate_retention_trends(
-            current_year=2027, num_years=1
+            current_year=2027, num_years=1, today=date(2026, 10, 25)
         )
 
         assert result.years[0].retention_rate == 0.0
+
+    @pytest.mark.asyncio
+    async def test_viewing_the_no_camp_year_itself_still_has_no_rate(self, mock_repository: MagicMock) -> None:
+        """CodeRabbit on #3304: the 'so far' exception is for a season still to come, not the newest year asked for."""
+        from api.services.retention_trends_service import RetentionTrendsService
+
+        by_year: dict[int, list[Any]] = {2019: [make_mock_attendee(i, 100) for i in range(1, 5)], 2020: []}
+        mock_repository.fetch_attendees = AsyncMock(side_effect=lambda year: by_year[year])
+        mock_repository.fetch_persons = AsyncMock(return_value={i: make_mock_person(i, "M") for i in range(1, 5)})
+        mock_repository.fetch_sessions = AsyncMock(return_value={100: make_mock_session(100)})
+
+        result = await RetentionTrendsService(mock_repository).calculate_retention_trends(
+            current_year=2020, num_years=1, today=date(2026, 10, 25)
+        )
+
+        assert result.years[0].retention_rate is None
 
 
 # ============================================================================
