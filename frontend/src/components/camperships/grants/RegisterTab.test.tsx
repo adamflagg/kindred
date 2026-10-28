@@ -530,6 +530,16 @@ describe('Grants › Register (§8.2)', () => {
     expect(screen.queryByRole('button', { name: 'Record a Commitment…' })).toBeNull()
   })
 
+  // CLOSED-SEASONS-DONE (owner ruling NG-01): a closed season's register is history; the server refuses its writes.
+  it('offers casework no commitment work on a closed season', async () => {
+    served = { ...GRANTS, season_done: true }
+    renderTab('/aid/grants/register?row=ccmtriley0000001')
+    await screen.findByRole('group', { name: 'Show' })
+    const actions = document.querySelector('[data-panel="actions"]') as HTMLElement
+    expect(within(actions).queryByRole('button')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Record a Commitment…' })).toBeNull()
+  })
+
   it("⚠ counts a never-applied household's household-level line in the total and the footer", async () => {
     served = { ...GRANTS, grants: [...GRANTS.grants, NEVER_APPLIED_HOUSEHOLD] }
     renderTab()

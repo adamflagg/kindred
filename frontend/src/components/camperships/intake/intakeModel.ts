@@ -69,9 +69,17 @@ export const SEGMENTS: ReadonlyArray<{
   },
 ]
 
-/** `?show=`: Needs a look is its absence. */
-export function readSegment(raw: string | null): IntakeSegment {
-  return raw === 'reg' || raw === 'all' ? raw : 'look'
+/**
+ * The segment `?show=`'s absence means: Needs a look, or All forms on a closed season (CLOSED-SEASONS-DONE, owner
+ * ruling CSD-6: nothing needs a look there, and an empty default list reads as broken).
+ */
+export function defaultSegment(closed = false): IntakeSegment {
+  return closed ? 'all' : 'look'
+}
+
+/** `?show=`: the default segment (`defaultSegment`) is its absence. */
+export function readSegment(raw: string | null, closed = false): IntakeSegment {
+  return raw === 'reg' || raw === 'all' || raw === 'look' ? raw : defaultSegment(closed)
 }
 
 export function inSegment(row: FormIntakeRowOut, segment: IntakeSegment): boolean {
@@ -217,6 +225,8 @@ const STATUS: Readonly<Record<BecameStatus, { words: string; tone: PillTone }>> 
   duplicate: { words: 'Duplicate', tone: 'stone' },
   withdrawn: { words: 'Withdrawn', tone: 'stone' },
   cancelled: { words: 'Cancelled', tone: 'stone' },
+  // CLOSED-SEASONS-DONE (CSD-1): still waiting when its season closed; finished and quiet, as the grid draws it.
+  closed: { words: 'Closed', tone: 'stone' },
 }
 export const becameStatus = (status: BecameStatus) => STATUS[status]
 

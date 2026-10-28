@@ -40,6 +40,7 @@ import {
   originOf,
   originTitle,
   readSegment,
+  defaultSegment,
   removeBlock,
   segmentCounts,
   sessionIndex,
@@ -60,6 +61,20 @@ describe('segments (owner Q3-A: the server decides Needs a look)', () => {
     expect(readSegment('reg')).toBe('reg')
     expect(readSegment('all')).toBe('all')
     expect(readSegment('bogus')).toBe('look')
+  })
+
+  // CLOSED-SEASONS-DONE (owner ruling CSD-6): a closed season opens on All forms; Needs a look at 0 reads as broken.
+  it('reads All forms when absent on a closed season, Needs a look only when asked for', () => {
+    expect(readSegment(null, true)).toBe('all')
+    expect(readSegment('bogus', true)).toBe('all')
+    expect(readSegment('look', true)).toBe('look')
+    expect(readSegment('reg', true)).toBe('reg')
+    expect(defaultSegment(true)).toBe('all')
+    expect(defaultSegment(false)).toBe('look')
+  })
+
+  it('words a closed request Closed, in stone', () => {
+    expect(becameStatus('closed')).toEqual({ words: 'Closed', tone: 'stone' })
   })
 
   it('puts a row in Needs a look only when the server says so', () => {

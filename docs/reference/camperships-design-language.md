@@ -74,6 +74,7 @@ Where Camperships deliberately differs from summer, the reason is stated at that
 | 22 | A row an action moved out of the filter stays where it was, opened, until the filter changes. It is never counted | `useKeptRows`, `keepInView`, `AidTable keptKeys` |
 | 23 | A fold line opens in place onto a kit table whose rows carry their own actions. Never a modal | `AidFoldToggle`, `AidFoldPanel`, `CS_FOLD_PANEL` |
 | 24 | A gender identity split takes its order, groups, names and colours from the kit's tokens, never its own | `GENDER_IDENTITY_ORDER`, `GENDER_IDENTITY_GROUPS`, `genderIdentityColor`, `genderDisplayName` |
+| 25 | A closed season looks done: every working count 0, one stone "Closed N" chip, a waiting request reads Closed in stone, the band says "closed, shown as history", and nothing that works is offered | `ClosedChip`, `STRIP_BADGE_CLOSED`, `AidPageBand closed`, the read's `season_done` |
 
 ---
 
@@ -179,6 +180,7 @@ A line that **replaces** the table (loading, failed, empty) is allowed. So is a 
 - **The count-bearing lens strip** (`CS_STRIP`, `CS_STRIP_LENS*`) is used **only for a pipeline navigator**: stages that run in order, a lens that narrows every count beside it, and exception badges. Requests' strip is the only one.
 - **The test:** if the choices have no order and no second dimension, it is a switcher.
 - **Controls never disappear between views.** If a control does not apply in one view, keep it in place rather than dropping it.
+- **A closed season's strip (rule 25) counts 0 at every stage and draws no flag.** One stone `ClosedChip` (`kit/ClosedChip.tsx`, `STRIP_BADGE_CLOSED`) after the flags counts its Closed requests, so they don't seem to vanish. It is not a link: nothing about a closed season needs opening from the strip.
 - **Jump chips are neither.** Chips that jump within a page (Rules' chapters) are not filters, so neither rule applies.
 
 ## 10. Scroll boxes
@@ -207,7 +209,16 @@ A line that **replaces** the table (loading, failed, empty) is allowed. So is a 
 ## 12. Page chrome
 
 - **The head is `AidPageHead`** (`shell/AidPageHead.tsx`). It holds the band (`AidPageBand`), then 4px, then the tab row (`AidTabNav`). The page root spaces what follows at 10px (`space-y-2.5`). Requests has no tab row: its stage strip sits 12px under the band.
-- **The band is 80px tall:** a forest-700 → 800 gradient, padding 16px 24px, a 38px icon tile, and a Fraunces 20/28 title with a 14/20 subtitle ending "as of {date} (live)". A past date shows the amber as-of pill, whose title says what the date means.
+- **The band is 80px tall:** a forest-700 → 800 gradient, padding 16px 24px, a 38px icon tile, and a Fraunces 20/28 title with a 14/20 subtitle ending "as of {date} (live)". A past date shows the amber as-of pill, whose title says what the date means. A closed season (older than the prior season, the read's `season_done`) ends it "closed, shown as history" instead (`AidPageBand closed`, rule 25).
+
+### Closed seasons (rule 25)
+
+A season older than the prior season N−1 of the configured season N is closed (the server's `aid_season_state`; owner ruling NG-01, 2026-10-28). Its pages show history and offer nothing that works:
+
+- **Every read carries `season_done`.** Pages gate their clicks on it (`canWork && !season_done`), never on a year rule of their own. The server refuses every write to a closed season (409), so a page that forgot would fail loudly, not quietly.
+- **Words and tones.** A request still waiting at close reads **Closed**, in `stone` as Cancelled does; Posted, Accepted, Refused by finance and Cancelled keep their own words. Needs attention is empty. Form intake opens on All forms, and CampMinder's aid there is plain ink (amber meant "needs a request").
+- **Counts.** The strip and Today's bar count 0 at every stage; the strip adds one `ClosedChip`, and Today's bar is one `mute` segment, "Closed N". No money figure moves.
+- **The season picker** (`components/YearSelector.tsx`, app-wide) marks a closed season with a muted lock, on its button and in its list. A mark only: there is no Unlock.
 - **Tabs** are `AidTabNav`, at 14/600. The active tab is primary, counts are at 400, and page-level actions go in the right slot.
 - The faint background grid behind every page (`index.css`, `body::before`) is intentional. Keep it.
 

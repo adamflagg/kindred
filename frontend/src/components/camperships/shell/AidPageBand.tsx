@@ -14,7 +14,12 @@ interface AidPageBandProps {
   /** The pill's native title: what this page says about the date (which tabs show today), not a sentence row. */
   asOfTitle?: string | undefined
   stats?: ReactNode | undefined
+  /** CLOSED-SEASONS-DONE (CSD-2): the season is closed (the read's `season_done`), so the subtitle says it is history
+   *  in place of the live as-of: "Season 2025 · closed, shown as history". */
+  closed?: boolean | undefined
 }
+
+const CLOSED_SEASON_WORDS = 'closed, shown as history'
 
 function AsOfPill({ asOf, title }: { asOf: AidAsOf; title?: string | undefined }) {
   if (asOf.kind === 'live') return null
@@ -42,8 +47,13 @@ export function AidPageBand({
   asOf,
   asOfTitle,
   stats,
+  closed = false,
 }: AidPageBandProps) {
-  const live = asOf?.kind === 'live' ? `as of ${formatShortDate(campToday())} (live)` : null
+  const live = closed
+    ? CLOSED_SEASON_WORDS
+    : asOf?.kind === 'live'
+      ? `as of ${formatShortDate(campToday())} (live)`
+      : null
   return (
     <div className="from-forest-700 to-forest-800 rounded-xl bg-gradient-to-r px-4 py-4 sm:px-6 sm:py-4">
       <div className="flex items-center justify-between gap-4">

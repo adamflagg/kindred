@@ -347,6 +347,9 @@ class GridRowOut(BaseModel):
     requested_by: str | None = None
     # The Stage column's value (RowStageOut). None only when the row has no rounds.
     stage: RowStageOut | None = None
+    # CLOSED-SEASONS-DONE (financial_aid_queues.close_row): the row is a done season's, shown as history. Every screen
+    # that words what a row needs (Needs attention, its groups, the opened line, the household card) draws nothing.
+    closed: bool = False
 
 
 class RequestsGridResponse(BaseModel):

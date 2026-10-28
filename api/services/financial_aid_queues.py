@@ -153,5 +153,6 @@ def close_row(row: GridRowOut) -> GridRowOut:
             "notes": None if row.notes is None else [],
             "to_reverse": None if row.to_reverse is None else False,
             "stage": stage,
+            "closed": True,
         }
     )

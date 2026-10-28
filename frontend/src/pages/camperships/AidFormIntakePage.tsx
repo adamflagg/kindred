@@ -14,6 +14,7 @@ import {
   fullName,
   inChip,
   inSegment,
+  defaultSegment,
   readSegment,
   segmentCounts,
   SEGMENTS,
@@ -76,10 +77,13 @@ function GrantsLine({ count, view }: { count: number; view: AidView }) {
 
 function IntakeBody({ data, view }: { data: FormIntakeResponse; view: AidView }) {
   const [params, setParams] = useSearchParams()
-  const segment = readSegment(params.get('show'))
+  // CLOSED-SEASONS-DONE (owner ruling NG-01): a closed season's forms are history. It opens on All forms (CSD-6),
+  // offers no action and no Find a Camper Not Listed…, and draws CampMinder's aid in plain ink.
+  const closed = data.season_done === true
+  const segment = readSegment(params.get('show'), closed)
   const cmaidOnly = params.get('cmaid') === '1'
   const { hasPermission } = usePermissions()
-  const canWork = hasPermission(Permission.FINANCIAL_AID_CASEWORK)
+  const canWork = hasPermission(Permission.FINANCIAL_AID_CASEWORK) && !closed
   const programs = useAidProgramNames()
   const names = useMemo(() => sessionIndex(data.sessions), [data.sessions])
   const definitions = useAidDefinitions(SURFACE)
@@ -129,7 +133,7 @@ function IntakeBody({ data, view }: { data: FormIntakeResponse; view: AidView })
   const changeSegment = (value: IntakeSegment) => {
     setHighlighted(null)
     setAdding(null)
-    setParam('show', value === 'look' ? null : value)
+    setParam('show', value === defaultSegment(closed) ? null : value)
   }
 
   const review = useAidReviewAddition()
@@ -235,12 +239,15 @@ function IntakeBody({ data, view }: { data: FormIntakeResponse; view: AidView })
           searching
             ? 'No camper matches the search.'
             : segment === 'look'
-              ? 'Nothing needs a look. Every form became a request, or this list says why not. All forms shows every row.'
+              ? closed
+                ? `Nothing needs a look. ${String(view.year)} is closed, so its forms show as history. All forms shows every row.`
+                : 'Nothing needs a look. Every form became a request, or this list says why not. All forms shows every row.'
               : 'No rows in this view.'
         }
         toolbarLead={lead}
         toolbarStatus={<StatusSlot status={status} onDismiss={() => setStatus(null)} />}
         toolbarActions={findButton}
+        closed={closed}
         belowToolbar={
           finding && canWork ? (
             <FindUnlistedPanel onAdded={onAdded} onClose={() => setFinding(false)} />
@@ -271,6 +278,7 @@ export default function AidFormIntakePage() {
             title="Form intake"
             subtitle={`Requests · Season ${String(year)}`}
             asOf={LIVE}
+            closed={forms.data?.season_done === true}
             stats={
               <Link
                 to={aidHref('/aid/requests', view)}

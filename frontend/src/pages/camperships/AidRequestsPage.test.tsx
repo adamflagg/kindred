@@ -15,6 +15,7 @@ import { DETAIL_POSTED } from '../../components/camperships/season/historyFixtur
 import type {
   ApiAidApprovedRules,
   ApiAidGrid,
+  ApiAidGridRow,
   ApiAidHistoryOperationDetail,
   ApiAidReportRequestIds,
   ApiAidRound,
@@ -1707,5 +1708,115 @@ describe('the March file in the Download CSV menu (slice 3 rework R1; variant A)
     unmount()
     renderAt('/aid/requests?view=needs-offer&round=2')
     expect(screen.queryByText('March result 2027')).toBeNull()
+  })
+})
+
+// CLOSED-SEASONS-DONE (owner ruling NG-01, 10-18: "no pending clicks in Kindred basically, it should look 'done'").
+// The server closes a done season's rows (close_row: queues, holds and to-dos empty, a waiting stage reads Closed,
+// `closed` set) and says `season_done`; the page offers nothing that works and says the season is history.
+describe('a closed season reads as history (CLOSED-SEASONS-DONE)', () => {
+  const closedRow = (r: ApiAidGridRow): ApiAidGridRow => ({
+    ...r,
+    queues: [],
+    holds: [],
+    unticked: [],
+    todos: [],
+    notes: [],
+    to_reverse: false,
+    closed: true,
+    stage:
+      r.stage?.code === 'cancelled' || r.stage?.code === 'posted'
+        ? r.stage
+        : { round: r.stage?.round ?? null, code: 'closed', label: 'Closed' },
+  })
+  // A Session unclear request (no round, no hold) would say "Session unclear" in Needs attention while open.
+  const UNSETTLED = gridRow({
+    request_id: 'requnsettled001',
+    camper_name: 'Liam Garcia',
+    request_status: 'unmatched_session',
+    rounds: [],
+    stage: null,
+    queues: ['session_not_settled'],
+  })
+  const CLOSED: ApiAidGrid = {
+    ...LIVE,
+    season_done: true,
+    rows: [...GRID_ROWS.filter((r) => r.camper_name !== 'Liam Garcia'), UNSETTLED].map(closedRow),
+  }
+
+  beforeEach(() => {
+    granted = ['financial_aid.view', 'financial_aid.casework']
+    grid = { data: CLOSED, isLoading: false, error: null }
+  })
+
+  it('says so in the band, in place of "(live)" (CSD-2)', () => {
+    renderAt('/aid/requests')
+    expect(screen.getByText('Season 2027 · closed, shown as history')).toBeInTheDocument()
+    expect(screen.queryByText(/\(live\)/)).toBeNull()
+  })
+
+  it('offers no checkbox, no Check Accepted, no Tick column and no row editor', async () => {
+    renderAt('/aid/requests?view=waiting')
+    expect(screen.queryByRole('checkbox', { name: 'Select all' })).toBeNull()
+    expect(screen.queryByRole('checkbox', { name: 'Select' })).toBeNull()
+    renderAt('/aid/requests')
+    const row = screen.getAllByText('Emma Johnson')[0]?.closest('tr') as HTMLElement
+    await userEvent.click(within(row).getAllByRole('cell')[2] as HTMLElement)
+    expect(document.querySelector('[data-aid-editor]')).toBeNull()
+    expect(screen.queryByRole('spinbutton')).toBeNull()
+  })
+
+  it('offers no March file, even on Needs an offer with R1 lit', () => {
+    renderAt('/aid/requests?view=needs-offer&round=1')
+    expect(screen.queryByRole('button', { name: 'More downloads' })).toBeNull()
+  })
+
+  it('offers no Mark Posted on an opened row', async () => {
+    const unticked = {
+      ...closedRow(GRID_ROWS[0]!),
+      unticked: [
+        {
+          round: 1,
+          code: 'short_posting' as const,
+          label: 'Short in CM',
+          message: 'A sentence from the server.',
+          mark_posted: true,
+        },
+      ],
+    }
+    grid = { data: { ...CLOSED, rows: [unticked] }, isLoading: false, error: null }
+    renderAt('/aid/requests')
+    const row = screen.getByText('Emma Johnson').closest('tr') as HTMLElement
+    await userEvent.click(within(row).getAllByRole('cell')[2] as HTMLElement)
+    expect(screen.queryByRole('button', { name: /Mark Posted/ })).toBeNull()
+  })
+
+  it('draws the strip at 0 with one stone Closed N chip and no flags (CSD-4)', () => {
+    renderAt('/aid/requests')
+    const chip = screen.getByTestId('closed-chip')
+    expect(chip).toHaveTextContent(
+      `Closed ${String(CLOSED.rows.filter((r) => r.stage?.code === 'closed').length)}`
+    )
+    expect(screen.queryByRole('link', { name: /^On hold / })).toBeNull()
+    expect(screen.queryByRole('link', { name: /^Session unclear / })).toBeNull()
+    expect(screen.getByRole('link', { name: /^Needs an offer / })).toHaveTextContent('0')
+  })
+
+  it('leaves Needs attention empty on every row (CSD-5)', () => {
+    renderAt('/aid/requests')
+    expect(inRows().queryByText('Session unclear')).toBeNull()
+    expect(inRows().queryByText('Reverse posting')).toBeNull()
+    expect(inRows().queryByText('Give a reason')).toBeNull()
+  })
+
+  it('draws a closed request in stone, reading Closed (CSD-1)', () => {
+    renderAt('/aid/requests')
+    expect(inRows().getAllByText('Closed').length).toBeGreaterThan(0)
+  })
+
+  it('draws no Closed chip for an open season', () => {
+    grid = { data: LIVE, isLoading: false, error: null }
+    renderAt('/aid/requests')
+    expect(screen.queryByTestId('closed-chip')).toBeNull()
   })
 })

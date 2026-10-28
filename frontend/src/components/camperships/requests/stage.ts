@@ -49,7 +49,8 @@ export function roundTone(round: ApiAidRound): PillTone {
 function stageTone(stage: ApiAidRowStage): PillTone {
   if (stage.code === 'held') return 'red'
   if (stage.code === 'accepted') return 'emerald'
-  if (stage.code === 'cancelled') return 'stone'
+  // CLOSED-SEASONS-DONE (CSD-1): still waiting when its season closed; finished and quiet, as Cancelled is.
+  if (stage.code === 'cancelled' || stage.code === 'closed') return 'stone'
   // Owner 10-10: "Pending approval" is amber everywhere, the household editor's pill's own token.
   if (stage.code === 'pending_approval') return STATUS_TONE.note
   return stage.round === null ? 'muted' : (ROUND_TONE[stage.round] ?? 'muted')

@@ -234,6 +234,11 @@ export const STRIP_BADGE = {
   amber: `${BADGE_SHAPE} border-amber-300 bg-amber-100 text-amber-700 dark:border-amber-700/60 dark:bg-amber-900/40 dark:text-amber-300`,
   zero: `${BADGE_SHAPE} text-muted-foreground border-transparent bg-transparent font-medium opacity-70`,
 } as const
+/**
+ * A closed season's "Closed N" chip (CLOSED-SEASONS-DONE, CSD-4; kit export `ClosedChip`): the strip's badge shape in
+ * stone, never a link. Stone is the kit's finished-and-quiet tone (Cancelled, reversed).
+ */
+export const STRIP_BADGE_CLOSED = `${BADGE_SHAPE} border-stone-300 bg-stone-100 text-stone-700 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-300`
 /** The badge picked: the mock's 1.5px inset ring in the badge's own ink. */
 export const STRIP_BADGE_ON = 'shadow-[inset_0_0_0_1.5px_currentColor]'
 /**

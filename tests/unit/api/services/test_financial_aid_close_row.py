@@ -67,6 +67,7 @@ def test_posted_accepted_refused_and_cancelled_keep_their_words() -> None:
     )
     for row in (posted, accepted, refused, cancelled):
         assert close_row(row).stage == row.stage
+        assert close_row(row).closed is True
     assert close_row(posted).stage == RowStageOut(round=1, code="posted", label="R1 · Posted")
     assert close_row(refused).stage is not None and close_row(refused).stage.code == "refused"  # type: ignore[union-attr]
 
@@ -84,7 +85,11 @@ def test_a_closed_row_needs_nothing() -> None:
         notes=[IssueOut(code="family_level", severity="warn", message="Money to place")],
     )
     assert row.queues  # it was in Holds, at least
+    assert row.closed is False
     closed = close_row(row)
+    # The row says it is a closed season's, so every screen that words a row's needs (the grid's Needs attention,
+    # its group headings, the opened line, the household card) draws none.
+    assert closed.closed is True
     assert closed.queues == []
     assert closed.holds == []
     assert closed.unticked == []

@@ -231,3 +231,17 @@ def test_a_link_delete_reads_the_links_own_season(client: TestClient, monkeypatc
     assert answer.status_code == 409
     assert looked.await_args is not None and looked.await_args.args == ("aid_household_links", "lnk000000000001")
     writes.delete_link.assert_not_called()
+
+
+def test_the_grants_read_says_when_its_season_is_done(client: TestClient) -> None:
+    """Grants › Register gates its Record a Commitment… and commitment editors on the read's own flag."""
+    from api.schemas.financial_aid_grants import GrantsResponse
+
+    def read(year: int) -> GrantsResponse:
+        return GrantsResponse(year=year, grants=[], needs_camper=[], unmapped=[], waiting=[], expected=[])
+
+    register = MagicMock()
+    register.read = AsyncMock(side_effect=read)
+    with patch.object(financial_aid, "_grants_register", return_value=register):
+        assert client.get("/api/financial-aid/grants/2025").json()["season_done"] is True
+        assert client.get("/api/financial-aid/grants/2026").json()["season_done"] is False

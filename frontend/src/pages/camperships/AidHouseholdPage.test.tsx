@@ -185,6 +185,36 @@ describe('AidHouseholdPage (§6.3)', () => {
     expect(screen.getByRole('button', { name: 'Lift…' })).toBeInTheDocument()
   })
 
+  // CLOSED-SEASONS-DONE (owner ruling NG-01): a closed season's household page draws every request card
+  // read-only, with no hold action and no income correction, and says the season is history in the band (CSD-2).
+  it('draws a closed season read-only for casework too, and says so in the band', async () => {
+    granted = ['financial_aid.view', 'financial_aid.casework', 'financial_aid.rules']
+    result = {
+      data: householdPage({
+        season_done: true,
+        requests: [
+          householdRequest(
+            gridRow({
+              closed: true,
+              queues: [],
+              stage: { round: 1, code: 'closed', label: 'Closed' },
+            })
+          ),
+        ],
+      }),
+      isLoading: false,
+      error: null,
+    }
+    renderAt('/aid/households/1000001')
+    expect(screen.queryByRole('button', { name: 'Cancel Request…' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Put on Hold…' })).toBeNull()
+    expect(screen.getByText(/closed, shown as history/)).toBeInTheDocument()
+    expect(screen.queryByText(/\(live\)/)).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: /^Income/ }))
+    await userEvent.click(screen.getByRole('button', { name: /more answers? match/ }))
+    expect(screen.queryByRole('button', { name: 'Correct…' })).toBeNull()
+  })
+
   it('puts Correct… on the income answers for casework only, never on the income override (§9.3)', async () => {
     renderAt('/aid/households/1000001')
     await userEvent.click(screen.getByRole('button', { name: /^Income/ }))

@@ -55,6 +55,22 @@ describe('stage words (§6.1; slice 1 Decision 6)', () => {
     expect(stage(1, 'posted', 'R1 · Posted')).toEqual({ text: 'R1 · Posted', tone: 'muted' })
   })
 
+  // CLOSED-SEASONS-DONE (CSD-1): a closed season's waiting request reads Closed, in stone like Cancelled,
+  // whatever round it stopped at. The word is the server's (the shared fixture's stage_closed_words).
+  it('draw a closed request in stone', () => {
+    const stage = (round: number | null) =>
+      requestStage(gridRow({ stage: { round, code: 'closed', label: 'Closed' } }))
+    expect(stage(1)).toEqual({ text: 'Closed', tone: 'stone' })
+    expect(stage(null)).toEqual({ text: 'Closed', tone: 'stone' })
+    const words = JSON.parse(
+      readFileSync(
+        resolve(__dirname, '../../../../../tests/fixtures/camperships_frontend_mirrors.json'),
+        'utf-8'
+      )
+    ) as { stage_closed_words: string }
+    expect(words.stage_closed_words).toBe('Closed')
+  })
+
   it("wear the household Pending approval pill's own token, so the two cannot drift", () => {
     const pending = requestStage(
       gridRow({ stage: { round: 3, code: 'pending_approval', label: 'R3 · Pending approval' } })

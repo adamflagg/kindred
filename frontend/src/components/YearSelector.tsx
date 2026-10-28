@@ -1,15 +1,39 @@
-import { Calendar, Loader2, ChevronDown } from 'lucide-react'
+import { Calendar, Loader2, ChevronDown, Lock } from 'lucide-react'
 import { Listbox, ListboxButton, ListboxOptions, ListboxOption } from '@headlessui/react'
 import { useCurrentYear } from '../hooks/useCurrentYear'
 import { CS_PICKER, CS_PICKER_OPTION, CS_PICKER_OPTIONS } from './camperships/kit/csType'
+import { isClosedSeason } from '../utils/closedSeason'
+
+/**
+ * CLOSED-SEASONS-DONE (owner ruling CSD-3, "everywhere"): a closed season's lock mark, on the picker's button and in
+ * its list, wherever the app-wide picker appears. A mark only: there is no Unlock (CSD-8).
+ */
+function SeasonLock({ year }: { year: number }) {
+  return (
+    <span
+      data-testid="season-lock"
+      title={`${String(year)} is closed: shown as history`}
+      className="text-muted-foreground ml-1 inline-flex"
+    >
+      <Lock className="h-[11px] w-[11px]" strokeWidth={2.2} />
+    </span>
+  )
+}
 
 /**
  * `aid` dresses the button and its list in the Camperships kit's white 26px picker (design language
  * §3, §21); Summer and Family Camp keep the shared compact button.
  */
 export default function YearSelector({ aid = false }: { aid?: boolean }) {
-  const { currentYear, setCurrentYear, availableYears, isTransitioning, isYearReady } =
-    useCurrentYear()
+  const {
+    currentYear,
+    setCurrentYear,
+    availableYears,
+    isTransitioning,
+    isYearReady,
+    configuredYear,
+  } = useCurrentYear()
+  const closed = (year: number) => isClosedSeason(year, configuredYear)
 
   // Show loading spinner while waiting for backend year config
   if (!isYearReady || availableYears.length === 0) {
@@ -38,7 +62,10 @@ export default function YearSelector({ aid = false }: { aid?: boolean }) {
                   : 'listbox-button-compact min-w-[80px] disabled:cursor-wait disabled:opacity-50'
               }
             >
-              <span>{currentYear}</span>
+              <span className="inline-flex items-center">
+                {currentYear}
+                {closed(currentYear) && <SeasonLock year={currentYear} />}
+              </span>
               <ChevronDown className={`text-muted-foreground ${aid ? 'h-3.5 w-3.5' : 'h-4 w-4'}`} />
             </ListboxButton>
             <ListboxOptions
@@ -51,7 +78,10 @@ export default function YearSelector({ aid = false }: { aid?: boolean }) {
                   value={year}
                   className={aid ? CS_PICKER_OPTION : 'listbox-option py-1.5'}
                 >
-                  {year}
+                  <span className="inline-flex items-center">
+                    {year}
+                    {closed(year) && <SeasonLock year={year} />}
+                  </span>
                 </ListboxOption>
               ))}
             </ListboxOptions>

@@ -101,4 +101,25 @@ describe('AidPageBand (D30: the compact band, no hero)', () => {
     const tile = band?.querySelector('svg')?.parentElement
     expect(tile).toHaveClass('sm:size-[38px]', 'sm:p-0', 'flex', 'items-center', 'justify-center')
   })
+
+  // CLOSED-SEASONS-DONE (owner ruling CSD-2): a closed season says so in the band's subtitle, replacing the false
+  // "(live)": "Season 2025 · closed, shown as history".
+  it('says a closed season is history in place of "(live)"', () => {
+    render(
+      <AidPageBand
+        icon={Inbox}
+        title="Requests"
+        subtitle="Season 2025"
+        asOf={{ kind: 'live' }}
+        closed
+      />
+    )
+    expect(screen.getByText('Season 2025 · closed, shown as history')).toBeInTheDocument()
+    expect(screen.queryByText(/\(live\)/)).toBeNull()
+  })
+
+  it('says it on a page with no as-of too (Today)', () => {
+    render(<AidPageBand icon={Inbox} title="Good morning" subtitle="Season 2025" closed />)
+    expect(screen.getByText('Season 2025 · closed, shown as history')).toBeInTheDocument()
+  })
 })

@@ -54,7 +54,7 @@ import { useAidBudget } from '../../hooks/camperships/useAidBudget'
 import { useAidDevelopment } from '../../hooks/camperships/useAidDevelopment'
 import { useAidToday } from '../../hooks/camperships/useAidToday'
 import { useAidTodayWeek } from '../../hooks/camperships/useAidTodayWeek'
-import { useYear } from '../../hooks/useCurrentYear'
+import { useConfiguredYear, useYear } from '../../hooks/useCurrentYear'
 import { usePermissions } from '../../hooks/usePermissions'
 import type {
   ApiAidDevelopment,
@@ -175,37 +175,84 @@ function CommittedByWeek({
   )
 }
 
-function Band({ subtitle }: { readonly subtitle: string | undefined }) {
+function Band({
+  subtitle,
+  closed = false,
+}: {
+  readonly subtitle: string | undefined
+  readonly closed?: boolean
+}) {
   return (
     <AidPageBand
       icon={Inbox}
       title="Good morning"
       {...(subtitle === undefined ? {} : { subtitle })}
       asOf={LIVE}
+      closed={closed}
     />
+  )
+}
+
+/**
+ * CLOSED-SEASONS-DONE (owner ruling NG-01): a closed season's Today, for every persona. Nothing waits (the server
+ * counts every line 0), so there is no queue and no budget to work: the season's bar, all Closed, and a way to the
+ * open season.
+ */
+function ClosedBody({ today, view }: { today: ApiAidToday; view: AidView }) {
+  const open = useConfiguredYear()
+  return (
+    <>
+      {today.stages ? <RegistrarHero stages={today.stages} view={view} /> : null}
+      <Heading title="Waiting on you" meta="nothing waiting" />
+      <div className={CS_EMPTY}>
+        <b>{`Nothing waits on you in ${String(view.year)}.`}</b> The season is closed, so its
+        requests show as history.
+        {open !== undefined && open !== view.year && (
+          <>
+            {' '}
+            <Link className={CS_LINK_SM} to={aidHref('/aid/today', { year: open, asOf: LIVE })}>
+              {`Go to ${String(open)} ›`}
+            </Link>
+          </>
+        )}
+      </div>
+    </>
   )
 }
 
 /** The page's skeleton: the band, then the one read behind a guard (a failed read says so; loading zeroes nothing). */
 function TodayShell({
   today,
+  view,
   subtitle,
   children,
 }: {
   readonly today: ReturnType<typeof useAidToday>
+  readonly view: AidView
   readonly subtitle: (data: ApiAidToday) => string
   readonly children: (data: ApiAidToday) => ReactNode
 }) {
+  // CLOSED-SEASONS-DONE (CSD-2): a closed season says so in the band, in place of the day's sentence and "(live)".
+  const closed = today.data?.season_done === true
   return (
     <div className="space-y-2.5">
-      <Band subtitle={today.data ? subtitle(today.data) : undefined} />
+      <Band
+        subtitle={
+          closed ? `Season ${String(view.year)}` : today.data ? subtitle(today.data) : undefined
+        }
+        closed={closed}
+      />
       <QueryGuard
         isLoading={today.isLoading}
         error={today.data ? null : today.error}
         data={today.data}
         label="Today"
       >
-        {(data) => <div className="space-y-2.5">{children(data)}</div>}
+        {(data) => (
+          <div className="space-y-2.5">
+            {data.season_done === true ? <ClosedBody today={data} view={view} /> : children(data)}
+          </div>
+        )}
       </QueryGuard>
     </div>
   )
@@ -503,6 +550,7 @@ function RegistrarPersona({ view, viewOnly }: { view: AidView; viewOnly: boolean
   return (
     <TodayShell
       today={today}
+      view={view}
       subtitle={(data) => bandSentence(viewOnly ? 'viewOnly' : 'registrar', data, undefined, null)}
     >
       {(data) =>
@@ -520,7 +568,11 @@ function FinancePersona({ view }: { view: AidView }) {
   const today = useAidToday()
   const budget = useAidBudget()
   return (
-    <TodayShell today={today} subtitle={(data) => bandSentence('finance', data, budget.data, null)}>
+    <TodayShell
+      today={today}
+      view={view}
+      subtitle={(data) => bandSentence('finance', data, budget.data, null)}
+    >
       {(data) => <FinanceBody today={data} budget={budget} view={view} />}
     </TodayShell>
   )
@@ -533,6 +585,7 @@ function DevelopmentPersona({ view }: { view: AidView }) {
   return (
     <TodayShell
       today={today}
+      view={view}
       subtitle={(data) => bandSentence('development', data, undefined, outside)}
     >
       {(data) => <DevelopmentBody today={data} dev={dev} view={view} />}

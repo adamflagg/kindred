@@ -38,6 +38,7 @@ financial_aid.rules); and development's report (`/reports/{year}/development`,
 financial_aid.view or .summary: aggregates only, D65).
 """
 
+import asyncio
 from collections.abc import Mapping
 from datetime import date, datetime
 from decimal import ROUND_DOWN, Decimal
@@ -1372,9 +1373,10 @@ async def get_grants(year: _Year, offsets: bool = Query(True), user: AuthUser = 
     # Slice 3 ask 10: each share names the round it offsets, so the read prices the season (one register load).
     # offsets=false is for a caller that wants only the stored fields (a commitment edit's fresh read, staleTime 0):
     # it keeps the plain read and skips the pricing.
-    if not offsets:
-        return await _grants().read(year)
-    return await _grants_register().read(year)
+    out, done = await asyncio.gather(
+        _grants().read(year) if not offsets else _grants_register().read(year), _season_done_read(year)
+    )
+    return out.model_copy(update={"season_done": done})  # CLOSED-SEASONS-DONE: the register reads as history
 
 
 @router.post("/grants/{year}/placements", response_model=PlaceGrantsOut, dependencies=[_OPEN_YEAR])

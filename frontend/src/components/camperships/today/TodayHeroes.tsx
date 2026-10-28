@@ -14,6 +14,7 @@ import { AidHeroBar, AidHeroCard, AidHeroKeys, type HeroSegment } from '../kit/H
 import { formatMoneyCompact } from '../kit/money'
 import { Money } from '../kit/MoneyText'
 import { StatusPill } from '../kit/Pills'
+import { CLOSED_CHIP_TITLE } from '../kit/words'
 import {
   budgetSegments,
   developmentSegments,
@@ -44,6 +45,8 @@ export function RegistrarHero({
   readonly view: AidView
 }) {
   const reveal = useRevealOnce()
+  const closed = stages.closed ?? 0
+  if (stages.live === 0 && closed > 0) return <ClosedHero closed={closed} reveal={reveal} />
   const segments = registrarSegments(stages, view)
   const flags = registrarFlags(stages, view)
   const total = stages.live
@@ -74,6 +77,35 @@ export function RegistrarHero({
           ))}
         </div>
       )}
+    </AidHeroCard>
+  )
+}
+
+/**
+ * CLOSED-SEASONS-DONE (owner ruling CSD-4): a closed season's bar. No request is live, so every stage counts 0, and
+ * one stone segment (the kit's `mute` fill) counts the closed requests, so they don't seem to vanish.
+ */
+function ClosedHero({ closed, reveal }: { readonly closed: number; readonly reveal: boolean }) {
+  const segments: HeroSegment[] = [
+    {
+      key: 'closed',
+      value: closed,
+      label: 'Closed',
+      figure: String(closed),
+      inner: `Closed ${String(closed)}`,
+      tone: 'mute',
+      title: CLOSED_CHIP_TITLE,
+    },
+  ]
+  return (
+    <AidHeroCard
+      title="The season so far"
+      description={`0 live requests · ${String(closed)} closed`}
+      figure=""
+      figureLabel="No live requests"
+    >
+      <AidHeroBar segments={segments} reveal={reveal} />
+      <AidHeroKeys segments={segments} />
     </AidHeroCard>
   )
 }
