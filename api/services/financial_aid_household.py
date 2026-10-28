@@ -319,7 +319,7 @@ def build_request_specs(
             family.setdefault(normalize_option_text(text), []).append(
                 (row.person_cm_id, text, _ask(row.fc_amount_requested))
             )
-        # Before 2027 only: the request exists once the adult is REGISTERED for an adult weekend (a
+        # Before ADULT_WEEKEND_FORM_ONLY_FIRST_SEASON only: the request exists once the adult is REGISTERED for an adult weekend (a
         # waitlisted adult included); its session is set only by an ENROLLED one.
         registration_ask_only = not filled and (row.interest_expressed or row.registration_ask > 0)
         if registration_ask_only and year < ADULT_WEEKEND_FORM_ONLY_FIRST_SEASON:

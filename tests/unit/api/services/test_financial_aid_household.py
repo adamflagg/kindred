@@ -377,3 +377,21 @@ def test_an_adult_who_answered_a_program_on_the_aid_form_is_unchanged_in_2027() 
     built = build_request_specs(1000003, rows, SESSIONS, _attendees(), year=2027)
     assert built == build_request_specs(1000003, rows, SESSIONS, _attendees(), year=2026)
     assert [s.program_key for s in built] == ["summer"]
+
+
+def test_from_2027_a_registered_adults_ask_makes_no_request_even_when_the_household_filed_the_form() -> None:
+    # The household filed the aid form for a child, but the adult's own row names no program: the adult's registration
+    # ask is still only a signal. 2026 keeps the adult-weekend request beside the child's.
+    rows = [
+        fa_row(1000031, 1000003, interest=True, registration_ask=600.0),
+        fa_row(1000032, 1000003, summer="Session 2", summer_ask=900.0),
+    ]
+    for status_id in (2, 8):
+        attendees = [AttendeeRow(1000031, 1000003, 1000401, status_id), AttendeeRow(1000032, 1000003, 1000101, 2)]
+        in_2027 = build_request_specs(1000003, rows, SESSIONS, attendees, year=2027)
+        assert [(s.person_cm_id, s.program_key) for s in in_2027] == [(1000032, "summer")], status_id
+        in_2026 = build_request_specs(1000003, rows, SESSIONS, attendees, year=2026)
+        assert [(s.person_cm_id, s.program_key) for s in in_2026] == [
+            (1000031, "adult_weekend"),
+            (1000032, "summer"),
+        ], status_id
