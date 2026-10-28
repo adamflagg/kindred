@@ -122,7 +122,9 @@ class FormIntakeRowOut(BaseModel):
     person_cm_id: int  # 0: a household (Family Camp) row
     camper_name: str = ""
     filed: bool  # the household filed the aid form (a program answer or income)
-    registration_only: bool  # no aid form at all, a registration ask on this row
+    # A registration ask on this row and no aid form for its bucket: the household filed none, or (from 2027,
+    # IN-BUCKETS) the ask is an adult-weekend one, which no aid form the household filed covers.
+    registration_only: bool
     answers: list[FormAnswerOut] = Field(default_factory=list)
     registration_ask: RegistrationAskOut | None = None
     enrolled_session_cm_ids: list[int] = Field(default_factory=list)

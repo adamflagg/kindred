@@ -453,7 +453,8 @@ export interface AddTarget {
   /** Sessions a live request holds: shown switched off under "Already held" (design rule 3). */
   readonly held: ReadonlyArray<{ readonly session_cm_id: number; readonly status: BecameStatus }>
   readonly registration_ask: RegistrationAskOut | null
-  /** No aid form at all: Add makes a blank application too. */
+  /** The household filed no aid form: Add makes a blank application too. A registration-ask-only row whose household
+   * filed for another bucket (IN-BUCKETS: an adult-weekend ask beside a child's summer form) already has one. */
   readonly noForm: boolean
   /** CampMinder's money on no request, by session: the Round 1 Add a Request… offers to record (Q5-A). */
   readonly campminder: ReadonlyMap<number, number>
@@ -498,7 +499,7 @@ export function targetFromRow(row: FormIntakeRowOut): AddTarget {
     gap,
     held: heldOf(row),
     registration_ask: reg,
-    noForm: row.registration_only || !row.filed,
+    noForm: !row.filed,
     campminder,
     campminderOn: new Map(
       (row.campminder_aid ?? [])

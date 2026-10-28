@@ -272,6 +272,16 @@ describe('Add a Request… (the editor)', () => {
     expect(plain.some((e) => e.sym === 'hand')).toBe(false)
   })
 
+  it('makes no blank application for a registration-ask-only row whose household filed for another bucket', () => {
+    // IN-BUCKETS: an adult's adult-weekend ask is registration-ask only even when the household filed the summer
+    // form for a child. That household already has its application and income, so Add a Request… makes none.
+    const adult = targetFromRow({ ...RILEY, filed: true })
+    expect(adult.noForm).toBe(false)
+    const draft = { session: S3, ask: '400', reason: '', recordRound1: false }
+    expect(addEffects(adult, draft, names, null).some((e) => e.sym === 'hand')).toBe(false)
+    expect(targetFromRow(RILEY).noForm).toBe(true)
+  })
+
   it('words the toolbar status after a save', () => {
     expect(addedStatus(targetFromRow(EMMA), TWR, 290, null, names, null)).toBe(
       '✓ Added a TWR request for Emma Johnson · ask $290'
