@@ -19,8 +19,13 @@ financial field is carried (spec 2 item 22: stored and shown):
 Requests are per camper for summer and B*Mitzvah, and per HOUSEHOLD for family
 camp (spec 2 item 9): siblings' family-camp answers for the same option merge
 into one request carrying the larger ask, with `ask_conflict` when they differ.
-An adult-weekend request builds from WW-FA / WW-FA Amount only (spec 9.4): the
-row names no program, and the adult is registered for an adult weekend.
+Through 2026 an adult-weekend request also built from the registration ask alone,
+WW-FA / WW-FA Amount (spec 9.4): the row names no program, and the adult is
+registered for an adult weekend. From 2027 it does not (IN-FORM-ONLY = A, owner
+2026-10-28; the registrar: intake starts only when someone fills out the aid
+FORM, and a registration ask is a signal they may file later). An adult-weekend
+request then comes only from the adult-weekend aid form or staff's Add a Request;
+the ask stays in the ask history and on Form intake's Registration ask only list.
 
 A request's session comes from REGISTRATION (owner ruling 2026-09-27): the
 camper's ENROLLED sessions, or the household's for family camp, resolved by
@@ -94,6 +99,11 @@ TEXT_FIELDS: Final = (
     "other_support_expectations",
 )
 HOUSEHOLD_ANSWER_FIELDS: Final = (*INCOME_FIELDS, *NUMBER_FIELDS, *BOOL_FIELDS, *TEXT_FIELDS)
+
+# IN-FORM-ONLY = A (owner 2026-10-28): from this season a registration ask with no aid form makes no adult-weekend
+# request. Earlier seasons keep the rule that made their requests: 2026 is the tie-off season (owner guidance
+# 2026-10-17), and its adult-weekend requests carry decisions.
+ADULT_WEEKEND_FORM_ONLY_FIRST_SEASON: Final = 2027
 
 _PERSON_PROGRAMS: Final = (
     (PROGRAM_SUMMER, "summer_program", "summer_amount_requested"),
@@ -260,9 +270,12 @@ def build_request_specs(
     sessions: Sequence[SessionRow],
     attendees: Sequence[AttendeeRow],
     additions: Sequence[AdditionRecord] = (),
+    *,
+    year: int,
 ) -> tuple[RequestSpec, ...]:
-    """The household's requests: one per form answer, then one per LIVE addition (`additions` may name any
-    household's; only this one's are used)."""
+    """The household's requests for season `year`: one per form answer, then one per LIVE addition (`additions` may
+    name any household's; only this one's are used). Before ADULT_WEEKEND_FORM_ONLY_FIRST_SEASON, a registration ask
+    alone also makes an adult's adult-weekend request."""
 
     def sessions_of(match: Any, statuses: frozenset[int]) -> frozenset[int]:
         return frozenset(a.session_cm_id for a in attendees if match(a) and a.status_id in statuses)
@@ -306,9 +319,10 @@ def build_request_specs(
             family.setdefault(normalize_option_text(text), []).append(
                 (row.person_cm_id, text, _ask(row.fc_amount_requested))
             )
-        # The request exists once the adult is REGISTERED for an adult weekend (a waitlisted
-        # adult included); its session is set only by an ENROLLED one.
-        if not filled and (row.interest_expressed or row.registration_ask > 0):
+        # Before 2027 only: the request exists once the adult is REGISTERED for an adult weekend (a
+        # waitlisted adult included); its session is set only by an ENROLLED one.
+        registration_ask_only = not filled and (row.interest_expressed or row.registration_ask > 0)
+        if registration_ask_only and year < ADULT_WEEKEND_FORM_ONLY_FIRST_SEASON:
             if resolve_adult_session(sessions, registered).candidates:
                 resolution = resolve_adult_session(sessions, enrolled)
                 ask = _ask(row.registration_ask)

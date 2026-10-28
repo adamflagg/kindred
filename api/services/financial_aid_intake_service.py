@@ -600,7 +600,7 @@ class FinancialAidIntakeService:
                 relevant = {id(a): a for a in attendees_by_household[household_cm_id]}
                 for person_cm_id in {*(row.person_cm_id for row in rows), *(a.person_cm_id for a in added)}:
                     relevant.update({id(a): a for a in attendees_by_person[person_cm_id]})
-                specs = build_request_specs(household_cm_id, rows, sessions, list(relevant.values()), added)
+                specs = build_request_specs(household_cm_id, rows, sessions, list(relevant.values()), added, year=year)
                 if not specs:
                     skipped += len(rows)
                     continue
