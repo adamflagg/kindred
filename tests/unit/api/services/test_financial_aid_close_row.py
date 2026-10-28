@@ -69,7 +69,9 @@ def test_posted_accepted_refused_and_cancelled_keep_their_words() -> None:
         assert close_row(row).stage == row.stage
         assert close_row(row).closed is True
     assert close_row(posted).stage == RowStageOut(round=1, code="posted", label="R1 · Posted")
-    assert close_row(refused).stage is not None and close_row(refused).stage.code == "refused"  # type: ignore[union-attr]
+    refused_stage = close_row(refused).stage
+    assert refused_stage is not None
+    assert refused_stage.code == "refused"
 
 
 def test_a_closed_row_needs_nothing() -> None:
@@ -115,4 +117,5 @@ def test_a_past_reads_not_rebuilt_figures_stay_not_rebuilt() -> None:
     assert closed.unticked is None
     assert closed.to_reverse is None
     assert closed.todos is None
-    assert closed.stage is not None and closed.stage.code == "closed"
+    assert closed.stage is not None
+    assert closed.stage.code == "closed"

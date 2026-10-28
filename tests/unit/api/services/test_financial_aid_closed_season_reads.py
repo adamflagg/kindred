@@ -17,7 +17,7 @@ from api.services.financial_aid_household_page import HouseholdPageService
 from api.services.financial_aid_today import TodayService
 from tests.unit.api.services import test_financial_aid_form_intake as intake_tests
 from tests.unit.api.services.decisions_fakes import T0, FakeDecisionsStore, FakeRules, approved, seed_request
-from tests.unit.api.services.financial_aid_fakes import YEAR
+from tests.unit.api.services.financial_aid_fakes import YEAR, fa_row
 from tests.unit.api.services.test_financial_aid_household_page import (
     JOHNSON,
     _Casework,
@@ -79,7 +79,8 @@ async def test_a_done_seasons_grid_has_nothing_pending_and_says_so() -> None:
     for row in out.rows:
         assert row.queues == []
         assert row.holds == []
-        assert row.stage is not None and (row.stage.code, row.stage.label) == ("closed", "Closed")
+        assert row.stage is not None
+        assert (row.stage.code, row.stage.label) == ("closed", "Closed")
 
 
 @pytest.mark.asyncio
@@ -129,7 +130,8 @@ async def test_a_done_seasons_household_page_says_so_and_its_requests_read_close
     assert page.requests
     for card in page.requests:
         assert card.row.queues == []
-        assert card.row.stage is not None and card.row.stage.code == "closed"
+        assert card.row.stage is not None
+        assert card.row.stage.code == "closed"
 
 
 @pytest.mark.asyncio
@@ -171,7 +173,8 @@ async def test_a_done_seasons_today_has_nothing_waiting() -> None:
     (CSD-4)."""
     out = await _today(_two_requests(), season_done=_done).read(YEAR, casework=True, finance=True, view=True)
     assert out.season_done is True
-    assert out.casework is not None and out.finance is not None
+    assert out.casework is not None
+    assert out.finance is not None
     assert [(line.key, line.items) for line in out.casework if line.items] == []
     assert [(line.key, line.items) for line in out.finance if line.items] == []
     stages = out.stages
@@ -190,7 +193,8 @@ async def test_an_open_seasons_today_is_exactly_as_before() -> None:
     assert gated.model_dump() == plain.model_dump()
     assert _line(gated.casework, "needs_offer").items == 2  # the premise: an open season has work
     assert _line(gated.finance, "sources").items == 1
-    assert gated.stages is not None and gated.stages.closed == 0
+    assert gated.stages is not None
+    assert gated.stages.closed == 0
 
 
 # -- Requests › Form intake ----------------------------------------------------------------------------------------
@@ -204,7 +208,8 @@ async def test_a_done_seasons_form_intake_needs_no_look_and_offers_no_addition()
         return 2
 
     plain = await FormIntakeService(store, grants_waiting=waiting).forms(YEAR)
-    assert plain.counts.needs_look > 0 and any(r.can_add for r in plain.rows)  # the premise
+    assert plain.counts.needs_look > 0
+    assert any(r.can_add for r in plain.rows)
     out = await FormIntakeService(store, grants_waiting=waiting, season_done=_done).forms(YEAR)
     assert out.season_done is True
     assert out.counts.needs_look == 0
@@ -222,7 +227,7 @@ async def test_a_done_seasons_waiting_request_became_closed_on_form_intake() -> 
     """CSD-1 on Form intake: a request still waiting with no round (Session unclear, Duplicate pending) became Closed;
     an active one still reads Active."""
     store = await intake_tests.intake(
-        intake_tests.fa_row(intake_tests.OLIVIA, intake_tests.CHEN, summer="Session 2 or Taste 2", summer_ask=3000.0),
+        fa_row(intake_tests.OLIVIA, intake_tests.CHEN, summer="Session 2 or Taste 2", summer_ask=3000.0),
         attendees=intake_tests.enrolled(
             intake_tests.OLIVIA, intake_tests.CHEN, intake_tests.SESSION_2, intake_tests.TASTE_2
         ),

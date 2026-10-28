@@ -40,12 +40,14 @@ def _write_routes() -> list[APIRoute]:
     return [
         route
         for route in financial_aid.router.routes
-        if isinstance(route, APIRoute) and route.path.startswith("/api/financial-aid") and route.methods & WRITES
+        if isinstance(route, APIRoute)
+        and route.path.startswith("/api/financial-aid")
+        and (route.methods or set()) & WRITES
     ]
 
 
 def _key(route: APIRoute) -> tuple[str, str]:
-    (method,) = route.methods & WRITES
+    (method,) = (route.methods or set()) & WRITES
     return method, route.path
 
 
@@ -191,7 +193,8 @@ def test_a_request_keyed_write_reads_the_requests_own_season(
             f"/api/financial-aid/requests/{REQ}/asks", json={"round": 2, "amount": "400", "asked_on": "2025-03-20"}
         )
     assert answer.status_code == 409
-    assert looked.await_args is not None and looked.await_args.args == ("aid_requests", REQ)
+    assert looked.await_args is not None
+    assert looked.await_args.args == ("aid_requests", REQ)
     decisions.key_ask.assert_not_called()
 
 
@@ -229,7 +232,8 @@ def test_a_link_delete_reads_the_links_own_season(client: TestClient, monkeypatc
     with patch.object(financial_aid, "_writes", return_value=writes):
         answer = client.delete("/api/financial-aid/household-links/lnk000000000001", params={"reason": "Wrong family"})
     assert answer.status_code == 409
-    assert looked.await_args is not None and looked.await_args.args == ("aid_household_links", "lnk000000000001")
+    assert looked.await_args is not None
+    assert looked.await_args.args == ("aid_household_links", "lnk000000000001")
     writes.delete_link.assert_not_called()
 
 
