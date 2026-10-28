@@ -89,7 +89,9 @@ export function DecisionPanel({
               // D10: the round waiting on its offer is the one to act on.
               // A C1 round is waiting on tonight's tick, not on an offer: nothing to act on.
               className={
-                line.status === 'needs_offer' && !line.cmPending ? HH_PANEL_ACTIONABLE : undefined
+                line.status === 'needs_offer' && !line.cmPending && !line.closed
+                  ? HH_PANEL_ACTIONABLE
+                  : undefined
               }
             >
               <td className={`${HH_PANEL_TD} font-bold`}>Round {line.round}</td>
