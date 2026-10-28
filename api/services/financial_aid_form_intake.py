@@ -60,6 +60,7 @@ from api.schemas.financial_aid_form_intake import (
     WhyNot,
     WhyNotDetail,
 )
+from api.services.aid_season_state import SeasonDoneRead
 from api.services.camp_calendar import CAMP_TZ
 from api.services.financial_aid_addition_view import addition_view, additions_by_request_key, posted_rounds
 from api.services.financial_aid_campminder_money import (
@@ -581,6 +582,26 @@ def _referenced(rows: Iterable[FormIntakeRowOut]) -> set[int]:
     return out
 
 
+# The Became statuses of a request still waiting with no round when its season closed: they read Closed (CSD-1).
+_WAITING_BECAME: Final = frozenset({"session_unclear", "duplicate_pending"})
+
+
+def close_intake_row(row: FormIntakeRowOut) -> FormIntakeRowOut:
+    """A done season's Form intake row (CLOSED-SEASONS-DONE; owner ruling NG-01): it needs no look and offers no Add a
+    Request…, and a request still waiting with no round (Session unclear, Duplicate pending) became Closed. CampMinder's
+    aid stays on the row at its own amounts. Display only: no request changes."""
+    return row.model_copy(
+        update={
+            "needs_look": False,
+            "look_reasons": [],
+            "can_add": False,
+            "became": [
+                b.model_copy(update={"status": "closed"}) if b.status in _WAITING_BECAME else b for b in row.became
+            ],
+        }
+    )
+
+
 @dataclass(frozen=True)
 class FormIntakeLook:
     """Today's to-do line (PR 3): Form intake's Needs a look rows, named, in the page's own order."""
@@ -596,8 +617,10 @@ class FormIntakeService:
         labels: HouseholdLabeler | None = None,
         grants_waiting: GrantsWaiting | None = None,
         people_search: PeopleSearch | None = None,
+        season_done: SeasonDoneRead | None = None,
     ) -> None:
         self._store = store
+        self._season_done = season_done  # CLOSED-SEASONS-DONE: a done season's rows read as history (close_intake_row)
         self._labels = labels
         self._grants_waiting = grants_waiting
         self._people_search = people_search
@@ -688,15 +711,20 @@ class FormIntakeService:
             if sid in season.by_id
         ]
 
+    async def _done(self, year: int) -> bool:
+        return await self._season_done(year) if self._season_done is not None else False
+
     async def _rows(self, year: int) -> tuple[_Season, list[FormIntakeRowOut]]:
-        season = await self._season(year)
+        season, done = await asyncio.gather(self._season(year), self._done(year))
         explainer = _Explainer(season)
-        return season, [explainer.row(subject) for subject in explainer.subjects()]
+        rows = [explainer.row(subject) for subject in explainer.subjects()]
+        return season, [close_intake_row(r) for r in rows] if done else rows
 
     async def forms(self, year: int) -> FormIntakeResponse:
-        season, rows = await self._rows(year)
+        (season, rows), done = await asyncio.gather(self._rows(year), self._done(year))
         named = await self._named(year, rows)
-        waiting = await self._grants_waiting(year) if self._grants_waiting is not None else 0
+        # A done season's outside grants wait for no camper (nothing here needs doing).
+        waiting = await self._grants_waiting(year) if self._grants_waiting is not None and not done else 0
         return FormIntakeResponse(
             year=year,
             rows=named,
@@ -704,13 +732,18 @@ class FormIntakeService:
             sessions=self._sessions(season, _referenced(named)),
             grants_waiting_for_camper=waiting,
             campminder_aid_on_no_request=float(sum((a.line.amount for a in season.no_request), Decimal(0))),
+            season_done=done,
         )
 
     async def summary(self, year: int) -> FormIntakeSummaryOut:
-        _, rows = await self._rows(year)
+        (_, rows), done = await asyncio.gather(self._rows(year), self._done(year))
         counts = _counts(rows)
         return FormIntakeSummaryOut(
-            year=year, needs_look=counts.needs_look, registration_only=counts.registration_only, all=counts.all
+            year=year,
+            needs_look=counts.needs_look,
+            registration_only=counts.registration_only,
+            all=counts.all,
+            season_done=done,
         )
 
     async def needs_a_look(self, year: int) -> FormIntakeLook:
@@ -723,7 +756,7 @@ class FormIntakeService:
         """Season's D170 line opened in place (owner Q4-A): one line per Form intake row x session (the camper's own
         money, d170_person, or the household's), each with what Add a Request… pre-fills (session = the posting's, ask
         = the posted amount, and Round 1 = it when the money is that camper's or a Family Camp household's)."""
-        season, rows = await self._rows(year)
+        (season, rows), done = await asyncio.gather(self._rows(year), self._done(year))
         explainer = _Explainer(season)
         by_key = {r.key: r for r in await self._named(year, rows)}
         pools = session_pools(season.by_id, season.rules)
@@ -772,6 +805,7 @@ class FormIntakeService:
             sessions=self._sessions(
                 season, {line.session_cm_id for line in lines} | _referenced(by_key[line.row_key] for line in lines)
             ),
+            season_done=done,
         )
 
     async def unlisted(self, year: int, query: str) -> UnlistedResponse:
@@ -796,5 +830,7 @@ class FormIntakeService:
             households = sorted(explainer.households_of.get(person, set()))
             subjects.append((households[0] if households else 0, person))
         rows = [explainer.row(subject) for subject in subjects[:UNLISTED_MAX]]
+        if await self._done(year):
+            rows = [close_intake_row(r) for r in rows]
         named = await self._named(year, rows)
         return UnlistedResponse(year=year, rows=named, sessions=self._sessions(season, _referenced(named)))

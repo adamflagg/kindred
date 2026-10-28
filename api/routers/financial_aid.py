@@ -38,14 +38,16 @@ financial_aid.rules); and development's report (`/reports/{year}/development`,
 financial_aid.view or .summary: aggregates only, D65).
 """
 
+from collections.abc import Mapping
 from datetime import date, datetime
 from decimal import ROUND_DOWN, Decimal
 from functools import partial
 from typing import Annotated, Final, Literal, NoReturn
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response
 from pydantic import StringConstraints
 
+from api.constants.collections import AID_HOUSEHOLD_LINKS, AID_REQUESTS
 from api.schemas.financial_aid import (
     AidSourceRow,
     AidSourcesResponse,
@@ -224,6 +226,7 @@ from api.schemas.financial_aid_to_place import (
     ToPlaceResponse,
     ToPlaceWriteOut,
 )
+from api.services.aid_season_state import SeasonClosedError, refuse_done_season, season_done
 from api.services.financial_aid_arrival_curves_repository import ArrivalCurveRepository
 from api.services.financial_aid_casework_service import (
     AdditionItem,
@@ -368,6 +371,7 @@ from bunking.logging_config import get_logger
 from bunking.rbac.dependencies import require_admin, require_any_permission, require_permission
 from bunking.rbac.permissions import Permission
 
+from .. import dependencies
 from ..dependencies import aid_season_cache, form_intake_cache, pb
 
 router = APIRouter(prefix="/api/financial-aid", tags=["financial-aid"])
@@ -576,6 +580,121 @@ _Year = Annotated[int, Path(ge=2017, le=2100)]
 _Version = Annotated[int, Path(ge=1)]
 
 
+# -- CLOSED-SEASONS-DONE: a done season is history (owner ruling NG-01; CSD-7 = a, CSD-8 = a, 2026-10-28) -------------
+# A season older than the prior season N-1 is done (aid_season_state). Its reads say so (`season_done`) and show
+# nothing pending; every write that would change its requests is refused here, 409, with no Unlock. Each write route
+# carries one gate below or is on CLOSED_SEASON_OPEN_WRITES with why; the route-table walk
+# (tests/unit/api/routers/test_financial_aid_closed_season_gate.py) fails a write that is neither.
+
+
+async def _season_done_read(year: int) -> bool:
+    """A staff read's done test: an unreadable season falls back to the Oct 15 rule, so a blip never fails a page."""
+    return await season_done(year, lambda: dependencies.dashboard_season())
+
+
+async def _refuse_done(year: int) -> None:
+    try:
+        await refuse_done_season(year, lambda: dependencies.dashboard_season())
+    except SeasonClosedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except SeasonYearUnknownError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+async def _open_season_of_year(year: _Year) -> None:
+    """A write whose path names its season."""
+    await _refuse_done(year)
+
+
+async def _open_season_of_request(request_id: Annotated[str, Path(min_length=1, max_length=15)]) -> None:
+    """A write keyed by a request: the request's own season. No such request: the write answers its own 404."""
+    year = await dependencies.aid_record_year(AID_REQUESTS, request_id)
+    if year is not None:
+        await _refuse_done(year)
+
+
+async def _open_season_of_link(link_id: str) -> None:
+    """A household link's delete: the link's own season."""
+    year = await dependencies.aid_record_year(AID_HOUSEHOLD_LINKS, link_id)
+    if year is not None:
+        await _refuse_done(year)
+
+
+async def _open_season_of_body(request: Request) -> None:
+    """A write whose body names its season (`year`). A body that isn't JSON, or has no whole-number year, is left to the
+    route's own validation (422)."""
+    try:
+        body = await request.json()
+    except ValueError:
+        return
+    year = body.get("year") if isinstance(body, dict) else None
+    if isinstance(year, int) and not isinstance(year, bool):
+        await _refuse_done(year)
+
+
+CLOSED_SEASON_GATES: Final = frozenset(
+    {_open_season_of_year, _open_season_of_request, _open_season_of_link, _open_season_of_body}
+)
+_OPEN_YEAR = Depends(_open_season_of_year)
+_OPEN_REQUEST = Depends(_open_season_of_request)
+_OPEN_LINK = Depends(_open_season_of_link)
+_OPEN_BODY = Depends(_open_season_of_body)
+
+_RULES_LOCK = "rules keep their own done-season lock (Unlock with a reason), and change no request"
+_SCENARIO = "the rules' scenario sandbox writes only its own drafts; promoting into a done season is refused by rules"
+_TIE_OUT = "how a closed season's totals tie to the development lead's work (owner ruling CSD-8)"
+_PREVIEW = "a read-only preview: it writes nothing"
+# Writes a done season still takes, each with why (owner ruling CSD-8: reported history and recipients, development
+# columns, funding sources, rules and sources stay open). Keyed (method, full path) as the route table names them.
+CLOSED_SEASON_OPEN_WRITES: Final[Mapping[tuple[str, str], str]] = {
+    ("PATCH", "/api/financial-aid/sources/{source_id}"): "aid_sources are not year-scoped",
+    ("PUT", "/api/financial-aid/sources/{source_id}/grantor"): "aid_sources are not year-scoped",
+    ("POST", "/api/financial-aid/grantors"): "funders are not year-scoped",
+    ("PUT", "/api/financial-aid/grantors/{key}"): "funders are not year-scoped",
+    ("POST", "/api/financial-aid/grantors/{key}/retire"): "funders are not year-scoped",
+    ("POST", "/api/financial-aid/grantors/{key}/unretire"): "funders are not year-scoped",
+    **{
+        (method, f"/api/financial-aid/rules/{{year}}/{tail}"): _RULES_LOCK
+        for method, tail in (
+            ("POST", "validate"),
+            ("POST", "versions"),
+            ("POST", "start-from-last-year"),
+            ("POST", "versions/{version}/approve"),
+            ("PUT", "sections/{section}"),
+            ("PUT", "sections"),
+            ("POST", "draft/discard"),
+            ("POST", "draft/discard-first"),
+            ("POST", "versions/{version}/new-version"),
+        )
+    },
+    **{
+        ("POST", f"/api/financial-aid/scenarios/{{year}}/{tail}"): _SCENARIO
+        for tail in (
+            "snapshot",
+            "starting-points",
+            "starting-points/last-season",
+            "evaluate",
+            "draft/load",
+            "keep",
+            "fit-to-budget",
+            "sensitivity",
+            "options/{code}/rules-draft",
+        )
+    },
+    ("PUT", "/api/financial-aid/scenarios/{year}/draft"): _SCENARIO,
+    ("PATCH", "/api/financial-aid/scenarios/{year}/options/{code}"): _SCENARIO,
+    ("POST", "/api/financial-aid/requests/{request_id}/preview"): _PREVIEW,
+    ("POST", "/api/financial-aid/money/{year}/to-place/{transaction_cm_id}/preview"): _PREVIEW,
+    ("POST", "/api/financial-aid/reports/reported-history/bulk"): _TIE_OUT,
+    ("DELETE", "/api/financial-aid/reports/reported-history/{record_id}"): _TIE_OUT,
+    ("POST", "/api/financial-aid/reports/reported-recipients/bulk"): _TIE_OUT,
+    ("DELETE", "/api/financial-aid/reports/reported-recipients/{record_id}"): _TIE_OUT,
+    ("PUT", "/api/financial-aid/reports/development/columns"): _TIE_OUT,
+    ("PUT", "/api/financial-aid/reports/{year}/funding-sources/{source_id}"): _TIE_OUT,
+    ("PUT", "/api/financial-aid/reports/{year}/funding-sources/funders/{grantor_key}"): _TIE_OUT,
+}
+
+
 @router.get("/applications", response_model=ApplicationListResponse)
 async def list_aid_applications(
     year: int = Query(ge=2017, le=2100),
@@ -606,7 +725,12 @@ async def list_aid_requests(
     return await _casework().list_requests(year, status, flag)
 
 
-@router.post("/applications/{year}/{household_cm_id}/corrections", response_model=CorrectionOut, status_code=201)
+@router.post(
+    "/applications/{year}/{household_cm_id}/corrections",
+    response_model=CorrectionOut,
+    status_code=201,
+    dependencies=[_OPEN_YEAR],
+)
 async def add_aid_correction(
     body: CorrectionCreate,
     year: int = Path(ge=2017, le=2100),
@@ -627,7 +751,12 @@ async def add_aid_correction(
         _raise_http(exc)
 
 
-@router.post("/applications/{year}/{household_cm_id}/use-form", response_model=UseFormOut, status_code=201)
+@router.post(
+    "/applications/{year}/{household_cm_id}/use-form",
+    response_model=UseFormOut,
+    status_code=201,
+    dependencies=[_OPEN_YEAR],
+)
 async def use_aid_form(
     body: UseFormIn,
     year: int = Path(ge=2017, le=2100),
@@ -642,7 +771,7 @@ async def use_aid_form(
         _raise_http(exc)
 
 
-@router.post("/requests/{request_id}/session", response_model=RequestOut)
+@router.post("/requests/{request_id}/session", response_model=RequestOut, dependencies=[_OPEN_REQUEST])
 async def resolve_aid_request_session(
     body: SessionResolve,
     request_id: str = Path(min_length=1, max_length=15),
@@ -654,7 +783,7 @@ async def resolve_aid_request_session(
         _raise_http(exc)
 
 
-@router.post("/requests/{request_id}/duplicate", response_model=RequestOut)
+@router.post("/requests/{request_id}/duplicate", response_model=RequestOut, dependencies=[_OPEN_REQUEST])
 async def mark_aid_request_duplicate(
     body: DuplicateMark,
     request_id: str = Path(min_length=1, max_length=15),
@@ -666,7 +795,7 @@ async def mark_aid_request_duplicate(
         _raise_http(exc)
 
 
-@router.put("/requests/{request_id}/headcount", response_model=RequestOut)
+@router.put("/requests/{request_id}/headcount", response_model=RequestOut, dependencies=[_OPEN_REQUEST])
 async def set_aid_request_headcount(
     body: HeadcountSet,
     request_id: str = Path(min_length=1, max_length=15),
@@ -680,7 +809,7 @@ async def set_aid_request_headcount(
         _raise_http(exc)
 
 
-@router.put("/requests/{request_id}/payer-shares", response_model=RequestOut)
+@router.put("/requests/{request_id}/payer-shares", response_model=RequestOut, dependencies=[_OPEN_REQUEST])
 async def set_aid_request_payer_shares(
     body: PayerSharesSet,
     request_id: str = Path(min_length=1, max_length=15),
@@ -693,7 +822,9 @@ async def set_aid_request_payer_shares(
         _raise_http(exc)
 
 
-@router.put("/requests/{request_id}/payer-shares/{household_cm_id}", response_model=RequestOut)
+@router.put(
+    "/requests/{request_id}/payer-shares/{household_cm_id}", response_model=RequestOut, dependencies=[_OPEN_REQUEST]
+)
 async def set_aid_request_household_share(
     body: HouseholdShareSet,
     request_id: str = Path(min_length=1, max_length=15),
@@ -733,7 +864,7 @@ def _addition_item(body: AdditionCreate) -> AdditionItem:
     )
 
 
-@router.post("/requests/{year}/additions", response_model=AddedRequestOut, status_code=201)
+@router.post("/requests/{year}/additions", response_model=AddedRequestOut, status_code=201, dependencies=[_OPEN_YEAR])
 async def add_aid_request(
     body: AdditionCreate,
     year: _Year,
@@ -760,7 +891,7 @@ async def add_aid_request(
     return added
 
 
-@router.post("/requests/{year}/additions/bulk", response_model=AdditionBulkResult)
+@router.post("/requests/{year}/additions/bulk", response_model=AdditionBulkResult, dependencies=[_OPEN_YEAR])
 async def add_aid_requests_bulk(
     body: AdditionBulkCreate,
     year: _Year,
@@ -779,7 +910,9 @@ async def add_aid_requests_bulk(
     return result
 
 
-@router.post("/requests/{year}/additions/{addition_id}/retire", response_model=AddedRequestOut)
+@router.post(
+    "/requests/{year}/additions/{addition_id}/retire", response_model=AddedRequestOut, dependencies=[_OPEN_YEAR]
+)
 async def retire_aid_request_addition(
     body: AdditionRetire,
     year: _Year,
@@ -798,7 +931,9 @@ async def retire_aid_request_addition(
     return retired
 
 
-@router.post("/requests/{year}/additions/{addition_id}/review", response_model=AddedRequestOut)
+@router.post(
+    "/requests/{year}/additions/{addition_id}/review", response_model=AddedRequestOut, dependencies=[_OPEN_YEAR]
+)
 async def review_aid_request_addition(
     year: _Year,
     addition_id: str = Path(min_length=1, max_length=15),
@@ -829,6 +964,7 @@ def _form_intake() -> FormIntakeService:
         labels=_household_labels(),
         grants_waiting=_grants_waiting_for_camper,
         people_search=HouseholdSearchRepository(pb).search_people,
+        season_done=_season_done_read,  # CLOSED-SEASONS-DONE: nothing needs a look, nothing can be added
     )
 
 
@@ -970,7 +1106,7 @@ async def map_source_grantor(source_id: str, body: SourceGrantorIn, user: AuthUs
         raise _http(exc) from exc
 
 
-@router.post("/household-links", response_model=HouseholdLinkRow, status_code=201)
+@router.post("/household-links", response_model=HouseholdLinkRow, status_code=201, dependencies=[_OPEN_BODY])
 async def create_household_link(body: HouseholdLinkCreate, user: AuthUser = _CASEWORK) -> HouseholdLinkRow:
     try:
         return await _writes().create_link(body, user.email)
@@ -980,7 +1116,7 @@ async def create_household_link(body: HouseholdLinkCreate, user: AuthUser = _CAS
         raise _http(exc) from exc
 
 
-@router.delete("/household-links/{link_id}", status_code=204, response_class=Response)
+@router.delete("/household-links/{link_id}", status_code=204, response_class=Response, dependencies=[_OPEN_LINK])
 async def delete_household_link(link_id: str, reason: _Reason, user: AuthUser = _CASEWORK) -> Response:
     try:
         await _writes().delete_link(link_id, user.email, reason)
@@ -989,7 +1125,7 @@ async def delete_household_link(link_id: str, reason: _Reason, user: AuthUser = 
     return Response(status_code=204)
 
 
-@router.post("/overrides/bulk", response_model=BulkLoadResult)
+@router.post("/overrides/bulk", response_model=BulkLoadResult, dependencies=[_OPEN_BODY])
 async def load_overrides(body: OverrideBulkLoad, user: AuthUser = _RULES) -> BulkLoadResult:
     """Bulk-load reviewed placements and reclassifications (the sub-project 7 lookup, source reclassifications, staff placements).
 
@@ -1241,7 +1377,7 @@ async def get_grants(year: _Year, offsets: bool = Query(True), user: AuthUser = 
     return await _grants_register().read(year)
 
 
-@router.post("/grants/{year}/placements", response_model=PlaceGrantsOut)
+@router.post("/grants/{year}/placements", response_model=PlaceGrantsOut, dependencies=[_OPEN_YEAR])
 async def place_grants(year: _Year, body: PlaceGrantsIn, user: AuthUser = _CASEWORK) -> PlaceGrantsOut:
     try:
         return await _grants().place(year, body, user.email)
@@ -1252,7 +1388,7 @@ async def place_grants(year: _Year, body: PlaceGrantsIn, user: AuthUser = _CASEW
 _CommitmentId = Annotated[str, Path(min_length=15, max_length=15, pattern=r"^[a-z0-9]+$")]
 
 
-@router.post("/grants/{year}/commitments", response_model=CommitmentOut, status_code=201)
+@router.post("/grants/{year}/commitments", response_model=CommitmentOut, status_code=201, dependencies=[_OPEN_YEAR])
 async def create_grant_commitment(year: _Year, body: CommitmentIn, user: AuthUser = _CASEWORK) -> CommitmentOut:
     try:
         return await _grants().create_commitment(year, body, user.email)
@@ -1260,7 +1396,7 @@ async def create_grant_commitment(year: _Year, body: CommitmentIn, user: AuthUse
         raise _grants_http(exc) from exc
 
 
-@router.put("/grants/{year}/commitments/{commitment_id}", response_model=CommitmentOut)
+@router.put("/grants/{year}/commitments/{commitment_id}", response_model=CommitmentOut, dependencies=[_OPEN_YEAR])
 async def save_grant_commitment(
     year: _Year, commitment_id: _CommitmentId, body: CommitmentIn, user: AuthUser = _CASEWORK
 ) -> CommitmentOut:
@@ -1270,7 +1406,9 @@ async def save_grant_commitment(
         raise _grants_http(exc) from exc
 
 
-@router.post("/grants/{year}/commitments/{commitment_id}/withdraw", response_model=CommitmentOut)
+@router.post(
+    "/grants/{year}/commitments/{commitment_id}/withdraw", response_model=CommitmentOut, dependencies=[_OPEN_YEAR]
+)
 async def withdraw_grant_commitment(
     year: _Year, commitment_id: _CommitmentId, body: WithdrawIn, user: AuthUser = _CASEWORK
 ) -> CommitmentOut:
@@ -1291,6 +1429,7 @@ def _decisions() -> FinancialAidDecisionsService:
         GrantsService(GrantsRepository(pb)).register_rows,
         labels=_household_labels(),
         season_cache=aid_season_cache,
+        season_done=_season_done_read,  # CLOSED-SEASONS-DONE: a done season's grid reads as history
     )
 
 
@@ -1375,7 +1514,7 @@ async def get_march_file(year: _Year, user: AuthUser = _CASEWORK) -> MarchFileOu
         raise _decisions_http(exc) from exc
 
 
-@router.post("/requests/{request_id}/asks", response_model=DecisionWriteOut)
+@router.post("/requests/{request_id}/asks", response_model=DecisionWriteOut, dependencies=[_OPEN_REQUEST])
 async def key_aid_ask(request_id: _RequestIdPath, body: AskIn, user: AuthUser = _CASEWORK) -> DecisionWriteOut:
     try:
         return await _decisions().key_ask(request_id, body, user.email)
@@ -1383,7 +1522,7 @@ async def key_aid_ask(request_id: _RequestIdPath, body: AskIn, user: AuthUser = 
         raise _decisions_http(exc) from exc
 
 
-@router.post("/requests/{request_id}/round3-amount", response_model=DecisionWriteOut)
+@router.post("/requests/{request_id}/round3-amount", response_model=DecisionWriteOut, dependencies=[_OPEN_REQUEST])
 async def key_round3_amount(
     request_id: _RequestIdPath, body: Round3AmountIn, user: AuthUser = _CASEWORK
 ) -> DecisionWriteOut:
@@ -1395,7 +1534,7 @@ async def key_round3_amount(
         raise _decisions_http(exc) from exc
 
 
-@router.post("/requests/{request_id}/round3-approval", response_model=DecisionWriteOut)
+@router.post("/requests/{request_id}/round3-approval", response_model=DecisionWriteOut, dependencies=[_OPEN_REQUEST])
 async def decide_round3_amount(
     request_id: _RequestIdPath, body: Round3ApprovalIn, user: AuthUser = _RULES
 ) -> DecisionWriteOut:
@@ -1405,7 +1544,7 @@ async def decide_round3_amount(
         raise _decisions_http(exc) from exc
 
 
-@router.post("/decisions/{year}/posted", response_model=DecisionWriteOut)
+@router.post("/decisions/{year}/posted", response_model=DecisionWriteOut, dependencies=[_OPEN_YEAR])
 async def tick_posted(year: _Year, body: PostedIn, user: AuthUser = _CASEWORK) -> DecisionWriteOut:
     try:
         return await _decisions().tick_posted(year, body, user.email)
@@ -1413,7 +1552,7 @@ async def tick_posted(year: _Year, body: PostedIn, user: AuthUser = _CASEWORK) -
         raise _decisions_http(exc) from exc
 
 
-@router.post("/decisions/{year}/unposted", response_model=DecisionWriteOut)
+@router.post("/decisions/{year}/unposted", response_model=DecisionWriteOut, dependencies=[_OPEN_YEAR])
 async def undo_posted(year: _Year, body: UnpostIn, user: AuthUser = _CASEWORK) -> DecisionWriteOut:
     try:
         return await _decisions().undo_posted(year, body, user.email)
@@ -1421,7 +1560,7 @@ async def undo_posted(year: _Year, body: UnpostIn, user: AuthUser = _CASEWORK) -
         raise _decisions_http(exc) from exc
 
 
-@router.post("/decisions/{year}/accepted", response_model=DecisionWriteOut)
+@router.post("/decisions/{year}/accepted", response_model=DecisionWriteOut, dependencies=[_OPEN_YEAR])
 async def tick_accepted(year: _Year, body: AcceptedIn, user: AuthUser = _CASEWORK) -> DecisionWriteOut:
     try:
         return await _decisions().tick_accepted(year, body, user.email)
@@ -1429,7 +1568,7 @@ async def tick_accepted(year: _Year, body: AcceptedIn, user: AuthUser = _CASEWOR
         raise _decisions_http(exc) from exc
 
 
-@router.post("/requests/{request_id}/hold-release", response_model=DecisionWriteOut)
+@router.post("/requests/{request_id}/hold-release", response_model=DecisionWriteOut, dependencies=[_OPEN_REQUEST])
 async def set_hold_release(
     request_id: _RequestIdPath, body: HoldReleaseIn, user: AuthUser = _CASEWORK
 ) -> DecisionWriteOut:
@@ -1440,7 +1579,7 @@ async def set_hold_release(
         raise _decisions_http(exc) from exc
 
 
-@router.post("/requests/{request_id}/manual-hold", response_model=DecisionWriteOut)
+@router.post("/requests/{request_id}/manual-hold", response_model=DecisionWriteOut, dependencies=[_OPEN_REQUEST])
 async def set_manual_hold(
     request_id: _RequestIdPath, body: ManualHoldIn, user: AuthUser = _CASEWORK
 ) -> DecisionWriteOut:
@@ -1451,7 +1590,7 @@ async def set_manual_hold(
         raise _decisions_http(exc) from exc
 
 
-@router.post("/requests/{request_id}/cost-override", response_model=DecisionWriteOut)
+@router.post("/requests/{request_id}/cost-override", response_model=DecisionWriteOut, dependencies=[_OPEN_REQUEST])
 async def set_cost_override(
     request_id: _RequestIdPath, body: CostOverrideIn, user: AuthUser = _CASEWORK
 ) -> DecisionWriteOut:
@@ -2016,7 +2155,7 @@ async def make_scenario_rules_draft(
     return _draft_out(draft, branched_from=branched_from)
 
 
-@router.post("/requests/{request_id}/cancellation", response_model=DecisionWriteOut)
+@router.post("/requests/{request_id}/cancellation", response_model=DecisionWriteOut, dependencies=[_OPEN_REQUEST])
 async def set_request_cancellation(
     request_id: _RequestIdPath, body: CancellationIn, user: AuthUser = _CASEWORK
 ) -> DecisionWriteOut:
@@ -2094,6 +2233,7 @@ async def get_today(year: _Year, user: AuthUser = _CAMPERSHIPS_OPEN) -> TodayRes
         form_intake=_form_intake().needs_a_look,  # PR 3: Form intake's Needs a look rows, counted by its own code
         labels=_household_labels(),  # next-up households read as the grid names them (audit R2)
         season_cache=aid_season_cache,
+        season_done=_season_done_read,  # CLOSED-SEASONS-DONE: nothing waits on a done season
     )
     return await service.read(
         year,
@@ -2138,6 +2278,7 @@ async def get_household_page(
         history=EntityLogReads(pb),
         additions=FinancialAidDecisionsRepository(pb).fetch_request_additions,  # PR 3: each added request's card
         season_cache=aid_season_cache,
+        season_done=_season_done_read,  # CLOSED-SEASONS-DONE: the cards draw read-only
     )
     try:
         return await service.read(year, household_cm_id)
@@ -2178,7 +2319,7 @@ async def get_to_place(
         raise _decisions_http(exc) from exc
 
 
-@router.post("/money/{year}/to-place/place", response_model=PlaceOut)
+@router.post("/money/{year}/to-place/place", response_model=PlaceOut, dependencies=[_OPEN_YEAR])
 async def place_lines(year: _Year, body: PlaceLinesIn, user: AuthUser = _CASEWORK) -> PlaceOut:
     """Confirm a whole class of lines at once (D16), all or nothing, as one operation with the ticks they make."""
     try:
@@ -2187,7 +2328,7 @@ async def place_lines(year: _Year, body: PlaceLinesIn, user: AuthUser = _CASEWOR
         raise _decisions_http(exc) from exc
 
 
-@router.post("/money/{year}/to-place/{transaction_cm_id}/place", response_model=PlaceOut)
+@router.post("/money/{year}/to-place/{transaction_cm_id}/place", response_model=PlaceOut, dependencies=[_OPEN_YEAR])
 async def place_line(
     year: _Year, transaction_cm_id: _TransactionId, body: PlaceLineIn, user: AuthUser = _CASEWORK
 ) -> PlaceOut:
@@ -2210,7 +2351,9 @@ async def preview_place_line(
         raise _decisions_http(exc) from exc
 
 
-@router.post("/money/{year}/to-place/{transaction_cm_id}/leave", response_model=ToPlaceWriteOut)
+@router.post(
+    "/money/{year}/to-place/{transaction_cm_id}/leave", response_model=ToPlaceWriteOut, dependencies=[_OPEN_YEAR]
+)
 async def leave_line(
     year: _Year, transaction_cm_id: _TransactionId, body: LeaveLineIn, user: AuthUser = _CASEWORK
 ) -> ToPlaceWriteOut:
@@ -2221,7 +2364,9 @@ async def leave_line(
         raise _decisions_http(exc) from exc
 
 
-@router.delete("/money/{year}/to-place/{transaction_cm_id}/leave", response_model=ToPlaceWriteOut)
+@router.delete(
+    "/money/{year}/to-place/{transaction_cm_id}/leave", response_model=ToPlaceWriteOut, dependencies=[_OPEN_YEAR]
+)
 async def reopen_line(
     year: _Year, transaction_cm_id: _TransactionId, reason: _Reason, user: AuthUser = _CASEWORK
 ) -> ToPlaceWriteOut:
@@ -2232,7 +2377,9 @@ async def reopen_line(
         raise _decisions_http(exc) from exc
 
 
-@router.post("/money/{year}/to-place/{transaction_cm_id}/reclassify", response_model=ToPlaceWriteOut)
+@router.post(
+    "/money/{year}/to-place/{transaction_cm_id}/reclassify", response_model=ToPlaceWriteOut, dependencies=[_OPEN_YEAR]
+)
 async def reclassify_line(
     year: _Year, transaction_cm_id: _TransactionId, body: ReclassifyLineIn, user: AuthUser = _RULES
 ) -> ToPlaceWriteOut:

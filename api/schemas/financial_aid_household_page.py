@@ -263,3 +263,5 @@ class HouseholdPageResponse(BaseModel):
     override_reasons: list[str] = Field(
         default_factory=list
     )  # Decision 6: what the cost-override and headcount forms offer
+    # CLOSED-SEASONS-DONE: the season is done, so the request cards draw read-only and the server refuses writes.
+    season_done: bool = False

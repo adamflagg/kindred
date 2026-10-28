@@ -96,6 +96,7 @@ from api.schemas.financial_aid_decisions import (
 from api.schemas.financial_aid_intake import IssueOut
 from api.services.aid_build_reads import build_scoped_reads
 from api.services.aid_season_cache import AidSeasonCache
+from api.services.aid_season_state import SeasonDoneRead
 from api.services.camp_calendar import CAMP_TZ
 from api.services.financial_aid_calc_inputs import (
     ag_parent_of,
@@ -159,7 +160,7 @@ from api.services.financial_aid_intake_types import (
 from api.services.financial_aid_ledger_service import as_of_cutoff, money, parse_pb_datetime
 from api.services.financial_aid_payer_shares import PayerShareError, split_award
 from api.services.financial_aid_program_labels import program_labels
-from api.services.financial_aid_queues import ROUND_STATUS_LABELS, UNTICKED_LABELS, row_queues, row_stage
+from api.services.financial_aid_queues import ROUND_STATUS_LABELS, UNTICKED_LABELS, close_row, row_queues, row_stage
 from api.services.financial_aid_reconciliation import (
     AWAITING_SYNC_TEXT,
     CampLine,
@@ -1587,8 +1588,12 @@ class FinancialAidDecisionsService:
         log_placements: bool = True,
         labels: HouseholdLabeler | None = None,
         season_cache: AidSeasonCache | None = None,
+        season_done: SeasonDoneRead | None = None,
     ) -> None:
-        """`log_placements` False: this service never writes the grant placement log (3c-2): record_placements
+        """`season_done`: whether a season is done (aid_season_state; CLOSED-SEASONS-DONE). The grid then reads as
+        history (close_row) and says so. None: no season is ever done (internal routes, candidate pricing, tests).
+
+        `log_placements` False: this service never writes the grant placement log (3c-2): record_placements
         refuses. Only a scenario's frozen season and a rules approval's effect measurement (H3) pass it; neither
         is a read staff see, and neither writes. No live read writes the log either way (owner ruling 2026-10-16):
         the sync step and the warm call record_placements.
@@ -1607,6 +1612,11 @@ class FinancialAidDecisionsService:
         # The household page's label helper: names a household-level grid row as Money and Grants name it. None: the
         # row falls back to its family name.
         self._labels = labels
+        self._season_done = season_done
+
+    async def is_done(self, year: int) -> bool:
+        """Whether `year` is a done season, for a read (aid_season_state.season_done); False with no reader."""
+        return await self._season_done(year) if self._season_done is not None else False
 
     async def _request_side(self, year: int, *, names: bool) -> _RequestSide:
         rules, applications, requests, corrections = await asyncio.gather(
@@ -2416,7 +2426,9 @@ class FinancialAidDecisionsService:
             return past, fam, cam
 
         # The aid form's contact names (Requested by) are read once, beside the season's own loads.
-        (season, families, campers), contacts = await asyncio.gather(load(), self._store.fetch_fa_contacts(year))
+        (season, families, campers), contacts, done = await asyncio.gather(
+            load(), self._store.fetch_fa_contacts(year), self.is_done(year)
+        )
         requesters = requester_names(contacts, season.requests.values())
         rows = [self.row_of(season, (families, campers), rid, requesters) for rid in season.priced]
         rows = await self._with_household_labels(year, rows)
@@ -2455,6 +2467,8 @@ class FinancialAidDecisionsService:
                 for row in rows
             ]
             rows = [_posted_unknown(row) if row.request_id in season.posted_unknown else row for row in rows]
+        if done:  # CLOSED-SEASONS-DONE: history, live or past; no figure moves
+            rows = [close_row(row) for row in rows]
         rows.sort(key=lambda r: (r.family_name.lower(), r.household_cm_id, r.camper_name.lower(), r.request_id))
         rules_version = season.rules.version if season.rules is not None else None
         past = season.as_of is not None
@@ -2465,6 +2479,7 @@ class FinancialAidDecisionsService:
             as_of=season.as_of,
             as_of_axis=season.axis,
             ticked_season=year >= FIRST_TICKED_SEASON,
+            season_done=done,
             not_rebuilt=[
                 *_past_gaps(GRID_GAPS, season),
                 *(_gaps(["posted"]) if season.posted_unknown else []),

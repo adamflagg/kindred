@@ -6,6 +6,7 @@ import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -80,3 +81,57 @@ def test_the_trigger_sees_the_mirror_the_same_sync_just_wrote() -> None:
 
     assert new_cm not in {r.person_cm_id for r in warm}
     assert new_cm in seen[0], "the intake rebuild read the previous sync's mirror from layer 1"
+
+
+# -- CLOSED-SEASONS-DONE: intake never rewrites a done season's requests -----------------------------------------------
+
+
+def _intake_on(season: int | None, year: int) -> tuple[int, dict[str, object], AsyncMock]:
+    """POST the trigger for `year` with the dashboard's season `season` (None: it can't be read)."""
+    import api.dependencies as dependencies
+    from api.services.aid_season_state import SeasonYearUnknownError
+
+    async def configured() -> int:
+        if season is None:
+            raise SeasonYearUnknownError("The dashboard's season couldn't be read")
+        return season
+
+    build = AsyncMock(return_value=IntakeReport(year, 1, 1, 0, 1, 0, 0, 0, 0, 0))
+    with (
+        patch.object(dependencies, "dashboard_season", configured),
+        patch.object(internal, "FinancialAidIntakeService") as service_cls,
+    ):
+        service_cls.return_value.build = build
+        app = FastAPI()
+        app.include_router(internal.router)
+        response = TestClient(app).post("/api/internal/financial-aid/intake", json={"year": year})
+    return response.status_code, response.json(), build
+
+
+def test_intake_skips_a_done_season_and_says_why() -> None:
+    """Owner ruling NG-01 / CSD-8: nothing changes a closed season's requests, so a replay of 2025 builds nothing. It
+    answers 200 with the skip, as the intake floor does, so the Go sync logs no failure."""
+    status, body, build = _intake_on(2027, 2025)
+    assert status == 200
+    assert body["skipped_reason"] == "closed season: its requests are history"
+    assert body["requests_created"] == body["requests_updated"] == 0
+    build.assert_not_awaited()
+
+
+def test_intake_still_builds_the_open_seasons() -> None:
+    for year in (2026, 2027):
+        status, _, build = _intake_on(2027, year)
+        assert status == 200
+        build.assert_awaited_once_with(year)
+
+
+def test_intake_on_an_unreadable_season_never_blocks_an_open_one(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The nightly's behaviour for open seasons is unchanged: a sync-status blip falls back to the Oct 15 rule rather
+    than refusing the build (the gate's write side is strict; intake is the sync's own rebuild, never a staff write)."""
+    monkeypatch.setenv("CAMPMINDER_SEASON_ID", "2027")
+    status, _, build = _intake_on(None, 2026)
+    assert status == 200
+    build.assert_awaited_once_with(2026)
+    status, body, build = _intake_on(None, 2025)
+    assert body["skipped_reason"] == "closed season: its requests are history"
+    build.assert_not_awaited()

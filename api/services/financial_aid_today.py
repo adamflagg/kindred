@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 from collections import defaultdict
 from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Final, Protocol
@@ -33,6 +33,7 @@ from api.schemas.financial_aid_surfaces import (
     WeekPointOut,
 )
 from api.services.aid_season_cache import AidSeasonCache
+from api.services.aid_season_state import SeasonDoneRead
 from api.services.camp_calendar import CAMP_TZ
 from api.services.financial_aid_decisions_service import (
     FIRST_TICKED_SEASON,
@@ -49,7 +50,7 @@ from api.services.financial_aid_household_page import HouseholdLabeler
 from api.services.financial_aid_intake_service import never_true_labels
 from api.services.financial_aid_intake_types import FLAG_AWAITING_RULES, FaRow
 from api.services.financial_aid_ledger_service import NamedSource, money
-from api.services.financial_aid_queues import UNRECONCILED, UNTICKED_LABELS, offer_rounds
+from api.services.financial_aid_queues import UNRECONCILED, UNTICKED_LABELS, close_row, offer_rounds
 from api.services.financial_aid_rules_service import RulesNotFoundError, RulesVersion
 from api.services.financial_aid_to_place_service import NO_OPEN_LINES, OpenToPlace, ToPlaceCounts, open_to_place
 from bunking.financial_aid.decisions.pricing import NO_APPROVED_RULES
@@ -689,9 +690,11 @@ def _stages(inputs: TodayInputs) -> TodayStagesOut:
     segments: dict[str, int] = dict.fromkeys(BAR_SEGMENTS, 0)
     flags: dict[str, int] = dict.fromkeys(FLAG_STAGES, 0)
     households: set[int] = set()
+    closed = 0
     for row in inputs.rows:
         for flag in FLAG_STAGES:
             flags[flag] += bool(row.queues and flag in row.queues)
+        closed += row.stage is not None and row.stage.code == "closed"
         segment = _SEGMENT_OF_STAGE.get(row.stage.code) if row.stage is not None else None
         if segment is None:  # cancelled, or no round yet: not live
             continue
@@ -713,6 +716,7 @@ def _stages(inputs: TodayInputs) -> TodayStagesOut:
         families=len(households),
         live=sum(segments.values()),
         offered=sum(segments[s] for s in _OFFERED),
+        closed=closed,
     )
 
 
@@ -794,6 +798,28 @@ def _posted_this_week(inputs: TodayInputs) -> WeekFigureOut:
     )
 
 
+def _closed_inputs(inputs: TodayInputs) -> TodayInputs:
+    """CLOSED-SEASONS-DONE (owner ruling NG-01): a done season's Today has nothing waiting. Its rows are already closed
+    (close_row: no queue, no hold, Stage Closed); the lines that read something else are emptied too: Form intake, To
+    place, grants needing attention, late full coverage, finance's rules sections, sources and never-true fields, and
+    development's funder upkeep. Display only: the money figures (Committed by week, Posted in CM) read the same rows,
+    whose money is untouched."""
+    grants = inputs.grants.model_copy(update={"needs_camper": [], "waiting": [], "unmapped": []})
+    return replace(
+        inputs,
+        grants=grants,
+        register=(),
+        grantors=(),
+        draft_sections=None,
+        unclassified=(),
+        never_true=(),
+        never_true_labels={},
+        to_place=None,
+        needs_group=(),
+        form_intake=None,
+    )
+
+
 def build_today(
     inputs: TodayInputs, *, casework: bool, finance: bool, development: bool = False, view: bool = False
 ) -> TodayResponse:
@@ -866,11 +892,13 @@ class TodayService:
         labels: HouseholdLabeler | None = None,
         clock: Callable[[], datetime] | None = None,
         season_cache: AidSeasonCache | None = None,
+        season_done: SeasonDoneRead | None = None,
     ) -> None:
         """`labels`: the household page's label helper (household_labels), naming every next-up household as the grid
         names a household-level row. None: the family name. `season_cache`: the live-season cache staff reads share
-        (layer 2)."""
+        (layer 2). `season_done` (CLOSED-SEASONS-DONE): a done season's Today has nothing waiting (`_closed_inputs`)."""
         self._season_cache = season_cache
+        self._season_done = season_done
         self._store = store
         self._pricing = pricing
         self._rules = rules
@@ -893,10 +921,16 @@ class TodayService:
         named = casework or finance  # the lines that name households (and their campers, for the drawer)
         shared = OneGrantsLoad(self._grants, year)
         decisions = FinancialAidDecisionsService(
-            self._store, self._pricing, shared.register, clock=self._clock, season_cache=self._season_cache
+            self._store,
+            self._pricing,
+            shared.register,
+            clock=self._clock,
+            season_cache=self._season_cache,
+            season_done=self._season_done,
         )
         # asyncio.gather types six awaitables at most, so the events ride a task of their own.
         events_read = asyncio.ensure_future(self._store.fetch_decision_events(year) if finance else _no_events())
+        done_read = asyncio.ensure_future(decisions.is_done(year))
         # season() must start BEFORE shared.read(): the season cache's stamp depends on that order.
         # (named_season is first in the gather.)
         (
@@ -916,6 +950,7 @@ class TodayService:
             _never_true(self._intake, year) if finance and self._intake is not None else _no_fields(),
         )
         events = await events_read
+        done = await done_read
         rows: list[GridRowOut] = []
         open_lines: OpenToPlace | None = None
         hold_since: dict[str, date] = {}
@@ -923,14 +958,16 @@ class TodayService:
             live, names = season
             live = await decisions.with_unticked(live)
             rows = [decisions.row_of(live, names, request_id) for request_id in live.priced]
+            if done:  # CLOSED-SEASONS-DONE: history, so every row-derived line and the bar count nothing
+                rows = [close_row(row) for row in rows]
             hold_since = {
                 rid: state.manual.placed_at.astimezone(CAMP_TZ).date()
                 for rid, state in live.holds.items()
                 if state.manual is not None
             }
-            if casework and self._to_place is not None:
+            if casework and self._to_place is not None and not done:
                 open_lines = await open_to_place(live, self._to_place)
-        look = await self._form_intake(year) if casework and self._form_intake is not None else None
+        look = await self._form_intake(year) if casework and self._form_intake is not None and not done else None
         inputs = TodayInputs(
             year=year,
             rows=rows,
@@ -950,7 +987,10 @@ class TodayService:
             source_ids={key: named.source_id for key, named in named_sources.items()},
             form_intake=look,
         )
+        if done:
+            inputs = _closed_inputs(inputs)
         out = build_today(inputs, casework=casework, finance=finance, development=development, view=view)
+        out = out.model_copy(update={"season_done": done})
         return await self._labelled(year, out) if named else out
 
     async def _labelled(self, year: int, out: TodayResponse) -> TodayResponse:

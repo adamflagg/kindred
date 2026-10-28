@@ -47,6 +47,7 @@ from api.schemas.financial_aid_household_page import (
 )
 from api.schemas.financial_aid_intake import ApplicationDetailResponse
 from api.services.aid_season_cache import AidSeasonCache
+from api.services.aid_season_state import SeasonDoneRead
 from api.services.financial_aid_addition_view import addition_view, additions_by_request_key
 from api.services.financial_aid_cancellations import Cancellation
 from api.services.financial_aid_casework_service import CaseworkNotFoundError, disagreeing_fields
@@ -73,6 +74,7 @@ from api.services.financial_aid_ledger_service import (
     posting_line,
 )
 from api.services.financial_aid_payer_shares import share_status
+from api.services.financial_aid_queues import close_row
 from api.services.financial_aid_reconciliation import (
     page_scope as page_scope,  # re-exported: it lives in the light module
 )
@@ -700,8 +702,10 @@ class HouseholdPageService:
         additions: Callable[[int], Awaitable[Sequence[AdditionRecord]]] | None = None,
         clock: Callable[[], datetime] | None = None,
         season_cache: AidSeasonCache | None = None,
+        season_done: SeasonDoneRead | None = None,
     ) -> None:
         self._store = store
+        self._season_done = season_done  # CLOSED-SEASONS-DONE: a done season's cards read as history (close_row)
         self._additions = additions  # PR 3: the season's aid_request_additions, for each added request's card
         self._pricing = pricing
         self._grants = grants
@@ -714,10 +718,15 @@ class HouseholdPageService:
     async def read(self, year: int, household_cm_id: int) -> HouseholdPageResponse:
         shared = OneGrantsLoad(self._grants, year)
         decisions = FinancialAidDecisionsService(
-            self._store, self._pricing, shared.register, clock=self._clock, season_cache=self._season_cache
+            self._store,
+            self._pricing,
+            shared.register,
+            clock=self._clock,
+            season_cache=self._season_cache,
+            season_done=self._season_done,
         )
         # season() must start BEFORE shared.read(): the season cache's stamp depends on that order.
-        season, (grants, _) = await asyncio.gather(decisions.season(year), shared.read())
+        season, (grants, _), done = await asyncio.gather(decisions.season(year), shared.read(), decisions.is_done(year))
         season = await decisions.with_unticked(season)  # D162: the grid's own rows, Not reconciled's reasons and all
         scope = page_scope(household_cm_id, season.requests, season.shares)
         households = set(scope.households)
@@ -759,6 +768,8 @@ class HouseholdPageService:
         additions = additions_by_request_key(await self._additions(year) if self._additions is not None else [])
         requesters = requester_names(contacts, season.requests.values())
         rows = [decisions.row_of(season, names, rid, requesters) for rid in scope.request_ids]
+        if done:  # CLOSED-SEASONS-DONE: history; no figure moves
+            rows = [close_row(row) for row in rows]
         grant_rows = [
             g
             for g in grants.grants
@@ -951,6 +962,7 @@ class HouseholdPageService:
                 if season.rules is not None
                 else list(DEFAULT_REASON_CODES)
             ),
+            season_done=done,
         )
 
 

@@ -21,6 +21,7 @@ from api.schemas.financial_aid_decisions import (
 from api.services.financial_aid_cancellations import TODO_CANCEL_REASON
 from api.services.financial_aid_intake_types import (
     FLAG_DUPLICATE_SURVIVOR_WITHDRAWN,
+    STATUS_ACTIVE,
     STATUS_DUPLICATE_PENDING,
     STATUS_UNMATCHED,
 )
@@ -41,6 +42,8 @@ ROUND_STATUS_LABELS: Final[dict[RoundStatusOut, str]] = {
 # screens keep no words of their own.
 STAGE_ACCEPTED_WORDS: Final = "Accepted"
 STAGE_CANCELLED_WORDS: Final = "Cancelled"
+# CLOSED-SEASONS-DONE (owner ruling NG-01, CSD-1): a done season's request that was still waiting reads Closed.
+STAGE_CLOSED_WORDS: Final = "Closed"
 # The states a request or a payer share is in while Not reconciled (D59): a sync has run and CampMinder disagrees
 # with the lock. A hand tick awaiting tonight's sync is none of them (V1, owner 10-03): it waits on the family, CM ✓
 # "pending". A row is off direction (a) once ConfirmationOut.reconciled; direction (b) is GridRowOut.unticked (D162).
@@ -121,3 +124,34 @@ def row_stage(row: GridRowOut) -> RowStageOut | None:
     else:
         code, words = latest.status, ROUND_STATUS_LABELS[latest.status]
     return RowStageOut(round=latest.round, code=code, label=f"R{latest.round} · {words}")
+
+
+# The Stage codes of a request still waiting on someone: when its season closes, they read Closed (close_row).
+_WAITING_STAGES: Final = frozenset({"held", "not_decided", "needs_offer", "pending_approval"})
+# The statuses of a request that was live at close: a withdrawn request or a confirmed duplicate waited on no one.
+_LIVE_AT_CLOSE: Final = frozenset({STATUS_ACTIVE, STATUS_UNMATCHED, STATUS_DUPLICATE_PENDING})
+
+
+def close_row(row: GridRowOut) -> GridRowOut:
+    """A done season's row (CLOSED-SEASONS-DONE; owner ruling NG-01: "no pending clicks in Kindred basically, it
+    should look 'done'"). It is in no Requests view and needs nothing (CSD-5): no queues, holds, unticked money,
+    to-dos, notes or To reverse. A stage still waiting when the season closed, or a live request with no round yet,
+    reads Closed (CSD-1); Posted, Accepted, Refused by finance and Cancelled keep their own words.
+
+    Display only. The request's status, rounds, Included and every money figure are history and stand as they are,
+    so no total moves (NOTES §5). A past read's not-rebuilt figures (None) stay None."""
+    stage = row.stage
+    waiting = stage is None or stage.code in _WAITING_STAGES
+    if waiting and row.cancellation is None and row.request_status in _LIVE_AT_CLOSE:
+        stage = RowStageOut(round=stage.round if stage is not None else None, code="closed", label=STAGE_CLOSED_WORDS)
+    return row.model_copy(
+        update={
+            "queues": None if row.queues is None else [],
+            "holds": [],
+            "unticked": None if row.unticked is None else [],
+            "todos": None if row.todos is None else [],
+            "notes": None if row.notes is None else [],
+            "to_reverse": None if row.to_reverse is None else False,
+            "stage": stage,
+        }
+    )

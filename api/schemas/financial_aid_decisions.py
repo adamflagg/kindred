@@ -267,6 +267,8 @@ RowStageCode = Literal[
     "not_rebuilt",
     "accepted",
     "cancelled",
+    # CLOSED-SEASONS-DONE (CSD-1): a request still waiting when its season closed (financial_aid_queues.close_row).
+    "closed",
 ]
 
 
@@ -357,6 +359,9 @@ class RequestsGridResponse(BaseModel):
     # year >= FIRST_TICKED_SEASON (SP10b Decision 9): the frontend hides CM ✓ when False. A property of the season, so
     # a past read of a ticked season is True too, though its rows carry no confirmation (not_rebuilt says why).
     ticked_season: bool
+    # CLOSED-SEASONS-DONE (aid_season_state): the season is done, so its rows read as history (close_row) and the
+    # screens offer no working click. The server refuses writes to it (409).
+    season_done: bool = False
 
 
 class CountOut(BaseModel):

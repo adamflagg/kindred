@@ -14,7 +14,7 @@ from typing import Any
 from api.services.financial_aid_decisions_service import (
     _LIVE,  # the write's own live set; #2950 dropped its public alias
 )
-from api.services.financial_aid_queues import ROUND_STATUS_LABELS
+from api.services.financial_aid_queues import ROUND_STATUS_LABELS, STAGE_CLOSED_WORDS
 from bunking.financial_aid.decisions.holds import UNRELEASABLE
 
 FIXTURE = Path(__file__).resolve().parents[4] / "tests" / "fixtures" / "camperships_frontend_mirrors.json"
@@ -34,3 +34,8 @@ def test_the_live_request_statuses_are_the_writes_own() -> None:
 def test_the_unreleasable_holds_are_the_servers() -> None:
     """The household page offers no Release for a hold the server won't release."""
     assert sorted(MIRRORS["unreleasable"]) == sorted(UNRELEASABLE)
+
+
+def test_the_closed_stage_words_are_the_servers() -> None:
+    """CLOSED-SEASONS-DONE (CSD-1): a done season's waiting request reads Closed; the frontend's stone tone keys off it."""
+    assert MIRRORS["stage_closed_words"] == STAGE_CLOSED_WORDS
