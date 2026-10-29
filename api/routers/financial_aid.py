@@ -85,8 +85,13 @@ from api.schemas.financial_aid_decisions import (
 )
 from api.schemas.financial_aid_form_intake import (
     AidOnNoRequestResponse,
+    FormChangeReviewedOut,
     FormIntakeResponse,
     FormIntakeSummaryOut,
+    FormResponseActionOut,
+    FormResponseIgnore,
+    FormResponseLink,
+    LinkCandidatesOut,
     UnlistedResponse,
 )
 from api.schemas.financial_aid_grants import (
@@ -255,6 +260,7 @@ from api.services.financial_aid_development_service import (
 )
 from api.services.financial_aid_form_intake import FormIntakeService
 from api.services.financial_aid_form_intake_cache import CachedFormIntakeService
+from api.services.financial_aid_google_form_writes import FormResponseCaseworkService
 from api.services.financial_aid_grant_offsets import GrantsRegisterService
 from api.services.financial_aid_grants_repository import GrantsRepository
 from api.services.financial_aid_grants_service import (
@@ -1004,6 +1010,108 @@ async def get_unlisted_campers(
 ) -> UnlistedResponse:
     """Find a Camper Not Listed…: campers enrolled this season on no Form intake row, by name or person id."""
     return await _form_intake().unlisted(year, q)
+
+
+# -- The adult aid Google Form (adult-aid form design PR 2): Link…, Ignore…, Mark Reviewed, Pull now ------------------
+
+
+def _form_responses() -> FormResponseCaseworkService:
+    return FormResponseCaseworkService(FinancialAidDecisionsRepository(pb))
+
+
+# PocketBase's own route for the form job (pocketbase/sync/api.go): a TriggerIndividualRoute, so it reads the named
+# season's form and nothing else.
+_GOOGLE_FORM_PULL_ROUTE: Final = "/api/custom/sync/aid-google-form-responses"
+
+
+async def _pull_google_form(year: int) -> object:
+    """Ask PocketBase to read the season's adult aid form now, as FastAPI's superuser: the route is
+    bunking.manage-gated for people, which Camperships staff may not hold, so the gate here is
+    financial_aid.casework and PocketBase lets its superuser through. The job rebuilds intake itself on a change."""
+    return await asyncio.to_thread(pb.send, _GOOGLE_FORM_PULL_ROUTE, {"method": "POST", "params": {"year": year}})
+
+
+_FORM_RESPONSE_ID = Annotated[str, Path(min_length=1, max_length=15)]
+
+
+@router.post(
+    "/intake/{year}/form-responses/{record_id}/link", response_model=FormResponseActionOut, dependencies=[_OPEN_YEAR]
+)
+async def link_form_response(
+    body: FormResponseLink,
+    year: _Year,
+    record_id: _FORM_RESPONSE_ID,
+    user: AuthUser = Depends(require_permission(Permission.FINANCIAL_AID_CASEWORK)),
+) -> FormResponseActionOut:
+    """Link…: this adult aid form response is this person's (registered this season). Never re-matched by the
+    job; an ignored response linked here is un-ignored. Logged; the season's intake is rebuilt so the request lands."""
+    try:
+        linked = await _form_responses().link(year, record_id, body.person_cm_id, body.reason, user.email)
+    except _ERRORS as exc:
+        _raise_http(exc)
+    await _rebuild_intake(year)
+    return linked
+
+
+@router.post(
+    "/intake/{year}/form-responses/{record_id}/ignore", response_model=FormResponseActionOut, dependencies=[_OPEN_YEAR]
+)
+async def ignore_form_response(
+    body: FormResponseIgnore,
+    year: _Year,
+    record_id: _FORM_RESPONSE_ID,
+    user: AuthUser = Depends(require_permission(Permission.FINANCIAL_AID_CASEWORK)),
+) -> FormResponseActionOut:
+    """Ignore…: a test or duplicate response (a reason is required). It stays listed under All forms with the
+    reason, who and when, and Link… undoes it. Logged; the season's intake is rebuilt."""
+    try:
+        ignored = await _form_responses().ignore(year, record_id, body.reason, user.email)
+    except _ERRORS as exc:
+        _raise_http(exc)
+    await _rebuild_intake(year)
+    return ignored
+
+
+@router.get("/intake/{year}/form-responses/{record_id}/candidates", response_model=LinkCandidatesOut)
+async def get_form_response_candidates(
+    year: _Year,
+    record_id: _FORM_RESPONSE_ID,
+    user: AuthUser = Depends(require_permission(Permission.FINANCIAL_AID_CASEWORK)),
+) -> LinkCandidatesOut:
+    """Link…'s dialog: the response's candidates, named, with the respondent email (read here and nowhere else)."""
+    try:
+        return await _form_responses().link_candidates(year, record_id)
+    except _ERRORS as exc:
+        _raise_http(exc)
+
+
+@router.post("/intake/{year}/form-responses/pull", status_code=202, dependencies=[_OPEN_YEAR])
+async def pull_google_form(
+    year: _Year,
+    user: AuthUser = Depends(require_permission(Permission.FINANCIAL_AID_CASEWORK)),
+) -> dict[str, str]:
+    """Pull now: read the season's adult aid Google Form at once ("the registrar just told me one came in")."""
+    await _pull_google_form(year)
+    logger.info("Adult aid form pull requested year=%s actor=%s", year, user.email)
+    return {"status": "requested"}
+
+
+@router.post(
+    "/requests/{year}/form-changes/{request_id}/review", response_model=FormChangeReviewedOut, dependencies=[_OPEN_YEAR]
+)
+async def review_form_change(
+    year: _Year,
+    request_id: str = Path(min_length=1, max_length=15),
+    user: AuthUser = Depends(require_permission(Permission.FINANCIAL_AID_CASEWORK)),
+) -> FormChangeReviewedOut:
+    """Mark Reviewed (owner Q2): a decided request's adult aid form changed or was deleted in Google, and the change
+    was not applied (GF-4). Clears its Needs a look until a different change arrives. Logged; intake is rebuilt."""
+    try:
+        reviewed = await _form_responses().review_form_change(year, request_id, user.email)
+    except _ERRORS as exc:
+        _raise_http(exc)
+    await _rebuild_intake(year)
+    return reviewed
 
 
 def _history() -> SeasonHistoryService:

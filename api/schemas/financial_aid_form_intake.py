@@ -7,7 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from api.schemas.financial_aid_intake import RequestOrigin
+from api.schemas.financial_aid_intake import FormSource, RequestOrigin
 
 # Why a row has no request, or a session no request holds. Computed at read time from intake's own inputs (no table).
 WhyNot = Literal[
@@ -29,7 +29,23 @@ WhyNot = Literal[
 # More about a why-not: registration_ask_unattributed's ask is older than this registration (design 96 §3.2).
 WhyNotDetail = Literal["ask_predates_registration"]
 # Why a row is in Needs a look (owner Q3-A: a registration-only row only through campminder_aid).
-LookReason = Literal["campminder_aid", "enrolled_no_request", "session_unclear", "registration_ask_unreviewed"]
+LookReason = Literal[
+    "campminder_aid",
+    "enrolled_no_request",
+    "session_unclear",
+    "registration_ask_unreviewed",
+    # The adult aid Google Form (adult-aid form design PR 2), 2027 on. GF-4: a decided request's response changed or
+    # was deleted in Google, and the change was not applied (Mark Reviewed clears it until the next different one).
+    "form_changed_after_decision",
+    "form_response_deleted",
+    # The response's program choice maps to no one 2027 weekend (§6); a refused pull is the season's (§3.4).
+    "form_choice_unclear",
+    "form_pull_refused",
+]
+# aid_form_responses.match_status (PR 1's vocabulary).
+FormMatchStatus = Literal[
+    "auto", "suggested", "staff", "unmatched", "registered_elsewhere", "not_registered", "ignored", "superseded"
+]
 # "closed": CLOSED-SEASONS-DONE (CSD-1), a done season's request that was still waiting with no round (Session unclear,
 # Duplicate pending). Display only: the request's own status is unchanged.
 BecameStatus = Literal[
@@ -47,6 +63,9 @@ class FormAnswerOut(BaseModel):
     option_text: str
     ask: float
     named_session_cm_id: int = 0  # the one session the text names on its own; 0 when none or several
+    # Which form: left out of the JSON for CampMinder's (so a 2026 row serializes exactly as before); "google_form"
+    # for an adult aid form response (PR 2), whose named session is its weekend.
+    form_source: FormSource = Field(default="campminder", exclude_if=lambda v: v == "campminder")
 
 
 class RegistrationAskOut(BaseModel):
@@ -100,6 +119,8 @@ class BecameOut(BaseModel):
     # posted amount (Add a Request…'s recorded CampMinder money included).
     posted_rounds: list[int] = Field(default_factory=list)
     round1_posted: float | None = None
+    # "google_form" for a request the adult aid form made (PR 2); left out of the JSON otherwise.
+    form_source: FormSource | None = Field(default=None, exclude_if=lambda v: v is None)
 
 
 class CampMinderAidOut(BaseModel):
@@ -131,7 +152,8 @@ class FormIntakeRowOut(BaseModel):
     camper_name: str = ""
     filed: bool  # the household filed the aid form (a program answer or income)
     # A registration ask on this row and no aid form for its bucket: the household filed none, or (from 2027,
-    # IN-BUCKETS) the household filed none for a bucket the ask is for (no aid form covers adult weekends yet).
+    # IN-BUCKETS) the household filed none for a bucket the ask is for, and (PR 2) the person has no matched adult aid
+    # form response for it.
     registration_only: bool
     # From 2027 (IN-BUCKETS): the buckets (program keys) the row's ask is registration-ask-only for, so a household
     # that filed for another bucket reads "no aid form for <program>". Left out of the JSON when empty, so a 2026 row
@@ -154,6 +176,136 @@ class FormIntakeCountsOut(BaseModel):
     needs_look: int
     registration_only: int
     all: int
+    # Adult aid form responses waiting for staff to Link… or Ignore… (PR 2): suggested, registered elsewhere, not
+    # registered, unmatched. 0 before 2027.
+    to_link: int = 0
+
+
+# -- The adult aid Google Form (adult-aid form design PR 2) ----------------------------------------------------------
+
+
+class FormFigureOut(BaseModel):
+    """One figure as the response gave it: `value` None when Kindred could not read it (unknown, never 0), with what
+    was typed and the note staff see; a clean read has no note."""
+
+    field: str
+    value: float | None
+    typed: str = ""
+    note: str = ""
+
+
+class FormYesNoOut(BaseModel):
+    field: str
+    value: bool | None
+    note: str = ""
+
+
+class FormCandidateOut(BaseModel):
+    """A person the response could be, with the evidence (PR 1's match_candidates: CampMinder ids and signals)."""
+
+    person_cm_id: int
+    household_cm_id: int
+    signals: list[str] = Field(default_factory=list)
+    session_cm_ids: list[int] = Field(default_factory=list)
+    elsewhere: bool = False  # registered for another weekend than the response chose
+    household_email: bool = False  # the email matched someone else in their household (a tie-break)
+    camper_name: str = ""  # filled on the link-candidates read only
+
+
+class SupersededOut(BaseModel):
+    """An earlier response from the same person for the same weekend, replaced by this one (information)."""
+
+    response_id: str
+    submitted_at: str
+
+
+class FormResponseOut(BaseModel):
+    """One adult aid form response, as the opened Form intake row shows it. Never the respondent email (the
+    link-candidates read has it), the typed birthdate, POC, race/ethnicity or gender identity."""
+
+    id: str  # the aid_form_responses record id (Link…, Ignore…)
+    response_id: str
+    row_key: str = ""  # "<household>:<person>" once linked to a person; "" until then
+    form_source: FormSource = "google_form"
+    match_status: FormMatchStatus
+    form_status: Literal["live", "deleted"]
+    to_link: bool = False
+    program_key: str = ""  # family_camp | adult_weekend; "" when the choice is unknown
+    program_choice: str = ""
+    weekend_session_cm_id: int = 0  # 0: the choice maps to no one weekend
+    person_cm_id: int = 0
+    household_cm_id: int = 0
+    submitted_at: str = ""
+    created_at: str = ""
+    ask: float | None = None
+    figures: list[FormFigureOut] = Field(default_factory=list)
+    yes_no: list[FormYesNoOut] = Field(default_factory=list)
+    num_children: int | None = None
+    county: str = ""
+    special_circumstances: str = ""
+    name_typed: str = ""
+    signature_typed: str = ""
+    agreement_date: str = ""
+    match_tier: int = 0
+    candidates: list[FormCandidateOut] = Field(default_factory=list)
+    superseded_by: str = ""
+    superseded: list[SupersededOut] = Field(default_factory=list)
+    linked_by: str = ""
+    linked_at: str = ""
+    ignored_reason: str = ""
+    ignored_by: str = ""
+    ignored_at: str = ""
+    look_reasons: list[LookReason] = Field(default_factory=list)
+
+
+class GoogleFormStatusOut(BaseModel):
+    """The season's form as the job last read it: "Last read from Google: 14:20", and a refused pull's banner."""
+
+    last_pulled_at: str = ""
+    last_pull_status: str = ""
+    refused: bool = False
+
+
+class FormResponseActionOut(BaseModel):
+    """A response after Link… or Ignore…."""
+
+    id: str
+    response_id: str
+    match_status: FormMatchStatus
+    person_cm_id: int = 0
+    household_cm_id: int = 0
+    linked_by: str = ""
+    linked_at: str = ""
+    ignored_reason: str = ""
+    ignored_by: str = ""
+    ignored_at: str = ""
+
+
+class LinkCandidatesOut(BaseModel):
+    """Link…'s dialog: the response's identity evidence, the respondent email included (read for this dialog only),
+    and its candidates, named."""
+
+    id: str
+    response_id: str
+    respondent_email: str = ""
+    name_typed: str = ""
+    birthdate_typed: str = ""
+    candidates: list[FormCandidateOut] = Field(default_factory=list)
+
+
+class FormChangeReviewedOut(BaseModel):
+    request_id: str
+    reviewed_by: str
+    reviewed_at: str
+
+
+class FormResponseLink(BaseModel):
+    person_cm_id: int = Field(gt=0)
+    reason: str = Field(default="", max_length=2000)
+
+
+class FormResponseIgnore(BaseModel):
+    reason: str = Field(default="", max_length=1000)
 
 
 class IntakeSessionOut(BaseModel):
@@ -175,6 +327,10 @@ class FormIntakeResponse(BaseModel):
     campminder_aid_on_no_request: float  # every row's amber money: D170's TOTAL for the season
     # CLOSED-SEASONS-DONE: the season is done: nothing needs a look, nothing can be added (CSD-6 opens on All forms).
     season_done: bool = False
+    # The adult aid Google Form (PR 2): every response of the season (Responses to link are those with to_link; an
+    # ignored one stays here with its reason), and the form's last pull. Empty / None before 2027.
+    form_responses: list[FormResponseOut] = Field(default_factory=list)
+    google_form: GoogleFormStatusOut | None = None
 
 
 class FormIntakeSummaryOut(BaseModel):
@@ -185,6 +341,7 @@ class FormIntakeSummaryOut(BaseModel):
     registration_only: int
     all: int
     season_done: bool = False  # CLOSED-SEASONS-DONE: as FormIntakeResponse's
+    to_link: int = 0  # adult aid form responses to Link… or Ignore… (PR 2)
 
 
 class AddPrefillOut(BaseModel):

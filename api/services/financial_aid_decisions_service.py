@@ -103,6 +103,7 @@ from api.services.financial_aid_calc_inputs import (
     calculator_inputs,
     effective_ask,
     priced_program,
+    pricing_answers,
     request_issues,
     to_application_inputs,
 )
@@ -122,7 +123,7 @@ from api.services.financial_aid_cancellations import (
     fold_cancellations,
     needs_reason,
 )
-from api.services.financial_aid_corrections import APPLICATION_CORRECTABLE, REVERT, effective_values
+from api.services.financial_aid_corrections import REVERT
 from api.services.financial_aid_grant_placements import (
     PLACEMENT_ACTOR,
     PLACEMENT_REASON,
@@ -552,9 +553,7 @@ def _to_price(
     cancelled: bool = False,
 ) -> RequestToPrice:
     ask = effective_ask(request, corrections)
-    answers = effective_values(
-        application.answers if application is not None else {}, APPLICATION_CORRECTABLE, corrections
-    )
+    answers = pricing_answers(request, application, corrections)  # GF-2 = B: a request's own answers, if any
     live = request.status in _LIVE and not cancelled  # a cancelled request is not live (10b-2 Decision 14)
 
     def build(
@@ -644,7 +643,7 @@ def _cost_only(
     application, no priced program, or a program with no price."""
     if rules is None or application is None:
         return None
-    answers = effective_values(application.answers, APPLICATION_CORRECTABLE, corrections)
+    answers = pricing_answers(request, application, corrections)
     converted = calculator_inputs(request, application, answers, corrections, sessions, shares, equity, rules)
     return resolve_cost(converted.request, rules).amount if converted.request is not None else None
 
@@ -1113,6 +1112,11 @@ _STORED_DEFAULTS: Final[Mapping[str, Any]] = {
     "duplicate_of": "",
     "flags": [],
     "equity": None,  # a json field a create omits is null: every create row from before 3c-2
+    # The adult aid form's own answer set (PR 2): null and blank on every request before it, and on every other one.
+    "answers": None,
+    "answers_source": "",
+    "form_response_id": "",
+    "form_submitted_at": "",
 }
 
 

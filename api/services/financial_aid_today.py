@@ -396,12 +396,17 @@ def _form_intake_line(look: FormIntakeLook | None) -> TodayLineOut:
                 tiebreak="" if row.camper_name else row.household_tiebreak,
                 camper_name=row.camper_name,
             )
+    # The adult aid Google Form (PR 2): each response to link is one more item, and a refused pull one more (no
+    # household: the reasons count them with no families).
+    to_link = look.to_link if look is not None else 0
+    refused = look is not None and look.pull_refused
+    extra = [("form_response_to_link", 0)] * to_link + ([("form_pull_refused", 0)] if refused else [])
     return TodayLineOut(
         key="form_intake",
         families=len({row.household_cm_id for row in rows}),
-        items=len(rows),
+        items=len(rows) + len(extra),
         item_kind="campers",
-        reasons=_reasons((reason, row.household_cm_id) for row in rows for reason in row.look_reasons),
+        reasons=_reasons([*((reason, row.household_cm_id) for row in rows for reason in row.look_reasons), *extra]),
         next_up=list(households.values()),
     )
 

@@ -53,6 +53,12 @@ from api.constants.collections import (
     AID_REQUESTS,
 )
 from api.services.financial_aid_billing import AgeRule, BilledHeadcount, billed_headcounts
+from api.services.financial_aid_google_form import (
+    GOOGLE_FORM_FIRST_SEASON,
+    FormResponseRow,
+    FormSpecs,
+    form_response_specs,
+)
 from api.services.financial_aid_household import build_request_specs, choose_household_answers
 from api.services.financial_aid_intake_plan import (
     HouseholdIntake,
@@ -142,6 +148,9 @@ class IntakeStore(Protocol):
     async def fetch_corrections(self, year: int, application_id: str | None) -> list[CorrectionRecord]: ...
     async def fetch_registration_ask_history(self, year: int) -> list[AskHistoryRow]: ...
     async def fetch_attendee_dates(self, year: int) -> list[AttendeeDates]: ...
+    # The adult aid Google Form (PR 2): the season's mirrored responses, and the requests with a decision (GF-4).
+    async def fetch_form_response_rows(self, year: int) -> list[FormResponseRow]: ...
+    async def fetch_decided_request_ids(self, year: int) -> frozenset[str]: ...
     async def load_intake_rules(self, year: int) -> AidRules | None: ...
     async def load_equity_rules(self, year: int) -> AidRules | None: ...
     async def commit(
@@ -576,6 +585,9 @@ class FinancialAidIntakeService:
             store.fetch_household_links(year),
         )
         same_family = same_family_of(links)
+        # The adult aid Google Form (PR 2), 2027 on: a THIRD spec source, beside the CampMinder rows and the additions,
+        # never merged into a household's rows (GF-2 = B: the response's figures price its own request only).
+        form = await self._form_specs(year, sessions, attendees, requests)
         by_household: dict[int, list[FaRow]] = defaultdict(list)
         without_household = 0
         for row in fa_rows:
@@ -597,13 +609,16 @@ class FinancialAidIntakeService:
                 additions_by_household[addition.household_cm_id].append(addition)
             found: list[HouseholdIntake] = []
             skipped = 0
-            for household_cm_id in sorted({*by_household, *additions_by_household}):
+            for household_cm_id in sorted({*by_household, *additions_by_household, *form.by_household}):
                 rows = by_household.get(household_cm_id, [])
                 added = additions_by_household.get(household_cm_id, [])
                 relevant = {id(a): a for a in attendees_by_household[household_cm_id]}
                 for person_cm_id in {*(row.person_cm_id for row in rows), *(a.person_cm_id for a in added)}:
                     relevant.update({id(a): a for a in attendees_by_person[person_cm_id]})
-                specs = build_request_specs(household_cm_id, rows, sessions, list(relevant.values()), added, year=year)
+                specs = (
+                    *build_request_specs(household_cm_id, rows, sessions, list(relevant.values()), added, year=year),
+                    *form.by_household.get(household_cm_id, ()),
+                )
                 if not specs:
                     skipped += len(rows)
                     continue
@@ -664,7 +679,7 @@ class FinancialAidIntakeService:
             requests_updated=len(plan.request_updates),
             unmatched_sessions=statuses.count(STATUS_UNMATCHED),
             duplicates_pending=statuses.count(STATUS_DUPLICATE_PENDING),
-            rows_without_household=without_household,
+            rows_without_household=without_household + form.without_household,
             rows_without_request=without_request,
             payer_shares_created=len(plan.share_creates),
             awaiting_approved_rules=_awaiting(plan, requests),
@@ -697,6 +712,23 @@ class FinancialAidIntakeService:
             report.operation_id,
         )
         return report
+
+    async def _form_specs(
+        self,
+        year: int,
+        sessions: Sequence[SessionRow],
+        attendees: Sequence[AttendeeRow],
+        requests: Sequence[RequestRecord],
+    ) -> FormSpecs:
+        """The adult aid form's request specs (financial_aid_google_form). Before its first season it reads nothing.
+        The decisions are read only when a form request exists: GF-4 asks only whether one of those is decided."""
+        if year < GOOGLE_FORM_FIRST_SEASON:
+            return FormSpecs()
+        responses = await self._store.fetch_form_response_rows(year)
+        if not responses and not any(r.program_option_key.startswith("gform:") for r in requests):
+            return FormSpecs()
+        decided = await self._store.fetch_decided_request_ids(year)
+        return form_response_specs(year, responses, sessions, attendees, requests, decided)
 
     async def _moved_corrections(
         self, year: int, plan: IntakePlan, requests: Sequence[RequestRecord]

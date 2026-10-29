@@ -42,6 +42,9 @@ from typing import Any, Final
 from api.constants.collections import (
     AID_APPLICATION_CORRECTIONS,
     AID_APPLICATIONS,
+    AID_DECISIONS,
+    AID_FORM_RESPONSES,
+    AID_GOOGLE_FORMS,
     AID_PAYER_SHARES,
     AID_REQUEST_ADDITIONS,
     AID_REQUESTS,
@@ -51,6 +54,7 @@ from api.constants.collections import (
 )
 from api.services.aid_build_reads import shared_read
 from api.services.aid_sync_inputs import aid_sync_inputs
+from api.services.financial_aid_google_form import FormResponseRow
 from api.services.financial_aid_household import HOUSEHOLD_ANSWER_FIELDS
 from api.services.financial_aid_intake_types import (
     INTAKE_RULES_SECTIONS,
@@ -132,6 +136,45 @@ FA_READ_FIELDS: Final = ",".join(
     )
 )
 FA_CONTACT_FIELDS: Final = "id,person_id,contact_first_name,contact_last_name,expand.household.cm_id"
+# The adult aid Google Form mirror's season read (PR 2), named column by column: aid_form_responses also holds the
+# respondent email, the typed birthdate, POC, race/ethnicity and gender identity, and none of them is read here (the
+# design's §8: stored in the locked mirror, returned by no operational endpoint). The email and typed birthdate have
+# their own one-record read, for Link…'s candidates only (fetch_form_response_identity).
+FORM_RESPONSE_READ_FIELDS: Final = ",".join(
+    (
+        "id",
+        "year",
+        "response_id",
+        "form_status",
+        "match_status",
+        "person_cm_id",
+        "household_cm_id",
+        "program_key",
+        "weekend_session_cm_id",
+        "registered_session_cm_id",
+        "program_choice",
+        "ask",
+        *HOUSEHOLD_ANSWER_FIELDS,
+        "student_debt",  # shown on the opened row; never priced (CampMinder's twin is retired, owner 09-27)
+        "reported_income_fields",
+        "parse_notes",
+        "created_at_google",
+        "last_submitted_at",
+        "superseded_by",
+        "match_tier",
+        "match_candidates",
+        "linked_by",
+        "linked_at",
+        "ignored_reason",
+        "ignored_by",
+        "ignored_at",
+        "name_typed",
+        "county",
+        "signature_typed",
+        "agreement_date",
+    )
+)
+GOOGLE_FORM_STATUS_FIELDS: Final = "id,year,last_pulled_at,last_pull_status"
 _BILLING_FIELDS: Final = ",".join(
     (
         "id",
@@ -277,6 +320,55 @@ def _request(record: Any) -> RequestRecord:
         duplicate_of=_str(getattr(record, "duplicate_of", "")),
         flags=tuple(_json(getattr(record, "flags", None), [])),
         equity=equity_from_json(_json(getattr(record, "equity", None), None)),
+        answers=_answers_json(getattr(record, "answers", None)),
+        answers_source=_str(getattr(record, "answers_source", "")),
+        form_response_id=_str(getattr(record, "form_response_id", "")),
+        form_submitted_at=_str(getattr(record, "form_submitted_at", "")),
+        form_change_reviewed=_str(getattr(record, "form_change_reviewed", "")),
+        form_change_reviewed_by=_str(getattr(record, "form_change_reviewed_by", "")),
+        form_change_reviewed_at=_stamp(getattr(record, "form_change_reviewed_at", "")),
+    )
+
+
+def _answers_json(value: Any) -> dict[str, Any] | None:
+    """aid_requests.answers: a request's own answer set (GF-2 = B), or None (a json field never written is null)."""
+    parsed = _json(value, None)
+    return dict(parsed) if isinstance(parsed, dict) else None
+
+
+def _form_response(record: Any) -> FormResponseRow:
+    return FormResponseRow(
+        id=record.id,
+        year=_int(getattr(record, "year", 0)),
+        response_id=_str(getattr(record, "response_id", "")),
+        form_status=_str(getattr(record, "form_status", "")),
+        match_status=_str(getattr(record, "match_status", "")),
+        person_cm_id=_int(getattr(record, "person_cm_id", 0)),
+        household_cm_id=_int(getattr(record, "household_cm_id", 0)),
+        program_key=_str(getattr(record, "program_key", "")),
+        weekend_session_cm_id=_int(getattr(record, "weekend_session_cm_id", 0)),
+        program_choice=_str(getattr(record, "program_choice", "")),
+        ask=_float(getattr(record, "ask", 0)),
+        answers={name: getattr(record, name, None) for name in (*HOUSEHOLD_ANSWER_FIELDS, "student_debt")},
+        reported_income_fields=frozenset(_json(getattr(record, "reported_income_fields", None), []) or []),
+        parse_notes=dict(_json(getattr(record, "parse_notes", None), {}) or {}),
+        created_at_google=_str(getattr(record, "created_at_google", "")),
+        last_submitted_at=_str(getattr(record, "last_submitted_at", "")),
+        superseded_by=_str(getattr(record, "superseded_by", "")),
+        registered_session_cm_id=_int(getattr(record, "registered_session_cm_id", 0)),
+        match_tier=_int(getattr(record, "match_tier", 0)),
+        match_candidates=tuple(
+            c for c in (_json(getattr(record, "match_candidates", None), []) or []) if isinstance(c, dict)
+        ),
+        linked_by=_str(getattr(record, "linked_by", "")),
+        linked_at=_stamp(getattr(record, "linked_at", "")),
+        ignored_reason=_str(getattr(record, "ignored_reason", "")),
+        ignored_by=_str(getattr(record, "ignored_by", "")),
+        ignored_at=_stamp(getattr(record, "ignored_at", "")),
+        name_typed=_str(getattr(record, "name_typed", "")),
+        county=_str(getattr(record, "county", "")),
+        signature_typed=_str(getattr(record, "signature_typed", "")),
+        agreement_date=_str(getattr(record, "agreement_date", "")),
     )
 
 
@@ -557,7 +649,61 @@ class FinancialAidIntakeRepository:
         rows = await self._page(AID_REQUEST_ADDITIONS, {"filter": f"year = {int(year)}", "sort": STABLE_SORT})
         return [_addition(r) for r in rows]
 
+    async def fetch_form_response_rows(self, year: int) -> list[FormResponseRow]:
+        """The season's adult aid Google Form responses (aid_form_responses, every status), narrowed to
+        FORM_RESPONSE_READ_FIELDS. All five rules are null; this client is the superuser."""
+        rows = await self._page(
+            AID_FORM_RESPONSES,
+            {"filter": f"year = {int(year)}", "fields": FORM_RESPONSE_READ_FIELDS, "sort": STABLE_SORT},
+        )
+        return [_form_response(r) for r in rows]
+
+    async def fetch_google_form_status(self, year: int) -> dict[str, str] | None:
+        """The season's aid_google_forms row: when the job last read the form and what it said. None when the job has
+        never run for the season (no form configured, or not yet pulled)."""
+        rows = await self._page(
+            AID_GOOGLE_FORMS,
+            {"filter": f"year = {int(year)}", "fields": GOOGLE_FORM_STATUS_FIELDS, "sort": STABLE_SORT},
+        )
+        if not rows:
+            return None
+        return {
+            "last_pulled_at": _stamp(getattr(rows[0], "last_pulled_at", "")),
+            "last_pull_status": _str(getattr(rows[0], "last_pull_status", "")),
+        }
+
+    async def fetch_decided_request_ids(self, year: int) -> frozenset[str]:
+        """The season's requests with a decision (financial_aid_google_form.decided_request_ids): every aid_decisions
+        row but a family's ask. Two columns only."""
+        rows = await self._page(
+            AID_DECISIONS,
+            {"filter": f"year = {int(year)} && event != 'ask'", "fields": "id,request,event", "sort": STABLE_SORT},
+        )
+        return frozenset(_str(getattr(r, "request", "")) for r in rows if getattr(r, "event", "") != "ask")
+
     # -- single-record reads -------------------------------------------------
+
+    async def fetch_form_response(self, record_id: str) -> FormResponseRow | None:
+        rows = await self._page(
+            AID_FORM_RESPONSES,
+            {"filter": f"id = '{pb_escape(record_id)}'", "fields": FORM_RESPONSE_READ_FIELDS, "sort": STABLE_SORT},
+        )
+        return _form_response(rows[0]) if rows else None
+
+    async def fetch_form_response_identity(self, record_id: str) -> tuple[str, str]:
+        """One response's respondent email and typed birthdate: Link…'s match evidence, read for that dialog only and
+        never by a list (FORM_RESPONSE_READ_FIELDS leaves both out)."""
+        rows = await self._page(
+            AID_FORM_RESPONSES,
+            {
+                "filter": f"id = '{pb_escape(record_id)}'",
+                "fields": "id,respondent_email,birthdate_typed",
+                "sort": STABLE_SORT,
+            },
+        )
+        if not rows:
+            return "", ""
+        return _str(getattr(rows[0], "respondent_email", "")), _str(getattr(rows[0], "birthdate_typed", ""))
 
     async def fetch_request_addition(self, record_id: str) -> AdditionRecord | None:
         rows = await self._page(

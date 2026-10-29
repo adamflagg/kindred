@@ -165,8 +165,10 @@ func RequirePermission(permission string, handler func(*core.RequestEvent) error
 		if e.Auth == nil {
 			return apis.NewUnauthorizedError("Authentication required", nil)
 		}
-		// Admin bypass
-		if e.Auth.GetBool("is_admin") {
+		// Admin bypass. PocketBase's own superuser too: it holds neither is_admin nor
+		// cached_permissions, and it is how FastAPI calls a route after gating the person on
+		// its own permission (Camperships' Pull now). It can already write every collection.
+		if e.Auth.GetBool("is_admin") || e.Auth.IsSuperuser() {
 			return handler(e)
 		}
 		// Check cached_permissions JSON array (exact element match, not substring)

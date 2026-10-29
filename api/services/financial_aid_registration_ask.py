@@ -171,8 +171,9 @@ def target_program(session: SessionRow | None) -> str | None:
 
 def filed_programs(fa_rows: Iterable[FaRow]) -> dict[int, frozenset[str]]:
     """Per household, the buckets its aid form was filed for this season (IN-BUCKETS, owner 2026-10-28): summer when
-    some row answers the summer question, B*Mitzvah the B*Mitzvah one, Family Camp the Family Camp one. No aid form
-    covers adult weekends yet (their Jotform is not read), so that bucket is never filed. The rule only runs from
+    some row answers the summer question, B*Mitzvah the B*Mitzvah one, Family Camp the Family Camp one. CampMinder's
+    aid form covers no adult weekend, so that bucket is never filed here; the adult aid Google Form files per PERSON
+    (financial_aid_google_form.form_filed_programs), and Form intake adds it. The rule only runs from
     REGISTRATION_ASK_RULE_FIRST_SEASON (2027), so it needs no gate of its own for IB-2."""
     found: dict[int, set[str]] = defaultdict(set)
     for r in fa_rows:

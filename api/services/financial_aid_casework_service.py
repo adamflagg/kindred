@@ -44,6 +44,7 @@ from api.schemas.financial_aid_intake import (
     ApplicationSummaryOut,
     CorrectionOut,
     FlagOut,
+    FormSource,
     IssueOut,
     PayerShareOut,
     RequestOut,
@@ -54,6 +55,7 @@ from api.services.camp_calendar import CAMP_TZ
 from api.services.financial_aid_calc_inputs import (
     CalculatorInputs,
     calculator_inputs,
+    pricing_answers,
     request_issues,
 )
 from api.services.financial_aid_campminder_money import (
@@ -97,6 +99,9 @@ from api.services.financial_aid_intake_service import billed_for, rules_check_fo
 from api.services.financial_aid_intake_types import (
     ADDITION_SOURCE_REGISTRATION_ASK,
     ADDITION_SOURCE_STAFF,
+    ANSWERS_SOURCE_GOOGLE_FORM,
+    FORM_SOURCE_CAMPMINDER,
+    FORM_SOURCE_GOOGLE,
     INTAKE_ACTOR,
     PROGRAM_FAMILY_CAMP,
     RESOLUTION_STAFF,
@@ -119,6 +124,7 @@ from api.services.financial_aid_intake_types import (
     RequestKey,
     RequestRecord,
     SessionRow,
+    form_source,
     request_origin,
 )
 from api.services.financial_aid_ledger_service import family_household_set
@@ -310,6 +316,13 @@ class AwardSource(Protocol):
     async def __call__(self, request: RequestRecord) -> Decimal | None: ...
 
 
+def _form_source(record: RequestRecord) -> FormSource | None:
+    found = form_source(record.program_option_key)
+    if found == FORM_SOURCE_GOOGLE:
+        return "google_form"
+    return "campminder" if found == FORM_SOURCE_CAMPMINDER else None
+
+
 def request_out(
     record: RequestRecord,
     corrections: Sequence[CorrectionRecord],
@@ -342,6 +355,13 @@ def request_out(
         payer_share_status=status,
         issues=list(issues),
         origin=request_origin(record.program_option_key),
+        form_source=_form_source(record),
+        answers_source="google_form" if record.answers_source == ANSWERS_SOURCE_GOOGLE_FORM else "",
+        answers=(
+            [answer_out(v) for v in pricing_answers(record, None, corrections).values()]
+            if record.answers_source
+            else None
+        ),
     )
 
 
@@ -535,6 +555,11 @@ class FinancialAidCaseworkService:
             if request is None or request.application_id != application.id:
                 raise CaseworkNotFoundError("no such request on this application")
             kinds, synced = REQUEST_CORRECTABLE, {"ask": request.ask or None}  # a 0 ask is a blank
+            if request.answers_source:
+                # GF-2 = B: a request with its own answer set (the adult aid form's) takes every answer correction
+                # on itself, so the household application's answers are never touched by it.
+                kinds = {**APPLICATION_CORRECTABLE, **REQUEST_CORRECTABLE}
+                synced = {**dict(request.answers or {}), "ask": request.ask or None}
         else:
             kinds, synced = APPLICATION_CORRECTABLE, dict(application.answers)
         kind = kinds.get(field)
@@ -1441,13 +1466,19 @@ class FinancialAidCaseworkService:
         live = (STATUS_ACTIVE, STATUS_UNMATCHED)
         requests = [r for r in await self._store.fetch_requests(year, application.id) if r.status in live]
         corrections = await self._store.fetch_corrections(year, application.id)
-        answers = effective_values(application.answers, APPLICATION_CORRECTABLE, corrections)
         sessions = {s.cm_id: s for s in await self._store.fetch_sessions(year)}
         shares = await self._store.fetch_payer_shares(year, [r.id for r in requests])
         equity = await self._store.fetch_equity_answers(year, [r.person_cm_id for r in requests if r.person_cm_id])
         return [
             calculator_inputs(
-                request, application, answers, corrections, sessions, shares, equity.get(request.person_cm_id), rules
+                request,
+                application,
+                pricing_answers(request, application, corrections),  # GF-2 = B: its own answers, if any
+                corrections,
+                sessions,
+                shares,
+                equity.get(request.person_cm_id),
+                rules,
             )
             for request in requests
         ]
@@ -1488,7 +1519,9 @@ class FinancialAidCaseworkService:
 
         def issues_of(request: RequestRecord) -> list[IssueOut]:
             # No rules: every issue here is a fixed or default hold, never read from a draft.
-            found = request_issues(request, application.flags, answers, shares, None)
+            found = request_issues(
+                request, application.flags, pricing_answers(request, application, corrections), shares, None
+            )
             return [IssueOut(code=i.code, severity=i.severity, message=i.message) for i in found]
 
         return ApplicationDetailResponse(
