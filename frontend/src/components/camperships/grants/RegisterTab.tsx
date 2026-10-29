@@ -422,7 +422,7 @@ export function RegisterTab({ view }: { view: AidView }) {
               onHighlight={onHighlight}
               nowrapHeaders
               belowToolbar={
-                recording ? (
+                recording && canWork ? (
                   <CommitmentForm
                     year={data.year}
                     onCancel={() => setRecording(false)}

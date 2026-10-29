@@ -875,3 +875,33 @@ async def test_became_lists_a_request_with_no_session_and_no_candidates_after_th
         ("withdrawn", TASTE_1),
         ("withdrawn", 0),
     ]
+
+
+def test_closing_a_season_leaves_a_became_entry_with_a_posted_round_alone() -> None:
+    """The grid keeps Posted for a request with a posted round (close_row), so Form intake must not read it Closed."""
+    from api.schemas.financial_aid_form_intake import BecameOut, FormIntakeRowOut
+    from api.services.financial_aid_form_intake import close_intake_row
+
+    def became(request_id: str, status: str, posted_rounds: list[int]) -> BecameOut:
+        return BecameOut.model_construct(
+            request_id=request_id, status=status, posted_rounds=posted_rounds, candidate_session_cm_ids=[]
+        )
+
+    row = FormIntakeRowOut.model_construct(
+        needs_look=True,
+        look_reasons=["x"],
+        can_add=True,
+        became=[
+            became("req0000000000b1", "duplicate_pending", []),
+            became("req0000000000b2", "duplicate_pending", [1]),
+            became("req0000000000b3", "session_unclear", []),
+            became("req0000000000b4", "active", []),
+        ],
+    )
+    closed = close_intake_row(row)
+    assert [(b.request_id, b.status) for b in closed.became] == [
+        ("req0000000000b1", "closed"),
+        ("req0000000000b2", "duplicate_pending"),
+        ("req0000000000b3", "closed"),
+        ("req0000000000b4", "active"),
+    ]

@@ -694,7 +694,11 @@ def _stages(inputs: TodayInputs) -> TodayStagesOut:
     for row in inputs.rows:
         for flag in FLAG_STAGES:
             flags[flag] += bool(row.queues and flag in row.queues)
-        closed += row.stage is not None and row.stage.code == "closed"
+        if row.closed:
+            # A done season (CSD-4): nothing is live. A request that keeps a finished word in the grid (Posted, Accepted,
+            # Refused by finance) is still counted here, so it does not vanish from the bar; Cancelled stays out.
+            closed += row.stage is not None and row.stage.code != "cancelled"
+            continue
         segment = _SEGMENT_OF_STAGE.get(row.stage.code) if row.stage is not None else None
         if segment is None:  # cancelled, or no round yet: not live
             continue

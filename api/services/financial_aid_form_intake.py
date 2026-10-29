@@ -588,7 +588,7 @@ _WAITING_BECAME: Final = frozenset({"session_unclear", "duplicate_pending"})
 
 def close_intake_row(row: FormIntakeRowOut) -> FormIntakeRowOut:
     """A done season's Form intake row (CLOSED-SEASONS-DONE; owner ruling NG-01): it needs no look and offers no Add a
-    Request…, and a request still waiting with no round (Session unclear, Duplicate pending) became Closed. CampMinder's
+    Request…, and a request still waiting with no posted round (Session unclear, Duplicate pending) became Closed. CampMinder's
     aid stays on the row at its own amounts. Display only: no request changes."""
     return row.model_copy(
         update={
@@ -596,7 +596,9 @@ def close_intake_row(row: FormIntakeRowOut) -> FormIntakeRowOut:
             "look_reasons": [],
             "can_add": False,
             "became": [
-                b.model_copy(update={"status": "closed"}) if b.status in _WAITING_BECAME else b for b in row.became
+                # A request with a posted round keeps Posted in the grid (close_row), so its entry stays as it is.
+                b.model_copy(update={"status": "closed"}) if b.status in _WAITING_BECAME and not b.posted_rounds else b
+                for b in row.became
             ],
         }
     )

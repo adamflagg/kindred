@@ -28,7 +28,8 @@ vi.mock('../../../utils/csvExport', async (original) => ({
   ...(await original<typeof import('../../../utils/csvExport')>()),
   downloadCsv: vi.fn(),
 }))
-vi.mock('../../../hooks/useCurrentYear', () => ({ useYear: () => 2027 }))
+let shownYear = 2027
+vi.mock('../../../hooks/useCurrentYear', () => ({ useYear: () => shownYear }))
 
 const REGISTRAR = ['financial_aid.view', 'financial_aid.casework']
 const VIEW = { year: 2027, asOf: { kind: 'live' } as const }
@@ -66,6 +67,7 @@ let served: ApiAidGrants = GRANTS
 
 beforeEach(() => {
   granted = REGISTRAR
+  shownYear = 2027
   storedReads = []
   served = GRANTS
   vi.useFakeTimers({ toFake: ['Date'] })
@@ -77,7 +79,8 @@ beforeEach(() => {
       const next = storedReads.length > 1 ? storedReads.shift() : storedReads[0]
       return Promise.resolve(json(next ?? GRANTS))
     }
-    if (path.startsWith('/api/financial-aid/grants/2027')) return Promise.resolve(json(served))
+    if (path.startsWith(`/api/financial-aid/grants/${shownYear}`))
+      return Promise.resolve(json(served))
     if (path.startsWith('/api/financial-aid/grantors')) return Promise.resolve(json(GRANTORS))
     if (path.startsWith('/api/financial-aid/decisions/2027/grid')) {
       return Promise.resolve(
@@ -538,6 +541,28 @@ describe('Grants › Register (§8.2)', () => {
     const actions = document.querySelector('[data-panel="actions"]') as HTMLElement
     expect(within(actions).queryByRole('button')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Record a Commitment…' })).toBeNull()
+  })
+
+  it('closes the Record a Commitment… form when the year switches to a closed season', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const tree = () => (
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={['/aid/grants/register']}>
+          <RegisterTab view={VIEW} />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+    const { rerender } = render(tree())
+    await userEvent.click(await screen.findByRole('button', { name: 'Record a Commitment…' }))
+    expect(screen.getByTestId('commitment-form')).toBeInTheDocument()
+    served = { ...GRANTS, year: 2026, season_done: true }
+    shownYear = 2026
+    rerender(tree()) // a fresh element, so React re-reads the year
+    await screen.findByRole('group', { name: 'Show' }) // the closed season's data is in
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Record a Commitment…' })).toBeNull()
+    )
+    expect(screen.queryByTestId('commitment-form')).toBeNull()
   })
 
   it("⚠ counts a never-applied household's household-level line in the total and the footer", async () => {
