@@ -106,6 +106,8 @@ async def test_fa_rows_carry_every_column_intake_reads() -> None:
         interest_expressed=True,
         registration_ask=700.0,
         reported_income_fields=frozenset({"total_gross_income"}),
+        camper_interest=True,  # IN-BUCKETS: the camper form's own pair (migration 1500000253)
+        camper_registration_ask=700.0,
     )
     assert by_person[P2] == _fa_row(
         P2, H2, answers=_NO_ANSWERS | {"gov_subsidies": "Yes"}, fc_program="Family Camp 2", fc_amount_requested=800.0

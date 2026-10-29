@@ -115,6 +115,14 @@ type faApplicationData struct {
 	donationOther             string
 	registrationRequestAmount float64
 
+	// The same ask, one pair per program (IN-BUCKETS, owner 2026-10-28): the camper registration form's CA- answers
+	// and the adult-weekend form's WW- answers. The legacy pair above takes both, first value wins, and stays as it
+	// is for 2026 and back-compat; aid intake's 2027-on readers take these.
+	camperInterestExpressed               bool
+	camperRegistrationRequestAmount       float64
+	adultWeekendInterestExpressed         bool
+	adultWeekendRegistrationRequestAmount float64
+
 	// Contact Parent 1
 	contactFirstName     string
 	contactLastName      string
@@ -559,9 +567,15 @@ func (s *FinancialAidApplicationsSync) mapFieldToApplication(app *faApplicationD
 		if !app.interestExpressed {
 			app.interestExpressed = hasInterestExpressed(value)
 		}
+		if !app.camperInterestExpressed {
+			app.camperInterestExpressed = hasInterestExpressed(value)
+		}
 	case faFieldCAFinancialAssistanceAmount:
 		if app.registrationRequestAmount == 0 {
 			app.registrationRequestAmount = parseNumberValue(value)
+		}
+		if app.camperRegistrationRequestAmount == 0 {
+			app.camperRegistrationRequestAmount = parseNumberValue(value)
 		}
 	case faFieldCADonationAmount:
 		if app.donationPreference == "" {
@@ -573,16 +587,23 @@ func (s *FinancialAidApplicationsSync) mapFieldToApplication(app *faApplicationD
 		}
 
 	// Interest indicators (WW- prefix, adult weekends -- kindred#2436). Same
-	// four program-neutral columns as the CA- arms above: a WW- answer only
-	// ever lands on the row for the adult who filled out that form, so this
-	// is admission into an existing column, not a grain change.
+	// four program-neutral legacy columns as the CA- arms above: a WW- answer
+	// only ever lands on the row for the adult who filled out that form. The
+	// ask also keeps its own adult-weekend pair (IN-BUCKETS), so a CA- answer
+	// on the same row cannot hide it.
 	case faFieldWWFinancialAssistanceInterest:
 		if !app.interestExpressed {
 			app.interestExpressed = hasInterestExpressed(value)
 		}
+		if !app.adultWeekendInterestExpressed {
+			app.adultWeekendInterestExpressed = hasInterestExpressed(value)
+		}
 	case faFieldWWFinancialAssistanceAmount:
 		if app.registrationRequestAmount == 0 {
 			app.registrationRequestAmount = parseNumberValue(value)
+		}
+		if app.adultWeekendRegistrationRequestAmount == 0 {
+			app.adultWeekendRegistrationRequestAmount = parseNumberValue(value)
 		}
 	case faFieldWWDonationAmount:
 		if app.donationPreference == "" {
@@ -1116,6 +1137,12 @@ func (s *FinancialAidApplicationsSync) recordToMap(record *core.Record) map[stri
 		"donation_other":              record.GetString("donation_other"),
 		"registration_request_amount": record.Get("registration_request_amount"),
 
+		// The same ask, per program (IN-BUCKETS)
+		"camper_interest_expressed":                 record.GetBool("camper_interest_expressed"),
+		"camper_registration_request_amount":        record.Get("camper_registration_request_amount"),
+		"adult_weekend_interest_expressed":          record.GetBool("adult_weekend_interest_expressed"),
+		"adult_weekend_registration_request_amount": record.Get("adult_weekend_registration_request_amount"),
+
 		// Contact Parent 1
 		"contact_first_name":     record.GetString("contact_first_name"),
 		"contact_last_name":      record.GetString("contact_last_name"),
@@ -1274,6 +1301,12 @@ func (app *faApplicationData) toRecordData(year int) map[string]any {
 		"donation_preference":         app.donationPreference,
 		"donation_other":              app.donationOther,
 		"registration_request_amount": app.registrationRequestAmount,
+
+		// The same ask, per program (IN-BUCKETS)
+		"camper_interest_expressed":                 app.camperInterestExpressed,
+		"camper_registration_request_amount":        app.camperRegistrationRequestAmount,
+		"adult_weekend_interest_expressed":          app.adultWeekendInterestExpressed,
+		"adult_weekend_registration_request_amount": app.adultWeekendRegistrationRequestAmount,
 
 		// Contact Parent 1
 		"contact_first_name":     app.contactFirstName,

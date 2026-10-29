@@ -84,11 +84,19 @@ def fa_row(
     interest: bool = False,
     registration_ask: float = 0.0,
     reported: tuple[str, ...] | None = None,
+    camper_interest: bool = False,
+    camper_ask: float = 0.0,
+    weekend_interest: bool = False,
+    weekend_ask: float = 0.0,
     **answers: Any,
 ) -> FaRow:
     """`reported` names the income columns the family answered (Task 1b). Left as None,
     it is every income column given a non-zero value here, so `total_gross_income=0.0`
-    alone reads as a BLANK; pass `reported=("total_gross_income",)` for a real $0."""
+    alone reads as a BLANK; pass `reported=("total_gross_income",)` for a real $0.
+
+    `interest` / `registration_ask` are the legacy pair (both registration forms, first value
+    wins); `camper_*` and `weekend_*` the per-program pairs the sync also writes (IN-BUCKETS,
+    migration 1500000253). A real row holds both, so set the pair a shape needs beside them."""
     if reported is None:
         reported = tuple(name for name in _INCOME_COLUMNS if answers.get(name))
     return FaRow(
@@ -104,6 +112,10 @@ def fa_row(
         interest_expressed=interest,
         registration_ask=registration_ask,
         reported_income_fields=frozenset(reported),
+        camper_interest=camper_interest,
+        camper_registration_ask=camper_ask,
+        adult_weekend_interest=weekend_interest,
+        adult_weekend_registration_ask=weekend_ask,
     )
 
 

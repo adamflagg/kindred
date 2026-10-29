@@ -33,8 +33,10 @@ STATUSES = (
 
 
 def registration_only_adult(status_id: int, *, ask: float = 400.0) -> FakeAidStore:
+    # The row as the sync writes it: the legacy pair, which 2026 reads, and the adult-weekend pair, which 2027 reads
+    # (IN-BUCKETS, migration 1500000253).
     return make_store(
-        fa_row(ADULT, ADULT_HOUSEHOLD, interest=True, registration_ask=ask),
+        fa_row(ADULT, ADULT_HOUSEHOLD, interest=True, registration_ask=ask, weekend_interest=True, weekend_ask=ask),
         attendees=[AttendeeRow(ADULT, ADULT_HOUSEHOLD, ADULT_WEEKEND_A, status_id)],
     )
 
@@ -162,9 +164,17 @@ INCOME_ON_ADULT_ROW = (
 
 
 def filed_for_a_child(adult_status: int, *, income_on_adult_row: bool = False) -> FakeAidStore:
-    adult = fa_row(PARENT, JOHNSONS, interest=True, registration_ask=400.0)
+    adult = fa_row(PARENT, JOHNSONS, interest=True, registration_ask=400.0, weekend_interest=True, weekend_ask=400.0)
     if income_on_adult_row:
-        adult = fa_row(PARENT, JOHNSONS, interest=True, registration_ask=400.0, total_gross_income=INCOME)
+        adult = fa_row(
+            PARENT,
+            JOHNSONS,
+            interest=True,
+            registration_ask=400.0,
+            weekend_interest=True,
+            weekend_ask=400.0,
+            total_gross_income=INCOME,
+        )
     return make_store(
         fa_row(EMMA, JOHNSONS, summer="Session 2", summer_ask=1500.0, total_gross_income=INCOME),
         adult,

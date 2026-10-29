@@ -21,6 +21,10 @@ WhyNot = Literal[
     # another session, so it can't tell which the ask was for; or no ask was typed at this registration.
     "registration_ask_ambiguous",
     "registration_ask_unattributed",
+    # IN-BUCKETS (2027 on), in place of adult_not_registered: a registration ask in a household that filed for the
+    # ask's bucket, from someone registered for no session the ask could be for, or registered but not enrolled.
+    "registration_ask_not_registered",
+    "registration_ask_not_enrolled",
 ]
 # More about a why-not: registration_ask_unattributed's ask is older than this registration (design 96 §3.2).
 WhyNotDetail = Literal["ask_predates_registration"]
@@ -127,8 +131,12 @@ class FormIntakeRowOut(BaseModel):
     camper_name: str = ""
     filed: bool  # the household filed the aid form (a program answer or income)
     # A registration ask on this row and no aid form for its bucket: the household filed none, or (from 2027,
-    # IN-BUCKETS) the ask is an adult-weekend one, which no aid form the household filed covers.
+    # IN-BUCKETS) the household filed none for a bucket the ask is for (no aid form covers adult weekends yet).
     registration_only: bool
+    # From 2027 (IN-BUCKETS): the buckets (program keys) the row's ask is registration-ask-only for, so a household
+    # that filed for another bucket reads "no aid form for <program>". Left out of the JSON when empty, so a 2026 row
+    # serializes exactly as before.
+    registration_only_programs: list[str] = Field(default_factory=list, exclude_if=lambda v: not v)
     answers: list[FormAnswerOut] = Field(default_factory=list)
     registration_ask: RegistrationAskOut | None = None
     enrolled_session_cm_ids: list[int] = Field(default_factory=list)

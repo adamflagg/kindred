@@ -3,24 +3,28 @@
 CampMinder keeps one "financial assistance" ask per camper per season (CA-FinancialAssistanceAmount), typed on the
 registration form, with no session on it. PR 4a keeps our own dated copy of every value it held
 (aid_registration_ask_history). This module ties each captured ask to the registration it was typed at, by date, and
-for a camper whose household filed the season's aid form, makes the request the family asked for there: a TWR, a
-B*Mitzvah, or a summer session for a sibling the form did not name. Pure: intake's build reads the inputs, calls
+for a camper whose household filed the season's aid form for that session's bucket (IN-BUCKETS), makes the request
+the family asked for there: a TWR or a summer session for a sibling the form did not name beside a summer filing, a
+B*Mitzvah beside a B*Mitzvah filing. Pure: intake's build reads the inputs, calls
 `registration_ask_additions`, and writes what it returns in its own one operation; Form intake calls it to explain
 why a session got no request.
 
 THE MATCH (design §3). For each history row H of the camper with an ask above $0 and a time that parses, S(H) is the
 camper's registrations this season, ANY status, whose registration day (`effective_date`, kept by a status change) is
 within one day of H's UTC date, or whose status date (`enrollment_date`) is within 24 hours of H. An AG or embedded
-session and the main session it sits under (`parent_cm_id`) count as one registration. Then:
+session and the main session it sits under (`parent_cm_id`) count as one registration. S(H) is taken PER BUCKET
+(IN-BUCKETS, owner 2026-10-28): summer and B*Mitzvah, the two the rule can target, each count only their own
+sessions, and a Family Camp, adult-weekend, Hebrew school or other registration the same day counts for neither.
+Then, in each bucket:
   - S(H) is one registration: H is ATTRIBUTED to it; of several rows attributed to one session, the latest wins;
-  - S(H) is two or more: H is AMBIGUOUS (one ask, several sessions that day). Family Camp and adult sessions count
-    here, so they can make an ask ambiguous, but they are never a target;
-  - S(H) is empty: H belongs to no registration.
+  - S(H) is two or more: H is AMBIGUOUS (one ask, several sessions of the bucket that day);
+  - S(H) is empty: H belongs to no registration of the bucket.
 
 THE FIRING RULE (design §4.1). A camper's enrollment gets one addition when all hold:
   1. year >= REGISTRATION_ASK_RULE_FIRST_SEASON (2027);
-  2. the household filed this season's aid form: some form row in it has a program answer (build_request_specs'
-     `filled`);
+  2. the household filed this season's aid form FOR THE SESSION'S BUCKET (IN-BUCKETS; IB-1): some form row in it
+     answers the summer question for a summer session, the B*Mitzvah question for a B*Mitzvah. A Family Camp or
+     B*Mitzvah filing alone makes no summer request, and a summer filing makes no B*Mitzvah one;
   3. the enrollment is status 2, in a session the summer program can name (TWR's `teen` included) or a B*Mitzvah;
      never Hebrew school, school or other;
   4. the session is not HELD for the camper (below);
@@ -57,6 +61,7 @@ from api.services.financial_aid_household import RequestSpec
 from api.services.financial_aid_intake_types import (
     ADDITION_SOURCE_REGISTRATION_ASK,
     PROGRAM_BMITZVAH,
+    PROGRAM_FAMILY_CAMP,
     PROGRAM_SUMMER,
     STATUS_WITHDRAWN,
     AdditionRecord,
@@ -81,6 +86,8 @@ TWR_SESSION_TYPE: Final = "teen"
 _DAY_WINDOW: Final = timedelta(days=1)
 _STATUS_WINDOW: Final = timedelta(hours=24)
 _UNMATCHED_FLAG: Final = "unmatched_session"
+# The buckets the rule can make a request in (target_program), each matched on its own registrations (IN-BUCKETS).
+_TARGET_BUCKETS: Final = (PROGRAM_SUMMER, PROGRAM_BMITZVAH)
 
 
 @dataclass(frozen=True)
@@ -162,14 +169,23 @@ def target_program(session: SessionRow | None) -> str | None:
     return None
 
 
-def filed_households(fa_rows: Iterable[FaRow]) -> frozenset[int]:
-    """The households that filed this season's aid form: a program answer (summer, B*Mitzvah or Family Camp) on any
-    row, the same predicate as build_request_specs' `filled`."""
-    return frozenset(
-        r.household_cm_id
-        for r in fa_rows
-        if r.household_cm_id > 0 and (r.summer_program.strip() or r.tbm_program.strip() or r.fc_program.strip())
-    )
+def filed_programs(fa_rows: Iterable[FaRow]) -> dict[int, frozenset[str]]:
+    """Per household, the buckets its aid form was filed for this season (IN-BUCKETS, owner 2026-10-28): summer when
+    some row answers the summer question, B*Mitzvah the B*Mitzvah one, Family Camp the Family Camp one. No aid form
+    covers adult weekends yet (their Jotform is not read), so that bucket is never filed. The rule only runs from
+    REGISTRATION_ASK_RULE_FIRST_SEASON (2027), so it needs no gate of its own for IB-2."""
+    found: dict[int, set[str]] = defaultdict(set)
+    for r in fa_rows:
+        if r.household_cm_id <= 0:
+            continue
+        for program, answer in (
+            (PROGRAM_SUMMER, r.summer_program),
+            (PROGRAM_BMITZVAH, r.tbm_program),
+            (PROGRAM_FAMILY_CAMP, r.fc_program),
+        ):
+            if answer.strip():
+                found[r.household_cm_id].add(program)
+    return {household: frozenset(programs) for household, programs in found.items()}
 
 
 def _held_candidates(candidates: Sequence[int], types: Mapping[int, str]) -> set[int]:
@@ -262,7 +278,7 @@ def registration_ask_additions(
     if year < REGISTRATION_ASK_RULE_FIRST_SEASON:
         return RegistrationAskResult()
     by_id = {s.cm_id: s for s in sessions}
-    filed = filed_households(fa_rows)
+    filed = filed_programs(fa_rows)
     held = held_sessions(specs, requests, sessions)
     taken = {(a.person_cm_id, a.session_cm_id) for a in additions if a.person_cm_id > 0}
 
@@ -291,16 +307,19 @@ def registration_ask_additions(
         covered: set[int] = set()
         closed = held.get(person, set()) | {sid for p, sid in taken if p == person}
         for found in asks[person]:
-            units = _registrations({r.session_cm_id for r in rows if _matches(found.at, r)}, by_id)
-            if len(units) > 1:
-                unclear.update(sid for unit in units.values() for sid in unit)
-                continue
-            for unit in units.values():
-                covered.update(unit)
-                target = 0 if unit & closed else _unit_target(unit, open_targets, by_id)
-                best = attributed.get(target) if target else None
-                if target and (best is None or (found.at, found.order) > (best.at, best.order)):
-                    attributed[target] = found
+            matched = {r.session_cm_id for r in rows if _matches(found.at, r)}
+            # Per bucket (IN-BUCKETS): only the target bucket's own registrations that day can make the ask unclear.
+            for bucket in _TARGET_BUCKETS:
+                units = _registrations({sid for sid in matched if target_program(by_id.get(sid)) == bucket}, by_id)
+                if len(units) > 1:
+                    unclear.update(sid for unit in units.values() for sid in unit)
+                    continue
+                for unit in units.values():
+                    covered.update(unit)
+                    target = 0 if unit & closed else _unit_target(unit, open_targets, by_id)
+                    best = attributed.get(target) if target else None
+                    if target and (best is None or (found.at, found.order) > (best.at, best.order)):
+                        attributed[target] = found
         newest = max(asks[person], key=lambda a: (a.at, a.order))
         for sid, (household, program) in sorted(open_targets.items()):
             chosen = attributed.get(sid)
@@ -337,12 +356,13 @@ def _open_targets(
     person: int,
     rows: Sequence[AttendeeDates],
     sessions: Mapping[int, SessionRow],
-    filed: frozenset[int],
+    filed: Mapping[int, frozenset[str]],
     held: Mapping[int, set[int]],
     taken: set[tuple[int, int]],
 ) -> dict[int, tuple[int, str]]:
     """The camper's enrollments the rule may still make a request for, session -> (household, program): status 2 and
-    a program the rule names (condition 3), a household that filed (2), not held (4), no addition of any kind (6)."""
+    a program the rule names (condition 3), a household that filed for that program's bucket (2), not held (4), no
+    addition of any kind (6)."""
     out: dict[int, tuple[int, str]] = {}
     for r in rows:
         sid = r.session_cm_id
@@ -350,7 +370,7 @@ def _open_targets(
         if (
             program is not None
             and r.status_id == ENROLLED
-            and r.household_cm_id in filed
+            and program in filed.get(r.household_cm_id, frozenset())
             and sid not in held.get(person, set())
             and (person, sid) not in taken
         ):
