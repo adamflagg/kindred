@@ -37,7 +37,8 @@ RESOLUTION_STAFF: Final = "staff"
 RESOLUTION_UNMATCHED: Final = "unmatched"
 
 # The attendee statuses that count as "registered" for an adult weekend, so an
-# adult-weekend request is created: enrolled (2), applied (4), waitlisted (8),
+# adult-weekend request is created from a registration ask (seasons before 2027 only:
+# financial_aid_household.ADULT_WEEKEND_FORM_ONLY_FIRST_SEASON): enrolled (2), applied (4), waitlisted (8),
 # incomplete (512). An FA applicant is often waitlisted. Only enrolled (2) ever
 # SETS a session (owner ruling 2026-09-27). See pocketbase/sync/attendees.go.
 REGISTERED_STATUS_IDS: Final = frozenset({ACTIVE_ENROLLED_STATUS_ID, 4, 8, 512})

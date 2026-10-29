@@ -648,11 +648,11 @@ def test_an_adult_reg_only_households_family_camp_request_is_not_flagged_not_enr
     # is enrolled in -- not a staff-facing `not_enrolled` hold.
     from api.services.financial_aid_household import build_request_specs
     from api.services.financial_aid_intake_types import AttendeeRow, SessionRow
-    from tests.unit.api.services.financial_aid_fakes import SESSIONS, fa_row
+    from tests.unit.api.services.financial_aid_fakes import SESSIONS, YEAR, fa_row
 
     sessions = (*SESSIONS, SessionRow(1000212, "Adult Reg: Family Camp 6", "family_adult", parent_cm_id=1000202))
     rows = [fa_row(1000051, 1000005, fc="Family Camp 6", fc_ask=700.0)]
-    specs = build_request_specs(1000005, rows, sessions, [AttendeeRow(1000051, 1000005, 1000212, 2)])
+    specs = build_request_specs(1000005, rows, sessions, [AttendeeRow(1000051, 1000005, 1000212, 2)], year=YEAR)
     plan = plan_intake([household(*specs, household_cm_id=1000005)], [], [], {})
     (create,) = plan.request_creates
     assert (create.payload["status"], create.payload["session_cm_id"]) == ("active", 1000202)

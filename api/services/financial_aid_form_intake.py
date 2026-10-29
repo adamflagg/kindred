@@ -18,6 +18,10 @@ Needs a look (spec §2.4, owner Q3-A): CampMinder aid on no request; an enrolled
 registration-only family: that one counts only once CampMinder posted aid on it); a request whose session is unclear
 between enrolled candidates; a rule-made request nobody has marked reviewed (Q2-A).
 
+Registration ask only is judged per person and per bucket (IN-BUCKETS, owner 2026-10-28): from 2027 an adult's
+adult-weekend ask is registration-ask-only even when the household filed the aid form for a child, because that form
+covers summer, B*Mitzvah and Family Camp and no aid form covers adult weekends yet (_Explainer.adult_weekend_ask_only).
+
 From 2027 the registration-ask rule's own facts explain an enrolled session it made no request for (PR 4b,
 financial_aid_registration_ask, run here over the requests intake made): `registration_ask_ambiguous` when the ask's
 day also registered another session, `registration_ask_unattributed` when no ask was typed at this registration
@@ -70,9 +74,10 @@ from api.services.financial_aid_cancellations import CancelEvent, fold_cancellat
 from api.services.financial_aid_casework_service import _program_for
 from api.services.financial_aid_decisions_service import session_pools
 from api.services.financial_aid_grants_register import program_family_for_session_type
-from api.services.financial_aid_household import enrolled_for
+from api.services.financial_aid_household import ADULT_WEEKEND_FORM_ONLY_FIRST_SEASON, enrolled_for
 from api.services.financial_aid_household_page import HouseholdLabeler
 from api.services.financial_aid_intake_types import (
+    PROGRAM_ADULT_WEEKEND,
     PROGRAM_BMITZVAH,
     PROGRAM_FAMILY_CAMP,
     PROGRAM_SUMMER,
@@ -210,9 +215,11 @@ class _Explainer:
         for row in season.fa_rows:
             self.rows_by_household[row.household_cm_id].append(row)
         self.enrolled_by_person: dict[int, set[int]] = defaultdict(set)
+        self.registered_by_person: dict[int, set[int]] = defaultdict(set)  # any status intake reads (enrolled too)
         self.households_of: dict[int, set[int]] = defaultdict(set)
         for a in season.attendees:
             self.households_of[a.person_cm_id].add(a.household_cm_id)
+            self.registered_by_person[a.person_cm_id].add(a.session_cm_id)
             if a.status_id == _ENROLLED:
                 self.enrolled_by_person[a.person_cm_id].add(a.session_cm_id)
         self.cancelled = {rid for rid, state in fold_cancellations(season.cancellations).items() if state.reason}
@@ -354,6 +361,21 @@ class _Explainer:
             for r in self.rows_by_household.get(household, [])
         )
 
+    def adult_weekend_ask_only(self, subject: Subject) -> bool:
+        """IN-BUCKETS (owner 2026-10-28): summer, Family Camp and adult weekends are separate buckets, each judged on
+        its own facts, so a household's summer filing for a child says nothing about an adult's adult-weekend ask. True
+        when the person's only registrations a person's request can name are adult weekends and their own form rows
+        answer no program: the ask is the adult-weekend registration ask (WW-FA / WW-FA Amount), and no aid form covers
+        adult weekends (the CampMinder form asks summer, B*Mitzvah and Family Camp; the adult Jotform is not read yet).
+        Gated with ADULT_WEEKEND_FORM_ONLY_FIRST_SEASON because the two move together: before it, the ask itself made
+        the adult's request (build_request_specs), and 2026, the tie-off season, keeps reading it as it did."""
+        household, person = subject
+        if self.s.year < ADULT_WEEKEND_FORM_ONLY_FIRST_SEASON or not person or household <= 0:
+            return False
+        # Family Camp is the household row's, never a person row's, so it does not take the adult out of the bucket.
+        programs = {self.program(sid) for sid in self.registered_by_person.get(person, set())}
+        return programs - {None, PROGRAM_FAMILY_CAMP} == {PROGRAM_ADULT_WEEKEND} and self.interest_only(subject)
+
     def became(self, request: RequestRecord) -> BecameOut:
         origin = request_origin(request.program_option_key)
         rounds = self.rounds.get(request.id, {})
@@ -478,8 +500,13 @@ class _Explainer:
         filed = _filed(rows)
         answers = self.answers(subject)
         registration = self.registration_ask(subject)
+        # Registration ask only, per person and per bucket (IN-BUCKETS): the household filed no aid form, or this is
+        # an adult-weekend ask, which no aid form the household filed covers.
         registration_only = (
-            bool(person) and household > 0 and not filed and (registration is not None or self.interest_only(subject))
+            bool(person)
+            and household > 0
+            and (registration is not None or self.interest_only(subject))
+            and (not filed or self.adult_weekend_ask_only(subject))
         )
         enrolled = self.enrolled(subject)
         requests = self.requests_of(subject)

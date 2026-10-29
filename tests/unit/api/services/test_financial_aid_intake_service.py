@@ -250,7 +250,8 @@ async def test_a_session_the_approved_programs_do_not_claim_is_flagged() -> None
     store = seeded_store()
     store.fa_rows.append(fa_row(1000032, 1000003, interest=True, registration_ask=300.0))
     store.attendees.append(AttendeeRow(1000032, 1000003, 1000402, 2))  # Adult Weekend B: no program claims it
-    await FinancialAidIntakeService(store).build(YEAR)
+    # 2026: the last season a registration ask alone makes an adult-weekend request (IN-FORM-ONLY = A).
+    await FinancialAidIntakeService(store).build(2026)
     adult = store.request_for(person=1000032, program="adult_weekend")
     assert {"code": "no_program_for_session", "detail": {"session_cm_id": 1000402}} in [dict(f) for f in adult.flags]
 
@@ -485,7 +486,8 @@ async def test_a_negative_ask_is_recorded_as_a_missing_ask() -> None:
     store.fa_rows[4] = fa_row(1000041, 1000004, interest=True, registration_ask=-500.0)
     store.attendees.append(AttendeeRow(1000041, 1000004, 1000401, 2))
 
-    await FinancialAidIntakeService(store).build(YEAR)
+    # 2026: the last season a registration ask alone makes an adult-weekend request (IN-FORM-ONLY = A).
+    await FinancialAidIntakeService(store).build(2026)
 
     for request in (
         store.request_for(person=1000011, program="summer"),
