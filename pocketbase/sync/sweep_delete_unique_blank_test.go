@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 	"testing"
 
@@ -240,7 +240,7 @@ func assertNoUnreviewedBlankingUniqueRelations(t *testing.T, app core.App) {
 			found = append(found, c.Name+"."+rel.Name)
 		}
 	}
-	sort.Strings(found)
+	slices.Sort(found)
 
 	seen := map[string]bool{}
 	for _, key := range found {
