@@ -28,6 +28,7 @@ import {
   addProblem,
   addedStatus,
   amberAid,
+  askedTitle,
   askedWords,
   becameAside,
   becameSession,
@@ -50,6 +51,8 @@ import {
   targetFromRow,
   whyWords,
   linesInPool,
+  noAidFormWords,
+  SEGMENTS,
 } from './intakeModel'
 
 const names = sessionIndex(SESSIONS)
@@ -409,5 +412,90 @@ describe("linesInPool: Season's ?pool= scopes the D170 lines it opens onto", () 
   })
   it('keeps the No pool line its sessions-no-program-claims money, never the money with no session', () => {
     expect(keys('')).toEqual(['c'])
+  })
+})
+
+// IN-BUCKETS (owner 2026-10-28), 2027 on: a registration ask is judged per kind of program. A household that filed the
+// aid form for another kind is not a family that "never filed"; the words name the kind it has no aid form for.
+describe('registration ask only, per kind of program (IN-BUCKETS)', () => {
+  const words = { ...programs, adult_weekend: 'Adult weekends', bmitzvah: 'B*Mitzvah' }
+  const filedElsewhere = {
+    ...RILEY,
+    filed: true,
+    registration_only_programs: ['adult_weekend'],
+  }
+
+  it('says which kind has no aid form when the household filed for another', () => {
+    const why = whyWords(filedElsewhere, names, words)
+    expect(why?.short).toBe('No aid form for Adult weekends: asked $2,500 when registering')
+    expect(why?.long).toBe(
+      "No aid form for Adult weekends. They asked $2,500 for financial assistance when registering (Nov 12), but the household's aid form doesn't cover Adult weekends, so the dashboard made no request."
+    )
+    expect(askedTitle(filedElsewhere, names, words)).toBe(
+      'No aid form for Adult weekends. The registration form\'s "financial assistance" ask: $2,500, answered Nov 12.'
+    )
+    expect(noAidFormWords(filedElsewhere, words)).toBe('No aid form for Adult weekends')
+  })
+
+  it('names two or more kinds together', () => {
+    const two = { ...filedElsewhere, registration_only_programs: ['summer', 'bmitzvah'] }
+    expect(noAidFormWords(two, words)).toBe('No aid form for At Camp and B*Mitzvah')
+    expect(whyWords(two, names, words)?.short).toBe(
+      'No aid form for At Camp and B*Mitzvah: asked $2,500 when registering'
+    )
+  })
+
+  it("keeps today's words when the household filed nothing", () => {
+    expect(whyWords(RILEY, names, words)?.long).toBe(
+      'No aid form. They asked $2,500 for financial assistance when registering (Nov 12) and never filed the aid form, so the dashboard made no request.'
+    )
+    expect(askedTitle(RILEY, names, words)).toBe(
+      'No aid form. The registration form\'s "financial assistance" ask: $2,500, answered Nov 12.'
+    )
+    expect(noAidFormWords(RILEY, words)).toBe('No aid form, this season or any earlier one')
+    // A 2026 row carries no programs (the server leaves the field out): today's words too, filed or not.
+    expect(noAidFormWords({ ...RILEY, filed: true }, words)).toBe(
+      'No aid form, this season or any earlier one'
+    )
+  })
+
+  it("titles the list by kind of program, not 'never filed'", () => {
+    const reg = SEGMENTS.find((s) => s.value === 'reg')
+    expect(reg?.title).toBe(
+      'People who asked for aid when registering, with no aid form for that kind of program (At Camp, B*Mitzvah, Family Camp or adult weekends): a follow-up list'
+    )
+  })
+
+  it('says why an ask from someone not registered or not enrolled made no request (2027 on)', () => {
+    const notRegistered = whyWords(
+      {
+        ...RILEY,
+        filed: true,
+        registration_only: false,
+        why_not: 'registration_ask_not_registered',
+      },
+      names,
+      words
+    )
+    expect(notRegistered?.short).toBe('No request: registered for nothing the ask could be for')
+    expect(notRegistered?.long).toBe(
+      "No request. They asked $2,500 for financial assistance when registering (Nov 12), but aren't registered for any session the ask could be for. An ask counts only for the kind of program someone is registered for."
+    )
+    const notEnrolled = whyWords(
+      { ...RILEY, filed: true, registration_only: false, why_not: 'registration_ask_not_enrolled' },
+      names,
+      words
+    )
+    expect(notEnrolled?.short).toBe('No request: registered, not enrolled')
+    expect(notEnrolled?.long).toBe(
+      "No request. They asked $2,500 for financial assistance when registering (Nov 12), but are not enrolled (status 2) in any session the ask could be for. Only an enrolled camper's aid is processed."
+    )
+    expect(
+      whyWords(
+        { ...RILEY, registration_ask: null, why_not: 'registration_ask_not_enrolled' },
+        names,
+        words
+      )?.long
+    ).toContain('They asked for financial assistance when registering, but')
   })
 })

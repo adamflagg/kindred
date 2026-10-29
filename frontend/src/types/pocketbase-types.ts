@@ -1563,10 +1563,14 @@ export type FinancialAidApplicationsRecord<
   Tcarryover_last_updated = unknown,
   Treported_income_fields = unknown,
 > = {
+  adult_weekend_interest_expressed?: boolean
+  adult_weekend_registration_request_amount?: number
   affiliated_jcc?: boolean
   amount_confirmed?: boolean
   applicant_signature?: string
+  camper_interest_expressed?: boolean
   camper_name?: string
+  camper_registration_request_amount?: number
   carryover_last_updated?: null | Tcarryover_last_updated
   child_affiliated_synagogue?: string
   children_jewish_day_school?: string

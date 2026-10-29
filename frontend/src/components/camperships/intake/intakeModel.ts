@@ -58,8 +58,10 @@ export const SEGMENTS: ReadonlyArray<{
   {
     value: 'reg',
     label: 'Registration ask only',
+    // IN-BUCKETS (owner 2026-10-28): from 2027 an ask is judged per kind of program, so the list holds people whose
+    // household filed for another kind too, not only families that never filed.
     title:
-      'Families who asked for aid when registering and never filed the aid form: a follow-up list',
+      'People who asked for aid when registering, with no aid form for that kind of program (At Camp, B*Mitzvah, Family Camp or adult weekends): a follow-up list',
   },
   {
     value: 'all',
@@ -130,6 +132,35 @@ export const householdHref = (view: AidView, householdCmId: number): string =>
 
 const regDate = (ask: RegistrationAskOut): string => (ask.on ? ` (${formatShortDate(ask.on)})` : '')
 
+/** "A", "A and B", "A, B and C". */
+function andList(items: readonly string[]): string {
+  if (items.length <= 1) return items.join('')
+  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1] ?? ''}`
+}
+
+/**
+ * The kinds of program a registration-ask-only row has no aid form for, in words, when its household filed the aid
+ * form for another kind (IN-BUCKETS, 2027 on); null when the household filed nothing, or the server names no kind (a
+ * 2026 row), where today's words stand.
+ */
+function noFormFor(
+  row: FormIntakeRowOut,
+  programs: Readonly<Record<string, string>>
+): string | null {
+  const kinds = row.registration_only_programs ?? []
+  if (!row.filed || kinds.length === 0) return null
+  return andList(kinds.map((k) => programLabel(programs, k)))
+}
+
+/** The detail panel's evidence line for a registration-ask-only row. */
+export function noAidFormWords(
+  row: FormIntakeRowOut,
+  programs: Readonly<Record<string, string>>
+): string {
+  const kinds = noFormFor(row, programs)
+  return kinds === null ? 'No aid form, this season or any earlier one' : `No aid form for ${kinds}`
+}
+
 /** An answer's program in words: by the family of the session it names (Teen Programs, Quests, as the Requests grid
  * names them), else by its program (At Camp for an answer that names no session). */
 export function answerProgram(
@@ -187,8 +218,10 @@ export function askedTitle(
   programs: Readonly<Record<string, string>>
 ): string {
   const reg = row.registration_ask ?? null
-  if (row.registration_only && reg !== null)
-    return `No aid form. The registration form's "financial assistance" ask: ${formatMoney(reg.amount)}${reg.on ? `, answered ${formatShortDate(reg.on)}` : ''}.`
+  if (row.registration_only && reg !== null) {
+    const kinds = noFormFor(row, programs)
+    return `No aid form${kinds === null ? '' : ` for ${kinds}`}. The registration form's "financial assistance" ask: ${formatMoney(reg.amount)}${reg.on ? `, answered ${formatShortDate(reg.on)}` : ''}.`
+  }
   const answers = row.answers ?? []
   if (answers.length === 0)
     return row.filed
@@ -271,18 +304,39 @@ export function becameTitle(b: BecameOut, names: SessionIndex): string {
 /** Why a row has no request (or none for a session it is enrolled in): short for the cell, whole for its title. */
 export function whyWords(
   row: FormIntakeRowOut,
-  names: SessionIndex
+  names: SessionIndex,
+  programs: Readonly<Record<string, string>> = {}
 ): { short: string; long: string } | null {
   const reg = row.registration_ask ?? null
   const gap = row.gap_sessions ?? []
+  const asked = reg
+    ? `They asked ${formatMoney(reg.amount)} for financial assistance when registering${regDate(reg)}`
+    : 'They asked for financial assistance when registering'
   switch (row.why_not) {
     case 'registration_only': {
       const amount = formatMoney(reg?.amount ?? 0)
+      const kinds = noFormFor(row, programs)
+      if (kinds !== null)
+        return {
+          short: `No aid form for ${kinds}: asked ${amount} when registering`,
+          long: `No aid form for ${kinds}. They asked ${amount} for financial assistance when registering${reg ? regDate(reg) : ''}, but the household's aid form doesn't cover ${kinds}, so the dashboard made no request.`,
+        }
       return {
         short: `No aid form: asked ${amount} when registering`,
         long: `No aid form. They asked ${amount} for financial assistance when registering${reg ? regDate(reg) : ''} and never filed the aid form, so the dashboard made no request.`,
       }
     }
+    // IN-BUCKETS (2027 on), in place of adult_not_registered: an ask in a household that filed for its kind of program.
+    case 'registration_ask_not_registered':
+      return {
+        short: 'No request: registered for nothing the ask could be for',
+        long: `No request. ${asked}, but aren't registered for any session the ask could be for. An ask counts only for the kind of program someone is registered for.`,
+      }
+    case 'registration_ask_not_enrolled':
+      return {
+        short: 'No request: registered, not enrolled',
+        long: `No request. ${asked}, but are not enrolled (status 2) in any session the ask could be for. Only an enrolled camper's aid is processed.`,
+      }
     case 'adult_not_registered': {
       const named = (row.answers ?? []).find((a) => (a.named_session_cm_id ?? 0) > 0)
       const what = named ? shortName(named.named_session_cm_id ?? 0, names) : 'it'
