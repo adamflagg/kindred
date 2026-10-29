@@ -790,7 +790,15 @@ async def get_day1(
 ) -> Day1Response:
     """Get Day 1 (first two days) registration counts by tier."""
     check_duration_session_exclusive(duration, session_cm_id)
-    cache_params = {"year": year, "session_types": session_types, "session_cm_id": session_cm_id, "duration": duration}
+    # The camp day is in the key: a tier's opening-day flag moves with it (see get_velocity).
+    camp_today = get_camp_today()
+    cache_params = {
+        "year": year,
+        "camp_today": camp_today,
+        "session_types": session_types,
+        "session_cm_id": session_cm_id,
+        "duration": duration,
+    }
     cached: Day1Response | None = metrics_cache.get("day1", **cache_params)
     if cached is not None:
         return cached
@@ -798,7 +806,9 @@ async def get_day1(
     type_filter = parse_summer_session_types(session_types)
     repository = _create_repository()
     service = Day1Service(repository)
-    result = await service.get_day1(year, session_types=type_filter, session_cm_id=session_cm_id, duration=duration)
+    result = await service.get_day1(
+        year, session_types=type_filter, session_cm_id=session_cm_id, duration=duration, today=camp_today
+    )
 
     metrics_cache.set("day1", result, **cache_params)
     return result

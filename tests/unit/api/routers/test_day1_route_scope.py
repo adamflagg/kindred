@@ -1,5 +1,6 @@
 """The /registration/day1 route passes the session pick and duration to the service (#3208)."""
 
+from datetime import date
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -20,6 +21,7 @@ async def test_day1_route_forwards_session_cm_id_and_duration() -> None:
     metrics_cache.invalidate_all()
     with (
         patch("api.routers.metrics._create_repository", return_value=object()),
+        patch("api.routers.metrics.get_camp_today", return_value=date(2026, 6, 1)),
         patch("api.routers.metrics.Day1Service") as svc_cls,
     ):
         svc = MagicMock()
@@ -28,7 +30,10 @@ async def test_day1_route_forwards_session_cm_id_and_duration() -> None:
 
         await metrics.get_day1(year=2026, session_types="main,ag", session_cm_id=1000802, duration=None, user=_user())
 
-    svc.get_day1.assert_awaited_once_with(2026, session_types=["main", "ag"], session_cm_id=1000802, duration=None)
+    # The camp day the cache key holds is the one the service reads (test_metrics_day_keyed_cache.py).
+    svc.get_day1.assert_awaited_once_with(
+        2026, session_types=["main", "ag"], session_cm_id=1000802, duration=None, today=date(2026, 6, 1)
+    )
 
 
 @pytest.mark.asyncio

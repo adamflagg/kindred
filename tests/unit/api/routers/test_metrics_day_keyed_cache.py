@@ -1,5 +1,5 @@
-"""Velocity and forecast read the camp day (velocity's partial week, forecast's week-relative point), so their cached
-responses are keyed by it. Since the sync notify stopped clearing metrics_cache on jobs that write no metrics table,
+"""Velocity, forecast and Day 1 read the camp day (velocity's partial week, forecast's week-relative point, Day 1's
+opening-day flag), so their cached responses are keyed by it. Since the sync notify stopped clearing metrics_cache on jobs that write no metrics table,
 a sync no longer clears them at the 9 a.m. camp-day boundary by accident."""
 
 from datetime import date
@@ -36,10 +36,18 @@ async def _forecast(metrics: Any) -> Any:
     )
 
 
+async def _day1(metrics: Any) -> Any:
+    return await metrics.get_day1(year=2027, session_types=None, session_cm_id=None, duration=None, user=_user())
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("read", "service", "method"),
-    [(_velocity, "VelocityService", "get_velocity"), (_forecast, "ForecastService", "calculate_forecast")],
+    [
+        (_velocity, "VelocityService", "get_velocity"),
+        (_forecast, "ForecastService", "calculate_forecast"),
+        (_day1, "Day1Service", "get_day1"),
+    ],
 )
 async def test_a_new_camp_day_is_a_new_cache_entry_computed_for_that_day(read: Any, service: str, method: str) -> None:
     from api.routers import metrics
@@ -52,7 +60,7 @@ async def test_a_new_camp_day_is_a_new_cache_entry_computed_for_that_day(read: A
         patch(f"api.routers.metrics.{service}") as svc_cls,
     ):
         svc = MagicMock()
-        setattr(svc, method, AsyncMock(side_effect=lambda **kw: MagicMock()))
+        setattr(svc, method, AsyncMock(side_effect=lambda *a, **kw: MagicMock()))
         svc_cls.return_value = svc
         await read(metrics)
         await read(metrics)  # same camp day: served from the cache

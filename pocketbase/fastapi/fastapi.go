@@ -41,9 +41,9 @@ func BaseURL() string {
 }
 
 // InvalidateCaches asks FastAPI to clear its server caches after `syncType`
-// finished, so it clears only what that job could have changed (metrics
-// always; the lodging year cache and the social graph cache when the job
-// writes a table they read -- api/constants/sync_job_writes.py). An empty
+// finished, so it clears only what that job could have changed (the metrics
+// response cache, the lodging year cache and the social graph cache, each when
+// the job writes a table it reads -- api/constants/sync_job_writes.py). An empty
 // syncType sends no parameter, which FastAPI treats as "clear everything".
 //
 // Returns an error for the caller to log. Callers treat it as best-effort:

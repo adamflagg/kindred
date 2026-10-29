@@ -37,7 +37,8 @@ logger = get_logger(__name__)
 # Every table either metrics repository reads (this one's collections and expands, MetricsSQLRepository's FROM and
 # JOIN), and so every table a metrics_cache entry is built from: every metrics service reads through one of the two.
 # The sync notify clears that cache only when the finished job writes one of these (`sync_writes_any`).
-# tests/unit/api/services/test_metrics_read_tables.py fails when either repository reads a table missing here.
+# tests/unit/api/services/test_metrics_read_tables.py fails when either repository reads a table missing here: as a
+# collection named by a collections constant (any other argument fails it too), an expand, or a SQL FROM or JOIN.
 METRICS_READ_TABLES: frozenset[str] = frozenset(
     {
         ATTENDEES,
