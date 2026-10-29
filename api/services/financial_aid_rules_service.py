@@ -856,7 +856,8 @@ class FinancialAidRulesService:
     async def season_state(self, year: int) -> tuple[bool, int | None]:
         """(done, the configured season): done when `year` is older than the prior season (N-1) of the configured
         season N (spec §11.1): the prior season stays workable for programs still running after the Oct 15 rollover
-        (owner ruling 2026-10-14; the rollover rule lives in pocketbase/sync/year.go). The one place that test lives."""
+        (owner ruling 2026-10-14; the rollover rule lives in pocketbase/sync/year.go). The test itself lives in
+        aid_season_state.is_season_done, shared with the closed-season gate."""
         if self._configured_year is None:
             return False, None
         configured = await self._configured_year()

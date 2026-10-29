@@ -215,7 +215,7 @@ A line that **replaces** the table (loading, failed, empty) is allowed. So is a 
 
 A season older than the prior season N−1 of the configured season N is closed (the server's `aid_season_state`; owner ruling NG-01, 2026-10-28). Its pages show history and offer nothing that works:
 
-- **Every read carries `season_done`.** Pages gate their clicks on it (`canWork && !season_done`), never on a year rule of their own. The server refuses every write to a closed season (409), so a page that forgot would fail loudly, not quietly.
+- **The reads a closed season's pages work from carry `season_done`**: the Requests grid, Today, Form intake, the household page, Grants › Register and Season › Rules. Pages gate their clicks on it (`canWork && !season_done`), never on a year rule of their own. The server refuses (409) every write to a closed season except the allow-list (`CLOSED_SEASON_OPEN_WRITES` in `api/routers/financial_aid.py`: reported history and recipients, development columns, funding sources, rules, sources, funders, the scenario sandbox and the previews), so a page that forgot would fail loudly, not quietly.
 - **Words and tones.** A request still waiting at close reads **Closed**, in `stone` as Cancelled does; Posted, Accepted, Refused by finance and Cancelled keep their own words. Needs attention is empty. Form intake opens on All forms, and CampMinder's aid there is plain ink (amber meant "needs a request").
 - **Counts.** The strip and Today's bar count 0 at every stage; the strip adds one `ClosedChip`, and Today's bar is one `mute` segment, "Closed N". No money figure moves.
 - **The season picker** (`components/YearSelector.tsx`, app-wide) marks a closed season with a muted lock, on its button and in its list. A mark only: there is no Unlock.

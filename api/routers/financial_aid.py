@@ -46,7 +46,7 @@ from functools import partial
 from typing import Annotated, Final, Literal, NoReturn
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response
-from pydantic import StringConstraints
+from pydantic import StringConstraints, TypeAdapter, ValidationError
 
 from api.constants.collections import AID_HOUSEHOLD_LINKS, AID_REQUESTS
 from api.schemas.financial_aid import (
@@ -621,16 +621,25 @@ async def _open_season_of_link(link_id: str) -> None:
         await _refuse_done(year)
 
 
+_BODY_YEAR: Final = TypeAdapter(int)
+
+
 async def _open_season_of_body(request: Request) -> None:
-    """A write whose body names its season (`year`). A body that isn't JSON, or has no whole-number year, is left to the
-    route's own validation (422)."""
+    """A write whose body names its season (`year`). The year is read as the route's model reads it (lax: "2025" and
+    2025.0 are 2025), so a quoted year can't walk past the gate. A body that isn't JSON, or has no such year (a bool
+    included), is left to the route's own validation (422)."""
     try:
         body = await request.json()
     except ValueError:
         return
-    year = body.get("year") if isinstance(body, dict) else None
-    if isinstance(year, int) and not isinstance(year, bool):
-        await _refuse_done(year)
+    raw = body.get("year") if isinstance(body, dict) else None
+    if raw is None or isinstance(raw, bool):
+        return
+    try:
+        year = _BODY_YEAR.validate_python(raw)
+    except ValidationError:
+        return
+    await _refuse_done(year)
 
 
 CLOSED_SEASON_GATES: Final = frozenset(

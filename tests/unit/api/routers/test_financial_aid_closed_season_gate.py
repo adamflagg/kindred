@@ -224,6 +224,33 @@ def test_a_body_keyed_write_reads_the_season_from_its_body(client: TestClient) -
     writes.create_link.assert_not_called()
 
 
+@pytest.mark.parametrize("year", ["2025", 2025.0])
+def test_a_body_year_the_route_would_coerce_is_gated_the_same(client: TestClient, year: object) -> None:
+    """The route's model reads `year` in lax mode ("2025" and 2025.0 are 2025), so the gate must too, or a quoted
+    year walks past it into a closed season."""
+    writes = MagicMock()
+    writes.create_link = AsyncMock()
+    with patch.object(financial_aid, "_writes", return_value=writes):
+        answer = client.post(
+            "/api/financial-aid/household-links",
+            json={"year": year, "household_cm_id": 1000001, "family_key": "johnson", "note": "Same family"},
+        )
+    assert answer.status_code == 409
+    writes.create_link.assert_not_called()
+
+
+def test_a_body_year_that_is_not_a_year_is_left_to_the_route(client: TestClient) -> None:
+    writes = MagicMock()
+    writes.create_link = AsyncMock()
+    with patch.object(financial_aid, "_writes", return_value=writes):
+        answer = client.post(
+            "/api/financial-aid/household-links",
+            json={"year": True, "household_cm_id": 1000001, "family_key": "johnson", "note": "Same family"},
+        )
+    assert answer.status_code == 422
+    writes.create_link.assert_not_called()
+
+
 def test_a_link_delete_reads_the_links_own_season(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     looked = _year_of(2025)
     monkeypatch.setattr(dependencies, "aid_record_year", looked)

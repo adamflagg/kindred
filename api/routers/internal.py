@@ -263,11 +263,6 @@ async def run_financial_aid_intake(body: FinancialAidIntakeRun) -> dict[str, int
     which the report returns (sub-project 4a). `warnings` lists season-level
     notes (a weighted yes/no answer no applicant gave); they never hold a request.
     """
-    # Never a warm layer 1 (aid_sync_inputs). The Go FA sync calls this right after writing the mirror and BEFORE its
-    # job-completion cache clear, so the season layer 1 holds could predate the mirror this rebuild must see: a new
-    # applicant would reach intake a sync late and a deleted row would linger. Clearing the season's fill first makes
-    # the build read the mirror as it is now; the generation bump also keeps a fill already in flight, holding the
-    # old mirror, from being stored.
     # CLOSED-SEASONS-DONE (owner ruling NG-01, CSD-8): nothing changes a closed season's requests, so a replay of one
     # (a historical sync, a named job for an old year) rebuilds nothing. A 200 with the skip, as the intake floor
     # answers, so the Go sync logs no failure. The read's fallback (the Oct 15 rule) means a sync-status blip never
@@ -275,6 +270,11 @@ async def run_financial_aid_intake(body: FinancialAidIntakeRun) -> dict[str, int
     if await season_done(body.year, lambda: dependencies.dashboard_season()):
         logger.info("Financial-aid intake skipped: closed season year=%s", body.year)
         return asdict(IntakeReport(body.year, 0, 0, 0, 0, 0, 0, 0, 0, 0, skipped_reason=INTAKE_CLOSED_SEASON))
+    # Never a warm layer 1 (aid_sync_inputs). The Go FA sync calls this right after writing the mirror and BEFORE its
+    # job-completion cache clear, so the season layer 1 holds could predate the mirror this rebuild must see: a new
+    # applicant would reach intake a sync late and a deleted row would linger. Clearing the season's fill first makes
+    # the build read the mirror as it is now; the generation bump also keeps a fill already in flight, holding the
+    # old mirror, from being stored.
     aid_inputs_cache.invalidate_read("load", body.year)
     service = FinancialAidIntakeService(FinancialAidIntakeRepository(pb))
     return asdict(await service.build(body.year))

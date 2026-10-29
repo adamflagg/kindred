@@ -1756,11 +1756,12 @@ describe('a closed season reads as history (CLOSED-SEASONS-DONE)', () => {
   })
 
   it('offers no checkbox, no Check Accepted, no Tick column and no row editor', async () => {
-    renderAt('/aid/requests?view=waiting')
-    expect(screen.queryByRole('checkbox', { name: 'Select all' })).toBeNull()
-    expect(screen.queryByRole('checkbox', { name: 'Select' })).toBeNull()
+    // On All, where the closed rows are drawn: a filtered view (Waiting on the family) holds no closed row, so a
+    // missing checkbox there would prove nothing.
     renderAt('/aid/requests')
     const row = screen.getAllByText('Emma Johnson')[0]?.closest('tr') as HTMLElement
+    expect(screen.queryByRole('checkbox', { name: 'Select all' })).toBeNull()
+    expect(screen.queryByRole('checkbox', { name: 'Select' })).toBeNull()
     await userEvent.click(within(row).getAllByRole('cell')[2] as HTMLElement)
     expect(document.querySelector('[data-aid-editor]')).toBeNull()
     expect(screen.queryByRole('spinbutton')).toBeNull()

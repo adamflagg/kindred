@@ -37,8 +37,8 @@ SeasonDoneRead = Callable[[int], Awaitable[bool]]
 
 class SeasonYearUnknownError(FinancialAidError, RuntimeError):
     """The configured season couldn't be read (Review Focus 3): no `_configured_year` on the sync status and no
-    CAMPMINDER_SEASON_ID. A done season is never treated as open for want of its year, so the read or write is refused
-    (503) until it can be read."""
+    CAMPMINDER_SEASON_ID. A done season is never treated as open for want of its year, so a write is refused (503)
+    until it can be read; a read falls back to the Oct 15 rule instead (`season_done`)."""
 
 
 class SeasonClosedError(FinancialAidError, ValueError):
