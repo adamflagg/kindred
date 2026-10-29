@@ -313,11 +313,11 @@ class _Explainer:
         for row in self.s.fa_rows:
             person_answer = row.summer_program.strip() or row.tbm_program.strip()
             if self.by_bucket:
-                # A Family Camp answer is the household row's, so it hides the person's ask only when that ask is for
-                # a bucket the household filed (IN-BUCKETS): never an adult-weekend ask, never another bucket's.
+                # A Family Camp answer is the household row's, so it hides the person's camper ask only when that ask
+                # is for a bucket the household filed (IN-BUCKETS). An adult-weekend ask is never the household row's.
                 subject = (row.household_cm_id, row.person_cm_id)
-                asked = _asks_camper(row) or _asks_weekend(row)
-                if person_answer or (asked and (not row.fc_program.strip() or self.unfiled_buckets(subject))):
+                hidden = bool(row.fc_program.strip()) and not self.unfiled_buckets(subject)
+                if person_answer or _asks_weekend(row) or (_asks_camper(row) and not hidden):
                     found.add(subject)
             elif person_answer or (not row.fc_program.strip() and (row.interest_expressed or row.registration_ask > 0)):
                 found.add((row.household_cm_id, row.person_cm_id))

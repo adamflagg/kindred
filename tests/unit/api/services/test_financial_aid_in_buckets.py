@@ -429,3 +429,14 @@ def test_the_bucket_gate_moves_with_the_adult_weekend_form_only_gate() -> None:
     # its request from ADULT_WEEKEND_FORM_ONLY_FIRST_SEASON. Listing an ask the season still makes a request from would
     # be wrong, so the bucket gate is never the earlier one.
     assert IN_BUCKETS_FIRST_SEASON >= ADULT_WEEKEND_FORM_ONLY_FIRST_SEASON
+
+
+@pytest.mark.asyncio
+async def test_an_adult_weekend_ask_beside_a_family_camp_answer_shows_even_when_not_registered() -> None:
+    # CodeRabbit on #3320: the Family Camp answer is the household row's, and an adult-weekend ask is never that row's,
+    # so the adult keeps their own row and its reason though they are registered for no adult weekend.
+    store = make_store()
+    store.fa_rows = [weekend_asker(PARENT, fc="Family Camp 2", fc_ask=900.0, total_gross_income=85000.0)]
+    enrol(store, PARENT, FAMILY_CAMP_2)
+    parent = (await rows_of(store, FORM_YEAR))[PARENT]
+    assert facts(parent) == (True, False, [], "registration_ask_not_registered", False)
