@@ -28,6 +28,8 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from api.constants.collections import (
+    AID_FORM_RESPONSES,
+    AID_GOOGLE_FORMS,
     AID_GRANT_PLACEMENTS,
     AID_HOUSEHOLD_LINKS,
     AID_POSTINGS,
@@ -130,6 +132,10 @@ SYNC_JOB_WRITES: dict[str, frozenset[str]] = {
     # (and each form's last-pull status on jotform_forms); reads attendees and
     # persons to match, and writes neither.
     "jotform_submissions": frozenset({JOTFORM_FORMS, JOTFORM_SUBMISSIONS, JOTFORM_ANSWERS}),
+    # The adult aid Google Form pull: its season row and one row per response. Reads sessions,
+    # attendees and persons to match, and writes none of them. The intake rebuild it triggers
+    # is FastAPI's own write, as for financial_aid_applications.
+    "aid_google_form_responses": frozenset({AID_GOOGLE_FORMS, AID_FORM_RESPONSES}),
     # Export phase -- Google Sheets, plus its own workbook bookkeeping.
     "multi_workbook_export": frozenset({"sheets_workbooks"}),
 }

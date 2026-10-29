@@ -87,6 +87,10 @@ var SyncJobToCollections = map[string][]string{
 	// it writes; deliberately absent from every export config -- these tables
 	// hold every Jotform answer, medical included.
 	"jotform_submissions": {"jotform_forms", "jotform_submissions", "jotform_answers"},
+	// The adult aid Google Form mirror. In this map ONLY so the export skip optimisation knows
+	// what it writes; it must never reach a sheet or any other export -- it holds aid figures
+	// and POC, race/ethnicity and gender answers (TestAidCollectionsAreNeverExportedToSheets).
+	"aid_google_form_responses": {"aid_google_forms", "aid_form_responses"},
 	// Global syncs
 	"person_tag_defs":   {"person_tag_defs"},
 	"custom_field_defs": {"custom_field_defs"},

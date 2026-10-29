@@ -371,6 +371,17 @@ export const YEAR_SYNC_TYPES = [
     phase: 'process' as SyncPhase,
     syncedSeasonsOnly: true,
   },
+  // The adult aid Google Form pull (adult-aid form design, PR 1): hourly and nightly, gated on
+  // Google and AID_GOOGLE_FORM_IDS. Reads the form into the locked Camperships mirror; nothing
+  // reads the mirror yet. This card's Run button starts it on demand.
+  {
+    id: 'aid_google_form_responses',
+    name: 'Adult Aid Form',
+    icon: HandCoins,
+    color: 'text-emerald-600',
+    phase: 'process' as SyncPhase,
+    syncedSeasonsOnly: true,
+  },
   {
     id: 'process_requests',
     name: 'Process Requests',

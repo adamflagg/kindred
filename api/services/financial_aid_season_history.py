@@ -26,6 +26,8 @@ from api.constants.collections import (
     AID_CANCELLATIONS,
     AID_DECISIONS,
     AID_FLAG_DISPOSITIONS,
+    AID_FORM_RESPONSES,
+    AID_GOOGLE_FORMS,
     AID_GRANT_PLACEMENTS,
     AID_GRANTORS,
     AID_GRANTS,
@@ -100,8 +102,17 @@ ENTITY_KINDS: Final[Mapping[str, HistoryKind]] = {
     AID_POSTINGS: "money",
     AID_FLAG_DISPOSITIONS: "money",
 }
+# The adult aid Google Form mirror is written by a Go sync, never through the change log, so nothing of it reaches
+# History yet. If staff Link / Ignore writes are logged later, classify aid_form_responses then.
 NOT_IN_HISTORY: Final = frozenset(
-    {AID_SCENARIO_SNAPSHOTS, AID_SCENARIO_OPTIONS, AID_SCENARIO_TRAIL, AID_ARRIVAL_CURVES}
+    {
+        AID_SCENARIO_SNAPSHOTS,
+        AID_SCENARIO_OPTIONS,
+        AID_SCENARIO_TRAIL,
+        AID_ARRIVAL_CURVES,
+        AID_GOOGLE_FORMS,
+        AID_FORM_RESPONSES,
+    }
 )
 _PRIORITY: Final[tuple[HistoryKind, ...]] = ("rules", "offers", "holds", "grants", "money")
 # Season › History's kind chips, in the mock's order (history.html). Intake is a tick, not a chip.

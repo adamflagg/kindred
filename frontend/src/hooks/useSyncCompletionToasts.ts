@@ -37,6 +37,7 @@ export const SYNC_DISPLAY_NAMES: Record<string, string> = {
   reconcile_request_lifecycle: 'Reconcile Request Lifecycle',
   bunk_requests: 'Intake Requests',
   jotform_submissions: 'Jotform Submissions',
+  aid_google_form_responses: 'Adult Aid Form',
   process_requests: 'Process Requests',
   // Transform phase (derived tables)
   family_camp_derived: 'Weekend Programs',

@@ -165,6 +165,7 @@ export interface SyncStatusResponse {
   bunk_assignments: SyncStatus
   bunk_requests: SyncStatus
   jotform_submissions: SyncStatus // Adult-weekend Jotform pull (kindred#2759)
+  aid_google_form_responses: SyncStatus // The adult aid Google Form pull
   process_requests: SyncStatus
   divisions: SyncStatus
   staff: SyncStatus

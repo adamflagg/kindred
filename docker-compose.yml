@@ -28,6 +28,9 @@ services:
       - GOOGLE_SERVICE_ACCOUNT_KEY_FILE=${GOOGLE_SERVICE_ACCOUNT_KEY_FILE:-/config/google_sheets.json}
       - JOTFORM_API_KEY=${JOTFORM_API_KEY:-}
       - JOTFORM_API_BASE=${JOTFORM_API_BASE:-}
+      # The adult aid Google Form per season, "2027:<formId>" (sync/aid_google_form_responses.go).
+      # Private: set it in the host .env only. Unset, the hourly pull is skipped.
+      - AID_GOOGLE_FORM_IDS=${AID_GOOGLE_FORM_IDS:-}
       - ADMIN_GROUP_NAME=${ADMIN_GROUP_NAME:-}
       # The issuer the OIDC back-channel logout endpoint verifies logout
       # tokens against (pocketbase/oidclogout). Unset, that endpoint is a 404.

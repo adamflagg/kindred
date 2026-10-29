@@ -104,6 +104,7 @@ pocketbase/pb_migrations/*_updated_users.js
 !pocketbase/rbac/
 !pocketbase/audit/
 !pocketbase/aidguard/
+!pocketbase/aidform/
 !pocketbase/feedback/
 !pocketbase/version/
 !pocketbase/config/
