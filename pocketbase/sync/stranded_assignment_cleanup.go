@@ -77,7 +77,7 @@ func findStrandedAssignments(
 // (status_id=2) in that session. Candidates with no person are skipped.
 // Candidates whose session is absent from enrolledSessions are also skipped: a
 // session with zero enrolled attendees is unreliable (attendees may have failed
-// to sync), so sweeping its drafts would null every assignment for the session.
+// to sync), so sweeping its drafts would delete every draft for the session.
 // Mirrors findStrandedAssignments — the same guard shape, keyed on the camper
 // instead of the bunk.
 func findEnrollmentOrphans(
@@ -100,8 +100,8 @@ func findEnrollmentOrphans(
 }
 
 // dedupeByRecordID merges candidate slices, keeping the first occurrence of each
-// RecordID — a row flagged by both passes (bunk gone AND camper cancelled) is
-// handled once.
+// RecordID — a production row flagged by both passes (bunk gone AND camper
+// cancelled) is counted once.
 func dedupeByRecordID(groups ...[]strandedCandidate) []strandedCandidate {
 	seen := make(map[string]bool)
 	merged := []strandedCandidate{}
@@ -115,6 +115,28 @@ func dedupeByRecordID(groups ...[]strandedCandidate) []strandedCandidate {
 		}
 	}
 	return merged
+}
+
+// splitDraftsToDeleteAndUnassign decides what happens to each flagged draft.
+// Owner ruling 2026-10-29: "if someone moves from enrolled to another status? we
+// can kill their draft placements." So an enrollment orphan is DELETED, whatever
+// its bunk; a bunk-stranded draft whose camper is still enrolled is only
+// UNASSIGNED. A draft flagged by both is deleted, once, and never also unassigned.
+func splitDraftsToDeleteAndUnassign(
+	stranded, orphaned []strandedCandidate,
+) (toDelete, toUnassign []strandedCandidate) {
+	toDelete = dedupeByRecordID(orphaned)
+	deleting := make(map[string]bool, len(toDelete))
+	for _, c := range toDelete {
+		deleting[c.RecordID] = true
+	}
+	toUnassign = []strandedCandidate{}
+	for _, c := range dedupeByRecordID(stranded) {
+		if !deleting[c.RecordID] {
+			toUnassign = append(toUnassign, c)
+		}
+	}
+	return toDelete, toUnassign
 }
 
 // loadEnrolledAttendeeSets returns (enrolledSessions, enrolledPairs) built from
@@ -164,18 +186,25 @@ type lodgingOrphanCandidate struct {
 // skipped (grain-less); a session with zero reliably-enrolled parties of that
 // grain is skipped entirely, mirroring findEnrollmentOrphans' own per-session
 // guard.
-// lodgingCandidatesFromRecords projects placed lodging_assignments /
+// lodgingCandidatesFromRecords projects lodging_assignments /
 // lodging_assignments_draft rows into candidates for
-// findLodgingEnrollmentOrphans, skipping rows already unplaced (nothing to
-// sweep). Shared by the draft-sweep and prod-audit halves of
-// reconcileLodgingOrphans below, which otherwise duplicate this loop verbatim
-// except for the by-id index the draft half needs to write its updates back.
-func lodgingCandidatesFromRecords(records []*core.Record) (map[string]*core.Record, []lodgingOrphanCandidate) {
+// findLodgingEnrollmentOrphans. Shared by the draft-delete and prod-audit
+// halves of reconcileLodgingOrphans below, which otherwise duplicate this loop
+// verbatim except for the by-id index the draft half needs to delete by.
+//
+// placedOnly skips rows with no units. The prod audit passes true, exactly as
+// it always has: an unplaced mirror row has nothing to report. The draft pass
+// passes false, because a party no longer enrolled loses its draft row even
+// when an earlier run (or staff) already cleared its units -- the lodging twin
+// of the summer pass reading drafts whose bunk is already null.
+func lodgingCandidatesFromRecords(
+	records []*core.Record, placedOnly bool,
+) (map[string]*core.Record, []lodgingOrphanCandidate) {
 	byID := make(map[string]*core.Record, len(records))
 	candidates := make([]lodgingOrphanCandidate, 0, len(records))
 	for _, r := range records {
-		if len(r.GetStringSlice("units")) == 0 {
-			continue // already unplaced -- nothing to sweep
+		if placedOnly && len(r.GetStringSlice("units")) == 0 {
+			continue // already unplaced -- nothing to report
 		}
 		byID[r.Id] = r
 		candidates = append(candidates, lodgingOrphanCandidate{
@@ -215,17 +244,19 @@ func findLodgingEnrollmentOrphans(
 	return orphans
 }
 
-// StrandedAssignmentCleanupSync silently auto-unassigns scenario draft assignments
+// StrandedAssignmentCleanupSync silently cleans up scenario draft assignments
 // that no longer make sense, for either of two reasons:
 //   - the bunk no longer has a bunk_plan for their session (staff reorganized
-//     the session's bunk plan), or
+//     the session's bunk plan): the draft is UNASSIGNED (bunk + bunk_plan
+//     nulled) and the camper falls back into the scenario's Unassigned pool;
 //   - the camper is no longer actively enrolled (status_id=2) in that session
-//     (they cancelled/withdrew after the scenario was built).
+//     (they cancelled/withdrew after the scenario was built): the draft row is
+//     DELETED (owner ruling 2026-10-29), whether or not it still had a bunk.
 //
-// It nulls bunk + bunk_plan on those drafts and audits production for the same
-// (observe-only). It also runs #2028's lodging twin: nulling `units` on
-// lodging_assignments_draft rows for a household/person no longer enrolled,
-// and auditing (never deleting) lodging_assignments the same way. Runs as the
+// It audits production for the same (observe-only). It also runs #2028's
+// lodging twin: deleting lodging_assignments_draft rows for a household/person
+// no longer enrolled, and auditing (never deleting) lodging_assignments the
+// same way. Runs as the
 // final step of the sync orchestrator — after attendees sync, so enrollment is
 // current. PocketBase-only — no CampMinder client.
 type StrandedAssignmentCleanupSync struct {
@@ -234,9 +265,10 @@ type StrandedAssignmentCleanupSync struct {
 	Debug bool
 	Stats Stats
 	// DryRun, when true, computes the same stranded/orphan sets and updates
-	// Stats exactly as a normal run would, but skips both app.Save calls in
-	// reconcileStrandedAssignments/reconcileLodgingOrphans that null bunk/units
-	// on a draft (kindred#2351). The two production audits are read-only
+	// Stats exactly as a normal run would (Updated for unassigns, Deleted for
+	// deletes), but skips every write in reconcileStrandedAssignments/
+	// reconcileLodgingOrphans: the app.Save that nulls bunk on a draft and the
+	// app.Delete calls that remove drafts (kindred#2351). The two production audits are read-only
 	// already and are unaffected either way.
 	DryRun bool
 }
@@ -295,9 +327,10 @@ func (s *StrandedAssignmentCleanupSync) Sync(_ context.Context) error {
 //     same per-session guard protects both passes: a session with zero
 //     bunk_plans (or zero enrolled attendees) is left untouched, so a partial
 //     sync can't sweep an entire session's drafts.
-//  3. Sweep bunk_assignments_draft: null bunk + bunk_plan on rows that are
-//     bunk-stranded OR enrollment-orphaned, so the camper falls back into the
-//     Unassigned pool (a cancelled camper falls out of the scenario entirely).
+//  3. Sweep bunk_assignments_draft: DELETE rows whose camper is
+//     enrollment-orphaned (bunk or no bunk), and null bunk + bunk_plan on rows
+//     that are only bunk-stranded, so a still-enrolled camper falls back into
+//     the Unassigned pool. See splitDraftsToDeleteAndUnassign.
 //  4. Audit bunk_assignments (production): log flagged rows — but do NOT
 //     delete. The bunk_assignments sync's own deleteOrphans() owns prod.
 func reconcileStrandedAssignments(app core.App, year int, stats *Stats, dryRun bool) error {
@@ -324,11 +357,10 @@ func reconcileStrandedAssignments(app core.App, year int, stats *Stats, dryRun b
 	enrolledSessions, enrolledPairs := loadEnrolledAttendeeSets(app, year, stats)
 
 	// --- Draft sweep ---
-	drafts, err := app.FindRecordsByFilter(
-		"bunk_assignments_draft",
-		fmt.Sprintf("%s && bunk != ''", yearFilter),
-		"", 0, 0,
-	)
+	// Every draft for the year, not only placed ones: a camper no longer enrolled
+	// loses a row whose bunk an earlier run already nulled, too.
+	// findStrandedAssignments still skips a draft with no bunk.
+	drafts, err := app.FindRecordsByFilter("bunk_assignments_draft", yearFilter, "", 0, 0)
 	if err != nil {
 		stats.Errors++
 		return fmt.Errorf("stranded_assignment_cleanup: query bunk_assignments_draft: %w", err)
@@ -351,25 +383,37 @@ func reconcileStrandedAssignments(app core.App, year int, stats *Stats, dryRun b
 	}
 	strandedDrafts := findStrandedAssignments(validPairs, plannedSessions, draftCandidates)
 	orphanDrafts := findEnrollmentOrphans(enrolledSessions, enrolledPairs, draftCandidates)
-	// Deduplicated once so the sweep count and the log agree: a draft flagged by
-	// both passes is swept once, not double-counted.
-	draftsToSweep := dedupeByRecordID(strandedDrafts, orphanDrafts)
+	draftsToDelete, draftsToUnassign := splitDraftsToDeleteAndUnassign(strandedDrafts, orphanDrafts)
 
-	writes := 0
-	for _, c := range draftsToSweep {
+	// writes gates the WAL checkpoint; deleted/unassigned are what this pass did
+	// or, on a dry run, would have done -- local, like the lodging pass's, so the
+	// log reports this pass alone.
+	writes, deleted, unassigned := 0, 0, 0
+	for _, c := range draftsToDelete {
+		if !dryRun {
+			if delErr := app.Delete(draftByID[c.RecordID]); delErr != nil {
+				stats.Errors++
+				slog.Error("stranded_assignment_cleanup: delete draft", "id", c.RecordID, "error", delErr)
+				continue
+			}
+			writes++
+		}
+		deleted++
+		stats.Deleted++
+	}
+	for _, c := range draftsToUnassign {
 		rec := draftByID[c.RecordID]
 		rec.Set("bunk", "")
 		rec.Set("bunk_plan", "")
-		if dryRun {
-			stats.Updated++
-			continue
+		if !dryRun {
+			if saveErr := app.Save(rec); saveErr != nil {
+				stats.Errors++
+				slog.Error("stranded_assignment_cleanup: unassign draft", "id", c.RecordID, "error", saveErr)
+				continue
+			}
+			writes++
 		}
-		if saveErr := app.Save(rec); saveErr != nil {
-			stats.Errors++
-			slog.Error("stranded_assignment_cleanup: save draft", "id", c.RecordID, "error", saveErr)
-			continue
-		}
-		writes++
+		unassigned++
 		stats.Updated++
 	}
 
@@ -419,10 +463,11 @@ func reconcileStrandedAssignments(app core.App, year int, stats *Stats, dryRun b
 
 	slog.Info("stranded_assignment_cleanup complete",
 		"year", year,
-		"flagged_drafts", len(draftsToSweep),
 		"stranded_drafts", len(strandedDrafts),
 		"orphaned_drafts", len(orphanDrafts),
-		"drafts_swept", stats.Updated,
+		"drafts_deleted", deleted,
+		"drafts_unassigned", unassigned,
+		"dry_run", dryRun,
 		"errors", stats.Errors,
 	)
 	return nil
@@ -435,11 +480,14 @@ func reconcileStrandedAssignments(app core.App, year int, stats *Stats, dryRun b
 // placement, so there is no equivalent "stranded" state for a unit to fall
 // into -- only the enrollment-orphan pass applies here.
 //
-//  1. lodging_assignments_draft: null `units` on rows whose party is no longer
-//     enrolled, across every scenario for the year. staff_touched and source
-//     are left exactly as they are -- only the placement clears, mirroring
-//     the bunk + bunk_plan nulling above. staff_touched is NOT a skip guard
-//     here: a cancelled household is gone whether or not staff moved it.
+//  1. lodging_assignments_draft: DELETE rows whose party is no longer
+//     enrolled, across every scenario for the year, placed or not. This
+//     mirrors the summer pass above, which deletes a no-longer-enrolled
+//     camper's drafts (owner ruling 2026-10-29) -- Family Camp models summer,
+//     and the two passes used to agree on unassigning, so they now agree on
+//     deleting. staff_touched is NOT a skip guard here: a cancelled household
+//     is gone whether or not staff moved it, as a cancelled camper's
+//     hand-placed summer draft is.
 //  2. lodging_assignments (the mirror): audit only. Logs and counts; never
 //     deletes. Deletion belongs to LodgingAssignmentsSync.deleteLodgingOrphans,
 //     driven by absence from the CampMinder cabin value -- the same split of
@@ -464,36 +512,32 @@ func reconcileLodgingOrphans(app core.App, year int, stats *Stats, dryRun bool) 
 		stats.Errors++
 		return fmt.Errorf("stranded_assignment_cleanup: query lodging_assignments_draft: %w", err)
 	}
-	draftByID, draftCandidates := lodgingCandidatesFromRecords(drafts)
+	// Family Camp models summer: placed or not, like the summer pass's drafts.
+	draftByID, draftCandidates := lodgingCandidatesFromRecords(drafts, false)
 	orphanDrafts := findLodgingEnrollmentOrphans(householdIndex, personIndex, draftCandidates)
 
-	// writes counts only persisted App.Save calls (gates the WAL checkpoint below,
-	// which has nothing to flush on a dry run). swept counts what this pass DID or
-	// WOULD sweep -- real or simulated -- and is what the completion log reports,
+	// writes counts only persisted App.Delete calls (gates the WAL checkpoint below,
+	// which has nothing to flush on a dry run). deleted counts what this pass DID or
+	// WOULD delete -- real or simulated -- and is what the completion log reports,
 	// so an operator previewing a dry run sees the household this pass found, not
-	// a misleading 0. Deliberately local rather than stats.Updated: Sync() runs
+	// a misleading 0. Deliberately local rather than stats.Deleted: Sync() runs
 	// reconcileStrandedAssignments before this function against the same shared
-	// *Stats, so stats.Updated already carries the bunk pass's own count by the
+	// *Stats, so stats.Deleted already carries the bunk pass's own count by the
 	// time this one logs -- reading it here would double-count that into this
 	// pass's number.
 	writes := 0
-	swept := 0
+	deleted := 0
 	for _, c := range orphanDrafts {
-		rec := draftByID[c.RecordID]
-		rec.Set("units", []string{})
-		if dryRun {
-			stats.Updated++
-			swept++
-			continue
+		if !dryRun {
+			if delErr := app.Delete(draftByID[c.RecordID]); delErr != nil {
+				stats.Errors++
+				slog.Error("stranded_assignment_cleanup: delete lodging draft", "id", c.RecordID, "error", delErr)
+				continue
+			}
+			writes++
 		}
-		if saveErr := app.Save(rec); saveErr != nil {
-			stats.Errors++
-			slog.Error("stranded_assignment_cleanup: save lodging draft", "id", c.RecordID, "error", saveErr)
-			continue
-		}
-		writes++
-		swept++
-		stats.Updated++
+		deleted++
+		stats.Deleted++
 	}
 
 	// --- Production audit (observe only — LodgingAssignmentsSync owns prod deletion) ---
@@ -505,7 +549,7 @@ func reconcileLodgingOrphans(app core.App, year int, stats *Stats, dryRun bool) 
 		stats.Errors++
 		slog.Error("stranded_assignment_cleanup: query lodging_assignments", "error", err)
 	} else {
-		_, prodCandidates := lodgingCandidatesFromRecords(prod)
+		_, prodCandidates := lodgingCandidatesFromRecords(prod, true)
 		orphanProd := findLodgingEnrollmentOrphans(householdIndex, personIndex, prodCandidates)
 		stats.LodgingProdAuditWarnings = len(orphanProd)
 		if len(orphanProd) > 0 {
@@ -528,7 +572,8 @@ func reconcileLodgingOrphans(app core.App, year int, stats *Stats, dryRun bool) 
 	slog.Info("stranded_assignment_cleanup lodging pass complete",
 		"year", year,
 		"orphaned_drafts", len(orphanDrafts),
-		"drafts_swept", swept,
+		"drafts_deleted", deleted,
+		"dry_run", dryRun,
 		"lodging_prod_audit_warnings", stats.LodgingProdAuditWarnings,
 		"errors", stats.Errors,
 	)

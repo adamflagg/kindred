@@ -486,13 +486,14 @@ var serviceGrainDeclarations = []ServiceGrain{
 	{Service: "stranded_assignment_cleanup", Writes: []CollectionGrain{
 		{
 			Collection: "bunk_assignments_draft",
-			NoGrain: "clears bunk and bunk_plan on existing draft rows in place; creates " +
-				"and deletes nothing, so there is no write key and no sweep",
+			NoGrain: "clears bunk and bunk_plan in place on a draft whose bunk lost its plan, and " +
+				"deletes the draft of a camper no longer enrolled; creates nothing, so there is no " +
+				"write key and no orphan sweep",
 		},
 		{
 			Collection: "lodging_assignments_draft",
-			NoGrain: "clears units on existing draft rows in place; creates and deletes " +
-				"nothing",
+			NoGrain: "deletes the draft of a party no longer enrolled; creates nothing, so there " +
+				"is no write key",
 		},
 	}},
 

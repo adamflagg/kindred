@@ -671,15 +671,13 @@ func TestStrandedAssignmentCleanup_SweepsEnrollmentOrphanDraft(t *testing.T) {
 		t.Fatalf("Sync: %v", err)
 	}
 
-	got, err := app.FindRecordById("bunk_assignments_draft", draft.Id)
-	if err != nil {
-		t.Fatalf("reload draft: %v", err)
+	// Owner ruling 2026-10-29: "if someone moves from enrolled to another status? we can kill
+	// their draft placements." The row goes, not just its bunk.
+	if recordExists(t, app, "bunk_assignments_draft", draft.Id) {
+		t.Error("cancelled camper's draft row survived -- want it deleted, not unassigned")
 	}
-	if got.GetString("bunk") != "" {
-		t.Errorf("want bunk cleared for cancelled camper, got %q", got.GetString("bunk"))
-	}
-	if got.GetString("bunk_plan") != "" {
-		t.Errorf("want bunk_plan cleared for cancelled camper, got %q", got.GetString("bunk_plan"))
+	if svc.Stats.Deleted != 1 || svc.Stats.Updated != 0 {
+		t.Errorf("Stats Deleted=%d Updated=%d, want 1 and 0", svc.Stats.Deleted, svc.Stats.Updated)
 	}
 }
 
@@ -810,21 +808,19 @@ func TestStrandedAssignmentCleanup_SweepsLodgingEnrollmentOrphanDraftHousehold(t
 		t.Fatalf("Sync: %v", err)
 	}
 
-	got, err := app.FindRecordById("lodging_assignments_draft", draft.Id)
-	if err != nil {
-		t.Fatalf("reload draft: %v", err)
+	if recordExists(t, app, "lodging_assignments_draft", draft.Id) {
+		t.Error("cancelled household's lodging draft survived -- want it deleted, as summer's is")
 	}
-	if len(got.GetStringSlice("units")) != 0 {
-		t.Errorf("want units cleared for cancelled household, got %v", got.GetStringSlice("units"))
+	if svc.Stats.Deleted != 1 || svc.Stats.Updated != 0 {
+		t.Errorf("Stats Deleted=%d Updated=%d, want 1 and 0", svc.Stats.Deleted, svc.Stats.Updated)
 	}
 }
 
-// TestStrandedAssignmentCleanup_LodgingDraftPreservesStaffTouchedAndSource pins
-// the mechanism ruling: the null-out is unconditional (a cancelled household is
-// gone whether or not staff moved them), but only `units` clears -- the flag
-// and source survive, exactly like bunk+bunk_plan nulling leaves everything
-// else on the row alone.
-func TestStrandedAssignmentCleanup_LodgingDraftPreservesStaffTouchedAndSource(t *testing.T) {
+// TestStrandedAssignmentCleanup_LodgingDraftDeletedEvenWhenStaffTouched pins
+// that staff_touched is not a skip guard: a cancelled household is gone whether
+// or not staff moved them, so a hand-placed draft goes too, as summer's
+// hand-placed drafts do.
+func TestStrandedAssignmentCleanup_LodgingDraftDeletedEvenWhenStaffTouched(t *testing.T) {
 	t.Parallel()
 	app, err := pbtests.NewTestApp()
 	if err != nil {
@@ -857,18 +853,8 @@ func TestStrandedAssignmentCleanup_LodgingDraftPreservesStaffTouchedAndSource(t 
 		t.Fatalf("Sync: %v", err)
 	}
 
-	got, err := app.FindRecordById("lodging_assignments_draft", draft.Id)
-	if err != nil {
-		t.Fatalf("reload draft: %v", err)
-	}
-	if len(got.GetStringSlice("units")) != 0 {
-		t.Errorf("want units cleared, got %v", got.GetStringSlice("units"))
-	}
-	if !got.GetBool("staff_touched") {
-		t.Error("staff_touched was cleared -- the flag must survive the sweep")
-	}
-	if got.GetString("source") != "staff_manual" {
-		t.Errorf("source = %q, want unchanged %q", got.GetString("source"), "staff_manual")
+	if recordExists(t, app, "lodging_assignments_draft", draft.Id) {
+		t.Error("staff-touched lodging draft for a cancelled household survived -- staff_touched is not a skip guard")
 	}
 }
 
@@ -996,12 +982,8 @@ func TestStrandedAssignmentCleanup_LodgingPersonGrainOrphanDraft(t *testing.T) {
 		t.Fatalf("Sync: %v", err)
 	}
 
-	got, err := app.FindRecordById("lodging_assignments_draft", draft.Id)
-	if err != nil {
-		t.Fatalf("reload draft: %v", err)
-	}
-	if len(got.GetStringSlice("units")) != 0 {
-		t.Errorf("want units cleared for cancelled person, got %v", got.GetStringSlice("units"))
+	if recordExists(t, app, "lodging_assignments_draft", draft.Id) {
+		t.Error("cancelled adult's lodging draft survived -- want it deleted")
 	}
 }
 
@@ -1202,12 +1184,244 @@ func TestStrandedAssignmentCleanup_LodgingOrphanPassKeysOnTheCampMinderSessionID
 		t.Fatalf("Sync: %v", err)
 	}
 
-	got, err := app.FindRecordById("lodging_assignments_draft", draft.Id)
-	if err != nil {
-		t.Fatalf("reload draft: %v", err)
+	if recordExists(t, app, "lodging_assignments_draft", draft.Id) {
+		t.Error("cancelled household's lodging draft survived -- the sweep is still keyed " +
+			"on the session relation, so a recreated camp_sessions record turns it off")
 	}
-	if len(got.GetStringSlice("units")) != 0 {
-		t.Errorf("want units cleared for the cancelled household, got %v -- the sweep is still keyed "+
-			"on the session relation, so a recreated camp_sessions record turns it off", got.GetStringSlice("units"))
+}
+
+// --- Owner ruling 2026-10-29: a camper no longer enrolled loses their draft rows ---
+//
+// "if someone moves from enrolled to another status? we can kill their draft placements."
+// Reason (b), the camper is no longer enrolled in that session, now DELETES the draft row.
+// Reason (a), the bunk lost its plan while the camper is still enrolled, still only unassigns.
+
+// recordExists reports whether a record with this id is still in the collection.
+func recordExists(t *testing.T, app core.App, collection, id string) bool {
+	t.Helper()
+	return countRows(t, app, collection, fmt.Sprintf("id = '%s'", id)) > 0
+}
+
+// strandedFixture seeds one session with a planned bunk, a bunk that lost its plan, a
+// scenario, and one enrolled peer so the per-session enrollment guard passes.
+type strandedFixture struct {
+	sess, plannedBunk, planlessBunk, plan, scenario *core.Record
+}
+
+func newStrandedFixture(t *testing.T, app core.App) strandedFixture {
+	t.Helper()
+	var f strandedFixture
+	f.sess = saveRec(t, app, "camp_sessions", map[string]any{"cm_id": 100, "year": 2026})
+	f.plannedBunk = saveRec(t, app, "bunks", map[string]any{"cm_id": 1, "name": "B-1", "year": 2026})
+	f.planlessBunk = saveRec(t, app, "bunks", map[string]any{"cm_id": 2, "name": "G-5", "year": 2026})
+	f.plan = saveRec(t, app, "bunk_plans", map[string]any{"bunk": f.plannedBunk.Id, "session": f.sess.Id, "year": 2026})
+	f.scenario = saveRec(t, app, "saved_scenarios", map[string]any{"name": "April", "session": f.sess.Id, "year": 2026})
+	peer := saveRec(t, app, "persons", map[string]any{"cm_id": 9900})
+	saveRec(t, app, "attendees", map[string]any{"person": peer.Id, "session": f.sess.Id, "status_id": 2, "year": 2026})
+	return f
+}
+
+// camper seeds a person with an attendee row of the given status in the fixture's session.
+func (f strandedFixture) camper(t *testing.T, app core.App, cmID, statusID int) *core.Record {
+	t.Helper()
+	p := saveRec(t, app, "persons", map[string]any{"cm_id": cmID})
+	saveRec(t, app, "attendees", map[string]any{"person": p.Id, "session": f.sess.Id, "status_id": statusID, "year": 2026})
+	return p
+}
+
+func (f strandedFixture) draft(t *testing.T, app core.App, person, bunk *core.Record) *core.Record {
+	t.Helper()
+	data := map[string]any{"scenario": f.scenario.Id, "person": person.Id, "session": f.sess.Id, "year": 2026}
+	if bunk != nil {
+		data["bunk"] = bunk.Id
+	}
+	return saveRec(t, app, "bunk_assignments_draft", data)
+}
+
+func runStrandedCleanup(t *testing.T, app core.App, dryRun bool) *StrandedAssignmentCleanupSync {
+	t.Helper()
+	svc := NewStrandedAssignmentCleanupSync(app)
+	svc.SetYear(2026)
+	svc.SetDryRun(dryRun)
+	if err := svc.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	return svc
+}
+
+// A draft the old code already unassigned (bunk null) still belongs to a camper who left:
+// it is deleted too, not left behind as an empty row.
+func TestStrandedAssignmentCleanup_DeletesAlreadyUnassignedEnrollmentOrphanDraft(t *testing.T) {
+	t.Parallel()
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+	setupStrandedCollections(t, app)
+	f := newStrandedFixture(t, app)
+
+	cancelled := f.camper(t, app, 9001, 32)
+	draft := f.draft(t, app, cancelled, nil)
+
+	svc := runStrandedCleanup(t, app, false)
+
+	if recordExists(t, app, "bunk_assignments_draft", draft.Id) {
+		t.Error("already-unassigned draft of a camper no longer enrolled survived -- want it deleted")
+	}
+	if svc.Stats.Deleted != 1 {
+		t.Errorf("Stats.Deleted = %d, want 1", svc.Stats.Deleted)
+	}
+}
+
+// Reason (a) alone: the camper is still enrolled, only the bunk lost its plan. Unassigned, kept.
+func TestStrandedAssignmentCleanup_EnrolledCamperInPlanlessBunkIsOnlyUnassigned(t *testing.T) {
+	t.Parallel()
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+	setupStrandedCollections(t, app)
+	f := newStrandedFixture(t, app)
+
+	enrolled := f.camper(t, app, 9001, 2)
+	draft := f.draft(t, app, enrolled, f.planlessBunk)
+
+	svc := runStrandedCleanup(t, app, false)
+
+	got, err := app.FindRecordById("bunk_assignments_draft", draft.Id)
+	if err != nil {
+		t.Fatalf("enrolled camper's draft was deleted -- a planless bunk only unassigns: %v", err)
+	}
+	if got.GetString("bunk") != "" {
+		t.Errorf("want bunk cleared, got %q", got.GetString("bunk"))
+	}
+	if svc.Stats.Updated != 1 || svc.Stats.Deleted != 0 {
+		t.Errorf("Stats Updated=%d Deleted=%d, want 1 and 0", svc.Stats.Updated, svc.Stats.Deleted)
+	}
+}
+
+// Both reasons at once: the bunk lost its plan AND the camper left. Deleted, counted once.
+func TestStrandedAssignmentCleanup_DraftFlaggedByBothReasonsIsDeleted(t *testing.T) {
+	t.Parallel()
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+	setupStrandedCollections(t, app)
+	f := newStrandedFixture(t, app)
+
+	cancelled := f.camper(t, app, 9001, 32)
+	draft := f.draft(t, app, cancelled, f.planlessBunk)
+
+	svc := runStrandedCleanup(t, app, false)
+
+	if recordExists(t, app, "bunk_assignments_draft", draft.Id) {
+		t.Error("draft flagged by both reasons survived -- the enrollment reason deletes")
+	}
+	if svc.Stats.Deleted != 1 || svc.Stats.Updated != 0 {
+		t.Errorf("Stats Deleted=%d Updated=%d, want 1 and 0 (deleted once, never also unassigned)",
+			svc.Stats.Deleted, svc.Stats.Updated)
+	}
+}
+
+// A dry run deletes nothing but counts what it would have deleted.
+func TestStrandedAssignmentCleanup_DryRunCountsButKeepsEnrollmentOrphanDraft(t *testing.T) {
+	t.Parallel()
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+	setupStrandedCollections(t, app)
+	f := newStrandedFixture(t, app)
+
+	cancelled := f.camper(t, app, 9001, 32)
+	draft := f.draft(t, app, cancelled, f.plannedBunk)
+
+	svc := runStrandedCleanup(t, app, true)
+
+	got, err := app.FindRecordById("bunk_assignments_draft", draft.Id)
+	if err != nil {
+		t.Fatalf("dry run deleted the draft: %v", err)
+	}
+	if got.GetString("bunk") != f.plannedBunk.Id {
+		t.Errorf("dry run changed bunk to %q", got.GetString("bunk"))
+	}
+	if svc.Stats.Deleted != 1 || svc.Stats.Updated != 0 {
+		t.Errorf("Stats Deleted=%d Updated=%d, want 1 and 0 (the delete that would have happened)",
+			svc.Stats.Deleted, svc.Stats.Updated)
+	}
+}
+
+// Fail closed: enrollment that cannot be read deletes nothing.
+func TestStrandedAssignmentCleanup_UnreadableEnrollmentDeletesNothing(t *testing.T) {
+	t.Parallel()
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+	setupStrandedCollections(t, app)
+	f := newStrandedFixture(t, app)
+
+	cancelled := f.camper(t, app, 9001, 32)
+	draft := f.draft(t, app, cancelled, f.plannedBunk)
+
+	attendees, err := app.FindCollectionByNameOrId("attendees")
+	if err != nil {
+		t.Fatalf("find attendees: %v", err)
+	}
+	if err = app.Delete(attendees); err != nil {
+		t.Fatalf("drop attendees: %v", err)
+	}
+
+	svc := NewStrandedAssignmentCleanupSync(app)
+	svc.SetYear(2026)
+	_ = svc.Sync(context.Background()) // the lodging index build fails too; only the draft matters here
+
+	if !recordExists(t, app, "bunk_assignments_draft", draft.Id) {
+		t.Error("draft deleted although enrollment could not be read")
+	}
+	if svc.Stats.Errors == 0 {
+		t.Error("the unreadable enrollment should count an error")
+	}
+}
+
+// The lodging twin of the already-unassigned case: a party no longer enrolled loses its draft
+// row even when the old code had already cleared its units.
+func TestStrandedAssignmentCleanup_DeletesUnplacedLodgingEnrollmentOrphanDraft(t *testing.T) {
+	t.Parallel()
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+	setupStrandedCollections(t, app)
+
+	sess := addLodgingSession(t, app, 100, "family", 2026)
+	scenario := saveRec(t, app, "saved_scenarios", map[string]any{"name": "April", "session": sess.Id, "year": 2026})
+	cancelled := saveRec(t, app, "persons", map[string]any{"cm_id": 9001, "household_id": 5001, "year": 2026})
+	enrolledPerson := saveRec(t, app, "persons", map[string]any{"cm_id": 9002, "household_id": 5002, "year": 2026})
+	saveRec(t, app, "attendees", map[string]any{
+		"person": cancelled.Id, "person_id": 9001, "session": sess.Id, "status_id": 32, "year": 2026,
+	})
+	saveRec(t, app, "attendees", map[string]any{
+		"person": enrolledPerson.Id, "person_id": 9002, "session": sess.Id, "status_id": 2, "year": 2026,
+	})
+	draft := saveRec(t, app, "lodging_assignments_draft", map[string]any{
+		"session": sess.Id, "session_cm_id": 100, "year": 2026, "scenario": scenario.Id,
+		"household_cm_id": 5001, "source": "campminder_sync", "staff_touched": false,
+	})
+
+	svc := runStrandedCleanup(t, app, false)
+
+	if recordExists(t, app, "lodging_assignments_draft", draft.Id) {
+		t.Error("unplaced lodging draft of a household no longer enrolled survived -- want it deleted")
+	}
+	if svc.Stats.Deleted != 1 {
+		t.Errorf("Stats.Deleted = %d, want 1", svc.Stats.Deleted)
 	}
 }

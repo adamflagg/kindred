@@ -188,6 +188,53 @@ func TestBootedSweepDeletesDoNotCollideOnABlankedUniqueRelation(t *testing.T) {
 		}
 	})
 
+	// The scenario half (owner ruling 2026-10-29: "if someone moves from enrolled to another
+	// status? we can kill their draft placements"). Two campers placed in one scenario leave
+	// CampMinder. bunk_assignments_draft is UNIQUE(year, session, person, scenario), so blanking
+	// the first draft's person and then the second's lands both on (year, session, '', scenario)
+	// and fails the second person's delete. Cascading takes the drafts with the people instead.
+	t.Run("persons sweep deletes two campers placed in the same scenario", func(t *testing.T) {
+		const year = 2023
+		session := saveRecord(t, app, "camp_sessions", map[string]any{
+			"cm_id": 9400601, "name": "Session 2", "year": year, "session_type": "main",
+			"start_date": "2023-06-20 00:00:00.000Z", "end_date": "2023-07-10 00:00:00.000Z",
+		})
+		scenario := saveRecord(t, app, "saved_scenarios", map[string]any{
+			"name": "April draft", "session": session, "year": year,
+		})
+		gone := []int{9400701, 9400702}
+		for _, cmID := range gone {
+			pid := saveRecord(t, app, "persons", map[string]any{
+				"cm_id": cmID, "first_name": "Mia", "last_name": "Brown", "year": year,
+			})
+			saveRecord(t, app, "bunk_assignments_draft", map[string]any{
+				"scenario": scenario, "person": pid, "session": session, "year": year,
+			})
+		}
+
+		s := NewPersonsSync(app, nil)
+		processThreeCampers(t, s, year)
+		if err := s.deleteOrphans(year); err != nil {
+			t.Fatalf("persons sweep: %v", err)
+		}
+
+		if s.Stats.Errors != 0 {
+			t.Errorf("Stats.Errors = %d, want 0: deleting the second camper collided on "+
+				"bunk_assignments_draft's UNIQUE(year, session, person, scenario)", s.Stats.Errors)
+		}
+		for _, cmID := range gone {
+			if existsByCMID(t, app, "persons", cmID, year) {
+				t.Errorf("person %d survived the sweep", cmID)
+			}
+		}
+		if n := countRows(t, app, "bunk_assignments_draft", fmt.Sprintf("year = %d", year)); n != 0 {
+			t.Errorf("%d bunk_assignments_draft rows left for %d, want 0: a draft placement goes with its camper", n, year)
+		}
+		if n := countRows(t, app, "saved_scenarios", fmt.Sprintf("year = %d", year)); n != 1 {
+			t.Errorf("%d saved_scenarios left for %d, want 1: the scenario itself stays", n, year)
+		}
+	})
+
 	// The class, so a fourth instance fails here rather than in a nightly.
 	t.Run("no other optional relation blanks into a unique index", func(t *testing.T) {
 		assertNoUnreviewedBlankingUniqueRelations(t, app)
@@ -202,13 +249,15 @@ func TestBootedSweepDeletesDoNotCollideOnABlankedUniqueRelation(t *testing.T) {
 var blankingUniqueRelationsReviewed = map[string]string{
 	"staff.person": "the persons sweep RETIRES a staff-linked person instead of deleting it " +
 		"(owner ruling C, kindred#3303), so staff.person is never blanked by the sweep",
-	"bunk_assignments_draft.person": "a scenario placement is staff work; stranded_assignment_cleanup " +
-		"UNASSIGNS a draft whose camper left rather than deleting it, so cascading is an owner call",
-	"bunk_assignments_draft.session": "as for .person; and saved_scenarios.session is required, so a " +
-		"session that still has a scenario cannot be deleted at all",
+	// bunk_assignments_draft.person is NOT here: it cascades since 1500000257 (owner ruling
+	// 2026-10-29, "we can kill their draft placements"). Only its session twin stays.
+	"bunk_assignments_draft.session": "every draft carries a scenario, saved_scenarios.session is " +
+		"required, and a session that still has a scenario cannot be deleted at all -- so this " +
+		"relation is never blanked",
 	"person_custom_values.field_definition": "cascading would let one custom_field_defs sweep delete every " +
 		"answer to that field; the collision is today's only brake on that, so it is an owner call",
-	"household_custom_values.field_definition": "as for person_custom_values.field_definition",
+	"household_custom_values.field_definition": "as for person_custom_values.field_definition " +
+		"(owner ruling 2026-10-29: \"save the custom field history\")",
 }
 
 var uniqueIndexColumns = regexp.MustCompile(`(?is)^\s*CREATE\s+UNIQUE\s+INDEX\b.*?\((.*?)\)`)
