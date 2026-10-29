@@ -598,8 +598,12 @@ async def get_velocity(
     """Get registration velocity curves with week-over-week data."""
     check_duration_session_exclusive(duration, session_cm_id)
 
+    # The camp day is in the key: the current week's partial-week flag moves with it, and since the sync notify is
+    # scoped (METRICS_READ_TABLES) no unrelated sync clears this at the day's boundary.
+    camp_today = get_camp_today()
     cache_params = {
         "year": year,
+        "camp_today": camp_today,
         "compare_years": compare_years,
         "session_cm_id": session_cm_id,
         "session_types": session_types,
@@ -623,6 +627,7 @@ async def get_velocity(
         session_types=type_filter,
         split_by_gender=split_by_gender,
         metric=metric,
+        today=camp_today,
         duration=duration,
         gender_basis=gender_basis,
     )
@@ -662,8 +667,11 @@ async def get_forecast(
     """Get registration forecast with budget goals and revenue projections."""
     check_duration_session_exclusive(duration, session_cm_id)
 
+    # The camp day is in the key: the forecast's current point moves with it (see get_velocity).
+    camp_today = get_camp_today()
     cache_params = {
         "year": year,
+        "camp_today": camp_today,
         "session_types": session_types,
         "session_cm_id": session_cm_id,
         "day_offset": day_offset,
@@ -682,6 +690,7 @@ async def get_forecast(
         session_cm_id=session_cm_id,
         day_offset=day_offset,
         duration=duration,
+        today=camp_today,
     )
     metrics_cache.set("forecast", result, **cache_params)
     return result
