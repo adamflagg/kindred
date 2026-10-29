@@ -182,3 +182,11 @@ def test_calculator_inputs_skip_the_application_conflict_for_an_own_answer_reque
     answers = pricing_answers(request, application, [])
     converted = calculator_inputs(request, application, answers, [], {}, [], None, intake_rules())
     assert "household_income_conflict" not in _codes(converted.issues)
+
+
+@pytest.mark.asyncio
+async def test_the_household_page_names_who_filed_each_answer_set_and_when() -> None:
+    _, casework = await both_forms()
+    detail = await casework.application_detail(2027, RACHEL_HOUSEHOLD)
+    adult = next(r for r in detail.requests if r.person_cm_id == RACHEL)
+    assert (adult.form_response_id, adult.form_submitted_at) == ("resp-rachel-1", "2026-11-05T17:00:00Z")

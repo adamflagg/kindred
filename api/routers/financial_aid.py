@@ -1065,7 +1065,7 @@ async def ignore_form_response(
     """Ignore…: a test or duplicate response (a reason is required). It stays listed under All forms with the
     reason, who and when, and Link… undoes it. Logged; the season's intake is rebuilt."""
     try:
-        ignored = await _form_responses().ignore(year, record_id, body.reason, user.email)
+        ignored = await _form_responses().ignore(year, record_id, body.kind, body.reason, user.email)
     except _ERRORS as exc:
         _raise_http(exc)
     await _rebuild_intake(year)
@@ -1076,11 +1076,13 @@ async def ignore_form_response(
 async def get_form_response_candidates(
     year: _Year,
     record_id: _FORM_RESPONSE_ID,
+    q: Annotated[str, Query(max_length=200)] = "",
     user: AuthUser = Depends(require_permission(Permission.FINANCIAL_AID_CASEWORK)),
 ) -> LinkCandidatesOut:
-    """Link…'s dialog: the response's candidates, named, with the respondent email (read here and nowhere else)."""
+    """Link…'s dialog: the response's candidates, named, with the respondent email (read here and nowhere else).
+    With `q`, the season's registered people found by CampMinder id, birthdate (YYYY-MM-DD) or name instead."""
     try:
-        return await _form_responses().link_candidates(year, record_id)
+        return await _form_responses().link_candidates(year, record_id, q)
     except _ERRORS as exc:
         _raise_http(exc)
 
@@ -1090,10 +1092,11 @@ async def pull_google_form(
     year: _Year,
     user: AuthUser = Depends(require_permission(Permission.FINANCIAL_AID_CASEWORK)),
 ) -> dict[str, str]:
-    """Pull now: read the season's adult aid Google Form at once ("the registrar just told me one came in")."""
+    """Pull now: read the season's adult aid Google Form at once ("the registrar just told me one came in"). Fire and
+    forget: PocketBase starts (or queues) the job and answers at once; the job rebuilds intake itself on a change."""
     await _pull_google_form(year)
     logger.info("Adult aid form pull requested year=%s actor=%s", year, user.email)
-    return {"status": "requested"}
+    return {"status": "started"}
 
 
 @router.post(

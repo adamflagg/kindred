@@ -93,6 +93,10 @@ class RequestOut(BaseModel):
     # (and "") for every other request.
     answers_source: Literal["", "google_form"] = ""
     answers: list[AnswerOut] | None = None
+    # The adult aid form response that answer set came from: Google's responseId and when it was submitted. The
+    # filer is the request's person. "" for every other request.
+    form_response_id: str = ""
+    form_submitted_at: str = ""
 
 
 class ApplicationSummaryOut(BaseModel):

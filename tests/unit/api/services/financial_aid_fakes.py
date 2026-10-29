@@ -238,6 +238,8 @@ class FakeAidStore:
         self.google_form_status: dict[str, str] | None = None
         self.respondent_emails: dict[str, str] = {}
         self.form_years_read: set[int] = set()
+        self.searchable_people: list[Any] = []  # persons rows Link…'s search can find (cm_id, household_id, ...)
+        self.person_contacts: dict[int, tuple[str, str]] = {}  # person -> (birthdate, primary email)
         self.rules: AidRules | None = None
         self.equity_rules: AidRules | None = None
         self.years_read: set[int] = set()
@@ -291,6 +293,22 @@ class FakeAidStore:
 
     async def fetch_form_response_identity(self, record_id: str) -> tuple[str, str]:
         return self.respondent_emails.get(record_id, ""), ""
+
+    async def search_registration_people(self, year: int, query: str) -> list[Any]:
+        text = query.strip()
+        if text.isdecimal():
+            return [p for p in self.searchable_people if p.cm_id == int(text)]
+        if len(text) == 10 and text[4] == "-":
+            return [p for p in self.searchable_people if p.birthdate == text]
+        words = [w.casefold() for w in text.split()]
+        return [
+            p
+            for p in self.searchable_people
+            if all(w in (p.first_name.casefold(), p.last_name.casefold()) for w in words)
+        ]
+
+    async def fetch_person_contacts(self, year: int, person_cm_ids: Sequence[int]) -> dict[int, tuple[str, str]]:
+        return {p: self.person_contacts[p] for p in person_cm_ids if p in self.person_contacts}
 
     async def fetch_google_form_status(self, year: int) -> dict[str, str] | None:
         await self._read(year)

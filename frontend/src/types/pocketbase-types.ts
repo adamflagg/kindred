@@ -465,6 +465,15 @@ export const AidFormResponsesMatchStatusOptions = {
 } as const
 export type AidFormResponsesMatchStatusOptions =
   (typeof AidFormResponsesMatchStatusOptions)[keyof typeof AidFormResponsesMatchStatusOptions]
+
+export const AidFormResponsesIgnoredKindOptions = {
+  test: 'test',
+  duplicate: 'duplicate',
+  not_asking: 'not_asking',
+  other: 'other',
+} as const
+export type AidFormResponsesIgnoredKindOptions =
+  (typeof AidFormResponsesIgnoredKindOptions)[keyof typeof AidFormResponsesIgnoredKindOptions]
 export type AidFormResponsesRecord<
   Tmatch_candidates = unknown,
   Tparse_notes = unknown,
@@ -485,6 +494,7 @@ export type AidFormResponsesRecord<
   id: string
   ignored_at?: IsoDateString
   ignored_by?: string
+  ignored_kind?: AidFormResponsesIgnoredKindOptions
   ignored_reason?: string
   income_confirmed?: number
   last_submitted_at?: string

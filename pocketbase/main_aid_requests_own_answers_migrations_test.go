@@ -36,6 +36,7 @@ func TestAidRequestsOwnAnswersMigrationDeclaresItsFields(t *testing.T) {
 		"form_change_reviewed":    {`type: "text"`, "max: 300"},
 		"form_change_reviewed_by": {`type: "text"`, "max: 200"},
 		"form_change_reviewed_at": {`type: "date"`},
+		"ignored_kind":            {`type: "select"`, `values: ["test", "duplicate", "not_asking", "other"]`, "maxSelect: 1"},
 		"ignored_by":              {`type: "text"`, "max: 200"},
 		"ignored_at":              {`type: "date"`},
 	}

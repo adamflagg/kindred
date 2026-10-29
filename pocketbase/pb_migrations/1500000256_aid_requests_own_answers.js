@@ -14,8 +14,9 @@
  * in Google after a decision (GF-4: flagged, not applied). It holds the fingerprint of the change staff reviewed, so
  * the look stays cleared until a different change arrives. Staff's fields: intake never writes them.
  *
- * aid_form_responses (PR 1, 1500000255) gains `ignored_by` / `ignored_at` beside its `ignored_reason`: an ignored
- * response is listed with why, who and when (owner Q3), and Link… undoes it.
+ * aid_form_responses (PR 1, 1500000255) gains `ignored_kind` (test / duplicate / not_asking / other), `ignored_by` and
+ * `ignored_at` beside its `ignored_reason`: an ignored response is listed with what kind, why, who and when (owner
+ * Q3), and Link… undoes it. A reason is required only for "other".
  *
  * All five rules stay null (spec 14.3): only the superuser (FastAPI) reads or writes either collection. Field
  * properties are direct (never an options wrapper, which v0.23 ignores silently).
@@ -32,11 +33,13 @@ migrate((app) => {
   app.save(requests);
 
   const responses = app.findCollectionByNameOrId("aid_form_responses");
+  responses.fields.add(new Field({ type: "select", name: "ignored_kind", required: false, presentable: false, values: ["test", "duplicate", "not_asking", "other"], maxSelect: 1 }));
   responses.fields.add(new Field({ type: "text", name: "ignored_by", required: false, presentable: false, min: 0, max: 200, pattern: "" }));
   responses.fields.add(new Field({ type: "date", name: "ignored_at", required: false, presentable: false, min: "", max: "" }));
   app.save(responses);
 }, (app) => {
   const responses = app.findCollectionByNameOrId("aid_form_responses");
+  responses.fields.removeByName("ignored_kind");
   responses.fields.removeByName("ignored_by");
   responses.fields.removeByName("ignored_at");
   app.save(responses);

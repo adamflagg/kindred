@@ -20,9 +20,9 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from api.schemas.financial_aid_form_intake import (
-    FormCandidateOut,
     FormChangeReviewedOut,
     FormResponseActionOut,
+    LinkCandidateOut,
     LinkCandidatesOut,
 )
 from api.services.financial_aid_casework_service import CaseworkValidationError
@@ -54,14 +54,14 @@ CANDIDATES = LinkCandidatesOut(
     respondent_email="rachel@example.com",
     name_typed="Rachel Garcia",
     candidates=[
-        FormCandidateOut(person_cm_id=1000091, household_cm_id=1000009, signals=["name"], camper_name="Rachel Garcia")
+        LinkCandidateOut(person_cm_id=1000091, household_cm_id=1000009, signals=["name"], camper_name="Rachel Garcia")
     ],
 )
 REVIEWED = FormChangeReviewedOut(request_id=REQUEST, reviewed_by="registrar@example.com", reviewed_at="2026-12-11")
 
 ROUTES: list[tuple[str, str, dict[str, Any] | None]] = [
     ("POST", f"{BASE}/{RECORD}/link", {"person_cm_id": 1000091, "reason": "nickname"}),
-    ("POST", f"{BASE}/{RECORD}/ignore", {"reason": "A test entry"}),
+    ("POST", f"{BASE}/{RECORD}/ignore", {"kind": "test"}),
     ("GET", f"{BASE}/{RECORD}/candidates", None),
     ("POST", f"{BASE}/pull", None),
     ("POST", f"/api/financial-aid/requests/2027/form-changes/{REQUEST}/review", None),
@@ -136,22 +136,26 @@ def test_ignore_reaches_the_service_then_rebuilds_and_maps_a_refusal_to_422() ->
     stub, rebuild = _stub(), AsyncMock(return_value=True)
     user = persona_user(PERSONA_FINANCE)
     with _client(user, stub, rebuild) as client:
-        assert client.post(f"{BASE}/{RECORD}/ignore", json={"reason": "A test entry"}).status_code == 200
-    stub.ignore.assert_awaited_once_with(2027, RECORD, "A test entry", user.email)
+        body = {"kind": "other", "reason": "A test entry"}
+        assert client.post(f"{BASE}/{RECORD}/ignore", json=body).status_code == 200
+        assert client.post(f"{BASE}/{RECORD}/ignore", json={"kind": "spam"}).status_code == 422
+    stub.ignore.assert_awaited_once_with(2027, RECORD, "other", "A test entry", user.email)
     rebuild.assert_awaited_once_with(2027)
 
     refused = _stub()
     refused.ignore = AsyncMock(side_effect=CaseworkValidationError("a reason is required"))
     with _client(user, refused) as client:
-        assert client.post(f"{BASE}/{RECORD}/ignore", json={"reason": ""}).status_code == 422
+        assert client.post(f"{BASE}/{RECORD}/ignore", json={"kind": "other", "reason": ""}).status_code == 422
 
 
 def test_the_candidates_read_rebuilds_nothing() -> None:
     stub, rebuild = _stub(), AsyncMock(return_value=True)
     with _client(persona_user(PERSONA_REGISTRAR), stub, rebuild) as client:
         response = client.get(f"{BASE}/{RECORD}/candidates")
-    assert response.status_code == 200
+        searched = client.get(f"{BASE}/{RECORD}/candidates", params={"q": "Liam Garcia"})
+    assert (response.status_code, searched.status_code) == (200, 200)
     assert response.json()["respondent_email"] == "rachel@example.com"
+    assert [c.args for c in stub.link_candidates.await_args_list] == [(2027, RECORD, ""), (2027, RECORD, "Liam Garcia")]
     rebuild.assert_not_awaited()
 
 
@@ -169,7 +173,7 @@ def test_pull_now_asks_pocketbase_for_the_season() -> None:
     pull = AsyncMock(return_value={"status": "started"})
     with _client(persona_user(PERSONA_REGISTRAR), _stub(), pull=pull) as client:
         response = client.post(f"{BASE}/pull")
-    assert response.status_code == 202
+    assert (response.status_code, response.json()) == (202, {"status": "started"})
     pull.assert_awaited_once_with(2027)
 
 
@@ -202,3 +206,5 @@ def test_no_camperships_response_schema_carries_sensitive_form_answers() -> None
         assert not properties & {"poc", "race_ethnicity", "gender_identity"}, name
         if name != "LinkCandidatesOut":
             assert "respondent_email" not in properties, name
+    # A candidate's CampMinder contact rides only on Link…'s dialog, never on the Form intake list.
+    assert not _schema_properties(schemas["FormCandidateOut"]) & {"email", "birthdate"}

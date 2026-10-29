@@ -1751,6 +1751,11 @@ export type BecameOut = {
    * Form Source
    */
   form_source?: 'campminder' | 'google_form' | null
+  form_change?: FormChangeOut | null
+  /**
+   * Price Missing
+   */
+  price_missing?: boolean | null
 }
 
 /**
@@ -5485,10 +5490,30 @@ export type FormCandidateOut = {
    * Household Email
    */
   household_email?: boolean
+}
+
+/**
+ * FormChangeOut
+ *
+ * A change to a decided request's adult aid form that was not applied (GF-4).
+ */
+export type FormChangeOut = {
   /**
-   * Camper Name
+   * Kind
    */
-  camper_name?: string
+  kind: 'deleted' | 'changed_after_decision'
+  /**
+   * At
+   */
+  at?: string
+  /**
+   * Reviewed
+   */
+  reviewed?: boolean
+  /**
+   * Reviewed By
+   */
+  reviewed_by?: string
 }
 
 /**
@@ -5790,6 +5815,10 @@ export type FormResponseActionOut = {
    */
   linked_at?: string
   /**
+   * Ignored Kind
+   */
+  ignored_kind?: 'test' | 'duplicate' | 'not_asking' | 'other' | ''
+  /**
    * Ignored Reason
    */
   ignored_reason?: string
@@ -5807,6 +5836,10 @@ export type FormResponseActionOut = {
  * FormResponseIgnore
  */
 export type FormResponseIgnore = {
+  /**
+   * Kind
+   */
+  kind: 'test' | 'duplicate' | 'not_asking' | 'other'
   /**
    * Reason
    */
@@ -5911,6 +5944,10 @@ export type FormResponseOut = {
    */
   yes_no?: Array<FormYesNoOut>
   /**
+   * Unemployment
+   */
+  unemployment?: boolean | null
+  /**
    * Num Children
    */
   num_children?: number | null
@@ -5958,6 +5995,10 @@ export type FormResponseOut = {
    * Linked At
    */
   linked_at?: string
+  /**
+   * Ignored Kind
+   */
+  ignored_kind?: 'test' | 'duplicate' | 'not_asking' | 'other' | ''
   /**
    * Ignored Reason
    */
@@ -6742,6 +6783,14 @@ export type GoogleFormStatusOut = {
    * Refused
    */
   refused?: boolean
+  /**
+   * Returned
+   */
+  returned?: number | null
+  /**
+   * Expected
+   */
+  expected?: number | null
 }
 
 /**
@@ -10019,6 +10068,59 @@ export type LeverEffectOut = {
 }
 
 /**
+ * LinkCandidateOut
+ *
+ * A candidate on Link…'s dialog: named, with their household, registration and CampMinder birthdate and email
+ * beside the response's own (this read only; the Form intake list never carries them).
+ */
+export type LinkCandidateOut = {
+  /**
+   * Person Cm Id
+   */
+  person_cm_id: number
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Signals
+   */
+  signals?: Array<string>
+  /**
+   * Session Cm Ids
+   */
+  session_cm_ids?: Array<number>
+  /**
+   * Elsewhere
+   */
+  elsewhere?: boolean
+  /**
+   * Household Email
+   */
+  household_email?: boolean
+  /**
+   * Camper Name
+   */
+  camper_name?: string
+  /**
+   * Household Label
+   */
+  household_label?: string
+  /**
+   * Registration Status
+   */
+  registration_status?: '' | 'enrolled' | 'applied' | 'waitlisted' | 'incomplete'
+  /**
+   * Birthdate
+   */
+  birthdate?: string
+  /**
+   * Email
+   */
+  email?: string
+}
+
+/**
  * LinkCandidatesOut
  *
  * Link…'s dialog: the response's identity evidence, the respondent email included (read for this dialog only),
@@ -10046,9 +10148,13 @@ export type LinkCandidatesOut = {
    */
   birthdate_typed?: string
   /**
+   * Program Choice
+   */
+  program_choice?: string
+  /**
    * Candidates
    */
-  candidates?: Array<FormCandidateOut>
+  candidates?: Array<LinkCandidateOut>
 }
 
 /**
@@ -15248,6 +15354,14 @@ export type RequestOut = {
    * Answers
    */
   answers?: Array<AnswerOut> | null
+  /**
+   * Form Response Id
+   */
+  form_response_id?: string
+  /**
+   * Form Submitted At
+   */
+  form_submitted_at?: string
 }
 
 /**
@@ -19135,6 +19249,18 @@ export type SupersededOut = {
    * Submitted At
    */
   submitted_at: string
+  /**
+   * Ask
+   */
+  ask?: number | null
+  /**
+   * Total Gross Income
+   */
+  total_gross_income?: number | null
+  /**
+   * Replaced At
+   */
+  replaced_at?: string
 }
 
 /**
@@ -26970,7 +27096,12 @@ export type GetFormResponseCandidatesApiFinancialAidIntakeYearFormResponsesRecor
        */
       record_id: string
     }
-    query?: never
+    query?: {
+      /**
+       * Q
+       */
+      q?: string
+    }
     url: '/api/financial-aid/intake/{year}/form-responses/{record_id}/candidates'
   }
 

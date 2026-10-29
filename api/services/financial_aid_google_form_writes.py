@@ -24,6 +24,7 @@ from api.constants.collections import AID_FORM_RESPONSES, AID_REQUESTS
 from api.schemas.financial_aid_form_intake import (
     FormChangeReviewedOut,
     FormResponseActionOut,
+    LinkCandidateOut,
     LinkCandidatesOut,
 )
 from api.services.financial_aid_casework_service import CaseworkNotFoundError, CaseworkValidationError
@@ -48,6 +49,7 @@ _STAFF_FIELDS: Final = (
     "household_cm_id",
     "linked_by",
     "linked_at",
+    "ignored_kind",
     "ignored_reason",
     "ignored_by",
     "ignored_at",
@@ -58,6 +60,8 @@ class FormResponseStore(Protocol):
     async def fetch_form_response(self, record_id: str) -> FormResponseRow | None: ...
     async def fetch_form_response_identity(self, record_id: str) -> tuple[str, str]: ...
     async def fetch_registered_attendees(self, year: int) -> list[AttendeeRow]: ...
+    async def search_registration_people(self, year: int, query: str) -> list[Any]: ...
+    async def fetch_person_contacts(self, year: int, person_cm_ids: Sequence[int]) -> dict[int, tuple[str, str]]: ...
     async def fetch_request(self, record_id: str) -> RequestRecord | None: ...
     async def fetch_names(
         self, year: int, household_cm_ids: Collection[int], person_cm_ids: Collection[int]
@@ -72,6 +76,23 @@ class FormResponseStore(Protocol):
         require_reason: bool = False,
         allow_chunking: bool = False,
     ) -> AidOperationResult: ...
+
+
+IGNORE_OTHER: Final = "other"
+IGNORE_KINDS: Final = frozenset({"test", "duplicate", "not_asking", IGNORE_OTHER})
+CANDIDATES_MAX: Final = 25
+# attendees.status_id -> the word Link… shows (the registered statuses intake reads).
+_STATUS_WORDS: Final[dict[int, str]] = {2: "enrolled", 4: "applied", 8: "waitlisted", 512: "incomplete"}
+
+
+def _registration_status(rows: Sequence[AttendeeRow], candidate: LinkCandidateOut) -> str:
+    """The candidate's best registration status in the sessions the evidence names (else any of theirs): enrolled
+    before applied, waitlisted, incomplete."""
+    named = [a for a in rows if a.session_cm_id in candidate.session_cm_ids] or list(rows)
+    for status in (2, 4, 8, 512):
+        if any(a.status_id == status for a in named):
+            return _STATUS_WORDS[status]
+    return ""
 
 
 def _now() -> str:
@@ -139,6 +160,7 @@ class FormResponseCaseworkService:
             "household_cm_id": households[0],
             "linked_by": actor,
             "linked_at": _now(),
+            "ignored_kind": "",
             "ignored_reason": "",
             "ignored_by": "",
             "ignored_at": "",
@@ -146,33 +168,70 @@ class FormResponseCaseworkService:
         await self._write(row, fields, ACTION_LINK, actor=actor, reason=reason.strip(), required=False)
         return _action_out(row, fields)
 
-    async def ignore(self, year: int, record_id: str, reason: str, actor: str) -> FormResponseActionOut:
-        if not reason.strip():
-            raise CaseworkValidationError("a reason is required to ignore a response")
+    async def ignore(self, year: int, record_id: str, kind: str, reason: str, actor: str) -> FormResponseActionOut:
+        """Ignore…: a test, a duplicate, someone not asking for aid, or (with a reason) something else."""
+        if kind not in IGNORE_KINDS:
+            raise CaseworkValidationError(f"unknown ignore kind {kind!r}")
+        if kind == IGNORE_OTHER and not reason.strip():
+            raise CaseworkValidationError("a reason is required to ignore a response as other")
         row = await self._require(year, record_id)
         fields = {
             "match_status": MATCH_IGNORED,
+            "ignored_kind": kind,
             "ignored_reason": reason.strip(),
             "ignored_by": actor,
             "ignored_at": _now(),
         }
-        await self._write(row, fields, ACTION_IGNORE, actor=actor, reason=reason.strip(), required=True)
+        logged = reason.strip() or f"Ignored: {kind}"
+        await self._write(row, fields, ACTION_IGNORE, actor=actor, reason=logged, required=True)
         return _action_out(row, fields)
 
-    async def link_candidates(self, year: int, record_id: str) -> LinkCandidatesOut:
+    async def link_candidates(self, year: int, record_id: str, query: str = "") -> LinkCandidatesOut:
+        """Link…'s dialog: the response's evidence and its candidates, or with `query` the season's registered people
+        a search by CampMinder id, birthdate or name finds, in the same shape (no signals: nothing matched them)."""
         row = await self._require(year, record_id)
         email, birthdate = await self._store.fetch_form_response_identity(record_id)
-        candidates = [candidate_out(c) for c in row.match_candidates]
-        _, names = await self._store.fetch_names(
-            year, {c.household_cm_id for c in candidates if c.household_cm_id > 0}, {c.person_cm_id for c in candidates}
+        attendees = await self._store.fetch_registered_attendees(year)
+        registered: dict[int, list[AttendeeRow]] = {}
+        for a in attendees:
+            registered.setdefault(a.person_cm_id, []).append(a)
+        if query.strip():
+            found = await self._store.search_registration_people(year, query)
+            candidates = [
+                LinkCandidateOut(
+                    person_cm_id=int(p.cm_id),
+                    household_cm_id=int(getattr(p, "household_id", 0) or 0),
+                    session_cm_ids=sorted({a.session_cm_id for a in registered[int(p.cm_id)]}),
+                )
+                for p in found
+                if int(getattr(p, "cm_id", 0) or 0) in registered
+            ][:CANDIDATES_MAX]
+        else:
+            candidates = [LinkCandidateOut(**candidate_out(c).model_dump()) for c in row.match_candidates]
+        people = [c.person_cm_id for c in candidates]
+        households, names = await self._store.fetch_names(
+            year, {c.household_cm_id for c in candidates if c.household_cm_id > 0}, set(people)
         )
+        contacts = await self._store.fetch_person_contacts(year, people)
         return LinkCandidatesOut(
             id=row.id,
             response_id=row.response_id,
             respondent_email=email,
             name_typed=row.name_typed,
             birthdate_typed=birthdate,
-            candidates=[c.model_copy(update={"camper_name": names.get(c.person_cm_id, "")}) for c in candidates],
+            program_choice=row.program_choice,
+            candidates=[
+                c.model_copy(
+                    update={
+                        "camper_name": names.get(c.person_cm_id, ""),
+                        "household_label": households.get(c.household_cm_id, ""),
+                        "registration_status": _registration_status(registered.get(c.person_cm_id, []), c),
+                        "birthdate": contacts.get(c.person_cm_id, ("", ""))[0],
+                        "email": contacts.get(c.person_cm_id, ("", ""))[1],
+                    }
+                )
+                for c in candidates
+            ],
         )
 
     async def review_form_change(self, year: int, request_id: str, actor: str) -> FormChangeReviewedOut:

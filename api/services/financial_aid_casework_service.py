@@ -362,6 +362,8 @@ def request_out(
             if record.answers_source
             else None
         ),
+        form_response_id=record.form_response_id,
+        form_submitted_at=record.form_submitted_at,
     )
 
 

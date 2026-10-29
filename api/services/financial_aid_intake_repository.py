@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -51,11 +52,13 @@ from api.constants.collections import (
     ATTENDEES,
     CAMP_SESSIONS,
     FINANCIAL_TRANSACTIONS,
+    PERSONS,
 )
 from api.services.aid_build_reads import shared_read
 from api.services.aid_sync_inputs import aid_sync_inputs
 from api.services.financial_aid_google_form import FormResponseRow
 from api.services.financial_aid_household import HOUSEHOLD_ANSWER_FIELDS
+from api.services.financial_aid_household_search import person_name_filter
 from api.services.financial_aid_intake_types import (
     INTAKE_RULES_SECTIONS,
     REGISTERED_STATUS_IDS,
@@ -89,6 +92,7 @@ from bunking.financial_aid.change_log import AidOperationResult, AidWrite, commi
 from bunking.financial_aid.rules.schema import AidRules, SectionName
 
 PAGE_SIZE: Final = 500
+_DAY: Final = re.compile(r"\d{4}-\d{2}-\d{2}")
 STABLE_SORT: Final = "id"
 
 # The registration-time ask (CA-FinancialAssistanceAmount for a camper, WW-FA
@@ -166,6 +170,7 @@ FORM_RESPONSE_READ_FIELDS: Final = ",".join(
         "linked_by",
         "linked_at",
         "ignored_reason",
+        "ignored_kind",
         "ignored_by",
         "ignored_at",
         "name_typed",
@@ -363,6 +368,7 @@ def _form_response(record: Any) -> FormResponseRow:
         linked_by=_str(getattr(record, "linked_by", "")),
         linked_at=_stamp(getattr(record, "linked_at", "")),
         ignored_reason=_str(getattr(record, "ignored_reason", "")),
+        ignored_kind=_str(getattr(record, "ignored_kind", "")),
         ignored_by=_str(getattr(record, "ignored_by", "")),
         ignored_at=_stamp(getattr(record, "ignored_at", "")),
         name_typed=_str(getattr(record, "name_typed", "")),
@@ -689,6 +695,45 @@ class FinancialAidIntakeRepository:
             {"filter": f"id = '{pb_escape(record_id)}'", "fields": FORM_RESPONSE_READ_FIELDS, "sort": STABLE_SORT},
         )
         return _form_response(rows[0]) if rows else None
+
+    async def search_registration_people(self, year: int, query: str) -> list[Any]:
+        """Link…'s search: the season's persons by CampMinder id, birthdate (YYYY-MM-DD) or name words. The caller
+        keeps those registered this season."""
+        text = query.strip()
+        if text.isdecimal():
+            clause = f"cm_id = {int(text)}"
+        elif _DAY.fullmatch(text):
+            clause = f"birthdate ~ '{pb_escape(text)}'"
+        else:
+            words = [w[:40] for w in text.split()][:4]
+            if not words:
+                return []
+            return await self._page(
+                PERSONS,
+                {"filter": person_name_filter(year, words), "fields": "cm_id,household_id", "sort": STABLE_SORT},
+            )
+        return await self._page(
+            PERSONS, {"filter": f"year = {int(year)} && {clause}", "fields": "cm_id,household_id", "sort": STABLE_SORT}
+        )
+
+    async def fetch_person_contacts(self, year: int, person_cm_ids: Sequence[int]) -> dict[int, tuple[str, str]]:
+        """Each named person's CampMinder birthdate and primary email this season: Link…'s evidence beside the
+        response's own, for the candidates read only."""
+        ids = sorted({int(p) for p in person_cm_ids if p > 0})
+        if not ids:
+            return {}
+        scope = " || ".join(f"cm_id = {int(p)}" for p in ids)
+        rows = await self._page(
+            PERSONS,
+            {
+                "filter": f"year = {int(year)} && ({scope})",
+                "fields": "cm_id,birthdate,primary_email",
+                "sort": STABLE_SORT,
+            },
+        )
+        return {
+            _int(r.cm_id): (_str(getattr(r, "birthdate", ""))[:10], _str(getattr(r, "primary_email", ""))) for r in rows
+        }
 
     async def fetch_form_response_identity(self, record_id: str) -> tuple[str, str]:
         """One response's respondent email and typed birthdate: Link…'s match evidence, read for that dialog only and

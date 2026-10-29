@@ -128,6 +128,7 @@ class FormResponseRow:
     linked_by: str = ""
     linked_at: str = ""
     ignored_reason: str = ""
+    ignored_kind: str = ""  # test | duplicate | not_asking | other ("" until ignored)
     ignored_by: str = ""
     ignored_at: str = ""
     name_typed: str = ""

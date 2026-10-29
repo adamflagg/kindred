@@ -37,6 +37,7 @@ row even when the form never named them.
 from __future__ import annotations
 
 import asyncio
+import re
 from collections import defaultdict
 from collections.abc import Awaitable, Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -54,6 +55,7 @@ from api.schemas.financial_aid_form_intake import (
     CampMinderAidOut,
     FormAnswerOut,
     FormCandidateOut,
+    FormChangeOut,
     FormFigureOut,
     FormIntakeCountsOut,
     FormIntakeResponse,
@@ -74,6 +76,7 @@ from api.schemas.financial_aid_form_intake import (
 from api.services.aid_season_state import SeasonDoneRead
 from api.services.camp_calendar import CAMP_TZ
 from api.services.financial_aid_addition_view import addition_view, additions_by_request_key, posted_rounds
+from api.services.financial_aid_calc_inputs import session_program_key
 from api.services.financial_aid_campminder_money import (
     D170Reads,
     NoRequestAid,
@@ -86,6 +89,8 @@ from api.services.financial_aid_cancellations import CancelEvent, fold_cancellat
 from api.services.financial_aid_casework_service import _program_for
 from api.services.financial_aid_decisions_service import session_pools
 from api.services.financial_aid_google_form import (
+    FLAG_FORM_RESPONSE_DELETED,
+    FORM_CHANGE_FLAGS,
     GOOGLE_FORM_FIRST_SEASON,
     MATCH_SUPERSEDED,
     FormResponseRow,
@@ -518,7 +523,16 @@ class _Explainer:
             if round1 is not None and round1.posted and round1.locked_amount is not None
             else None,
             form_source="google_form" if is_form_request(request) else None,
+            form_change=form_change_out(request),
+            price_missing=self.price_missing(request) if self.s.year >= GOOGLE_FORM_FIRST_SEASON else None,
         )
+
+    def price_missing(self, request: RequestRecord) -> bool | None:
+        """From 2027: the rules give the request's session no price yet (PR 3's "no price yet"). None when the request
+        is not live or has no session: there is nothing to price."""
+        if request.status not in _LIVE or request.session_cm_id <= 0:
+            return None
+        return not session_priced(request.session_cm_id, self.s.by_id, self.s.rules)
 
     def became_order(self, b: BecameOut) -> tuple[bool, bool, tuple[str, int], str, str]:
         """The Became cell's order (approved polish): live requests first (active, session unclear, duplicate
@@ -788,6 +802,47 @@ def _figure(row: FormResponseRow, name: str) -> FormFigureOut:
     return FormFigureOut(field=name, value=value, typed=str(note.get("typed") or ""), note=str(note.get("note") or ""))
 
 
+def form_change_out(request: RequestRecord) -> FormChangeOut | None:
+    """GF-4: a decided request's adult aid form change that was not applied: open (its flag), or Mark Reviewed."""
+    for flag in request.flags:
+        code = str(flag.get("code"))
+        if code in FORM_CHANGE_FLAGS:
+            detail = dict(flag.get("detail") or {})
+            return FormChangeOut(
+                kind="deleted" if code == FLAG_FORM_RESPONSE_DELETED else "changed_after_decision",
+                at=str(detail.get("submitted_at") or ""),
+            )
+    if request.form_change_reviewed:
+        code = request.form_change_reviewed.partition(":")[0]
+        return FormChangeOut(
+            kind="deleted" if code == FLAG_FORM_RESPONSE_DELETED else "changed_after_decision",
+            at=request.form_change_reviewed_at,
+            reviewed=True,
+            reviewed_by=request.form_change_reviewed_by,
+        )
+    return None
+
+
+def session_priced(session_cm_id: int, sessions: Mapping[int, SessionRow], rules: AidRules | None) -> bool:
+    """Whether the approved rules price this session: a catalog program's tuition, or a per-person program's family
+    rate (an AG session's parent's when it has none of its own), as the calculator's cost step reads them."""
+    if rules is None:
+        return False
+    program_key = session_program_key(session_cm_id, sessions, rules)
+    program = rules.programs.get(program_key) if program_key is not None else None
+    if program is None:
+        return False
+    session = sessions.get(session_cm_id)
+    ids = [session_cm_id]
+    if session is not None and session.session_type == "ag" and session.parent_cm_id > 0:
+        ids.append(session.parent_cm_id)
+    if program.cost_source == "catalog":
+        return any(rules.cost.tuition.get(sid) is not None for sid in ids)
+    if program.cost_source == "per_person":
+        return any(r.session_cm_id in ids for r in rules.cost.family_rates)
+    return False
+
+
 def candidate_out(raw: Mapping[str, Any]) -> FormCandidateOut:
     return FormCandidateOut(
         person_cm_id=int(raw.get("person_cm_id") or 0),
@@ -837,6 +892,7 @@ def form_responses_out(season: _Season) -> list[FormResponseOut]:
                     )
                     for name in _FORM_YES_NO
                 ],
+                unemployment=None if _note(row, "unemployment") else bool(row.answers.get("unemployment")),
                 num_children=None if children_note or children is None else int(float(children)),
                 county=row.county,
                 special_circumstances=str(row.answers.get("special_circumstances") or ""),
@@ -847,11 +903,18 @@ def form_responses_out(season: _Season) -> list[FormResponseOut]:
                 candidates=[candidate_out(c) for c in row.match_candidates],
                 superseded_by=row.superseded_by,
                 superseded=[
-                    SupersededOut(response_id=r.response_id, submitted_at=r.last_submitted_at)
+                    SupersededOut(
+                        response_id=r.response_id,
+                        submitted_at=r.last_submitted_at,
+                        ask=_figure(r, "ask").value,
+                        total_gross_income=_figure(r, "total_gross_income").value,
+                        replaced_at=row.last_submitted_at,
+                    )
                     for r in sorted(replaced.get(row.response_id, []), key=lambda r: r.last_submitted_at)
                 ],
                 linked_by=row.linked_by,
                 linked_at=row.linked_at,
+                ignored_kind=row.ignored_kind if row.ignored_kind in _IGNORE_KINDS else "",
                 ignored_reason=row.ignored_reason,
                 ignored_by=row.ignored_by,
                 ignored_at=row.ignored_at,
@@ -861,14 +924,25 @@ def form_responses_out(season: _Season) -> list[FormResponseOut]:
     return out
 
 
+_IGNORE_KINDS: Final = frozenset({"test", "duplicate", "not_asking", "other"})
+# The job's status line (pocketbase/sync/aid_google_form_responses.go aidFormPullStatus): "refused: N of M responses
+# missing" names the live rows the pull expected, and "R responses" what it returned.
+_EXPECTED = re.compile(r"refused: \d+ of (\d+) responses missing")
+_RETURNED = re.compile(r"(?:^|· )(\d+) responses")
+
+
 def google_form_out(season: _Season) -> GoogleFormStatusOut | None:
     if season.google_form is None:
         return None
     status = str(season.google_form.get("last_pull_status") or "")
+    expected = _EXPECTED.search(status)
+    returned = _RETURNED.search(status)
     return GoogleFormStatusOut(
         last_pulled_at=str(season.google_form.get("last_pulled_at") or ""),
         last_pull_status=status,
         refused=status.startswith("refused"),
+        returned=int(returned.group(1)) if returned else None,
+        expected=int(expected.group(1)) if expected else None,
     )
 
 

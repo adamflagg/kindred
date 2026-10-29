@@ -42,6 +42,8 @@ LookReason = Literal[
     "form_choice_unclear",
     "form_pull_refused",
 ]
+# Why staff ignored a response (aid_form_responses.ignored_kind).
+IgnoreKind = Literal["test", "duplicate", "not_asking", "other"]
 # aid_form_responses.match_status (PR 1's vocabulary).
 FormMatchStatus = Literal[
     "auto", "suggested", "staff", "unmatched", "registered_elsewhere", "not_registered", "ignored", "superseded"
@@ -99,6 +101,15 @@ class RequestAdditionOut(BaseModel):
     retire_reason: str = ""
 
 
+class FormChangeOut(BaseModel):
+    """A change to a decided request's adult aid form that was not applied (GF-4)."""
+
+    kind: Literal["deleted", "changed_after_decision"]
+    at: str = ""  # the newer response's submitted time; for a reviewed one, when it was reviewed
+    reviewed: bool = False
+    reviewed_by: str = ""
+
+
 class BecameOut(BaseModel):
     request_id: str
     program_key: str
@@ -121,6 +132,12 @@ class BecameOut(BaseModel):
     round1_posted: float | None = None
     # "google_form" for a request the adult aid form made (PR 2); left out of the JSON otherwise.
     form_source: FormSource | None = Field(default=None, exclude_if=lambda v: v is None)
+    # GF-4 (PR 2): the request's adult aid form changed or was deleted after a decision, not applied; Mark Reviewed
+    # sets reviewed. Left out of the JSON when there is none.
+    form_change: FormChangeOut | None = Field(default=None, exclude_if=lambda v: v is None)
+    # From 2027 (PR 2): the rules give its session no price yet (no tuition, no family rate): "no price yet". Left
+    # out of the JSON before 2027 and for a request with no session.
+    price_missing: bool | None = Field(default=None, exclude_if=lambda v: v is None)
 
 
 class CampMinderAidOut(BaseModel):
@@ -209,7 +226,17 @@ class FormCandidateOut(BaseModel):
     session_cm_ids: list[int] = Field(default_factory=list)
     elsewhere: bool = False  # registered for another weekend than the response chose
     household_email: bool = False  # the email matched someone else in their household (a tie-break)
-    camper_name: str = ""  # filled on the link-candidates read only
+
+
+class LinkCandidateOut(FormCandidateOut):
+    """A candidate on Link…'s dialog: named, with their household, registration and CampMinder birthdate and email
+    beside the response's own (this read only; the Form intake list never carries them)."""
+
+    camper_name: str = ""
+    household_label: str = ""
+    registration_status: Literal["", "enrolled", "applied", "waitlisted", "incomplete"] = ""
+    birthdate: str = ""
+    email: str = ""
 
 
 class SupersededOut(BaseModel):
@@ -217,6 +244,9 @@ class SupersededOut(BaseModel):
 
     response_id: str
     submitted_at: str
+    ask: float | None = None
+    total_gross_income: float | None = None
+    replaced_at: str = ""  # when the newer response was submitted
 
 
 class FormResponseOut(BaseModel):
@@ -240,6 +270,7 @@ class FormResponseOut(BaseModel):
     ask: float | None = None
     figures: list[FormFigureOut] = Field(default_factory=list)
     yes_no: list[FormYesNoOut] = Field(default_factory=list)
+    unemployment: bool | None = None
     num_children: int | None = None
     county: str = ""
     special_circumstances: str = ""
@@ -252,6 +283,7 @@ class FormResponseOut(BaseModel):
     superseded: list[SupersededOut] = Field(default_factory=list)
     linked_by: str = ""
     linked_at: str = ""
+    ignored_kind: IgnoreKind | Literal[""] = ""
     ignored_reason: str = ""
     ignored_by: str = ""
     ignored_at: str = ""
@@ -264,6 +296,10 @@ class GoogleFormStatusOut(BaseModel):
     last_pulled_at: str = ""
     last_pull_status: str = ""
     refused: bool = False
+    # Read from the status line: how many responses the last pull returned, and (a refused pull) how many live ones
+    # were expected. None when the line doesn't say.
+    returned: int | None = None
+    expected: int | None = None
 
 
 class FormResponseActionOut(BaseModel):
@@ -276,6 +312,7 @@ class FormResponseActionOut(BaseModel):
     household_cm_id: int = 0
     linked_by: str = ""
     linked_at: str = ""
+    ignored_kind: IgnoreKind | Literal[""] = ""
     ignored_reason: str = ""
     ignored_by: str = ""
     ignored_at: str = ""
@@ -290,7 +327,9 @@ class LinkCandidatesOut(BaseModel):
     respondent_email: str = ""
     name_typed: str = ""
     birthdate_typed: str = ""
-    candidates: list[FormCandidateOut] = Field(default_factory=list)
+    program_choice: str = ""
+    # The response's own candidates, or (with ?q=) the season's registered people the search found.
+    candidates: list[LinkCandidateOut] = Field(default_factory=list)
 
 
 class FormChangeReviewedOut(BaseModel):
@@ -305,7 +344,8 @@ class FormResponseLink(BaseModel):
 
 
 class FormResponseIgnore(BaseModel):
-    reason: str = Field(default="", max_length=1000)
+    kind: IgnoreKind
+    reason: str = Field(default="", max_length=1000)  # required when kind is "other"
 
 
 class IntakeSessionOut(BaseModel):
