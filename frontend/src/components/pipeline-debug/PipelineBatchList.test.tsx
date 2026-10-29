@@ -18,10 +18,20 @@ import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
 import { PipelineBatchList } from './PipelineBatchList'
 import type { PipelineSummaryItem, PipelineSummaryFilters } from './types'
 
-// jsdom returns 0 for getBoundingClientRect / offsetHeight, which starves
-// @tanstack/react-virtual's viewport size and leaves it rendering zero rows.
-// Stub non-zero dimensions so the virtualizer renders our rows in tests.
+// jsdom returns 0 for getBoundingClientRect / offsetHeight / clientHeight,
+// which starves @tanstack/react-virtual's viewport size and leaves it
+// rendering zero rows. Stub non-zero dimensions so the virtualizer renders
+// our rows in tests. The viewport reads client dimensions (virtual-core
+// 3.19.6+); rows read offset dimensions.
 beforeAll(() => {
+  Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+    configurable: true,
+    value: 600,
+  })
+  Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
+    configurable: true,
+    value: 1024,
+  })
   Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
     configurable: true,
     value: 600,
