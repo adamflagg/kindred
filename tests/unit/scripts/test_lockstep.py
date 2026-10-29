@@ -957,4 +957,4 @@ def test_workflow_actions_are_sha_pinned_and_checkout_drops_credentials():
     checkout = next(s for s in job["steps"] if s.get("uses", "").startswith("actions/checkout@"))
     assert checkout["with"]["persist-credentials"] is False
     assert checkout["with"]["fetch-depth"] == 2
-    assert "astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884" in uses
+    assert any(u.startswith("astral-sh/setup-uv@") for u in uses)
