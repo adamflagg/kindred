@@ -37,7 +37,14 @@ from bunking.financial_aid.reports.development import NOT_REPORTED
 from bunking.financial_aid.reports.history import ReportedFigure
 from bunking.financial_aid.reports.recipients import ReportedRecipient
 from bunking.financial_aid.rules import AidRules
-from tests.unit.api.services.decisions_fakes import FakeDecisionsStore, FakeRules, approved, grant_row, seed_line
+from tests.unit.api.services.decisions_fakes import (
+    FakeDecisionsStore,
+    FakeRules,
+    approved,
+    grant_row,
+    seed_line,
+    seed_request,
+)
 from tests.unit.api.services.development_fakes import FakeDevelopmentStore, went
 from tests.unit.api.services.financial_aid_fakes import SESSIONS, YEAR, intake_rules
 from tests.unit.api.services.reports_fakes import FakeReportsStore, report_season
@@ -1107,6 +1114,30 @@ async def test_a_report_year_with_no_approved_rules_keeps_the_newest_approved_se
     assert _row(out, "recipients", "camp_pool").values[-1] == 1.0
     [notice] = [n for n in out.not_built if n.figure == "groups_from"]
     assert notice.reason == "Groups follow 2026's rules until 2027's are approved"
+
+
+async def test_unpriced_requests_under_borrowed_groups_land_in_the_borrowed_groups_not_in_no_group() -> None:
+    """#3262 CodeRabbit Major: 2027's rules are a draft (never approved), so nothing in 2027 is priced and no request
+    carries a pool of its own. The report's groups are 2026's (#53), and its requests must be placed by those same
+    rules: Emma's posted 1,500 and both asks belong to 2026's summer group, never to "not in a group"."""
+    out = await _service(_development(), store=_asks_within_cost(), fake_rules=_RulesFrom({2026})).development(YEAR)
+    assert [g.key for g in out.groups] == ["camp_pool", "weekend_pool", "bmitzvah_pool"]
+    assert _row(out, "camp_awards", "camp_pool").values[-1] == 1500.0
+    assert _row(out, "total_requests", "camp_pool").values[-1] == 4000.0  # both attended, both asked
+    assert _row(out, "not_in_group_amount", None).values[-1] == 0.0
+
+
+async def test_under_borrowed_groups_a_request_on_a_session_closed_to_aid_counts_in_no_group() -> None:
+    """Owner rule (item 28) holds under borrowed groups too: 2026's rules close Quest to aid, so a Quest session is in
+    no group. Emma's unpriced Quest request resolves to Quest (pooled with summer) under those rules, but she also
+    attended Session 2, so only the session check keeps her Quest ask out of the summer group's Total Requests."""
+    closed = with_lever(intake_rules(), "programs.quest.open_to_aid", False)
+    fake_rules = _RulesFrom({2026})
+    fake_rules.version = fake_rules.first = approved(closed)
+    store = _asks_within_cost()
+    seed_request(store, "reqemmaquest001", session=1000106, ask=1000.0)
+    out = await _service(_development(), store=store, fake_rules=fake_rules).development(YEAR)
+    assert _row(out, "total_requests", "camp_pool").values[-1] == 4000.0  # Emma's and Liam's Session 2 asks only
 
 
 async def test_the_groups_switch_to_the_report_years_own_once_they_are_approved() -> None:

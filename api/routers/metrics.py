@@ -23,7 +23,7 @@ from api.services.forecast_service import ForecastService
 from api.services.geo_service import clear_person_id_cache
 from api.services.historical_service import HistoricalService
 from api.services.lodging_cache_warm import schedule_lodging_warm, sync_invalidates_lodging_cache
-from api.services.metrics_repository import MetricsRepository
+from api.services.metrics_repository import METRICS_READ_TABLES, MetricsRepository
 from api.services.metrics_sql_repository import MetricsSQLRepository
 from api.services.registration_service import RegistrationService
 from api.services.retention_service import RetentionService
@@ -598,8 +598,12 @@ async def get_velocity(
     """Get registration velocity curves with week-over-week data."""
     check_duration_session_exclusive(duration, session_cm_id)
 
+    # The camp day is in the key: the current week's partial-week flag moves with it, and since the sync notify is
+    # scoped (METRICS_READ_TABLES) no unrelated sync clears this at the day's boundary.
+    camp_today = get_camp_today()
     cache_params = {
         "year": year,
+        "camp_today": camp_today,
         "compare_years": compare_years,
         "session_cm_id": session_cm_id,
         "session_types": session_types,
@@ -623,6 +627,7 @@ async def get_velocity(
         session_types=type_filter,
         split_by_gender=split_by_gender,
         metric=metric,
+        today=camp_today,
         duration=duration,
         gender_basis=gender_basis,
     )
@@ -662,8 +667,11 @@ async def get_forecast(
     """Get registration forecast with budget goals and revenue projections."""
     check_duration_session_exclusive(duration, session_cm_id)
 
+    # The camp day is in the key: the forecast's current point moves with it (see get_velocity).
+    camp_today = get_camp_today()
     cache_params = {
         "year": year,
+        "camp_today": camp_today,
         "session_types": session_types,
         "session_cm_id": session_cm_id,
         "day_offset": day_offset,
@@ -682,6 +690,7 @@ async def get_forecast(
         session_cm_id=session_cm_id,
         day_offset=day_offset,
         duration=duration,
+        today=camp_today,
     )
     metrics_cache.set("forecast", result, **cache_params)
     return result
@@ -781,7 +790,15 @@ async def get_day1(
 ) -> Day1Response:
     """Get Day 1 (first two days) registration counts by tier."""
     check_duration_session_exclusive(duration, session_cm_id)
-    cache_params = {"year": year, "session_types": session_types, "session_cm_id": session_cm_id, "duration": duration}
+    # The camp day is in the key: a tier's opening-day flag moves with it (see get_velocity).
+    camp_today = get_camp_today()
+    cache_params = {
+        "year": year,
+        "camp_today": camp_today,
+        "session_types": session_types,
+        "session_cm_id": session_cm_id,
+        "duration": duration,
+    }
     cached: Day1Response | None = metrics_cache.get("day1", **cache_params)
     if cached is not None:
         return cached
@@ -789,7 +806,9 @@ async def get_day1(
     type_filter = parse_summer_session_types(session_types)
     repository = _create_repository()
     service = Day1Service(repository)
-    result = await service.get_day1(year, session_types=type_filter, session_cm_id=session_cm_id, duration=duration)
+    result = await service.get_day1(
+        year, session_types=type_filter, session_cm_id=session_cm_id, duration=duration, today=camp_today
+    )
 
     metrics_cache.set("day1", result, **cache_params)
     return result
@@ -816,6 +835,12 @@ def invalidate_server_caches(sync_type: str | None) -> dict[str, int]:
     This used to be one unauthenticated route on the middleware's skip list,
     which let anyone who could reach the API clear every cache and trigger a
     lodging warm.
+
+    metrics_cache, the metrics responses, is scoped against
+    METRICS_READ_TABLES (`api/services/metrics_repository.py`), every table
+    either metrics repository reads. It used to clear on every job; the
+    ledger, staff and custom-value jobs write none of those tables. A call
+    naming no sync, or a job SYNC_JOB_WRITES does not list, still clears it.
 
     Geo's _PERSON_ID_CACHE piggybacks on the same signal — CampMinder sync
     changes attendee status_id, which feeds _fetch_active_person_pb_ids.
@@ -866,7 +891,9 @@ def invalidate_server_caches(sync_type: str | None) -> dict[str, int]:
     """
     # A named sync's warm settles; a clear no sync asked for (the registration-config hook) warms at once.
     settle = SYNC_WARM_SETTLE_SECONDS if sync_type else 0.0
-    cleared = metrics_cache.invalidate_all()
+    # Scoped like the lodging cache: a sync that writes nothing a metrics read reads (the ledger, staff, custom
+    # values) leaves every metrics figure as it was.
+    cleared = metrics_cache.invalidate_all() if sync_writes_any(sync_type, METRICS_READ_TABLES) else 0
     clear_person_id_cache()
     if sync_invalidates_lodging_cache(sync_type):
         lodging_cache.invalidate_all()

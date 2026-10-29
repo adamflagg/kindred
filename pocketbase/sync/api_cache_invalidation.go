@@ -16,9 +16,9 @@ import (
 const defaultRunCompletedNotifyTimeout = fastapi.InvalidateTimeout + time.Second
 
 // notifyAPIRunCompleted tells FastAPI that syncType finished, so it clears the server caches
-// that job's writes could have made stale (kindred#2803): the metrics response cache always,
-// the weekend lodging year cache and the social graph cache when the job writes a table they
-// read (api/constants/sync_job_writes.py decides which).
+// that job's writes could have made stale (kindred#2803): the metrics response cache, the
+// weekend lodging year cache and the social graph cache, each when the job writes a table it
+// reads (api/constants/sync_job_writes.py decides which).
 //
 // Before kindred#2803, only a browser tab that watched a sync finish made that call, so the
 // hourly and nightly scheduled syncs -- which nobody watches -- left all three stale until

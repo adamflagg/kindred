@@ -15,6 +15,7 @@ from api.constants.collections import (
     ATTENDEES,
     BUNK_ASSIGNMENTS,
     BUNK_PLANS,
+    BUNKS,
     CAMP_SESSIONS,
     CONFIG,
     ENROLLMENT_SNAPSHOTS,
@@ -32,6 +33,26 @@ if TYPE_CHECKING:
     from pocketbase import PocketBase
 
 logger = get_logger(__name__)
+
+# Every table either metrics repository reads (this one's collections and expands, MetricsSQLRepository's FROM and
+# JOIN), and so every table a metrics_cache entry is built from: every metrics service reads through one of the two.
+# The sync notify clears that cache only when the finished job writes one of these (`sync_writes_any`).
+# tests/unit/api/services/test_metrics_read_tables.py fails when either repository reads a table missing here: as a
+# collection named by a collections constant (any other argument fails it too), an expand, or a SQL FROM or JOIN.
+METRICS_READ_TABLES: frozenset[str] = frozenset(
+    {
+        ATTENDEES,
+        ATTENDEE_STATUS_HISTORY,
+        BUNK_ASSIGNMENTS,
+        BUNK_PLANS,
+        BUNKS,
+        CAMP_SESSIONS,
+        CONFIG,
+        ENROLLMENT_SNAPSHOTS,
+        HOUSEHOLDS,
+        PERSONS,
+    }
+)
 
 # The persons fields every metrics service may read, on both repositories. MetricsSQLRepository
 # selects exactly these and this repository asks PocketBase for exactly these, so a field one
