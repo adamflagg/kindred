@@ -1560,6 +1560,24 @@ jobs:
           exit 1
         fi
 
+    # The sweeps' deletes run against the schema the REAL migrations produce, because the bug they
+    # pin lives in a relation's cascadeDelete flag: a delete that blanks a relation inside a UNIQUE
+    # index fails on the second blank (the 10-29 persons season pass; bug B1; kindred#2394). The
+    # test clones the database the smoke test above migrated and SKIPS without it, so it is
+    # required to PASS by name here.
+    - name: Booted sweep deletes
+      working-directory: ./pocketbase
+      env:
+        KINDRED_PROD_SCHEMA_DB: ${{ github.workspace }}/pocketbase/pb_test_data/data.db
+      run: |
+        set -o pipefail
+        TEST=TestBootedSweepDeletesDoNotCollideOnABlankedUniqueRelation
+        go test -count=1 ./sync/ -run "^${TEST}\$" -v 2>&1 | tee "$RUNNER_TEMP/booted-sweeps.log"
+        if ! grep -q "^--- PASS: ${TEST} (" "$RUNNER_TEMP/booted-sweeps.log"; then
+          echo "::error::${TEST} did not run to PASS (renamed, filtered out, or skipped) -- this step asserted nothing"
+          exit 1
+        fi
+
     # kindred#2278: frontend/src/types/pocketbase-types.ts is @generated from
     # live PocketBase schema introspection (pocketbase-typegen), and nothing
     # else in this repo regenerates or diffs it -- a migration can add,
