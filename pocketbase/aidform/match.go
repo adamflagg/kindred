@@ -96,11 +96,11 @@ func Match(id Identity, pool, elsewhere []Person, households map[int][]Member) D
 	strong := withAtLeast(inPool, 2)
 
 	if len(strong) == 1 {
-		return auto(strong[0])
+		return auto(&strong[0])
 	}
 	if len(strong) > 1 {
 		if winner, ok := householdTieBreak(id, strong, households); ok {
-			return auto(winner)
+			return auto(&winner)
 		}
 		return suggest(StatusSuggested, inPool)
 	}
@@ -113,10 +113,10 @@ func Match(id Identity, pool, elsewhere []Person, households map[int][]Member) D
 	return Decision{Status: StatusNotRegistered}
 }
 
-func auto(c Candidate) Decision {
+func auto(c *Candidate) Decision {
 	return Decision{
 		Status: StatusAuto, PersonCMID: c.PersonCMID, HouseholdCMID: c.HouseholdCMID,
-		Signals: len(c.Signals), Candidates: []Candidate{c},
+		Signals: len(c.Signals), Candidates: []Candidate{*c},
 	}
 }
 

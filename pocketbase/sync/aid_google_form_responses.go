@@ -252,7 +252,9 @@ func (r *aidFormRow) get(field string) any {
 	return nil
 }
 
-func (s *AidGoogleFormResponsesSync) pull(ctx context.Context, fetcher GoogleFormFetcher, year int, formID string) error {
+func (s *AidGoogleFormResponsesSync) pull(
+	ctx context.Context, fetcher GoogleFormFetcher, year int, formID string,
+) error {
 	// The definition and every response first: a failure writes nothing.
 	def, err := fetcher.Form(ctx, formID)
 	if err != nil {
@@ -332,7 +334,7 @@ func (s *AidGoogleFormResponsesSync) planRows(
 		seen[r.ResponseID] = true
 		parsed := parseAidFormResponse(r, p.qm, p.year, p.formID)
 		parsed["program_key"] = ""
-		if choice := parsed["program_choice"].(string); choice != "" {
+		if choice := stringOf(parsed["program_choice"]); choice != "" {
 			parsed["program_key"] = aidform.ChoiceBucket(choice)
 		}
 		rows = append(rows, &aidFormRow{responseID: r.ResponseID, rec: byID[r.ResponseID], parsed: parsed})
@@ -633,11 +635,10 @@ func (s *AidGoogleFormResponsesSync) storedChoiceLabels(year int) ([]string, err
 		return nil, err
 	}
 	var stored map[string]json.RawMessage
-	if raw := jsonFieldBytes(rec.Get("choice_map")); compactJSON(raw) != "" {
-		if err := json.Unmarshal(raw, &stored); err != nil {
-			slog.Warn("Adult aid form: the stored choice_map is unreadable; re-mapping from scratch", "year", year)
-			return nil, nil
-		}
+	if raw := jsonFieldBytes(rec.Get("choice_map")); compactJSON(raw) != "" && json.Unmarshal(raw, &stored) != nil {
+		// Unreadable: re-map from this pull's labels alone, which loses only labels no row carries.
+		slog.Warn("Adult aid form: the stored choice_map is unreadable; re-mapping from scratch", "year", year)
+		stored = nil
 	}
 	return slices.Sorted(maps.Keys(stored)), nil
 }
@@ -681,8 +682,9 @@ func (r *aidFormRoster) weekendOf(cmID int) int {
 // split is the chosen weekend set's pool and everyone registered elsewhere,
 // each carrying only their registrations on that side.
 func (r *aidFormRoster) split(set []int) (pool, elsewhere []aidform.Person) {
-	for _, p := range r.people {
-		in, out := p, p
+	for i := range r.people {
+		p := &r.people[i]
+		in, out := *p, *p
 		in.Sessions, out.Sessions = nil, nil
 		for _, sid := range p.Sessions {
 			if slices.Contains(set, sid) {
@@ -840,7 +842,7 @@ func planAidFormMatches(p *aidFormPull) {
 				weekend = row.rec.GetInt("weekend_session_cm_id")
 			}
 		} else {
-			row.match = decideAidFormMatch(row.identity, choice, p.roster)
+			row.match = decideAidFormMatch(row.identity, &choice, p.roster)
 			person, _ = row.match["person_cm_id"].(int)
 			weekend, _ = row.match["weekend_session_cm_id"].(int)
 		}
@@ -876,7 +878,7 @@ func planAidFormMatches(p *aidFormPull) {
 }
 
 // decideAidFormMatch is one row's match-owned fields.
-func decideAidFormMatch(id aidform.Identity, choice aidFormChoice, roster *aidFormRoster) map[string]any {
+func decideAidFormMatch(id aidform.Identity, choice *aidFormChoice, roster *aidFormRoster) map[string]any {
 	var d aidform.Decision
 	if len(choice.SessionCMIDs) == 0 {
 		// No weekend set: nothing to match against. Where they are registered
@@ -1048,9 +1050,10 @@ func aidFormPullStatus(p *aidFormPull) string {
 			toLink++
 		}
 	}
-	parts := []string{fmt.Sprintf("ok · %d responses · %d linked · %d to link", p.responses, linked, toLink)}
+	counts := fmt.Sprintf("%d responses · %d linked · %d to link", p.responses, linked, toLink)
+	parts := []string{"ok · " + counts}
 	if p.refused != "" {
-		parts = append([]string{p.refused}, fmt.Sprintf("%d responses · %d linked · %d to link", p.responses, linked, toLink))
+		parts = []string{p.refused, counts}
 	}
 	for _, label := range slices.Sorted(maps.Keys(p.choices)) {
 		switch c := p.choices[label]; c.Status {

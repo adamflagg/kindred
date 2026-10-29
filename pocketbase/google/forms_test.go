@@ -1,6 +1,7 @@
 package google
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -57,7 +58,9 @@ func TestDefinitionFromAPI(t *testing.T) {
 			{Title: "Financial Questions", PageBreakItem: &forms.PageBreakItem{}},
 			{Title: "Program", QuestionItem: &forms.QuestionItem{Question: &forms.Question{
 				QuestionId: "a2", Required: true, ChoiceQuestion: &forms.ChoiceQuestion{
-					Type: "RADIO", Options: []*forms.Option{{Value: "Family Camp 1 (May 28 - 31)"}, {Value: "Women's Weekend (October 14 - 17)"}},
+					Type: "RADIO", Options: []*forms.Option{
+						{Value: "Family Camp 1 (May 28 - 31)"}, {Value: "Women's Weekend (October 14 - 17)"},
+					},
 				},
 			}}},
 			{Title: "Birthdate", QuestionItem: &forms.QuestionItem{Question: &forms.Question{
@@ -85,7 +88,7 @@ func TestDefinitionFromAPI(t *testing.T) {
 	}
 	got, _ := json.Marshal(def.Questions)
 	exp, _ := json.Marshal(want)
-	if string(got) != string(exp) {
+	if !bytes.Equal(got, exp) {
 		t.Errorf("questions =\n%s\nwant\n%s", got, exp)
 	}
 }
@@ -111,15 +114,15 @@ func TestResponseFromAPI(t *testing.T) {
 
 // fakeFormsAPI serves one form and its responses in pages of two, from a local
 // test server. No request leaves the machine.
-func fakeFormsAPI(t *testing.T, responses int) (*httptest.Server, *[]string) {
+func fakeFormsAPI(t *testing.T, responses int) (srv *httptest.Server, pageSizes *[]string) {
 	t.Helper()
-	var pageSizes []string
+	var sizes []string
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/forms/form-1", func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"formId": "form-1", "revisionId": "00000007", "items": []any{}})
 	})
 	mux.HandleFunc("/v1/forms/form-1/responses", func(w http.ResponseWriter, r *http.Request) {
-		pageSizes = append(pageSizes, r.URL.Query().Get("pageSize"))
+		sizes = append(sizes, r.URL.Query().Get("pageSize"))
 		start := 0
 		if tok := r.URL.Query().Get("pageToken"); tok != "" {
 			start = int(tok[0] - '0')
@@ -134,9 +137,9 @@ func fakeFormsAPI(t *testing.T, responses int) (*httptest.Server, *[]string) {
 		}
 		_ = json.NewEncoder(w).Encode(body)
 	})
-	srv := httptest.NewServer(mux)
+	srv = httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
-	return srv, &pageSizes
+	return srv, &sizes
 }
 
 func TestFormsClientReadsTheDefinitionAndEveryResponsePage(t *testing.T) {
@@ -156,7 +159,7 @@ func TestFormsClientReadsTheDefinitionAndEveryResponsePage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var ids []string
+	ids := make([]string, 0, len(got))
 	for _, r := range got {
 		ids = append(ids, r.ResponseID)
 	}

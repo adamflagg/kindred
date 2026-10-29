@@ -19,10 +19,10 @@ import (
 type FigureKind int
 
 const (
-	// FigureRequired: a blank is unknown ("left blank"), and a monthly figure is
-	// unknown too. Income, savings, medical, student loans and the ask.
+	// FigureRequired means a blank is unknown ("left blank"), and a monthly figure
+	// is unknown too. Income, savings, medical, student loans and the ask.
 	FigureRequired FigureKind = iota
-	// FigureOptionalHousing: the two "leave blank if not" questions (rent,
+	// FigureOptionalHousing is for the two "leave blank if not" questions (rent,
 	// mortgage). A blank is 0 and not reported; a monthly figure is read ×12,
 	// with a note, since neither is priced.
 	FigureOptionalHousing
@@ -63,7 +63,7 @@ var (
 	betweenRe = regexp.MustCompile(`\bbetween\b.*\d.*\band\b.*\d`)
 	// Two numbers joined by a dash or "to": "1000-1500", "70k – 80k", "$70,000 to $80,000".
 	rangeRe = regexp.MustCompile(
-		`\d[\d,.]*\s*(?:k|m)?\s*(?:-|–|—|\bto\b)\s*\$?\s*\d`)
+		`\d[\d,.]*\s*[km]?\s*(?:-|–|—|\bto\b)\s*\$?\s*\d`)
 	hedgeLead = regexp.MustCompile(
 		`^(?:approximately|approx\.?|appx\.?|about|around|roughly|circa|ca\.|estimated|estimate|est\.?|~)\s*`)
 	hedgeTrail    = regexp.MustCompile(`(?:ish|\+|\s+or\s+so)$`)
@@ -95,58 +95,17 @@ func ParseFigure(typed string, kind FigureKind) Figure {
 		return unknown(NoteBlank)
 	}
 	s := spaceRun.ReplaceAllString(strings.ToLower(raw), " ")
-	if zeroWords[s] {
-		return Figure{Known: true, Reported: true}
+	if fig, done := rejectFigure(s); done {
+		return fig
 	}
-	if strings.Contains(s, "%") {
-		return unknown(NoteNotDollars)
-	}
-	if strings.HasPrefix(s, "-") || strings.HasPrefix(s, "−") || strings.HasPrefix(s, "(") && strings.HasSuffix(s, ")") {
-		if numberToken.MatchString(s) {
-			return unknown(NoteNegative)
-		}
-	}
-	if betweenRe.MatchString(s) || rangeRe.MatchString(s) {
-		return unknown(NoteRange)
-	}
-
 	monthly := monthlyRe.MatchString(s)
-	s = monthlyRe.ReplaceAllString(s, " ")
-	s = yearlyRe.ReplaceAllString(s, " ")
-	s = strings.TrimSpace(s)
-
-	hedged := false
-	for {
-		trimmed := strings.TrimSpace(hedgeLead.ReplaceAllString(s, ""))
-		if trimmed == s {
-			break
-		}
-		s, hedged = trimmed, true
+	s = strings.TrimSpace(yearlyRe.ReplaceAllString(monthlyRe.ReplaceAllString(s, " "), " "))
+	s, hedged := stripHedges(s)
+	value, multiplied, fail := readBare(currencyWords.ReplaceAllString(s, " "))
+	if fail != "" {
+		return unknown(fail)
 	}
-	if hedgeTrail.MatchString(s) {
-		s, hedged = strings.TrimSpace(hedgeTrail.ReplaceAllString(s, "")), true
-	}
-
-	s = currencyWords.ReplaceAllString(s, " ")
-	if len(numberToken.FindAllString(s, -1)) > 1 && !groupedNumber(s) {
-		return unknown(NoteSeveralNums)
-	}
-	compact := strings.ReplaceAll(strings.ReplaceAll(s, ",", ""), " ", "")
-	m := bareFigure.FindStringSubmatch(compact)
-	if m == nil {
-		return unknownWords(s)
-	}
-	value, err := strconv.ParseFloat(m[1], 64)
-	if err != nil || math.IsInf(value, 0) || math.IsNaN(value) {
-		return unknown(NoteNotNumber)
-	}
-	switch m[2] {
-	case "k", "thousand":
-		value, hedged = value*1000, true
-	case "m", "mil", "million":
-		value, hedged = value*1_000_000, true
-	}
-	value = math.Round(value*100) / 100
+	hedged = hedged || multiplied
 
 	var notes []string
 	if hedged {
@@ -160,6 +119,67 @@ func ParseFigure(typed string, kind FigureKind) Figure {
 		notes = append(notes, fmt.Sprintf("monthly: ×12 = %s", Money(value)))
 	}
 	return Figure{Value: value, Known: true, Reported: true, Note: strings.Join(notes, "; ")}
+}
+
+// rejectFigure settles the answers that are decided before any number is
+// read: a reported zero, a percentage, a negative and a range.
+func rejectFigure(s string) (fig Figure, done bool) {
+	switch {
+	case zeroWords[s]:
+		return Figure{Known: true, Reported: true}, true
+	case strings.Contains(s, "%"):
+		return unknown(NoteNotDollars), true
+	case negativeFigure(s):
+		return unknown(NoteNegative), true
+	case betweenRe.MatchString(s) || rangeRe.MatchString(s):
+		return unknown(NoteRange), true
+	}
+	return Figure{}, false
+}
+
+func negativeFigure(s string) bool {
+	signed := strings.HasPrefix(s, "-") || strings.HasPrefix(s, "−")
+	bracketed := strings.HasPrefix(s, "(") && strings.HasSuffix(s, ")")
+	return (signed || bracketed) && numberToken.MatchString(s)
+}
+
+// stripHedges removes "about", "~", "-ish", "+" and the like, and says whether any was there.
+func stripHedges(s string) (rest string, hedged bool) {
+	for {
+		trimmed := strings.TrimSpace(hedgeLead.ReplaceAllString(s, ""))
+		if trimmed == s {
+			break
+		}
+		s, hedged = trimmed, true
+	}
+	if hedgeTrail.MatchString(s) {
+		s, hedged = strings.TrimSpace(hedgeTrail.ReplaceAllString(s, "")), true
+	}
+	return s, hedged
+}
+
+// readBare reads what is left once a figure's words are gone: one number and an
+// optional multiplier ("85k", "1.5 million"). fail is the note when it is not one.
+func readBare(s string) (value float64, multiplied bool, fail string) {
+	if len(numberToken.FindAllString(s, -1)) > 1 && !groupedNumber(s) {
+		return 0, false, NoteSeveralNums
+	}
+	compact := strings.ReplaceAll(strings.ReplaceAll(s, ",", ""), " ", "")
+	m := bareFigure.FindStringSubmatch(compact)
+	if m == nil {
+		return 0, false, unknownWords(s).Note
+	}
+	value, err := strconv.ParseFloat(m[1], 64)
+	if err != nil || math.IsInf(value, 0) || math.IsNaN(value) {
+		return 0, false, NoteNotNumber
+	}
+	switch m[2] {
+	case "k", "thousand":
+		value, multiplied = value*1000, true
+	case "m", "mil", "million":
+		value, multiplied = value*1_000_000, true
+	}
+	return math.Round(value*100) / 100, multiplied, ""
 }
 
 // groupedNumber is a single number written with spaces inside its grouping
@@ -220,7 +240,7 @@ var (
 
 // ParseCount reads the dependents answer: "2", "two", "0", "none", "2 kids".
 // Anything else is unknown, with a note.
-func ParseCount(typed string) (int, bool, string) {
+func ParseCount(typed string) (value int, known bool, note string) {
 	s := spaceRun.ReplaceAllString(strings.ToLower(strings.TrimSpace(typed)), " ")
 	if s == "" {
 		return 0, false, NoteBlank

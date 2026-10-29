@@ -55,7 +55,8 @@ func TestMatchOutcomes(t *testing.T) {
 		{"preferred name counts as the first name",
 			Identity{Name: "Liv Chen", Birthdate: "1985-03-09", Email: ""}, StatusAuto, 1000005, 2, []int{1000005}},
 		{"birthdate and email without the name",
-			Identity{Name: "R. G.", Birthdate: "1971-04-02", Email: "rgarcia@example.com"}, StatusAuto, 1000001, 2, []int{1000001}},
+			Identity{Name: "R. G.", Birthdate: "1971-04-02", Email: "rgarcia@example.com"},
+			StatusAuto, 1000001, 2, []int{1000001}},
 		{"name only, two namesakes: suggested with both",
 			Identity{Name: "Dana Okafor", Birthdate: "1960-01-01", Email: "partner@example.com"},
 			StatusSuggested, 0, 1, []int{1000003, 1000004}},
@@ -152,7 +153,8 @@ func TestMatchHouseholdEmailIsOnlyATieBreak(t *testing.T) {
 
 	// One candidate with the name only plus a household email stays one signal: suggested.
 	solo := []Person{p[0]}
-	got = Match(Identity{Name: "Emma Johnson", Birthdate: "1960-01-01", Email: "spouse@example.com"}, solo, nil, households)
+	nameOnly := Identity{Name: "Emma Johnson", Birthdate: "1960-01-01", Email: "spouse@example.com"}
+	got = Match(nameOnly, solo, nil, households)
 	if got.Status != StatusSuggested || got.Signals != 1 {
 		t.Errorf("household email counted as a signal: %+v", got)
 	}

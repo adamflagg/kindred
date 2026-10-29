@@ -244,15 +244,25 @@ func gfDefinition() google.FormDefinition {
 		q("q07", "Confirm Total 2026 Gross Pre-Tax Household Income:", "text", true),
 		q("q08", "Total 2026 Adjusted Gross Income", "text", true),
 		q("q09", "Total 2027 Expected Pre-Tax Household Income:", "text", true),
-		q("q10", "If you own a home, fill in how much your total 2027 mortgage expense is. If you do not own a home, please leave blank.", "text", false),
-		q("q11", "Total 2027 Estimated Funds in savings and investment accounts (include all checking, savings, stocks, securities, mutual funds, crypto, etc.) Sept 2026 or most recent end quarter. Exclude IRAs and 401k/403b/457 retirement accounts.", "text", true),
-		q("q12", "If rent a home, apartment, condo, etc., fill in how much your total 2027 rent expense is. If you do not rent a home, apartment, condo, etc., please leave blank.", "text", false),
-		q("q13", "Total 2027 Expected Out of Pocket Medical Expenses (note - this also includes any expenses associated with outside services for children with special needs)", "text", true),
-		q("q14", "Total 2027 Student Loan Repayment Expenses (note - this does NOT include any tuition or school fees you may pay)", "text", true),
-		q("q16", "Please include anything in the space below that you think would be important for us to know about your family’s financial situation.", "paragraph", false),
+		q("q10", "If you own a home, fill in how much your total 2027 mortgage expense is. If you "+
+			"do not own a home, please leave blank.", "text", false),
+		q("q11", "Total 2027 Estimated Funds in savings and investment accounts (include all "+
+			"checking, savings, stocks, securities, mutual funds, crypto, etc.) Sept 2026 or "+
+			"most recent end quarter. Exclude IRAs and 401k/403b/457 retirement accounts.", "text", true),
+		q("q12", "If rent a home, apartment, condo, etc., fill in how much your total 2027 rent "+
+			"expense is. If you do not rent a home, apartment, condo, etc., please leave "+
+			"blank.", "text", false),
+		q("q13", "Total 2027 Expected Out of Pocket Medical Expenses (note - this also includes "+
+			"any expenses associated with outside services for children with special needs)", "text", true),
+		q("q14", "Total 2027 Student Loan Repayment Expenses (note - this does NOT include any "+
+			"tuition or school fees you may pay)", "text", true),
+		q("q16", "Please include anything in the space below that you think would be important "+
+			"for us to know about your family’s financial situation.", "paragraph", false),
 		q("q17", "County", "text", true),
-		q("q18", "Have you experienced unemployment within the last two years and/or are you currently unemployed?", "choice", true, "Yes", "No"),
-		q("q19", "OPTIONAL - Is your family receiving any form of government subsidies such as SSI, food stamps, housing assistance, etc.?", "choice", false, "Yes", "No"),
+		q("q18", "Have you experienced unemployment within the last two years and/or are you "+
+			"currently unemployed?", "choice", true, "Yes", "No"),
+		q("q19", "OPTIONAL - Is your family receiving any form of government subsidies such as "+
+			"SSI, food stamps, housing assistance, etc.?", "choice", false, "Yes", "No"),
 		q("q20", "Do you identify as a person of color?", "choice", true, "Yes", "No", "Prefer not to answer"),
 		q("q21", "What race/ethnicity best describes you?", "text", false),
 		q("q22", "How many total children and/or dependents live in your household?", "text", true),
@@ -365,7 +375,8 @@ func TestAidFormPullStoresParsesAndMatches(t *testing.T) {
 	t.Parallel()
 	app := newAidFormTestApp(t)
 	seedAidFormWeekends(t, app)
-	run, err := runAidForm(t, app, &fakeGoogleForm{def: gfDefinition(), resp: []google.FormResponse{gfRachel(), gfGrace()}})
+	fake := &fakeGoogleForm{def: gfDefinition(), resp: []google.FormResponse{gfRachel(), gfGrace()}}
+	run, err := runAidForm(t, app, fake)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -414,8 +425,8 @@ func TestAidFormPullStoresParsesAndMatches(t *testing.T) {
 	if got := gfJSON(t, r, "parse_notes"); got != wantNotes {
 		t.Errorf("parse_notes =\n%s\nwant\n%s", got, wantNotes)
 	}
-	if got := gfJSON(t, r, "match_candidates"); got !=
-		`[{"person_cm_id":1000001,"household_cm_id":2000001,"signals":["name","birthdate","email"],"session_cm_ids":[1000201]}]` {
+	if got := gfJSON(t, r, "match_candidates"); got != `[{"person_cm_id":1000001,"household_cm_id":2000001,`+
+		`"signals":["name","birthdate","email"],"session_cm_ids":[1000201]}]` {
 		t.Errorf("match_candidates = %s", got)
 	}
 
@@ -604,7 +615,7 @@ func TestAidFormMarksAVanishedResponseDeleted(t *testing.T) {
 }
 
 func gfFiller(n int) []google.FormResponse {
-	var out []google.FormResponse
+	out := make([]google.FormResponse, 0, n)
 	for i := range n {
 		out = append(out, gfResponse("resp-fill-"+string(rune('a'+i)), "2026-11-07T10:00:00.000Z", "", map[string]string{
 			"name_typed": "Riley Sam", "birthdate_typed": "1990-01-0" + string(rune('1'+i)), "program_choice": gfChoiceWW,
@@ -635,7 +646,8 @@ func TestAidFormMassVanishGuardRefusesDeletes(t *testing.T) {
 	if err != nil || live != 6 {
 		t.Errorf("live rows = %d (%v), want 6", live, err)
 	}
-	if got := gfFormRow(t, app).GetString("last_pull_status"); !strings.HasPrefix(got, "refused: 4 of 6 responses missing") {
+	if got := gfFormRow(t, app).GetString("last_pull_status"); !strings.HasPrefix(got,
+		"refused: 4 of 6 responses missing") {
 		t.Errorf("last_pull_status = %q", got)
 	}
 
@@ -643,8 +655,8 @@ func TestAidFormMassVanishGuardRefusesDeletes(t *testing.T) {
 	app2 := newAidFormTestApp(t)
 	seedAidFormWeekends(t, app2)
 	fake2 := &fakeGoogleForm{def: gfDefinition(), resp: []google.FormResponse{gfRachel()}}
-	if _, err := runAidForm(t, app2, fake2); err != nil {
-		t.Fatal(err)
+	if _, firstErr := runAidForm(t, app2, fake2); firstErr != nil {
+		t.Fatal(firstErr)
 	}
 	fake2.resp = nil
 	run, err = runAidForm(t, app2, fake2)
@@ -654,7 +666,8 @@ func TestAidFormMassVanishGuardRefusesDeletes(t *testing.T) {
 	if run.sync.GetStats().Deleted != 0 || gfRow(t, app2, "resp-rachel").GetString("form_status") != "live" {
 		t.Error("an empty pull marked the row deleted")
 	}
-	if got := gfFormRow(t, app2).GetString("last_pull_status"); !strings.HasPrefix(got, "refused: 1 of 1 responses missing") {
+	if got := gfFormRow(t, app2).GetString("last_pull_status"); !strings.HasPrefix(got,
+		"refused: 1 of 1 responses missing") {
 		t.Errorf("last_pull_status = %q", got)
 	}
 }
@@ -689,7 +702,8 @@ func TestAidFormFetchErrorWritesNothing(t *testing.T) {
 	t.Parallel()
 	app := newAidFormTestApp(t)
 	seedAidFormWeekends(t, app)
-	if _, err := runAidForm(t, app, &fakeGoogleForm{def: gfDefinition(), resp: []google.FormResponse{gfRachel()}}); err != nil {
+	first := &fakeGoogleForm{def: gfDefinition(), resp: []google.FormResponse{gfRachel()}}
+	if _, err := runAidForm(t, app, first); err != nil {
 		t.Fatal(err)
 	}
 	for _, fake := range []*fakeGoogleForm{
@@ -761,7 +775,8 @@ func TestAidFormNewestResponseSupersedesOlderOnes(t *testing.T) {
 	app := newAidFormTestApp(t)
 	seedAidFormWeekends(t, app)
 	older := gfRachel()
-	older.ResponseID, older.CreateTime, older.LastSubmittedTime = "resp-rachel-old", "2026-11-01T08:00:00Z", "2026-11-01T08:00:00Z"
+	older.ResponseID = "resp-rachel-old"
+	older.CreateTime, older.LastSubmittedTime = "2026-11-01T08:00:00Z", "2026-11-01T08:00:00Z"
 	if _, err := runAidForm(t, app, &fakeGoogleForm{def: gfDefinition(),
 		resp: []google.FormResponse{older, gfRachel()}}); err != nil {
 		t.Fatal(err)
@@ -936,7 +951,8 @@ func TestAidFormChoicesMapByNumberOrNameNotDate(t *testing.T) {
 	}
 
 	status := aidFormPullStatus(&aidFormPull{year: 2027, choices: got})
-	if want := "choice '" + moved + "' says 2027-09-23, but session 1000306 starts 2027-09-16"; !strings.Contains(status, want) {
+	want := "choice '" + moved + "' says 2027-09-23, but session 1000306 starts 2027-09-16"
+	if !strings.Contains(status, want) {
 		t.Errorf("status %q lacks the cross-check note %q", status, want)
 	}
 	if strings.Contains(status, fc6Label+"' says") {

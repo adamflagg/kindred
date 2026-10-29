@@ -98,43 +98,42 @@ var roleRules = []struct {
 	role  string
 	match func(w titleWords, kind string) bool
 }{
-	{RoleAgreementDate, func(w titleWords, k string) bool { return w.has("agreement", "date") && w.none("signature") }},
-	{RoleName, func(w titleWords, k string) bool {
+	{RoleAgreementDate, func(w titleWords, _ string) bool { return w.has("agreement", "date") && w.none("signature") }},
+	{RoleName, func(w titleWords, _ string) bool {
 		return w.has("name") && (w.has("first") || w.text == "name") && w.none("signature", "agreement")
 	}},
 	{RoleProgram, func(w titleWords, k string) bool { return k == KindChoice && w.has("program") }},
-	{RoleBirthdate, func(w titleWords, k string) bool { return w.has("birthdate") || w.phrase("date of birth") }},
-	{RoleAsk, func(w titleWords, k string) bool { return w.phrase("amount of assistance") }},
-	{RoleGross, func(w titleWords, k string) bool {
+	{RoleBirthdate, func(w titleWords, _ string) bool { return w.has("birthdate") || w.phrase("date of birth") }},
+	{RoleAsk, func(w titleWords, _ string) bool { return w.phrase("amount of assistance") }},
+	{RoleGross, func(w titleWords, _ string) bool {
 		return w.has("gross", "income") && w.none("confirm", "adjusted", "expected")
 	}},
-	{RoleGrossConfirm, func(w titleWords, k string) bool { return w.has("confirm", "gross", "income") }},
-	{RoleAGI, func(w titleWords, k string) bool { return w.has("adjusted", "gross", "income") }},
-	{RoleExpected, func(w titleWords, k string) bool { return w.has("expected", "income") && w.none("confirm") }},
-	{RoleMortgage, func(w titleWords, k string) bool { return w.has("mortgage") }},
-	{RoleSavings, func(w titleWords, k string) bool { return w.has("savings") }},
-	{RoleRent, func(w titleWords, k string) bool { return w.has("rent") && w.none("mortgage") }},
-	{RoleMedical, func(w titleWords, k string) bool { return w.has("medical") }},
-	{RoleStudentLoan, func(w titleWords, k string) bool { return w.has("student", "loan") }},
-	{RoleCircumstances, func(w titleWords, k string) bool {
+	{RoleGrossConfirm, func(w titleWords, _ string) bool { return w.has("confirm", "gross", "income") }},
+	{RoleAGI, func(w titleWords, _ string) bool { return w.has("adjusted", "gross", "income") }},
+	{RoleExpected, func(w titleWords, _ string) bool { return w.has("expected", "income") && w.none("confirm") }},
+	{RoleMortgage, func(w titleWords, _ string) bool { return w.has("mortgage") }},
+	{RoleSavings, func(w titleWords, _ string) bool { return w.has("savings") }},
+	{RoleRent, func(w titleWords, _ string) bool { return w.has("rent") && w.none("mortgage") }},
+	{RoleMedical, func(w titleWords, _ string) bool { return w.has("medical") }},
+	{RoleStudentLoan, func(w titleWords, _ string) bool { return w.has("student", "loan") }},
+	{RoleCircumstances, func(w titleWords, _ string) bool {
 		return w.phrase("financial situation") || w.phrase("special circumstances")
 	}},
-	{RoleCounty, func(w titleWords, k string) bool { return w.text == "county" }},
-	{RoleUnemployment, func(w titleWords, k string) bool { return w.has("unemployment") }},
-	{RoleGovSubsidies, func(w titleWords, k string) bool { return w.has("subsidies") }},
-	{RolePOC, func(w titleWords, k string) bool { return w.phrase("person of color") }},
-	{RoleRace, func(w titleWords, k string) bool { return w.has("race") || w.has("ethnicity") }},
-	{RoleChildren, func(w titleWords, k string) bool { return w.phrase("how many") && w.has("children") }},
-	{RoleGender, func(w titleWords, k string) bool { return w.has("gender") }},
-	{RoleSignature, func(w titleWords, k string) bool { return w.has("signature") }},
+	{RoleCounty, func(w titleWords, _ string) bool { return w.text == "county" }},
+	{RoleUnemployment, func(w titleWords, _ string) bool { return w.has("unemployment") }},
+	{RoleGovSubsidies, func(w titleWords, _ string) bool { return w.has("subsidies") }},
+	{RolePOC, func(w titleWords, _ string) bool { return w.phrase("person of color") }},
+	{RoleRace, func(w titleWords, _ string) bool { return w.has("race") || w.has("ethnicity") }},
+	{RoleChildren, func(w titleWords, _ string) bool { return w.phrase("how many") && w.has("children") }},
+	{RoleGender, func(w titleWords, _ string) bool { return w.has("gender") }},
+	{RoleSignature, func(w titleWords, _ string) bool { return w.has("signature") }},
 }
 
 // MapQuestions finds each role's question by its normalised title. A role no
 // question matches is left out; a role several questions match is left out
 // and named in problems -- it is never a first match.
-func MapQuestions(questions []Question) (QuestionMap, []string) {
-	qm := QuestionMap{}
-	var problems []string
+func MapQuestions(questions []Question) (qm QuestionMap, problems []string) {
+	qm = QuestionMap{}
 	normalised := make([]titleWords, len(questions))
 	for i, q := range questions {
 		text := jotform.NormalizeWording(strings.ReplaceAll(q.Title, "’", "'"))
@@ -190,7 +189,7 @@ func ChoiceBucket(label string) string {
 	return BucketAdultWeekend
 }
 
-var choiceDates = regexp.MustCompile(`\(\s*([A-Za-z]+)\.?\s+(\d{1,2})\s*(?:-|–|—)`)
+var choiceDates = regexp.MustCompile(`\(\s*([A-Za-z]+)\.?\s+(\d{1,2})\s*[-–—]`)
 
 var months = map[string]time.Month{
 	"jan": time.January, "feb": time.February, "mar": time.March, "apr": time.April, "may": time.May,

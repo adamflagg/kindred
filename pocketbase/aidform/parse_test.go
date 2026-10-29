@@ -161,16 +161,16 @@ func TestParseYesNo(t *testing.T) {
 
 func TestNormalizeDate(t *testing.T) {
 	t.Parallel()
-	cases := map[string]string{
-		"1971-04-02":   "1971-04-02",
-		" 1971-04-02 ": "1971-04-02",
-		"04/02/1971":   "",
-		"":             "",
-		"1971-13-02":   "",
+	cases := []struct{ typed, want string }{
+		{"1971-04-02", "1971-04-02"},
+		{"  1971-04-02\t", "1971-04-02"}, // padded
+		{"04/02/1971", ""},
+		{"", ""},
+		{"1971-13-02", ""},
 	}
-	for typed, want := range cases {
-		if got := NormalizeDate(typed); got != want {
-			t.Errorf("NormalizeDate(%q) = %q, want %q", typed, got, want)
+	for _, tc := range cases {
+		if got := NormalizeDate(tc.typed); got != tc.want {
+			t.Errorf("NormalizeDate(%q) = %q, want %q", tc.typed, got, tc.want)
 		}
 	}
 }
