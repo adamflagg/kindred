@@ -90,6 +90,14 @@ STABLE_SORT: Final = "id"
 # The registration-time ask (CA-FinancialAssistanceAmount for a camper, WW-FA
 # Amount for an adult). SP1 renamed it from amount_awarded (migration 1500000184).
 FA_REGISTRATION_ASK_FIELD: Final = "registration_request_amount"
+# The same ask per program (IN-BUCKETS, migration 1500000253): the camper form's CA- pair and the adult-weekend form's
+# WW- pair, which the legacy pair above holds together, first value wins.
+FA_ASK_BY_PROGRAM_FIELDS: Final = (
+    "camper_interest_expressed",
+    "camper_registration_request_amount",
+    "adult_weekend_interest_expressed",
+    "adult_weekend_registration_request_amount",
+)
 
 CAMPER_POC_FIELD_CM_ID: Final = 165525  # CampMinder "Family Camp-POC", camper partition, stamped per season
 ADULT_POC_FIELD_CM_ID: Final = 209079  # CampMinder "Folks of Color", adult partition
@@ -118,6 +126,7 @@ FA_READ_FIELDS: Final = ",".join(
         *HOUSEHOLD_ANSWER_FIELDS,
         *_FA_PROGRAM_FIELDS,
         FA_REGISTRATION_ASK_FIELD,
+        *FA_ASK_BY_PROGRAM_FIELDS,
         "reported_income_fields",
         "expand.household.cm_id",
     )
@@ -229,6 +238,10 @@ def _fa_row(record: Any) -> FaRow:
         interest_expressed=bool(getattr(record, "interest_expressed", False)),
         registration_ask=_float(getattr(record, FA_REGISTRATION_ASK_FIELD, 0)),
         reported_income_fields=frozenset(_json(getattr(record, "reported_income_fields", None), [])),
+        camper_interest=bool(getattr(record, "camper_interest_expressed", False)),
+        camper_registration_ask=_float(getattr(record, "camper_registration_request_amount", 0)),
+        adult_weekend_interest=bool(getattr(record, "adult_weekend_interest_expressed", False)),
+        adult_weekend_registration_ask=_float(getattr(record, "adult_weekend_registration_request_amount", 0)),
     )
 
 

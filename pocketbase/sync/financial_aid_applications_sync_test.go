@@ -360,3 +360,104 @@ func TestFASync_ARowWithNoIncomeAnswerReportsNone(t *testing.T) {
 		t.Errorf("second run updated %d rows, want 0", s.Stats.Updated)
 	}
 }
+
+// IN-BUCKETS (owner 2026-10-28): the camper registration ask (CA-) and the adult-weekend one (WW-) are separate
+// buckets. They used to share interest_expressed / registration_request_amount, first value wins, so a person with
+// both kept only one. Each program now has its own pair, and the legacy pair is written exactly as before (2026 and
+// back-compat read it).
+func TestFASync_KeepsTheCamperAndAdultWeekendAsksApart(t *testing.T) {
+	t.Parallel()
+	app := newFAApplicationsTestApp(t)
+	caInterest := faAddDef(t, app, 1, "CA-FinancialAssistanceInterest", true)
+	caAmount := faAddDef(t, app, 2, "CA-FinancialAssistanceAmount", true)
+	wwInterest := faAddDef(t, app, 3, "WW-FA", true)
+	wwAmount := faAddDef(t, app, 4, "WW-FA Amount", true)
+
+	both := faAddPerson(t, app, 9200401)
+	faAddValue(t, app, both, caInterest, "No", faSeasonalAt)
+	faAddValue(t, app, both, caAmount, "$500", faSeasonalAt)
+	faAddValue(t, app, both, wwInterest, "Yes", faSeasonalAt)
+	faAddValue(t, app, both, wwAmount, "$300", faSeasonalAt)
+
+	camperOnly := faAddPerson(t, app, 9200402)
+	faAddValue(t, app, camperOnly, caInterest, "Yes", faSeasonalAt)
+	faAddValue(t, app, camperOnly, caAmount, "$1,200", faSeasonalAt)
+
+	weekendOnly := faAddPerson(t, app, 9200403)
+	faAddValue(t, app, weekendOnly, wwInterest, "Yes", faSeasonalAt)
+	faAddValue(t, app, weekendOnly, wwAmount, "$400", faSeasonalAt)
+
+	faRun(t, app)
+
+	type split struct {
+		camperInterest bool
+		camperAmount   float64
+		weekendInt     bool
+		weekendAmount  float64
+	}
+	for pb, want := range map[string]split{
+		both:        {false, 500, true, 300},
+		camperOnly:  {true, 1200, false, 0},
+		weekendOnly: {false, 0, true, 400},
+	} {
+		row := faRow(t, app, pb)
+		got := split{
+			row.GetBool("camper_interest_expressed"),
+			row.GetFloat("camper_registration_request_amount"),
+			row.GetBool("adult_weekend_interest_expressed"),
+			row.GetFloat("adult_weekend_registration_request_amount"),
+		}
+		if got != want {
+			t.Errorf("%s: per-program asks = %+v, want %+v", pb, got, want)
+		}
+	}
+	// The legacy pair, unchanged: any yes is interest; the first non-zero amount wins.
+	if row := faRow(t, app, camperOnly); !row.GetBool("interest_expressed") ||
+		row.GetFloat("registration_request_amount") != 1200 {
+		t.Errorf("camper-only legacy pair = (%v, %v), want (true, 1200)",
+			row.GetBool("interest_expressed"), row.GetFloat("registration_request_amount"))
+	}
+	if row := faRow(t, app, weekendOnly); !row.GetBool("interest_expressed") ||
+		row.GetFloat("registration_request_amount") != 400 {
+		t.Errorf("weekend-only legacy pair = (%v, %v), want (true, 400)",
+			row.GetBool("interest_expressed"), row.GetFloat("registration_request_amount"))
+	}
+	if row := faRow(t, app, both); !row.GetBool("interest_expressed") {
+		t.Error("a WW- yes beside a CA- no still sets the legacy interest_expressed")
+	}
+
+	if s := faRun(t, app); s.Stats.Updated != 0 || s.Stats.Created != 0 {
+		t.Errorf("second run stats = %+v, want nothing created or updated (the new columns compare too)", s.Stats)
+	}
+}
+
+// The legacy pair is first-value-wins across both prefixes, and the per-program pair is first-value-wins within its
+// own prefix, whichever order the values arrive in.
+func TestFAMapFieldRoutesEachAskToItsOwnProgram(t *testing.T) {
+	t.Parallel()
+	s := &FinancialAidApplicationsSync{}
+	for _, order := range [][2][2]string{
+		{{"WW-FA Amount", "$300"}, {"CA-FinancialAssistanceAmount", "$500"}},
+		{{"CA-FinancialAssistanceAmount", "$500"}, {"WW-FA Amount", "$300"}},
+	} {
+		fa := &faApplicationData{}
+		for _, v := range order {
+			s.mapFieldToApplication(fa, v[0], v[1])
+		}
+		first := parseNumberValue(order[0][1])
+		if fa.registrationRequestAmount != first {
+			t.Errorf("legacy amount = %v, want the first value %v", fa.registrationRequestAmount, first)
+		}
+		if fa.camperRegistrationRequestAmount != 500 || fa.adultWeekendRegistrationRequestAmount != 300 {
+			t.Errorf("per-program amounts = (%v, %v), want (500, 300)",
+				fa.camperRegistrationRequestAmount, fa.adultWeekendRegistrationRequestAmount)
+		}
+	}
+	fa := &faApplicationData{}
+	s.mapFieldToApplication(fa, "CA-FinancialAssistanceInterest", "Yes")
+	s.mapFieldToApplication(fa, "WW-FA", "No")
+	if !fa.interestExpressed || !fa.camperInterestExpressed || fa.adultWeekendInterestExpressed {
+		t.Errorf("interest (legacy, camper, weekend) = (%v, %v, %v), want (true, true, false)",
+			fa.interestExpressed, fa.camperInterestExpressed, fa.adultWeekendInterestExpressed)
+	}
+}

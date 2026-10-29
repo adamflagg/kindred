@@ -139,6 +139,13 @@ class FaRow:
     # The income columns the family actually answered (Task 1b), 0 included. An
     # income column that is 0 and NOT listed here was left blank: unknown.
     reported_income_fields: frozenset[str] = frozenset()
+    # The registration ask per program (IN-BUCKETS, owner 2026-10-28; migration 1500000253): the camper registration
+    # form's (CA-) and the adult-weekend one's (WW-). `interest_expressed` / `registration_ask` above hold both, first
+    # value wins, and 2026 keeps reading them; the 2027-on readers judge each bucket on its own pair.
+    camper_interest: bool = False
+    camper_registration_ask: float = 0.0
+    adult_weekend_interest: bool = False
+    adult_weekend_registration_ask: float = 0.0
 
 
 @dataclass(frozen=True)

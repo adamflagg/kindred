@@ -5533,6 +5533,10 @@ export type FormIntakeRowOut = {
    */
   registration_only: boolean
   /**
+   * Registration Only Programs
+   */
+  registration_only_programs?: Array<string>
+  /**
    * Answers
    */
   answers?: Array<FormAnswerOut>
@@ -5561,6 +5565,8 @@ export type FormIntakeRowOut = {
     | 'answer_edited'
     | 'registration_ask_ambiguous'
     | 'registration_ask_unattributed'
+    | 'registration_ask_not_registered'
+    | 'registration_ask_not_enrolled'
     | null
   /**
    * Why Not Detail

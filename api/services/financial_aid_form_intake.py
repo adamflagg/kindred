@@ -18,9 +18,13 @@ Needs a look (spec §2.4, owner Q3-A): CampMinder aid on no request; an enrolled
 registration-only family: that one counts only once CampMinder posted aid on it); a request whose session is unclear
 between enrolled candidates; a rule-made request nobody has marked reviewed (Q2-A).
 
-Registration ask only is judged per person and per bucket (IN-BUCKETS, owner 2026-10-28): from 2027 an adult's
-adult-weekend ask is registration-ask-only even when the household filed the aid form for a child, because that form
-covers summer, B*Mitzvah and Family Camp and no aid form covers adult weekends yet (_Explainer.adult_weekend_ask_only).
+Registration ask only is judged per person and per bucket from 2027 (IN-BUCKETS, owner 2026-10-28; IB-1 the buckets
+are summer, Quest and the teen programs included, B*Mitzvah, Family Camp and adult weekends; IB-2 2027 on). A person
+row's camper registration ask (CA-) is for the buckets they are registered in, their adult-weekend ask (WW-) for
+adult weekends, each read from its own column pair. A bucket the household filed no aid form for makes the ask
+Registration ask only for it (`registration_only_programs`), whatever else the household filed; no aid form covers
+adult weekends yet. Its enrolled sessions then need no look, as a registration-only family's never did. 2026, the
+tie-off season, reads every row exactly as before: by the household's filing, from the legacy ask pair.
 
 From 2027 the registration-ask rule's own facts explain an enrolled session it made no request for (PR 4b,
 financial_aid_registration_ask, run here over the requests intake made): `registration_ask_ambiguous` when the ask's
@@ -75,7 +79,7 @@ from api.services.financial_aid_cancellations import CancelEvent, fold_cancellat
 from api.services.financial_aid_casework_service import _program_for
 from api.services.financial_aid_decisions_service import session_pools
 from api.services.financial_aid_grants_register import program_family_for_session_type
-from api.services.financial_aid_household import ADULT_WEEKEND_FORM_ONLY_FIRST_SEASON, enrolled_for
+from api.services.financial_aid_household import enrolled_for
 from api.services.financial_aid_household_page import HouseholdLabeler
 from api.services.financial_aid_intake_types import (
     PROGRAM_ADULT_WEEKEND,
@@ -102,9 +106,10 @@ from api.services.financial_aid_registration_ask import (
     AskHistoryRow,
     AttendeeDates,
     RegistrationAskResult,
+    filed_programs,
     registration_ask_additions,
 )
-from api.services.financial_aid_session_resolver import session_named_by
+from api.services.financial_aid_session_resolver import FAMILY_ADULT, session_named_by
 from bunking.financial_aid.decisions.rounds import DecisionEvent, fold_rounds
 from bunking.financial_aid.rules.schema import AidRules
 
@@ -124,6 +129,17 @@ UNLISTED_MAX: Final = 25
 _MIN_QUERY: Final = 2
 _CAMPER_PROGRAMS: Final = ((PROGRAM_SUMMER, "summer_program", "summer_amount_requested"),
                            (PROGRAM_BMITZVAH, "tbm_program", "tbm_amount_requested"))  # fmt: skip
+
+# IN-BUCKETS (owner 2026-10-28; IB-2 = 2027 forward only): from this season a person row is judged per bucket, each on
+# its own filing, registrations and ask. Earlier seasons keep the household-level reading they were worked under:
+# 2026 is the tie-off season (owner guidance 2026-10-17) and its Form intake must read exactly as it did, and history
+# before 2026 is loaded from spreadsheets, not intake. Never earlier than ADULT_WEEKEND_FORM_ONLY_FIRST_SEASON: this
+# lists an adult-weekend ask as registration-ask-only, which is right only once the ask itself makes no request.
+IN_BUCKETS_FIRST_SEASON: Final = 2027
+# The order a row names its registration-ask-only buckets in.
+_BUCKET_ORDER: Final = (PROGRAM_SUMMER, PROGRAM_BMITZVAH, PROGRAM_FAMILY_CAMP, PROGRAM_ADULT_WEEKEND)
+# The buckets a camper registration ask (CA-) can be for: every one but adult weekends, which have their own ask.
+_CAMPER_ASK_BUCKETS: Final = frozenset({PROGRAM_SUMMER, PROGRAM_BMITZVAH, PROGRAM_FAMILY_CAMP})
 
 
 class FormIntakeStore(Protocol):
@@ -194,6 +210,16 @@ def _filed(rows: Iterable[FaRow]) -> bool:
     )
 
 
+def _asks_camper(row: FaRow) -> bool:
+    """The camper registration form's ask (CA-) on this row: its own column pair (IN-BUCKETS, 2027 on)."""
+    return row.camper_interest or row.camper_registration_ask > 0
+
+
+def _asks_weekend(row: FaRow) -> bool:
+    """The adult-weekend registration form's ask (WW-) on this row: its own column pair (IN-BUCKETS, 2027 on)."""
+    return row.adult_weekend_interest or row.adult_weekend_registration_ask > 0
+
+
 def _candidates(request: RequestRecord) -> list[int]:
     for flag in request.flags:
         if flag.get("code") == "unmatched_session":
@@ -227,6 +253,9 @@ class _Explainer:
         self.rounds = fold_rounds(season.events)
         self.additions_by_key = additions_by_request_key(season.additions)
         self.families: dict[int, frozenset[int]] = {}
+        # IN-BUCKETS (2027 on): each bucket judged on its own facts. Set before _homes reads _named_subjects.
+        self.by_bucket = season.year >= IN_BUCKETS_FIRST_SEASON
+        self.filed_buckets: dict[int, frozenset[str]] = filed_programs(season.fa_rows) if self.by_bucket else {}
         self.homes = self._homes()
         self.aid_by_subject: dict[Subject, list[NoRequestAid]] = defaultdict(list)
         for found in season.no_request:
@@ -283,7 +312,14 @@ class _Explainer:
         found: set[Subject] = set()
         for row in self.s.fa_rows:
             person_answer = row.summer_program.strip() or row.tbm_program.strip()
-            if person_answer or (not row.fc_program.strip() and (row.interest_expressed or row.registration_ask > 0)):
+            if self.by_bucket:
+                # A Family Camp answer is the household row's, so it hides the person's camper ask only when that ask
+                # is for a bucket the household filed (IN-BUCKETS). An adult-weekend ask is never the household row's.
+                subject = (row.household_cm_id, row.person_cm_id)
+                hidden = bool(row.fc_program.strip()) and not self.unfiled_buckets(subject)
+                if person_answer or _asks_weekend(row) or (_asks_camper(row) and not hidden):
+                    found.add(subject)
+            elif person_answer or (not row.fc_program.strip() and (row.interest_expressed or row.registration_ask > 0)):
                 found.add((row.household_cm_id, row.person_cm_id))
             if row.fc_program.strip():
                 found.add((row.household_cm_id, 0))
@@ -345,13 +381,60 @@ class _Explainer:
             )
         return list(merged.values())
 
-    def registration_ask(self, subject: Subject) -> RegistrationAskOut | None:
+    def own_rows(self, subject: Subject) -> list[FaRow]:
         household, person = subject
-        if not person:
+        return [r for r in self.rows_by_household.get(household, []) if r.person_cm_id == person]
+
+    def registration_ask(self, subject: Subject) -> RegistrationAskOut | None:
+        if not subject[1]:
             return None
-        asks = [r.registration_ask for r in self.rows_by_household.get(household, []) if r.person_cm_id == person]
-        ask = max(asks, default=0.0)
+        rows = self.own_rows(subject)
+        if self.by_bucket:
+            # The amount of the ask the row is about: the adult-weekend one when that is its only registration-ask-only
+            # bucket, else the camper one, else whichever there is.
+            camper = max((r.camper_registration_ask for r in rows), default=0.0)
+            weekend = max((r.adult_weekend_registration_ask for r in rows), default=0.0)
+            weekend_first = self.unfiled_buckets(subject) == [PROGRAM_ADULT_WEEKEND]
+            first, second = (weekend, camper) if weekend_first else (camper, weekend)
+            ask = first if first > 0 else second
+        else:
+            ask = max((r.registration_ask for r in rows), default=0.0)
         return RegistrationAskOut(amount=float(ask)) if ask > 0 else None
+
+    # -- IN-BUCKETS (2027 on) -------------------------------------------------------------------------------------------
+
+    def bucket(self, sid: int) -> str | None:
+        """The bucket a session's registration is in: its program, an Adult Reg session its Family Camp weekend's."""
+        session = self.s.by_id.get(sid)
+        if session is not None and session.session_type == FAMILY_ADULT:
+            return PROGRAM_FAMILY_CAMP
+        return self.program(sid)
+
+    def asked_at_registration(self, subject: Subject) -> bool:
+        return any(_asks_camper(r) or _asks_weekend(r) for r in self.own_rows(subject))
+
+    def ask_buckets(self, subject: Subject) -> set[str]:
+        """The buckets the person's registration ask is for: the camper ask (CA-) is for every bucket but adult
+        weekends they are registered in (any status intake reads), the adult-weekend ask (WW-) for adult weekends when
+        they are registered for one. An ask with no registration in its bucket is for none ("they can't ask for that
+        aid without being registered for the correct type of session")."""
+        rows = self.own_rows(subject)
+        registered = {self.bucket(sid) for sid in self.registered_by_person.get(subject[1], set())}
+        out: set[str] = set()
+        if any(_asks_camper(r) for r in rows):
+            out.update(b for b in registered if b in _CAMPER_ASK_BUCKETS)
+        if any(_asks_weekend(r) for r in rows) and PROGRAM_ADULT_WEEKEND in registered:
+            out.add(PROGRAM_ADULT_WEEKEND)
+        return out
+
+    def unfiled_buckets(self, subject: Subject) -> list[str]:
+        """The ask's buckets the household filed no aid form for, in bucket order: registration ask only there."""
+        household, person = subject
+        if not person or household <= 0:
+            return []
+        filed = self.filed_buckets.get(household, frozenset())
+        asked = self.ask_buckets(subject)
+        return [b for b in _BUCKET_ORDER if b in asked and b not in filed]
 
     def interest_only(self, subject: Subject) -> bool:
         household, person = subject
@@ -361,21 +444,6 @@ class _Explainer:
             and (r.interest_expressed or r.registration_ask > 0)
             for r in self.rows_by_household.get(household, [])
         )
-
-    def adult_weekend_ask_only(self, subject: Subject) -> bool:
-        """IN-BUCKETS (owner 2026-10-28): summer, Family Camp and adult weekends are separate buckets, each judged on
-        its own facts, so a household's summer filing for a child says nothing about an adult's adult-weekend ask. True
-        when the person's only registrations a person's request can name are adult weekends and their own form rows
-        answer no program: the ask is the adult-weekend registration ask (WW-FA / WW-FA Amount), and no aid form covers
-        adult weekends (the CampMinder form asks summer, B*Mitzvah and Family Camp; the adult Jotform is not read yet).
-        Gated with ADULT_WEEKEND_FORM_ONLY_FIRST_SEASON because the two move together: before it, the ask itself made
-        the adult's request (build_request_specs), and 2026, the tie-off season, keeps reading it as it did."""
-        household, person = subject
-        if self.s.year < ADULT_WEEKEND_FORM_ONLY_FIRST_SEASON or not person or household <= 0:
-            return False
-        # Family Camp is the household row's, never a person row's, so it does not take the adult out of the bucket.
-        programs = {self.program(sid) for sid in self.registered_by_person.get(person, set())}
-        return programs - {None, PROGRAM_FAMILY_CAMP} == {PROGRAM_ADULT_WEEKEND} and self.interest_only(subject)
 
     def became(self, request: RequestRecord) -> BecameOut:
         origin = request_origin(request.program_option_key)
@@ -495,26 +563,23 @@ class _Explainer:
             )
         return "enrolled_no_request", None
 
-    def row(self, subject: Subject) -> FormIntakeRowOut:
+    def _judged_by_household(
+        self,
+        subject: Subject,
+        filed: bool,
+        answers: Sequence[FormAnswerOut],
+        registration: RegistrationAskOut | None,
+        enrolled: Sequence[int],
+        became: Sequence[BecameOut],
+        live: Sequence[BecameOut],
+        gaps: Sequence[GapSessionOut],
+    ) -> tuple[bool, WhyNot | None, WhyNotDetail | None]:
+        """Before IN_BUCKETS_FIRST_SEASON (2026, the tie-off season): the household's filing decides, from the legacy
+        ask pair. Frozen: 2026's Form intake reads exactly as it did."""
         household, person = subject
-        rows = self.rows_by_household.get(household, []) if household else []
-        filed = _filed(rows)
-        answers = self.answers(subject)
-        registration = self.registration_ask(subject)
-        # Registration ask only, per person and per bucket (IN-BUCKETS): the household filed no aid form, or this is
-        # an adult-weekend ask, which no aid form the household filed covers.
         registration_only = (
-            bool(person)
-            and household > 0
-            and (registration is not None or self.interest_only(subject))
-            and (not filed or self.adult_weekend_ask_only(subject))
+            bool(person) and household > 0 and (registration is not None or self.interest_only(subject)) and not filed
         )
-        enrolled = self.enrolled(subject)
-        requests = self.requests_of(subject)
-        became = sorted((self.became(r) for r in requests), key=self.became_order)
-        live = [b for b in became if b.status not in _CLOSED_WORDS]
-        gaps = self.gaps(subject, requests, enrolled)
-        aid = self.campminder_aid(subject, requests)
         why: WhyNot | None = None
         detail: WhyNotDetail | None = None
         if household <= 0:
@@ -531,10 +596,83 @@ class _Explainer:
             why = "not_enrolled"
         elif not live and any(b.why == "answer_edited" for b in became):
             why = "answer_edited"
+        return registration_only, why, detail
+
+    def _judged_by_bucket(
+        self,
+        subject: Subject,
+        filed: bool,
+        answers: Sequence[FormAnswerOut],
+        became: Sequence[BecameOut],
+        live: Sequence[BecameOut],
+        gaps: Sequence[GapSessionOut],
+    ) -> tuple[list[str], bool, WhyNot | None, WhyNotDetail | None, list[GapSessionOut]]:
+        """From IN_BUCKETS_FIRST_SEASON: the row judged per bucket (IN-BUCKETS). Returns its registration-ask-only
+        buckets, registration_only, the why-not and its detail, and the gaps that need a look."""
+        household, person = subject
+        unfiled = self.unfiled_buckets(subject)
+        asked = bool(person) and household > 0 and self.asked_at_registration(subject)
+        buckets = self.ask_buckets(subject) if asked else set()
+        # A household that filed nothing at all keeps today's reading of an ask with no bucket: registration ask only.
+        nowhere = asked and not buckets and not filed
+        registration_only = asked and (bool(unfiled) or nowhere)
+        # An enrolment in a registration-ask-only bucket needs no look, as a registration-only family's never did.
+        look_gaps = [] if nowhere else [g for g in gaps if g.program_key not in unfiled]
+        why: WhyNot | None = None
+        detail: WhyNotDetail | None = None
+        if household <= 0:
+            why = "no_household"
+        elif registration_only and not look_gaps and (not live or gaps):
+            # A gap in a bucket the household filed is the row's first why (it needs a look); else the ask is.
+            why = "registration_only"
+        elif asked and not answers and not live and not look_gaps and not buckets:
+            why = "registration_ask_not_registered"
+        elif asked and not answers and not live and not look_gaps and not self.enrolled_in(person, buckets):
+            why = "registration_ask_not_enrolled"
+        elif look_gaps:
+            why, detail = self.ask_why(person, look_gaps)
+        elif not any(b.status == "active" for b in live) and (
+            any(b.why == "not_enrolled" for b in became)
+            or any(not self.enrolled_in(person, {a.program_key}) for a in answers)
+        ):
+            # Only the answered program's own bucket says whether they are enrolled for it (a Family Camp or B*Mitzvah
+            # enrolment says nothing about a summer answer).
+            why = "not_enrolled"
+        elif not live and any(b.why == "answer_edited" for b in became):
+            why = "answer_edited"
+        return unfiled, registration_only, why, detail, look_gaps
+
+    def enrolled_in(self, person: int, buckets: Collection[str]) -> bool:
+        """The person is enrolled (status 2) in a session of one of these buckets."""
+        return any(self.bucket(sid) in buckets for sid in self.enrolled_by_person.get(person, set()))
+
+    def row(self, subject: Subject) -> FormIntakeRowOut:
+        household, person = subject
+        rows = self.rows_by_household.get(household, []) if household else []
+        filed = _filed(rows)
+        answers = self.answers(subject)
+        registration = self.registration_ask(subject)
+        enrolled = self.enrolled(subject)
+        requests = self.requests_of(subject)
+        became = sorted((self.became(r) for r in requests), key=self.became_order)
+        live = [b for b in became if b.status not in _CLOSED_WORDS]
+        gaps = self.gaps(subject, requests, enrolled)
+        aid = self.campminder_aid(subject, requests)
+        if self.by_bucket:
+            unfiled, registration_only, why, detail, look_gaps = self._judged_by_bucket(
+                subject, filed, answers, became, live, gaps
+            )
+        else:
+            unfiled, look_gaps = [], gaps
+            registration_only, why, detail = self._judged_by_household(
+                subject, filed, answers, registration, enrolled, became, live, gaps
+            )
+            if registration_only:
+                look_gaps = []
         reasons: list[LookReason] = []
         if any(not a.on_request for a in aid):
             reasons.append("campminder_aid")
-        if gaps and not registration_only:
+        if look_gaps:
             reasons.append("enrolled_no_request")
         if any(b.status == "session_unclear" and b.candidate_session_cm_ids for b in became):
             reasons.append("session_unclear")
@@ -546,6 +684,7 @@ class _Explainer:
             person_cm_id=person,
             filed=filed,
             registration_only=registration_only,
+            registration_only_programs=unfiled,
             answers=answers,
             registration_ask=registration,
             enrolled_session_cm_ids=enrolled,

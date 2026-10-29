@@ -102,6 +102,49 @@ async def test_a_row_the_sync_has_not_restamped_reports_no_income() -> None:
     assert row.reported_income_fields == frozenset()  # every 0 then reads as unknown: the safe side
 
 
+def test_the_fa_read_names_the_per_program_ask_columns() -> None:
+    # IN-BUCKETS (owner 2026-10-28): the camper (CA-) and adult-weekend (WW-) registration asks each keep their own
+    # pair (migration 1500000253), so a 2027-on reader can judge each bucket on its own ask.
+    assert {
+        "camper_interest_expressed",
+        "camper_registration_request_amount",
+        "adult_weekend_interest_expressed",
+        "adult_weekend_registration_request_amount",
+    } <= set(FA_READ_FIELDS.split(","))
+
+
+@pytest.mark.asyncio
+async def test_fetch_fa_rows_maps_the_per_program_asks_beside_the_legacy_pair() -> None:
+    record = SimpleNamespace(
+        id="fa0000000000004",
+        person_id=1000014,
+        interest_expressed=True,
+        camper_interest_expressed=False,
+        camper_registration_request_amount=500,
+        adult_weekend_interest_expressed=True,
+        adult_weekend_registration_request_amount=300,
+        is_applicant=True,
+        expand={"household": SimpleNamespace(cm_id=1000001)},
+        **{FA_REGISTRATION_ASK_FIELD: 500},
+    )
+    (row,) = await FinancialAidIntakeRepository(RecordingPb({"financial_aid_applications": [record]})).fetch_fa_rows(
+        2027
+    )
+    assert (row.interest_expressed, row.registration_ask) == (True, 500.0)  # the legacy pair, as before
+    assert (row.camper_interest, row.camper_registration_ask) == (False, 500.0)
+    assert (row.adult_weekend_interest, row.adult_weekend_registration_ask) == (True, 300.0)
+
+
+@pytest.mark.asyncio
+async def test_a_row_the_sync_has_not_rewritten_reads_no_per_program_ask() -> None:
+    record = SimpleNamespace(id="fa0000000000005", person_id=1000015, is_applicant=True, expand={})
+    (row,) = await FinancialAidIntakeRepository(RecordingPb({"financial_aid_applications": [record]})).fetch_fa_rows(
+        2027
+    )
+    assert (row.camper_interest, row.camper_registration_ask) == (False, 0.0)
+    assert (row.adult_weekend_interest, row.adult_weekend_registration_ask) == (False, 0.0)
+
+
 @pytest.mark.asyncio
 async def test_fetch_sessions_is_scoped_to_the_season_and_carries_the_first_day() -> None:
     handle = MagicMock()

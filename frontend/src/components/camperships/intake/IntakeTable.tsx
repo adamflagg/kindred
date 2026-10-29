@@ -31,6 +31,7 @@ import {
   originTitle,
   targetFromRow,
   tinyName,
+  formEvidence,
   whyWords,
   type SessionIndex,
 } from './intakeModel'
@@ -88,10 +89,18 @@ function CamperCell({ row, view }: { row: FormIntakeRowOut; view: AidView }) {
   )
 }
 
-function BecameCell({ row, names }: { row: FormIntakeRowOut; names: SessionIndex }) {
+function BecameCell({
+  row,
+  names,
+  programs,
+}: {
+  row: FormIntakeRowOut
+  names: SessionIndex
+  programs: Readonly<Record<string, string>>
+}) {
   const why =
     (row.gap_sessions ?? []).length > 0 || (row.became ?? []).length === 0
-      ? whyWords(row, names)
+      ? whyWords(row, names, programs)
       : null
   return (
     <span className="flex min-w-0 items-center gap-[5px] overflow-hidden whitespace-nowrap">
@@ -117,7 +126,11 @@ function BecameCell({ row, names }: { row: FormIntakeRowOut; names: SessionIndex
   )
 }
 
-function becameText(row: FormIntakeRowOut, names: SessionIndex): string {
+function becameText(
+  row: FormIntakeRowOut,
+  names: SessionIndex,
+  programs: Readonly<Record<string, string>>
+): string {
   const parts = (row.became ?? []).map((b) => {
     const origin = originOf(b)
     return [
@@ -128,15 +141,19 @@ function becameText(row: FormIntakeRowOut, names: SessionIndex): string {
       .filter(Boolean)
       .join(' ')
   })
-  const why = whyWords(row, names)
+  const why = whyWords(row, names, programs)
   if (why !== null && ((row.gap_sessions ?? []).length > 0 || parts.length === 0))
     parts.push(why.short)
   return parts.join(' · ')
 }
 
-function becameLongTitle(row: FormIntakeRowOut, names: SessionIndex): string {
+function becameLongTitle(
+  row: FormIntakeRowOut,
+  names: SessionIndex,
+  programs: Readonly<Record<string, string>>
+): string {
   const parts = (row.became ?? []).map((b) => becameTitle(b, names))
-  const why = whyWords(row, names)
+  const why = whyWords(row, names, programs)
   if (why !== null && ((row.gap_sessions ?? []).length > 0 || parts.length === 0))
     parts.push(why.long)
   return parts.join(' · ')
@@ -177,10 +194,9 @@ function IntakeDetail({
 }) {
   const reg = row.registration_ask ?? null
   const evidence: ReactNode[] = []
-  if (row.registration_only) evidence.push('No aid form, this season or any earlier one')
-  else if (!row.filed)
-    evidence.push('No aid form and no registration ask, this season or any earlier one')
-  else {
+  const shown = formEvidence(row, programs)
+  if (shown.noForm !== null) evidence.push(shown.noForm)
+  if (shown.filed) {
     const answers = row.answers ?? []
     evidence.push(
       <>
@@ -376,9 +392,9 @@ export function IntakeTable({
         header: 'Became',
         flex: true,
         mark: marks.became,
-        value: (r) => becameText(r, names),
-        title: (r) => becameLongTitle(r, names),
-        render: (r) => <BecameCell row={r} names={names} />,
+        value: (r) => becameText(r, names, programs),
+        title: (r) => becameLongTitle(r, names, programs),
+        render: (r) => <BecameCell row={r} names={names} programs={programs} />,
       },
       {
         key: 'campminder',

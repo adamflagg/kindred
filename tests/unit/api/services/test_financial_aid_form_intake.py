@@ -206,7 +206,9 @@ async def test_a_cancelled_request_and_its_posted_rounds_show() -> None:
 async def test_a_registration_only_family_waits_in_its_own_filter_until_campminder_posts_aid() -> None:
     # Owner Q3-A: a family that only ticked "financial assistance" at registration is in Needs a look only when
     # CampMinder posted aid on it; otherwise it sits in Registration ask only.
-    store = await intake(fa_row(RILEY, SAM, registration_ask=2500.0), attendees=enrolled(RILEY, SAM, TASTE_1))
+    store = await intake(
+        fa_row(RILEY, SAM, registration_ask=2500.0, camper_ask=2500.0), attendees=enrolled(RILEY, SAM, TASTE_1)
+    )
     out = await forms(store)
     riley = row(out, SAM, RILEY)
     assert (riley.filed, riley.registration_only, riley.why_not) == (False, True, "registration_only")
@@ -238,14 +240,32 @@ async def test_a_camper_with_no_household_has_nowhere_for_a_request() -> None:
 
 
 @pytest.mark.asyncio
-async def test_an_adults_weekend_ask_with_no_one_registered_says_so() -> None:
-    store = await intake(
+async def test_an_adults_weekend_ask_with_no_one_registered_says_so_in_2026() -> None:
+    store = make_store(
         fa_row(EMMA, JOHNSON, summer="Session 2", summer_ask=3000.0),
         fa_row(1000013, JOHNSON, interest=True, registration_ask=450.0),
         attendees=enrolled(EMMA, JOHNSON, SESSION_2),
     )
-    adult = row(await forms(store), JOHNSON, 1000013)
+    await FinancialAidIntakeService(store).build(2026)
+    adult = row(await FormIntakeService(store).forms(2026), JOHNSON, 1000013)
     assert (adult.why_not, adult.needs_look, adult.registration_only) == ("adult_not_registered", False, False)
+
+
+@pytest.mark.asyncio
+async def test_from_2027_an_ask_from_someone_registered_for_nothing_says_so_and_promises_nothing() -> None:
+    # IN-BUCKETS: "It will be made once one registers" is false from 2027 (IN-FORM-ONLY = A), and the ask can be for no
+    # bucket while they are registered for nothing ("they can't ask for that aid without being registered").
+    store = await intake(
+        fa_row(EMMA, JOHNSON, summer="Session 2", summer_ask=3000.0),
+        fa_row(1000013, JOHNSON, interest=True, registration_ask=450.0, weekend_interest=True, weekend_ask=450.0),
+        attendees=enrolled(EMMA, JOHNSON, SESSION_2),
+    )
+    adult = row(await forms(store), JOHNSON, 1000013)
+    assert (adult.why_not, adult.needs_look, adult.registration_only) == (
+        "registration_ask_not_registered",
+        False,
+        False,
+    )
 
 
 @pytest.mark.asyncio
@@ -312,7 +332,7 @@ def _d170_store_lines() -> list[CampLine]:
 async def _d170_store() -> FakeAidStore:
     return await intake(
         fa_row(EMMA, JOHNSON, summer="Session 2", summer_ask=3000.0),
-        fa_row(RILEY, SAM, registration_ask=2500.0),
+        fa_row(RILEY, SAM, registration_ask=2500.0, camper_ask=2500.0),
         attendees=[
             *enrolled(EMMA, JOHNSON, SESSION_2),
             *enrolled(RILEY, SAM, TASTE_1),
@@ -572,8 +592,8 @@ async def test_a_household_rows_enrolled_lists_its_family_camp_weekends_only() -
 async def _siblings(*lines: CampLine, samuel_enrolled: bool = True) -> FakeAidStore:
     """Emma and Samuel Johnson asked at registration only, and are both enrolled in Taste of Camp 1 (unless not)."""
     return await intake(
-        fa_row(EMMA, JOHNSON, registration_ask=1500.0),
-        fa_row(SAMUEL, JOHNSON, registration_ask=1500.0),
+        fa_row(EMMA, JOHNSON, registration_ask=1500.0, camper_ask=1500.0),
+        fa_row(SAMUEL, JOHNSON, registration_ask=1500.0, camper_ask=1500.0),
         attendees=[
             *enrolled(EMMA, JOHNSON, TASTE_1),
             *enrolled(SAMUEL, JOHNSON, TASTE_1, status=2 if samuel_enrolled else 4),
@@ -782,7 +802,7 @@ async def test_a_campers_money_held_under_the_linked_household_shows_on_their_ow
 
     linked = 1000009  # CampMinder's second household id for the Johnsons, where Samuel is filed
     store = await intake(
-        fa_row(EMMA, JOHNSON, registration_ask=1500.0),
+        fa_row(EMMA, JOHNSON, registration_ask=1500.0, camper_ask=1500.0),
         fa_row(SAMUEL, linked, registration_ask=1500.0),
         attendees=[*enrolled(EMMA, JOHNSON, TASTE_1), *enrolled(SAMUEL, linked, TASTE_1)],
         lines=[camp(59000031, linked, "1000", session=TASTE_1, person=EMMA)],

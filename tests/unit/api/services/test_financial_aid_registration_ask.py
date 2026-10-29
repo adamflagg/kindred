@@ -68,7 +68,7 @@ SEASON_SESSIONS = tuple(
 
 # Fictional families. The Johnsons file for Emma; her twin Noah is not on the form.
 JOHNSON, EMMA, NOAH = 1000001, 1000011, 1000012
-CHEN, OLIVIA = 1000002, 1000021
+CHEN, OLIVIA, OLIVIA_SIBLING = 1000002, 1000021, 1000022
 SAM, RILEY = 1000004, 1000041
 GARCIA, LIAM = 1000005, 1000051
 
@@ -146,6 +146,13 @@ def request_on(store: FakeAidStore, person: int, session: int) -> list[str]:
 
 def summer(person: int, household: int, text: str, ask_amount: float = 3000.0) -> FaRow:
     return fa_row(person, household, summer=text, summer_ask=ask_amount, total_gross_income=85000.0)
+
+
+def bmitzvah_filed(person: int, household: int) -> FaRow:
+    """IN-BUCKETS (IB-1, owner 2026-10-28): B*Mitzvah is its own bucket, so a B*Mitzvah request from the rule needs the
+    household's form to answer the B*Mitzvah question. Here a sibling's row answers it, so the camper's own ask is
+    still the one the rule ties to their registration (their own answer would make the request from the form)."""
+    return fa_row(person, household, tbm="B*Mitzvah", tbm_ask=2000.0, total_gross_income=85000.0)
 
 
 # -- the gate ---------------------------------------------------------------------------------------------------------
@@ -245,7 +252,7 @@ def test_row_3_the_status_date_alone_also_matches_a_back_dated_registration_day(
 @pytest.mark.asyncio
 async def test_row_4_a_bmitzvah_ask_typed_the_next_utc_day_fires_with_its_amount() -> None:
     store = make_store()
-    store.fa_rows = [summer(EMMA, JOHNSON, "Session 2")]
+    store.fa_rows = [summer(EMMA, JOHNSON, "Session 2"), bmitzvah_filed(NOAH, JOHNSON)]
     register(store, EMMA, JOHNSON, SESSION_2, day="2026-11-12")
     register(store, EMMA, JOHNSON, BMITZVAH, day="2027-07-27")
     ask(store, EMMA, 5000.0, "2027-07-28T05:40:00.000+00:00")
@@ -262,7 +269,7 @@ def test_row_4_the_next_utc_day_matches_on_the_registration_day_alone() -> None:
     tie the ask (the test above also matches on the status date's 24 hours)."""
     result = registration_ask_additions(
         YEAR,
-        fa_rows=[summer(EMMA, JOHNSON, "Session 2")],
+        fa_rows=[summer(EMMA, JOHNSON, "Session 2"), bmitzvah_filed(NOAH, JOHNSON)],
         sessions=SEASON_SESSIONS,
         attendees=[AttendeeDates(EMMA, JOHNSON, BMITZVAH, 2, "2027-07-27 00:00:00.000Z", "2027-08-20 19:00:00.000Z")],
         history=[AskHistoryRow(EMMA, 5000.0, "2027-07-28T05:40:00.000+00:00")],
@@ -302,18 +309,18 @@ async def test_row_6_a_candidate_of_an_unmatched_request_is_held_when_no_candida
     assert (report.registration_ask_ambiguous, report.registration_ask_unattributed) == (0, 0)
 
 
-# -- row 7: one ask, TOC1 and FC2 registered the same day -----------------------------------------------------------------
+# -- row 7: one ask, TOC1 and TWR registered the same day -----------------------------------------------------------------
+# The design's shape was TOC1 and Family Camp 2. IN-BUCKETS (owner 2026-10-28) counts only the target's own bucket, so
+# a Family Camp registration that day no longer makes a summer ask unclear (test_financial_aid_in_buckets); two summer
+# registrations still do.
 
 
 def _row_7_store() -> FakeAidStore:
     store = make_store()
-    store.fa_rows = [
-        fa_row(EMMA, JOHNSON, fc="Family Camp 2", fc_ask=900.0, total_gross_income=85000.0),
-        fa_row(NOAH, JOHNSON, registration_ask=1500.0),
-    ]
+    store.fa_rows = [summer(EMMA, JOHNSON, "Session 2"), fa_row(NOAH, JOHNSON, registration_ask=1500.0)]
+    register(store, EMMA, JOHNSON, SESSION_2, day="2026-10-01")
     register(store, NOAH, JOHNSON, TASTE_1, day="2026-11-12")
-    register(store, NOAH, JOHNSON, FAMILY_CAMP_2, day="2026-11-12")
-    register(store, EMMA, JOHNSON, FAMILY_CAMP_2, day="2026-11-12")
+    register(store, NOAH, JOHNSON, TWR, day="2026-11-12")
     ask(store, NOAH, 1500.0, "2026-11-12T18:00:00.000+00:00")
     return store
 
@@ -323,20 +330,23 @@ async def test_row_7_one_ask_on_a_day_that_registered_two_sessions_is_ambiguous_
     store = _row_7_store()
     report = await build(store)
     assert made(store) == []
-    assert (report.registration_ask_ambiguous, report.registration_ask_unattributed) == (1, 0)
+    # Both summer sessions are open enrollments the ask could be for, so each is one ambiguous fact.
+    assert (report.registration_ask_ambiguous, report.registration_ask_unattributed) == (2, 0)
     noah = next(r for r in (await FormIntakeService(store).forms(YEAR)).rows if r.person_cm_id == NOAH)
     assert (noah.why_not, noah.why_not_detail) == ("registration_ask_ambiguous", None)
     assert noah.needs_look is True
 
 
-# -- row 8: B*Mitzvah registered after the ask's date ---------------------------------------------------------------------
+# -- row 8: a second session registered after the ask's date --------------------------------------------------------------
+# The design's shape was a B*Mitzvah; under IN-BUCKETS a summer filing makes no B*Mitzvah request (IB-1), so the
+# second registration here is Quest, in the summer bucket the household filed.
 
 
 def _row_8_store() -> FakeAidStore:
     store = make_store()
     store.fa_rows = [summer(EMMA, JOHNSON, "Session 2")]
     register(store, EMMA, JOHNSON, SESSION_2, day="2026-11-12")
-    register(store, EMMA, JOHNSON, BMITZVAH, day="2027-02-19")
+    register(store, EMMA, JOHNSON, QUEST, day="2027-02-19")
     ask(store, EMMA, 3000.0, "2026-11-12T18:00:00.000+00:00")
     return store
 
@@ -356,13 +366,13 @@ def test_row_8_an_ask_typed_outside_any_registration_is_unattributed_without_the
         YEAR,
         fa_rows=[summer(EMMA, JOHNSON, "Session 2")],
         sessions=SEASON_SESSIONS,
-        attendees=[AttendeeDates(EMMA, JOHNSON, BMITZVAH, 2, "2027-02-19 00:00:00.000Z", "2027-02-19 19:00:00.000Z")],
+        attendees=[AttendeeDates(EMMA, JOHNSON, QUEST, 2, "2027-02-19 00:00:00.000Z", "2027-02-19 19:00:00.000Z")],
         history=[AskHistoryRow(EMMA, 3000.0, "2027-03-30T18:00:00.000+00:00")],  # after it, outside any registration
         additions=[],
         requests=[],
     )
     assert result.additions == ()
-    assert [(f.person_cm_id, f.session_cm_id, f.predates) for f in result.unattributed] == [(EMMA, BMITZVAH, False)]
+    assert [(f.person_cm_id, f.session_cm_id, f.predates) for f in result.unattributed] == [(EMMA, QUEST, False)]
 
 
 def test_row_8_an_ask_two_days_from_the_registration_is_not_tied_to_it() -> None:
@@ -372,13 +382,13 @@ def test_row_8_an_ask_two_days_from_the_registration_is_not_tied_to_it() -> None
         YEAR,
         fa_rows=[summer(EMMA, JOHNSON, "Session 2")],
         sessions=SEASON_SESSIONS,
-        attendees=[AttendeeDates(EMMA, JOHNSON, BMITZVAH, 2, "2027-02-19 00:00:00.000Z", "2027-03-20 19:00:00.000Z")],
+        attendees=[AttendeeDates(EMMA, JOHNSON, QUEST, 2, "2027-02-19 00:00:00.000Z", "2027-03-20 19:00:00.000Z")],
         history=[AskHistoryRow(EMMA, 3000.0, "2027-02-21T18:00:00.000+00:00")],
         additions=[],
         requests=[],
     )
     assert result.additions == ()
-    assert [(f.person_cm_id, f.session_cm_id, f.predates) for f in result.unattributed] == [(EMMA, BMITZVAH, False)]
+    assert [(f.person_cm_id, f.session_cm_id, f.predates) for f in result.unattributed] == [(EMMA, QUEST, False)]
 
 
 def _request(person: int, session: int, status: str) -> RequestRecord:
@@ -483,7 +493,7 @@ async def test_row_12_an_ask_overwritten_before_the_form_still_fires_from_histor
     ask(store, EMMA, 5000.0, "2027-06-03T20:00:00.000+00:00")
     register(store, EMMA, JOHNSON, FAMILY_CAMP_2, day="2027-07-10")
     ask(store, EMMA, 1500.0, "2027-07-10T20:00:00.000+00:00")  # the Family Camp registration overwrote the slot
-    store.fa_rows = [summer(EMMA, JOHNSON, "Session 2")]  # the form lands in August
+    store.fa_rows = [summer(EMMA, JOHNSON, "Session 2"), bmitzvah_filed(NOAH, JOHNSON)]  # the form lands in August
     await build(store)
     assert made(store) == [(EMMA, BMITZVAH, "bmitzvah", 5000.0)]
 
@@ -675,7 +685,7 @@ def _firing_shapes(store: FakeAidStore) -> None:
     register(store, EMMA, JOHNSON, TWR, day="2026-09-30")
     register(store, NOAH, JOHNSON, SESSION_2, day="2025-11-12")
     register(store, OLIVIA, CHEN, BMITZVAH, day="2026-07-27")
-    store.fa_rows.append(summer(OLIVIA, CHEN, "Session 2"))
+    store.fa_rows.extend([summer(OLIVIA, CHEN, "Session 2"), bmitzvah_filed(OLIVIA_SIBLING, CHEN)])
     register(store, OLIVIA, CHEN, SESSION_2, day="2025-11-12")
     ask(store, EMMA, 290.0, "2026-09-30T21:00:00.000+00:00")
     ask(store, NOAH, 1800.0, "2025-11-12T18:00:00.000+00:00")
@@ -722,16 +732,16 @@ def test_row_21_the_pure_rule_is_off_before_its_first_season() -> None:
 
 @pytest.mark.asyncio
 async def test_row_22_the_addition_and_its_request_land_in_the_runs_one_operation_and_the_report_counts() -> None:
-    store = _row_8_store()  # Emma: one unattributed (her B*Mitzvah)
+    store = _row_8_store()  # Emma: one unattributed (her Quest)
     register(store, NOAH, JOHNSON, SESSION_2, day="2026-11-12")  # Noah: fires
     ask(store, NOAH, 1800.0, "2026-11-12T18:01:00.000+00:00")
-    register(store, RILEY, JOHNSON, TASTE_1, day="2026-11-14")  # Riley: ambiguous (Taste of Camp 1 + Family Camp 2)
-    register(store, RILEY, JOHNSON, FAMILY_CAMP_2, day="2026-11-14")
+    register(store, RILEY, JOHNSON, TASTE_1, day="2026-11-14")  # Riley: ambiguous (Taste of Camp 1 + TWR)
+    register(store, RILEY, JOHNSON, TWR, day="2026-11-14")
     ask(store, RILEY, 900.0, "2026-11-14T18:00:00.000+00:00")
     report = await build(store)
     assert (report.registration_ask_added, report.registration_ask_ambiguous, report.registration_ask_unattributed) == (
         1,
-        1,
+        2,  # Riley's two summer sessions that day
         1,
     )
     (operation,) = store.operations
@@ -753,7 +763,7 @@ async def test_row_22_the_run_logs_counts_never_names(caplog: pytest.LogCaptureF
     with caplog.at_level("INFO"):
         await build(store)
     line = next(r.getMessage() for r in caplog.records if "intake built" in r.getMessage())
-    assert "registration_ask_added=0 registration_ask_ambiguous=1 registration_ask_unattributed=0" in line
+    assert "registration_ask_added=0 registration_ask_ambiguous=2 registration_ask_unattributed=0" in line
     assert str(NOAH) not in line
 
 
