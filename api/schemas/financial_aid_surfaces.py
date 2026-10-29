@@ -182,6 +182,9 @@ class TodayStagesOut(BaseModel):
     families: int  # households with a live request
     live: int  # the bar's total: requests not cancelled or withdrawn
     offered: int  # pending approval + waiting on the family + accepted (the headline's numerator)
+    # CLOSED-SEASONS-DONE (CSD-4): a done season's requests, each once (Stage "Closed"). On no segment and not live,
+    # so the bar is empty; the one stone "Closed N" chip says the requests are still there. 0 for an open season.
+    closed: int = 0
 
 
 class WeekPointOut(BaseModel):
@@ -222,6 +225,8 @@ class TodayResponse(BaseModel):
     posted_by_week: list[WeekPointOut] | None = None
     posted_this_week: WeekFigureOut | None = None
     posts_undated: bool | None = None
+    # CLOSED-SEASONS-DONE: the season is done, so nothing waits (every line is 0) and its requests read Closed.
+    season_done: bool = False
 
 
 class HouseholdMatchOut(BaseModel):

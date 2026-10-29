@@ -450,3 +450,76 @@ describe('Requests › Form intake', () => {
     })
   })
 })
+
+// CLOSED-SEASONS-DONE (owner ruling NG-01): a closed season's Form intake is history. The server sends no look
+// reason, no Add a Request… and a waiting request as Closed (close_intake_row), and says `season_done`.
+describe('a closed season (CLOSED-SEASONS-DONE)', () => {
+  const closedForms = () => {
+    const rows = ROWS_2027.map((r): FormIntakeRowOut => ({
+      ...r,
+      needs_look: false,
+      look_reasons: [],
+      can_add: false,
+      became: (r.became ?? []).map((b) =>
+        b.status === 'session_unclear' || b.status === 'duplicate_pending'
+          ? { ...b, status: 'closed' as const }
+          : b
+      ),
+    }))
+    return { ...formsRead(rows), grants_waiting_for_camper: 0, season_done: true }
+  }
+  beforeEach(() => {
+    forms = closedForms()
+  })
+
+  it('opens on All forms, Needs a look reading 0 (CSD-6)', async () => {
+    renderAt()
+    await screen.findByText('Emma Johnson')
+    const filters = screen.getByRole('group', { name: 'Show' })
+    expect(within(filters).getByRole('button', { name: 'All forms 8' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    )
+    expect(within(filters).getByRole('button', { name: 'Needs a look 0' })).toHaveAttribute(
+      'aria-pressed',
+      'false'
+    )
+    expect(names()).toHaveLength(8)
+  })
+
+  it('still opens Needs a look when a link asks for it, and says why it is empty', async () => {
+    renderAt('/aid/requests/intake?year=2027&show=look')
+    expect(await screen.findByText(/Nothing needs a look\. 2027 is closed/)).toBeInTheDocument()
+  })
+
+  it('says so in the band, in place of "(live)" (CSD-2)', async () => {
+    renderAt()
+    await screen.findByText('Emma Johnson')
+    expect(
+      screen.getByText('Requests · Season 2027 · closed, shown as history')
+    ).toBeInTheDocument()
+  })
+
+  it('offers no action column and no Find a Camper Not Listed…, even to casework', async () => {
+    renderAt()
+    await screen.findByText('Emma Johnson')
+    expect(screen.queryByRole('button', { name: 'Add a Request…' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Mark Reviewed' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Find a Camper Not Listed…' })).toBeNull()
+  })
+
+  it("keeps CampMinder's aid at its amounts in plain ink, with no amber footer sum", async () => {
+    renderAt()
+    await screen.findByText('Riley Sam')
+    const aid = within(rowOf('Riley Sam')).getByText('$2,258')
+    expect(aid.className).not.toMatch(/amber/)
+    expect(document.querySelector('tfoot [class*="amber"]')?.outerHTML).toBeUndefined()
+  })
+
+  it('reads a request still waiting at close as Closed (CSD-1)', async () => {
+    renderAt()
+    await screen.findByText('Olivia Chen')
+    expect(within(rowOf('Olivia Chen')).getByText('Closed')).toBeInTheDocument()
+    expect(within(rowOf('Olivia Chen')).queryByText('Session unclear')).toBeNull()
+  })
+})

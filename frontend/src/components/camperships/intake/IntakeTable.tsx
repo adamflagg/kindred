@@ -298,6 +298,7 @@ export function IntakeTable({
   toolbarStatus,
   toolbarActions,
   belowToolbar,
+  closed = false,
 }: {
   rows: readonly FormIntakeRowOut[]
   kept: ReadonlySet<string>
@@ -318,6 +319,9 @@ export function IntakeTable({
   toolbarStatus: ReactNode
   toolbarActions: ReactNode
   belowToolbar: ReactNode
+  /** CLOSED-SEASONS-DONE: a closed season's CampMinder aid in plain ink. Amber meant "needs a request", and no
+   *  request will be made, so its footer sum (shown, never counted) goes too. */
+  closed?: boolean
 }) {
   const columns = useMemo((): Array<AidColumn<FormIntakeRowOut>> => {
     const cols: Array<AidColumn<FormIntakeRowOut>> = [
@@ -388,18 +392,20 @@ export function IntakeTable({
         render: (r) =>
           (r.campminder_aid ?? []).length === 0 ? (
             <span className={MUTED}>—</span>
-          ) : amberAid(r) > 0 ? (
+          ) : amberAid(r) > 0 && !closed ? (
             <Money value={amberAid(r)} className={AMBER} />
           ) : (
             <Money value={allAid(r)} />
           ),
         // The footer sums only the amber money: CampMinder aid on no request in this list (shown, never counted).
         total: (list) => {
+          if (closed) return null
           const sum = list.reduce((s, r) => s + Math.round(amberAid(r) * 100), 0) / 100
           return sum > 0 ? sum : null
         },
-        totalClassName: AMBER,
+        ...(closed ? {} : { totalClassName: AMBER }),
         footerTitle: (list) => {
+          if (closed) return undefined
           const sum = list.reduce((s, r) => s + Math.round(amberAid(r) * 100), 0) / 100
           return sum > 0
             ? `${formatMoney(sum)} of CampMinder aid on no request in this list: shown, never counted`
@@ -410,7 +416,7 @@ export function IntakeTable({
     if (actionOf !== null)
       cols.push(aidActionColumn<FormIntakeRowOut>({ width: 132, action: actionOf }))
     return cols
-  }, [view, marks, names, programs, actionOf])
+  }, [view, marks, names, programs, actionOf, closed])
 
   const searchExtra = useCallback(
     (r: FormIntakeRowOut) => [r.household_label ?? '', r.person_cm_id || null],

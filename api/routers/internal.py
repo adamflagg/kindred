@@ -17,13 +17,14 @@ from pydantic import BaseModel, Field
 from api.constants.geo import GeoCategory
 from api.routers.metrics import invalidate_server_caches
 from api.schemas.financial_aid_decisions import LedgerTicksOut
+from api.services.aid_season_state import season_done
 from api.services.financial_aid_decisions_repository import FinancialAidDecisionsRepository
 from api.services.financial_aid_decisions_service import FinancialAidDecisionsService
 from api.services.financial_aid_grant_placements import FIRST_PLACEMENT_SEASON
 from api.services.financial_aid_grants_repository import GrantsRepository
 from api.services.financial_aid_grants_service import GrantsService
 from api.services.financial_aid_intake_repository import FinancialAidIntakeRepository
-from api.services.financial_aid_intake_service import FinancialAidIntakeService
+from api.services.financial_aid_intake_service import INTAKE_CLOSED_SEASON, FinancialAidIntakeService, IntakeReport
 from api.services.financial_aid_rules_service import AidRulesRepository, FinancialAidRulesService
 from bunking.financial_aid.errors import FinancialAidError
 from bunking.geo_normalizer.normalizer import normalize_values
@@ -37,6 +38,7 @@ from bunking.sync.bunk_request_processor.process_requests import (
 from bunking.sync.bunk_request_processor.shared.constants import validate_source_fields
 from pocketbase import PocketBase
 
+from .. import dependencies
 from ..dependencies import aid_inputs_cache, pb
 
 logger = get_logger(__name__)
@@ -261,6 +263,13 @@ async def run_financial_aid_intake(body: FinancialAidIntakeRun) -> dict[str, int
     which the report returns (sub-project 4a). `warnings` lists season-level
     notes (a weighted yes/no answer no applicant gave); they never hold a request.
     """
+    # CLOSED-SEASONS-DONE (owner ruling NG-01, CSD-8): nothing changes a closed season's requests, so a replay of one
+    # (a historical sync, a named job for an old year) rebuilds nothing. A 200 with the skip, as the intake floor
+    # answers, so the Go sync logs no failure. The read's fallback (the Oct 15 rule) means a sync-status blip never
+    # refuses an open season's nightly build.
+    if await season_done(body.year, lambda: dependencies.dashboard_season()):
+        logger.info("Financial-aid intake skipped: closed season year=%s", body.year)
+        return asdict(IntakeReport(body.year, 0, 0, 0, 0, 0, 0, 0, 0, 0, skipped_reason=INTAKE_CLOSED_SEASON))
     # Never a warm layer 1 (aid_sync_inputs). The Go FA sync calls this right after writing the mirror and BEFORE its
     # job-completion cache clear, so the season layer 1 holds could predate the mirror this rebuild must see: a new
     # applicant would reach intake a sync late and a deleted row would linger. Clearing the season's fill first makes

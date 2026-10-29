@@ -17,11 +17,14 @@ from bunking.logging_config import get_logger
 from pocketbase import PocketBase
 
 from .services.aid_season_cache import AidSeasonCache
+from .services.aid_season_state import configured_season_year
 from .services.id_cache import IDLookupCache
 from .services.lodging_cache import LodgingYearCache
 from .services.metrics_cache import MetricsCache
+from .services.pb_read import pb_read
 from .services.pb_superuser_client import SuperuserPocketBase
 from .settings import get_settings
+from .utils.pb_filters import pb_escape
 
 logger = get_logger(__name__)
 
@@ -260,6 +263,33 @@ development_history_cache = LodgingYearCache(ttl_seconds=aid_inputs_cache.ttl_se
 
 
 # ========================================
+# Camperships closed seasons (CLOSED-SEASONS-DONE)
+# ========================================
+# The two PocketBase reads the closed-season gate makes, kept here as the one seam the gate's tests (and the API
+# unit tests' conftest, which runs with no season done) replace. Read through this module (`dependencies.x()`), never
+# imported by name, so a patch reaches every caller.
+
+
+async def dashboard_season() -> int:
+    """The dashboard's configured season, read strictly (aid_season_state.configured_season_year): a write is
+    refused (503) when it can't be read, and a read falls back to the Oct 15 rule (aid_season_state.season_done)."""
+    return await configured_season_year(pb)
+
+
+async def aid_record_year(collection: str, record_id: str) -> int | None:
+    """The `year` of one record of a year-scoped Camperships collection (an aid request, a household link), so a write
+    keyed by its id is gated on the record's own season. None when there is no such record: the write answers its own
+    404. Any other failure raises, so the gate never lets a write through for want of the year."""
+    page = await pb_read(
+        pb.collection(collection).get_list, 1, 1, {"filter": f"id = '{pb_escape(record_id)}'", "fields": "year"}
+    )
+    items = list(getattr(page, "items", None) or [])
+    if not items:
+        return None
+    return int(getattr(items[0], "year", 0) or 0) or None
+
+
+# ========================================
 # Solver Runs Storage
 # ========================================
 
@@ -306,11 +336,13 @@ __all__ = [
     "PB_AUTH_PROBE_INTERVAL_SECONDS",
     "IDLookupCache",
     "aid_inputs_cache",
+    "aid_record_year",
     "aid_season_cache",
     "auth_state",
     "authenticate_pb",
     "authenticate_task_pb",
     "create_task_pb_client",
+    "dashboard_season",
     "development_history_cache",
     "form_intake_cache",
     "get_pb_client",

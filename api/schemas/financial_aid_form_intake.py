@@ -26,7 +26,11 @@ WhyNot = Literal[
 WhyNotDetail = Literal["ask_predates_registration"]
 # Why a row is in Needs a look (owner Q3-A: a registration-only row only through campminder_aid).
 LookReason = Literal["campminder_aid", "enrolled_no_request", "session_unclear", "registration_ask_unreviewed"]
-BecameStatus = Literal["active", "session_unclear", "duplicate_pending", "duplicate", "withdrawn", "cancelled"]
+# "closed": CLOSED-SEASONS-DONE (CSD-1), a done season's request that was still waiting with no round (Session unclear,
+# Duplicate pending). Display only: the request's own status is unchanged.
+BecameStatus = Literal[
+    "active", "session_unclear", "duplicate_pending", "duplicate", "withdrawn", "cancelled", "closed"
+]
 # Why one request is not (or no longer) on a session: the form no longer produces it, no enrolled candidate, or staff
 # removed an added request.
 BecameWhy = Literal["answer_edited", "not_enrolled", "removed"]
@@ -161,6 +165,8 @@ class FormIntakeResponse(BaseModel):
     sessions: list[IntakeSessionOut]
     grants_waiting_for_camper: int  # "N outside grants wait for a camper → Grants › Needs a camper"
     campminder_aid_on_no_request: float  # every row's amber money: D170's TOTAL for the season
+    # CLOSED-SEASONS-DONE: the season is done: nothing needs a look, nothing can be added (CSD-6 opens on All forms).
+    season_done: bool = False
 
 
 class FormIntakeSummaryOut(BaseModel):
@@ -170,6 +176,7 @@ class FormIntakeSummaryOut(BaseModel):
     needs_look: int
     registration_only: int
     all: int
+    season_done: bool = False  # CLOSED-SEASONS-DONE: as FormIntakeResponse's
 
 
 class AddPrefillOut(BaseModel):
@@ -205,6 +212,7 @@ class AidOnNoRequestResponse(BaseModel):
     families: int
     lines: list[AidOnNoRequestLineOut]
     sessions: list[IntakeSessionOut]
+    season_done: bool = False  # CLOSED-SEASONS-DONE: as FormIntakeResponse's (no line offers Add a Request…)
 
 
 class UnlistedResponse(BaseModel):

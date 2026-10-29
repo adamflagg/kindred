@@ -518,6 +518,10 @@ export type AidOnNoRequestResponse = {
    * Sessions
    */
   sessions: Array<IntakeSessionOut>
+  /**
+   * Season Done
+   */
+  season_done?: boolean
 }
 
 /**
@@ -1688,7 +1692,13 @@ export type BecameOut = {
    * Status
    */
   status:
-    'active' | 'session_unclear' | 'duplicate_pending' | 'duplicate' | 'withdrawn' | 'cancelled'
+    | 'active'
+    | 'session_unclear'
+    | 'duplicate_pending'
+    | 'duplicate'
+    | 'withdrawn'
+    | 'cancelled'
+    | 'closed'
   /**
    * Origin
    */
@@ -5480,6 +5490,10 @@ export type FormIntakeResponse = {
    * Campminder Aid On No Request
    */
   campminder_aid_on_no_request: number
+  /**
+   * Season Done
+   */
+  season_done?: boolean
 }
 
 /**
@@ -5594,6 +5608,10 @@ export type FormIntakeSummaryOut = {
    * All
    */
   all: number
+  /**
+   * Season Done
+   */
+  season_done?: boolean
 }
 
 /**
@@ -6798,6 +6816,10 @@ export type GrantsResponse = {
    * Expected
    */
   expected: Array<ExpectedOut>
+  /**
+   * Season Done
+   */
+  season_done?: boolean
 }
 
 /**
@@ -6997,6 +7019,10 @@ export type GridRowOut = {
    */
   requested_by?: string | null
   stage?: RowStageOut | null
+  /**
+   * Closed
+   */
+  closed?: boolean
 }
 
 /**
@@ -8260,6 +8286,10 @@ export type HouseholdPageResponse = {
    * Override Reasons
    */
   override_reasons?: Array<string>
+  /**
+   * Season Done
+   */
+  season_done?: boolean
 }
 
 /**
@@ -14995,6 +15025,10 @@ export type RequestsGridResponse = {
    * Ticked Season
    */
   ticked_season: boolean
+  /**
+   * Season Done
+   */
+  season_done?: boolean
 }
 
 /**
@@ -16424,6 +16458,7 @@ export type RowStageOut = {
     | 'not_rebuilt'
     | 'accepted'
     | 'cancelled'
+    | 'closed'
   /**
    * Label
    */
@@ -19506,6 +19541,10 @@ export type TodayResponse = {
    * Posts Undated
    */
   posts_undated?: boolean | null
+  /**
+   * Season Done
+   */
+  season_done?: boolean
 }
 
 /**
@@ -19723,6 +19762,10 @@ export type TodayStagesOut = {
    * Offered
    */
   offered: number
+  /**
+   * Closed
+   */
+  closed?: number
 }
 
 /**
@@ -21659,6 +21702,10 @@ export type HouseholdPageResponseWritable = {
    * Override Reasons
    */
   override_reasons?: Array<string>
+  /**
+   * Season Done
+   */
+  season_done?: boolean
 }
 
 /**

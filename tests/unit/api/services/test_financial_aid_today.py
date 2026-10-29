@@ -38,7 +38,7 @@ from api.services.financial_aid_decisions_service import FIRST_TICKED_SEASON, Fi
 from api.services.financial_aid_grants_register import RegisterRow
 from api.services.financial_aid_intake_service import never_true_fields, never_true_labels
 from api.services.financial_aid_ledger_service import NamedSource
-from api.services.financial_aid_queues import row_queues, row_stage
+from api.services.financial_aid_queues import close_row, row_queues, row_stage
 from api.services.financial_aid_rules_service import RulesNotFoundError, RulesVersion
 from api.services.financial_aid_today import (
     BAR_SEGMENTS,
@@ -1125,6 +1125,28 @@ def test_the_bar_and_the_chips_together_are_the_strips_stages() -> None:
     assert set(BAR_STAGES) | set(FLAG_STAGES) | {"holds"} == set(MIRRORS["strip_stages"])
     assert list(FLAG_STAGES) == [s for s in MIRRORS["strip_stages"] if s in FLAG_STAGES]
     assert BAR_STAGES == ("needs_offer", "pending_approval", "waiting_on_family")
+
+
+def _closed(row: GridRowOut) -> GridRowOut:
+    """The row as a done season's grid finishes it: its stage, then close_row."""
+    return close_row(row.model_copy(update={"stage": row_stage(row)}))
+
+
+def test_a_closed_seasons_finished_rounds_are_not_live_on_the_bar() -> None:
+    """CSD-4: on a closed season every bar count reads 0 and the requests sit in Closed. A posted round and an accepted
+    round keep their Stage words in the grid (CSD-1) but must not draw the live bar."""
+    rows = [
+        _closed(_row("reqposted0000001", 1000001, _round(1, "posted", posted=1500.0, decided=1500.0))),
+        _closed(_row("reqaccept0000001", 1000002, _round(1, "posted", posted=900.0, decided=900.0, accepted=True))),
+        _closed(_row("reqwaiting000001", 1000003, _round(1, "needs_offer", ask=800.0))),
+    ]
+    assert [r.stage.code for r in rows if r.stage] == ["posted", "accepted", "closed"]  # the words stay
+    stages = build_today(_inputs(rows), casework=True, finance=True, view=True).stages
+    assert stages is not None
+    assert (stages.needs_offer, stages.pending_approval, stages.waiting_on_family, stages.on_hold) == (0, 0, 0, 0)
+    assert (stages.accepted, stages.live, stages.offered, stages.families) == (0, 0, 0, 0)
+    assert stages.closed == 3
+    assert [r.total_posted for r in rows] == [None, None, None]  # display only: no figure moves
 
 
 def test_stages_are_sent_to_finance_and_registrar_alike() -> None:

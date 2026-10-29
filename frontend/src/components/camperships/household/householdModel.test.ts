@@ -557,3 +557,29 @@ describe('camperOf (a card’s name)', () => {
     expect(camperOf(noLabel)).toBe('The Johnson Family')
   })
 })
+
+// CLOSED-SEASONS-DONE (owner ruling CSD-1): a closed season's round that was still waiting reads Closed, in stone,
+// and is not the round to act on; a finished round keeps its own word.
+describe("a closed season's rounds", () => {
+  it('reads a waiting round Closed in stone, and a posted one Posted', () => {
+    const row = gridRow({
+      closed: true,
+      rounds: [
+        roundOut(1, 'posted', { posted: 1420, decided: 1420 }),
+        roundOut(2, 'held', { ask: 600 }),
+      ],
+    })
+    const [first, second] = roundLines(householdRequest(row))
+    expect(first?.words).toBe('Posted')
+    expect(first?.closed).toBe(false)
+    expect(second?.words).toBe('Closed')
+    expect(second?.stateTone).toBe('stone')
+    expect(second?.closed).toBe(true)
+  })
+
+  it("leaves an open season's waiting round as it was", () => {
+    const [line] = roundLines(householdRequest(gridRow({ rounds: [roundOut(1, 'held')] })))
+    expect(line?.words).toBe('On hold')
+    expect(line?.closed).toBe(false)
+  })
+})

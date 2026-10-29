@@ -194,9 +194,12 @@ export default function AidHouseholdPage() {
   const exits = useEditorExits()
   const walk = useQueueWalk(valid ? id : 0, linkView, exits.beforeLeave)
   const { hasPermission } = usePermissions()
-  const canWork = hasPermission(Permission.FINANCIAL_AID_CASEWORK)
-  const canApprove = hasPermission(Permission.FINANCIAL_AID_RULES)
   const data = page.data
+  // CLOSED-SEASONS-DONE (owner ruling NG-01): a closed season's cards draw read-only, and the server refuses its
+  // writes. Until the read lands nothing is drawn to work on, so the flag waits for it.
+  const closed = data?.season_done === true
+  const canWork = hasPermission(Permission.FINANCIAL_AID_CASEWORK) && !closed
+  const canApprove = hasPermission(Permission.FINANCIAL_AID_RULES) && !closed
   const missing = !valid || hasStatus(page.error, 404)
   const { hash } = useLocation()
   // The shared family words the approved read sends (owner 2026-10-10); keys spelled out until they load.
@@ -220,6 +223,7 @@ export default function AidHouseholdPage() {
         title={data ? bandTitle(data) : `Household ${householdCmId ?? ''}`}
         subtitle={data ? bandSubtitle(data) : undefined}
         asOf={LIVE}
+        closed={closed}
         stats={
           data ? (
             <HouseholdTotals totals={data.totals} numberOf={definitions.numberOf} />

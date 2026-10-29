@@ -53,7 +53,11 @@ const weekData: ApiAidTodayWeek = {
 vi.mock('../../hooks/usePermissions', () => ({
   usePermissions: () => ({ hasPermission: (p: string) => granted.includes(p) }),
 }))
-vi.mock('../../hooks/useCurrentYear', () => ({ useYear: () => 2027 }))
+let configuredYear: number | undefined = 2027
+vi.mock('../../hooks/useCurrentYear', () => ({
+  useYear: () => 2027,
+  useConfiguredYear: () => configuredYear,
+}))
 vi.mock('../../hooks/camperships/useAidToday', () => ({
   useAidToday: () =>
     todayState === 'loading'
@@ -154,6 +158,7 @@ beforeEach(() => {
   weekFails = false
   todayData = FINANCE_TODAY
   weekData.feed = FUNDER_FEED
+  configuredYear = 2027
 })
 
 describe('AidTodayPage', () => {
@@ -507,5 +512,88 @@ describe('AidTodayPage', () => {
     expect(await screen.findByText('Committed by week')).toBeInTheDocument()
     expect(container.querySelector('path[data-line="posted"]')).not.toBeNull()
     expect(screen.queryByText(/needs post dates/)).toBeNull()
+  })
+})
+
+// CLOSED-SEASONS-DONE (owner ruling NG-01, CSD-2, CSD-4): a closed season's Today has nothing waiting. The server
+// counts every line 0 and the bar's live requests 0, and counts the closed ones (`stages.closed`).
+describe('a closed season (CLOSED-SEASONS-DONE)', () => {
+  const CLOSED_STAGES = {
+    ...STAGES,
+    needs_offer: 0,
+    pending_approval: 0,
+    waiting_on_family: 0,
+    on_hold: 0,
+    accepted: 0,
+    flags: {
+      not_reconciled: 0,
+      duplicates: 0,
+      session_not_settled: 0,
+      to_reverse: 0,
+      cancel_reason: 0,
+    },
+    families: 0,
+    live: 0,
+    offered: 0,
+    closed: 576,
+  }
+  const CLOSED_TODAY: ApiAidToday = {
+    ...FINANCE_TODAY,
+    season_done: true,
+    stages: CLOSED_STAGES,
+    casework: (FINANCE_TODAY.casework ?? []).map((l) => ({
+      ...l,
+      items: 0,
+      families: 0,
+      overdue: false,
+    })),
+    finance: (FINANCE_TODAY.finance ?? []).map((l) => ({
+      ...l,
+      items: 0,
+      families: 0,
+      overdue: false,
+    })),
+  }
+  beforeEach(() => {
+    todayData = CLOSED_TODAY
+    configuredYear = 2029
+  })
+
+  it.each([
+    [['financial_aid.view', 'financial_aid.casework']],
+    [FINANCE],
+    [['financial_aid.view']],
+  ])('%j says nothing waits, and offers the open season', async (perms) => {
+    granted = perms
+    renderPage()
+    expect(await screen.findByText('Season 2027 · closed, shown as history')).toBeInTheDocument()
+    expect(screen.queryByText(/\(live\)/)).toBeNull()
+    expect(screen.getByText(/Nothing waits on you in 2027\./)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Go to 2029 ›' })).toHaveAttribute(
+      'href',
+      '/aid/today?year=2029'
+    )
+    expect(screen.queryByRole('heading', { name: 'Your to-dos' })).toBeNull()
+    expect(screen.queryByRole('heading', { name: 'Budget, all pools' })).toBeNull()
+  })
+
+  it('draws the bar as one stone Closed segment, its key "Closed 576" (CSD-4)', async () => {
+    granted = ['financial_aid.view', 'financial_aid.casework']
+    renderPage()
+    await screen.findByText(/Nothing waits on you/)
+    const segments = screen.getAllByTestId('hero-seg')
+    expect(segments).toHaveLength(1)
+    expect(segments[0]).toHaveClass('bg-stone-300')
+    expect(screen.getByTestId('hero-key')).toHaveTextContent('Closed 576')
+    expect(screen.getByText('0 live requests · 576 closed')).toBeInTheDocument()
+    expect(screen.queryByTestId('hero-flag')).toBeNull()
+  })
+
+  it('offers no link to an open season it does not know yet', async () => {
+    granted = ['financial_aid.view', 'financial_aid.casework']
+    configuredYear = undefined
+    renderPage()
+    await screen.findByText(/Nothing waits on you/)
+    expect(screen.queryByRole('link', { name: /^Go to / })).toBeNull()
   })
 })

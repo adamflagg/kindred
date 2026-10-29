@@ -190,6 +190,9 @@ class IntakeReport:
 # Owner ruling: "2024 and prior dont need aid lists". Intake creates and changes nothing for an earlier season;
 # the aid-form mirror (the Go financial_aid_applications sync) still refreshes it.
 AID_INTAKE_FLOOR_YEAR: Final = 2025
+# CLOSED-SEASONS-DONE (owner ruling NG-01, CSD-8): the internal trigger builds nothing for a done season (older than
+# N-1, aid_season_state) and answers with this skip, so a replay never rewrites a closed season's requests.
+INTAKE_CLOSED_SEASON: Final = "closed season: its requests are history"
 
 INTAKE_REASON: Final = "intake rebuild"
 _CLOSED_STATUSES = frozenset({STATUS_DUPLICATE, STATUS_WITHDRAWN})

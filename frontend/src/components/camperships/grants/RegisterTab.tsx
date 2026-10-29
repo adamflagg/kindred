@@ -147,7 +147,9 @@ export function RegisterTab({ view }: { view: AidView }) {
   const rank = useAidProgramRank()
   const defs = useAidDefinitions('grants')
   const { hasPermission } = usePermissions()
-  const canWork = hasPermission(Permission.FINANCIAL_AID_CASEWORK)
+  // CLOSED-SEASONS-DONE: a closed season's register is history, and the server refuses its commitment writes.
+  const canWork =
+    hasPermission(Permission.FINANCIAL_AID_CASEWORK) && grants.data?.season_done !== true
   const [params, setParams] = useSearchParams()
   const filters = readRegisterFilters(params)
   const highlighted = params.get('row')
@@ -420,7 +422,7 @@ export function RegisterTab({ view }: { view: AidView }) {
               onHighlight={onHighlight}
               nowrapHeaders
               belowToolbar={
-                recording ? (
+                recording && canWork ? (
                   <CommitmentForm
                     year={data.year}
                     onCancel={() => setRecording(false)}

@@ -9,6 +9,7 @@
     "posted": "Posted",
     "not_rebuilt": "Not rebuilt for that date"
   },
+  "stage_closed_words": "Closed",
   "live_request_statuses": ["active", "unmatched_session"],
   "strip_stages": [
     "pending_approval",

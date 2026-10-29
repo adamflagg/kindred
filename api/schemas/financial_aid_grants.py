@@ -267,6 +267,8 @@ class GrantsResponse(BaseModel):
     unmapped: list[UnmappedDescriptionOut]
     waiting: list[WaitingCommitmentOut]
     expected: list[ExpectedOut]
+    # CLOSED-SEASONS-DONE: the season is done, so the register offers no commitment write (the server refuses them).
+    season_done: bool = False
 
 
 # --- placing a camper (casework) --------------------------------------------------------------

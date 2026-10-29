@@ -155,6 +155,13 @@ export default function AidRequestsPage() {
   const rows = grid.data?.rows
   // A past-date read carries `as_of`; its rows' queues are null (Decision 11).
   const live = !grid.data?.as_of
+  // CLOSED-SEASONS-DONE (owner ruling NG-01): a closed season is history. The server says so (`season_done`) and
+  // refuses its writes; here nothing that works is offered, and the strip counts its requests in one Closed chip.
+  const closed = grid.data?.season_done === true
+  const closedCount = useMemo(
+    () => (closed ? (rows ?? []).filter((r) => r.stage?.code === 'closed').length : null),
+    [closed, rows]
+  )
   const filters = useMemo(
     (): GridFilters => ({ program, pool, round, live: liveOnly, figure, ids }),
     [program, pool, round, liveOnly, figure, ids]
@@ -219,8 +226,8 @@ export default function AidRequestsPage() {
   )
 
   const { hasPermission } = usePermissions()
-  // Casework edits a live read only: a past date shows what was, not what can change.
-  const canWork = hasPermission(Permission.FINANCIAL_AID_CASEWORK) && live
+  // Casework edits a live read of an open season only: a past date shows what was, and a closed season is history.
+  const canWork = hasPermission(Permission.FINANCIAL_AID_CASEWORK) && live && !closed
   // P-21, rework R1: Download CSV's menu offers the March File on Needs an offer with R1 lit, for casework
   // on a live read: a past date never offers the file.
   const march = useMarchFile(year)
@@ -598,6 +605,7 @@ export default function AidRequestsPage() {
             title="Requests"
             subtitle={`Season ${String(year)}`}
             asOf={asOf}
+            closed={closed}
             stats={<IntakeBandLink />}
           />
         }
@@ -610,6 +618,7 @@ export default function AidRequestsPage() {
         hrefOf={hrefOf}
         lensHrefOf={lensHrefOf}
         onOpen={openView}
+        closed={closedCount}
       />
       {!gridShown && (
         <AidToolbar

@@ -169,6 +169,7 @@ export function CurrentYearProvider({ children }: { children: ReactNode }) {
         availableYears: AVAILABLE_YEARS,
         isTransitioning,
         isYearReady,
+        ...(isYearReady ? { configuredYear } : {}),
       }}
     >
       {children}

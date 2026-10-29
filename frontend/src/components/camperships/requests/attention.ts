@@ -259,6 +259,8 @@ export function attentionItems(
   today: string,
   cancelledOnShown = false
 ): GridAttention[] {
+  // CLOSED-SEASONS-DONE (CSD-5): a closed season's row needs nothing; the column stays empty.
+  if (row.closed === true) return []
   const items: GridAttention[] = row.holds.map((hold) => ({
     item: gridItem('hold', codeWords(hold.code), hold.message),
     reason: codeWords(hold.code),

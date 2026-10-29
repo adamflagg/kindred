@@ -13,7 +13,25 @@ os.environ["SKIP_PB_AUTH"] = "true"
 # Imported after the environment above, like every import that may load settings.
 import pytest
 
+import api.dependencies as dependencies
 from api.dependencies import aid_inputs_cache, aid_season_cache, development_history_cache, form_intake_cache
+
+
+@pytest.fixture(autouse=True)
+def _no_camperships_season_is_done(monkeypatch: pytest.MonkeyPatch) -> None:
+    """CLOSED-SEASONS-DONE: the closed-season gate reads the dashboard's season and a gated record's year from
+    PocketBase (api.dependencies' two seams). The API unit tests run with no PocketBase and with no season done: the
+    dashboard's season is 2018, so only a season before 2017 (none) would be done, and no record's year is read. A test
+    of the gate itself sets its own season (test_financial_aid_closed_season_gate.py)."""
+
+    async def season() -> int:
+        return 2018
+
+    async def record_year(collection: str, record_id: str) -> int | None:
+        return None
+
+    monkeypatch.setattr(dependencies, "dashboard_season", season)
+    monkeypatch.setattr(dependencies, "aid_record_year", record_year)
 
 
 @pytest.fixture(autouse=True)

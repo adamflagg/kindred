@@ -6,6 +6,8 @@ export interface CurrentYearContextType {
   availableYears: number[]
   isTransitioning: boolean
   isYearReady: boolean
+  /** The dashboard's configured season N (sync status), once known: the season picker marks older than N-1 closed. */
+  configuredYear?: number
 }
 
 export const CurrentYearContext = createContext<CurrentYearContextType | undefined>(undefined)
@@ -16,6 +18,11 @@ export function useCurrentYear() {
     throw new Error('useCurrentYear must be used within a CurrentYearProvider')
   }
   return context
+}
+
+/** The dashboard's configured season N, once known (undefined until then, or outside the provider). */
+export function useConfiguredYear(): number | undefined {
+  return useContext(CurrentYearContext)?.configuredYear
 }
 
 // Helper hook for components that need just the year value

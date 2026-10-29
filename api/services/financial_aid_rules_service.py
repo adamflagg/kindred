@@ -50,7 +50,6 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-import os
 from collections.abc import Awaitable, Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -68,6 +67,11 @@ from api.constants.collections import (
     AID_SCENARIO_TRAIL,
     CAMP_SESSIONS,
 )
+from api.services import aid_season_state
+
+# Re-exported: the strict reader and its error moved to aid_season_state, and the router and tests import them here.
+from api.services.aid_season_state import SeasonYearUnknownError as SeasonYearUnknownError
+from api.services.aid_season_state import configured_season_year as configured_season_year
 from api.services.financial_aid_change_log_reads import fetch_change_log
 from api.services.financial_aid_intake_types import INTAKE_RULES_SECTIONS
 from api.services.financial_aid_rules_effect import EFFECT_ACTION, RULES_EFFECT_ENTITY, ApprovalEffects
@@ -331,32 +335,6 @@ class SeasonDoneError(FinancialAidError, ValueError):
             else "Unlock it with a reason to correct it."
         )
         super().__init__(f"{year} is done (the dashboard's season is {configured}): {tail}")
-
-
-class SeasonYearUnknownError(FinancialAidError, RuntimeError):
-    """The configured season couldn't be read (Review Focus 3): no `_configured_year` on the sync status and no
-    CAMPMINDER_SEASON_ID. A done season is never treated as open for want of its year, so the read or write is refused
-    (503) until it can be read."""
-
-
-async def configured_season_year(pb: Any) -> int:
-    """The dashboard's configured season, strictly (spec §11.1; review minor 9). The same sync status
-    `current_season_year` reads, but that one swallows every failure and guesses the calendar year, which would read a
-    done season as open after the switch. Here the env var is the only fallback, and anything else raises."""
-    try:
-        status = await pb_read(pb.send, "/api/custom/sync/status", {"method": "GET"})
-        year = int((status or {}).get("_configured_year") or 0)
-    except Exception as exc:  # re-raised below as the one error the router maps
-        logger.warning(f"Camperships rules: sync status unreadable ({exc})")
-        year = 0
-    if year:
-        return year
-    season = os.environ.get("CAMPMINDER_SEASON_ID", "")
-    if season.isdigit():
-        return int(season)
-    raise SeasonYearUnknownError(
-        "The dashboard's season couldn't be read, so no rules change is accepted; try again shortly"
-    )
 
 
 @dataclass(frozen=True)
@@ -878,11 +856,13 @@ class FinancialAidRulesService:
     async def season_state(self, year: int) -> tuple[bool, int | None]:
         """(done, the configured season): done when `year` is older than the prior season (N-1) of the configured
         season N (spec §11.1): the prior season stays workable for programs still running after the Oct 15 rollover
-        (owner ruling 2026-10-14; the rollover rule lives in pocketbase/sync/year.go). The one place that test lives."""
+        (owner ruling 2026-10-14; the rollover rule lives in pocketbase/sync/year.go). The test itself lives in
+        aid_season_state.is_season_done, shared with the closed-season gate."""
         if self._configured_year is None:
             return False, None
         configured = await self._configured_year()
-        return year < configured - 1, configured
+        # The shared test (aid_season_state): Rules' done season is the closed season the Requests gate reads.
+        return aid_season_state.is_season_done(year, configured), configured
 
     async def _done_reason(self, year: int, past_season_reason: str | None) -> str | None:
         """None for an open season; the stripped reason for a done one; refused (SeasonDoneError) without one."""

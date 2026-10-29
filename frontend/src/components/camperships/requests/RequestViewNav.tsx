@@ -16,6 +16,7 @@ import {
   STRIP_PIPE,
   STRIP_SEG,
 } from '../kit/kitStyles'
+import { ClosedChip } from '../kit/ClosedChip'
 import { FoldedBadges } from './FoldedBadges'
 import {
   BADGE_TITLES,
@@ -88,6 +89,7 @@ export function RequestViewNav({
   hrefOf,
   lensHrefOf,
   onOpen,
+  closed = null,
 }: {
   lens: RequestLens
   /** The chevron or badge picked; null: the lens alone. */
@@ -98,6 +100,9 @@ export function RequestViewNav({
   hrefOf: (view: RequestView) => string
   lensHrefOf: (lens: RequestLens) => string
   onOpen?: ((href: string) => void) | undefined
+  /** CLOSED-SEASONS-DONE (CSD-4): a closed season's Closed requests, drawn as one stone chip after the flags (which
+   *  are all 0, so none is drawn). null: an open season. */
+  closed?: number | null | undefined
 }) {
   const open = (href: string) => (event: MouseEvent<HTMLAnchorElement>) => {
     if (onOpen === undefined || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
@@ -189,6 +194,7 @@ export function RequestViewNav({
         </span>
         <span ref={groupRef} className={STRIP_EXCEPTIONS} data-testid="strip-exceptions">
           {onLine.map(badge)}
+          {closed !== null && <ClosedChip count={closed} />}
           {folded.length > 0 && (
             <FoldedBadges
               count={folded.length}

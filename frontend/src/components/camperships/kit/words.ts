@@ -12,3 +12,7 @@ export const ORIGIN_WORDS: Readonly<Record<RequestOrigin, string>> = {
   reg_ask: 'reg. ask',
   reg_ask_review: 'reg. ask · review',
 }
+
+/** CLOSED-SEASONS-DONE (CSD-4): the "Closed N" chip's title (ClosedChip). */
+export const CLOSED_CHIP_TITLE =
+  'Closed: this season is closed. Its requests show as they stood, and nothing in it needs doing.'

@@ -83,7 +83,8 @@ function Lines({
   pool: string | null
 }) {
   const { hasPermission } = usePermissions()
-  const canWork = hasPermission(Permission.FINANCIAL_AID_CASEWORK)
+  // CLOSED-SEASONS-DONE: a closed season's money on no request is history; no request will be added to it.
+  const canWork = hasPermission(Permission.FINANCIAL_AID_CASEWORK) && read.season_done !== true
   const say = useContext(SeasonStatusContext)
   const names: SessionIndex = useMemo(() => sessionIndex(read.sessions), [read.sessions])
   const [adding, setAdding] = useState<string | null>(null)

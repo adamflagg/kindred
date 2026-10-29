@@ -288,7 +288,17 @@ export interface RoundLine {
    * amount, but the budget counts that money nowhere, so it never reads as standing posted money.
    */
   readonly clawedBack: boolean
+  /** CLOSED-SEASONS-DONE (CSD-1): a closed season's round that was still waiting; it reads Closed, nothing to do. */
+  readonly closed: boolean
 }
+
+/** The round states still waiting on someone: on a closed season's request they read Closed (the server's Stage). */
+const WAITING_ROUND: ReadonlySet<ApiAidRound['status']> = new Set([
+  'held',
+  'not_decided',
+  'needs_offer',
+  'pending_approval',
+])
 
 /**
  * O1 (ruled 10-04 late): the round line's pill carries what the state means, as the mock draws it
@@ -335,6 +345,7 @@ export function roundLines(request: ApiAidHouseholdRequest): RoundLine[] {
       const clawedBack = r.clawed_back ?? false
       const pending = r.status === 'pending_approval'
       const cmPending = r.cm_pending === true
+      const closed = request.row.closed === true && WAITING_ROUND.has(r.status)
       return {
         round: r.round,
         status: r.status,
@@ -348,13 +359,17 @@ export function roundLines(request: ApiAidHouseholdRequest): RoundLine[] {
         // keeps the grid's own word for it (a needs-offer status is only the server's pre-tick state).
         // Owner ruling 10-05: a posted round CampMinder reversed says both, "Posted · reversed"
         // (household only: the grid's Stage pill keeps ROUND_STATUS_WORDS as the server sends them).
-        words:
-          cmPending && r.status === 'needs_offer'
+        words: closed
+          ? 'Closed'
+          : cmPending && r.status === 'needs_offer'
             ? PENDING_STATE_WORD
             : clawedBack && posted
               ? `${ROUND_STATUS_WORDS.posted} · reversed`
               : ROUND_STATUS_WORDS[r.status],
-        stateTone: cmPending && r.status === 'needs_offer' ? 'stone' : ROUND_STATE_TONE[r.status],
+        stateTone:
+          closed || (cmPending && r.status === 'needs_offer')
+            ? 'stone'
+            : ROUND_STATE_TONE[r.status],
         lock,
         posted,
         postedOn: r.posted_on,
@@ -362,6 +377,7 @@ export function roundLines(request: ApiAidHouseholdRequest): RoundLine[] {
         cmPending,
         cmPendingMessage: cmPending ? (r.cm_pending_message ?? null) : null,
         clawedBack,
+        closed,
       }
     })
 }

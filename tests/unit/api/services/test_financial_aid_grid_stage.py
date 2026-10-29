@@ -158,7 +158,8 @@ async def test_a_withdrawn_request_with_nothing_posted_has_no_rounds_and_no_stag
 def test_every_round_status_is_a_stage_code() -> None:
     """row_stage passes a round's status through as the code, and mypy does not check the pydantic constructor, so a
     status RowStageCode lacked would fail validation on every read of such a row."""
-    assert set(get_args(RowStageCode)) == set(get_args(RoundStatusOut)) | {"accepted", "cancelled"}
+    # "closed": CLOSED-SEASONS-DONE (CSD-1), a done season's waiting request (financial_aid_queues.close_row).
+    assert set(get_args(RowStageCode)) == set(get_args(RoundStatusOut)) | {"accepted", "cancelled", "closed"}
 
 
 @pytest.mark.asyncio
