@@ -148,7 +148,6 @@ async def test_a_bmitzvah_filing_makes_a_siblings_bmitzvah_request_from_their_as
     [
         pytest.param(FAMILY_CAMP_2, id="family-camp-same-day"),
         pytest.param(ADULT_WEEKEND_A, id="adult-weekend-same-day"),
-        pytest.param(BMITZVAH, id="bmitzvah-same-day-not-filed"),
     ],
 )
 def test_another_buckets_registration_the_same_day_does_not_make_a_summer_ask_ambiguous(other: int) -> None:
@@ -173,9 +172,10 @@ def test_two_summer_registrations_the_same_day_are_still_ambiguous() -> None:
     assert sorted((f.person_cm_id, f.session_cm_id) for f in result.ambiguous) == [(NOAH, TASTE_1), (NOAH, TWR)]
 
 
-def test_with_both_buckets_filed_one_ask_on_a_summer_and_a_bmitzvah_registration_is_judged_per_bucket() -> None:
-    # The literal reading of "only registrations in the target's bucket count": each bucket has one registration that
-    # day, so each is attributed. Pinned so a change to it is deliberate (the PR names it for an owner ruling).
+def test_with_both_buckets_filed_one_ask_on_a_summer_and_a_bmitzvah_registration_is_ambiguous_for_both() -> None:
+    # Owner 2026-10-29: asks are per session; one amount over two kinds is ambiguous. CampMinder's one ask carries no
+    # session, so it cannot be attributed to either kind, and must never make two requests at the same amount.
+    # (This overturns the 10-28 per-bucket reading, which made one request in each bucket.)
     result = rule(
         [summer(EMMA, JOHNSON, "Session 2"), bmitzvah_form(EMMA)],
         [
@@ -186,10 +186,31 @@ def test_with_both_buckets_filed_one_ask_on_a_summer_and_a_bmitzvah_registration
         ],
         [AskHistoryRow(NOAH, 1500.0, ASK_AT)],
     )
-    assert sorted((a.person_cm_id, a.session_cm_id, a.program_key) for a in result.additions) == [
-        (NOAH, TASTE_1, "summer"),
-        (NOAH, BMITZVAH, "bmitzvah"),
+    assert result.additions == ()
+    assert sorted((f.person_cm_id, f.session_cm_id) for f in result.ambiguous) == [(NOAH, TASTE_1), (NOAH, BMITZVAH)]
+
+
+def test_a_bmitzvah_registration_the_same_day_makes_a_summer_ask_ambiguous_even_when_only_summer_is_filed() -> None:
+    # The count is across the target buckets, filed or not; the ambiguous fact is only for the open (filed) target.
+    result = rule(
+        [summer(EMMA, JOHNSON, "Session 2")],
+        [dated(EMMA, SESSION_2, "2026-11-12"), dated(NOAH, TASTE_1), dated(NOAH, BMITZVAH)],
+        [AskHistoryRow(NOAH, 1500.0, ASK_AT)],
+    )
+    assert result.additions == ()
+    assert [(f.person_cm_id, f.session_cm_id) for f in result.ambiguous] == [(NOAH, TASTE_1)]
+
+
+def test_one_bmitzvah_registration_alone_is_attributed() -> None:
+    result = rule(
+        [bmitzvah_form(EMMA)],
+        [dated(EMMA, BMITZVAH, "2026-11-12"), dated(NOAH, BMITZVAH)],
+        [AskHistoryRow(NOAH, 1500.0, ASK_AT)],
+    )
+    assert [(a.person_cm_id, a.session_cm_id, a.program_key) for a in result.additions] == [
+        (NOAH, BMITZVAH, "bmitzvah")
     ]
+    assert result.ambiguous == ()
 
 
 # -- 2026 is the tie-off season: the rule never runs there ---------------------------------------------------------------

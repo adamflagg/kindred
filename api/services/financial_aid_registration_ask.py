@@ -12,13 +12,13 @@ why a session got no request.
 THE MATCH (design §3). For each history row H of the camper with an ask above $0 and a time that parses, S(H) is the
 camper's registrations this season, ANY status, whose registration day (`effective_date`, kept by a status change) is
 within one day of H's UTC date, or whose status date (`enrollment_date`) is within 24 hours of H. An AG or embedded
-session and the main session it sits under (`parent_cm_id`) count as one registration. S(H) is taken PER BUCKET
-(IN-BUCKETS, owner 2026-10-28): summer and B*Mitzvah, the two the rule can target, each count only their own
-sessions, and a Family Camp, adult-weekend, Hebrew school or other registration the same day counts for neither.
-Then, in each bucket:
+session and the main session it sits under (`parent_cm_id`) count as one registration. S(H) counts only the two kinds the rule can target, summer and B*Mitzvah, TOGETHER (owner 2026-10-29: asks are per session; one amount over two kinds is
+ambiguous): a Family Camp, adult-weekend, Hebrew school or other registration the same day counts for neither. The
+rule still never attributes one bucket's money to another (IN-BUCKETS, owner 2026-10-28). Then:
   - S(H) is one registration: H is ATTRIBUTED to it; of several rows attributed to one session, the latest wins;
-  - S(H) is two or more: H is AMBIGUOUS (one ask, several sessions of the bucket that day);
-  - S(H) is empty: H belongs to no registration of the bucket.
+  - S(H) is two or more, in one bucket or across summer and B*Mitzvah: H is AMBIGUOUS for every one of them (one ask,
+    several sessions that day; it never makes two requests at one amount);
+  - S(H) is empty: H belongs to no registration of the target kinds.
 
 THE FIRING RULE (design §4.1). A camper's enrollment gets one addition when all hold:
   1. year >= REGISTRATION_ASK_RULE_FIRST_SEASON (2027);
@@ -308,18 +308,19 @@ def registration_ask_additions(
         closed = held.get(person, set()) | {sid for p, sid in taken if p == person}
         for found in asks[person]:
             matched = {r.session_cm_id for r in rows if _matches(found.at, r)}
-            # Per bucket (IN-BUCKETS): only the target bucket's own registrations that day can make the ask unclear.
-            for bucket in _TARGET_BUCKETS:
-                units = _registrations({sid for sid in matched if target_program(by_id.get(sid)) == bucket}, by_id)
-                if len(units) > 1:
-                    unclear.update(sid for unit in units.values() for sid in unit)
-                    continue
-                for unit in units.values():
-                    covered.update(unit)
-                    target = 0 if unit & closed else _unit_target(unit, open_targets, by_id)
-                    best = attributed.get(target) if target else None
-                    if target and (best is None or (found.at, found.order) > (best.at, best.order)):
-                        attributed[target] = found
+            # Counted ACROSS the target buckets (owner 2026-10-29: asks are per session; one amount over two kinds is
+            # ambiguous): the one ask carries no session, so two registrations in summer and B*Mitzvah together are as
+            # unclear as two in one bucket, and it must never make two requests. Other kinds do not count.
+            units = _registrations({sid for sid in matched if target_program(by_id.get(sid)) in _TARGET_BUCKETS}, by_id)
+            if len(units) > 1:
+                unclear.update(sid for unit in units.values() for sid in unit)
+                continue
+            for unit in units.values():
+                covered.update(unit)
+                target = 0 if unit & closed else _unit_target(unit, open_targets, by_id)
+                best = attributed.get(target) if target else None
+                if target and (best is None or (found.at, found.order) > (best.at, best.order)):
+                    attributed[target] = found
         newest = max(asks[person], key=lambda a: (a.at, a.order))
         for sid, (household, program) in sorted(open_targets.items()):
             chosen = attributed.get(sid)
