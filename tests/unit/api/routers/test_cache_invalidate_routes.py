@@ -99,3 +99,20 @@ def test_both_routes_scope_the_camperships_season_cache(client: TestClient, sync
             r = client.post(route, params={"sync_type": sync_type})
         assert r.status_code == 200
         assert season.invalidate_all.called is clears
+
+
+@pytest.mark.parametrize(
+    ("sync_type", "clears"),
+    [(None, True), ("attendees", True), ("bunk_assignments", True), ("aid_postings", False), ("staff", False)],
+)
+def test_the_metrics_cache_clears_only_when_the_sync_writes_a_table_metrics_read(
+    client: TestClient, sync_type: str | None, clears: bool
+) -> None:
+    """Every notify used to wipe the metrics cache, whatever the sync wrote: the ledger, staff and custom-value jobs
+    write nothing a metrics read reads. A sync named nowhere, or no sync at all, still clears it (fail safe)."""
+    with patch("api.routers.metrics.metrics_cache") as cache:
+        cache.invalidate_all.return_value = 4
+        r = client.post(INTERNAL, params={} if sync_type is None else {"sync_type": sync_type})
+    assert r.status_code == 200
+    assert cache.invalidate_all.called is clears
+    assert r.json() == {"cleared": 4 if clears else 0}

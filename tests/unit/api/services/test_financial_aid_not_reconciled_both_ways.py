@@ -10,6 +10,7 @@ Round 1 at $1,500."""
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 from typing import Any, Final
@@ -388,6 +389,31 @@ async def test_money_in_full_is_waiting_on_the_family_pending_until_tonights_tic
         False,
         None,
     )
+
+
+class _LookupOnly(dict[tuple[str, int], Decimal]):
+    """Season.pending that answers lookups by key but refuses a whole-map scan."""
+
+    def items(self) -> Any:
+        raise AssertionError("a row's confirmation scanned all of Season.pending")
+
+    def __iter__(self) -> Any:
+        raise AssertionError("a row's confirmation scanned all of Season.pending")
+
+
+@pytest.mark.asyncio
+async def test_a_rows_confirmation_looks_up_its_own_pending_rounds_without_scanning_the_season() -> None:
+    """#2996 CodeRabbit: each row's confirmation read every request's pending rounds, so the grid and Today did
+    quadratic work. It looks up its own (at most three) rounds by key, and still counts them as locked (C1)."""
+    store = FakeDecisionsStore()
+    _round2(store, held="1800")  # Round 1 posted at $1,500; Round 2's $300 C1 pending
+    service = _service(store)
+    season = await service.with_unticked(await service.season(YEAR))
+    assert season.pending.get((EMMA, 2)) == Decimal(300)  # the premise: Round 2 is C1 pending
+    season = replace(season, pending=_LookupOnly(season.pending))
+    found = service._confirmation(season, EMMA)
+    assert found is not None
+    assert found.locked == Decimal(1800)  # Round 1's posted $1,500 and Round 2's pending $300
 
 
 @pytest.mark.asyncio

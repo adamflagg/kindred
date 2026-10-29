@@ -1109,6 +1109,17 @@ async def test_a_report_year_with_no_approved_rules_keeps_the_newest_approved_se
     assert notice.reason == "Groups follow 2026's rules until 2027's are approved"
 
 
+async def test_unpriced_requests_under_borrowed_groups_land_in_the_borrowed_groups_not_in_no_group() -> None:
+    """#3262 CodeRabbit Major: 2027's rules are a draft (never approved), so nothing in 2027 is priced and no request
+    carries a pool of its own. The report's groups are 2026's (#53), and its requests must be placed by those same
+    rules: Emma's posted 1,500 and both asks belong to 2026's summer group, never to "not in a group"."""
+    out = await _service(_development(), store=_asks_within_cost(), fake_rules=_RulesFrom({2026})).development(YEAR)
+    assert [g.key for g in out.groups] == ["camp_pool", "weekend_pool", "bmitzvah_pool"]
+    assert _row(out, "camp_awards", "camp_pool").values[-1] == 1500.0
+    assert _row(out, "total_requests", "camp_pool").values[-1] == 4000.0  # both attended, both asked
+    assert _row(out, "not_in_group_amount", None).values[-1] == 0.0
+
+
 async def test_the_groups_switch_to_the_report_years_own_once_they_are_approved() -> None:
     out = await _service(_development(), fake_rules=_RulesFrom({2026, 2027})).development(YEAR)
     assert [g.key for g in out.groups] == ["camp_pool", "weekend_pool", "bmitzvah_pool"]

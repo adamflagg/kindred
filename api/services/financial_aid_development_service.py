@@ -872,7 +872,11 @@ class FinancialAidDevelopmentService:
             ]
         inputs = DevelopmentInputs(
             groups=grouping_.groups,
-            requests=reported_requests(report_requests(season, received={}, corrections=corrections), grouping_),
+            # The requests are placed by the same rules as the groups: under borrowed groups (#53) the season has
+            # no rules, so an unpriced request would otherwise have no pool and fall outside every group.
+            requests=reported_requests(
+                report_requests(season, received={}, corrections=corrections, document=document), grouping_
+            ),
             grants=grant_money(season.register if register is None else register, grouping_, as_of=as_of),
             attendance=attended,
             persons={

@@ -173,12 +173,17 @@ def report_requests(
     received: Mapping[str, datetime | None],
     corrections: Sequence[CorrectionRecord],
     keep: Collection[str] | None = None,
+    document: AidRules | None = None,
 ) -> tuple[ReportRequest, ...]:
     """Every received request of `season` (D72), as reports read it, plus each confirmed duplicate holding a posted
     award (`counts_as_received` False, owner ruling, queue 4). `received` holds each request's first-recorded moment
     (bunking.financial_aid.received; empty before the first season it means anything); `keep`, when given, is a
-    reporting control's request set (D138): only those requests (received ones, so a duplicate is never kept)."""
-    document = season.rules.document if season.rules is not None else None
+    reporting control's request set (D138): only those requests (received ones, so a duplicate is never kept).
+    `document`, when given, is the rules the caller's groups come from: Development's borrowed groups (#53) for a
+    season with no approved rules of its own, so an unpriced request finds its pool in those same groups. Else the
+    season's own rules."""
+    if document is None:
+        document = season.rules.document if season.rules is not None else None
     grants = outside_grants_by_request(season.register)
     out: list[ReportRequest] = []
     received_set = received_ids(season.requests)

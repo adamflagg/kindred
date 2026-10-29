@@ -37,26 +37,26 @@ def _c(person: int, first: str, last: str, household: int = HOME) -> FaContact:
 
 def test_the_campers_own_row_wins_even_when_the_household_has_other_names() -> None:
     reqs = _requests((EMMA, HOME, EMMA_CM))
-    contacts = [_c(LIAM_CM, "David", "Chen"), _c(EMMA_CM, "Maria", "Garcia")]
-    assert requester_names(contacts, reqs) == {EMMA: "Maria Garcia"}
+    contacts = [_c(LIAM_CM, "Olivia", "Chen"), _c(EMMA_CM, "Samuel", "Johnson")]
+    assert requester_names(contacts, reqs) == {EMMA: "Samuel Johnson"}
 
 
 def test_the_campers_own_row_wins_over_a_different_household_unique_name() -> None:
     # The own row's household is unstamped (0), so this household's only name is someone else's: own still wins.
     reqs = _requests((EMMA, HOME, EMMA_CM))
-    contacts = [_c(EMMA_CM, "Maria", "Garcia", household=0), _c(LIAM_CM, "David", "Chen")]
-    assert requester_names(contacts, reqs) == {EMMA: "Maria Garcia"}
+    contacts = [_c(EMMA_CM, "Samuel", "Johnson", household=0), _c(LIAM_CM, "Olivia", "Chen")]
+    assert requester_names(contacts, reqs) == {EMMA: "Samuel Johnson"}
 
 
 def test_a_household_with_one_name_names_a_camper_with_no_row_of_their_own() -> None:
     reqs = _requests((EMMA, HOME, EMMA_CM))
-    contacts = [_c(LIAM_CM, "David", "Chen"), _c(RILEY_CM, "David", "Chen")]
-    assert requester_names(contacts, reqs) == {EMMA: "David Chen"}
+    contacts = [_c(LIAM_CM, "Olivia", "Chen"), _c(RILEY_CM, "Olivia", "Chen")]
+    assert requester_names(contacts, reqs) == {EMMA: "Olivia Chen"}
 
 
 def test_an_ambiguous_household_names_nobody() -> None:
     reqs = _requests((EMMA, HOME, EMMA_CM))
-    contacts = [_c(LIAM_CM, "David", "Chen"), _c(RILEY_CM, "Maria", "Garcia")]
+    contacts = [_c(LIAM_CM, "Olivia", "Chen"), _c(RILEY_CM, "Samuel", "Johnson")]
     assert requester_names(contacts, reqs) == {EMMA: None}
 
 
@@ -68,8 +68,8 @@ def test_blank_contacts_name_nobody() -> None:
 
 def test_a_blank_own_row_falls_back_to_the_households_one_name() -> None:
     reqs = _requests((EMMA, HOME, EMMA_CM))
-    contacts = [_c(EMMA_CM, "", ""), _c(LIAM_CM, "David", "Chen")]
-    assert requester_names(contacts, reqs) == {EMMA: "David Chen"}
+    contacts = [_c(EMMA_CM, "", ""), _c(LIAM_CM, "Olivia", "Chen")]
+    assert requester_names(contacts, reqs) == {EMMA: "Olivia Chen"}
 
 
 def test_a_request_with_no_form_rows_at_all_names_nobody() -> None:
@@ -79,12 +79,17 @@ def test_a_request_with_no_form_rows_at_all_names_nobody() -> None:
 
 def test_a_contact_in_another_household_does_not_name_this_one() -> None:
     reqs = _requests((EMMA, HOME, EMMA_CM))
-    assert requester_names([_c(LIAM_CM, "David", "Chen", household=HOME + 1)], reqs) == {EMMA: None}
+    assert requester_names([_c(LIAM_CM, "Olivia", "Chen", household=HOME + 1)], reqs) == {EMMA: None}
 
 
 @pytest.mark.parametrize(
     ("first", "last", "expected"),
-    [("Maria", "", "Maria"), ("", "Garcia", "Garcia"), (" Maria ", " Garcia ", "Maria Garcia"), ("", " ", None)],
+    [
+        ("Samuel", "", "Samuel"),
+        ("", "Johnson", "Johnson"),
+        (" Samuel ", " Johnson ", "Samuel Johnson"),
+        ("", " ", None),
+    ],
 )
 def test_a_name_is_trimmed_and_a_blank_part_is_dropped(first: str, last: str, expected: str | None) -> None:
     assert contact_name(first, last) == expected
@@ -92,18 +97,18 @@ def test_a_name_is_trimmed_and_a_blank_part_is_dropped(first: str, last: str, ex
 
 def test_a_one_part_name_is_returned_as_is() -> None:
     reqs = _requests((EMMA, HOME, EMMA_CM))
-    assert requester_names([_c(EMMA_CM, "Maria", "")], reqs) == {EMMA: "Maria"}
+    assert requester_names([_c(EMMA_CM, "Samuel", "")], reqs) == {EMMA: "Samuel"}
 
 
 def test_distinctness_ignores_case_and_returns_the_first_stored_casing() -> None:
     reqs = _requests((EMMA, HOME, EMMA_CM))
-    contacts = [_c(LIAM_CM, " maria  ", "GARCIA"), _c(RILEY_CM, "Maria", "Garcia")]
-    assert requester_names(contacts, reqs) == {EMMA: "maria GARCIA"}
+    contacts = [_c(LIAM_CM, " samuel  ", "JOHNSON"), _c(RILEY_CM, "Samuel", "Johnson")]
+    assert requester_names(contacts, reqs) == {EMMA: "samuel JOHNSON"}
 
 
 def test_a_campers_own_rows_that_disagree_name_nobody_rather_than_fall_back() -> None:
     reqs = _requests((EMMA, HOME, EMMA_CM))
-    contacts = [_c(EMMA_CM, "Maria", "Garcia"), _c(EMMA_CM, "David", "Chen"), _c(LIAM_CM, "Maria", "Garcia")]
+    contacts = [_c(EMMA_CM, "Samuel", "Johnson"), _c(EMMA_CM, "Olivia", "Chen"), _c(LIAM_CM, "Samuel", "Johnson")]
     assert requester_names(contacts, reqs) == {EMMA: None}
 
 
@@ -111,16 +116,16 @@ def test_own_rows_that_disagree_never_fall_back_even_to_a_unique_household_name(
     # The own rows sit in another household; this household's only name is someone else's, and still isn't used.
     reqs = _requests((EMMA, HOME, EMMA_CM))
     contacts = [
-        _c(EMMA_CM, "Maria", "Garcia", household=2000002),
-        _c(EMMA_CM, "David", "Chen", household=2000002),
-        _c(LIAM_CM, "Pat", "Johnson"),
+        _c(EMMA_CM, "Samuel", "Johnson", household=2000002),
+        _c(EMMA_CM, "Olivia", "Chen", household=2000002),
+        _c(LIAM_CM, "Riley", "Sam"),
     ]
     assert requester_names(contacts, reqs) == {EMMA: None}
 
 
 def test_a_household_level_request_with_no_camper_takes_only_the_household_chain() -> None:
     reqs = [replace(r, person_cm_id=0) for r in _requests((EMMA, HOME, EMMA_CM))]
-    contacts = [_c(0, "Ignored", "Person"), _c(LIAM_CM, "David", "Chen")]
+    contacts = [_c(0, "Ignored", "Person"), _c(LIAM_CM, "Olivia", "Chen")]
     # person 0 is never a camper match: a zero id is "no person", so only the household chain applies.
     assert requester_names(contacts, reqs) == {EMMA: None}  # two names in the household
 
@@ -137,9 +142,9 @@ async def test_the_grid_rows_carry_requested_by_from_one_contact_read() -> None:
     store = FakeDecisionsStore()
     seed_request(store, EMMA, household=HOME, person=EMMA_CM)
     seed_request(store, LIAM, household=HOME + 1, person=LIAM_CM)
-    store.fa_contacts = [_c(EMMA_CM, "Maria", "Garcia"), _c(LIAM_CM, "", "", household=HOME + 1)]
+    store.fa_contacts = [_c(EMMA_CM, "Samuel", "Johnson"), _c(LIAM_CM, "", "", household=HOME + 1)]
     rows = {r.request_id: r for r in (await _service(store).grid(YEAR)).rows}
-    assert rows[EMMA].requested_by == "Maria Garcia"
+    assert rows[EMMA].requested_by == "Samuel Johnson"
     assert rows[LIAM].requested_by is None
     assert store.fa_contact_reads == 1
 
@@ -149,9 +154,9 @@ async def test_a_past_date_grid_carries_requested_by_too() -> None:
     store = FakeDecisionsStore()
     seed_request(store, EMMA, household=HOME, person=EMMA_CM)
     log_seeded(store, T0 - timedelta(days=30))
-    store.fa_contacts = [_c(EMMA_CM, "Maria", "Garcia")]
+    store.fa_contacts = [_c(EMMA_CM, "Samuel", "Johnson")]
     past = T0.date() - timedelta(days=1)  # before the service's today, so the past-date read runs, not the live one
     out = await _service(store).grid(YEAR, as_of=past)
     assert out.as_of == past
     (row,) = out.rows
-    assert row.requested_by == "Maria Garcia"
+    assert row.requested_by == "Samuel Johnson"

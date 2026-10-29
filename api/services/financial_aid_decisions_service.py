@@ -2651,7 +2651,12 @@ class FinancialAidDecisionsService:
             synced_at=ledger.synced_at,
             family_unplaced=ledger.family_unplaced(request_scope(request, shares)),
             reversed_on=season.reversed_on.get(request_id),
-            pending={n: amount for (rid, n), amount in season.pending.items() if rid == request_id},
+            # By key, the request's own (at most three) rounds: a scan of every request's per row is quadratic.
+            pending={
+                view.round: amount
+                for view in season.priced[request_id].rounds
+                if (amount := season.pending.get((request_id, view.round))) is not None
+            },
         )
 
     async def budget(self, year: int, as_of: date | None = None, as_of_axis: AsOfAxis = "campminder") -> BudgetResponse:
