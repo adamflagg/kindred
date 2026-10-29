@@ -612,19 +612,55 @@ describe('countWords singulars', () => {
 })
 
 describe('the Form intake line (PR 3; spec 71 §2.4)', () => {
-  it('words the line as the mock does, and counts campers', () => {
+  it('words the line as the mock does, and counts people (owner Q4: adults too)', () => {
     expect(LINE_WORDS.form_intake).toBe('Form intake: needs a look')
     expect(countWords(line('form_intake', 5, { item_kind: 'campers', families: 4 }))).toBe(
-      '5 campers'
+      '5 people'
     )
     expect(countWords(line('form_intake', 1, { item_kind: 'campers', families: 1 }))).toBe(
-      '1 camper'
+      '1 person'
     )
   })
 
   it('sits on the registrar queue after Session not settled', () => {
     expect(REGISTRAR_ORDER.indexOf('form_intake')).toBe(
       REGISTRAR_ORDER.indexOf('session_not_settled') + 1
+    )
+  })
+})
+
+describe('Form intake: needs a look, with the adult aid form (adult aid form mock v2, owner Q4)', () => {
+  it('counts people, not campers: the line now counts adults too', () => {
+    const l = line('form_intake', 10, { item_kind: 'campers', families: null })
+    expect(countParts(l)).toEqual([{ figure: '10', unit: 'people' }])
+    expect(countWords(l)).toBe('10 people')
+    expect(countWords(line('form_intake', 1, { item_kind: 'campers', families: null }))).toBe(
+      '1 person'
+    )
+  })
+
+  it('words the adult aid form reasons, responses to link first by count', () => {
+    const l = line('form_intake', 10, {
+      item_kind: 'campers',
+      families: null,
+      reasons: [
+        { code: 'form_response_to_link', families: null, items: 5 },
+        { code: 'session_unclear', families: null, items: 2 },
+        { code: 'form_response_deleted', families: null, items: 1 },
+      ],
+    })
+    expect(reasonsLine(l)).toBe('Responses to link 5 · session unclear 2 · response deleted 1')
+    const more = line('form_intake', 3, {
+      item_kind: 'campers',
+      families: null,
+      reasons: [
+        { code: 'form_changed_after_decision', families: null, items: 1 },
+        { code: 'form_pull_refused', families: null, items: 1 },
+        { code: 'form_choice_unclear', families: null, items: 1 },
+      ],
+    })
+    expect(reasonsLine(more)).toBe(
+      'Second response after a decision 1 · read from Google refused 1 · program choice unclear 1'
     )
   })
 })

@@ -6,8 +6,8 @@ import type { PillTone } from '../kit/kitStyles'
 import { aidHref, type AidView } from '../kit/asOf'
 import { formatCampDateTime, formatShortDate } from '../kit/dates'
 import { formatMoney } from '../kit/money'
-import { aidSessionName, aidTinyName } from '../kit/sessionShort'
-import type { RequestOrigin } from '../kit/words'
+import { aidCellShortName, aidSessionName, aidTinyName } from '../kit/sessionShort'
+import type { FormSource, RequestOrigin } from '../kit/words'
 import { whoWords } from '../household/historyWords'
 import { programLabel } from '../requests/programLabel'
 import type {
@@ -15,11 +15,13 @@ import type {
   AidOnNoRequestLineOut,
   BecameOut,
   BecameStatus,
+  FormAnswerOut,
   FormIntakeRowOut,
   GapSessionOut,
   IntakeSessionOut,
   RegistrationAskOut,
 } from './intakeTypes'
+import type { FormAnswerView } from './adultFormTypes'
 
 // ── sessions ────────────────────────────────────────────────────────────────────────────────
 
@@ -189,14 +191,33 @@ export function answerProgram(
   return programLabel(programs, family !== '' && family !== 'other' ? family : a.program_key)
 }
 
-/** Form asked, in two parts: what the form (or registration form) asked, and a registration ask beside a filed form. */
+/** An answer's form: CampMinder's own, unless the read marks it the adult aid form (PR 2's `form_source`). */
+export const answerSource = (a: FormAnswerOut): FormSource =>
+  (a as FormAnswerView).form_source ?? 'campminder'
+
+/**
+ * An adult aid form answer's weekend in the cell (mock v2, callout 2): the short form with no subtitle ("Family Camp
+ * 4"), and no program prefix, since the chip before it names the form.
+ */
+function adultFormWhat(a: FormAnswerOut, names: SessionIndex): string {
+  const s = names.get(a.named_session_cm_id ?? 0)
+  return s === undefined ? a.option_text : aidCellShortName(s.name, s.session_type)
+}
+
+/**
+ * Form asked, in two parts: what the form (or registration form) asked, and a registration ask beside a filed form.
+ * `source` is the adult aid form when an answer came from it: the cell draws its mark before the words (K1 a).
+ */
 export function askedParts(
   row: FormIntakeRowOut,
   names: SessionIndex,
   programs: Readonly<Record<string, string>>
-): { main: string; reg: string | null; muted: boolean } {
+): { main: string; reg: string | null; muted: boolean; source: FormSource } {
   const reg = row.registration_ask ?? null
   const answers = row.answers ?? []
+  const source: FormSource = answers.some((a) => answerSource(a) === 'google_form')
+    ? 'google_form'
+    : 'campminder'
   // A row that answered the form for one kind keeps its answers here, the ask beside them (IN-BUCKETS: the ask is
   // registration ask only for another kind). A registration-only row never has answers before 2027.
   if (row.registration_only && reg !== null && answers.length === 0)
@@ -204,21 +225,30 @@ export function askedParts(
       main: `Registration ask only · ${formatMoney(reg.amount)}${regDate(reg)}`,
       reg: null,
       muted: false,
+      source,
     }
   if (answers.length === 0)
     return {
       main: row.filed ? 'not on the form' : 'no aid form, no registration ask',
       reg: reg === null ? null : `reg. ask ${formatMoney(reg.amount)}`,
       muted: true,
+      source,
     }
   const main = answers
     .map((a) => {
+      if (answerSource(a) === 'google_form')
+        return `${adultFormWhat(a, names)} · ${formatMoney(a.ask)}`
       const named = a.named_session_cm_id ?? 0
       const what = named > 0 ? shortName(named, names) : a.option_text
       return `${answerProgram(a, names, programs)}: ${what} · ${formatMoney(a.ask)}`
     })
     .join('; ')
-  return { main, reg: reg === null ? null : `reg. ask ${formatMoney(reg.amount)}`, muted: false }
+  return {
+    main,
+    reg: reg === null ? null : `reg. ask ${formatMoney(reg.amount)}`,
+    muted: false,
+    source,
+  }
 }
 
 export function askedWords(
@@ -250,7 +280,9 @@ export function askedTitle(
     .map((a) => {
       const named = a.named_session_cm_id ?? 0
       const what = named > 0 ? fullName(named, names) : a.option_text
-      return `${answerProgram(a, names, programs)}: ${what} · ${formatMoney(a.ask)}`
+      const form =
+        answerSource(a) === 'google_form' ? ' · the adult aid form (the Google form)' : ''
+      return `${answerProgram(a, names, programs)}: ${what} · ${formatMoney(a.ask)}${form}`
     })
     .join('; ')
   return reg === null

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { sentenceCase } from './words'
+import { FORM_SOURCE_WORDS, sentenceCase } from './words'
 
 describe('sentenceCase', () => {
   it('capitalises the first letter and leaves the rest as sent', () => {
@@ -10,5 +10,11 @@ describe('sentenceCase', () => {
     )
     expect(sentenceCase('Already Fine')).toBe('Already Fine')
     expect(sentenceCase('')).toBe('')
+  })
+})
+
+describe('FORM_SOURCE_WORDS (adult aid form design §10)', () => {
+  it('names each aid form in chip words', () => {
+    expect(FORM_SOURCE_WORDS).toEqual({ google_form: 'adult aid form', campminder: 'CM form' })
   })
 })

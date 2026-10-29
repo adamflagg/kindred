@@ -317,6 +317,14 @@ export interface AidTableProps<Row> {
    */
   readonly rowTone?: ((row: Row) => 'group' | 'warn' | undefined) | undefined
   /**
+   * One full-width tone row first in the body (design-language rule 8), for a fact that holds for every row in view:
+   * Form intake's refused Google read. It is not a data row, so the search, the footer's count, the CSV and the
+   * highlight never see it, and it stays when the search empties the list. Flat tables only.
+   */
+  readonly bandRow?:
+    | { readonly tone: 'warn' | 'group'; readonly content: ReactNode; readonly title?: string }
+    | undefined
+  /**
    * Opt-in (Money › Funders, design-language §5): how many columns a row's first cell spans. The cell owns
    * those columns and the cells under it are not drawn, so a funder's long name and terms line cut at the
    * totals instead of running over the next cells, and a muted "nothing under it" line has the width. A row
@@ -416,6 +424,7 @@ export function AidTable<Row>({
   onLeave,
   foldScope,
   rowTone,
+  bandRow,
   firstCellSpan,
   sortable = true,
   groupSections,
@@ -1185,6 +1194,17 @@ export function AidTable<Row>({
             {colgroup}
             {renderHead({ all: allSelected, toggle: toggleAll }, headRef)}
             <tbody>
+              {bandRow !== undefined && (
+                <tr data-band-row="">
+                  <td
+                    colSpan={span}
+                    title={bandRow.title}
+                    className={join(TD, TONE_BG[bandRow.tone], 'font-semibold')}
+                  >
+                    {bandRow.content}
+                  </td>
+                </tr>
+              )}
               {visible.length === 0 && (
                 <tr>
                   <td

@@ -8,10 +8,12 @@ import { CS_LINK_CELL, CS_LINK_SM, CS_PANEL, CS_PMETA, CS_POPEN_META } from '../
 import { formatShortDate } from '../kit/dates'
 import { Money } from '../kit/MoneyText'
 import { AidHouseholdChip, AidNameWithChip } from '../kit/NameChips'
-import { OriginMark, StatusPill } from '../kit/Pills'
+import { FormSourceMark, OriginMark, StatusPill } from '../kit/Pills'
 import { aidActionColumn, type AidRowActionSpec } from '../kit/RowAction'
 import { formatMoney } from '../kit/money'
 import { AddRequestEditor } from './AddRequestEditor'
+import { becameFlag } from './adultFormModel'
+import type { BecameFormView } from './adultFormTypes'
 import {
   amberAid,
   answerProgram,
@@ -40,6 +42,9 @@ import type { FormIntakeRowOut } from './intakeTypes'
 const MUTED = 'text-muted-foreground'
 const AMBER = POOL_NEGATIVE_INK
 const rowKey = (row: FormIntakeRowOut) => row.key
+/** The adult aid form's mark in Form asked (K1 a): its title says which form it is. */
+const ADULT_FORM_TITLE =
+  "The adult aid form: the Google form adults fill in for Family Camp and Adult Weekends. It prices that adult's own request."
 
 /** The footnote marks on Form asked, Became and CampMinder aid (the registry's surface `requests-form-intake`). */
 export interface IntakeMarks {
@@ -108,6 +113,7 @@ function BecameCell({
         const status = becameStatus(b.status)
         const origin = originOf(b)
         const aside = becameAside(b)
+        const flag = becameFlag(b)
         return (
           <span key={b.request_id} className="flex flex-none items-center gap-[5px]">
             <StatusPill tone={status.tone} title={becameTitle(b, names)}>
@@ -118,6 +124,11 @@ function BecameCell({
             )}
             {origin !== null && <OriginMark origin={origin} title={originTitle(b, INTAKE_WORDS)} />}
             {aside !== null && <span className={MUTED}>{aside}</span>}
+            {flag !== null && (
+              <span className={`${AMBER} cursor-help`} title={flag.title}>
+                {flag.words}
+              </span>
+            )}
           </span>
         )
       })}
@@ -137,6 +148,7 @@ function becameText(
       becameStatus(b.status).words,
       becameSession(b, names),
       origin ? `(${origin === 'added' ? 'added' : 'reg. ask'})` : '',
+      becameFlag(b)?.words ?? '',
     ]
       .filter(Boolean)
       .join(' ')
@@ -152,7 +164,9 @@ function becameLongTitle(
   names: SessionIndex,
   programs: Readonly<Record<string, string>>
 ): string {
-  const parts = (row.became ?? []).map((b) => becameTitle(b, names))
+  const parts = (row.became ?? []).map((b) =>
+    [becameTitle(b, names), becameFlag(b)?.title ?? ''].filter(Boolean).join(' · ')
+  )
   const why = whyWords(row, names, programs)
   if (why !== null && ((row.gap_sessions ?? []).length > 0 || parts.length === 0))
     parts.push(why.long)
@@ -248,7 +262,9 @@ function IntakeDetail({
             ? 'withdrawn'
             : b.status === 'cancelled'
               ? 'cancelled'
-              : 'from the form'
+              : (b as BecameFormView).form_source === 'google_form'
+                ? 'from the adult aid form'
+                : 'from the form'
     return `${becameSession(b, names)} (${source})`
   })
   return (
@@ -344,7 +360,8 @@ export function IntakeTable({
       {
         key: 'camper',
         header: 'Camper',
-        width: 300,
+        // Adult aid form mock v2, callout 1: 300 → 282, giving Form asked the room for its chip.
+        width: 282,
         // The search finds a camper by their own name (and, through searchExtra, their household's).
         searchable: true,
         value: camperLabel,
@@ -354,7 +371,7 @@ export function IntakeTable({
       {
         key: 'asked',
         header: 'Form asked',
-        width: 262,
+        width: 280,
         mark: marks.asked,
         value: (r) => {
           const p = askedParts(r, names, programs)
@@ -365,6 +382,12 @@ export function IntakeTable({
           const p = askedParts(r, names, programs)
           return (
             <span className="block truncate">
+              {/* A mark that must never cut sits before the text that may (design-language §6). */}
+              {p.source === 'google_form' && (
+                <span className="mr-[5px] align-[1px]">
+                  <FormSourceMark source="google_form" title={ADULT_FORM_TITLE} />
+                </span>
+              )}
               <span className={p.muted ? MUTED : undefined}>{p.main}</span>
               {p.reg !== null && <span className={MUTED}>{` · ${p.reg}`}</span>}
             </span>

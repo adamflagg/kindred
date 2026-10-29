@@ -22,6 +22,11 @@ import {
   became,
   TWR,
 } from '../../components/camperships/intake/intakeFixtures'
+import { ADULT_SESSIONS, FC4, FC4A } from '../../components/camperships/intake/adultFormFixtures'
+import type {
+  BecameFormView,
+  FormAnswerView,
+} from '../../components/camperships/intake/adultFormTypes'
 import type { FormIntakeRowOut } from '../../components/camperships/intake/intakeTypes'
 import AidFormIntakePage from './AidFormIntakePage'
 
@@ -521,5 +526,75 @@ describe('a closed season (CLOSED-SEASONS-DONE)', () => {
     await screen.findByText('Olivia Chen')
     expect(within(rowOf('Olivia Chen')).getByText('Closed')).toBeInTheDocument()
     expect(within(rowOf('Olivia Chen')).queryByText('Session unclear')).toBeNull()
+  })
+})
+
+describe('an adult aid form row (adult aid form mock v2: K1 a, callouts 1–3)', () => {
+  const grace = intakeRow({
+    key: '1000016:1000161',
+    household_cm_id: 1000016,
+    household_label: 'Grace & Tom Chen-Whitfield',
+    person_cm_id: 1000161,
+    camper_name: 'Grace Chen-Whitfield',
+    filed: true,
+    registration_only: false,
+    answers: [
+      {
+        program_key: 'family_camp',
+        option_text: 'Family Camp 4: Labor Day (Sep 3-6)',
+        ask: 700,
+        named_session_cm_id: FC4,
+        form_source: 'google_form',
+      } as FormAnswerView,
+    ],
+    enrolled_session_cm_ids: [FC4A],
+    became: [
+      {
+        ...became({ program_key: 'family_camp', session_cm_id: FC4A, ask: 700 }),
+        form_source: 'google_form',
+        price_missing: true,
+      } as BecameFormView,
+    ],
+  })
+  beforeEach(() => {
+    forms = { ...formsRead([...ROWS_2027, grace]), sessions: [...SESSIONS, ...ADULT_SESSIONS] }
+  })
+
+  it('callout 1: Form asked widens 262 → 280px, taken from Camper (300 → 282)', async () => {
+    renderAt('/aid/requests/intake?year=2027&show=all')
+    await screen.findByText('Grace Chen-Whitfield')
+    const widths = [...document.querySelectorAll('colgroup col')].map(
+      (c) => (c as HTMLElement).style.width
+    )
+    expect(widths.slice(0, 2)).toEqual(['282px', '280px'])
+  })
+
+  it('K1 a and callout 2: the outlined adult aid form chip, then the weekend and ask with no program prefix', async () => {
+    renderAt('/aid/requests/intake?year=2027&show=all')
+    await screen.findByText('Grace Chen-Whitfield')
+    const row = rowOf('Grace Chen-Whitfield')
+    const chip = within(row).getByText('adult aid form')
+    expect(chip.className).toContain('border')
+    expect(within(row).getByText('Family Camp 4 · $700')).toBeInTheDocument()
+    expect(within(row).queryByText(/Family Camp: Family Camp 4/)).toBeNull()
+    // CampMinder rows stay unmarked.
+    expect(within(rowOf('Emma Johnson')).queryByText('adult aid form')).toBeNull()
+  })
+
+  it('callout 3: a request with no price yet says so, in amber, after its session', async () => {
+    renderAt('/aid/requests/intake?year=2027&show=all')
+    await screen.findByText('Grace Chen-Whitfield')
+    const row = rowOf('Grace Chen-Whitfield')
+    const flag = within(row).getByText('no price yet')
+    expect(flag.className).toMatch(/amber/)
+    expect(flag).toHaveAttribute('title', expect.stringContaining('No price yet'))
+  })
+
+  it("the opened row names the request's form", async () => {
+    renderAt('/aid/requests/intake?year=2027&show=all')
+    await userEvent.click(await screen.findByText('Family Camp 4 · $700'))
+    expect(
+      await screen.findByText(/Requests: FC4 Adults \(from the adult aid form\)/)
+    ).toBeInTheDocument()
   })
 })
