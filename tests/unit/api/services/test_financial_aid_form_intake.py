@@ -883,11 +883,15 @@ def test_closing_a_season_leaves_a_became_entry_with_a_posted_round_alone() -> N
     from api.services.financial_aid_form_intake import close_intake_row
 
     def became(request_id: str, status: str, posted_rounds: list[int]) -> BecameOut:
-        return BecameOut.model_construct(
-            request_id=request_id, status=status, posted_rounds=posted_rounds, candidate_session_cm_ids=[]
-        )
+        fields: dict[str, Any] = {
+            "request_id": request_id,
+            "status": status,
+            "posted_rounds": posted_rounds,
+            "candidate_session_cm_ids": [],
+        }
+        return BecameOut.model_construct(**fields)
 
-    row = FormIntakeRowOut.model_construct(
+    row_fields: dict[str, Any] = dict(  # noqa: C408
         needs_look=True,
         look_reasons=["x"],
         can_add=True,
@@ -898,6 +902,7 @@ def test_closing_a_season_leaves_a_became_entry_with_a_posted_round_alone() -> N
             became("req0000000000b4", "active", []),
         ],
     )
+    row = FormIntakeRowOut.model_construct(**row_fields)
     closed = close_intake_row(row)
     assert [(b.request_id, b.status) for b in closed.became] == [
         ("req0000000000b1", "closed"),
