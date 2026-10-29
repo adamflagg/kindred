@@ -61,7 +61,7 @@ export const SEGMENTS: ReadonlyArray<{
     // IN-BUCKETS (owner 2026-10-28): from 2027 an ask is judged per kind of program, so the list holds people whose
     // household filed for another kind too, not only families that never filed.
     title:
-      'People who asked for aid when registering, with no aid form for that kind of program (At Camp, B*Mitzvah, Family Camp or adult weekends): a follow-up list',
+      'People who asked for aid when registering, with no aid form for that kind of program (At Camp, B*Mitzvah, Family Camp or Adult Weekends): a follow-up list',
   },
   {
     value: 'all',
@@ -152,6 +152,23 @@ function noFormFor(
   return andList(kinds.map((k) => programLabel(programs, k)))
 }
 
+/**
+ * The detail panel's evidence: the no-aid-form line, and whether to show the filed form's answers. Both can show from
+ * 2027 (IN-BUCKETS): a household that filed for one kind of program and has a registration ask only for another.
+ */
+export function formEvidence(
+  row: FormIntakeRowOut,
+  programs: Readonly<Record<string, string>>
+): { noForm: string | null; filed: boolean } {
+  if (row.registration_only) return { noForm: noAidFormWords(row, programs), filed: row.filed }
+  if (!row.filed)
+    return {
+      noForm: 'No aid form and no registration ask, this season or any earlier one',
+      filed: false,
+    }
+  return { noForm: null, filed: true }
+}
+
 /** The detail panel's evidence line for a registration-ask-only row. */
 export function noAidFormWords(
   row: FormIntakeRowOut,
@@ -179,13 +196,15 @@ export function askedParts(
   programs: Readonly<Record<string, string>>
 ): { main: string; reg: string | null; muted: boolean } {
   const reg = row.registration_ask ?? null
-  if (row.registration_only && reg !== null)
+  const answers = row.answers ?? []
+  // A row that answered the form for one kind keeps its answers here, the ask beside them (IN-BUCKETS: the ask is
+  // registration ask only for another kind). A registration-only row never has answers before 2027.
+  if (row.registration_only && reg !== null && answers.length === 0)
     return {
       main: `Registration ask only · ${formatMoney(reg.amount)}${regDate(reg)}`,
       reg: null,
       muted: false,
     }
-  const answers = row.answers ?? []
   if (answers.length === 0)
     return {
       main: row.filed ? 'not on the form' : 'no aid form, no registration ask',
@@ -218,11 +237,11 @@ export function askedTitle(
   programs: Readonly<Record<string, string>>
 ): string {
   const reg = row.registration_ask ?? null
-  if (row.registration_only && reg !== null) {
+  const answers = row.answers ?? []
+  if (row.registration_only && reg !== null && answers.length === 0) {
     const kinds = noFormFor(row, programs)
     return `No aid form${kinds === null ? '' : ` for ${kinds}`}. The registration form's "financial assistance" ask: ${formatMoney(reg.amount)}${reg.on ? `, answered ${formatShortDate(reg.on)}` : ''}.`
   }
-  const answers = row.answers ?? []
   if (answers.length === 0)
     return row.filed
       ? 'The household filed the aid form, but it names no program for this camper'

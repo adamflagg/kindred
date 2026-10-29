@@ -51,6 +51,7 @@ import {
   targetFromRow,
   whyWords,
   linesInPool,
+  formEvidence,
   noAidFormWords,
   SEGMENTS,
 } from './intakeModel'
@@ -462,8 +463,38 @@ describe('registration ask only, per kind of program (IN-BUCKETS)', () => {
   it("titles the list by kind of program, not 'never filed'", () => {
     const reg = SEGMENTS.find((s) => s.value === 'reg')
     expect(reg?.title).toBe(
-      'People who asked for aid when registering, with no aid form for that kind of program (At Camp, B*Mitzvah, Family Camp or adult weekends): a follow-up list'
+      'People who asked for aid when registering, with no aid form for that kind of program (At Camp, B*Mitzvah, Family Camp or Adult Weekends): a follow-up list'
     )
+  })
+
+  it('keeps a filed answer in Form asked beside a registration ask only for another kind', () => {
+    // Emma answered the form for one kind; her ask is registration ask only for another. The cell still shows her answer.
+    const both = { ...EMMA, registration_only: true, registration_only_programs: ['bmitzvah'] }
+    expect(askedWords(both, names, words)).toBe(askedWords(EMMA, names, words))
+    expect(askedTitle(both, names, words)).toBe(askedTitle(EMMA, names, words))
+  })
+
+  it('lists the filed form and the kind with no aid form, both, in the detail', () => {
+    const both = {
+      ...EMMA,
+      filed: true,
+      registration_only: true,
+      registration_only_programs: ['bmitzvah'],
+    }
+    expect(formEvidence(both, words)).toEqual({ noForm: 'No aid form for B*Mitzvah', filed: true })
+    // Today's single lines where only one is true.
+    expect(formEvidence(RILEY, words)).toEqual({
+      noForm: 'No aid form, this season or any earlier one',
+      filed: false,
+    })
+    expect(formEvidence({ ...RILEY, registration_only: false }, words)).toEqual({
+      noForm: 'No aid form and no registration ask, this season or any earlier one',
+      filed: false,
+    })
+    expect(formEvidence({ ...EMMA, filed: true, registration_only: false }, words)).toEqual({
+      noForm: null,
+      filed: true,
+    })
   })
 
   it('says why an ask from someone not registered or not enrolled made no request (2027 on)', () => {

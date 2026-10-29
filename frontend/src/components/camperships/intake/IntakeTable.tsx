@@ -31,7 +31,7 @@ import {
   originTitle,
   targetFromRow,
   tinyName,
-  noAidFormWords,
+  formEvidence,
   whyWords,
   type SessionIndex,
 } from './intakeModel'
@@ -194,10 +194,9 @@ function IntakeDetail({
 }) {
   const reg = row.registration_ask ?? null
   const evidence: ReactNode[] = []
-  if (row.registration_only) evidence.push(noAidFormWords(row, programs))
-  else if (!row.filed)
-    evidence.push('No aid form and no registration ask, this season or any earlier one')
-  else {
+  const shown = formEvidence(row, programs)
+  if (shown.noForm !== null) evidence.push(shown.noForm)
+  if (shown.filed) {
     const answers = row.answers ?? []
     evidence.push(
       <>
