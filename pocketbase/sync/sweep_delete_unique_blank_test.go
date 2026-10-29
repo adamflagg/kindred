@@ -82,7 +82,9 @@ func TestBootedSweepDeletesDoNotCollideOnABlankedUniqueRelation(t *testing.T) {
 		})
 		gone := []int{9400101, 9400102}
 		for _, cmID := range gone {
-			pid := saveRecord(t, app, "persons", map[string]any{"cm_id": cmID, "first_name": "Ava", "last_name": "Johnson", "year": year})
+			pid := saveRecord(t, app, "persons", map[string]any{
+				"cm_id": cmID, "first_name": "Ava", "last_name": "Johnson", "year": year,
+			})
 			saveRecord(t, app, "normalized_mappings", map[string]any{
 				"category": categoryCity, "normalized_value": "Springfield", "original_value": "springfield",
 				"year": year, "person": pid, "session": session,
@@ -156,8 +158,10 @@ func TestBootedSweepDeletesDoNotCollideOnABlankedUniqueRelation(t *testing.T) {
 	// The sessions sweep: one person's mappings in two sessions that both go away.
 	t.Run("deleting two sessions that hold one person's geo mappings", func(t *testing.T) {
 		const year = 2024
-		pid := saveRecord(t, app, "persons", map[string]any{"cm_id": 9400401, "first_name": "Liam", "last_name": "Smith", "year": year})
-		var sessions []string
+		pid := saveRecord(t, app, "persons", map[string]any{
+			"cm_id": 9400401, "first_name": "Liam", "last_name": "Smith", "year": year,
+		})
+		sessions := make([]string, 0, 2)
 		for _, cmID := range []int{9400501, 9400502} {
 			sid := saveRecord(t, app, "camp_sessions", map[string]any{
 				"cm_id": cmID, "name": "Session", "year": year, "session_type": "main",
@@ -207,7 +211,7 @@ var blankingUniqueRelationsReviewed = map[string]string{
 	"household_custom_values.field_definition": "as for person_custom_values.field_definition",
 }
 
-var uniqueIndexColumns = regexp.MustCompile("(?is)^\\s*CREATE\\s+UNIQUE\\s+INDEX\\b.*?\\((.*?)\\)")
+var uniqueIndexColumns = regexp.MustCompile(`(?is)^\s*CREATE\s+UNIQUE\s+INDEX\b.*?\((.*?)\)`)
 
 func assertNoUnreviewedBlankingUniqueRelations(t *testing.T, app core.App) {
 	t.Helper()
