@@ -116,8 +116,8 @@ def test_own_rows_that_disagree_never_fall_back_even_to_a_unique_household_name(
     # The own rows sit in another household; this household's only name is someone else's, and still isn't used.
     reqs = _requests((EMMA, HOME, EMMA_CM))
     contacts = [
-        _c(EMMA_CM, "Samuel", "Johnson", household=2000002),
-        _c(EMMA_CM, "Olivia", "Chen", household=2000002),
+        _c(EMMA_CM, "Samuel", "Johnson", household=HOME + 1),
+        _c(EMMA_CM, "Olivia", "Chen", household=HOME + 1),
         _c(LIAM_CM, "Riley", "Sam"),
     ]
     assert requester_names(contacts, reqs) == {EMMA: None}

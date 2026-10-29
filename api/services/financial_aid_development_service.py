@@ -332,14 +332,17 @@ def attendance(
 
 def reported_requests(requests: Iterable[ReportRequest], grouping_: Grouping) -> tuple[ReportRequest, ...]:
     """A request on a session that isn't a reported program (Family School, "other"), or in no pool, is development's
-    money in no group."""
+    money in no group. So is one on a session no group claims (closed to aid, or claimed by no program: item 28):
+    its program can still name a pool, notably under borrowed groups (#53), where nothing is priced. An unmatched
+    request (no session) keeps its pool, as before."""
     groups = {g.key for g in grouping_.groups}
-    return tuple(
-        r
-        if r.pool in groups and grouping_.by_session.get(r.session_cm_id) != NOT_REPORTED
-        else replace(r, pool=NOT_REPORTED)
-        for r in requests
-    )
+
+    def in_group(r: ReportRequest) -> bool:
+        if r.pool not in groups:
+            return False
+        return r.session_cm_id <= 0 or grouping_.by_session.get(r.session_cm_id) in groups
+
+    return tuple(r if in_group(r) else replace(r, pool=NOT_REPORTED) for r in requests)
 
 
 @dataclass(frozen=True)
