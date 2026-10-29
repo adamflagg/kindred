@@ -268,7 +268,9 @@ func TestViewAsMiddleware(t *testing.T) {
 			TestAppFactory: factory,
 			BeforeTestFunc: func(t testing.TB, app *tests.TestApp, ev *core.ServeEvent) {
 				app.OnRecordCreate("users").BindFunc(func(e *core.RecordEvent) error {
-					if strings.HasPrefix(e.Record.Id, "va") {
+					// Match the stand-in by its reserved email domain, not an id
+					// prefix: the caller's random id starts with "va" 1 run in 1296.
+					if strings.HasSuffix(e.Record.Email(), "@"+viewAsPersonaEmailDomain) {
 						return errors.New("simulated persona creation failure")
 					}
 					return e.Next() //nolint:wrapcheck // test-only hook
