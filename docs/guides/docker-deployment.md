@@ -73,6 +73,9 @@ AI_MODEL=gpt-4.1-mini
 JOTFORM_API_KEY=your_jotform_api_key_here
 # JOTFORM_API_BASE=https://api.jotform.com  # only for an enterprise account
 
+# Adult aid Google Form (Optional): <year>:<formId>, needs GOOGLE_SHEETS_ENABLED=true
+AID_GOOGLE_FORM_IDS=
+
 # PocketBase Admin (first-run setup): Kindred's SERVICE superuser, see
 # "Service superuser and the admin audit log" below
 POCKETBASE_ADMIN_EMAIL=kindred-service@kindred.invalid
