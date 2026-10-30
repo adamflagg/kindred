@@ -113,8 +113,12 @@ export function AdultFormPanels({
         </span>
         <span className={`${CS_PHEAD} mt-[7px]`}>Responses</span>
         <ul className="m-0 list-none p-0">
-          {responseLines(response, change, flagged).map((line) => (
-            <li key={line.text} className={line.current ? 'text-foreground' : MUTED}>
+          {responseLines(response, change, flagged).map((line, i) => (
+            // Two earlier responses can read alike (same day, same figures): the place keeps keys apart.
+            <li
+              key={`${String(i)}:${line.text}`}
+              className={line.current ? 'text-foreground' : MUTED}
+            >
               {line.text}
             </li>
           ))}

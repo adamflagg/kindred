@@ -148,6 +148,14 @@ describe('Pull Now', () => {
     )
     expect(intake).toHaveLength(PULL_REFRESH_MS.length)
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['financial-aid', 'today'] })
+    // The landed pull rebuilds the season's requests, so every aid read refreshes as a write's does: the household
+    // page's adult answer sets and the Requests grid too.
+    const household = invalidate.mock.calls.filter(
+      ([f]) =>
+        JSON.stringify(f) === JSON.stringify({ queryKey: ['financial-aid', 'household-page'] })
+    )
+    expect(household).toHaveLength(PULL_REFRESH_MS.length)
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['financial-aid', 'grid'] })
   })
 
   it('stops refreshing once the page is left', async () => {

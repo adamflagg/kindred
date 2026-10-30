@@ -11,7 +11,7 @@ import {
   pullAidGoogleForm,
   reviewAidFormChange,
 } from '../../services/camperships/aidApi'
-import { queryKeys } from '../../utils/queryKeys'
+import { invalidateAidMoneyQueries, queryKeys } from '../../utils/queryKeys'
 import { useApiWithAuth } from '../useApiWithAuth'
 import { useYear } from '../useCurrentYear'
 import { usePermissions } from '../usePermissions'
@@ -77,13 +77,13 @@ export function useAidReviewFormChange() {
 }
 
 /**
- * When Form intake and Today read again after Pull Now, in ms from the pull. The pull only starts the read (202): it
+ * When the aid reads (Form intake and Today among them) read again after Pull Now, in ms from the pull. The pull only starts the read (202): it
  * reads Google and rebuilds the season's requests in the background, which takes seconds to a minute, so the list
  * refreshes a few times rather than once too early. Not a standing poll: it stops after the last, and on leaving.
  */
 export const PULL_REFRESH_MS: readonly number[] = [8_000, 20_000, 45_000]
 
-/** Pull Now: starts the read, then refreshes Form intake and Today as it can land. */
+/** Pull Now: starts the read, then refreshes every aid read (Form intake and Today among them) as it can land. */
 export function useAidPullForm() {
   const queryClient = useQueryClient()
   const timers = useRef<Array<ReturnType<typeof setTimeout>>>([])
@@ -103,10 +103,9 @@ export function useAidPullForm() {
       const out = await write.mutateAsync(vars)
       for (const t of timers.current) clearTimeout(t)
       timers.current = PULL_REFRESH_MS.map((ms) =>
-        setTimeout(() => {
-          void queryClient.invalidateQueries({ queryKey: queryKeys.aidIntakePrefix() })
-          void queryClient.invalidateQueries({ queryKey: queryKeys.aidTodayPrefix() })
-        }, ms)
+        // The landed pull rebuilds the season's requests: every aid read refreshes, as a write's settle does
+        // (Form intake and Today, the household page's answer sets, the Requests grid).
+        setTimeout(() => void invalidateAidMoneyQueries(queryClient), ms)
       )
       return out
     },
