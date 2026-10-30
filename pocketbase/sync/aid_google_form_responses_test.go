@@ -851,6 +851,57 @@ func TestAidFormRegisteredElsewhereAndNotRegistered(t *testing.T) {
 	}
 }
 
+// Q1 = strict (owner ruling 2026-10-29): two registered people in different
+// households each match two clues, and the first one's household holds the
+// typed email on her spouse too. Nothing auto-links: the row is suggested with
+// both, for staff to Link.
+func TestAidFormTwoStrongCandidatesStaySuggestedDespiteASpouseEmail(t *testing.T) {
+	t.Parallel()
+	app := newAidFormTestApp(t)
+	seedAidFormWeekends(t, app)
+	ww, err := app.FindFirstRecordByFilter("camp_sessions", "cm_id = {:id}", dbx.Params{"id": gfWW})
+	if err != nil {
+		t.Fatal(err)
+	}
+	person := func(cmID, household int, first, birth, email string) string {
+		return saveRecord(t, app, "persons", map[string]any{
+			"cm_id": cmID, "household_id": household, "first_name": first, "last_name": "Lee",
+			"birthdate": birth, "primary_email": email, "year": gfYear,
+		})
+	}
+	for _, p := range []struct {
+		cmID, household int
+		birth, email    string
+	}{
+		{1000060, 2000060, "1982-03-04", "lees@example.com"}, // name and email
+		{1000061, 2000061, "1982-04-03", "rlee@example.com"}, // name and birthdate
+	} {
+		saveRecord(t, app, "attendees", map[string]any{
+			"person": person(p.cmID, p.household, "Rachel", p.birth, p.email), "person_id": p.cmID,
+			"session": ww.Id, "status_id": 2, "year": gfYear,
+		})
+	}
+	person(1000062, 2000060, "Sam", "1980-01-01", "lees@example.com") // her spouse, not registered
+
+	lee := gfResponse("resp-lee", "2026-11-09T12:00:00.000Z", "lees@example.com", map[string]string{
+		"name_typed": "Rachel Lee", "birthdate_typed": "1982-04-03", "program_choice": gfChoiceWW,
+	})
+	if _, err := runAidForm(t, app, &fakeGoogleForm{def: gfDefinition(), resp: []google.FormResponse{lee}}); err != nil {
+		t.Fatal(err)
+	}
+	r := gfRow(t, app, "resp-lee")
+	cands := gfJSON(t, r, "match_candidates")
+	if r.GetString("match_status") != "suggested" || r.GetInt("person_cm_id") != 0 || r.GetInt("household_cm_id") != 0 ||
+		r.GetInt("match_tier") != 2 || !strings.Contains(cands, `"person_cm_id":1000060`) ||
+		!strings.Contains(cands, `"person_cm_id":1000061`) {
+		t.Errorf("lee = %s person %d household %d tier %d %s", r.GetString("match_status"),
+			r.GetInt("person_cm_id"), r.GetInt("household_cm_id"), r.GetInt("match_tier"), cands)
+	}
+	if strings.Contains(cands, "household_email") {
+		t.Errorf("candidates still carry a household-email tie-break: %s", cands)
+	}
+}
+
 // 2026 is frozen: the job runs only for a season AID_GOOGLE_FORM_IDS names, and
 // only when that season is the primary -- never in the N-1 pass.
 func TestAidFormRunsOnlyForTheConfiguredPrimarySeason(t *testing.T) {

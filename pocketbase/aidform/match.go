@@ -45,21 +45,14 @@ type Person struct {
 	Sessions      []int
 }
 
-// Member is a household's person, for the email tie-break.
-type Member struct {
-	PersonCMID int
-	Emails     []string
-}
-
 // Candidate is one person a response could be, with the evidence. CampMinder
 // ids only: it is stored as match_candidates and never carries a name.
 type Candidate struct {
-	PersonCMID     int      `json:"person_cm_id"`
-	HouseholdCMID  int      `json:"household_cm_id"`
-	Signals        []string `json:"signals"`
-	HouseholdEmail bool     `json:"household_email,omitempty"`
-	SessionCMIDs   []int    `json:"session_cm_ids"`
-	Elsewhere      bool     `json:"elsewhere,omitempty"`
+	PersonCMID    int      `json:"person_cm_id"`
+	HouseholdCMID int      `json:"household_cm_id"`
+	Signals       []string `json:"signals"`
+	SessionCMIDs  []int    `json:"session_cm_ids"`
+	Elsewhere     bool     `json:"elsewhere,omitempty"`
 }
 
 // Decision is a response's match.
@@ -78,19 +71,19 @@ const maxCandidates = 10
 // Match decides whose response this is (design §5, GF-1 = A).
 //
 //   - auto: exactly one person in the chosen weekend's pool has 2 or more of
-//     the 3 signals. Several such people are broken only by the respondent
-//     email on a household's OTHER persons (a spouse's address); that email is
-//     a tie-break, never a signal of its own.
+//     the 3 signals. Nothing breaks a tie between several such people (Q1 =
+//     strict, 2026-10-29): an email held by someone else in a candidate's
+//     household is neither a signal nor a tie-break, so staff choose.
 //   - registered_elsewhere: nobody in the pool has 2 signals, and someone
 //     registered for another 2027 adult or family weekend does. It outranks a
 //     1-signal coincidence in the pool (a shared birthdate with a stranger).
-//   - suggested: anyone in the pool with at least 1 signal, or several strong
-//     candidates no tie-break separates.
+//   - suggested: anyone in the pool with at least 1 signal, including several
+//     people with 2 or more.
 //   - not_registered: no signal anywhere.
 //   - unmatched: the response carries no identity at all. (The sync job also
 //     stores unmatched, without calling Match on a pool, when the program
 //     choice maps to no weekend set: there is nothing to match against.)
-func Match(id Identity, pool, elsewhere []Person, households map[int][]Member) Decision {
+func Match(id Identity, pool, elsewhere []Person) Decision {
 	if strings.TrimSpace(id.Name) == "" && NormalizeDate(id.Birthdate) == "" && !usableEmail(id.Email) {
 		return Decision{Status: StatusUnmatched}
 	}
@@ -101,9 +94,6 @@ func Match(id Identity, pool, elsewhere []Person, households map[int][]Member) D
 		return auto(&strong[0])
 	}
 	if len(strong) > 1 {
-		if winner, ok := householdTieBreak(id, strong, households); ok {
-			return auto(&winner)
-		}
 		return suggest(StatusSuggested, inPool)
 	}
 	if away := withAtLeast(score(id, elsewhere, true), 2); len(away) > 0 {
@@ -181,29 +171,6 @@ func withAtLeast(cands []Candidate, n int) []Candidate {
 		}
 	}
 	return out
-}
-
-// householdTieBreak: among several strong candidates, the one whose household
-// has ANOTHER person carrying the respondent email, when exactly one does.
-func householdTieBreak(id Identity, strong []Candidate, households map[int][]Member) (Candidate, bool) {
-	email := jotform.Fold(id.Email)
-	if !usableEmail(email) {
-		return Candidate{}, false
-	}
-	var found []Candidate
-	for _, c := range strong {
-		for _, m := range households[c.HouseholdCMID] {
-			if m.PersonCMID != c.PersonCMID && hasEmail(m.Emails, email) {
-				c.HouseholdEmail = true
-				found = append(found, c)
-				break
-			}
-		}
-	}
-	if len(found) == 1 {
-		return found[0], true
-	}
-	return Candidate{}, false
 }
 
 func usableEmail(folded string) bool { return strings.Contains(folded, "@") }

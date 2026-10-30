@@ -669,8 +669,6 @@ type aidFormRoster struct {
 	// people registered (2/4/8/512) in any adult or family weekend session,
 	// with every such session.
 	people []aidform.Person
-	// households' persons, for the email tie-break.
-	households map[int][]aidform.Member
 }
 
 // session is the season's session with that CampMinder id (zero when none).
@@ -716,7 +714,7 @@ func (r *aidFormRoster) split(set []int) (pool, elsewhere []aidform.Person) {
 }
 
 func loadAidFormRoster(app core.App, year int) (*aidFormRoster, error) {
-	roster := &aidFormRoster{households: map[int][]aidform.Member{}}
+	roster := &aidFormRoster{}
 	sessionRecs, err := findAllRecords(app, "camp_sessions",
 		"year = {:year} && (session_type = {:family} || session_type = {:familyAdult} || session_type = {:adult})",
 		dbx.Params{"year": year, "family": sessionTypeFamily, "familyAdult": sessionTypeFamilyAdult,
@@ -775,7 +773,6 @@ func loadAidFormRoster(app core.App, year int) (*aidFormRoster, error) {
 	for _, pid := range slices.Sorted(maps.Keys(regs)) {
 		ids = append(ids, strconv.Itoa(pid))
 	}
-	householdSet := map[int]bool{}
 	err = forEachRosterIDChunk(ids, func(filter string, params dbx.Params) error {
 		params["year"] = year
 		persons, findErr := findAllRecords(app, "persons", "year = {:year} && ("+filter+")", params)
@@ -786,17 +783,13 @@ func loadAidFormRoster(app core.App, year int) (*aidFormRoster, error) {
 			cmID := rec.GetInt("cm_id")
 			sessions := slices.Clone(regs[cmID])
 			slices.Sort(sessions)
-			p := aidform.Person{
+			roster.people = append(roster.people, aidform.Person{
 				PersonCMID: cmID, HouseholdCMID: rec.GetInt("household_id"),
 				First: rec.GetString("first_name"), Preferred: rec.GetString("preferred_name"),
 				Last: rec.GetString("last_name"), Birthdate: rec.GetString("birthdate"),
 				Emails:   []string{rec.GetString("primary_email"), rec.GetString("secondary_email")},
 				Sessions: sessions,
-			}
-			roster.people = append(roster.people, p)
-			if p.HouseholdCMID > 0 {
-				householdSet[p.HouseholdCMID] = true
-			}
+			})
 		}
 		return nil
 	}, "cm_id")
@@ -804,29 +797,6 @@ func loadAidFormRoster(app core.App, year int) (*aidFormRoster, error) {
 		return nil, fmt.Errorf("loading registered persons: %w", err)
 	}
 	slices.SortFunc(roster.people, func(a, b aidform.Person) int { return cmp.Compare(a.PersonCMID, b.PersonCMID) })
-
-	householdIDs := make([]string, 0, len(householdSet))
-	for _, h := range slices.Sorted(maps.Keys(householdSet)) {
-		householdIDs = append(householdIDs, strconv.Itoa(h))
-	}
-	err = forEachRosterIDChunk(householdIDs, func(filter string, params dbx.Params) error {
-		params["year"] = year
-		members, findErr := findAllRecords(app, "persons", "year = {:year} && ("+filter+")", params)
-		if findErr != nil {
-			return findErr
-		}
-		for _, rec := range members {
-			h := rec.GetInt("household_id")
-			roster.households[h] = append(roster.households[h], aidform.Member{
-				PersonCMID: rec.GetInt("cm_id"),
-				Emails:     []string{rec.GetString("primary_email"), rec.GetString("secondary_email")},
-			})
-		}
-		return nil
-	}, "household_id")
-	if err != nil {
-		return nil, fmt.Errorf("loading household members: %w", err)
-	}
 	return roster, nil
 }
 
@@ -897,14 +867,14 @@ func decideAidFormMatch(id aidform.Identity, choice *aidFormChoice, roster *aidF
 		// No weekend set: nothing to match against. Where they are registered
 		// is kept as evidence for staff.
 		_, elsewhere := roster.split(nil)
-		away := aidform.Match(id, nil, elsewhere, nil)
+		away := aidform.Match(id, nil, elsewhere)
 		d = aidform.Decision{Status: aidform.StatusUnmatched}
 		if away.Status == aidform.StatusRegisteredElsewhere {
 			d.Candidates, d.Signals = away.Candidates, away.Signals
 		}
 	} else {
 		pool, elsewhere := roster.split(choice.SessionCMIDs)
-		d = aidform.Match(id, pool, elsewhere, roster.households)
+		d = aidform.Match(id, pool, elsewhere)
 	}
 	weekend, registered := choice.WeekendSessionCMID, 0
 	if d.Status == aidform.StatusAuto && len(d.Candidates) == 1 {

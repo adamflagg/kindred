@@ -78,7 +78,7 @@ func TestMatchOutcomes(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got := Match(tc.id, pool(), elsewhere, nil)
+			got := Match(tc.id, pool(), elsewhere)
 			if got.Status != tc.wantStatus || got.PersonCMID != tc.wantPerson || got.Signals != tc.wantSigs {
 				t.Errorf("Match = {%s person=%d signals=%d}, want {%s person=%d signals=%d}",
 					got.Status, got.PersonCMID, got.Signals, tc.wantStatus, tc.wantPerson, tc.wantSigs)
@@ -97,7 +97,7 @@ func TestMatchOutcomes(t *testing.T) {
 // The auto match records the household and the evidence, CampMinder ids only.
 func TestMatchAutoCarriesHouseholdAndEvidence(t *testing.T) {
 	t.Parallel()
-	got := Match(Identity{Name: "Rachel Garcia", Birthdate: "1971-04-02", Email: "x@example.com"}, pool(), nil, nil)
+	got := Match(Identity{Name: "Rachel Garcia", Birthdate: "1971-04-02", Email: "x@example.com"}, pool(), nil)
 	if got.HouseholdCMID != 2000001 {
 		t.Errorf("household = %d, want 2000001", got.HouseholdCMID)
 	}
@@ -117,9 +117,7 @@ func TestMatchTwoStrongCandidatesAreSuggested(t *testing.T) {
 		{PersonCMID: 1000031, HouseholdCMID: 2000030, First: "Riley", Last: "Sam", Birthdate: "2001-05-05",
 			Emails: []string{"sam@example.com"}, Sessions: []int{weekendA}},
 	}
-	got := Match(Identity{Name: "Riley Sam", Birthdate: "1970-05-05", Email: "sam@example.com"}, p, nil,
-		map[int][]Member{2000030: {{PersonCMID: 1000030, Emails: []string{"sam@example.com"}},
-			{PersonCMID: 1000031, Emails: []string{"sam@example.com"}}}})
+	got := Match(Identity{Name: "Riley Sam", Birthdate: "1970-05-05", Email: "sam@example.com"}, p, nil)
 	if got.Status != StatusSuggested || got.PersonCMID != 0 {
 		t.Errorf("Match = %+v, want suggested with no person", got)
 	}
@@ -128,9 +126,10 @@ func TestMatchTwoStrongCandidatesAreSuggested(t *testing.T) {
 	}
 }
 
-// Email on the household's OTHER persons is a tie-break between strong
-// candidates only: it breaks a tie, and is never a signal of its own.
-func TestMatchHouseholdEmailIsOnlyATieBreak(t *testing.T) {
+// Q1 = strict: namesakes sharing a birthdate in two households each match
+// two signals, and stay suggested whoever's household holds the typed email.
+// (This once asserted a household-email tie-break auto-link.)
+func TestMatchNamesakesInTwoHouseholdsAreSuggested(t *testing.T) {
 	t.Parallel()
 	p := []Person{
 		{PersonCMID: 1000040, HouseholdCMID: 2000040, First: "Emma", Last: "Johnson", Birthdate: "1975-07-07",
@@ -138,25 +137,10 @@ func TestMatchHouseholdEmailIsOnlyATieBreak(t *testing.T) {
 		{PersonCMID: 1000041, HouseholdCMID: 2000041, First: "Emma", Last: "Johnson", Birthdate: "1975-07-07",
 			Sessions: []int{weekendA}},
 	}
-	households := map[int][]Member{
-		2000040: {{PersonCMID: 1000040}, {PersonCMID: 1000042, Emails: []string{"spouse@example.com"}}},
-		2000041: {{PersonCMID: 1000041}},
-	}
 	id := Identity{Name: "Emma Johnson", Birthdate: "1975-07-07", Email: "spouse@example.com"}
-	got := Match(id, p, nil, households)
-	if got.Status != StatusAuto || got.PersonCMID != 1000040 || got.Signals != 2 {
-		t.Errorf("tie-break: %+v, want auto 1000040 on 2 signals", got)
-	}
-	if len(got.Candidates) != 1 || !got.Candidates[0].HouseholdEmail {
-		t.Errorf("evidence should record the household email: %+v", got.Candidates)
-	}
-
-	// One candidate with the name only plus a household email stays one signal: suggested.
-	solo := []Person{p[0]}
-	nameOnly := Identity{Name: "Emma Johnson", Birthdate: "1960-01-01", Email: "spouse@example.com"}
-	got = Match(nameOnly, solo, nil, households)
-	if got.Status != StatusSuggested || got.Signals != 1 {
-		t.Errorf("household email counted as a signal: %+v", got)
+	got := Match(id, p, nil)
+	if got.Status != StatusSuggested || got.PersonCMID != 0 || got.Signals != 2 || len(got.Candidates) != 2 {
+		t.Errorf("Match = %+v, want suggested with both on 2 signals", got)
 	}
 }
 
@@ -169,7 +153,7 @@ func TestMatchElsewhereOutranksAWeakPoolHit(t *testing.T) {
 			Emails: []string{"emma@example.com"}, Sessions: []int{weekendB}},
 	}
 	got := Match(Identity{Name: "Emma Johnson", Birthdate: "1971-04-02", Email: "emma@example.com"},
-		pool(), elsewhere, nil)
+		pool(), elsewhere)
 	if got.Status != StatusRegisteredElsewhere {
 		t.Fatalf("status = %s, want registered_elsewhere", got.Status)
 	}
@@ -183,8 +167,39 @@ func TestMatchSplitNameTriesEveryBoundary(t *testing.T) {
 	t.Parallel()
 	p := []Person{{PersonCMID: 1000050, First: "Mary Ann", Last: "Garcia", Birthdate: "1966-02-02",
 		Sessions: []int{weekendA}}}
-	got := Match(Identity{Name: "Mary Ann Garcia", Birthdate: "1966-02-02"}, p, nil, nil)
+	got := Match(Identity{Name: "Mary Ann Garcia", Birthdate: "1966-02-02"}, p, nil)
 	if got.Status != StatusAuto || got.PersonCMID != 1000050 {
 		t.Errorf("Match = %+v, want auto on the two-word first name", got)
+	}
+}
+
+// Q1 = strict (owner ruling 2026-10-29): two people in different households
+// each matching two signals are never auto-linked. Staff pick from both. Match
+// takes no household at all; the sync job's test seeds a spouse holding the
+// typed email.
+func TestMatchStrongCandidatesInTwoHouseholdsAreSuggestedDespiteHouseholdEmail(t *testing.T) {
+	t.Parallel()
+	p := []Person{
+		// name and email (the family's shared address)
+		{PersonCMID: 1000060, HouseholdCMID: 2000060, First: "Rachel", Last: "Lee", Birthdate: "1982-03-04",
+			Emails: []string{"lees@example.com"}, Sessions: []int{weekendA}},
+		// name and birthdate, in another household
+		{PersonCMID: 1000061, HouseholdCMID: 2000061, First: "Rachel", Last: "Lee", Birthdate: "1982-04-03",
+			Emails: []string{"rlee@example.com"}, Sessions: []int{weekendA}},
+	}
+	got := Match(Identity{Name: "Rachel Lee", Birthdate: "1982-04-03", Email: "lees@example.com"}, p, nil)
+	if got.Status != StatusSuggested || got.PersonCMID != 0 || got.HouseholdCMID != 0 || got.Signals != 2 {
+		t.Errorf("Match = {%s person=%d household=%d signals=%d}, want suggested, no person, 2 signals",
+			got.Status, got.PersonCMID, got.HouseholdCMID, got.Signals)
+	}
+	var ids []int
+	for _, c := range got.Candidates {
+		ids = append(ids, c.PersonCMID)
+		if len(c.Signals) != 2 {
+			t.Errorf("candidate %d signals = %v, want two", c.PersonCMID, c.Signals)
+		}
+	}
+	if !slices.Equal(ids, []int{1000060, 1000061}) {
+		t.Errorf("candidates = %v, want both", ids)
 	}
 }
