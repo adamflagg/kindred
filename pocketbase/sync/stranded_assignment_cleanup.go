@@ -186,35 +186,6 @@ type lodgingOrphanCandidate struct {
 // skipped (grain-less); a session with zero reliably-enrolled parties of that
 // grain is skipped entirely, mirroring findEnrollmentOrphans' own per-session
 // guard.
-// lodgingCandidatesFromRecords projects lodging_assignments /
-// lodging_assignments_draft rows into candidates for
-// findLodgingEnrollmentOrphans. Shared by the draft-delete and prod-audit
-// halves of reconcileLodgingOrphans below, which otherwise duplicate this loop
-// verbatim except for the by-id index the draft half needs to delete by.
-//
-// placedOnly skips rows with no units. The prod audit passes true, exactly as
-// it always has: an unplaced mirror row has nothing to report. The draft pass
-// passes false, because a party no longer enrolled loses its draft row even
-// when an earlier run (or staff) already cleared its units -- the lodging twin
-// of the summer pass reading drafts whose bunk is already null.
-func lodgingCandidatesFromRecords(
-	records []*core.Record, placedOnly bool,
-) (map[string]*core.Record, []lodgingOrphanCandidate) {
-	byID := make(map[string]*core.Record, len(records))
-	candidates := make([]lodgingOrphanCandidate, 0, len(records))
-	for _, r := range records {
-		if placedOnly && len(r.GetStringSlice("units")) == 0 {
-			continue // already unplaced -- nothing to report
-		}
-		byID[r.Id] = r
-		candidates = append(candidates, lodgingOrphanCandidate{
-			RecordID: r.Id, SessionCMID: r.GetInt("session_cm_id"),
-			HouseholdCMID: r.GetInt("household_cm_id"), PersonCMID: r.GetInt("person_cm_id"),
-		})
-	}
-	return byID, candidates
-}
-
 func findLodgingEnrollmentOrphans(
 	householdIndex, personIndex map[int][]SessionWindow,
 	candidates []lodgingOrphanCandidate,
@@ -242,6 +213,35 @@ func findLodgingEnrollmentOrphans(
 		}
 	}
 	return orphans
+}
+
+// lodgingCandidatesFromRecords projects lodging_assignments /
+// lodging_assignments_draft rows into candidates for
+// findLodgingEnrollmentOrphans. Shared by the draft-delete and prod-audit
+// halves of reconcileLodgingOrphans below, which otherwise duplicate this loop
+// verbatim except for the by-id index the draft half needs to delete by.
+//
+// placedOnly skips rows with no units. The prod audit passes true, exactly as
+// it always has: an unplaced mirror row has nothing to report. The draft pass
+// passes false, because a party no longer enrolled loses its draft row even
+// when an earlier run (or staff) already cleared its units -- the lodging twin
+// of the summer pass reading drafts whose bunk is already null.
+func lodgingCandidatesFromRecords(
+	records []*core.Record, placedOnly bool,
+) (map[string]*core.Record, []lodgingOrphanCandidate) {
+	byID := make(map[string]*core.Record, len(records))
+	candidates := make([]lodgingOrphanCandidate, 0, len(records))
+	for _, r := range records {
+		if placedOnly && len(r.GetStringSlice("units")) == 0 {
+			continue // already unplaced -- nothing to report
+		}
+		byID[r.Id] = r
+		candidates = append(candidates, lodgingOrphanCandidate{
+			RecordID: r.Id, SessionCMID: r.GetInt("session_cm_id"),
+			HouseholdCMID: r.GetInt("household_cm_id"), PersonCMID: r.GetInt("person_cm_id"),
+		})
+	}
+	return byID, candidates
 }
 
 // StrandedAssignmentCleanupSync silently cleans up scenario draft assignments

@@ -1327,6 +1327,43 @@ func TestStrandedAssignmentCleanup_DraftFlaggedByBothReasonsIsDeleted(t *testing
 	}
 }
 
+// Enrollment is judged against the draft's OWN session, never the scenario's. One camper, one
+// scenario, two sessions: still enrolled in the second (an AG session folded into a main-session
+// scenario, say) but cancelled in the first. Only the first session's draft goes; the draft in the
+// session they are still enrolled in is untouched, so a camper enrolled elsewhere in the same
+// scenario is never deleted on the strength of a different session's status.
+func TestStrandedAssignmentCleanup_EnrollmentJudgedPerDraftSession(t *testing.T) {
+	t.Parallel()
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+	setupStrandedCollections(t, app)
+	f := newStrandedFixture(t, app)
+
+	other := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": 101, "year": 2026})
+	moved := f.camper(t, app, 9001, 32) // cancelled in f.sess
+	saveRec(t, app, "attendees", map[string]any{"person": moved.Id, "session": other.Id, "status_id": 2, "year": 2026})
+
+	gone := f.draft(t, app, moved, nil)
+	kept := saveRec(t, app, "bunk_assignments_draft", map[string]any{
+		"scenario": f.scenario.Id, "person": moved.Id, "session": other.Id, "year": 2026,
+	})
+
+	svc := runStrandedCleanup(t, app, false)
+
+	if recordExists(t, app, "bunk_assignments_draft", gone.Id) {
+		t.Error("draft in the session the camper cancelled survived -- want it deleted")
+	}
+	if !recordExists(t, app, "bunk_assignments_draft", kept.Id) {
+		t.Error("draft in the session the camper is still enrolled in was deleted")
+	}
+	if svc.Stats.Deleted != 1 {
+		t.Errorf("Stats.Deleted = %d, want 1", svc.Stats.Deleted)
+	}
+}
+
 // A dry run deletes nothing but counts what it would have deleted.
 func TestStrandedAssignmentCleanup_DryRunCountsButKeepsEnrollmentOrphanDraft(t *testing.T) {
 	t.Parallel()

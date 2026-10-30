@@ -8,15 +8,18 @@ import (
 	pbtests "github.com/pocketbase/pocketbase/tests"
 )
 
-// TestStrandedAssignmentCleanupDryRunLeavesDraftUntouched proves both of
-// reconcileStrandedAssignments' write sites are gated (kindred#2351): a
+// TestStrandedAssignmentCleanupDryRunLeavesDraftUntouched proves
+// reconcileStrandedAssignments' unassign write is gated (kindred#2351): a
 // draft that a wet run would null out survives a dry run byte-for-byte, and
-// Stats.Updated still reports what WOULD have been swept so an operator's
-// preview is accurate.
+// Stats.Updated still reports what WOULD have been unassigned so an operator's
+// preview is accurate. Its other write, the delete of a no-longer-enrolled
+// camper's draft, is gated the same way and proven by
+// TestStrandedAssignmentCleanup_DryRunCountsButKeepsEnrollmentOrphanDraft
+// (stranded_assignment_cleanup_test.go), which checks Stats.Deleted instead.
 //
 // reconcileStrandedAssignments is one of TWO functions StrandedAssignmentCleanupSync's
 // DryRun guards -- see TestStrandedAssignmentCleanupDryRunLeavesLodgingDraftUntouched below
-// for the second, reconcileLodgingOrphans' units write.
+// for the second, reconcileLodgingOrphans' draft delete.
 //
 // Deliberately a new file rather than an addition to
 // stranded_assignment_cleanup_test.go: that file's fixtures are being
