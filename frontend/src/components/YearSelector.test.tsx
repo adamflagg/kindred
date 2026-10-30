@@ -2,7 +2,7 @@
  * Tests for YearSelector - loading state when years are unavailable
  */
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createElement } from 'react'
 import { CurrentYearContext, type CurrentYearContextType } from '../hooks/useCurrentYear'
@@ -93,9 +93,9 @@ describe('YearSelector', () => {
     expect(document.querySelector('.lucide-calendar')).toBeNull()
   })
 
-  // CLOSED-SEASONS-DONE (owner ruling CSD-3, "everywhere"): a closed season (older than N-1) wears a lock mark on
-  // the picker's button and in its list, wherever the app-wide picker appears. A mark only: nothing unlocks.
-  describe('the closed-season lock (CSD-3)', () => {
+  // Owner ruling 2026-10-29: the closed-season lock mark is gone (it replaces CSD-3). A closed season (older than
+  // N-1) is told apart only by a lighter grey in the list; the button reads as for any year.
+  describe('closed seasons in the picker (no lock mark)', () => {
     const ctx = (currentYear: number) => ({
       currentYear,
       setCurrentYear: vi.fn(),
@@ -105,7 +105,7 @@ describe('YearSelector', () => {
       configuredYear: 2027,
     })
 
-    it('locks the button of a closed season, on Camperships and elsewhere', () => {
+    it('draws no lock on the button of a closed season, on Camperships or elsewhere', () => {
       const { unmount } = render(
         createElement(
           CurrentYearContext.Provider,
@@ -114,37 +114,57 @@ describe('YearSelector', () => {
         )
       )
       const button = screen.getByText('2025').closest('button') as HTMLElement
-      expect(within(button).getByTestId('season-lock')).toHaveAttribute(
-        'title',
-        '2025 is closed: shown as history'
-      )
+      expect(screen.queryByTestId('season-lock')).toBeNull()
+      expect(button.querySelector('.lucide-lock')).toBeNull()
+      // The button text is not greyed, even for a closed year.
+      expect(button).not.toHaveClass('text-muted-foreground')
+      expect(screen.getByText('2025')).not.toHaveClass('text-muted-foreground')
       unmount()
       renderWithContext(ctx(2025))
-      const plain = screen.getByText('2025').closest('button') as HTMLElement
-      expect(within(plain).getByTestId('season-lock')).toBeInTheDocument()
-    })
-
-    it('leaves an open season unmarked', () => {
-      renderWithContext(ctx(2026))
       expect(screen.queryByTestId('season-lock')).toBeNull()
     })
 
-    it('marks every closed season in the list, and only those', async () => {
-      renderWithContext(ctx(2027))
+    it('greys only the closed seasons in the list, keeps them selectable, titles them', async () => {
+      const context = ctx(2027)
+      renderWithContext(context)
       await userEvent.click(screen.getByText('2027').closest('button') as HTMLElement)
-      const locked = (year: string) =>
-        within(screen.getByRole('option', { name: new RegExp(`^${year}`) })).queryByTestId(
-          'season-lock'
-        )
-      expect(locked('2027')).toBeNull()
-      expect(locked('2026')).toBeNull()
-      expect(locked('2025')).not.toBeNull()
-      expect(locked('2024')).not.toBeNull()
-      // A mark only: picking a closed season still works.
-      expect(screen.queryByText(/unlock/i)).toBeNull()
+      const option = (year: string) => screen.getByRole('option', { name: new RegExp(`^${year}`) })
+      expect(screen.queryByTestId('season-lock')).toBeNull()
+      expect(document.querySelector('.lucide-lock')).toBeNull()
+      expect(option('2027')).not.toHaveClass('text-muted-foreground')
+      expect(option('2026')).not.toHaveClass('text-muted-foreground')
+      expect(option('2025')).toHaveClass('text-muted-foreground')
+      expect(option('2024')).toHaveClass('text-muted-foreground')
+      expect(option('2025')).toHaveAttribute('title', '2025 is closed: shown as history')
+      expect(option('2026')).not.toHaveAttribute('title')
+      // Still selectable.
+      await userEvent.click(option('2025'))
+      expect(context.setCurrentYear).toHaveBeenCalledWith(2025)
     })
 
-    it('marks nothing before the configured season is known', () => {
+    it('draws the kit check beside the selected year only, in the aid variant only', async () => {
+      const { unmount } = render(
+        createElement(
+          CurrentYearContext.Provider,
+          { value: ctx(2026) },
+          createElement(YearSelector, { aid: true })
+        )
+      )
+      await userEvent.click(screen.getByText('2026').closest('button') as HTMLElement)
+      const option = (year: string) => screen.getByRole('option', { name: new RegExp(`^${year}`) })
+      const check = option('2026').querySelector('[aria-hidden]')
+      expect(check).toHaveTextContent('✓')
+      expect(check).toHaveClass('text-primary', 'absolute', 'left-[7px]')
+      for (const other of ['2027', '2025', '2024']) {
+        expect(option(other).querySelector('[aria-hidden]')).toBeNull()
+      }
+      unmount()
+      renderWithContext(ctx(2026))
+      await userEvent.click(screen.getByText('2026').closest('button') as HTMLElement)
+      expect(screen.queryByText('✓')).toBeNull()
+    })
+
+    it('greys nothing before the configured season is known', async () => {
       const { setCurrentYear, availableYears, isTransitioning, isYearReady } = ctx(2025)
       renderWithContext({
         currentYear: 2025,
@@ -153,7 +173,8 @@ describe('YearSelector', () => {
         isTransitioning,
         isYearReady,
       })
-      expect(screen.queryByTestId('season-lock')).toBeNull()
+      await userEvent.click(screen.getByText('2025').closest('button') as HTMLElement)
+      expect(screen.getByRole('option', { name: /^2024/ })).not.toHaveClass('text-muted-foreground')
     })
   })
 })

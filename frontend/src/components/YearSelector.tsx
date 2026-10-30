@@ -1,24 +1,13 @@
-import { Calendar, Loader2, ChevronDown, Lock } from 'lucide-react'
+import { Calendar, Loader2, ChevronDown } from 'lucide-react'
 import { Listbox, ListboxButton, ListboxOptions, ListboxOption } from '@headlessui/react'
 import { useCurrentYear } from '../hooks/useCurrentYear'
-import { CS_PICKER, CS_PICKER_OPTION, CS_PICKER_OPTIONS } from './camperships/kit/csType'
+import {
+  CS_PICKER,
+  CS_PICKER_CHECK,
+  CS_PICKER_OPTION,
+  CS_PICKER_OPTIONS,
+} from './camperships/kit/csType'
 import { isClosedSeason } from '../utils/closedSeason'
-
-/**
- * CLOSED-SEASONS-DONE (owner ruling CSD-3, "everywhere"): a closed season's lock mark, on the picker's button and in
- * its list, wherever the app-wide picker appears. A mark only: there is no Unlock (CSD-8).
- */
-function SeasonLock({ year }: { year: number }) {
-  return (
-    <span
-      data-testid="season-lock"
-      title={`${String(year)} is closed: shown as history`}
-      className="text-muted-foreground ml-1 inline-flex"
-    >
-      <Lock className="h-[11px] w-[11px]" strokeWidth={2.2} />
-    </span>
-  )
-}
 
 /**
  * `aid` dresses the button and its list in the Camperships kit's white 26px picker (design language
@@ -62,10 +51,7 @@ export default function YearSelector({ aid = false }: { aid?: boolean }) {
                   : 'listbox-button-compact min-w-[80px] disabled:cursor-wait disabled:opacity-50'
               }
             >
-              <span className="inline-flex items-center">
-                {currentYear}
-                {closed(currentYear) && <SeasonLock year={currentYear} />}
-              </span>
+              <span>{currentYear}</span>
               <ChevronDown className={`text-muted-foreground ${aid ? 'h-3.5 w-3.5' : 'h-4 w-4'}`} />
             </ListboxButton>
             <ListboxOptions
@@ -76,12 +62,26 @@ export default function YearSelector({ aid = false }: { aid?: boolean }) {
                 <ListboxOption
                   key={year}
                   value={year}
-                  className={aid ? CS_PICKER_OPTION : 'listbox-option py-1.5'}
+                  // Owner ruling 2026-10-29: a closed season (older than N-1) reads a shade lighter than the
+                  // two open ones. No lock mark; it stays selectable.
+                  title={closed(year) ? `${String(year)} is closed: shown as history` : undefined}
+                  className={[
+                    aid ? CS_PICKER_OPTION : 'listbox-option py-1.5',
+                    closed(year) && 'text-muted-foreground',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
                 >
-                  <span className="inline-flex items-center">
-                    {year}
-                    {closed(year) && <SeasonLock year={year} />}
-                  </span>
+                  {({ selected }) => (
+                    <>
+                      {aid && selected && (
+                        <span className={CS_PICKER_CHECK} aria-hidden>
+                          ✓
+                        </span>
+                      )}
+                      <span>{year}</span>
+                    </>
+                  )}
                 </ListboxOption>
               ))}
             </ListboxOptions>

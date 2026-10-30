@@ -9,6 +9,7 @@ import {
   CS_PICKER_GROUP,
   CS_PICKER_OPTION,
   CS_PICKER_OPTIONS,
+  CS_PICKER_CHECK,
 } from './csType'
 
 interface PickerBase<V extends string | number> {
@@ -39,7 +40,6 @@ interface SinglePicker<V extends string | number> extends PickerBase<V> {
   readonly faceText?: string
 }
 
-const CHECK = 'text-primary absolute left-[7px]'
 const BOX =
   'border-border bg-card text-primary-foreground absolute left-1.5 inline-flex h-3 w-3 items-center justify-center rounded-[3px] border text-[9px] leading-none'
 const BOX_ON = 'bg-primary border-primary'
@@ -141,7 +141,7 @@ export function AidPicker<V extends string | number>({
                 {({ selected }) => (
                   <>
                     {selected && (
-                      <span className={CHECK} aria-hidden>
+                      <span className={CS_PICKER_CHECK} aria-hidden>
                         ✓
                       </span>
                     )}
