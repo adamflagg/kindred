@@ -1,6 +1,7 @@
 import { useId, useMemo, useRef, useState } from 'react'
 
 import { AidTable, type AidColumn } from '../kit/AidTable'
+import { Cut } from '../kit/Cut'
 import {
   CS_AMBER_NOTE,
   CS_BODY,
@@ -175,7 +176,8 @@ export function LinkResponseEditor({
         header: 'Also',
         flex: true,
         value: (c) => candidateNote(c),
-        render: (c) => <span className={MUTED}>{candidateNote(c)}</span>,
+        // One line, as the mock's: the full words in the title.
+        render: (c) => <Cut text={candidateNote(c)} className={MUTED} />,
       },
     ],
     [pick, names, year]

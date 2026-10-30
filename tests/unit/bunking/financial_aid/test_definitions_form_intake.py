@@ -41,7 +41,7 @@ def test_the_adult_aid_form_reads_in_the_notes() -> None:
     assert "it prices that adult's own request" in BY_KEY["intake_form_asked"].text
     assert "this camper or adult" in BY_KEY["intake_became"].text
     look = BY_KEY["intake_needs_a_look"].text
-    assert "deleted in Google" in look
+    assert "deleted in Google or no longer linked" in look
     assert "flagged, not applied" in look
     link = BY_KEY["intake_responses_to_link"].text
     for words in ("could not tie to one person", "exactly one registered person", "name, birthdate and email"):

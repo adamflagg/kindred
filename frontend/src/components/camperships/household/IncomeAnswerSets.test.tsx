@@ -5,6 +5,7 @@
  * one-form table. Fictional names.
  */
 import { render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 
 import type { ApiAidAnswer } from '../../../types/api-types'
@@ -65,6 +66,33 @@ describe('IncomePanel: one answer set per form (GF-2 B)', () => {
     const set = band.closest('table') as HTMLElement
     expect(within(set).getAllByText('$104,000').length).toBeGreaterThan(0)
     expect(within(set).getAllByText('$40,000').length).toBeGreaterThan(0)
+  })
+
+  it("shows the adult set's priced figures first, the rest behind a toggle (mock v2 step 22)", async () => {
+    const many = householdPage({
+      requests: [
+        householdRequest(MIA, {
+          answers_source: 'google_form',
+          own_answers: [
+            answer('total_gross_income', '104000.00'),
+            answer('expected_gross_income', '100000.00'),
+            answer('total_medical_expenses', '3200.00'),
+            answer('non_retirement_savings', '40000.00'),
+            answer('total_rent', '26400.00'),
+            answer('unemployment', 'false'),
+          ],
+          form_submitted_at: '2026-11-05T17:00:00Z',
+        }),
+      ],
+    })
+    render(<IncomePanel page={many} programs={PROGRAMS} />)
+    const set = document.querySelector('[data-own-answers]') as HTMLElement
+    expect(within(set).queryByText('Rent')).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: '2 more answers ▸' }))
+    expect(within(set).getByText('Rent')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Show Only the Priced Figures ▴' })
+    ).toBeInTheDocument()
   })
 
   it('a household with one form keeps the one-form table, no bands', () => {

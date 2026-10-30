@@ -649,7 +649,10 @@ describe('Form intake: needs a look, with the adult aid form (adult aid form moc
         { code: 'form_response_deleted', families: null, items: 1 },
       ],
     })
-    expect(reasonsLine(l)).toBe('Responses to link 5 · session unclear 2 · response deleted 1')
+    // PR 2's "deleted" covers an ignored or re-linked response too: neutral words.
+    expect(reasonsLine(l)).toBe(
+      'Responses to link 5 · session unclear 2 · response no longer linked 1'
+    )
     const more = line('form_intake', 3, {
       item_kind: 'campers',
       families: null,

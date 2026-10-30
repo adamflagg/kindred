@@ -868,6 +868,10 @@ def candidate_out(raw: Mapping[str, Any]) -> FormCandidateOut:
     )
 
 
+def _deleted_with_person(row: FormResponseRow) -> bool:
+    return row.form_status == "deleted" and row.person_cm_id > 0 and row.household_cm_id > 0
+
+
 def form_responses_out(season: _Season) -> list[FormResponseOut]:
     """Every response of the season, newest first, as the opened Form intake row shows it (PR 2)."""
     replaced: dict[str, list[FormResponseRow]] = defaultdict(list)
@@ -885,7 +889,8 @@ def form_responses_out(season: _Season) -> list[FormResponseOut]:
             FormResponseOut(
                 id=row.id,
                 response_id=row.response_id,
-                row_key=f"{row.household_cm_id}:{row.person_cm_id}" if row.linked else "",
+                # A linked response's row; a deleted one keeps its person's row too (marked, never dropped: PR 3).
+                row_key=f"{row.household_cm_id}:{row.person_cm_id}" if row.linked or _deleted_with_person(row) else "",
                 match_status=row.match_status,
                 form_status="deleted" if row.form_status == "deleted" else "live",
                 to_link=row.to_link,

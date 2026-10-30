@@ -16,7 +16,9 @@ import {
   GRACE,
   HANNAH,
   JORDAN,
+  JORDAN_2,
   JORDAN_CHANGE,
+  JORDAN_REPLACED,
   LAST_READ,
   LIN,
   NOAH,
@@ -67,6 +69,15 @@ describe('figureRows (the opened row: five priced figures, the parse note beside
       ['Savings and investments', '$30,000'],
       ['Medical out of pocket', '$2,000'],
     ])
+  })
+
+  it('notes beside a figure what a flagged second response says instead (mock v2 step 4)', () => {
+    expect(figureRows(JORDAN, 2026 + 1, JORDAN_2)[1]).toEqual({
+      label: '2026 gross income',
+      value: '$62,000',
+      note: 'the Nov 10 response says $58,000: flagged, not applied',
+    })
+    expect(figureRows(JORDAN, 2027, JORDAN_2)[0]?.note).toBe('')
   })
 
   it('reads an unread figure as unknown, never $0, its note beside it', () => {
@@ -228,6 +239,13 @@ describe('responseLines (the Responses panel)', () => {
     expect(responseLines(ANA)).toEqual([
       { text: 'This response, Nov 4 · deleted in Google, kept here', current: true },
     ])
+  })
+
+  it('names what the flagged second response says, when it is in the read', () => {
+    expect(responseLines(JORDAN, JORDAN_CHANGE, JORDAN_2)[1]).toEqual({
+      text: 'Second response, Nov 10, after a decision (ask $600, 2026 gross $58,000): flagged, not applied',
+      current: false,
+    })
   })
 
   it('a reviewed change is history: no flagged line', () => {
@@ -483,11 +501,41 @@ describe('gridRows (Form intake with the responses no person holds)', () => {
 
   it("keeps every Form intake row, then adds a row for each live response no person holds; a superseded one shows in its successor's Responses only", () => {
     expect(grid.length).toBe(rows.length + 3)
-    expect(keys(grid.slice(rows.length))).toEqual([
+    expect(keys(grid.filter((r) => r.kind === 'response'))).toEqual([
       'response:resp-dana',
       'response:resp-casey',
       'response:resp-lin',
     ])
+  })
+
+  it('lists responses to link first (suggested, registered elsewhere, not registered), then the rows, then the ignored (mock v2 step 15)', () => {
+    const order = gridRows(rows.slice(0, 1), [LIN, CASEY, EMMA_GF, DANA]).map((r) => r.key)
+    expect(order).toEqual([
+      'response:resp-dana',
+      'response:resp-emma',
+      'response:resp-casey',
+      rows[0]!.key,
+      'response:resp-lin',
+    ])
+  })
+
+  it('keeps a response whose row is not in the read as a row of its own, so it never vanishes', () => {
+    const orphan = { ...response(), row_key: '1000099:1000991' }
+    expect(gridRows([], [orphan]).map((r) => r.kind)).toEqual(['response'])
+  })
+
+  it('a row whose request was decided on an earlier response opens onto that one, the second flagged beside it', () => {
+    const row = {
+      ...rows[0]!,
+      key: '1000018:1000181',
+      became: [became({ form_change: JORDAN_CHANGE })],
+    }
+    const [g] = gridRows([row], [JORDAN_REPLACED, JORDAN_2])
+    expect(g).toMatchObject({
+      kind: 'row',
+      response: { response_id: 'resp-jordan' },
+      flagged: { response_id: 'resp-jordan-2' },
+    })
   })
 
   it('attaches a linked response to its row by row key', () => {
@@ -510,6 +558,23 @@ describe('gridRows (Form intake with the responses no person holds)', () => {
   })
 })
 
+describe('becameFlag', () => {
+  it('a deletion with no time says so without a day', async () => {
+    const { becameFlag } = await import('./adultFormModel')
+    const flag = becameFlag(became({ form_change: { kind: 'deleted', at: '', reviewed: false } }))
+    // A decided request's response can leave it by a deletion in Google, an Ignore… or a Link… to someone else.
+    expect(flag?.words).toBe('response no longer linked')
+    expect(flag?.title).toMatch(
+      /^The adult aid form response this request was priced from is no longer linked to it: deleted in Google, ignored, or linked to someone else\. /
+    )
+    expect(
+      becameFlag(
+        became({ form_change: { kind: 'deleted', at: '2026-11-11T18:00:00Z', reviewed: false } })
+      )?.title
+    ).toContain('no longer linked to it since Nov 11')
+  })
+})
+
 describe('became helpers stay compatible with 2026 rows (no source, no flags)', () => {
   it('a 2026 became has no adult-form flag', async () => {
     const { becameFlag } = await import('./adultFormModel')
@@ -526,7 +591,9 @@ describe('the segments with Responses to link (mock v2 step 5)', () => {
       'Registration ask only',
       'All forms',
     ])
-    expect(GRID_SEGMENTS[0]?.title).toContain('an adult aid form response deleted in Google')
+    expect(GRID_SEGMENTS[0]?.title).toContain(
+      'an adult aid form response deleted in Google or no longer linked'
+    )
     expect(GRID_SEGMENTS[1]?.title).toContain('Link… or Ignore… each')
     expect(GRID_SEGMENTS[3]?.title).toContain('Ignored responses show here, with the reason')
   })

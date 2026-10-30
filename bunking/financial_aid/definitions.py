@@ -894,7 +894,7 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         text=(
             "Needs a look: CampMinder aid on no request, an enrollment no request holds, a session that is unclear, "
             "a request made from a registration ask that no one has reviewed yet, or an adult aid form response "
-            "deleted in Google or sent again after a decision (flagged, not applied)."
+            "deleted in Google or no longer linked, or sent again after a decision (flagged, not applied)."
         ),
         spec="§9.1",
         rulings=("D170",),

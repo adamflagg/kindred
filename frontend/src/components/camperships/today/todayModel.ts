@@ -495,7 +495,7 @@ const REASON_WORDS: Readonly<Record<string, string>> = {
   registration_ask_unreviewed: 'reg. ask to review',
   // The adult aid form's (adult aid form design §10)
   form_response_to_link: 'responses to link',
-  form_response_deleted: 'response deleted',
+  form_response_deleted: 'response no longer linked',
   form_changed_after_decision: 'second response after a decision',
   form_pull_refused: 'read from Google refused',
   form_choice_unclear: 'program choice unclear',

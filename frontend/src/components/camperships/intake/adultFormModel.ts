@@ -28,6 +28,7 @@ import {
   inSegment,
   INTAKE_WORDS,
   readSegment,
+  wordsOr,
   tinyName,
   type IntakeSegment,
   type SessionIndex,
@@ -96,12 +97,29 @@ export const PRICED_FIELDS: readonly string[] = PRICED.map((p) => p.field)
 const figureOf = (r: FormResponseOut, field: string) =>
   (r.figures ?? []).find((f) => f.field === field)
 
-export function figureRows(r: FormResponseOut, year: number): FigureRow[] {
+/**
+ * The priced figures. `flagged` is a second response that came after a decision (GF-4, owner Q6): where it says
+ * otherwise, the note beside the figure says what, and that it was not applied (mock v2 step 4).
+ */
+export function figureRows(
+  r: FormResponseOut,
+  year: number,
+  flagged: FormResponseOut | null = null
+): FigureRow[] {
   return PRICED.map(({ field, label }) => {
     const f = figureOf(r, field)
     const value = f === undefined || f.value === null ? null : formatMoney(f.value)
-    // Only the parse note: the read sends no words for what the rules make of a figure, and none are made up here.
-    return { label: label(year), value, note: f?.note ?? '' }
+    const later = flagged === null ? undefined : figureOf(flagged, field)
+    const differs =
+      later !== undefined && later.value !== null && later.value !== (f?.value ?? null)
+    // Only the parse note and the flagged one: the read sends no words for what the rules make of a figure.
+    const notes = [
+      f?.note ?? '',
+      differs && flagged !== null
+        ? `the ${day(flagged.submitted_at)} response says ${formatMoney(later.value ?? 0)}: flagged, not applied`
+        : '',
+    ].filter((n) => n !== '')
+    return { label: label(year), value, note: notes.join(' · ') }
   })
 }
 
@@ -144,7 +162,7 @@ export function alsoLine(r: FormResponseOut): string {
 }
 
 export const signedLine = (r: FormResponseOut) =>
-  `Signed “${r.signature_typed ?? ''}”, ${day(r.agreement_date || r.submitted_at)}`
+  `Signed “${r.signature_typed ?? ''}”, ${day(wordsOr(r.agreement_date, r.submitted_at ?? ''))}`
 
 // ── the Match panel ───────────────────────────────────────────────────────────────────────────
 
@@ -184,14 +202,14 @@ export function matchEvidence(
           muted:
             tie === undefined
               ? ''
-              : `· the email belongs to someone in ${tie.camper_name || 'one'}'s household (a tie-break, never a match)`,
+              : `· the email belongs to someone in ${wordsOr(tie.camper_name, 'one')}'s household (a tie-break, never a match)`,
         }
       }
       const note = first === undefined ? '' : candidateNote(first)
       return {
         segs: [
           { text: 'Suggested: ' },
-          { text: first?.camper_name || 'one person', bold: true },
+          { text: wordsOr(first?.camper_name, 'one person'), bold: true },
           { text: ` (${tinyName(firstSession(first), names)}) matches on ` },
           { text: signalWords(signalsOf(first)), bold: true },
         ],
@@ -206,7 +224,7 @@ export function matchEvidence(
           { text: ', registered for ' },
           { text: weekendShort(firstSession(first), names), bold: true },
         ],
-        muted: `· ${first?.camper_name || 'someone'} matches on ${signalWords(signalsOf(first))}, in another weekend`,
+        muted: `· ${wordsOr(first?.camper_name, 'someone')} matches on ${signalWords(signalsOf(first))}, in another weekend`,
       }
     case 'not_registered':
     case 'unmatched':
@@ -273,24 +291,39 @@ const otherFigures = (o: SupersededOut, year: number) =>
  */
 export function responseLines(
   r: FormResponseOut,
-  change: FormChangeOut | null = null
+  change: FormChangeOut | null = null,
+  flagged: FormResponseOut | null = null
 ): Array<{ text: string; current: boolean }> {
   const year = registrationYear(r)
   const open = change !== null && change.reviewed !== true ? change : null
-  const flagged = open?.kind === 'changed_after_decision'
+  const isFlagged = open?.kind === 'changed_after_decision'
   const deletedOn = change?.kind === 'deleted' && change.at ? ` ${day(change.at)}` : ''
   const deleted = r.form_status === 'deleted' ? ` · deleted in Google${deletedOn}, kept here` : ''
   const lines = [
     {
-      text: `This response, ${day(r.submitted_at)}${flagged ? ' · prices the request' : ''}${deleted}`,
+      text: `This response, ${day(r.submitted_at)}${isFlagged ? ' · prices the request' : ''}${deleted}`,
       current: true,
     },
   ]
-  if (flagged)
+  if (isFlagged) {
+    const at = wordsOr(flagged?.submitted_at, open.at ?? '')
+    const figs =
+      flagged === null
+        ? ''
+        : otherFigures(
+            {
+              response_id: flagged.response_id,
+              submitted_at: flagged.submitted_at ?? '',
+              ask: flagged.ask ?? null,
+              total_gross_income: figureOf(flagged, 'total_gross_income')?.value ?? null,
+            },
+            year
+          )
     lines.push({
-      text: `Second response${open.at ? `, ${day(open.at)}` : ''}, after a decision: flagged, not applied`,
+      text: `Second response${at ? `, ${day(at)}` : ''}, after a decision${figs ? ` (${figs})` : ''}: flagged, not applied`,
       current: false,
     })
+  }
   for (const o of r.superseded ?? []) {
     const figs = otherFigures(o, year)
     lines.push({
@@ -338,7 +371,7 @@ export function responseBecame(
   const year = String(registrationYear(r))
   switch (r.match_status) {
     case 'suggested': {
-      const people = candidates.map((c) => c.camper_name || 'someone').join(' or ')
+      const people = candidates.map((c) => wordsOr(c.camper_name, 'someone')).join(' or ')
       if (candidates.length > 1) {
         const common = SIGNAL_ORDER.filter((s) => candidates.every((c) => signalsOf(c).includes(s)))
         return {
@@ -360,7 +393,7 @@ export function responseBecame(
         tone: 'amber',
         words: 'Registered elsewhere',
         why: `Chose ${tinyName(weekendOf(r), names)}, registered for ${tinyName(firstSession(first), names)}`,
-        title: `Registered elsewhere: ${first?.camper_name || 'someone'} matches on ${signalWords(signalsOf(first))}, but is registered for ${fullName(firstSession(first), names)}, not the ${fullName(weekendOf(r), names)} the form chose. No request until staff link the response or the choice matches.`,
+        title: `Registered elsewhere: ${wordsOr(first?.camper_name, 'someone')} matches on ${signalWords(signalsOf(first))}, but is registered for ${fullName(firstSession(first), names)}, not the ${fullName(weekendOf(r), names)} the form chose. No request until staff link the response or the choice matches.`,
       }
     case 'ignored': {
       const w = ignoredWords(r)
@@ -397,7 +430,9 @@ export function responseAsked(
 ): { main: string; title: string } {
   const s = names.get(weekendOf(r))
   const what =
-    s === undefined ? r.program_choice || 'a weekend' : aidCellShortName(s.name, s.session_type)
+    s === undefined
+      ? wordsOr(r.program_choice, 'a weekend')
+      : aidCellShortName(s.name, s.session_type)
   const ask = r.ask == null ? 'ask unknown' : formatMoney(r.ask)
   return {
     main: `${what} · ${ask}`,
@@ -413,8 +448,9 @@ export function becameFlag(b: BecameOut): { words: string; title: string } | nul
   if (change != null && change.reviewed !== true)
     return change.kind === 'deleted'
       ? {
-          words: 'response deleted in Google',
-          title: `The adult aid form response was deleted in Google on ${day(change.at)}. The request and its decisions are kept, and nothing changes until staff act. Mark Reviewed keeps it as it is.`,
+          // The read's "deleted" also covers a response staff ignored or linked to someone else (PR 2): neutral words.
+          words: 'response no longer linked',
+          title: `The adult aid form response this request was priced from is no longer linked to it${change.at ? ` since ${day(change.at)}` : ''}: deleted in Google, ignored, or linked to someone else. The request and its decisions are kept, and nothing changes until staff act. Mark Reviewed keeps it as it is.`,
         }
       : {
           words: 'flagged, not applied',
@@ -450,7 +486,7 @@ const refusedStatus = (g: GoogleFormStatusOut) =>
 export function lastReadWords(
   g: GoogleFormStatusOut | null
 ): { text: string; title: string; tone: 'muted' | 'warn' } | null {
-  if (g === null || !g.last_pulled_at) return null
+  if (!g?.last_pulled_at) return null
   if (g.refused === true) {
     const at = clock(g.last_pulled_at)
     const counts = refusedCounts(g)
@@ -558,7 +594,7 @@ export function linkEffects(
     })
   out.push({
     sym: 'ok',
-    lead: `Links the response to ${pick.camper_name || 'them'}`,
+    lead: `Links the response to ${wordsOr(pick.camper_name, 'them')}`,
     then: `→ makes the ${session === 0 ? 'adult aid form' : tinyName(session, names)} request${r.ask == null ? '' : `, asking ${formatMoney(r.ask)}`}, priced from this form's own figures`,
   })
   if (session !== 0 && weekendOf(r) !== 0 && !sameWeekend(session, weekendOf(r), names))
@@ -602,7 +638,7 @@ export const GRID_SEGMENTS: ReadonlyArray<{
     value: 'look',
     label: 'Needs a look',
     title:
-      'Needs a look: CampMinder aid on no request, an enrollment no request holds, a session that is unclear, a request made from a registration ask that no one has reviewed, or an adult aid form response deleted in Google, or a second one sent after a decision (flagged, not applied).',
+      'Needs a look: CampMinder aid on no request, an enrollment no request holds, a session that is unclear, a request made from a registration ask that no one has reviewed, or an adult aid form response deleted in Google or no longer linked, or a second one sent after a decision (flagged, not applied).',
   },
   {
     value: 'link',
@@ -634,33 +670,62 @@ export type IntakeGridRow =
       readonly kind: 'row'
       readonly key: string
       readonly row: FormIntakeRowOut
+      /** The response the row's request is priced from. */
       readonly response: FormResponseOut | null
+      /** A second response after a decision, flagged and not applied (GF-4): the row's response replaced by it. */
+      readonly flagged?: FormResponseOut | null | undefined
     }
   | { readonly kind: 'response'; readonly key: string; readonly response: FormResponseOut }
 
-/** Each Form intake row (with its live adult-form response), then a row per live response no person holds. */
+/** A response no person holds sorts by how near it is to a request (mock v2 step 15). */
+const RESPONSE_ORDER: Readonly<Record<string, number>> = {
+  suggested: 0,
+  registered_elsewhere: 1,
+  not_registered: 2,
+  unmatched: 2,
+}
+
+/**
+ * The grid (mock v2 step 15): the responses to link first (Suggested, Registered elsewhere, Not registered), then each
+ * Form intake row with its adult aid form response, then the ignored responses. A superseded response shows only in
+ * its successor's Responses panel; a response whose row is not in the read stays a row of its own, never dropped.
+ */
 export function gridRows(
   rows: readonly FormIntakeRowOut[],
   responses: readonly FormResponseOut[]
 ): IntakeGridRow[] {
   const current = responses.filter((r) => r.match_status !== 'superseded')
-  const byRow = new Map(
-    current.filter((r) => (r.row_key ?? '') !== '').map((r) => [r.row_key ?? '', r])
-  )
+  const keys = new Set(rows.map((r) => r.key))
+  const held = (r: FormResponseOut) => keys.has(r.row_key ?? '')
+  const byRow = new Map(current.filter(held).map((r) => [r.row_key ?? '', r]))
+  const loose = current
+    .filter((r) => !held(r))
+    .map((response): IntakeGridRow => ({
+      kind: 'response',
+      key: `response:${response.response_id}`,
+      response,
+    }))
+  const rank = (r: IntakeGridRow) =>
+    r.kind === 'response' ? (RESPONSE_ORDER[r.response.match_status] ?? 9) : 9
+  const toLink = loose.filter((r) => rank(r) < 9).sort((a, b) => rank(a) - rank(b))
   return [
-    ...rows.map((row): IntakeGridRow => ({
-      kind: 'row',
-      key: row.key,
-      row,
-      response: byRow.get(row.key) ?? null,
-    })),
-    ...current
-      .filter((r) => (r.row_key ?? '') === '')
-      .map((response): IntakeGridRow => ({
-        kind: 'response',
-        key: `response:${response.response_id}`,
-        response,
-      })),
+    ...toLink,
+    ...rows.map((row): IntakeGridRow => {
+      const live = byRow.get(row.key) ?? null
+      // Decided on an earlier response, then sent again: the row opens onto the one that prices it, the newer beside.
+      const priced =
+        live !== null && formChangeToReview(row)?.form_change?.kind === 'changed_after_decision'
+          ? responses
+              .filter(
+                (r) => r.match_status === 'superseded' && r.superseded_by === live.response_id
+              )
+              .sort((a, b) => (b.submitted_at ?? '').localeCompare(a.submitted_at ?? ''))[0]
+          : undefined
+      return priced === undefined
+        ? { kind: 'row', key: row.key, row, response: live }
+        : { kind: 'row', key: row.key, row, response: priced, flagged: live }
+    }),
+    ...loose.filter((r) => rank(r) === 9),
   ]
 }
 

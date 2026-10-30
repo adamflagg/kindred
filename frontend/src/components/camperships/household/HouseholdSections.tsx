@@ -443,6 +443,14 @@ function IncomeHead({
  * One request's own adult aid form answers (GF-2 B; mock v2 step 22) under its band, in the one-form table's columns:
  * the answer, the form's figure and the one used. Its corrections are the request's own, so they show here as used.
  */
+/** The adult aid form's priced figures, shown first (mock v2 step 22); the set's other answers sit behind a toggle. */
+const OWN_PRICED = new Set([
+  'total_gross_income',
+  'expected_gross_income',
+  'total_medical_expenses',
+  'non_retirement_savings',
+])
+
 function OwnAnswerSetTable({
   own,
   programs,
@@ -450,26 +458,39 @@ function OwnAnswerSetTable({
   own: OwnAnswerSet
   programs: Readonly<Record<string, string>>
 }) {
+  const [all, setAll] = useState(false)
+  const first = own.answers.filter((a) => OWN_PRICED.has(a.field) || a.corrected)
+  const rest = own.answers.length - first.length
+  const shown = all ? own.answers : first
   return (
-    <table className={answersTable(true)} data-own-answers={own.requestId}>
-      <AnswerColumns forms={1} />
-      <tbody>
-        <IncomeFormBand set={own.set} programs={programs} span={4} />
-        {own.answers.map((answer) => (
-          <tr key={answer.field}>
-            <td className={HH_TD}>{answerWords(answer.field)}</td>
-            <td className={HH_TD_NUM}>{answerValue(answer.field, answer.synced)}</td>
-            <td className={`${HH_TD_NUM} ${answer.corrected ? 'font-bold' : ''}`}>
-              {answerValue(answer.field, answer.effective)}
-            </td>
-            <td className={HH_TD} />
-            <td className={HH_TD}>
-              {answer.corrected && <StatusPill tone="amber">corrected</StatusPill>}
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <div>
+      <table className={answersTable(true)} data-own-answers={own.requestId}>
+        <AnswerColumns forms={1} />
+        <tbody>
+          <IncomeFormBand set={own.set} programs={programs} span={4} />
+          {shown.map((answer) => (
+            <tr key={answer.field}>
+              <td className={HH_TD}>{answerWords(answer.field)}</td>
+              <td className={HH_TD_NUM}>{answerValue(answer.field, answer.synced)}</td>
+              <td className={`${HH_TD_NUM} ${answer.corrected ? 'font-bold' : ''}`}>
+                {answerValue(answer.field, answer.effective)}
+              </td>
+              <td className={HH_TD} />
+              <td className={HH_TD}>
+                {answer.corrected && <StatusPill tone="amber">corrected</StatusPill>}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {rest > 0 && (
+        <button type="button" className={`${HH_TOGGLE} mt-1`} onClick={() => setAll(!all)}>
+          {all
+            ? 'Show Only the Priced Figures ▴'
+            : `${String(rest)} more ${rest === 1 ? 'answer' : 'answers'} ▸`}
+        </button>
+      )}
+    </div>
   )
 }
 

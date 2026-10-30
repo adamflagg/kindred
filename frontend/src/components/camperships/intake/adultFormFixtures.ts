@@ -339,6 +339,35 @@ export const JORDAN = response({
   look_reasons: ['form_changed_after_decision'],
 })
 
+/** Jordan's second response after Round 1 (Nov 10, a lower income): it replaced the first, flagged, not applied. */
+export const JORDAN_2 = response({
+  id: 'rec000000000011',
+  response_id: 'resp-jordan-2',
+  row_key: '1000018:1000181',
+  name_typed: 'Jordan Sam',
+  program_key: 'family_camp',
+  program_choice: 'Family Camp 4: Labor Day (Sep 3-6)',
+  weekend_session_cm_id: FC4,
+  ask: 600,
+  submitted_at: '2026-11-10T18:00:00Z',
+  figures: figures({ ask: 600, total_gross_income: 58000 }),
+  superseded: [
+    {
+      response_id: 'resp-jordan',
+      submitted_at: '2026-11-04T18:00:00Z',
+      replaced_at: '2026-11-10T18:00:00Z',
+      ask: 600,
+      total_gross_income: 62000,
+    },
+  ],
+})
+/** The first response as the read lists it once the second replaced it. */
+export const JORDAN_REPLACED = {
+  ...JORDAN,
+  match_status: 'superseded' as const,
+  superseded_by: 'resp-jordan-2',
+}
+
 /** A response deleted in Google, kept here (the mock's Ana). */
 export const ANA = response({
   id: 'rec000000000010',

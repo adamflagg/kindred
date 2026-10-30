@@ -74,7 +74,7 @@ export function answerSetsOf(
   const own = page.requests.filter((r) => r.answers_source === 'google_form')
   if (own.length === 0) return null
   const priced = (r: ApiAidHouseholdPage['requests'][number]) => ({
-    camper_name: r.row.camper_name ?? '',
+    camper_name: r.row.camper_name,
     program_key: r.row.program_key ?? '',
   })
   return {
@@ -86,7 +86,7 @@ export function answerSetsOf(
       requestId: r.row.request_id,
       set: {
         source: 'google_form',
-        filed_by: r.row.camper_name ?? '',
+        filed_by: r.row.camper_name,
         filed_on: r.form_submitted_at ?? '',
         prices: [priced(r)],
       },

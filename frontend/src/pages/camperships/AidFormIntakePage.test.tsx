@@ -24,17 +24,19 @@ import {
 } from '../../components/camperships/intake/intakeFixtures'
 import {
   ADULT_SESSIONS,
+  ANA,
   CASEY,
   DANA,
   DANA_LINK,
   FC4,
   FC4A,
-  JORDAN,
+  JORDAN_2,
+  JORDAN_REPLACED,
   LAST_READ,
   LIN,
   REFUSED,
+  WW,
 } from '../../components/camperships/intake/adultFormFixtures'
-import type { BecameOut, FormAnswerOut } from '../../components/camperships/intake/intakeTypes'
 import type { FormIntakeRowOut } from '../../components/camperships/intake/intakeTypes'
 import AidFormIntakePage from './AidFormIntakePage'
 
@@ -560,7 +562,7 @@ describe('an adult aid form row (adult aid form mock v2: K1 a, callouts 1–3)',
         ask: 700,
         named_session_cm_id: FC4,
         form_source: 'google_form',
-      } as FormAnswerOut,
+      },
     ],
     enrolled_session_cm_ids: [FC4A],
     became: [
@@ -568,7 +570,7 @@ describe('an adult aid form row (adult aid form mock v2: K1 a, callouts 1–3)',
         ...became({ program_key: 'family_camp', session_cm_id: FC4A, ask: 700 }),
         form_source: 'google_form',
         price_missing: true,
-      } as BecameOut,
+      },
     ],
   })
   beforeEach(() => {
@@ -648,13 +650,44 @@ describe("the adult aid form's responses (adult aid form mock v2, steps 4–20)"
       },
     ],
   })
+  const ana = intakeRow({
+    key: '1000019:1000191',
+    household_cm_id: 1000019,
+    household_label: 'Ana Garcia',
+    person_cm_id: 1000191,
+    camper_name: 'Ana Garcia',
+    filed: false,
+    registration_only: false,
+    needs_look: true,
+    look_reasons: ['form_response_deleted'],
+    answers: [],
+    enrolled_session_cm_ids: [WW],
+    became: [
+      {
+        ...became({ program_key: 'adult_weekend', session_cm_id: WW, ask: 350 }),
+        request_id: 'reqana000000001',
+        form_source: 'google_form',
+        form_change: { kind: 'deleted', at: '', reviewed: false },
+      },
+    ],
+  })
   beforeEach(() => {
     forms = {
-      ...formsRead([...ROWS_2027, jordan]),
+      ...formsRead([...ROWS_2027, jordan, ana]),
       sessions: [...SESSIONS, ...ADULT_SESSIONS],
-      form_responses: [DANA, CASEY, LIN, JORDAN],
+      form_responses: [DANA, CASEY, LIN, JORDAN_REPLACED, JORDAN_2, ANA],
       google_form: LAST_READ,
     }
+  })
+
+  it('a response deleted in Google still reads as what the form asked, on its own row', async () => {
+    renderAt()
+    const [name] = await screen.findAllByText('Ana Garcia')
+    const row = name!.closest('tr') as HTMLElement
+    expect(within(row).getByText('adult aid form')).toBeInTheDocument()
+    expect(within(row).getByText("Women's Weekend · $350")).toBeInTheDocument()
+    // PR 2's "deleted" also covers an ignored or re-linked response: the words never claim Google deleted it.
+    expect(within(row).getByText('response no longer linked')).toBeInTheDocument()
   })
 
   it('Responses to link: a segment of its own, second, each response with Link… and Ignore…', async () => {
@@ -773,7 +806,36 @@ describe("the adult aid form's responses (adult aid form mock v2, steps 4–20)"
     await screen.findByText('Jordan Sam')
     await userEvent.click(within(rowOf('Jordan Sam')).getByText('flagged, not applied'))
     expect(
-      await screen.findByText('Second response, Nov 10, after a decision: flagged, not applied')
+      await screen.findByText(
+        'Second response, Nov 10, after a decision (ask $600, 2026 gross $58,000): flagged, not applied'
+      )
+    ).toBeInTheDocument()
+    // The figures shown are the ones the request was decided on, the flagged one noted beside.
+    expect(
+      screen.getByText('the Nov 10 response says $58,000: flagged, not applied', { exact: false })
+    ).toBeInTheDocument()
+  })
+
+  it('Link… refused (422, no program choice): says so, and offers Ignore… to clear it', async () => {
+    fetchSpy.mockImplementation((url, init) => {
+      const path = String(url)
+      if (init?.method === 'POST' && path.endsWith('/link'))
+        return Promise.resolve(
+          json({ detail: 'This response names no program, so it makes no request' }, 422)
+        )
+      if (path.includes('/intake/2027/forms')) return Promise.resolve(json(forms))
+      if (path.includes('/candidates')) return Promise.resolve(json(DANA_LINK))
+      if (path.includes('/definitions')) return Promise.resolve(json(NOTES))
+      return Promise.resolve(json({ detail: 'not here' }, 404))
+    })
+    renderAt('/aid/requests/intake?year=2027&show=link')
+    const dana = (await screen.findByText('“Dana Okafor”')).closest('tr') as HTMLElement
+    await userEvent.click(within(dana).getByRole('button', { name: 'Link…' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Link Response' }))
+    expect(
+      await screen.findByText(
+        'This response names no program, so it makes no request. Ignore… on the row clears it.'
+      )
     ).toBeInTheDocument()
   })
 })

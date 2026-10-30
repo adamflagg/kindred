@@ -56,6 +56,7 @@ import { AidPageBand } from '../../components/camperships/shell/AidPageBand'
 import { AidPageHead } from '../../components/camperships/shell/AidPageHead'
 import { Permission } from '../../constants/permissions'
 import { useAidDefinitions } from '../../hooks/camperships/useAidDefinitions'
+import { hasStatus } from '../../services/camperships/aidApi'
 import {
   useAidIgnoreResponse,
   useAidLinkResponse,
@@ -283,7 +284,7 @@ function IntakeBody({ data, view }: { data: FormIntakeResponse; view: AidView })
 
   const editorOf = useCallback(
     (g: IntakeGridRow): ReactNode => {
-      if (editing === null || editing.key !== g.key || !canWork) return null
+      if (editing?.key !== g.key || !canWork) return null
       if (g.kind === 'row')
         return editing.kind === 'add' ? (
           <AddRequestEditor
@@ -303,13 +304,23 @@ function IntakeBody({ data, view }: { data: FormIntakeResponse; view: AidView })
             names={names}
             onCancel={onCancelEdit}
             onLink={(personCmId) =>
-              linkWrite.mutateAsync({ year: view.year, id: r.id, personCmId }).then(() => {
-                setEditing(null)
-                setHighlighted(null)
-                setStatus(
-                  ok(`✓ Linked ${typed}'s response: its request is made from its own figures`)
-                )
-              })
+              linkWrite
+                .mutateAsync({ year: view.year, id: r.id, personCmId })
+                .catch((caught: unknown) => {
+                  // PR 2 refuses a response that names no program (422): Ignore… is the way to clear it.
+                  if (hasStatus(caught, 422) && caught instanceof Error)
+                    throw new Error(
+                      `${caught.message.replace(/\.$/, '')}. Ignore… on the row clears it.`
+                    )
+                  throw caught
+                })
+                .then(() => {
+                  setEditing(null)
+                  setHighlighted(null)
+                  setStatus(
+                    ok(`✓ Linked ${typed}'s response: its request is made from its own figures`)
+                  )
+                })
             }
           />
         )

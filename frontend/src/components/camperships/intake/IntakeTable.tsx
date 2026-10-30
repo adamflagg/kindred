@@ -210,6 +210,7 @@ const allAid = (row: FormIntakeRowOut) =>
 function IntakeDetail({
   row,
   response,
+  flagged,
   names,
   programs,
   view,
@@ -218,6 +219,8 @@ function IntakeDetail({
   row: FormIntakeRowOut
   /** The row's live adult aid form response: its three panels follow the evidence. */
   response: FormResponseOut | null
+  /** A second response after a decision, flagged and not applied. */
+  flagged: FormResponseOut | null
   names: SessionIndex
   programs: Readonly<Record<string, string>>
   view: AidView
@@ -334,6 +337,7 @@ function IntakeDetail({
           year={view.year}
           names={names}
           change={formChangeToReview(row)?.form_change ?? null}
+          flagged={flagged}
         />
       )}
       {editor}
@@ -397,6 +401,29 @@ function ResponseCamperCell({ response }: { response: FormResponseOut }) {
     />
   )
 }
+
+function ResponseAskedCell({
+  response,
+  names,
+  programs,
+}: {
+  response: FormResponseOut
+  names: SessionIndex
+  programs: Readonly<Record<string, string>>
+}) {
+  return (
+    <span className="block truncate">
+      <span className="mr-[5px] align-[1px]">
+        <FormSourceMark source="google_form" title={ADULT_FORM_TITLE} />
+      </span>
+      {responseAsked(response, names, programs).main}
+    </span>
+  )
+}
+
+/** A row whose answers are gone (its response deleted in Google or unlinked) still reads as what its response asked. */
+const askedByResponse = (r: IntakeGridRow): FormResponseOut | null =>
+  r.kind === 'row' && (r.row.answers ?? []).length === 0 ? r.response : null
 
 /** Each column's reading of a grid row: a Form intake row as ever, or a response no person holds. */
 const onRow =
@@ -476,42 +503,46 @@ export function IntakeTable({
         header: 'Form asked',
         width: 280,
         mark: marks.asked,
-        value: onRow(
-          (r) => {
-            const p = askedParts(r, names, programs)
-            return p.reg === null ? p.main : `${p.main} · ${p.reg}`
-          },
-          (r) => responseAsked(r, names, programs).main
-        ),
-        title: onRow(
-          (r) => askedTitle(r, names, programs),
-          (r) => responseAsked(r, names, programs).title
-        ),
-        render: onRow(
-          (r) => {
-            const p = askedParts(r, names, programs)
-            return (
-              <span className="block truncate">
-                {/* A mark that must never cut sits before the text that may (design-language §6). */}
-                {p.source === 'google_form' && (
-                  <span className="mr-[5px] align-[1px]">
-                    <FormSourceMark source="google_form" title={ADULT_FORM_TITLE} />
-                  </span>
-                )}
-                <span className={p.muted ? MUTED : undefined}>{p.main}</span>
-                {p.reg !== null && <span className={MUTED}>{` · ${p.reg}`}</span>}
-              </span>
-            )
-          },
-          (r) => (
-            <span className="block truncate">
-              <span className="mr-[5px] align-[1px]">
-                <FormSourceMark source="google_form" title={ADULT_FORM_TITLE} />
-              </span>
-              {responseAsked(r, names, programs).main}
-            </span>
-          )
-        ),
+        value: (g) => {
+          const held = askedByResponse(g)
+          if (held !== null) return responseAsked(held, names, programs).main
+          return onRow(
+            (r) => {
+              const p = askedParts(r, names, programs)
+              return p.reg === null ? p.main : `${p.main} · ${p.reg}`
+            },
+            (r) => responseAsked(r, names, programs).main
+          )(g)
+        },
+        title: (g) => {
+          const held = askedByResponse(g)
+          if (held !== null) return responseAsked(held, names, programs).title
+          return onRow(
+            (r) => askedTitle(r, names, programs),
+            (r) => responseAsked(r, names, programs).title
+          )(g)
+        },
+        render: (g) => {
+          const held = askedByResponse(g)
+          return onRow(
+            (r) => {
+              const p = askedParts(r, names, programs)
+              return (
+                <span className="block truncate">
+                  {/* A mark that must never cut sits before the text that may (design-language §6). */}
+                  {p.source === 'google_form' && (
+                    <span className="mr-[5px] align-[1px]">
+                      <FormSourceMark source="google_form" title={ADULT_FORM_TITLE} />
+                    </span>
+                  )}
+                  <span className={p.muted ? MUTED : undefined}>{p.main}</span>
+                  {p.reg !== null && <span className={MUTED}>{` · ${p.reg}`}</span>}
+                </span>
+              )
+            },
+            (r) => <ResponseAskedCell response={r} names={names} programs={programs} />
+          )(held === null ? g : { kind: 'response', key: g.key, response: held })
+        },
       },
       {
         key: 'enrolled',
@@ -560,9 +591,12 @@ export function IntakeTable({
             const b = responseBecame(r, names)
             return (
               <span className="flex min-w-0 items-center gap-[5px] overflow-hidden whitespace-nowrap">
-                <StatusPill tone={b.tone} title={b.title}>
-                  {b.words}
-                </StatusPill>
+                {/* The pill never cuts; the words after it do (design-language §6). */}
+                <span className="flex-none">
+                  <StatusPill tone={b.tone} title={b.title}>
+                    {b.words}
+                  </StatusPill>
+                </span>
                 <span className={`${MUTED} min-w-0 truncate`}>{b.why}</span>
               </span>
             )
@@ -632,6 +666,7 @@ export function IntakeTable({
         <IntakeDetail
           row={r.row}
           response={r.response}
+          flagged={r.flagged ?? null}
           names={names}
           programs={programs}
           view={view}

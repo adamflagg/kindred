@@ -364,3 +364,12 @@ async def test_the_sessions_name_every_weekend_a_response_or_candidate_names() -
     out = await _forms(store)
     named = {s.session_cm_id for s in out.sessions}
     assert {ADULT_WEEKEND_A, ADULT_WEEKEND_B} <= named
+
+
+@pytest.mark.asyncio
+async def test_a_response_deleted_in_google_stays_on_its_persons_row() -> None:
+    """A deleted response no longer makes a request, but its person's row still opens onto it (mock v2 step 3: the
+    response is marked, never dropped), so it keeps that row's key rather than reading as a response no one holds."""
+    out = await _forms(_registration_only_rachel(form_response(form_status="deleted")))
+    (response,) = out.form_responses
+    assert response.row_key == f"{RACHEL_HOUSEHOLD}:{RACHEL}"
