@@ -110,6 +110,26 @@ def request_origin(program_option_key: str) -> str:
     return ORIGIN_FORM
 
 
+# The adult aid Google Form (adult-aid form design PR 2): a request made from one response is keyed
+# "gform:<weekend session id>" ("gform:<normalised choice>" while the weekend is unclear). request_origin reads it as a
+# form answer; form_source says WHICH form.
+GOOGLE_FORM_KEY_PREFIX: Final = "gform"
+FORM_SOURCE_CAMPMINDER: Final = "campminder"
+FORM_SOURCE_GOOGLE: Final = "google_form"
+# aid_requests.answers_source: the request carries its OWN answer set (GF-2 = B), which prices it in place of the
+# household application's. "" for every other request.
+ANSWERS_SOURCE_GOOGLE_FORM: Final = "google_form"
+
+
+def form_source(program_option_key: str) -> str | None:
+    """Which aid form a form-origin request came from: google_form for an adult aid form response, campminder for
+    CampMinder's aid form. None for an added or rule-made request, which no form made."""
+    if request_origin(program_option_key) != ORIGIN_FORM:
+        return None
+    prefix, sep, _ = program_option_key.partition(":")
+    return FORM_SOURCE_GOOGLE if sep and prefix == GOOGLE_FORM_KEY_PREFIX else FORM_SOURCE_CAMPMINDER
+
+
 @dataclass(frozen=True)
 class Flag:
     """A data-quality state shown to staff. Never a silent default (spec 3.5)."""
@@ -251,6 +271,18 @@ class RequestRecord:
     # a past date prices the answers as intake had recorded them. Live pricing still reads the synced
     # answers (owner ruling 2026-09-30). None: no copy yet (always so for a household-level request).
     equity: EquityAnswers | None = None
+    # GF-2 = B (adult-aid form design PR 2): a request with its OWN answer set (answers_source "google_form") is priced
+    # from it, never from its household application's. None / "" for every other request. form_response_id and
+    # form_submitted_at name the response whose figures were applied (Google's responseId and lastSubmittedTime).
+    answers: Mapping[str, Any] | None = None
+    answers_source: str = ""
+    form_response_id: str = ""
+    form_submitted_at: str = ""
+    # Mark Reviewed on a form change after a decision (GF-4, owner Q2): the change staff reviewed, so its look stays
+    # cleared until a DIFFERENT change arrives. Staff's fields: intake never writes them.
+    form_change_reviewed: str = ""
+    form_change_reviewed_by: str = ""
+    form_change_reviewed_at: str = ""
 
     @property
     def key(self) -> RequestKey:

@@ -47,7 +47,7 @@ so a form answer naming the added session becomes duplicate_pending beside it.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Final
 
@@ -176,6 +176,18 @@ def choose_household_answers(rows: Sequence[FaRow]) -> tuple[dict[str, Any], tup
 
 
 @dataclass(frozen=True)
+class OwnAnswers:
+    """A request's own answer set (GF-2 = B, adult-aid form design PR 2): the adult aid form response's figures, in
+    the household answers' shape, that price this request alone. `response_id` / `submitted_at` name the response
+    applied (Google's responseId and lastSubmittedTime)."""
+
+    answers: Mapping[str, Any]
+    source: str
+    response_id: str
+    submitted_at: str
+
+
+@dataclass(frozen=True)
 class RequestSpec:
     household_cm_id: int
     person_cm_id: int  # 0 for a household-level family-camp request
@@ -188,6 +200,8 @@ class RequestSpec:
     flags: tuple[Flag, ...]
     # The one in-program session the option text names on its own; 0 when none or several.
     named_session_cm_id: int = 0
+    # The request's own answers (an adult aid form response); None prices it from its household application.
+    own: OwnAnswers | None = None
 
     @property
     def key(self) -> RequestKey:

@@ -209,6 +209,10 @@ def request_fields(record: RequestRecord) -> dict[str, Any]:
         "headcount_source": record.headcount_source,
         "flags": [dict(f) for f in record.flags],
         "equity": equity_json(record.equity) if record.equity is not None else None,
+        "answers": dict(record.answers) if record.answers is not None else None,
+        "answers_source": record.answers_source,
+        "form_response_id": record.form_response_id,
+        "form_submitted_at": record.form_submitted_at,
     }
 
 
@@ -314,6 +318,15 @@ def _request_target(
         target.update(_headcount_target(record, billed.get((spec.household_cm_id, session)), flags))
     if equity is not None:
         target["equity"] = equity_json(equity)
+    if spec.own is not None:  # an adult aid form response's own figures (GF-2 = B): they price this request alone
+        target.update(
+            {
+                "answers": dict(spec.own.answers),
+                "answers_source": spec.own.source,
+                "form_response_id": spec.own.response_id,
+                "form_submitted_at": spec.own.submitted_at,
+            }
+        )
     target["flags"] = [f.to_json() for f in flags]
     return target
 

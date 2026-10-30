@@ -22,9 +22,11 @@ Registration ask only is judged per person and per bucket from 2027 (IN-BUCKETS,
 are summer, Quest and the teen programs included, B*Mitzvah, Family Camp and adult weekends; IB-2 2027 on). A person
 row's camper registration ask (CA-) is for the buckets they are registered in, their adult-weekend ask (WW-) for
 adult weekends, each read from its own column pair. A bucket the household filed no aid form for makes the ask
-Registration ask only for it (`registration_only_programs`), whatever else the household filed; no aid form covers
-adult weekends yet. Its enrolled sessions then need no look, as a registration-only family's never did. 2026, the
-tie-off season, reads every row exactly as before: by the household's filing, from the legacy ask pair.
+Registration ask only for it (`registration_only_programs`), whatever else the household filed. From 2027 a
+person's matched, live adult aid Google Form response is the aid form for its bucket, for that person (PR 2,
+IN-FORM-ONLY), so it files Family Camp or adult weekends for them alone. A registration-ask-only bucket's enrolled
+sessions need no look, as a registration-only family's never did. 2026, the tie-off season, reads every row exactly as
+before: by the household's filing, from the legacy ask pair.
 
 From 2027 the registration-ask rule's own facts explain an enrolled session it made no request for (PR 4b,
 financial_aid_registration_ask, run here over the requests intake made): `registration_ask_ambiguous` when the ask's
@@ -36,6 +38,7 @@ row even when the form never named them.
 from __future__ import annotations
 
 import asyncio
+import re
 from collections import defaultdict
 from collections.abc import Awaitable, Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -52,14 +55,21 @@ from api.schemas.financial_aid_form_intake import (
     BecameWhy,
     CampMinderAidOut,
     FormAnswerOut,
+    FormCandidateOut,
+    FormChangeOut,
+    FormFigureOut,
     FormIntakeCountsOut,
     FormIntakeResponse,
     FormIntakeRowOut,
     FormIntakeSummaryOut,
+    FormResponseOut,
+    FormYesNoOut,
     GapSessionOut,
+    GoogleFormStatusOut,
     IntakeSessionOut,
     LookReason,
     RegistrationAskOut,
+    SupersededOut,
     UnlistedResponse,
     WhyNot,
     WhyNotDetail,
@@ -67,6 +77,7 @@ from api.schemas.financial_aid_form_intake import (
 from api.services.aid_season_state import SeasonDoneRead
 from api.services.camp_calendar import CAMP_TZ
 from api.services.financial_aid_addition_view import addition_view, additions_by_request_key, posted_rounds
+from api.services.financial_aid_calc_inputs import session_program_key
 from api.services.financial_aid_campminder_money import (
     D170Reads,
     NoRequestAid,
@@ -78,8 +89,18 @@ from api.services.financial_aid_campminder_money import (
 from api.services.financial_aid_cancellations import CancelEvent, fold_cancellations
 from api.services.financial_aid_casework_service import _program_for
 from api.services.financial_aid_decisions_service import session_pools
+from api.services.financial_aid_google_form import (
+    FLAG_FORM_RESPONSE_DELETED,
+    FORM_CHANGE_FLAGS,
+    GOOGLE_FORM_FIRST_SEASON,
+    MATCH_SUPERSEDED,
+    FormResponseRow,
+    form_filed_programs,
+    is_form_request,
+    linked_by_key,
+)
 from api.services.financial_aid_grants_register import program_family_for_session_type
-from api.services.financial_aid_household import enrolled_for
+from api.services.financial_aid_household import INCOME_FIELDS, enrolled_for
 from api.services.financial_aid_household_page import HouseholdLabeler
 from api.services.financial_aid_intake_types import (
     PROGRAM_ADULT_WEEKEND,
@@ -158,6 +179,9 @@ class FormIntakeStore(Protocol):
     async def fetch_names(
         self, year: int, household_cm_ids: Collection[int], person_cm_ids: Collection[int]
     ) -> tuple[dict[int, str], dict[int, str]]: ...
+    # The adult aid Google Form (PR 2), read from GOOGLE_FORM_FIRST_SEASON only.
+    async def fetch_form_response_rows(self, year: int) -> list[FormResponseRow]: ...
+    async def fetch_google_form_status(self, year: int) -> dict[str, str] | None: ...
 
 
 PeopleSearch = Callable[[int, Sequence[str]], Awaitable[list[Any]]]  # (year, name words) -> persons rows (cm_id)
@@ -187,6 +211,9 @@ class _Season:
     on_request: dict[tuple[int, int, int], Decimal] = field(default_factory=dict)
     # The registration-ask rule's open enrollments it could not tie to an ask (PR 4b; empty before 2027).
     asked: RegistrationAskResult = field(default_factory=RegistrationAskResult)
+    # The adult aid Google Form's responses and its last pull (PR 2; empty / None before 2027).
+    form_responses: list[FormResponseRow] = field(default_factory=list)
+    google_form: Mapping[str, str] | None = None
 
 
 def _session_key(sessions: Mapping[int, SessionRow]) -> Callable[[int], tuple[str, int]]:
@@ -256,6 +283,9 @@ class _Explainer:
         # IN-BUCKETS (2027 on): each bucket judged on its own facts. Set before _homes reads _named_subjects.
         self.by_bucket = season.year >= IN_BUCKETS_FIRST_SEASON
         self.filed_buckets: dict[int, frozenset[str]] = filed_programs(season.fa_rows) if self.by_bucket else {}
+        # IN-FORM-ONLY (PR 2): a matched, live adult aid form response IS the aid form for its bucket, for its person.
+        self.form_linked = list(linked_by_key(season.form_responses).values())
+        self.form_filed: dict[int, frozenset[str]] = form_filed_programs(season.form_responses)
         self.homes = self._homes()
         self.aid_by_subject: dict[Subject, list[NoRequestAid]] = defaultdict(list)
         for found in season.no_request:
@@ -323,6 +353,7 @@ class _Explainer:
                 found.add((row.household_cm_id, row.person_cm_id))
             if row.fc_program.strip():
                 found.add((row.household_cm_id, 0))
+        found.update((r.household_cm_id, r.person_cm_id) for r in self.form_linked if r.household_cm_id > 0)
         found.update((r.household_cm_id, r.person_cm_id) for r in self.s.requests)
         found.update((a.household_cm_id, a.person_cm_id) for a in self.s.additions)
         return found
@@ -351,6 +382,17 @@ class _Explainer:
         rows = self.rows_by_household.get(household, [])
         out: list[FormAnswerOut] = []
         if person:
+            out.extend(
+                FormAnswerOut(
+                    program_key=r.program_key,
+                    option_text=r.program_choice,
+                    ask=float(r.ask),
+                    named_session_cm_id=r.weekend_session_cm_id,
+                    form_source="google_form",
+                )
+                for r in sorted(self.form_linked, key=lambda r: (r.last_submitted_at, r.response_id))
+                if (r.household_cm_id, r.person_cm_id) == subject
+            )
             for row in rows:
                 if row.person_cm_id != person:
                     continue
@@ -432,7 +474,7 @@ class _Explainer:
         household, person = subject
         if not person or household <= 0:
             return []
-        filed = self.filed_buckets.get(household, frozenset())
+        filed = self.filed_buckets.get(household, frozenset()) | self.form_filed.get(person, frozenset())
         asked = self.ask_buckets(subject)
         return [b for b in _BUCKET_ORDER if b in asked and b not in filed]
 
@@ -481,7 +523,17 @@ class _Explainer:
             round1_posted=float(round1.locked_amount)
             if round1 is not None and round1.posted and round1.locked_amount is not None
             else None,
+            form_source="google_form" if is_form_request(request) else None,
+            form_change=form_change_out(request),
+            price_missing=self.price_missing(request) if self.s.year >= GOOGLE_FORM_FIRST_SEASON else None,
         )
+
+    def price_missing(self, request: RequestRecord) -> bool | None:
+        """From 2027: the rules give the request's session no price yet (PR 3's "no price yet"). None when the request
+        is not live or has no session: there is nothing to price."""
+        if request.status not in _LIVE or request.session_cm_id <= 0:
+            return None
+        return not session_priced(request.session_cm_id, self.s.by_id, self.s.rules)
 
     def became_order(self, b: BecameOut) -> tuple[bool, bool, tuple[str, int], str, str]:
         """The Became cell's order (approved polish): live requests first (active, session unclear, duplicate
@@ -649,7 +701,7 @@ class _Explainer:
     def row(self, subject: Subject) -> FormIntakeRowOut:
         household, person = subject
         rows = self.rows_by_household.get(household, []) if household else []
-        filed = _filed(rows)
+        filed = _filed(rows) or bool(person and self.form_filed.get(person))
         answers = self.answers(subject)
         registration = self.registration_ask(subject)
         enrolled = self.enrolled(subject)
@@ -678,6 +730,13 @@ class _Explainer:
             reasons.append("session_unclear")
         if any(b.reviewed is False and b.status in ("active", "session_unclear", "duplicate_pending") for b in became):
             reasons.append("registration_ask_unreviewed")
+        # GF-4 (PR 2): a decided request's response changed or vanished in Google, not applied.
+        codes = {str(f.get("code")) for r in requests if r.status in _LIVE for f in r.flags}
+        reasons.extend(code for code in ("form_changed_after_decision", "form_response_deleted") if code in codes)
+        if any(
+            (r.household_cm_id, r.person_cm_id) == subject and r.weekend_session_cm_id <= 0 for r in self.form_linked
+        ):
+            reasons.append("form_choice_unclear")
         return FormIntakeRowOut(
             key=f"{household}:{person}",
             household_cm_id=max(household, 0),
@@ -699,11 +758,191 @@ class _Explainer:
         )
 
 
-def _counts(rows: Sequence[FormIntakeRowOut]) -> FormIntakeCountsOut:
+def _counts(
+    rows: Sequence[FormIntakeRowOut], responses: Sequence[FormResponseOut] = (), pull_refused: bool = False
+) -> FormIntakeCountsOut:
+    """The segment counts. A refused pull (PR 2) is one more Needs a look: its banner shows in every segment."""
     return FormIntakeCountsOut(
-        needs_look=sum(1 for r in rows if r.needs_look),
+        needs_look=sum(1 for r in rows if r.needs_look) + int(pull_refused),
         registration_only=sum(1 for r in rows if r.registration_only),
         all=len(rows),
+        to_link=sum(1 for r in responses if r.to_link),
+    )
+
+
+# The figures an adult aid form response gives, in the form's order (design §2).
+_FORM_FIGURES: Final = (
+    "ask",
+    "total_gross_income",
+    "income_confirmed",
+    "total_adjusted_income",
+    "expected_gross_income",
+    "total_housing_expenses",
+    "non_retirement_savings",
+    "total_rent",
+    "total_medical_expenses",
+    "student_debt",
+)
+_FORM_YES_NO: Final = ("unemployment", "gov_subsidies")
+
+
+def _note(row: FormResponseRow, name: str) -> Mapping[str, Any]:
+    note = row.parse_notes.get(name)
+    return note if isinstance(note, Mapping) else {}
+
+
+def _figure(row: FormResponseRow, name: str) -> FormFigureOut:
+    """A figure as read: unknown (None) when its parse note read nothing, or an income answer left blank."""
+    note = _note(row, name)
+    raw = row.ask if name == "ask" else row.answers.get(name)
+    value: float | None = float(raw or 0)
+    if (note and note.get("read") is None) or (
+        name in INCOME_FIELDS and not value and name not in row.reported_income_fields
+    ):
+        value = None
+    return FormFigureOut(field=name, value=value, typed=str(note.get("typed") or ""), note=str(note.get("note") or ""))
+
+
+def form_change_out(request: RequestRecord) -> FormChangeOut | None:
+    """GF-4: a decided request's adult aid form change that was not applied: open (its flag), or Mark Reviewed."""
+    for flag in request.flags:
+        code = str(flag.get("code"))
+        if code in FORM_CHANGE_FLAGS:
+            detail = dict(flag.get("detail") or {})
+            return FormChangeOut(
+                kind="deleted" if code == FLAG_FORM_RESPONSE_DELETED else "changed_after_decision",
+                at=str(detail.get("submitted_at") or ""),
+            )
+    if request.form_change_reviewed:
+        code = request.form_change_reviewed.partition(":")[0]
+        return FormChangeOut(
+            kind="deleted" if code == FLAG_FORM_RESPONSE_DELETED else "changed_after_decision",
+            at=request.form_change_reviewed_at,
+            reviewed=True,
+            reviewed_by=request.form_change_reviewed_by,
+        )
+    return None
+
+
+def session_priced(session_cm_id: int, sessions: Mapping[int, SessionRow], rules: AidRules | None) -> bool:
+    """Whether the approved rules price this session: a catalog program's tuition, or a per-person program's family
+    rate (an AG session's parent's when it has none of its own), as the calculator's cost step reads them."""
+    if rules is None:
+        return False
+    program_key = session_program_key(session_cm_id, sessions, rules)
+    program = rules.programs.get(program_key) if program_key is not None else None
+    if program is None:
+        return False
+    session = sessions.get(session_cm_id)
+    ids = [session_cm_id]
+    if session is not None and session.session_type == "ag" and session.parent_cm_id > 0:
+        ids.append(session.parent_cm_id)
+    if program.cost_source == "catalog":
+        return any(rules.cost.tuition.get(sid) is not None for sid in ids)
+    if program.cost_source == "per_person":
+        return any(r.session_cm_id in ids for r in rules.cost.family_rates)
+    return False
+
+
+def candidate_out(raw: Mapping[str, Any]) -> FormCandidateOut:
+    return FormCandidateOut(
+        person_cm_id=int(raw.get("person_cm_id") or 0),
+        household_cm_id=int(raw.get("household_cm_id") or 0),
+        signals=[str(s) for s in raw.get("signals") or []],
+        session_cm_ids=[int(s) for s in raw.get("session_cm_ids") or []],
+        elsewhere=bool(raw.get("elsewhere")),
+    )
+
+
+def form_responses_out(season: _Season) -> list[FormResponseOut]:
+    """Every response of the season, newest first, as the opened Form intake row shows it (PR 2)."""
+    replaced: dict[str, list[FormResponseRow]] = defaultdict(list)
+    for row in season.form_responses:
+        if row.match_status == MATCH_SUPERSEDED and row.superseded_by:
+            replaced[row.superseded_by].append(row)
+    out: list[FormResponseOut] = []
+    for row in sorted(season.form_responses, key=lambda r: (r.last_submitted_at, r.response_id), reverse=True):
+        reasons: list[LookReason] = []
+        if row.form_status == "live" and row.program_choice and row.weekend_session_cm_id <= 0:
+            reasons.append("form_choice_unclear")
+        children = row.answers.get("num_children")
+        children_note = _note(row, "num_children")
+        out.append(
+            FormResponseOut(
+                id=row.id,
+                response_id=row.response_id,
+                row_key=f"{row.household_cm_id}:{row.person_cm_id}" if row.linked else "",
+                match_status=row.match_status,
+                form_status="deleted" if row.form_status == "deleted" else "live",
+                to_link=row.to_link,
+                program_key=row.program_key,
+                program_choice=row.program_choice,
+                weekend_session_cm_id=row.weekend_session_cm_id,
+                person_cm_id=row.person_cm_id,
+                household_cm_id=row.household_cm_id,
+                submitted_at=row.last_submitted_at,
+                created_at=row.created_at_google,
+                ask=_figure(row, "ask").value,
+                figures=[_figure(row, name) for name in _FORM_FIGURES],
+                yes_no=[
+                    FormYesNoOut(
+                        field=name,
+                        value=None if _note(row, name) else bool(row.answers.get(name)),
+                        note=str(_note(row, name).get("note") or ""),
+                    )
+                    for name in _FORM_YES_NO
+                ],
+                unemployment=None if _note(row, "unemployment") else bool(row.answers.get("unemployment")),
+                num_children=None if children_note or children is None else int(float(children)),
+                county=row.county,
+                special_circumstances=str(row.answers.get("special_circumstances") or ""),
+                name_typed=row.name_typed,
+                signature_typed=row.signature_typed,
+                agreement_date=row.agreement_date,
+                match_tier=row.match_tier,
+                candidates=[candidate_out(c) for c in row.match_candidates],
+                superseded_by=row.superseded_by,
+                superseded=[
+                    SupersededOut(
+                        response_id=r.response_id,
+                        submitted_at=r.last_submitted_at,
+                        ask=_figure(r, "ask").value,
+                        total_gross_income=_figure(r, "total_gross_income").value,
+                        replaced_at=row.last_submitted_at,
+                    )
+                    for r in sorted(replaced.get(row.response_id, []), key=lambda r: r.last_submitted_at)
+                ],
+                linked_by=row.linked_by,
+                linked_at=row.linked_at,
+                ignored_kind=row.ignored_kind if row.ignored_kind in _IGNORE_KINDS else "",
+                ignored_reason=row.ignored_reason,
+                ignored_by=row.ignored_by,
+                ignored_at=row.ignored_at,
+                look_reasons=reasons,
+            )
+        )
+    return out
+
+
+_IGNORE_KINDS: Final = frozenset({"test", "duplicate", "not_asking", "other"})
+# The job's status line (pocketbase/sync/aid_google_form_responses.go aidFormPullStatus): "refused: N of M responses
+# missing" names the live rows the pull expected, and "R responses" what it returned.
+_EXPECTED = re.compile(r"refused: \d+ of (\d+) responses missing")
+_RETURNED = re.compile(r"(?:^|· )(\d+) responses")
+
+
+def google_form_out(season: _Season) -> GoogleFormStatusOut | None:
+    if season.google_form is None:
+        return None
+    status = str(season.google_form.get("last_pull_status") or "")
+    expected = _EXPECTED.search(status)
+    returned = _RETURNED.search(status)
+    return GoogleFormStatusOut(
+        last_pulled_at=str(season.google_form.get("last_pulled_at") or ""),
+        last_pull_status=status,
+        refused=status.startswith("refused"),
+        returned=int(returned.group(1)) if returned else None,
+        expected=int(expected.group(1)) if expected else None,
     )
 
 
@@ -745,9 +984,12 @@ def close_intake_row(row: FormIntakeRowOut) -> FormIntakeRowOut:
 
 @dataclass(frozen=True)
 class FormIntakeLook:
-    """Today's to-do line (PR 3): Form intake's Needs a look rows, named, in the page's own order."""
+    """Today's to-do line (PR 3): Form intake's Needs a look rows, named, in the page's own order; and (PR 2) the
+    adult aid form responses to link, and whether the form's last pull was refused."""
 
     rows: tuple[FormIntakeRowOut, ...]
+    to_link: int = 0
+    pull_refused: bool = False
 
 
 class FormIntakeService:
@@ -784,6 +1026,12 @@ class FormIntakeService:
         )
         # D170's own read, as Season's figure and Add a Request…'s guard make it: the raw requests and additions (an
         # added request staff removed holds no money), and whose each line is (#49: a request holds only its own).
+        responses: list[FormResponseRow] = []
+        google_form: Mapping[str, str] | None = None
+        if year >= GOOGLE_FORM_FIRST_SEASON:
+            responses, google_form = await asyncio.gather(
+                store.fetch_form_response_rows(year), store.fetch_google_form_status(year)
+            )
         d170 = D170Reads(requests, additions, list(links), family_camp_sessions(sessions), attendees)
         asked = RegistrationAskResult()
         if year >= REGISTRATION_ASK_RULE_FIRST_SEASON:
@@ -815,6 +1063,8 @@ class FormIntakeService:
             no_request=aid_on_no_request_lines(lines, d170),
             on_request=aid_on_request(lines, d170),
             asked=asked,
+            form_responses=responses,
+            google_form=google_form,
         )
 
     async def _named(self, year: int, rows: list[FormIntakeRowOut]) -> list[FormIntakeRowOut]:
@@ -866,32 +1116,53 @@ class FormIntakeService:
         named = await self._named(year, rows)
         # A done season's outside grants wait for no camper (nothing here needs doing).
         waiting = await self._grants_waiting(year) if self._grants_waiting is not None and not done else 0
+        responses, pull = self._form(season, done)
         return FormIntakeResponse(
             year=year,
             rows=named,
-            counts=_counts(named),
+            counts=_counts(named, responses, pull is not None and pull.refused),
+            form_responses=responses,
+            google_form=pull,
             sessions=self._sessions(season, _referenced(named)),
             grants_waiting_for_camper=waiting,
             campminder_aid_on_no_request=float(sum((a.line.amount for a in season.no_request), Decimal(0))),
             season_done=done,
         )
 
+    @staticmethod
+    def _form(season: _Season, done: bool) -> tuple[list[FormResponseOut], GoogleFormStatusOut | None]:
+        """The adult aid form's responses and pull status (PR 2). A done season has nothing to link and no banner."""
+        responses = form_responses_out(season)
+        pull = google_form_out(season)
+        if done:
+            responses = [r.model_copy(update={"to_link": False, "look_reasons": []}) for r in responses]
+            pull = pull.model_copy(update={"refused": False}) if pull is not None else None
+        return responses, pull
+
     async def summary(self, year: int) -> FormIntakeSummaryOut:
-        (_, rows), done = await asyncio.gather(self._rows(year), self._done(year))
-        counts = _counts(rows)
+        (season, rows), done = await asyncio.gather(self._rows(year), self._done(year))
+        responses, pull = self._form(season, done)
+        counts = _counts(rows, responses, pull is not None and pull.refused)
         return FormIntakeSummaryOut(
             year=year,
             needs_look=counts.needs_look,
             registration_only=counts.registration_only,
             all=counts.all,
             season_done=done,
+            to_link=counts.to_link,
         )
 
     async def needs_a_look(self, year: int) -> FormIntakeLook:
-        """Today's to-do line: the Needs a look rows, named (one read of the season, as /forms)."""
-        _, rows = await self._rows(year)
+        """Today's to-do line: the Needs a look rows, named (one read of the season, as /forms), the responses to link
+        and a refused pull."""
+        (season, rows), done = await asyncio.gather(self._rows(year), self._done(year))
+        responses, pull = self._form(season, done)
         look = [r for r in rows if r.needs_look]
-        return FormIntakeLook(tuple(await self._named(year, look)) if look else ())
+        return FormIntakeLook(
+            tuple(await self._named(year, look)) if look else (),
+            to_link=sum(1 for r in responses if r.to_link),
+            pull_refused=pull is not None and pull.refused,
+        )
 
     async def aid_on_no_request(self, year: int) -> AidOnNoRequestResponse:
         """Season's D170 line opened in place (owner Q4-A): one line per Form intake row x session (the camper's own

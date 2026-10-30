@@ -465,6 +465,15 @@ export const AidFormResponsesMatchStatusOptions = {
 } as const
 export type AidFormResponsesMatchStatusOptions =
   (typeof AidFormResponsesMatchStatusOptions)[keyof typeof AidFormResponsesMatchStatusOptions]
+
+export const AidFormResponsesIgnoredKindOptions = {
+  test: 'test',
+  duplicate: 'duplicate',
+  not_asking: 'not_asking',
+  other: 'other',
+} as const
+export type AidFormResponsesIgnoredKindOptions =
+  (typeof AidFormResponsesIgnoredKindOptions)[keyof typeof AidFormResponsesIgnoredKindOptions]
 export type AidFormResponsesRecord<
   Tmatch_candidates = unknown,
   Tparse_notes = unknown,
@@ -483,6 +492,9 @@ export type AidFormResponsesRecord<
   gov_subsidies?: boolean
   household_cm_id?: number
   id: string
+  ignored_at?: IsoDateString
+  ignored_by?: string
+  ignored_kind?: AidFormResponsesIgnoredKindOptions
   ignored_reason?: string
   income_confirmed?: number
   last_submitted_at?: string
@@ -926,13 +938,26 @@ export const AidRequestsStatusOptions = {
 } as const
 export type AidRequestsStatusOptions =
   (typeof AidRequestsStatusOptions)[keyof typeof AidRequestsStatusOptions]
-export type AidRequestsRecord<Tequity = unknown, Tflags = unknown> = {
+
+export const AidRequestsAnswersSourceOptions = {
+  google_form: 'google_form',
+} as const
+export type AidRequestsAnswersSourceOptions =
+  (typeof AidRequestsAnswersSourceOptions)[keyof typeof AidRequestsAnswersSourceOptions]
+export type AidRequestsRecord<Tanswers = unknown, Tequity = unknown, Tflags = unknown> = {
+  answers?: null | Tanswers
+  answers_source?: AidRequestsAnswersSourceOptions
   application: RecordIdString
   ask?: number
   created: IsoAutoDateString
   duplicate_of?: string
   equity?: null | Tequity
   flags?: null | Tflags
+  form_change_reviewed?: string
+  form_change_reviewed_at?: IsoDateString
+  form_change_reviewed_by?: string
+  form_response_id?: string
+  form_submitted_at?: string
   headcount_infant?: number
   headcount_non_infant?: number
   headcount_source?: AidRequestsHeadcountSourceOptions
@@ -2928,10 +2953,12 @@ export type AidReportedRecipientsResponse<Texpand = unknown> =
   Required<AidReportedRecipientsRecord> & BaseSystemFields<Texpand>
 export type AidRequestAdditionsResponse<Texpand = unknown> = Required<AidRequestAdditionsRecord> &
   BaseSystemFields<Texpand>
-export type AidRequestsResponse<Tequity = unknown, Tflags = unknown, Texpand = unknown> = Required<
-  AidRequestsRecord<Tequity, Tflags>
-> &
-  BaseSystemFields<Texpand>
+export type AidRequestsResponse<
+  Tanswers = unknown,
+  Tequity = unknown,
+  Tflags = unknown,
+  Texpand = unknown,
+> = Required<AidRequestsRecord<Tanswers, Tequity, Tflags>> & BaseSystemFields<Texpand>
 export type AidRulesResponse<
   Tdocument = unknown,
   Tsection_status = unknown,

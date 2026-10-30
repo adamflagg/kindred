@@ -16,6 +16,8 @@ PayerShareStatus = Literal["", "complete", "incomplete"]
 RequestFlagFilter = Literal["awaiting_approved_rules", "no_program_for_session"]
 # Where a request came from: the aid form, a staff addition, or (2027 on) a dated registration ask.
 RequestOrigin = Literal["form", "added", "registration_ask"]
+# Which aid form made a form-origin request (adult-aid form design PR 2): CampMinder's, or the adult aid Google Form.
+FormSource = Literal["campminder", "google_form"]
 
 
 class FlagOut(BaseModel):
@@ -84,6 +86,17 @@ class RequestOut(BaseModel):
     payer_share_status: PayerShareStatus = ""
     issues: list[IssueOut] = Field(default_factory=list)
     origin: RequestOrigin = "form"
+    # None for an added or rule-made request (no form made it).
+    form_source: FormSource | None = None
+    # GF-2 = B: "google_form" when the request carries its OWN answer set (the adult aid form's figures), which prices
+    # it in place of the household application's; `answers` is that set with its request-scoped corrections. None
+    # (and "") for every other request.
+    answers_source: Literal["", "google_form"] = ""
+    answers: list[AnswerOut] | None = None
+    # The adult aid form response that answer set came from: Google's responseId and when it was submitted. The
+    # filer is the request's person. "" for every other request.
+    form_response_id: str = ""
+    form_submitted_at: str = ""
 
 
 class ApplicationSummaryOut(BaseModel):

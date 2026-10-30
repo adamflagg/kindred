@@ -1747,6 +1747,15 @@ export type BecameOut = {
    * Round1 Posted
    */
   round1_posted?: number | null
+  /**
+   * Form Source
+   */
+  form_source?: 'campminder' | 'google_form' | null
+  form_change?: FormChangeOut | null
+  /**
+   * Price Missing
+   */
+  price_missing?: boolean | null
 }
 
 /**
@@ -5445,6 +5454,105 @@ export type FormAnswerOut = {
    * Named Session Cm Id
    */
   named_session_cm_id?: number
+  /**
+   * Form Source
+   */
+  form_source?: 'campminder' | 'google_form'
+}
+
+/**
+ * FormCandidateOut
+ *
+ * A person the response could be, with the evidence (PR 1's match_candidates: CampMinder ids and signals).
+ */
+export type FormCandidateOut = {
+  /**
+   * Person Cm Id
+   */
+  person_cm_id: number
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Signals
+   */
+  signals?: Array<string>
+  /**
+   * Session Cm Ids
+   */
+  session_cm_ids?: Array<number>
+  /**
+   * Elsewhere
+   */
+  elsewhere?: boolean
+}
+
+/**
+ * FormChangeOut
+ *
+ * A change to a decided request's adult aid form that was not applied (GF-4).
+ */
+export type FormChangeOut = {
+  /**
+   * Kind
+   */
+  kind: 'deleted' | 'changed_after_decision'
+  /**
+   * At
+   */
+  at?: string
+  /**
+   * Reviewed
+   */
+  reviewed?: boolean
+  /**
+   * Reviewed By
+   */
+  reviewed_by?: string
+}
+
+/**
+ * FormChangeReviewedOut
+ */
+export type FormChangeReviewedOut = {
+  /**
+   * Request Id
+   */
+  request_id: string
+  /**
+   * Reviewed By
+   */
+  reviewed_by: string
+  /**
+   * Reviewed At
+   */
+  reviewed_at: string
+}
+
+/**
+ * FormFigureOut
+ *
+ * One figure as the response gave it: `value` None when Kindred could not read it (unknown, never 0), with what
+ * was typed and the note staff see; a clean read has no note.
+ */
+export type FormFigureOut = {
+  /**
+   * Field
+   */
+  field: string
+  /**
+   * Value
+   */
+  value: number | null
+  /**
+   * Typed
+   */
+  typed?: string
+  /**
+   * Note
+   */
+  note?: string
 }
 
 /**
@@ -5463,6 +5571,10 @@ export type FormIntakeCountsOut = {
    * All
    */
   all: number
+  /**
+   * To Link
+   */
+  to_link?: number
 }
 
 /**
@@ -5494,6 +5606,11 @@ export type FormIntakeResponse = {
    * Season Done
    */
   season_done?: boolean
+  /**
+   * Form Responses
+   */
+  form_responses?: Array<FormResponseOut>
+  google_form?: GoogleFormStatusOut | null
 }
 
 /**
@@ -5588,7 +5705,14 @@ export type FormIntakeRowOut = {
    * Look Reasons
    */
   look_reasons?: Array<
-    'campminder_aid' | 'enrolled_no_request' | 'session_unclear' | 'registration_ask_unreviewed'
+    | 'campminder_aid'
+    | 'enrolled_no_request'
+    | 'session_unclear'
+    | 'registration_ask_unreviewed'
+    | 'form_changed_after_decision'
+    | 'form_response_deleted'
+    | 'form_choice_unclear'
+    | 'form_pull_refused'
   >
 }
 
@@ -5618,6 +5742,10 @@ export type FormIntakeSummaryOut = {
    * Season Done
    */
   season_done?: boolean
+  /**
+   * To Link
+   */
+  to_link?: number
 }
 
 /**
@@ -5638,6 +5766,278 @@ export type FormPersonOut = {
    * Last Name
    */
   last_name: string
+}
+
+/**
+ * FormResponseActionOut
+ *
+ * A response after Link… or Ignore….
+ */
+export type FormResponseActionOut = {
+  /**
+   * Id
+   */
+  id: string
+  /**
+   * Response Id
+   */
+  response_id: string
+  /**
+   * Match Status
+   */
+  match_status:
+    | 'auto'
+    | 'suggested'
+    | 'staff'
+    | 'unmatched'
+    | 'registered_elsewhere'
+    | 'not_registered'
+    | 'ignored'
+    | 'superseded'
+  /**
+   * Person Cm Id
+   */
+  person_cm_id?: number
+  /**
+   * Household Cm Id
+   */
+  household_cm_id?: number
+  /**
+   * Linked By
+   */
+  linked_by?: string
+  /**
+   * Linked At
+   */
+  linked_at?: string
+  /**
+   * Ignored Kind
+   */
+  ignored_kind?: 'test' | 'duplicate' | 'not_asking' | 'other' | ''
+  /**
+   * Ignored Reason
+   */
+  ignored_reason?: string
+  /**
+   * Ignored By
+   */
+  ignored_by?: string
+  /**
+   * Ignored At
+   */
+  ignored_at?: string
+}
+
+/**
+ * FormResponseIgnore
+ */
+export type FormResponseIgnore = {
+  /**
+   * Kind
+   */
+  kind: 'test' | 'duplicate' | 'not_asking' | 'other'
+  /**
+   * Reason
+   */
+  reason?: string
+}
+
+/**
+ * FormResponseLink
+ */
+export type FormResponseLink = {
+  /**
+   * Person Cm Id
+   */
+  person_cm_id: number
+  /**
+   * Reason
+   */
+  reason?: string
+}
+
+/**
+ * FormResponseOut
+ *
+ * One adult aid form response, as the opened Form intake row shows it. Never the respondent email (the
+ * link-candidates read has it), the typed birthdate, POC, race/ethnicity or gender identity.
+ */
+export type FormResponseOut = {
+  /**
+   * Id
+   */
+  id: string
+  /**
+   * Response Id
+   */
+  response_id: string
+  /**
+   * Row Key
+   */
+  row_key?: string
+  /**
+   * Form Source
+   */
+  form_source?: 'campminder' | 'google_form'
+  /**
+   * Match Status
+   */
+  match_status:
+    | 'auto'
+    | 'suggested'
+    | 'staff'
+    | 'unmatched'
+    | 'registered_elsewhere'
+    | 'not_registered'
+    | 'ignored'
+    | 'superseded'
+  /**
+   * Form Status
+   */
+  form_status: 'live' | 'deleted'
+  /**
+   * To Link
+   */
+  to_link?: boolean
+  /**
+   * Program Key
+   */
+  program_key?: string
+  /**
+   * Program Choice
+   */
+  program_choice?: string
+  /**
+   * Weekend Session Cm Id
+   */
+  weekend_session_cm_id?: number
+  /**
+   * Person Cm Id
+   */
+  person_cm_id?: number
+  /**
+   * Household Cm Id
+   */
+  household_cm_id?: number
+  /**
+   * Submitted At
+   */
+  submitted_at?: string
+  /**
+   * Created At
+   */
+  created_at?: string
+  /**
+   * Ask
+   */
+  ask?: number | null
+  /**
+   * Figures
+   */
+  figures?: Array<FormFigureOut>
+  /**
+   * Yes No
+   */
+  yes_no?: Array<FormYesNoOut>
+  /**
+   * Unemployment
+   */
+  unemployment?: boolean | null
+  /**
+   * Num Children
+   */
+  num_children?: number | null
+  /**
+   * County
+   */
+  county?: string
+  /**
+   * Special Circumstances
+   */
+  special_circumstances?: string
+  /**
+   * Name Typed
+   */
+  name_typed?: string
+  /**
+   * Signature Typed
+   */
+  signature_typed?: string
+  /**
+   * Agreement Date
+   */
+  agreement_date?: string
+  /**
+   * Match Tier
+   */
+  match_tier?: number
+  /**
+   * Candidates
+   */
+  candidates?: Array<FormCandidateOut>
+  /**
+   * Superseded By
+   */
+  superseded_by?: string
+  /**
+   * Superseded
+   */
+  superseded?: Array<SupersededOut>
+  /**
+   * Linked By
+   */
+  linked_by?: string
+  /**
+   * Linked At
+   */
+  linked_at?: string
+  /**
+   * Ignored Kind
+   */
+  ignored_kind?: 'test' | 'duplicate' | 'not_asking' | 'other' | ''
+  /**
+   * Ignored Reason
+   */
+  ignored_reason?: string
+  /**
+   * Ignored By
+   */
+  ignored_by?: string
+  /**
+   * Ignored At
+   */
+  ignored_at?: string
+  /**
+   * Look Reasons
+   */
+  look_reasons?: Array<
+    | 'campminder_aid'
+    | 'enrolled_no_request'
+    | 'session_unclear'
+    | 'registration_ask_unreviewed'
+    | 'form_changed_after_decision'
+    | 'form_response_deleted'
+    | 'form_choice_unclear'
+    | 'form_pull_refused'
+  >
+}
+
+/**
+ * FormYesNoOut
+ */
+export type FormYesNoOut = {
+  /**
+   * Field
+   */
+  field: string
+  /**
+   * Value
+   */
+  value: boolean | null
+  /**
+   * Note
+   */
+  note?: string
 }
 
 /**
@@ -6359,6 +6759,34 @@ export type GeoValue = {
    * Country
    */
   country?: string
+}
+
+/**
+ * GoogleFormStatusOut
+ *
+ * The season's form as the job last read it: "Last read from Google: 14:20", and a refused pull's banner.
+ */
+export type GoogleFormStatusOut = {
+  /**
+   * Last Pulled At
+   */
+  last_pulled_at?: string
+  /**
+   * Last Pull Status
+   */
+  last_pull_status?: string
+  /**
+   * Refused
+   */
+  refused?: boolean
+  /**
+   * Returned
+   */
+  returned?: number | null
+  /**
+   * Expected
+   */
+  expected?: number | null
 }
 
 /**
@@ -9633,6 +10061,92 @@ export type LeverEffectOut = {
    * Round1 Change
    */
   round1_change: number
+}
+
+/**
+ * LinkCandidateOut
+ *
+ * A candidate on Link…'s dialog: named, with their household, registration and CampMinder birthdate and email
+ * beside the response's own (this read only; the Form intake list never carries them).
+ */
+export type LinkCandidateOut = {
+  /**
+   * Person Cm Id
+   */
+  person_cm_id: number
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Signals
+   */
+  signals?: Array<string>
+  /**
+   * Session Cm Ids
+   */
+  session_cm_ids?: Array<number>
+  /**
+   * Elsewhere
+   */
+  elsewhere?: boolean
+  /**
+   * Camper Name
+   */
+  camper_name?: string
+  /**
+   * Household Label
+   */
+  household_label?: string
+  /**
+   * Registration Status
+   */
+  registration_status?: '' | 'enrolled' | 'applied' | 'waitlisted' | 'incomplete'
+  /**
+   * Birthdate
+   */
+  birthdate?: string
+  /**
+   * Email
+   */
+  email?: string
+}
+
+/**
+ * LinkCandidatesOut
+ *
+ * Link…'s dialog: the response's identity evidence, the respondent email included (read for this dialog only),
+ * and its candidates, named.
+ */
+export type LinkCandidatesOut = {
+  /**
+   * Id
+   */
+  id: string
+  /**
+   * Response Id
+   */
+  response_id: string
+  /**
+   * Respondent Email
+   */
+  respondent_email?: string
+  /**
+   * Name Typed
+   */
+  name_typed?: string
+  /**
+   * Birthdate Typed
+   */
+  birthdate_typed?: string
+  /**
+   * Program Choice
+   */
+  program_choice?: string
+  /**
+   * Candidates
+   */
+  candidates?: Array<LinkCandidateOut>
 }
 
 /**
@@ -14820,6 +15334,26 @@ export type RequestOut = {
    * Origin
    */
   origin?: 'form' | 'added' | 'registration_ask'
+  /**
+   * Form Source
+   */
+  form_source?: 'campminder' | 'google_form' | null
+  /**
+   * Answers Source
+   */
+  answers_source?: '' | 'google_form'
+  /**
+   * Answers
+   */
+  answers?: Array<AnswerOut> | null
+  /**
+   * Form Response Id
+   */
+  form_response_id?: string
+  /**
+   * Form Submitted At
+   */
+  form_submitted_at?: string
 }
 
 /**
@@ -18691,6 +19225,34 @@ export type SummerYearsEnrollment = {
    * Number of campers
    */
   count: number
+}
+
+/**
+ * SupersededOut
+ *
+ * An earlier response from the same person for the same weekend, replaced by this one (information).
+ */
+export type SupersededOut = {
+  /**
+   * Response Id
+   */
+  response_id: string
+  /**
+   * Submitted At
+   */
+  submitted_at: string
+  /**
+   * Ask
+   */
+  ask?: number | null
+  /**
+   * Total Gross Income
+   */
+  total_gross_income?: number | null
+  /**
+   * Replaced At
+   */
+  replaced_at?: string
 }
 
 /**
@@ -26440,6 +27002,194 @@ export type GetUnlistedCampersApiFinancialAidIntakeYearUnlistedGetResponses = {
 
 export type GetUnlistedCampersApiFinancialAidIntakeYearUnlistedGetResponse =
   GetUnlistedCampersApiFinancialAidIntakeYearUnlistedGetResponses[keyof GetUnlistedCampersApiFinancialAidIntakeYearUnlistedGetResponses]
+
+export type LinkFormResponseApiFinancialAidIntakeYearFormResponsesRecordIdLinkPostData = {
+  body: FormResponseLink
+  path: {
+    /**
+     * Year
+     */
+    year: number
+    /**
+     * Record Id
+     */
+    record_id: string
+  }
+  query?: never
+  url: '/api/financial-aid/intake/{year}/form-responses/{record_id}/link'
+}
+
+export type LinkFormResponseApiFinancialAidIntakeYearFormResponsesRecordIdLinkPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type LinkFormResponseApiFinancialAidIntakeYearFormResponsesRecordIdLinkPostError =
+  LinkFormResponseApiFinancialAidIntakeYearFormResponsesRecordIdLinkPostErrors[keyof LinkFormResponseApiFinancialAidIntakeYearFormResponsesRecordIdLinkPostErrors]
+
+export type LinkFormResponseApiFinancialAidIntakeYearFormResponsesRecordIdLinkPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: FormResponseActionOut
+}
+
+export type LinkFormResponseApiFinancialAidIntakeYearFormResponsesRecordIdLinkPostResponse =
+  LinkFormResponseApiFinancialAidIntakeYearFormResponsesRecordIdLinkPostResponses[keyof LinkFormResponseApiFinancialAidIntakeYearFormResponsesRecordIdLinkPostResponses]
+
+export type IgnoreFormResponseApiFinancialAidIntakeYearFormResponsesRecordIdIgnorePostData = {
+  body: FormResponseIgnore
+  path: {
+    /**
+     * Year
+     */
+    year: number
+    /**
+     * Record Id
+     */
+    record_id: string
+  }
+  query?: never
+  url: '/api/financial-aid/intake/{year}/form-responses/{record_id}/ignore'
+}
+
+export type IgnoreFormResponseApiFinancialAidIntakeYearFormResponsesRecordIdIgnorePostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type IgnoreFormResponseApiFinancialAidIntakeYearFormResponsesRecordIdIgnorePostError =
+  IgnoreFormResponseApiFinancialAidIntakeYearFormResponsesRecordIdIgnorePostErrors[keyof IgnoreFormResponseApiFinancialAidIntakeYearFormResponsesRecordIdIgnorePostErrors]
+
+export type IgnoreFormResponseApiFinancialAidIntakeYearFormResponsesRecordIdIgnorePostResponses = {
+  /**
+   * Successful Response
+   */
+  200: FormResponseActionOut
+}
+
+export type IgnoreFormResponseApiFinancialAidIntakeYearFormResponsesRecordIdIgnorePostResponse =
+  IgnoreFormResponseApiFinancialAidIntakeYearFormResponsesRecordIdIgnorePostResponses[keyof IgnoreFormResponseApiFinancialAidIntakeYearFormResponsesRecordIdIgnorePostResponses]
+
+export type GetFormResponseCandidatesApiFinancialAidIntakeYearFormResponsesRecordIdCandidatesGetData =
+  {
+    body?: never
+    path: {
+      /**
+       * Year
+       */
+      year: number
+      /**
+       * Record Id
+       */
+      record_id: string
+    }
+    query?: {
+      /**
+       * Q
+       */
+      q?: string
+    }
+    url: '/api/financial-aid/intake/{year}/form-responses/{record_id}/candidates'
+  }
+
+export type GetFormResponseCandidatesApiFinancialAidIntakeYearFormResponsesRecordIdCandidatesGetErrors =
+  {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError
+  }
+
+export type GetFormResponseCandidatesApiFinancialAidIntakeYearFormResponsesRecordIdCandidatesGetError =
+  GetFormResponseCandidatesApiFinancialAidIntakeYearFormResponsesRecordIdCandidatesGetErrors[keyof GetFormResponseCandidatesApiFinancialAidIntakeYearFormResponsesRecordIdCandidatesGetErrors]
+
+export type GetFormResponseCandidatesApiFinancialAidIntakeYearFormResponsesRecordIdCandidatesGetResponses =
+  {
+    /**
+     * Successful Response
+     */
+    200: LinkCandidatesOut
+  }
+
+export type GetFormResponseCandidatesApiFinancialAidIntakeYearFormResponsesRecordIdCandidatesGetResponse =
+  GetFormResponseCandidatesApiFinancialAidIntakeYearFormResponsesRecordIdCandidatesGetResponses[keyof GetFormResponseCandidatesApiFinancialAidIntakeYearFormResponsesRecordIdCandidatesGetResponses]
+
+export type PullGoogleFormApiFinancialAidIntakeYearFormResponsesPullPostData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: never
+  url: '/api/financial-aid/intake/{year}/form-responses/pull'
+}
+
+export type PullGoogleFormApiFinancialAidIntakeYearFormResponsesPullPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type PullGoogleFormApiFinancialAidIntakeYearFormResponsesPullPostError =
+  PullGoogleFormApiFinancialAidIntakeYearFormResponsesPullPostErrors[keyof PullGoogleFormApiFinancialAidIntakeYearFormResponsesPullPostErrors]
+
+export type PullGoogleFormApiFinancialAidIntakeYearFormResponsesPullPostResponses = {
+  /**
+   * Response Pull Google Form Api Financial Aid Intake  Year  Form Responses Pull Post
+   *
+   * Successful Response
+   */
+  202: {
+    [key: string]: string
+  }
+}
+
+export type PullGoogleFormApiFinancialAidIntakeYearFormResponsesPullPostResponse =
+  PullGoogleFormApiFinancialAidIntakeYearFormResponsesPullPostResponses[keyof PullGoogleFormApiFinancialAidIntakeYearFormResponsesPullPostResponses]
+
+export type ReviewFormChangeApiFinancialAidRequestsYearFormChangesRequestIdReviewPostData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+    /**
+     * Request Id
+     */
+    request_id: string
+  }
+  query?: never
+  url: '/api/financial-aid/requests/{year}/form-changes/{request_id}/review'
+}
+
+export type ReviewFormChangeApiFinancialAidRequestsYearFormChangesRequestIdReviewPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type ReviewFormChangeApiFinancialAidRequestsYearFormChangesRequestIdReviewPostError =
+  ReviewFormChangeApiFinancialAidRequestsYearFormChangesRequestIdReviewPostErrors[keyof ReviewFormChangeApiFinancialAidRequestsYearFormChangesRequestIdReviewPostErrors]
+
+export type ReviewFormChangeApiFinancialAidRequestsYearFormChangesRequestIdReviewPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: FormChangeReviewedOut
+}
+
+export type ReviewFormChangeApiFinancialAidRequestsYearFormChangesRequestIdReviewPostResponse =
+  ReviewFormChangeApiFinancialAidRequestsYearFormChangesRequestIdReviewPostResponses[keyof ReviewFormChangeApiFinancialAidRequestsYearFormChangesRequestIdReviewPostResponses]
 
 export type GetSeasonHistoryApiFinancialAidHistoryYearGetData = {
   body?: never

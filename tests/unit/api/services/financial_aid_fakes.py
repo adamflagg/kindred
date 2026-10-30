@@ -20,11 +20,13 @@ from api.constants.collections import (
     AID_APPLICATION_CORRECTIONS,
     AID_APPLICATIONS,
     AID_DECISIONS,
+    AID_FORM_RESPONSES,
     AID_PAYER_SHARES,
     AID_REQUEST_ADDITIONS,
     AID_REQUESTS,
 )
 from api.services.financial_aid_decisions_repository import decision_event
+from api.services.financial_aid_google_form import FormResponseRow, decided_request_ids
 from api.services.financial_aid_intake_repository import _exact_pct
 from api.services.financial_aid_intake_types import (
     AdditionRecord,
@@ -151,7 +153,16 @@ def _request_changes(changes: Mapping[str, Any]) -> dict[str, Any]:
 
 
 # Everything a batch can change; a failed batch restores all of it.
-_TABLES = ("applications", "requests", "payer_shares", "corrections", "additions", "change_log", "writes")
+_TABLES = (
+    "applications",
+    "requests",
+    "payer_shares",
+    "corrections",
+    "additions",
+    "change_log",
+    "writes",
+    "form_responses",
+)
 
 
 class _BatchStore(Protocol):
@@ -221,6 +232,14 @@ class FakeAidStore:
         self.ask_history: list[AskHistoryRow] = []
         self.attendee_dates: list[AttendeeDates] = []
         self.birthdates: dict[int, str] = {}
+        # The adult aid Google Form mirror (PR 2): aid_form_responses rows, the season's aid_google_forms status, the
+        # respondent email per record (only Link…'s candidates read it), and the seasons the mirror was read for.
+        self.form_responses: list[FormResponseRow] = []
+        self.google_form_status: dict[str, str] | None = None
+        self.respondent_emails: dict[str, str] = {}
+        self.form_years_read: set[int] = set()
+        self.searchable_people: list[Any] = []  # persons rows Link…'s search can find (cm_id, household_id, ...)
+        self.person_contacts: dict[int, tuple[str, str]] = {}  # person -> (birthdate, primary email)
         self.rules: AidRules | None = None
         self.equity_rules: AidRules | None = None
         self.years_read: set[int] = set()
@@ -263,6 +282,41 @@ class FakeAidStore:
     async def fetch_attendee_dates(self, year: int) -> list[AttendeeDates]:
         await self._read(year)
         return list(self.attendee_dates)
+
+    async def fetch_form_response_rows(self, year: int) -> list[FormResponseRow]:
+        await self._read(year)
+        self.form_years_read.add(year)
+        return [r for r in self.form_responses if r.year == year]
+
+    async def fetch_form_response(self, record_id: str) -> FormResponseRow | None:
+        return next((r for r in self.form_responses if r.id == record_id), None)
+
+    async def fetch_form_response_identity(self, record_id: str) -> tuple[str, str]:
+        return self.respondent_emails.get(record_id, ""), ""
+
+    async def search_registration_people(self, year: int, query: str) -> list[Any]:
+        text = query.strip()
+        if text.isdecimal():
+            return [p for p in self.searchable_people if p.cm_id == int(text)]
+        if len(text) == 10 and text[4] == "-":
+            return [p for p in self.searchable_people if p.birthdate == text]
+        words = [w.casefold() for w in text.split()]
+        return [
+            p
+            for p in self.searchable_people
+            if all(w in (p.first_name.casefold(), p.last_name.casefold()) for w in words)
+        ]
+
+    async def fetch_person_contacts(self, year: int, person_cm_ids: Sequence[int]) -> dict[int, tuple[str, str]]:
+        return {p: self.person_contacts[p] for p in person_cm_ids if p in self.person_contacts}
+
+    async def fetch_google_form_status(self, year: int) -> dict[str, str] | None:
+        await self._read(year)
+        self.form_years_read.add(year)
+        return self.google_form_status
+
+    async def fetch_decided_request_ids(self, year: int) -> frozenset[str]:
+        return decided_request_ids(self.decision_events)
 
     async def fetch_applications(self, year: int) -> list[ApplicationRecord]:
         await self._read(year)
@@ -463,6 +517,10 @@ class FakeAidStore:
                 duplicate_of=body.get("duplicate_of", ""),
                 flags=tuple(body["flags"]),
                 equity=equity_from_json(body.get("equity")),
+                answers=body.get("answers"),
+                answers_source=body.get("answers_source", ""),
+                form_response_id=body.get("form_response_id", ""),
+                form_submitted_at=body.get("form_submitted_at", ""),
             )
         elif collection == AID_REQUESTS:
             self.requests[rid] = replace(self.requests[rid], **_request_changes(body))
@@ -503,6 +561,9 @@ class FakeAidStore:
             )
         elif collection == AID_REQUEST_ADDITIONS and method == "PATCH":
             self.additions[rid] = replace(self.additions[rid], **body)
+        elif collection == AID_FORM_RESPONSES and method == "PATCH":
+            index = next(i for i, r in enumerate(self.form_responses) if r.id == rid)
+            self.form_responses[index] = replace(self.form_responses[index], **body)
         elif collection == AID_DECISIONS and method == "POST":
             if body["request"] not in self.requests:
                 raise ValueError(f"aid_decisions.request {body['request']!r} does not exist")

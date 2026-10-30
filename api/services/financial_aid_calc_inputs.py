@@ -30,6 +30,7 @@ from decimal import Decimal
 from typing import Any, Final, get_args
 
 from api.services.financial_aid_corrections import (
+    APPLICATION_CORRECTABLE,
     INCOME_OVERRIDE_FIELD,
     REQUEST_CORRECTABLE,
     STAFF_ENTERED,
@@ -40,6 +41,7 @@ from api.services.financial_aid_household import BOOL_FIELDS
 from api.services.financial_aid_intake_types import (
     FLAG_AWAITING_RULES,
     FLAG_DUPLICATE_SURVIVOR_WITHDRAWN,
+    PROGRAM_FAMILY_CAMP,
     STATUS_ACTIVE,
     STATUS_UNMATCHED,
     UNKNOWN_EQUITY,
@@ -128,6 +130,20 @@ def to_application_inputs(household_cm_id: int, answers: Mapping[str, EffectiveV
     )
 
 
+def pricing_answers(
+    request: RequestRecord, application: ApplicationRecord | None, corrections: Sequence[CorrectionRecord]
+) -> dict[str, EffectiveValue]:
+    """The answers that price `request` (GF-2 = B, adult-aid form design PR 2): its OWN answer set when it has one
+    (answers_source set: an adult aid form response), corrected by the corrections scoped to the request; otherwise
+    its household application's, corrected by the application-level corrections. The calculator sees the same
+    ApplicationInputs shape either way."""
+    if request.answers_source:
+        return effective_values(request.answers or {}, APPLICATION_CORRECTABLE, corrections, request.id)
+    return effective_values(
+        application.answers if application is not None else {}, APPLICATION_CORRECTABLE, corrections
+    )
+
+
 def ag_parent_of(session: SessionRow, sessions: Mapping[int, SessionRow]) -> tuple[int, str | None] | None:
     """The (id, type) of the session an AG session sits under, for `resolve_program(ag_parent=...)`; None when the
     session has no parent."""
@@ -161,6 +177,9 @@ def to_request_inputs(
         raise NotCalculableError("an unmatched request has no session and cannot be priced")
     household_level = request.person_cm_id == 0
     known_headcount = household_level and request.headcount_source != ""
+    # GF-3 = B: a person-level Family Camp request (an adult aid form response) is the one adult's: priced as one
+    # standard person under per_person, never the household's billed headcount.
+    one_adult = not household_level and request.program_key == PROGRAM_FAMILY_CAMP
     answers = UNKNOWN_EQUITY if household_level or equity is None else equity
     ag_parent = session.parent_cm_id if session is not None and session.session_type == "ag" else 0
     return RequestInputs(
@@ -174,6 +193,8 @@ def to_request_inputs(
         headcount=(
             Headcount(standard=request.headcount_non_infant, infants=request.headcount_infant)
             if known_headcount
+            else Headcount(standard=1, infants=0)
+            if one_adult
             else None
         ),
         equity_answers=_known(
@@ -225,6 +246,9 @@ def request_issues(
     rules: AidRules | None,
 ) -> list[CalcIssue]:
     found: list[CalcIssue | None] = []
+    if request.answers_source:
+        # GF-2 = B: a request priced from its own answer set is never held by its household application's conflict.
+        application_flags = ()
     if unresolved_income_conflict(application_flags, answers):
         # Always a hold, whatever the rules list (owner ruling 2026-09-25; validation refuses anything else).
         found.append(
