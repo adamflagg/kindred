@@ -192,7 +192,7 @@ func TestMatchStrongCandidatesInTwoHouseholdsAreSuggestedDespiteHouseholdEmail(t
 		t.Errorf("Match = {%s person=%d household=%d signals=%d}, want suggested, no person, 2 signals",
 			got.Status, got.PersonCMID, got.HouseholdCMID, got.Signals)
 	}
-	var ids []int
+	ids := make([]int, 0, len(got.Candidates))
 	for _, c := range got.Candidates {
 		ids = append(ids, c.PersonCMID)
 		if len(c.Signals) != 2 {
