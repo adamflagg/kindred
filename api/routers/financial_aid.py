@@ -1039,6 +1039,17 @@ async def _pull_google_form(year: int) -> object:
         raise
 
 
+async def _repick_form_supersede(year: int) -> None:
+    """After a Link… or Ignore…: the job's supersede rule is per person and weekend, so either can change which of a
+    person's responses is newest. Start the pull now so the job re-picks within seconds, not at the next hourly tick
+    (meanwhile an undecided request is withdrawn and a decided one shows "deleted"). Best effort: a pull that fails
+    never fails the staff write, which is already committed."""
+    try:
+        await _pull_google_form(year)
+    except Exception:
+        logger.warning("Adult aid form pull after a link/ignore failed year=%s", year, exc_info=True)
+
+
 _FORM_RESPONSE_ID = Annotated[str, Path(min_length=1, max_length=15)]
 
 
@@ -1058,6 +1069,7 @@ async def link_form_response(
     except _ERRORS as exc:
         _raise_http(exc)
     await _rebuild_intake(year)
+    await _repick_form_supersede(year)
     return linked
 
 
@@ -1077,6 +1089,7 @@ async def ignore_form_response(
     except _ERRORS as exc:
         _raise_http(exc)
     await _rebuild_intake(year)
+    await _repick_form_supersede(year)
     return ignored
 
 

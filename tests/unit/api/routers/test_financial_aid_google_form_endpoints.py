@@ -148,6 +148,36 @@ def test_ignore_reaches_the_service_then_rebuilds_and_maps_a_refusal_to_422() ->
         assert client.post(f"{BASE}/{RECORD}/ignore", json={"kind": "other", "reason": ""}).status_code == 422
 
 
+def test_ignore_and_link_start_a_form_pull_so_the_job_re_picks_the_supersede() -> None:
+    """The Go job's supersede rule is per person+weekend: ignoring (or linking) a response changes which one is
+    newest, so the pull runs now rather than at the next hourly tick."""
+    stub, pull = _stub(), AsyncMock(return_value={"status": "started"})
+    with _client(persona_user(PERSONA_REGISTRAR), stub, pull=pull) as client:
+        assert client.post(f"{BASE}/{RECORD}/ignore", json={"kind": "test"}).status_code == 200
+        pull.assert_awaited_once_with(2027)
+        body = {"person_cm_id": 1000091, "reason": "nickname"}
+        assert client.post(f"{BASE}/{RECORD}/link", json=body).status_code == 200
+    assert pull.await_count == 2
+
+
+def test_a_failed_pull_does_not_fail_the_ignore_or_link() -> None:
+    stub = _stub()
+    pull = AsyncMock(side_effect=RuntimeError("pocketbase unreachable"))
+    with _client(persona_user(PERSONA_REGISTRAR), stub, pull=pull) as client:
+        assert client.post(f"{BASE}/{RECORD}/ignore", json={"kind": "test"}).status_code == 200
+        link = {"person_cm_id": 1000091, "reason": "nickname"}
+        assert client.post(f"{BASE}/{RECORD}/link", json=link).status_code == 200
+    assert pull.await_count == 2
+
+
+def test_a_refused_ignore_starts_no_pull() -> None:
+    refused, pull = _stub(), AsyncMock(return_value={"status": "started"})
+    refused.ignore = AsyncMock(side_effect=CaseworkValidationError("a reason is required"))
+    with _client(persona_user(PERSONA_FINANCE), refused, pull=pull) as client:
+        assert client.post(f"{BASE}/{RECORD}/ignore", json={"kind": "other", "reason": ""}).status_code == 422
+    pull.assert_not_awaited()
+
+
 def test_the_candidates_read_rebuilds_nothing() -> None:
     stub, rebuild = _stub(), AsyncMock(return_value=True)
     with _client(persona_user(PERSONA_REGISTRAR), stub, rebuild) as client:
