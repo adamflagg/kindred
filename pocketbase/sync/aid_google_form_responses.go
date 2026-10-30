@@ -43,7 +43,7 @@ const (
 	aidFormMatchIgnored    = "ignored"
 	aidFormMatchSuperseded = "superseded"
 
-	// The mass-vanish guard (design §3.4), modelled on Jotform's wrong-guess
+	// The mass-vanish guard (design §3.4), patterned on Jotform's wrong-guess
 	// guard: with at least this many live rows, a pull returning fewer than
 	// half of them marks nothing deleted. A pull returning no responses at all
 	// marks nothing deleted whatever the live count.
