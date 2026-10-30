@@ -2100,7 +2100,8 @@ func hourlyOrphanKeeper(syncType string, origin runOrigin, svc Service) orphanKe
 var errHourlySyncYielded = errors.New("hourly sync yielded to a running queue")
 
 // RunHourlySync runs the hourly refresh, cadenceQueue(CadenceHourly): sessions, attendees,
-// persons and bunk_assignments (epic #3207 PR 5), for the primary season, then for the prior
+// persons and bunk_assignments (epic #3207 PR 5), then the adult aid Google Form pull
+// (aid_google_form_responses, after the jobs it matches against), for the primary season, then for the prior
 // season (spec §5), and waits for each to finish. enrollment_snapshots is not among them: the
 // nightly's row stays each day's stored point.
 //

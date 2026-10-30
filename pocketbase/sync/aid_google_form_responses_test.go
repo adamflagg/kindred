@@ -505,6 +505,38 @@ func TestAidFormSecondRunWritesNothing(t *testing.T) {
 	}
 }
 
+// A figure answer pasted far too long must not fail the row's save (parse_notes
+// has a size cap) and so stall every later pull: the note keeps a capped copy.
+func TestAidFormOverlongFigureAnswersStillSave(t *testing.T) {
+	t.Parallel()
+	app := newAidFormTestApp(t)
+	seedAidFormWeekends(t, app)
+	long := strings.Repeat("as much as you can spare ", 2000) // 50,000 characters, no number
+	answers := map[string]string{
+		"name_typed": "Olivia Chen", "birthdate_typed": "1985-03-09", "program_choice": gfChoiceWW,
+	}
+	for _, role := range []string{"ask", "total_gross_income", "income_confirmed", "total_adjusted_income",
+		"expected_gross_income", "non_retirement_savings", "total_medical_expenses", "student_debt"} {
+		answers[role] = long
+	}
+	olivia := gfResponse("resp-olivia", "2026-11-08T09:00:00.000Z", "ochen@example.com", answers)
+	fake := &fakeGoogleForm{def: gfDefinition(), resp: []google.FormResponse{olivia, gfGrace()}}
+	if _, err := runAidForm(t, app, fake); err != nil {
+		t.Fatalf("an over-long answer failed the pull: %v", err)
+	}
+	gfRow(t, app, "resp-grace") // the next response still landed
+	var notes map[string]aidFormParseNote
+	if err := json.Unmarshal(jsonFieldBytes(gfRow(t, app, "resp-olivia").Get("parse_notes")), &notes); err != nil {
+		t.Fatal(err)
+	}
+	if n := len([]rune(notes["ask"].Typed)); n == 0 || n > aidFormNoteTypedMax {
+		t.Errorf("ask note keeps %d typed characters, want 1..%d", n, aidFormNoteTypedMax)
+	}
+	if notes["ask"].Note != "not a dollar amount" {
+		t.Errorf("ask note = %q", notes["ask"].Note)
+	}
+}
+
 // GF-4: an edit keeps the responseId and moves last_submitted_at. It is
 // re-parsed and re-matched, and created_at_google keeps the first submission,
 // which is how PR 2 tells an edit.

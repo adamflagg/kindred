@@ -87,7 +87,9 @@ const maxCandidates = 10
 //   - suggested: anyone in the pool with at least 1 signal, or several strong
 //     candidates no tie-break separates.
 //   - not_registered: no signal anywhere.
-//   - unmatched: the response carries no identity at all.
+//   - unmatched: the response carries no identity at all. (The sync job also
+//     stores unmatched, without calling Match on a pool, when the program
+//     choice maps to no weekend set: there is nothing to match against.)
 func Match(id Identity, pool, elsewhere []Person, households map[int][]Member) Decision {
 	if strings.TrimSpace(id.Name) == "" && NormalizeDate(id.Birthdate) == "" && !usableEmail(id.Email) {
 		return Decision{Status: StatusUnmatched}

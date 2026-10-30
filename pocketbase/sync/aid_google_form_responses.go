@@ -43,9 +43,10 @@ const (
 	aidFormMatchIgnored    = "ignored"
 	aidFormMatchSuperseded = "superseded"
 
-	// The mass-vanish guard (design §3.4), copied from Jotform's wrong-guess
+	// The mass-vanish guard (design §3.4), modelled on Jotform's wrong-guess
 	// guard: with at least this many live rows, a pull returning fewer than
-	// half of them marks nothing deleted.
+	// half of them marks nothing deleted. A pull returning no responses at all
+	// marks nothing deleted whatever the live count.
 	aidFormVanishGuardMin = 5
 	aidFormPullStatusMax  = 2000
 )
@@ -97,7 +98,8 @@ type GoogleFormFetcher interface {
 // AidGoogleFormResponsesSync pulls the season's adult aid Google Form.
 //
 // Each run reads the definition (question map by normalised title, choice map
-// by the date in each program label) and every response, upserts one row per
+// by each program label's Family Camp number or whole name -- the label's date
+// is only a cross-check) and every response, upserts one row per
 // responseId, marks a response Google no longer returns `deleted` (behind the
 // mass-vanish guard), and matches each live row to a 2027 person (GF-1 = A).
 // Rows staff linked or ignored are never re-matched; their answers still
@@ -186,10 +188,12 @@ func (s *AidGoogleFormResponsesSync) Sync(ctx context.Context) error {
 		s.Stats.Errors++
 		s.recordForm(year, formID, nil, "error: "+pullErr.Error())
 	}
+	// recordForm stamped the season row on every path above, so every pull wrote: checkpoint
+	// unconditionally, as the Jotform pull does. Intake still rebuilds only on a response change.
+	if _, cpErr := s.App.DB().NewQuery("PRAGMA wal_checkpoint(FULL)").Execute(); cpErr != nil {
+		slog.Warn("WAL checkpoint after the adult aid form pull failed", "error", cpErr)
+	}
 	if s.Stats.Created+s.Stats.Updated+s.Stats.Deleted > 0 {
-		if _, cpErr := s.App.DB().NewQuery("PRAGMA wal_checkpoint(FULL)").Execute(); cpErr != nil {
-			slog.Warn("WAL checkpoint after the adult aid form pull failed", "error", cpErr)
-		}
 		s.runIntakeTrigger(ctx, year)
 	}
 	slog.Info("Adult aid form pull complete", "year", year, "created", s.Stats.Created,
@@ -398,6 +402,14 @@ var aidFormTextMax = map[string]int{
 	"race_ethnicity": 500, "gender_identity": 100, "signature_typed": 500,
 }
 
+// aidFormNoteTypedMax caps the typed copy a parse note keeps: parse_notes has a
+// size limit, and one pasted essay must not fail the row's save -- and with it
+// every later pull.
+const aidFormNoteTypedMax = 500
+
+// noteTyped is the typed copy a parse note keeps, capped at aidFormNoteTypedMax.
+func noteTyped(typed string) string { return truncateRunes(typed, aidFormNoteTypedMax) }
+
 // aidFormParseNote is one parse_notes entry: what was typed, what Kindred read
 // (null when unknown) and the note staff see.
 type aidFormParseNote struct {
@@ -471,7 +483,7 @@ func parseAidFormResponse(r *google.FormResponse, qm aidform.QuestionMap, year i
 		figures[f.role] = fig
 		out[f.role] = fig.Value
 		if fig.Note != "" {
-			note := aidFormParseNote{Typed: typed, Note: fig.Note}
+			note := aidFormParseNote{Typed: noteTyped(typed), Note: fig.Note}
 			if fig.Known {
 				v := fig.Value
 				note.Read = &v
@@ -495,7 +507,7 @@ func parseAidFormResponse(r *google.FormResponse, qm aidform.QuestionMap, year i
 			note.Note += "; " + differ
 		} else {
 			v := confirm.Value
-			note = aidFormParseNote{Typed: answer(aidform.RoleGrossConfirm), Read: &v, Note: differ}
+			note = aidFormParseNote{Typed: noteTyped(answer(aidform.RoleGrossConfirm)), Read: &v, Note: differ}
 		}
 		notes[aidform.RoleGrossConfirm] = note
 	}
@@ -503,7 +515,7 @@ func parseAidFormResponse(r *google.FormResponse, qm aidform.QuestionMap, year i
 	children, known, note := aidform.ParseCount(answer(aidform.RoleChildren))
 	out[aidform.RoleChildren] = children
 	if !known {
-		notes[aidform.RoleChildren] = aidFormParseNote{Typed: answer(aidform.RoleChildren), Note: note}
+		notes[aidform.RoleChildren] = aidFormParseNote{Typed: noteTyped(answer(aidform.RoleChildren)), Note: note}
 	}
 	for _, role := range []string{aidform.RoleUnemployment, aidform.RoleGovSubsidies} {
 		value, ok := aidform.ParseYesNo(answer(role))
@@ -513,7 +525,7 @@ func parseAidFormResponse(r *google.FormResponse, qm aidform.QuestionMap, year i
 			if answer(role) != "" {
 				n = "not Yes or No"
 			}
-			notes[role] = aidFormParseNote{Typed: answer(role), Note: n}
+			notes[role] = aidFormParseNote{Typed: noteTyped(answer(role)), Note: n}
 		}
 	}
 	out["parse_notes"] = notes
@@ -524,8 +536,9 @@ func parseAidFormResponse(r *google.FormResponse, qm aidform.QuestionMap, year i
 type aidFormChoice struct {
 	ProgramKey string `json:"program_key"`
 	StartDate  string `json:"start_date,omitempty"`
-	// Status: mapped (one weekend), unclear (several start that day) or
-	// unmapped (none, or no readable date).
+	// Status: mapped (one weekend), unclear (several sessions carry that Family
+	// Camp number or name) or unmapped (none does). The label's date never
+	// changes the status; it only sets DateMismatch.
 	Status             string `json:"status"`
 	WeekendSessionCMID int    `json:"weekend_session_cm_id"`
 	Weekends           []int  `json:"weekend_session_cm_ids,omitempty"`
