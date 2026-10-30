@@ -229,10 +229,30 @@ function IntakeDetail({
   const reg = row.registration_ask ?? null
   const evidence: ReactNode[] = []
   const shown = formEvidence(row, programs)
-  if (shown.noForm !== null) evidence.push(shown.noForm)
   // The adult aid form's answers say so, with the day it was filed (mock v2 steps 3–4, 15); CampMinder's keep theirs.
   const adult = (row.answers ?? []).filter((a) => a.form_source === 'google_form')
   const campminder = (row.answers ?? []).filter((a) => a.form_source !== 'google_form')
+  // A decided request whose response is gone (deleted in Google, or unlinked) has no answers left, yet its row still
+  // reads as the adult aid form it was decided on, with the flag (mock v2 step 3), never "no aid form".
+  const gone = adult.length === 0 && (response !== null || formChangeToReview(row) !== undefined)
+  if (shown.noForm !== null && !gone) evidence.push(shown.noForm)
+  if (gone) {
+    const flag = (row.became ?? []).map(becameFlag).find((f) => f !== null) ?? null
+    evidence.push(
+      <>
+        {response === null
+          ? 'Adult aid form'
+          : `Adult aid form filed${response.submitted_at ? ` ${campDayOf(response.submitted_at)}` : ''}`}
+        {response !== null && (
+          <span>
+            {` · ${programLabel(programs, response.program_key ?? '')} “${response.program_choice ?? ''}” `}
+            <b>{response.ask == null ? 'ask unknown' : formatMoney(response.ask)}</b>
+          </span>
+        )}
+        {flag !== null && <span className={AMBER} title={flag.title}>{` · ⚠ ${flag.words}`}</span>}
+      </>
+    )
+  }
   if (adult.length > 0) {
     const flag = (row.became ?? []).map(becameFlag).find((f) => f !== null) ?? null
     evidence.push(

@@ -694,6 +694,17 @@ describe("the adult aid form's responses (adult aid form mock v2, steps 4–20)"
     )
   })
 
+  it('opened, a deleted response\'s row reads its adult aid form and the deletion, never "no aid form"', async () => {
+    renderAt()
+    const [name] = await screen.findAllByText('Ana Garcia')
+    const row = name!.closest('tr') as HTMLElement
+    await userEvent.click(within(row).getAllByRole('cell')[2]!)
+    const detail = row.nextElementSibling as HTMLElement
+    expect(detail).toHaveTextContent('Adult aid form filed Nov 4')
+    expect(detail).toHaveTextContent('⚠ response deleted in Google')
+    expect(detail).not.toHaveTextContent('No aid form and no registration ask')
+  })
+
   it('a response staff ignored or linked to someone else reads "response no longer linked"', async () => {
     const unlinked = {
       ...ana,
@@ -718,6 +729,34 @@ describe("the adult aid form's responses (adult aid form mock v2, steps 4–20)"
       'title',
       'The response is no longer linked to this request: the request and its decisions stay as they are, and it leaves Needs a look'
     )
+  })
+
+  it('opened, a row whose response was unlinked (no response on it) still names the adult aid form and the flag', async () => {
+    const unlinked = {
+      ...ana,
+      look_reasons: ['form_response_unlinked' as const],
+      became: (ana.became ?? []).map((b) => ({
+        ...b,
+        form_change: {
+          kind: 'deleted' as const,
+          cause: 'unlinked' as const,
+          at: '',
+          reviewed: false,
+        },
+      })),
+    }
+    forms = {
+      ...forms,
+      rows: [...ROWS_2027, jordan, unlinked],
+      form_responses: (forms.form_responses ?? []).filter((r) => r.response_id !== ANA.response_id),
+    }
+    renderAt()
+    const [name] = await screen.findAllByText('Ana Garcia')
+    const row = name!.closest('tr') as HTMLElement
+    await userEvent.click(within(row).getAllByRole('cell')[2]!)
+    const detail = row.nextElementSibling as HTMLElement
+    expect(detail).toHaveTextContent('Adult aid form · ⚠ response no longer linked')
+    expect(detail).not.toHaveTextContent('No aid form and no registration ask')
   })
 
   it('Responses to link: a segment of its own, second, each response with Link… and Ignore…', async () => {
