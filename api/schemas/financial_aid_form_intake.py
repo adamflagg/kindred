@@ -225,7 +225,6 @@ class FormCandidateOut(BaseModel):
     signals: list[str] = Field(default_factory=list)
     session_cm_ids: list[int] = Field(default_factory=list)
     elsewhere: bool = False  # registered for another weekend than the response chose
-    household_email: bool = False  # the email matched someone else in their household (a tie-break)
 
 
 class LinkCandidateOut(FormCandidateOut):

@@ -5486,10 +5486,6 @@ export type FormCandidateOut = {
    * Elsewhere
    */
   elsewhere?: boolean
-  /**
-   * Household Email
-   */
-  household_email?: boolean
 }
 
 /**
@@ -10094,10 +10090,6 @@ export type LinkCandidateOut = {
    * Elsewhere
    */
   elsewhere?: boolean
-  /**
-   * Household Email
-   */
-  household_email?: boolean
   /**
    * Camper Name
    */

@@ -851,7 +851,6 @@ def candidate_out(raw: Mapping[str, Any]) -> FormCandidateOut:
         signals=[str(s) for s in raw.get("signals") or []],
         session_cm_ids=[int(s) for s in raw.get("session_cm_ids") or []],
         elsewhere=bool(raw.get("elsewhere")),
-        household_email=bool(raw.get("household_email")),
     )
 
 
