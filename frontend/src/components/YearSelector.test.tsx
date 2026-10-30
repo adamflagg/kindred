@@ -142,6 +142,28 @@ describe('YearSelector', () => {
       expect(context.setCurrentYear).toHaveBeenCalledWith(2025)
     })
 
+    it('draws the kit check beside the selected year only, in the aid variant only', async () => {
+      const { unmount } = render(
+        createElement(
+          CurrentYearContext.Provider,
+          { value: ctx(2026) },
+          createElement(YearSelector, { aid: true })
+        )
+      )
+      await userEvent.click(screen.getByText('2026').closest('button') as HTMLElement)
+      const option = (year: string) => screen.getByRole('option', { name: new RegExp(`^${year}`) })
+      const check = option('2026').querySelector('[aria-hidden]')
+      expect(check).toHaveTextContent('✓')
+      expect(check).toHaveClass('text-primary', 'absolute', 'left-[7px]')
+      for (const other of ['2027', '2025', '2024']) {
+        expect(option(other).querySelector('[aria-hidden]')).toBeNull()
+      }
+      unmount()
+      renderWithContext(ctx(2026))
+      await userEvent.click(screen.getByText('2026').closest('button') as HTMLElement)
+      expect(screen.queryByText('✓')).toBeNull()
+    })
+
     it('greys nothing before the configured season is known', async () => {
       const { setCurrentYear, availableYears, isTransitioning, isYearReady } = ctx(2025)
       renderWithContext({

@@ -1,7 +1,12 @@
 import { Calendar, Loader2, ChevronDown } from 'lucide-react'
 import { Listbox, ListboxButton, ListboxOptions, ListboxOption } from '@headlessui/react'
 import { useCurrentYear } from '../hooks/useCurrentYear'
-import { CS_PICKER, CS_PICKER_OPTION, CS_PICKER_OPTIONS } from './camperships/kit/csType'
+import {
+  CS_PICKER,
+  CS_PICKER_CHECK,
+  CS_PICKER_OPTION,
+  CS_PICKER_OPTIONS,
+} from './camperships/kit/csType'
 import { isClosedSeason } from '../utils/closedSeason'
 
 /**
@@ -67,7 +72,16 @@ export default function YearSelector({ aid = false }: { aid?: boolean }) {
                     .filter(Boolean)
                     .join(' ')}
                 >
-                  <span>{year}</span>
+                  {({ selected }) => (
+                    <>
+                      {aid && selected && (
+                        <span className={CS_PICKER_CHECK} aria-hidden>
+                          ✓
+                        </span>
+                      )}
+                      <span>{year}</span>
+                    </>
+                  )}
                 </ListboxOption>
               ))}
             </ListboxOptions>

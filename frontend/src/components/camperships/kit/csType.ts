@@ -163,6 +163,8 @@ export const CS_PICKER_FIELD = `${FIELD_FACE} ${CTL_FOCUS} inline-flex cursor-po
 /** The popover: a white card list with the existing 200ms fade-and-drop (needs the Listbox `transition` prop). */
 export const CS_PICKER_OPTIONS =
   'bg-card text-foreground border-border absolute top-[calc(100%+4px)] left-0 z-[70] max-h-[260px] w-max max-w-[320px] min-w-full overflow-auto rounded-[10px] border p-1 shadow-lg transition duration-200 ease-out focus:outline-none data-[closed]:-translate-y-1 data-[closed]:opacity-0'
+/** The ✓ drawn in an option's left gutter (the `pl-[22px]` of CS_PICKER_OPTION) beside the selected option. */
+export const CS_PICKER_CHECK = 'text-primary absolute left-[7px]'
 export const CS_PICKER_OPTION =
   'relative flex cursor-pointer items-center gap-1.5 rounded-md py-1 pr-2.5 pl-[22px] text-[12.5px] leading-[18px] whitespace-nowrap data-[focus]:bg-muted data-[selected]:font-semibold data-[disabled]:text-muted-foreground data-[disabled]:cursor-default'
 /** A group heading inside the popover (programs under their pool). */
