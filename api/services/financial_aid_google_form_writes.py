@@ -4,7 +4,8 @@
     applied, waitlisted, incomplete). match_status "staff" (PR 1's job never re-matches a staff row), linked_by /
     linked_at, and the person's own household as their registration names it. An ignored response can be Link…ed:
     that is how an Ignore is undone (owner Q3).
-  - Ignore…: test or duplicate junk. A reason is required; who and when are kept beside it.
+  - Ignore…: a test, a duplicate, someone not asking for aid, or other; a reason is required only for other. The
+    kind, who and when are kept beside it.
   - Mark Reviewed (owner Q2): a request flagged form_changed_after_decision / form_response_deleted (GF-4) records
     the change staff reviewed, so the look stays cleared until a DIFFERENT change arrives. Nothing is applied.
   - link_candidates: Link…'s dialog, the only read of the respondent email (and the typed birthdate).
@@ -31,11 +32,13 @@ from api.services.financial_aid_casework_service import CaseworkNotFoundError, C
 from api.services.financial_aid_form_intake import candidate_out
 from api.services.financial_aid_google_form import (
     FORM_CHANGE_FLAGS,
+    FORM_PROGRAMS,
     MATCH_IGNORED,
     MATCH_STAFF,
     FormResponseRow,
     is_form_request,
 )
+from api.services.financial_aid_intake_service import season_lock
 from api.services.financial_aid_intake_types import AttendeeRow, RequestRecord
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite
 
@@ -148,6 +151,9 @@ class FormResponseCaseworkService:
         self, year: int, record_id: str, person_cm_id: int, reason: str, actor: str
     ) -> FormResponseActionOut:
         row = await self._require(year, record_id)
+        if row.program_key not in FORM_PROGRAMS:
+            # It would make no request whoever it is linked to; Ignore… clears it from Responses to link.
+            raise CaseworkValidationError("that response names no Family Camp or adult weekend program")
         registered = [a for a in await self._store.fetch_registered_attendees(year) if a.person_cm_id == person_cm_id]
         if not registered:
             raise CaseworkValidationError(f"that person is not registered for a {year} session")
@@ -235,6 +241,12 @@ class FormResponseCaseworkService:
         )
 
     async def review_form_change(self, year: int, request_id: str, actor: str) -> FormChangeReviewedOut:
+        # It rewrites the request's flags, which intake's build plans and writes too: take the build's season_lock
+        # and read the request inside it, as casework's writers do, so neither commits over the other.
+        async with season_lock(year):
+            return await self._review_form_change(year, request_id, actor)
+
+    async def _review_form_change(self, year: int, request_id: str, actor: str) -> FormChangeReviewedOut:
         request = await self._store.fetch_request(request_id)
         if request is None or request.year != year or not is_form_request(request):
             raise CaseworkNotFoundError("no such adult aid form request this season")

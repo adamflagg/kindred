@@ -33,7 +33,8 @@ The rulings it carries:
     Google withdraws it (no spec), as a vanished CampMinder answer does. Once a decision exists (any aid_decisions
     event but a family's ask), a change is NOT applied: the request keeps the figures, ask and response it was
     decided on, and is flagged `form_changed_after_decision` or `form_response_deleted`, until staff Mark Reviewed
-    that change (aid_requests.form_change_reviewed holds its fingerprint) or a different one arrives.
+    that change (aid_requests.form_change_reviewed holds its fingerprint) or a different one arrives. "Deleted" is
+    any response no longer live and linked: deleted in Google, or Ignored or re-linked to someone else by staff.
 
 2026 is frozen: nothing here runs before GOOGLE_FORM_FIRST_SEASON.
 """

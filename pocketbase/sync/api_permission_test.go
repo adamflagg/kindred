@@ -59,8 +59,9 @@ func TestPermissionCheckExactMatch(t *testing.T) {
 // (adult-aid form design PR 2): FastAPI calls a sync route as PocketBase's superuser after
 // gating the person on financial_aid.casework, and a superuser has neither is_admin nor
 // cached_permissions, so without the bypass every such call would be 403. A superuser can
-// already read and write every collection, so this widens nothing. An app user with no
-// permission is still refused, and a missing auth is still 401.
+// already read and write every collection, and no person's token is a superuser's, so this
+// widens nothing for a person. An app user with no permission is still refused, and a
+// missing auth is still 401.
 func TestRequirePermissionLetsTheSuperuserThrough(t *testing.T) {
 	t.Parallel()
 	ran := false

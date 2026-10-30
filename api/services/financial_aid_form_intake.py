@@ -25,7 +25,8 @@ adult weekends, each read from its own column pair. A bucket the household filed
 Registration ask only for it (`registration_only_programs`), whatever else the household filed. From 2027 a
 person's matched, live adult aid Google Form response is the aid form for its bucket, for that person (PR 2,
 IN-FORM-ONLY), so it files Family Camp or adult weekends for them alone. A registration-ask-only bucket's enrolled
-sessions need no look, as a registration-only family's never did. 2026, the tie-off season, reads every row exactly as before: by the household's filing, from the legacy ask pair.
+sessions need no look, as a registration-only family's never did. 2026, the tie-off season, reads every row exactly as
+before: by the household's filing, from the legacy ask pair.
 
 From 2027 the registration-ask rule's own facts explain an enrolled session it made no request for (PR 4b,
 financial_aid_registration_ask, run here over the requests intake made): `registration_ask_ambiguous` when the ask's

@@ -46,6 +46,7 @@ from functools import partial
 from typing import Annotated, Final, Literal, NoReturn
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response
+from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
 from pydantic import StringConstraints, TypeAdapter, ValidationError
 
 from api.constants.collections import AID_HOUSEHOLD_LINKS, AID_REQUESTS
@@ -864,12 +865,13 @@ async def _rebuild_intake(year: int) -> bool:
     """Rebuild the season's intake right after a staff-added request is written or retired, so what the addition
     changes elsewhere lands now, not at the next nightly form sync: a camper's other request drops the added session
     from its candidates (a summer request "Session unclear" between an in-training session and the winter retreat
-    resolves), and a request waiting on a retired one is promoted. The write already committed, so a failed rebuild
-    is logged and reported (False), never turned into a failed write; the nightly run finishes it."""
+    resolves), and a request waiting on a retired one is promoted. Also after an adult aid form Link…, Ignore… or
+    Mark Reviewed (PR 2), so the request it makes, drops or clears lands now. The write already committed, so a
+    failed rebuild is logged and reported (False), never turned into a failed write; the nightly run finishes it."""
     try:
         await FinancialAidIntakeService(FinancialAidIntakeRepository(pb)).build(year)
     except Exception:
-        logger.exception("Financial-aid intake rebuild after an added-request write failed year=%s", year)
+        logger.exception("Financial-aid intake rebuild after a staff write failed year=%s", year)
         return False
     return True
 
@@ -1027,8 +1029,14 @@ _GOOGLE_FORM_PULL_ROUTE: Final = "/api/custom/sync/aid-google-form-responses"
 async def _pull_google_form(year: int) -> object:
     """Ask PocketBase to read the season's adult aid form now, as FastAPI's superuser: the route is
     bunking.manage-gated for people, which Camperships staff may not hold, so the gate here is
-    financial_aid.casework and PocketBase lets its superuser through. The job rebuilds intake itself on a change."""
-    return await asyncio.to_thread(pb.send, _GOOGLE_FORM_PULL_ROUTE, {"method": "POST", "params": {"year": year}})
+    financial_aid.casework and PocketBase lets its superuser through. The job rebuilds intake itself on a change.
+    A 409 (the job is already running) is a started pull too: the form is being read now, as staff asked."""
+    try:
+        return await asyncio.to_thread(pb.send, _GOOGLE_FORM_PULL_ROUTE, {"method": "POST", "params": {"year": year}})
+    except ClientResponseError as exc:
+        if exc.status == 409:
+            return {"status": "running"}
+        raise
 
 
 _FORM_RESPONSE_ID = Annotated[str, Path(min_length=1, max_length=15)]
@@ -1062,7 +1070,7 @@ async def ignore_form_response(
     record_id: _FORM_RESPONSE_ID,
     user: AuthUser = Depends(require_permission(Permission.FINANCIAL_AID_CASEWORK)),
 ) -> FormResponseActionOut:
-    """Ignore…: a test or duplicate response (a reason is required). It stays listed under All forms with the
+    """Ignore…: a test, a duplicate, someone not asking, or (with a reason, required only then) other. It stays listed under All forms with the
     reason, who and when, and Link… undoes it. Logged; the season's intake is rebuilt."""
     try:
         ignored = await _form_responses().ignore(year, record_id, body.kind, body.reason, user.email)

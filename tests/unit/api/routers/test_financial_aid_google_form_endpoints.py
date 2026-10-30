@@ -191,6 +191,24 @@ async def test_the_pull_goes_to_pocketbases_own_form_job_route_as_the_superuser(
     assert options["params"] == {"year": 2027}
 
 
+@pytest.mark.asyncio
+async def test_a_pull_while_the_form_job_is_already_running_is_started_not_an_error() -> None:
+    # PocketBase answers 409 when the job is running ("Sync already in progress"): the form is being read now, which
+    # is what Pull now asked for, so a second click is not a server error.
+    from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
+
+    from api.routers import financial_aid
+
+    client = MagicMock()
+    client.send = MagicMock(side_effect=ClientResponseError("Sync already in progress", status=409))
+    with patch.object(financial_aid, "pb", client):
+        await financial_aid._pull_google_form(2027)
+
+    client.send = MagicMock(side_effect=ClientResponseError("boom", status=500))
+    with patch.object(financial_aid, "pb", client), pytest.raises(ClientResponseError):
+        await financial_aid._pull_google_form(2027)
+
+
 def _schema_properties(schema: dict[str, Any]) -> set[str]:
     return set((schema.get("properties") or {}).keys())
 

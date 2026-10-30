@@ -136,7 +136,7 @@ class BecameOut(BaseModel):
     # sets reviewed. Left out of the JSON when there is none.
     form_change: FormChangeOut | None = Field(default=None, exclude_if=lambda v: v is None)
     # From 2027 (PR 2): the rules give its session no price yet (no tuition, no family rate): "no price yet". Left
-    # out of the JSON before 2027 and for a request with no session.
+    # out of the JSON before 2027, for a request with no session, and for one that is not live.
     price_missing: bool | None = Field(default=None, exclude_if=lambda v: v is None)
 
 

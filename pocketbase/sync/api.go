@@ -167,7 +167,10 @@ func RequirePermission(permission string, handler func(*core.RequestEvent) error
 		}
 		// Admin bypass. PocketBase's own superuser too: it holds neither is_admin nor
 		// cached_permissions, and it is how FastAPI calls a route after gating the person on
-		// its own permission (Camperships' Pull now). It can already write every collection.
+		// its own permission (Camperships' Pull now). It can already write every collection, and
+		// no person's token is a superuser's (a view-as preview swaps e.Auth to a users stand-in
+		// before this runs), so it widens nothing for a person. It does let a superuser run
+		// every route gated here (the sync triggers and lodging roll-forward), not only Pull now.
 		if e.Auth.GetBool("is_admin") || e.Auth.IsSuperuser() {
 			return handler(e)
 		}

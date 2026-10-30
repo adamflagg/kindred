@@ -13,6 +13,8 @@ Fictional data only (tests/CLAUDE.md)."""
 
 from __future__ import annotations
 
+import asyncio
+from dataclasses import replace
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
@@ -21,7 +23,7 @@ import pytest
 from api.services.financial_aid_casework_service import CaseworkNotFoundError, CaseworkValidationError
 from api.services.financial_aid_decisions_repository import decision_event
 from api.services.financial_aid_google_form_writes import FormResponseCaseworkService
-from api.services.financial_aid_intake_service import FinancialAidIntakeService
+from api.services.financial_aid_intake_service import FinancialAidIntakeService, season_lock
 from api.services.financial_aid_intake_types import AttendeeRow
 from tests.unit.api.services.financial_aid_gform_fakes import (
     ACTOR,
@@ -76,6 +78,17 @@ async def test_link_refuses_a_person_not_registered_this_season() -> None:
     (response,) = store.form_responses  # type: ignore[attr-defined]
     with pytest.raises(CaseworkValidationError, match="registered"):
         await FormResponseCaseworkService(store).link(2027, response.id, 1000999, "", ACTOR)  # type: ignore[arg-type]
+    assert store.change_log == []  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_link_refuses_a_response_that_names_no_program() -> None:
+    # A response with no program choice makes no request whoever it is linked to, so Link… refuses it rather than
+    # taking it off Responses to link with nothing to show for it (Ignore… is the way to clear it).
+    store = _suggested_store(program="", choice="")
+    (response,) = store.form_responses  # type: ignore[attr-defined]
+    with pytest.raises(CaseworkValidationError, match="program"):
+        await FormResponseCaseworkService(store).link(2027, response.id, RACHEL, "", ACTOR)  # type: ignore[arg-type]
     assert store.change_log == []  # type: ignore[attr-defined]
 
 
@@ -202,6 +215,35 @@ async def test_mark_reviewed_clears_the_look_until_the_next_different_change() -
     store.form_responses = [form_response(submitted="2026-12-20T09:00:00Z", ask=950.0)]
     await intake.build(2027)  # a different change: the look is back
     assert any(f.get("code") == "form_changed_after_decision" for f in store.requests[request.id].flags)
+
+
+@pytest.mark.asyncio
+async def test_mark_reviewed_waits_for_its_seasons_build_and_reads_the_request_inside_it() -> None:
+    # Mark Reviewed rewrites the request's flags, which intake's build also writes: like casework's writers it takes
+    # season_lock and re-reads the request inside it, so neither commits over the other's flags.
+    store = gform_store(form_response(), attendees=enrolled(RACHEL, RACHEL_HOUSEHOLD, ADULT_WEEKEND_A))
+    intake = FinancialAidIntakeService(store)
+    await intake.build(2027)
+    request = store.request_for(person=RACHEL, program="adult_weekend")
+    store.decision_events.append(
+        decision_event(SimpleNamespace(id="dec000000000001", request=request.id, round=1, event="award", amount=300,
+                                       created=datetime(2026, 12, 1, tzinfo=UTC), actor=ACTOR))
+    )  # fmt: skip
+    store.form_responses = [form_response(submitted="2026-12-10T09:00:00Z", ask=900.0)]
+    await intake.build(2027)
+    operations = len(store.operations)
+    async with season_lock(2027):  # a build of the season is running
+        task = asyncio.create_task(FormResponseCaseworkService(store).review_form_change(2027, request.id, ACTOR))
+        for _ in range(20):
+            await asyncio.sleep(0)
+        assert not task.done()
+        assert len(store.operations) == operations
+        flagged = store.requests[request.id]
+        store.requests[request.id] = replace(flagged, flags=(*flagged.flags, {"code": "build_only", "detail": {}}))
+    await asyncio.wait_for(task, 5)
+    codes = [f.get("code") for f in store.requests[request.id].flags]
+    assert "build_only" in codes  # read after the build, so its flag survives
+    assert "form_changed_after_decision" not in codes
 
 
 @pytest.mark.asyncio
