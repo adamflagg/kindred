@@ -20,6 +20,8 @@ export const Collections = {
   AidChangeLog: 'aid_change_log',
   AidDecisions: 'aid_decisions',
   AidFlagDispositions: 'aid_flag_dispositions',
+  AidFormResponses: 'aid_form_responses',
+  AidGoogleForms: 'aid_google_forms',
   AidGrantPlacements: 'aid_grant_placements',
   AidGrantors: 'aid_grantors',
   AidGrants: 'aid_grants',
@@ -433,6 +435,99 @@ export type AidFlagDispositionsRecord = {
   id: string
   note: string
   transaction_cm_id: number
+  updated: IsoAutoDateString
+  year: number
+}
+
+export const AidFormResponsesFormStatusOptions = {
+  live: 'live',
+  deleted: 'deleted',
+} as const
+export type AidFormResponsesFormStatusOptions =
+  (typeof AidFormResponsesFormStatusOptions)[keyof typeof AidFormResponsesFormStatusOptions]
+
+export const AidFormResponsesProgramKeyOptions = {
+  family_camp: 'family_camp',
+  adult_weekend: 'adult_weekend',
+} as const
+export type AidFormResponsesProgramKeyOptions =
+  (typeof AidFormResponsesProgramKeyOptions)[keyof typeof AidFormResponsesProgramKeyOptions]
+
+export const AidFormResponsesMatchStatusOptions = {
+  auto: 'auto',
+  suggested: 'suggested',
+  staff: 'staff',
+  unmatched: 'unmatched',
+  registered_elsewhere: 'registered_elsewhere',
+  not_registered: 'not_registered',
+  ignored: 'ignored',
+  superseded: 'superseded',
+} as const
+export type AidFormResponsesMatchStatusOptions =
+  (typeof AidFormResponsesMatchStatusOptions)[keyof typeof AidFormResponsesMatchStatusOptions]
+export type AidFormResponsesRecord<
+  Tmatch_candidates = unknown,
+  Tparse_notes = unknown,
+  Treported_income_fields = unknown,
+> = {
+  agreement_date?: string
+  ask?: number
+  birthdate_typed?: string
+  county?: string
+  created: IsoAutoDateString
+  created_at_google?: string
+  expected_gross_income?: number
+  form_id: string
+  form_status: AidFormResponsesFormStatusOptions
+  gender_identity?: string
+  gov_subsidies?: boolean
+  household_cm_id?: number
+  id: string
+  ignored_reason?: string
+  income_confirmed?: number
+  last_submitted_at?: string
+  linked_at?: IsoDateString
+  linked_by?: string
+  match_candidates?: null | Tmatch_candidates
+  match_status: AidFormResponsesMatchStatusOptions
+  match_tier?: number
+  name_typed?: string
+  non_retirement_savings?: number
+  num_children?: number
+  parse_notes?: null | Tparse_notes
+  person_cm_id?: number
+  poc?: string
+  program_choice?: string
+  program_key?: AidFormResponsesProgramKeyOptions
+  race_ethnicity?: string
+  registered_session_cm_id?: number
+  reported_income_fields?: null | Treported_income_fields
+  respondent_email?: string
+  response_id: string
+  signature_typed?: string
+  special_circumstances?: string
+  student_debt?: number
+  superseded_by?: string
+  total_adjusted_income?: number
+  total_gross_income?: number
+  total_housing_expenses?: number
+  total_medical_expenses?: number
+  total_rent?: number
+  unemployment?: boolean
+  updated: IsoAutoDateString
+  weekend_session_cm_id?: number
+  year: number
+}
+
+export type AidGoogleFormsRecord<Tchoice_map = unknown, Tquestion_map = unknown> = {
+  choice_map?: null | Tchoice_map
+  created: IsoAutoDateString
+  form_id: string
+  id: string
+  last_pull_status?: string
+  last_pulled_at?: IsoDateString
+  question_map?: null | Tquestion_map
+  revision_id?: string
   updated: IsoAutoDateString
   year: number
 }
@@ -2786,6 +2881,18 @@ export type AidDecisionsResponse<Tsnapshot = unknown, Texpand = unknown> = Requi
   BaseSystemFields<Texpand>
 export type AidFlagDispositionsResponse<Texpand = unknown> = Required<AidFlagDispositionsRecord> &
   BaseSystemFields<Texpand>
+export type AidFormResponsesResponse<
+  Tmatch_candidates = unknown,
+  Tparse_notes = unknown,
+  Treported_income_fields = unknown,
+  Texpand = unknown,
+> = Required<AidFormResponsesRecord<Tmatch_candidates, Tparse_notes, Treported_income_fields>> &
+  BaseSystemFields<Texpand>
+export type AidGoogleFormsResponse<
+  Tchoice_map = unknown,
+  Tquestion_map = unknown,
+  Texpand = unknown,
+> = Required<AidGoogleFormsRecord<Tchoice_map, Tquestion_map>> & BaseSystemFields<Texpand>
 export type AidGrantPlacementsResponse<Tplacement = unknown, Texpand = unknown> = Required<
   AidGrantPlacementsRecord<Tplacement>
 > &
@@ -3090,6 +3197,8 @@ export type CollectionRecords = {
   aid_change_log: AidChangeLogRecord
   aid_decisions: AidDecisionsRecord
   aid_flag_dispositions: AidFlagDispositionsRecord
+  aid_form_responses: AidFormResponsesRecord
+  aid_google_forms: AidGoogleFormsRecord
   aid_grant_placements: AidGrantPlacementsRecord
   aid_grantors: AidGrantorsRecord
   aid_grants: AidGrantsRecord
@@ -3202,6 +3311,8 @@ export type CollectionResponses = {
   aid_change_log: AidChangeLogResponse
   aid_decisions: AidDecisionsResponse
   aid_flag_dispositions: AidFlagDispositionsResponse
+  aid_form_responses: AidFormResponsesResponse
+  aid_google_forms: AidGoogleFormsResponse
   aid_grant_placements: AidGrantPlacementsResponse
   aid_grantors: AidGrantorsResponse
   aid_grants: AidGrantsResponse

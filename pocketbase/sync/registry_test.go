@@ -265,8 +265,11 @@ func TestDerivedQueuesMatchTodaysLists(t *testing.T) {
 //
 // kindred#2759: the Jotform pull is individual-route only until the forms move to the
 // enterprise account, so a Process phase run must not re-pull a live external form.
+//
+// The adult aid Google Form pull is individual-route only for the same reason: a phase run (and
+// a historical replay) must not re-pull a live external form.
 var manualOnlyPhaseMembers = map[Phase][]string{
-	PhaseProcess: {"jotform_submissions"},
+	PhaseProcess: {"jotform_submissions", "aid_google_form_responses"},
 }
 
 // withoutManualOnly returns jobs less phase's declared manual-only members, order kept.

@@ -105,6 +105,15 @@ var serialGroups = []struct {
 		},
 	},
 	{
+		// The adult aid Google Form pull's gate reads GOOGLE_SHEETS_ENABLED and
+		// AID_GOOGLE_FORM_IDS itself.
+		pkg:    "sync",
+		reason: "t.Setenv: exercises the aid Google Form gate's environment read itself",
+		tests: []string{
+			"TestAidGoogleFormGateNeedsGoogleAndAFormID",
+		},
+	},
+	{
 		pkg:    "sync",
 		reason: "t.Setenv: asserts the CAMPMINDER_SEASON_ID fallback specifically",
 		tests: []string{

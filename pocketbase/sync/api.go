@@ -533,6 +533,14 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 			return handleIndividualSync(e, scheduler, "jotform_submissions")
 		}))
 
+	// The adult aid Google Form pull (adult-aid form design, PR 1): reads the season's form into
+	// the locked aid_form_responses mirror. Also reachable as
+	// POST /api/custom/sync/run?service=aid_google_form_responses&year=YYYY.
+	e.Router.POST("/api/custom/sync/aid-google-form-responses",
+		requirePermission("bunking.manage", func(e *core.RequestEvent) error {
+			return handleIndividualSync(e, scheduler, "aid_google_form_responses")
+		}))
+
 	// Stranded assignment cleanup sync
 	// Auto-unassigns scenario-draft campers stranded by bunk-plan changes.
 	// PocketBase-only — no CampMinder API call.

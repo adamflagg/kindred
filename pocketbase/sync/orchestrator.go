@@ -341,6 +341,20 @@ var syncJobMeta = []JobMeta{
 		Description: "Adult-weekend Jotform submissions (bunking requests)",
 		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute, SyncedSeasonsOnly: true,
 		Gate: jotformConfigured},
+	// The adult aid Google Form (adult-aid form design, PR 1): from 2027, adult-only Family Camp
+	// attendees and adult-weekend guests ask for aid on a Google Form, not CampMinder's. Reads the
+	// form through the Forms API (service account, two readonly scopes), mirrors every response
+	// into aid_form_responses and matches it to a 2027 registration, so it reads sessions,
+	// attendees and persons and sits after them -- in the hourly queue too, where it runs after
+	// the hour's CampMinder jobs, so a person who registered this hour is matchable this hour.
+	// Nightly too, as every hourly job is (the hourly cron skips the nightly's window). Never a full
+	// or phase run: a historical replay must not re-pull a live external form. Gated on Google
+	// and AID_GOOGLE_FORM_IDS; the job itself runs only for the primary season the variable names,
+	// so the N-1 pass finds nothing to do and 2026 is untouched.
+	{ID: "aid_google_form_responses", Phase: PhaseProcess,
+		Description: "Adult aid Google Form responses (Camperships mirror)",
+		Cadences:    CadenceHourly | CadenceDaily, Triggers: TriggerIndividualRoute, SyncedSeasonsOnly: true,
+		Gate: aidGoogleFormConfigured},
 	// process_requests only runs in Docker (Gate) -- development skips AI processing to
 	// avoid unnecessary API costs, matching getDailySyncJobs' IS_DOCKER check.
 	{ID: "process_requests", Phase: PhaseProcess,
@@ -2086,7 +2100,8 @@ func hourlyOrphanKeeper(syncType string, origin runOrigin, svc Service) orphanKe
 var errHourlySyncYielded = errors.New("hourly sync yielded to a running queue")
 
 // RunHourlySync runs the hourly refresh, cadenceQueue(CadenceHourly): sessions, attendees,
-// persons and bunk_assignments (epic #3207 PR 5), for the primary season, then for the prior
+// persons and bunk_assignments (epic #3207 PR 5), then the adult aid Google Form pull
+// (aid_google_form_responses, after the jobs it matches against), for the primary season, then for the prior
 // season (spec §5), and waits for each to finish. enrollment_snapshots is not among them: the
 // nightly's row stays each day's stored point.
 //
@@ -3069,6 +3084,14 @@ func (o *Orchestrator) servicesForYear(year int, debug bool) map[string]Service 
 	jotform.Debug = debug
 	s.add("jotform_submissions", jotform)
 
+	// The adult aid Google Form pull: the season's own instance, which refuses any season but the
+	// primary one AID_GOOGLE_FORM_IDS names.
+	aidGoogleForm := NewAidGoogleFormResponsesSync(o.app)
+	aidGoogleForm.Year = year
+	aidGoogleForm.Debug = debug
+	aidGoogleForm.IntakeTrigger = TriggerFinancialAidIntake
+	s.add("aid_google_form_responses", aidGoogleForm)
+
 	// The season's workbook. It reuses the registered exporter's Sheets writer and workbook
 	// manager; when Google Sheets is not configured nothing is registered and there is no
 	// export to scope.
@@ -3901,6 +3924,11 @@ func (o *Orchestrator) InitializeSyncServices() error {
 	// A string literal, not serviceNameJotformSubmissions: registry_test.go finds
 	// registrations by matching literals.
 	o.RegisterService("jotform_submissions", NewJotformSubmissionsSync(o.app))
+
+	// The adult aid Google Form pull (adult-aid form design, PR 1) -- Google, not CampMinder.
+	aidGoogleFormDefaultSync := NewAidGoogleFormResponsesSync(o.app)
+	aidGoogleFormDefaultSync.IntakeTrigger = TriggerFinancialAidIntake
+	o.RegisterService("aid_google_form_responses", aidGoogleFormDefaultSync)
 
 	slog.Info("All sync services registered")
 	return nil

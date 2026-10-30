@@ -193,3 +193,7 @@ AID_ARRIVAL_CURVES = "aid_arrival_curves"
 AID_REPORTED_HISTORY = "aid_reported_history"
 AID_REPORTED_RECIPIENTS = "aid_reported_recipients"
 AID_REPORT_DEFINITIONS = "aid_report_definitions"
+
+# The adult aid Google Form mirror (adult-aid form design, PR 1). Locked; nothing reads it yet.
+AID_GOOGLE_FORMS = "aid_google_forms"
+AID_FORM_RESPONSES = "aid_form_responses"

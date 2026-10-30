@@ -74,6 +74,15 @@ JOTFORM_API_KEY=your-jotform-api-key-here
 # JOTFORM_API_BASE=https://<team>.jotform.com/API
 ```
 
+### Adult Aid Google Form (Optional)
+```bash
+# Optional: the season's adult aid Google Form, read hourly into the Camperships
+# mirror (aid_google_form_responses). Format <year>:<formId>, comma-separated for
+# several years. Needs GOOGLE_SHEETS_ENABLED=true and a service account the form
+# is shared with. When unset the job is skipped. Read by the pocketbase service.
+AID_GOOGLE_FORM_IDS=
+```
+
 ### Google Sheets Export (Optional)
 ```bash
 GOOGLE_SHEETS_ENABLED=false

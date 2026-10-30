@@ -47,6 +47,8 @@ var filterHoleExemptions = map[string]string{
 	"google/drive.go|name='%s' and '%s' in parents and mimeType='%s' and trashed=false": "Google Drive " +
 		"query language, not a PocketBase filter; the one free-text value (name) goes through " +
 		"escapeQueryString, the Drive API's own escaping",
+	"aidform/parse.go|monthly: ×12 = %s": "a parse note staff read on an aid form response (rent or " +
+		"mortgage typed per month, read ×12), not a PocketBase filter; the value is a formatted dollar amount",
 }
 
 // formatVerb matches one fmt verb, flags, width, precision and explicit

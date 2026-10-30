@@ -540,6 +540,21 @@ var serviceGrainDeclarations = []ServiceGrain{
 		},
 	}},
 
+	// The adult aid Google Form pull (adult-aid form design, PR 1). Not CampMinder and not a
+	// guarded sweep: a response Google stops returning is MARKED deleted, never removed.
+	{Service: "aid_google_form_responses", Writes: []CollectionGrain{
+		{
+			Collection: "aid_google_forms",
+			NoGrain: "one bookkeeping row per season, upserted by year (maps, revision, last " +
+				"pull); never deleted",
+		},
+		{
+			Collection: "aid_form_responses",
+			NoGrain: "upserted by Google's response_id (UNIQUE); a response the form no longer " +
+				"returns is marked form_status deleted behind the mass-vanish guard, never swept",
+		},
+	}},
+
 	{Service: "process_requests",
 		WritesNothing: "POSTs to the FastAPI processing endpoint " +
 			"(process_requests.go:164); every row it causes is written by the Python side"},

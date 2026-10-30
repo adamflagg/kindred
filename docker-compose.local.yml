@@ -47,6 +47,7 @@ services:
       - OIDC_ISSUER=${OIDC_ISSUER:-}
       - JOTFORM_API_KEY=${JOTFORM_API_KEY:-}
       - JOTFORM_API_BASE=${JOTFORM_API_BASE:-}
+      - AID_GOOGLE_FORM_IDS=${AID_GOOGLE_FORM_IDS:-}
       - API_URL=http://api:8000
       - TZ=${TZ:-America/Los_Angeles}
     healthcheck:

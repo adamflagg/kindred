@@ -42,6 +42,7 @@ export const SYNC_TYPE_NAMES: Record<string, string> = {
   stranded_assignment_cleanup: 'Stranded Assignment Cleanup', // Auto-unassigns scenario-draft assignments stranded by bunk_plan changes
   bunk_requests: 'Intake Requests',
   jotform_submissions: 'Jotform Submissions', // Adult-weekend Jotform pull (kindred#2759)
+  aid_google_form_responses: 'Adult Aid Form', // The adult aid Google Form pull
   process_requests: 'Process Requests',
   // Export phase (kindred#2593: had a working POST route the whole time, but no card and so
   // no way to reach this validation until syncTypes.ts gained one)
