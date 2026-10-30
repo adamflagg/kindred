@@ -59,7 +59,7 @@ func TestPermissionCheckExactMatch(t *testing.T) {
 // FastAPI calls the pull route as PocketBase's superuser after gating the person on
 // financial_aid.casework; a superuser has neither is_admin nor cached_permissions. Only
 // requirePermissionOrSuperuser admits it; RequirePermission (every other gated route) refuses
-// it exactly as on main. Non-superuser behaviour is the same on both.
+// it exactly as on main. Non-superuser behavior is the same on both.
 func TestSuperuserDoorIsOnlyOnThePullRoute(t *testing.T) {
 	t.Parallel()
 	newEvent := func(collection string) *core.RequestEvent {

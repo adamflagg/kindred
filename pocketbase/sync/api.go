@@ -171,11 +171,15 @@ func RequirePermission(permission string, handler func(*core.RequestEvent) error
 // after gating the person on its own permission (Camperships' Pull now). Use it on that route
 // only; every other gated route keeps the superuser out. No person's token is a superuser's (a
 // view-as preview swaps e.Auth to a users stand-in before this runs).
-func requirePermissionOrSuperuser(permission string, handler func(*core.RequestEvent) error) func(*core.RequestEvent) error {
+func requirePermissionOrSuperuser(
+	permission string, handler func(*core.RequestEvent) error,
+) func(*core.RequestEvent) error {
 	return requirePermissionWith(permission, true, handler)
 }
 
-func requirePermissionWith(permission string, allowSuperuser bool, handler func(*core.RequestEvent) error) func(*core.RequestEvent) error {
+func requirePermissionWith(
+	permission string, allowSuperuser bool, handler func(*core.RequestEvent) error,
+) func(*core.RequestEvent) error {
 	return func(e *core.RequestEvent) error {
 		if e.Auth == nil {
 			return apis.NewUnauthorizedError("Authentication required", nil)
