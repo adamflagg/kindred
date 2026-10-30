@@ -401,6 +401,7 @@ export const JORDAN_CHANGE: FormChangeOut = {
 /** Ana's response deleted in Google. */
 export const ANA_CHANGE: FormChangeOut = {
   kind: 'deleted',
+  cause: 'deleted_in_google',
   at: '2026-11-11T18:00:00Z',
   reviewed: false,
 }

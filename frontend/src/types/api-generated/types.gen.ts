@@ -5511,9 +5511,17 @@ export type FormChangeOut = {
    */
   kind: 'deleted' | 'changed_after_decision'
   /**
+   * Cause
+   */
+  cause?: 'deleted_in_google' | 'unlinked' | null
+  /**
    * At
    */
   at?: string
+  /**
+   * Decided Response Id
+   */
+  decided_response_id?: string
   /**
    * Reviewed
    */
@@ -5723,6 +5731,7 @@ export type FormIntakeRowOut = {
     | 'registration_ask_unreviewed'
     | 'form_changed_after_decision'
     | 'form_response_deleted'
+    | 'form_response_unlinked'
     | 'form_choice_unclear'
     | 'form_pull_refused'
   >
@@ -6029,6 +6038,7 @@ export type FormResponseOut = {
     | 'registration_ask_unreviewed'
     | 'form_changed_after_decision'
     | 'form_response_deleted'
+    | 'form_response_unlinked'
     | 'form_choice_unclear'
     | 'form_pull_refused'
   >

@@ -3,8 +3,8 @@
  * so a household where an adult filed the adult aid form shows two sets. Pure words.
  */
 import type { ApiAidAnswer, ApiAidHouseholdPage } from '../../../types/api-types'
-import { formatShortDate } from '../kit/dates'
 import type { FormSource } from '../kit/words'
+import { campDayOf } from '../intake/intakeModel'
 import { programLabel } from '../requests/programLabel'
 
 /** One answer set on the household page: which form, who filed it and when, and the requests it prices. */
@@ -35,20 +35,26 @@ export function answerSetHead(
   set: AnswerSet,
   programs: Readonly<Record<string, string>>
 ): { name: string; meta: string } {
-  const byCamper = new Map<string, string[]>()
+  // By camper (full name), each request counted: two campers of one first name, or two requests in one program, stay
+  // apart. A camper reads by first name unless another camper here shares it.
+  const byCamper = new Map<string, { labels: string[]; requests: number }>()
   for (const p of set.prices) {
-    const first = p.camper_name.split(' ')[0] ?? p.camper_name
-    const list = byCamper.get(first) ?? []
+    const entry = byCamper.get(p.camper_name) ?? { labels: [], requests: 0 }
     const label = programLabel(programs, p.program_key)
-    if (!list.includes(label)) list.push(label)
-    byCamper.set(first, list)
+    if (!entry.labels.includes(label)) entry.labels.push(label)
+    entry.requests += 1
+    byCamper.set(p.camper_name, entry)
   }
-  const priced = [...byCamper.entries()].map(
-    ([first, labels]) =>
-      `${first}'s ${andList(labels)} ${labels.length === 1 ? 'request' : 'requests'}`
-  )
+  const firstOf = (name: string) => name.split(' ')[0] ?? name
+  const firsts = [...byCamper.keys()].map(firstOf)
+  const priced = [...byCamper.entries()].map(([name, { labels, requests }]) => {
+    const first = firstOf(name)
+    const who = firsts.filter((f) => f === first).length > 1 ? name : first
+    return `${who}'s ${andList(labels)} ${requests === 1 ? 'request' : 'requests'}`
+  })
   const prices = priced.length === 0 ? 'prices no request yet' : `prices ${andList(priced)}`
-  const filed = [set.filed_by ?? '', set.filed_on ? formatShortDate(set.filed_on) : '']
+  // A submission time (the adult aid form's) is read on camp time, as Form intake reads it; a bare day as written.
+  const filed = [set.filed_by ?? '', set.filed_on ? campDayOf(set.filed_on) : '']
     .filter(Boolean)
     .join(', ')
   return {

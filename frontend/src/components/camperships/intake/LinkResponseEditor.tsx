@@ -45,9 +45,9 @@ function heading(r: FormResponseOut, n: number): string {
 }
 
 /**
- * Link… (adult aid form design §5; mock v2 steps 7–10, 19; K3 a, owner 10-29): GF-1 sent this response to staff
- * because the dashboard found someone but was not sure, so the people come first, each with their evidence, then a
- * search for someone else (a typo, someone not yet registered). The typed line is the one place the respondent
+ * Link… (adult aid form design §5; mock v2 steps 7–10, 19; K3 a, owner 10-29): GF-1 sends a response to staff when
+ * the dashboard could not tie it to one person, so the people it may be come first, each with their evidence (or a
+ * line saying no one matches), then a search for someone else (a typo, someone not yet registered). The typed line is the one place the respondent
  * email shows. On an ignored response, linking undoes the ignore. The kit's white EditorForm in the opened row.
  */
 export function LinkResponseEditor({
@@ -100,6 +100,7 @@ export function LinkResponseEditor({
   const find = async () => {
     const q = query.trim()
     if (q === '') return
+    setError(null)
     try {
       setFound(await search(q))
     } catch (caught) {
@@ -278,7 +279,6 @@ export function LinkResponseEditor({
           </label>
           <input
             id={searchId}
-            aria-label="Someone else"
             type="search"
             className={`${CS_FIELD} min-w-0 flex-1`}
             placeholder={`Search ${String(year)} registrations: a name, birthdate or CampMinder id`}

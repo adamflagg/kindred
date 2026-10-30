@@ -519,6 +519,25 @@ describe('gridRows (Form intake with the responses no person holds)', () => {
     ])
   })
 
+  it("opens a person's row onto their live response, never an older or newer one deleted in Google", () => {
+    const row = { ...rows[0]!, key: ANA.row_key ?? '' }
+    const live = {
+      ...ANA,
+      id: 'rec000000000011',
+      response_id: 'resp-ana-2',
+      submitted_at: '2026-11-12T18:00:00Z',
+      form_status: 'live' as const,
+      look_reasons: [],
+    }
+    for (const read of [
+      [live, ANA],
+      [ANA, live],
+    ]) {
+      const opened = gridRows([row], read).find((r) => r.kind === 'row')
+      expect(opened?.kind === 'row' ? opened.response?.response_id : null).toBe('resp-ana-2')
+    }
+  })
+
   it('keeps a response whose row is not in the read as a row of its own, so it never vanishes', () => {
     const orphan = { ...response(), row_key: '1000099:1000991' }
     expect(gridRows([], [orphan]).map((r) => r.kind)).toEqual(['response'])
@@ -535,6 +554,34 @@ describe('gridRows (Form intake with the responses no person holds)', () => {
       kind: 'row',
       response: { response_id: 'resp-jordan' },
       flagged: { response_id: 'resp-jordan-2' },
+    })
+  })
+
+  it('opens onto the response the request was decided on, not a later one it replaced, when three came', () => {
+    const row = {
+      ...rows[0]!,
+      key: '1000018:1000181',
+      became: [became({ form_change: { ...JORDAN_CHANGE, decided_response_id: 'resp-jordan' } })],
+    }
+    // The job points every older response at the newest: the first (decided on) and the second, both replaced by a third.
+    const second = {
+      ...JORDAN_2,
+      id: 'rec000000000099',
+      match_status: 'superseded' as const,
+      superseded_by: 'resp-jordan-3',
+    }
+    const third = {
+      ...JORDAN_2,
+      id: 'rec000000000098',
+      response_id: 'resp-jordan-3',
+      submitted_at: '2026-11-11T18:00:00Z',
+    }
+    const first = { ...JORDAN_REPLACED, superseded_by: 'resp-jordan-3' }
+    const [g] = gridRows([row], [third, second, first])
+    expect(g).toMatchObject({
+      kind: 'row',
+      response: { response_id: 'resp-jordan' },
+      flagged: { response_id: 'resp-jordan-3' },
     })
   })
 
@@ -559,14 +606,47 @@ describe('gridRows (Form intake with the responses no person holds)', () => {
 })
 
 describe('becameFlag', () => {
-  it('a deletion with no time says so without a day', async () => {
+  it('a response deleted in Google says so, as the approved mock does', async () => {
     const { becameFlag } = await import('./adultFormModel')
-    const flag = becameFlag(became({ form_change: { kind: 'deleted', at: '', reviewed: false } }))
-    // A decided request's response can leave it by a deletion in Google, an Ignore… or a Link… to someone else.
+    const flag = becameFlag(
+      became({
+        form_change: {
+          kind: 'deleted',
+          cause: 'deleted_in_google',
+          at: '2026-11-11T18:00:00Z',
+          reviewed: false,
+        },
+      })
+    )
+    expect(flag?.words).toBe('response deleted in Google')
+    expect(flag?.title).toMatch(
+      /^The adult aid form response this request was priced from was deleted in Google on Nov 11\. /
+    )
+    expect(
+      becameFlag(
+        became({
+          form_change: { kind: 'deleted', cause: 'deleted_in_google', at: '', reviewed: false },
+        })
+      )?.title
+    ).toMatch(/^The adult aid form response this request was priced from was deleted in Google\. /)
+  })
+
+  it('a response staff ignored or linked to someone else reads "response no longer linked"', async () => {
+    const { becameFlag } = await import('./adultFormModel')
+    const flag = becameFlag(
+      became({ form_change: { kind: 'deleted', cause: 'unlinked', at: '', reviewed: false } })
+    )
     expect(flag?.words).toBe('response no longer linked')
     expect(flag?.title).toMatch(
-      /^The adult aid form response this request was priced from is no longer linked to it: deleted in Google, ignored, or linked to someone else\. /
+      /^The adult aid form response this request was priced from is no longer linked to it: it was ignored, or linked to someone else\. /
     )
+    expect(flag?.title).not.toContain('deleted in Google')
+  })
+
+  it('with no cause (an older read), neutral words that never claim Google deleted it', async () => {
+    const { becameFlag } = await import('./adultFormModel')
+    const flag = becameFlag(became({ form_change: { kind: 'deleted', at: '', reviewed: false } }))
+    expect(flag?.words).toBe('response no longer linked')
     expect(
       becameFlag(
         became({ form_change: { kind: 'deleted', at: '2026-11-11T18:00:00Z', reviewed: false } })

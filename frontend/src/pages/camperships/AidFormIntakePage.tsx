@@ -237,9 +237,11 @@ function IntakeBody({ data, view }: { data: FormIntakeResponse; view: AidView })
         return {
           label: 'Mark Reviewed',
           title:
-            changed.form_change?.kind === 'deleted'
-              ? 'The response was deleted in Google: the request and its decisions stay as they are, and it leaves Needs a look'
-              : 'A second response came after a decision: the request stays as it is, and it leaves Needs a look',
+            changed.form_change?.kind !== 'deleted'
+              ? 'A second response came after a decision: the request stays as it is, and it leaves Needs a look'
+              : changed.form_change.cause === 'deleted_in_google'
+                ? 'The response was deleted in Google: the request and its decisions stay as they are, and it leaves Needs a look'
+                : 'The response is no longer linked to this request: the request and its decisions stay as they are, and it leaves Needs a look',
           disabled: reviewChange.isPending,
           onClick: () => {
             setEditing(null)

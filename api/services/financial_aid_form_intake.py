@@ -56,6 +56,7 @@ from api.schemas.financial_aid_form_intake import (
     CampMinderAidOut,
     FormAnswerOut,
     FormCandidateOut,
+    FormChangeCause,
     FormChangeOut,
     FormFigureOut,
     FormIntakeCountsOut,
@@ -286,6 +287,7 @@ class _Explainer:
         # IN-FORM-ONLY (PR 2): a matched, live adult aid form response IS the aid form for its bucket, for its person.
         self.form_linked = list(linked_by_key(season.form_responses).values())
         self.form_filed: dict[int, frozenset[str]] = form_filed_programs(season.form_responses)
+        self.responses_by_id = {r.response_id: r for r in season.form_responses}
         self.homes = self._homes()
         self.aid_by_subject: dict[Subject, list[NoRequestAid]] = defaultdict(list)
         for found in season.no_request:
@@ -524,7 +526,7 @@ class _Explainer:
             if round1 is not None and round1.posted and round1.locked_amount is not None
             else None,
             form_source="google_form" if is_form_request(request) else None,
-            form_change=form_change_out(request),
+            form_change=form_change_out(request, self.responses_by_id),
             price_missing=self.price_missing(request) if self.s.year >= GOOGLE_FORM_FIRST_SEASON else None,
         )
 
@@ -730,9 +732,22 @@ class _Explainer:
             reasons.append("session_unclear")
         if any(b.reviewed is False and b.status in ("active", "session_unclear", "duplicate_pending") for b in became):
             reasons.append("registration_ask_unreviewed")
-        # GF-4 (PR 2): a decided request's response changed or vanished in Google, not applied.
+        # GF-4 (PR 2): a decided request's response changed, or is no longer live and linked, not applied. A vanished
+        # one reads why: deleted in Google, or unlinked by staff.
         codes = {str(f.get("code")) for r in requests if r.status in _LIVE for f in r.flags}
-        reasons.extend(code for code in ("form_changed_after_decision", "form_response_deleted") if code in codes)
+        if "form_changed_after_decision" in codes:
+            reasons.append("form_changed_after_decision")
+        causes = {
+            change.cause
+            for r in requests
+            if r.status in _LIVE and FLAG_FORM_RESPONSE_DELETED in {str(f.get("code")) for f in r.flags}
+            for change in (form_change_out(r, self.responses_by_id),)
+            if change is not None
+        }
+        if "deleted_in_google" in causes:
+            reasons.append("form_response_deleted")
+        if "unlinked" in causes:
+            reasons.append("form_response_unlinked")
         if any(
             (r.household_cm_id, r.person_cm_id) == subject and r.weekend_session_cm_id <= 0 for r in self.form_linked
         ):
@@ -761,9 +776,10 @@ class _Explainer:
 def _counts(
     rows: Sequence[FormIntakeRowOut], responses: Sequence[FormResponseOut] = (), pull_refused: bool = False
 ) -> FormIntakeCountsOut:
-    """The segment counts. A refused pull (PR 2) is one more Needs a look: its banner shows in every segment."""
+    """The segment counts, each its segment's rows. A refused pull (PR 2) is a band row in every segment, not a data
+    row, so it adds nothing here; Today's Form intake line still carries it (form_pull_refused)."""
     return FormIntakeCountsOut(
-        needs_look=sum(1 for r in rows if r.needs_look) + int(pull_refused),
+        needs_look=sum(1 for r in rows if r.needs_look),
         registration_only=sum(1 for r in rows if r.registration_only),
         all=len(rows),
         to_link=sum(1 for r in responses if r.to_link),
@@ -803,21 +819,38 @@ def _figure(row: FormResponseRow, name: str) -> FormFigureOut:
     return FormFigureOut(field=name, value=value, typed=str(note.get("typed") or ""), note=str(note.get("note") or ""))
 
 
-def form_change_out(request: RequestRecord) -> FormChangeOut | None:
-    """GF-4: a decided request's adult aid form change that was not applied: open (its flag), or Mark Reviewed."""
+def _cause(code: str, response_id: str, responses: Mapping[str, FormResponseRow]) -> FormChangeCause | None:
+    """Why a decided request's response vanished: its mirror row reads deleted in Google, else staff Ignored it or
+    linked it to someone else ("unlinked"). A mirror row gone altogether reads as deleted in Google."""
+    if code != FLAG_FORM_RESPONSE_DELETED:
+        return None
+    row = responses.get(response_id)
+    return "deleted_in_google" if row is None or row.form_status == "deleted" else "unlinked"
+
+
+def form_change_out(
+    request: RequestRecord, responses: Mapping[str, FormResponseRow] | None = None
+) -> FormChangeOut | None:
+    """GF-4: a decided request's adult aid form change that was not applied: open (its flag), or Mark Reviewed.
+    `responses` (the season's mirror rows by response id) says why a vanished response vanished."""
+    mirror = responses or {}
     for flag in request.flags:
         code = str(flag.get("code"))
         if code in FORM_CHANGE_FLAGS:
             detail = dict(flag.get("detail") or {})
             return FormChangeOut(
                 kind="deleted" if code == FLAG_FORM_RESPONSE_DELETED else "changed_after_decision",
+                cause=_cause(code, str(detail.get("response_id") or request.form_response_id), mirror),
                 at=str(detail.get("submitted_at") or ""),
+                decided_response_id=request.form_response_id,
             )
     if request.form_change_reviewed:
-        code = request.form_change_reviewed.partition(":")[0]
+        code, _, rest = request.form_change_reviewed.partition(":")
         return FormChangeOut(
             kind="deleted" if code == FLAG_FORM_RESPONSE_DELETED else "changed_after_decision",
+            cause=_cause(code, rest or request.form_response_id, mirror),
             at=request.form_change_reviewed_at,
+            decided_response_id=request.form_response_id,
             reviewed=True,
             reviewed_by=request.form_change_reviewed_by,
         )

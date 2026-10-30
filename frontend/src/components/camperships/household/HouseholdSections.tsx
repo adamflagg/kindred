@@ -439,10 +439,6 @@ function IncomeHead({
   )
 }
 
-/**
- * One request's own adult aid form answers (GF-2 B; mock v2 step 22) under its band, in the one-form table's columns:
- * the answer, the form's figure and the one used. Its corrections are the request's own, so they show here as used.
- */
 /** The adult aid form's priced figures, shown first (mock v2 step 22); the set's other answers sit behind a toggle. */
 const OWN_PRICED = new Set([
   'total_gross_income',
@@ -450,6 +446,11 @@ const OWN_PRICED = new Set([
   'total_medical_expenses',
   'non_retirement_savings',
 ])
+
+/**
+ * One request's own adult aid form answers (GF-2 B; mock v2 step 22) under its band, in the one-form table's columns:
+ * the answer, the form's figure and the one used. Its corrections are the request's own, so they show here as used.
+ */
 
 function OwnAnswerSetTable({
   own,
@@ -466,6 +467,16 @@ function OwnAnswerSetTable({
     <div>
       <table className={answersTable(true)} data-own-answers={own.requestId}>
         <AnswerColumns forms={1} />
+        {/* Its own heads: CampMinder's set above may show no table, and the two figures must read apart. */}
+        <thead>
+          <tr>
+            <th className={HH_TH}>Answer</th>
+            <th className={HH_TH_NUM}>Form&apos;s answer</th>
+            <th className={HH_TH_NUM}>Using</th>
+            <th className={HH_TH} />
+            <th className={HH_TH} />
+          </tr>
+        </thead>
         <tbody>
           <IncomeFormBand set={own.set} programs={programs} span={4} />
           {shown.map((answer) => (

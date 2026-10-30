@@ -649,10 +649,19 @@ describe('Form intake: needs a look, with the adult aid form (adult aid form moc
         { code: 'form_response_deleted', families: null, items: 1 },
       ],
     })
-    // PR 2's "deleted" covers an ignored or re-linked response too: neutral words.
     expect(reasonsLine(l)).toBe(
-      'Responses to link 5 · session unclear 2 · response no longer linked 1'
+      'Responses to link 5 · session unclear 2 · response deleted in Google 1'
     )
+    // A response staff ignored or linked to someone else has its own reason and words.
+    expect(
+      reasonsLine(
+        line('form_intake', 1, {
+          item_kind: 'campers',
+          families: null,
+          reasons: [{ code: 'form_response_unlinked', families: null, items: 1 }],
+        })
+      )
+    ).toBe('Response no longer linked 1')
     const more = line('form_intake', 3, {
       item_kind: 'campers',
       families: null,

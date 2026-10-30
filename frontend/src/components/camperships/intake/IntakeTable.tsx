@@ -206,7 +206,7 @@ function campminderTitle(row: FormIntakeRowOut, names: SessionIndex): string {
 const allAid = (row: FormIntakeRowOut) =>
   (row.campminder_aid ?? []).reduce((sum, a) => sum + Math.round(a.amount * 100), 0) / 100
 
-/** The opened row: its evidence on two lines (as Requests' detail line), then the editor while adding. */
+/** The opened row: its evidence on two lines (as Requests' detail line), then the editor open on it, if any. */
 function IntakeDetail({
   row,
   response,
@@ -433,8 +433,8 @@ const onRow =
 
 /**
  * Form intake's one grid (spec 71 §2.4; the mock's `grid`): Camper · Form asked · Enrolled · Became · CampMinder aid,
- * and for casework the row's own action (design rule 20). A row opens onto its evidence; while `adding` names it, the
- * Add a Request… editor sits in its detail line. Kept rows (rule 22) are drawn but never counted.
+ * and for casework the row's own action (design rule 20). A row opens onto its evidence; the editor `editorOf` gives
+ * it (Add a Request…, Link…, Ignore…) sits in its detail line. Kept rows (rule 22) are drawn but never counted.
  */
 export function IntakeTable({
   rows,

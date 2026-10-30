@@ -3,7 +3,7 @@
  * candidates first with their evidence, a search for someone else, what linking does, and Link Response.
  * Fictional data (adultFormFixtures).
  */
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
@@ -108,6 +108,19 @@ describe('Link…', () => {
     expect(onLink).not.toHaveBeenCalled()
     expect(await screen.findByText('Dana Ochoa')).toBeInTheDocument()
     expect(rowOf(1000201)).toHaveTextContent('✗ name')
+  })
+
+  it('a search that failed says so until the next search, which clears it', async () => {
+    const search = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Couldn't search the registrations"))
+      .mockResolvedValueOnce([])
+    renderEditor({ search })
+    await userEvent.type(screen.getByLabelText('Someone else'), 'Ochoa{Enter}')
+    expect(await screen.findByText("Couldn't search the registrations")).toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText('Someone else'), '{Enter}')
+    expect(search).toHaveBeenCalledTimes(2)
+    await waitFor(() => expect(screen.queryByText("Couldn't search the registrations")).toBeNull())
   })
 
   it('with no one to offer: says so, and Link Response stays off', () => {

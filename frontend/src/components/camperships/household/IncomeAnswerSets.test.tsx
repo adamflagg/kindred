@@ -64,6 +64,14 @@ describe('IncomePanel: one answer set per form (GF-2 B)', () => {
     expect(band).toHaveTextContent('Adult aid form')
     expect(band).toHaveTextContent("Mia Johnson, Nov 5 · prices Mia's Adult Weekends request")
     const set = band.closest('table') as HTMLElement
+    // Its own heads, so the form's figure and the one used read apart when CampMinder's set shows no table above it.
+    expect([...set.querySelectorAll('thead th')].map((th) => th.textContent)).toEqual([
+      'Answer',
+      "Form's answer",
+      'Using',
+      '',
+      '',
+    ])
     expect(within(set).getAllByText('$104,000').length).toBeGreaterThan(0)
     expect(within(set).getAllByText('$40,000').length).toBeGreaterThan(0)
   })

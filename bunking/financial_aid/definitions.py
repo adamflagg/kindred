@@ -963,7 +963,8 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
 # The notes each surface shows, numbered from 1 in this order (§4.8). A surface not listed here is unknown.
 SURFACES: Final[Mapping[str, tuple[str, ...]]] = {
     "requests": ("decided", "posted", "cm_check", "cost"),
-    # Requests › Form intake (PR 3): its own four, numbered as the approved mock numbers its column headers.
+    # Requests › Form intake (PR 3): its own five, numbered as the approved mock numbers its column headers and its
+    # Responses to link segment.
     "requests-form-intake": (
         "intake_form_asked",
         "intake_became",

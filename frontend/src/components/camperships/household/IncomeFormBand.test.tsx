@@ -50,6 +50,40 @@ describe('answerSetHead', () => {
     })
   })
 
+  it("reads a submission time's day on camp time, as Form intake does", () => {
+    // 03:30 UTC on Nov 6 is the evening of Nov 5 at camp.
+    expect(
+      answerSetHead(
+        {
+          source: 'google_form',
+          filed_by: 'Mia Johnson',
+          filed_on: '2026-11-06T03:30:00Z',
+          prices: [],
+        },
+        programs
+      ).meta
+    ).toBe('Mia Johnson, Nov 5 · prices no request yet')
+  })
+
+  it('keeps each request it prices: two campers of one first name, and two requests in one program', () => {
+    expect(
+      answerSetHead(
+        {
+          source: 'campminder',
+          prices: [
+            { camper_name: 'Sam Lee', program_key: 'summer' },
+            { camper_name: 'Sam Park', program_key: 'summer' },
+            { camper_name: 'Mia Johnson', program_key: 'family_camp' },
+            { camper_name: 'Mia Johnson', program_key: 'family_camp' },
+          ],
+        },
+        programs
+      ).meta
+    ).toBe(
+      "prices Sam Lee's At Camp request, Sam Park's At Camp request and Mia's Family Camp requests"
+    )
+  })
+
   it('says when a set prices nothing yet', () => {
     expect(
       answerSetHead(

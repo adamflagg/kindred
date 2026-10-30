@@ -287,7 +287,8 @@ const otherFigures = (o: SupersededOut, year: number) =>
 /**
  * The Responses panel. `change` is the form change on the request this response prices (its Became's form_change,
  * GF-4): a second response after a decision is flagged there, not applied, and a deletion says when it was seen. The
- * read sends neither the second response's figures nor a deletion time of its own, so neither is shown.
+ * second response's figures show when the read holds it (`flagged`); a deletion has no time of its own, so it reads
+ * the day its request's change carries, when there is one.
  */
 export function responseLines(
   r: FormResponseOut,
@@ -442,16 +443,36 @@ export function responseAsked(
 
 // ── a linked row: the adult-form flags its Became cell adds ───────────────────────────────────
 
+const KEPT =
+  'The request and its decisions are kept, and nothing changes until staff act. Mark Reviewed keeps it as it is.'
+
+/** A decided request's response that is no longer live and linked: deleted in Google (the approved mock's words), or
+ * ignored or linked to someone else by staff. A read with no cause gets neutral words that never claim Google. */
+function deletedFlag(change: FormChangeOut): { words: string; title: string } {
+  const what = 'The adult aid form response this request was priced from'
+  if (change.cause === 'deleted_in_google')
+    return {
+      words: 'response deleted in Google',
+      title: `${what} was deleted in Google${change.at ? ` on ${day(change.at)}` : ''}. ${KEPT}`,
+    }
+  const since = change.at ? ` since ${day(change.at)}` : ''
+  return change.cause === 'unlinked'
+    ? {
+        words: 'response no longer linked',
+        title: `${what} is no longer linked to it${since}: it was ignored, or linked to someone else. ${KEPT}`,
+      }
+    : {
+        words: 'response no longer linked',
+        title: `${what} is no longer linked to it${since}: deleted in Google, ignored, or linked to someone else. ${KEPT}`,
+      }
+}
+
 /** The amber words after a form-made request's session: a deleted response, a flagged change, no price yet. */
 export function becameFlag(b: BecameOut): { words: string; title: string } | null {
   const change = b.form_change
   if (change != null && change.reviewed !== true)
     return change.kind === 'deleted'
-      ? {
-          // The read's "deleted" also covers a response staff ignored or linked to someone else (PR 2): neutral words.
-          words: 'response no longer linked',
-          title: `The adult aid form response this request was priced from is no longer linked to it${change.at ? ` since ${day(change.at)}` : ''}: deleted in Google, ignored, or linked to someone else. The request and its decisions are kept, and nothing changes until staff act. Mark Reviewed keeps it as it is.`,
-        }
+      ? deletedFlag(change)
       : {
           words: 'flagged, not applied',
           title: `A second response on ${day(change.at)}, after a decision: flagged, not applied. Mark Reviewed keeps the request as it is.`,
@@ -697,7 +718,15 @@ export function gridRows(
   const current = responses.filter((r) => r.match_status !== 'superseded')
   const keys = new Set(rows.map((r) => r.key))
   const held = (r: FormResponseOut) => keys.has(r.row_key ?? '')
-  const byRow = new Map(current.filter(held).map((r) => [r.row_key ?? '', r]))
+  // A person's row opens onto their live response: one deleted in Google keeps the row's key too, and the read is
+  // newest first, so a deleted one never displaces it, older or newer.
+  const byRow = new Map<string, FormResponseOut>()
+  for (const r of current.filter(held)) {
+    const key = r.row_key ?? ''
+    const kept = byRow.get(key)
+    if (kept === undefined || (kept.form_status === 'deleted' && r.form_status !== 'deleted'))
+      byRow.set(key, r)
+  }
   const loose = current
     .filter((r) => !held(r))
     .map((response): IntakeGridRow => ({
@@ -713,13 +742,22 @@ export function gridRows(
     ...rows.map((row): IntakeGridRow => {
       const live = byRow.get(row.key) ?? null
       // Decided on an earlier response, then sent again: the row opens onto the one that prices it, the newer beside.
+      // The job points every older response at the newest, so the one decided on is found by its id; a read without
+      // it falls back to the newest one the live response replaced.
+      const change = formChangeToReview(row)?.form_change
+      const replaced = (r: FormResponseOut) =>
+        live !== null && r.match_status === 'superseded' && r.superseded_by === live.response_id
       const priced =
-        live !== null && formChangeToReview(row)?.form_change?.kind === 'changed_after_decision'
-          ? responses
-              .filter(
-                (r) => r.match_status === 'superseded' && r.superseded_by === live.response_id
-              )
-              .sort((a, b) => (b.submitted_at ?? '').localeCompare(a.submitted_at ?? ''))[0]
+        live !== null && change?.kind === 'changed_after_decision'
+          ? (responses.find(
+              (r) =>
+                replaced(r) &&
+                change.decided_response_id &&
+                r.response_id === change.decided_response_id
+            ) ??
+            responses
+              .filter(replaced)
+              .sort((a, b) => (b.submitted_at ?? '').localeCompare(a.submitted_at ?? ''))[0])
           : undefined
       return priced === undefined
         ? { kind: 'row', key: row.key, row, response: live }

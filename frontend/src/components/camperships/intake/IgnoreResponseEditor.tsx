@@ -124,7 +124,6 @@ export function IgnoreResponseEditor({
           <EditorField label="Reason" htmlFor={reasonId} wide>
             <input
               id={reasonId}
-              aria-label="Reason"
               type="text"
               maxLength={2000}
               className={`${CS_FIELD} w-full`}

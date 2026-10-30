@@ -27,6 +27,7 @@ from api.services.financial_aid_decisions_repository import decision_event
 from api.services.financial_aid_form_intake import FormIntakeService
 from api.services.financial_aid_google_form import FormResponseRow
 from api.services.financial_aid_intake_service import FinancialAidIntakeService
+from api.services.financial_aid_intake_types import RequestRecord
 from api.services.financial_aid_today import _form_intake_line
 from tests.unit.api.services.financial_aid_fakes import FakeAidStore, fa_row
 from tests.unit.api.services.financial_aid_gform_fakes import (
@@ -217,9 +218,11 @@ async def test_a_refused_pull_shows_and_counts() -> None:
     out = await _forms(store)
     assert out.google_form is not None
     assert (out.google_form.refused, out.google_form.last_pulled_at) == (True, "2026-11-09 14:20:00.000Z")
-    assert out.counts.needs_look == 1
+    # The refused read is a band row in every segment, not a data row, so Needs a look's count equals its rows (the
+    # Requests band link's count included); Today's line still carries form_pull_refused (the next test).
+    assert out.counts.needs_look == sum(1 for r in out.rows if r.needs_look) == 0
     summary = await FormIntakeService(store).summary(2027)
-    assert (summary.needs_look, summary.to_link) == (1, 0)
+    assert (summary.needs_look, summary.to_link) == (0, 0)
 
 
 @pytest.mark.asyncio
@@ -373,3 +376,63 @@ async def test_a_response_deleted_in_google_stays_on_its_persons_row() -> None:
     out = await _forms(_registration_only_rachel(form_response(form_status="deleted")))
     (response,) = out.form_responses
     assert response.row_key == f"{RACHEL_HOUSEHOLD}:{RACHEL}"
+
+
+async def _decided_rachel() -> tuple[FakeAidStore, RequestRecord]:
+    """Rachel's request made from her response, then awarded: a later change to the response is flagged, not applied."""
+    store = _registration_only_rachel(form_response())
+    await FinancialAidIntakeService(store).build(2027)
+    request = store.request_for(person=RACHEL, program="adult_weekend")
+    store.decision_events.append(
+        decision_event(SimpleNamespace(id="dec000000000001", request=request.id, round=1, event="award", amount=300,
+                                       created=datetime(2026, 12, 1, tzinfo=UTC), actor="registrar@example.com"))
+    )  # fmt: skip
+    return store, request
+
+
+@pytest.mark.parametrize(
+    ("changed", "cause", "reason"),
+    [
+        (form_response(form_status="deleted"), "deleted_in_google", "form_response_deleted"),
+        (form_response(match_status="ignored"), "unlinked", "form_response_unlinked"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_a_vanished_response_says_whether_google_deleted_it_or_staff_unlinked_it(
+    changed: FormResponseRow, cause: str, reason: str
+) -> None:
+    """The approved mock reads "response deleted in Google"; a response staff ignored or linked to someone else reads
+    "response no longer linked". Both are form_change kind "deleted"; `cause` and the look reason tell them apart, for
+    the Became cell, the opened row's note and Today's reason."""
+    store, request = await _decided_rachel()
+    store.form_responses = [changed]
+    out = await _forms(store)
+    row = _row(out, RACHEL)
+    (became,) = row.became
+    assert became.form_change is not None
+    assert (became.form_change.kind, became.form_change.cause) == ("deleted", cause)
+    assert became.form_change.decided_response_id == "resp-rachel-1"
+    assert reason in row.look_reasons
+    other = {"form_response_deleted", "form_response_unlinked"} - {reason}
+    assert not other & set(row.look_reasons)
+    look = await FormIntakeService(store).needs_a_look(2027)
+    assert reason in {r.code for r in _form_intake_line(look).reasons}
+    from api.services.financial_aid_google_form_writes import FormResponseCaseworkService
+
+    await FormResponseCaseworkService(store).review_form_change(2027, request.id, "registrar@example.com")
+    (became,) = _row(await _forms(store), RACHEL).became
+    assert became.form_change is not None
+    assert (became.form_change.reviewed, became.form_change.cause) == (True, cause)
+
+
+@pytest.mark.asyncio
+async def test_a_second_response_after_a_decision_has_no_cause() -> None:
+    store, _ = await _decided_rachel()
+    store.form_responses = [form_response(submitted="2026-12-10T09:00:00Z", ask=900.0)]
+    (became,) = _row(await _forms(store), RACHEL).became
+    assert became.form_change is not None
+    assert (became.form_change.kind, became.form_change.cause) == ("changed_after_decision", None)
+    # The response it was decided on, so the screen opens onto that one, however many came after it.
+    assert became.form_change.decided_response_id == "resp-rachel-1"
+    dumped = (await _forms(store)).model_dump(mode="json")["rows"][0]["became"][0]["form_change"]
+    assert "cause" not in dumped

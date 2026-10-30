@@ -667,7 +667,7 @@ describe("the adult aid form's responses (adult aid form mock v2, steps 4–20)"
         ...became({ program_key: 'adult_weekend', session_cm_id: WW, ask: 350 }),
         request_id: 'reqana000000001',
         form_source: 'google_form',
-        form_change: { kind: 'deleted', at: '', reviewed: false },
+        form_change: { kind: 'deleted', cause: 'deleted_in_google', at: '', reviewed: false },
       },
     ],
   })
@@ -686,8 +686,38 @@ describe("the adult aid form's responses (adult aid form mock v2, steps 4–20)"
     const row = name!.closest('tr') as HTMLElement
     expect(within(row).getByText('adult aid form')).toBeInTheDocument()
     expect(within(row).getByText("Women's Weekend · $350")).toBeInTheDocument()
-    // PR 2's "deleted" also covers an ignored or re-linked response: the words never claim Google deleted it.
+    // The approved mock's words, in the Became cell and the opened row's note alike.
+    expect(within(row).getByText('response deleted in Google')).toBeInTheDocument()
+    expect(within(row).getByRole('button', { name: 'Mark Reviewed' })).toHaveAttribute(
+      'title',
+      'The response was deleted in Google: the request and its decisions stay as they are, and it leaves Needs a look'
+    )
+  })
+
+  it('a response staff ignored or linked to someone else reads "response no longer linked"', async () => {
+    const unlinked = {
+      ...ana,
+      look_reasons: ['form_response_unlinked' as const],
+      became: (ana.became ?? []).map((b) => ({
+        ...b,
+        form_change: {
+          kind: 'deleted' as const,
+          cause: 'unlinked' as const,
+          at: '',
+          reviewed: false,
+        },
+      })),
+    }
+    forms = { ...forms, rows: [...ROWS_2027, jordan, unlinked] }
+    renderAt()
+    const [name] = await screen.findAllByText('Ana Garcia')
+    const row = name!.closest('tr') as HTMLElement
     expect(within(row).getByText('response no longer linked')).toBeInTheDocument()
+    expect(within(row).queryByText('response deleted in Google')).not.toBeInTheDocument()
+    expect(within(row).getByRole('button', { name: 'Mark Reviewed' })).toHaveAttribute(
+      'title',
+      'The response is no longer linked to this request: the request and its decisions stay as they are, and it leaves Needs a look'
+    )
   })
 
   it('Responses to link: a segment of its own, second, each response with Link… and Ignore…', async () => {

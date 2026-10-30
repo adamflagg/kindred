@@ -38,6 +38,8 @@ LookReason = Literal[
     # was deleted in Google, and the change was not applied (Mark Reviewed clears it until the next different one).
     "form_changed_after_decision",
     "form_response_deleted",
+    # The same flag when staff Ignored the response or linked it to someone else: "response no longer linked".
+    "form_response_unlinked",
     # The response's program choice maps to no one 2027 weekend (§6); a refused pull is the season's (§3.4).
     "form_choice_unclear",
     "form_pull_refused",
@@ -101,11 +103,20 @@ class RequestAdditionOut(BaseModel):
     retire_reason: str = ""
 
 
+# Why a decided request's response is no longer live and linked (kind "deleted"): the mirror row reads deleted in
+# Google, or staff Ignored it or linked it to someone else.
+FormChangeCause = Literal["deleted_in_google", "unlinked"]
+
+
 class FormChangeOut(BaseModel):
     """A change to a decided request's adult aid form that was not applied (GF-4)."""
 
     kind: Literal["deleted", "changed_after_decision"]
+    # kind "deleted" only: "response deleted in Google" or "response no longer linked". Left out of the JSON otherwise.
+    cause: FormChangeCause | None = Field(default=None, exclude_if=lambda v: v is None)
     at: str = ""  # the newer response's submitted time; for a reviewed one, when it was reviewed
+    # The response the request was decided on (and still prices it): the row opens onto it, however many came after.
+    decided_response_id: str = ""
     reviewed: bool = False
     reviewed_by: str = ""
 
@@ -256,7 +267,9 @@ class FormResponseOut(BaseModel):
 
     id: str  # the aid_form_responses record id (Link…, Ignore…)
     response_id: str
-    row_key: str = ""  # "<household>:<person>" once linked to a person; "" until then
+    # "<household>:<person>" once linked to a person, and for a deleted response that had one (its row keeps it); ""
+    # otherwise.
+    row_key: str = ""
     form_source: FormSource = "google_form"
     match_status: FormMatchStatus
     form_status: Literal["live", "deleted"]
