@@ -55,36 +55,48 @@ func TestPermissionCheckExactMatch(t *testing.T) {
 	}
 }
 
-// TestRequirePermissionLetsTheSuperuserThrough pins the bypass FastAPI's Pull now relies on
-// (adult-aid form design PR 2): FastAPI calls a sync route as PocketBase's superuser after
-// gating the person on financial_aid.casework, and a superuser has neither is_admin nor
-// cached_permissions, so without the bypass every such call would be 403. A superuser can
-// already read and write every collection, and no person's token is a superuser's, so this
-// widens nothing for a person. An app user with no permission is still refused, and a
-// missing auth is still 401.
-func TestRequirePermissionLetsTheSuperuserThrough(t *testing.T) {
+// TestSuperuserDoorIsOnlyOnThePullRoute pins the narrowed bypass FastAPI's Pull now relies on.
+// FastAPI calls the pull route as PocketBase's superuser after gating the person on
+// financial_aid.casework; a superuser has neither is_admin nor cached_permissions. Only
+// requirePermissionOrSuperuser admits it; RequirePermission (every other gated route) refuses
+// it exactly as on main. Non-superuser behaviour is the same on both.
+func TestSuperuserDoorIsOnlyOnThePullRoute(t *testing.T) {
 	t.Parallel()
-	ran := false
-	handler := RequirePermission("bunking.manage", func(*core.RequestEvent) error {
-		ran = true
-		return nil
-	})
-
-	superuser := &core.RequestEvent{}
-	superuser.Auth = core.NewRecord(core.NewAuthCollection(core.CollectionNameSuperusers))
-	if err := handler(superuser); err != nil || !ran {
-		t.Fatalf("superuser: err=%v ran=%v, want the handler to run", err, ran)
+	newEvent := func(collection string) *core.RequestEvent {
+		e := &core.RequestEvent{}
+		e.Auth = core.NewRecord(core.NewAuthCollection(collection))
+		return e
 	}
+	admin := newEvent("users")
+	admin.Auth.Set("is_admin", true)
+	withPerm := newEvent("users")
+	withPerm.Auth.Set("cached_permissions", []string{"bunking.manage"})
 
-	ran = false
-	user := &core.RequestEvent{}
-	user.Auth = core.NewRecord(core.NewAuthCollection("users"))
-	if err := handler(user); err == nil || ran {
-		t.Fatalf("user without the permission: err=%v ran=%v, want a refusal", err, ran)
+	cases := []struct {
+		name    string
+		wrap    func(string, func(*core.RequestEvent) error) func(*core.RequestEvent) error
+		event   *core.RequestEvent
+		wantRun bool
+	}{
+		{"pull route: superuser runs", requirePermissionOrSuperuser, newEvent(core.CollectionNameSuperusers), true},
+		{"other route: superuser refused", RequirePermission, newEvent(core.CollectionNameSuperusers), false},
+		{"pull route: user without permission refused", requirePermissionOrSuperuser, newEvent("users"), false},
+		{"pull route: no auth refused", requirePermissionOrSuperuser, &core.RequestEvent{}, false},
+		{"pull route: admin runs", requirePermissionOrSuperuser, admin, true},
+		{"pull route: permitted user runs", requirePermissionOrSuperuser, withPerm, true},
+		{"other route: admin runs", RequirePermission, admin, true},
+		{"other route: permitted user runs", RequirePermission, withPerm, true},
+		{"other route: user without permission refused", RequirePermission, newEvent("users"), false},
+		{"other route: no auth refused", RequirePermission, &core.RequestEvent{}, false},
 	}
-
-	ran = false
-	if err := handler(&core.RequestEvent{}); err == nil || ran {
-		t.Fatalf("no auth: err=%v ran=%v, want a refusal", err, ran)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ran := false
+			err := tc.wrap("bunking.manage", func(*core.RequestEvent) error { ran = true; return nil })(tc.event)
+			if ran != tc.wantRun || (err == nil) != tc.wantRun {
+				t.Fatalf("ran=%v err=%v, want run=%v", ran, err, tc.wantRun)
+			}
+		})
 	}
 }

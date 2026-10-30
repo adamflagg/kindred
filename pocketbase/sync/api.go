@@ -154,24 +154,34 @@ func requireAuth(handler func(*core.RequestEvent) error) func(*core.RequestEvent
 }
 
 // RequirePermission wraps a handler to require authentication and a specific RBAC permission.
-// Admin users (is_admin=true) bypass the permission check.
+// Admin users (is_admin=true) bypass the permission check. A PocketBase superuser does NOT:
+// it carries neither is_admin nor cached_permissions, so it is refused like any user without
+// the permission. Only RequirePermissionOrSuperuser lets one through.
 //
 // Exported so other packages gating on the same RBAC permissions (e.g.
 // lodging's roll-forward routes, which gate on "bunking.manage" like every
 // lodging_* write rule) reuse this exact check instead of writing a second
 // one with different semantics.
 func RequirePermission(permission string, handler func(*core.RequestEvent) error) func(*core.RequestEvent) error {
+	return requirePermissionWith(permission, false, handler)
+}
+
+// requirePermissionOrSuperuser is requirePermission plus one door: PocketBase's own superuser
+// passes without the permission check. It is for a route FastAPI calls as the service superuser
+// after gating the person on its own permission (Camperships' Pull now). Use it on that route
+// only; every other gated route keeps the superuser out. No person's token is a superuser's (a
+// view-as preview swaps e.Auth to a users stand-in before this runs).
+func requirePermissionOrSuperuser(permission string, handler func(*core.RequestEvent) error) func(*core.RequestEvent) error {
+	return requirePermissionWith(permission, true, handler)
+}
+
+func requirePermissionWith(permission string, allowSuperuser bool, handler func(*core.RequestEvent) error) func(*core.RequestEvent) error {
 	return func(e *core.RequestEvent) error {
 		if e.Auth == nil {
 			return apis.NewUnauthorizedError("Authentication required", nil)
 		}
-		// Admin bypass. PocketBase's own superuser too: it holds neither is_admin nor
-		// cached_permissions, and it is how FastAPI calls a route after gating the person on
-		// its own permission (Camperships' Pull now). It can already write every collection, and
-		// no person's token is a superuser's (a view-as preview swaps e.Auth to a users stand-in
-		// before this runs), so it widens nothing for a person. It does let a superuser run
-		// every route gated here (the sync triggers and lodging roll-forward), not only Pull now.
-		if e.Auth.GetBool("is_admin") || e.Auth.IsSuperuser() {
+		// Admin bypass
+		if e.Auth.GetBool("is_admin") || (allowSuperuser && e.Auth.IsSuperuser()) {
 			return handler(e)
 		}
 		// Check cached_permissions JSON array (exact element match, not substring)
@@ -541,8 +551,9 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 	// The adult aid Google Form pull (adult-aid form design, PR 1): reads the season's form into
 	// the locked aid_form_responses mirror. Also reachable as
 	// POST /api/custom/sync/run?service=aid_google_form_responses&year=YYYY.
+	// Pull now reaches it as the service superuser, so this is the one gated route that admits one.
 	e.Router.POST("/api/custom/sync/aid-google-form-responses",
-		requirePermission("bunking.manage", func(e *core.RequestEvent) error {
+		requirePermissionOrSuperuser("bunking.manage", func(e *core.RequestEvent) error {
 			return handleIndividualSync(e, scheduler, "aid_google_form_responses")
 		}))
 
