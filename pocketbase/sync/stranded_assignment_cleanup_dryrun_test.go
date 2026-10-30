@@ -8,15 +8,18 @@ import (
 	pbtests "github.com/pocketbase/pocketbase/tests"
 )
 
-// TestStrandedAssignmentCleanupDryRunLeavesDraftUntouched proves both of
-// reconcileStrandedAssignments' write sites are gated (kindred#2351): a
+// TestStrandedAssignmentCleanupDryRunLeavesDraftUntouched proves
+// reconcileStrandedAssignments' unassign write is gated (kindred#2351): a
 // draft that a wet run would null out survives a dry run byte-for-byte, and
-// Stats.Updated still reports what WOULD have been swept so an operator's
-// preview is accurate.
+// Stats.Updated still reports what WOULD have been unassigned so an operator's
+// preview is accurate. Its other write, the delete of a no-longer-enrolled
+// camper's draft, is gated the same way and proven by
+// TestStrandedAssignmentCleanup_DryRunCountsButKeepsEnrollmentOrphanDraft
+// (stranded_assignment_cleanup_test.go), which checks Stats.Deleted instead.
 //
 // reconcileStrandedAssignments is one of TWO functions StrandedAssignmentCleanupSync's
 // DryRun guards -- see TestStrandedAssignmentCleanupDryRunLeavesLodgingDraftUntouched below
-// for the second, reconcileLodgingOrphans' units write.
+// for the second, reconcileLodgingOrphans' draft delete.
 //
 // Deliberately a new file rather than an addition to
 // stranded_assignment_cleanup_test.go: that file's fixtures are being
@@ -68,12 +71,12 @@ func TestStrandedAssignmentCleanupDryRunLeavesDraftUntouched(t *testing.T) {
 }
 
 // TestStrandedAssignmentCleanupDryRunLeavesLodgingDraftUntouched proves the second of
-// StrandedAssignmentCleanupSync's two write sites is gated: reconcileLodgingOrphans' `units`
-// clear on a lodging_assignments_draft row for a household no longer enrolled (kindred#2028's
-// weekend twin of the bunk sweep above). Fixture mirrors
+// StrandedAssignmentCleanupSync's two write sites is gated: reconcileLodgingOrphans' delete of
+// a lodging_assignments_draft row for a household no longer enrolled (kindred#2028's weekend
+// twin of the bunk sweep above; a delete since the 2026-10-29 owner ruling, an unassign before). Fixture mirrors
 // TestStrandedAssignmentCleanup_SweepsLodgingEnrollmentOrphanDraftHousehold in
 // stranded_assignment_cleanup_test.go, the wet-run test that proves this same household would
-// actually be swept -- this one proves a dry run leaves it alone.
+// actually be deleted -- this one proves a dry run leaves it alone.
 func TestStrandedAssignmentCleanupDryRunLeavesLodgingDraftUntouched(t *testing.T) {
 	t.Parallel()
 	app, err := pbtests.NewTestApp()
@@ -119,21 +122,21 @@ func TestStrandedAssignmentCleanupDryRunLeavesLodgingDraftUntouched(t *testing.T
 	}
 
 	stats := svc.GetStats()
-	if stats.Updated != 1 {
-		t.Errorf("Stats.Updated = %d, want 1 (the lodging sweep that would have happened)", stats.Updated)
+	if stats.Deleted != 1 {
+		t.Errorf("Stats.Deleted = %d, want 1 (the lodging delete that would have happened)", stats.Deleted)
 	}
 }
 
 // TestStrandedAssignmentCleanupDryRunLodgingLogReportsSimulatedSweep proves
 // reconcileLodgingOrphans' completion log tells an operator what a dry run
 // WOULD sweep, not what it actually wrote (CodeRabbit finding on #2386):
-// the log line's "drafts_swept" field used to read the local `writes`
-// counter, which only increments on a real `app.Save`, so a dry run always
-// logged `drafts_swept=0` even when `orphaned_drafts` was nonzero --
+// the log line's count field (then "drafts_swept", now "drafts_deleted")
+// used to read the local `writes` counter, which only increments on a real
+// write, so a dry run always logged 0 even when `orphaned_drafts` was nonzero --
 // silently contradicting the very household this test seeds as an orphan.
 // reconcileStrandedAssignments' sibling log line (the bunk sweep, a few
 // lines up in this same file) already gets this right by logging
-// stats.Updated instead -- but that field accumulates across BOTH
+// stats.Updated instead -- but the Stats counters accumulate across BOTH
 // reconcile passes sharing one Stats struct (Sync() calls
 // reconcileStrandedAssignments then reconcileLodgingOrphans with the same
 // &s.Stats), so copying that exact fix here would double-count the bunk
@@ -180,10 +183,10 @@ func TestStrandedAssignmentCleanupDryRunLodgingLogReportsSimulatedSweep(t *testi
 	if !strings.Contains(logs, "stranded_assignment_cleanup lodging pass complete") {
 		t.Fatalf("lodging completion log not found; got:\n%s", logs)
 	}
-	if strings.Contains(logs, "drafts_swept=0") {
-		t.Errorf("dry run logged drafts_swept=0 despite one simulated lodging sweep; got:\n%s", logs)
+	if strings.Contains(logs, "drafts_deleted=0") {
+		t.Errorf("dry run logged drafts_deleted=0 despite one simulated lodging delete; got:\n%s", logs)
 	}
-	if !strings.Contains(logs, "drafts_swept=1") {
-		t.Errorf("want drafts_swept=1 (the simulated sweep an operator would act on); got:\n%s", logs)
+	if !strings.Contains(logs, "drafts_deleted=1") {
+		t.Errorf("want drafts_deleted=1 (the simulated delete an operator would act on); got:\n%s", logs)
 	}
 }

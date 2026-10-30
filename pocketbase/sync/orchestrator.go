@@ -306,7 +306,7 @@ var syncJobMeta = []JobMeta{
 		Description: "Capture daily enrollment counts per session",
 		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
 	{ID: "stranded_assignment_cleanup", Phase: PhaseTransform,
-		Description: "Auto-unassign scenario drafts stranded by bunk or cancellation",
+		Description: "Delete drafts of campers no longer enrolled; unassign drafts whose bunk lost its plan",
 		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
 
 	// Process phase - CSV + AI
@@ -3057,8 +3057,8 @@ func (o *Orchestrator) servicesForYear(year int, debug bool) map[string]Service 
 	enrollmentSnapshots.Year = year
 	s.add("enrollment_snapshots", enrollmentSnapshots)
 
-	// Stranded assignment cleanup: sweeps scenario drafts stranded by bunk-plan changes,
-	// for this season's drafts.
+	// Stranded assignment cleanup: deletes this season's scenario drafts of campers no longer
+	// enrolled, and unassigns those whose bunk lost its plan.
 	strandedAssignmentCleanup := NewStrandedAssignmentCleanupSync(o.app)
 	strandedAssignmentCleanup.Year = year
 	s.add("stranded_assignment_cleanup", strandedAssignmentCleanup)
