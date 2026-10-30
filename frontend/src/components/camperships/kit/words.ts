@@ -13,6 +13,16 @@ export const ORIGIN_WORDS: Readonly<Record<RequestOrigin, string>> = {
   reg_ask_review: 'reg. ask · review',
 }
 
+/**
+ * Which aid form an answer came from (adult aid form design §10, mock K1 a): CampMinder's own aid form, or the Google
+ * form adults fill in for Family Camp and Adult Weekends from 2027. Chip words: CM, never CampMinder, in a chip.
+ */
+export type FormSource = 'campminder' | 'google_form'
+export const FORM_SOURCE_WORDS: Readonly<Record<FormSource, string>> = {
+  google_form: 'adult aid form',
+  campminder: 'CM form',
+}
+
 /** CLOSED-SEASONS-DONE (CSD-4): the "Closed N" chip's title (ClosedChip). */
 export const CLOSED_CHIP_TITLE =
   'Closed: this season is closed. Its requests show as they stood, and nothing in it needs doing.'

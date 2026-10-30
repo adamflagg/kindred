@@ -25,7 +25,9 @@ import {
   multiHousehold,
   noteWords,
 } from './householdModel'
+import { answerSetsOf, type OwnAnswerSet } from './answerSets'
 import { HouseholdLabelText } from './HouseholdLabel'
+import { IncomeFormBand } from './IncomeFormBand'
 import {
   HH_DIFF_DEL,
   HH_EYEBROW,
@@ -306,6 +308,7 @@ function Exceptions({
   correct,
   formStrip,
   fixed,
+  band,
 }: {
   page: ApiAidHouseholdPage
   income: ApiAidIncome
@@ -313,6 +316,8 @@ function Exceptions({
   formStrip: FormStripRender | undefined
   /** The mock's fixed column grid: one household; a household's half leaves its columns to fit. */
   fixed: boolean
+  /** GF-2 B: the band row naming this set's form, first in the table, when the page shows a set per form. */
+  band?: ((span: number) => ReactNode) | undefined
 }) {
   const [all, setAll] = useState(false)
   const exceptions = exceptionsOf(income)
@@ -329,6 +334,12 @@ function Exceptions({
   return (
     <div className="min-w-0">
       {formStrip?.(income)}
+      {shown.length === 0 && band !== undefined && (
+        <table className={answersTable(fixed)}>
+          {fixed && <AnswerColumns forms={columns?.length ?? 1} />}
+          <tbody>{band(span)}</tbody>
+        </table>
+      )}
       {shown.length === 0 ? (
         // Another flag shows as a pill below, so the note never claims there are none.
         <p className={`${HH_NOTE} py-1`}>
@@ -355,6 +366,7 @@ function Exceptions({
             </tr>
           </thead>
           <tbody>
+            {band?.(span)}
             {rows.map(({ answer, conflict, band }, i) => {
               const gapBefore = band && rows[i - 1]?.band !== true
               return (
@@ -427,18 +439,103 @@ function IncomeHead({
   )
 }
 
+/** The adult aid form's priced figures, shown first (mock v2 step 22); the set's other answers sit behind a toggle. */
+const OWN_PRICED = new Set([
+  'total_gross_income',
+  'expected_gross_income',
+  'total_medical_expenses',
+  'non_retirement_savings',
+])
+
+/**
+ * One request's own adult aid form answers (GF-2 B; mock v2 step 22) under its band, in the one-form table's columns:
+ * the answer, the form's figure and the one used. Its corrections are the request's own, so they show here as used.
+ */
+
+function OwnAnswerSetTable({
+  own,
+  programs,
+}: {
+  own: OwnAnswerSet
+  programs: Readonly<Record<string, string>>
+}) {
+  const [all, setAll] = useState(false)
+  const first = own.answers.filter((a) => OWN_PRICED.has(a.field) || a.corrected)
+  const rest = own.answers.length - first.length
+  const shown = all ? own.answers : first
+  return (
+    <div>
+      <table className={answersTable(true)} data-own-answers={own.requestId}>
+        <AnswerColumns forms={1} />
+        {/* Its own heads: CampMinder's set above may show no table, and the two figures must read apart. */}
+        <thead>
+          <tr>
+            <th className={HH_TH}>Answer</th>
+            <th className={HH_TH_NUM}>Form&apos;s answer</th>
+            <th className={HH_TH_NUM}>Using</th>
+            <th className={HH_TH} />
+            <th className={HH_TH} />
+          </tr>
+        </thead>
+        <tbody>
+          <IncomeFormBand set={own.set} programs={programs} span={4} />
+          {shown.map((answer) => (
+            <tr key={answer.field}>
+              <td className={HH_TD}>{answerWords(answer.field)}</td>
+              <td className={HH_TD_NUM}>{answerValue(answer.field, answer.synced)}</td>
+              <td className={`${HH_TD_NUM} ${answer.corrected ? 'font-bold' : ''}`}>
+                {answerValue(answer.field, answer.effective)}
+              </td>
+              <td className={HH_TD} />
+              <td className={HH_TD}>
+                {answer.corrected && <StatusPill tone="amber">corrected</StatusPill>}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {rest > 0 && (
+        <button type="button" className={`${HH_TOGGLE} mt-1`} onClick={() => setAll(!all)}>
+          {all
+            ? 'Show Only the Priced Figures ▴'
+            : `${String(rest)} more ${rest === 1 ? 'answer' : 'answers'} ▸`}
+        </button>
+      )}
+    </div>
+  )
+}
+
 export function IncomePanel({
   page,
   correct,
   formStrip,
+  programs = {},
 }: {
   page: ApiAidHouseholdPage
   correct?: CorrectRender | undefined
   /** The Use X's Form strip, put above each household's answers (round 3, section 3). */
   formStrip?: FormStripRender | undefined
+  /** Program labels, for a band's "prices Mia's … request" (GF-2 B). */
+  programs?: Readonly<Record<string, string>> | undefined
 }) {
+  // GF-2 B: an adult who filed the adult aid form has an answer set of their own; each set opens on its form's band.
+  const sets = answerSetsOf(page)
+  const ownSets =
+    sets === null ? null : (
+      <div className="space-y-2">
+        {sets.own.map((own) => (
+          <OwnAnswerSetTable key={own.requestId} own={own} programs={programs} />
+        ))}
+      </div>
+    )
+  const cmBand =
+    sets === null
+      ? undefined
+      : (span: number) => (
+          <IncomeFormBand set={sets.campminder} programs={programs} span={span - 1} />
+        )
   if (page.incomes.length === 0) {
-    return <p className={HH_NOTE}>No income form on file.</p>
+    return ownSets ?? <p className={HH_NOTE}>No income form on file.</p>
   }
   const [first] = page.incomes
   if (page.incomes.length === 1 && first !== undefined) {
@@ -446,7 +543,15 @@ export function IncomePanel({
       <div className="space-y-1">
         {multiHousehold(page) && <IncomeHead page={page} householdCmId={first.household_cm_id} />}
         <LastYearLine page={page} income={first} />
-        <Exceptions page={page} income={first} correct={correct} formStrip={formStrip} fixed />
+        <Exceptions
+          page={page}
+          income={first}
+          correct={correct}
+          formStrip={formStrip}
+          fixed
+          band={cmBand}
+        />
+        {ownSets}
         <div className="pt-1.5">
           <IncomeNotes income={first} stacked={false} />
         </div>
@@ -454,28 +559,32 @@ export function IncomePanel({
     )
   }
   return (
-    <div className="grid items-stretch gap-x-7 gap-y-4 lg:grid-cols-2">
-      {page.incomes.map((income) => (
-        <div
-          key={income.household_cm_id}
-          data-testid="income-household"
-          className="flex min-w-0 flex-col"
-        >
-          <IncomeHead page={page} householdCmId={income.household_cm_id} className="mb-1" />
-          <LastYearLine page={page} income={income} />
-          <Exceptions
-            page={page}
-            income={income}
-            correct={correct}
-            formStrip={formStrip}
-            fixed={false}
-          />
-          {/* The notes sit at the half's foot, so both halves end level (the mock's .halves.eq). */}
-          <div className="mt-auto pt-2.5">
-            <IncomeNotes income={income} stacked />
+    <div className="space-y-4">
+      <div className="grid items-stretch gap-x-7 gap-y-4 lg:grid-cols-2">
+        {page.incomes.map((income) => (
+          <div
+            key={income.household_cm_id}
+            data-testid="income-household"
+            className="flex min-w-0 flex-col"
+          >
+            <IncomeHead page={page} householdCmId={income.household_cm_id} className="mb-1" />
+            <LastYearLine page={page} income={income} />
+            <Exceptions
+              page={page}
+              income={income}
+              correct={correct}
+              formStrip={formStrip}
+              fixed={false}
+              band={cmBand}
+            />
+            {/* The notes sit at the half's foot, so both halves end level (the mock's .halves.eq). */}
+            <div className="mt-auto pt-2.5">
+              <IncomeNotes income={income} stacked />
+            </div>
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
+      {ownSets}
     </div>
   )
 }

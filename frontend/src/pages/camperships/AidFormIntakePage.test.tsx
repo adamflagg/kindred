@@ -22,6 +22,21 @@ import {
   became,
   TWR,
 } from '../../components/camperships/intake/intakeFixtures'
+import {
+  ADULT_SESSIONS,
+  ANA,
+  CASEY,
+  DANA,
+  DANA_LINK,
+  FC4,
+  FC4A,
+  JORDAN_2,
+  JORDAN_REPLACED,
+  LAST_READ,
+  LIN,
+  REFUSED,
+  WW,
+} from '../../components/camperships/intake/adultFormFixtures'
 import type { FormIntakeRowOut } from '../../components/camperships/intake/intakeTypes'
 import AidFormIntakePage from './AidFormIntakePage'
 
@@ -86,7 +101,14 @@ beforeEach(() => {
   unlisted = { year: 2027, rows: [], sessions: SESSIONS }
   fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((url, init) => {
     const path = String(url)
+    if (init?.method === 'POST' && path.endsWith('/form-responses/pull'))
+      return Promise.resolve(json({ status: 'started' }, 202))
+    if (init?.method === 'POST' && path.includes('/form-responses/'))
+      return Promise.resolve(json({ id: 'x', response_id: 'x', match_status: 'staff' }))
+    if (init?.method === 'POST' && path.includes('/form-changes/'))
+      return Promise.resolve(json({ request_id: 'x', reviewed_by: 'me', reviewed_at: '' }))
     if (init?.method === 'POST') return Promise.resolve(json({ addition: {}, request: {} }, 201))
+    if (path.includes('/candidates')) return Promise.resolve(json(DANA_LINK))
     if (path.includes('/intake/2027/forms')) return Promise.resolve(json(forms))
     if (path.includes('/intake/2027/unlisted')) return Promise.resolve(json(unlisted))
     if (path.includes('/definitions')) return Promise.resolve(json(NOTES))
@@ -521,5 +543,368 @@ describe('a closed season (CLOSED-SEASONS-DONE)', () => {
     await screen.findByText('Olivia Chen')
     expect(within(rowOf('Olivia Chen')).getByText('Closed')).toBeInTheDocument()
     expect(within(rowOf('Olivia Chen')).queryByText('Session unclear')).toBeNull()
+  })
+})
+
+describe('an adult aid form row (adult aid form mock v2: K1 a, callouts 1–3)', () => {
+  const grace = intakeRow({
+    key: '1000016:1000161',
+    household_cm_id: 1000016,
+    household_label: 'Grace & Tom Chen-Whitfield',
+    person_cm_id: 1000161,
+    camper_name: 'Grace Chen-Whitfield',
+    filed: true,
+    registration_only: false,
+    answers: [
+      {
+        program_key: 'family_camp',
+        option_text: 'Family Camp 4: Labor Day (Sep 3-6)',
+        ask: 700,
+        named_session_cm_id: FC4,
+        form_source: 'google_form',
+      },
+    ],
+    enrolled_session_cm_ids: [FC4A],
+    became: [
+      {
+        ...became({ program_key: 'family_camp', session_cm_id: FC4A, ask: 700 }),
+        form_source: 'google_form',
+        price_missing: true,
+      },
+    ],
+  })
+  beforeEach(() => {
+    forms = { ...formsRead([...ROWS_2027, grace]), sessions: [...SESSIONS, ...ADULT_SESSIONS] }
+  })
+
+  it('callout 1: Form asked widens 262 → 280px, taken from Camper (300 → 282)', async () => {
+    renderAt('/aid/requests/intake?year=2027&show=all')
+    await screen.findByText('Grace Chen-Whitfield')
+    const widths = [...document.querySelectorAll('colgroup col')].map(
+      (c) => (c as HTMLElement).style.width
+    )
+    expect(widths.slice(0, 2)).toEqual(['282px', '280px'])
+  })
+
+  it('K1 a and callout 2: the outlined adult aid form chip, then the weekend and ask with no program prefix', async () => {
+    renderAt('/aid/requests/intake?year=2027&show=all')
+    await screen.findByText('Grace Chen-Whitfield')
+    const row = rowOf('Grace Chen-Whitfield')
+    const chip = within(row).getByText('adult aid form')
+    expect(chip.className).toContain('border')
+    expect(within(row).getByText('Family Camp 4 · $700')).toBeInTheDocument()
+    expect(within(row).queryByText(/Family Camp: Family Camp 4/)).toBeNull()
+    // CampMinder rows stay unmarked.
+    expect(within(rowOf('Emma Johnson')).queryByText('adult aid form')).toBeNull()
+  })
+
+  it('callout 3: a request with no price yet says so, in amber, after its session', async () => {
+    renderAt('/aid/requests/intake?year=2027&show=all')
+    await screen.findByText('Grace Chen-Whitfield')
+    const row = rowOf('Grace Chen-Whitfield')
+    const flag = within(row).getByText('no price yet')
+    expect(flag.className).toMatch(/amber/)
+    expect(flag).toHaveAttribute('title', expect.stringContaining('No price yet'))
+  })
+
+  it("the opened row names the request's form", async () => {
+    renderAt('/aid/requests/intake?year=2027&show=all')
+    await userEvent.click(await screen.findByText('Family Camp 4 · $700'))
+    expect(
+      await screen.findByText(/Requests: FC4 Adults \(from the adult aid form\)/)
+    ).toBeInTheDocument()
+  })
+})
+
+describe("the adult aid form's responses (adult aid form mock v2, steps 4–20)", () => {
+  const jordan = intakeRow({
+    key: '1000018:1000181',
+    household_cm_id: 1000018,
+    household_label: 'Jordan & Casey Sam',
+    person_cm_id: 1000181,
+    camper_name: 'Jordan Sam',
+    filed: true,
+    registration_only: false,
+    needs_look: true,
+    look_reasons: ['form_changed_after_decision'],
+    answers: [
+      {
+        program_key: 'family_camp',
+        option_text: 'Family Camp 4: Labor Day (Sep 3-6)',
+        ask: 600,
+        named_session_cm_id: FC4,
+        form_source: 'google_form',
+      },
+    ],
+    enrolled_session_cm_ids: [FC4A],
+    became: [
+      {
+        ...became({ program_key: 'family_camp', session_cm_id: FC4A, ask: 600 }),
+        request_id: 'reqjordan000001',
+        form_source: 'google_form',
+        form_change: {
+          kind: 'changed_after_decision',
+          at: '2026-11-10T18:00:00Z',
+          reviewed: false,
+        },
+      },
+    ],
+  })
+  const ana = intakeRow({
+    key: '1000019:1000191',
+    household_cm_id: 1000019,
+    household_label: 'Ana Garcia',
+    person_cm_id: 1000191,
+    camper_name: 'Ana Garcia',
+    filed: false,
+    registration_only: false,
+    needs_look: true,
+    look_reasons: ['form_response_deleted'],
+    answers: [],
+    enrolled_session_cm_ids: [WW],
+    became: [
+      {
+        ...became({ program_key: 'adult_weekend', session_cm_id: WW, ask: 350 }),
+        request_id: 'reqana000000001',
+        form_source: 'google_form',
+        form_change: { kind: 'deleted', cause: 'deleted_in_google', at: '', reviewed: false },
+      },
+    ],
+  })
+  beforeEach(() => {
+    forms = {
+      ...formsRead([...ROWS_2027, jordan, ana]),
+      sessions: [...SESSIONS, ...ADULT_SESSIONS],
+      form_responses: [DANA, CASEY, LIN, JORDAN_REPLACED, JORDAN_2, ANA],
+      google_form: LAST_READ,
+    }
+  })
+
+  it('a response deleted in Google still reads as what the form asked, on its own row', async () => {
+    renderAt()
+    const [name] = await screen.findAllByText('Ana Garcia')
+    const row = name!.closest('tr') as HTMLElement
+    expect(within(row).getByText('adult aid form')).toBeInTheDocument()
+    expect(within(row).getByText("Women's Weekend · $350")).toBeInTheDocument()
+    // The approved mock's words, in the Became cell and the opened row's note alike.
+    expect(within(row).getByText('response deleted in Google')).toBeInTheDocument()
+    expect(within(row).getByRole('button', { name: 'Mark Reviewed' })).toHaveAttribute(
+      'title',
+      'The response was deleted in Google: the request and its decisions stay as they are, and it leaves Needs a look'
+    )
+  })
+
+  it('opened, a deleted response\'s row reads its adult aid form and the deletion, never "no aid form"', async () => {
+    renderAt()
+    const [name] = await screen.findAllByText('Ana Garcia')
+    const row = name!.closest('tr') as HTMLElement
+    await userEvent.click(within(row).getAllByRole('cell')[2]!)
+    const detail = row.nextElementSibling as HTMLElement
+    expect(detail).toHaveTextContent('Adult aid form filed Nov 4')
+    expect(detail).toHaveTextContent('⚠ response deleted in Google')
+    expect(detail).not.toHaveTextContent('No aid form and no registration ask')
+  })
+
+  it('a response staff ignored or linked to someone else reads "response no longer linked"', async () => {
+    const unlinked = {
+      ...ana,
+      look_reasons: ['form_response_unlinked' as const],
+      became: (ana.became ?? []).map((b) => ({
+        ...b,
+        form_change: {
+          kind: 'deleted' as const,
+          cause: 'unlinked' as const,
+          at: '',
+          reviewed: false,
+        },
+      })),
+    }
+    forms = { ...forms, rows: [...ROWS_2027, jordan, unlinked] }
+    renderAt()
+    const [name] = await screen.findAllByText('Ana Garcia')
+    const row = name!.closest('tr') as HTMLElement
+    expect(within(row).getByText('response no longer linked')).toBeInTheDocument()
+    expect(within(row).queryByText('response deleted in Google')).not.toBeInTheDocument()
+    expect(within(row).getByRole('button', { name: 'Mark Reviewed' })).toHaveAttribute(
+      'title',
+      'The response is no longer linked to this request: the request and its decisions stay as they are, and it leaves Needs a look'
+    )
+  })
+
+  it('opened, a row whose response was unlinked (no response on it) still names the adult aid form and the flag', async () => {
+    const unlinked = {
+      ...ana,
+      look_reasons: ['form_response_unlinked' as const],
+      became: (ana.became ?? []).map((b) => ({
+        ...b,
+        form_change: {
+          kind: 'deleted' as const,
+          cause: 'unlinked' as const,
+          at: '',
+          reviewed: false,
+        },
+      })),
+    }
+    forms = {
+      ...forms,
+      rows: [...ROWS_2027, jordan, unlinked],
+      form_responses: (forms.form_responses ?? []).filter((r) => r.response_id !== ANA.response_id),
+    }
+    renderAt()
+    const [name] = await screen.findAllByText('Ana Garcia')
+    const row = name!.closest('tr') as HTMLElement
+    await userEvent.click(within(row).getAllByRole('cell')[2]!)
+    const detail = row.nextElementSibling as HTMLElement
+    expect(detail).toHaveTextContent('Adult aid form · ⚠ response no longer linked')
+    expect(detail).not.toHaveTextContent('No aid form and no registration ask')
+  })
+
+  it('Responses to link: a segment of its own, second, each response with Link… and Ignore…', async () => {
+    renderAt('/aid/requests/intake?year=2027&show=link')
+    const dana = (await screen.findByText('“Dana Okafor”')).closest('tr') as HTMLElement
+    expect(screen.getByRole('button', { name: /Responses to link/ })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    )
+    expect(within(dana).getByText('not linked')).toBeInTheDocument()
+    expect(within(dana).getByText('Suggested')).toBeInTheDocument()
+    expect(
+      within(dana).getByText('Dana Okafor or Dana Okafor-Reyes · name only')
+    ).toBeInTheDocument()
+    expect(within(dana).getByRole('button', { name: 'Link…' })).toBeInTheDocument()
+    expect(within(dana).getByRole('button', { name: 'Ignore…' })).toBeInTheDocument()
+    expect(screen.getByText('“Casey Sam”')).toBeInTheDocument()
+    expect(screen.queryByText('“Lin Chen”')).toBeNull()
+    expect(screen.queryByText('Emma Johnson')).toBeNull()
+  })
+
+  it('an ignored response shows under All forms, offering only Link…', async () => {
+    renderAt('/aid/requests/intake?year=2027&show=all')
+    const lin = (await screen.findByText('“Lin Chen”')).closest('tr') as HTMLElement
+    expect(within(lin).getByText('Ignored')).toBeInTheDocument()
+    expect(within(lin).getByRole('button', { name: 'Link…' })).toBeInTheDocument()
+    expect(within(lin).queryByRole('button', { name: 'Ignore…' })).toBeNull()
+  })
+
+  it('a response opened: what it asked, that no request is made yet, and its three panels', async () => {
+    renderAt('/aid/requests/intake?year=2027&show=link')
+    await userEvent.click(await screen.findByText('“Dana Okafor”'))
+    expect(
+      await screen.findByText('No request until the response is linked · typed “Dana Okafor”')
+    ).toBeInTheDocument()
+    expect(document.querySelector('[data-adult-form-panels]')).not.toBeNull()
+  })
+
+  it('Link…: candidates first with the respondent email, and Link Response posts the person', async () => {
+    renderAt('/aid/requests/intake?year=2027&show=link')
+    const dana = (await screen.findByText('“Dana Okafor”')).closest('tr') as HTMLElement
+    expect(screen.queryByText('sam.lee@example.com')).toBeNull()
+    await userEvent.click(within(dana).getByRole('button', { name: 'Link…' }))
+    expect(await screen.findByText('sam.lee@example.com')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Link Response' }))
+    await waitFor(() =>
+      expect(
+        posts().some(([url]) => String(url).endsWith(`/intake/2027/form-responses/${DANA.id}/link`))
+      ).toBe(true)
+    )
+    const [, init] = posts().find(([url]) => String(url).endsWith('/link'))!
+    expect(JSON.parse(init?.body as string)).toEqual({ person_cm_id: 1000121 })
+    expect(await screen.findByText(/✓ Linked/)).toBeInTheDocument()
+  })
+
+  it('Ignore…: Ignore Response stays off until a reason is picked, then posts it', async () => {
+    renderAt('/aid/requests/intake?year=2027&show=link')
+    const casey = (await screen.findByText('“Casey Sam”')).closest('tr') as HTMLElement
+    await userEvent.click(within(casey).getByRole('button', { name: 'Ignore…' }))
+    const save = await screen.findByRole('button', { name: 'Ignore Response' })
+    expect(save).toBeDisabled()
+    await userEvent.click(screen.getByRole('button', { name: /Why/ }))
+    await userEvent.click(screen.getByRole('option', { name: 'A test or junk response' }))
+    await userEvent.click(save)
+    await waitFor(() =>
+      expect(
+        posts().some(([url]) =>
+          String(url).endsWith(`/intake/2027/form-responses/${CASEY.id}/ignore`)
+        )
+      ).toBe(true)
+    )
+  })
+
+  it('K4: the last read sits beside Pull Now, and Pull Now starts a read', async () => {
+    renderAt()
+    expect(await screen.findByText('Last read from Google: 14:20')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Pull Now' }))
+    expect(
+      await screen.findByText(
+        '✓ Reading the adult aid form from Google: the list refreshes when it lands'
+      )
+    ).toBeInTheDocument()
+    expect(posts().some(([url]) => String(url).endsWith('/intake/2027/form-responses/pull'))).toBe(
+      true
+    )
+  })
+
+  it('callout 4: a refused read is a warn row in every segment, and the last read turns amber', async () => {
+    forms = { ...forms, google_form: REFUSED }
+    renderAt()
+    const lead =
+      '⚠ The 14:20 read was refused: Google returned 0 of 12 responses, so nothing was removed.'
+    expect(await screen.findByText(lead)).toBeInTheDocument()
+    expect(screen.getByText('⚠ Read refused 14:20')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /All forms/ }))
+    expect(await screen.findByText(lead)).toBeInTheDocument()
+  })
+
+  it('Mark Reviewed on a request whose form changed after a decision', async () => {
+    renderAt()
+    await screen.findByText('Jordan Sam')
+    const row = rowOf('Jordan Sam')
+    expect(within(row).getByText('flagged, not applied')).toBeInTheDocument()
+    await userEvent.click(within(row).getByRole('button', { name: 'Mark Reviewed' }))
+    await waitFor(() =>
+      expect(
+        posts().some(([url]) =>
+          String(url).endsWith('/requests/2027/form-changes/reqjordan000001/review')
+        )
+      ).toBe(true)
+    )
+  })
+
+  it("an opened linked row shows its response's panels, the flagged second response among them", async () => {
+    renderAt()
+    await screen.findByText('Jordan Sam')
+    await userEvent.click(within(rowOf('Jordan Sam')).getByText('flagged, not applied'))
+    expect(
+      await screen.findByText(
+        'Second response, Nov 10, after a decision (ask $600, 2026 gross $58,000): flagged, not applied'
+      )
+    ).toBeInTheDocument()
+    // The figures shown are the ones the request was decided on, the flagged one noted beside.
+    expect(
+      screen.getByText('the Nov 10 response says $58,000: flagged, not applied', { exact: false })
+    ).toBeInTheDocument()
+  })
+
+  it('Link… refused (422, no program choice): says so, and offers Ignore… to clear it', async () => {
+    fetchSpy.mockImplementation((url, init) => {
+      const path = String(url)
+      if (init?.method === 'POST' && path.endsWith('/link'))
+        return Promise.resolve(
+          json({ detail: 'This response names no program, so it makes no request' }, 422)
+        )
+      if (path.includes('/intake/2027/forms')) return Promise.resolve(json(forms))
+      if (path.includes('/candidates')) return Promise.resolve(json(DANA_LINK))
+      if (path.includes('/definitions')) return Promise.resolve(json(NOTES))
+      return Promise.resolve(json({ detail: 'not here' }, 404))
+    })
+    renderAt('/aid/requests/intake?year=2027&show=link')
+    const dana = (await screen.findByText('“Dana Okafor”')).closest('tr') as HTMLElement
+    await userEvent.click(within(dana).getByRole('button', { name: 'Link…' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Link Response' }))
+    expect(
+      await screen.findByText(
+        'This response names no program, so it makes no request. Ignore… on the row clears it.'
+      )
+    ).toBeInTheDocument()
   })
 })

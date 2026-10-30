@@ -120,10 +120,18 @@ const UNIT: Record<ApiAidTodayLine['item_kind'], readonly [string, string]> = {
   funders: ['funder', 'funders'],
   campers: ['camper', 'campers'],
 }
+/**
+ * A line's unit. Finance's synthetic Over budget line counts pools, not lines; Form intake's counts people (owner Q4,
+ * 10-29), since from 2027 it counts adults on the adult aid form too, some with no person yet.
+ */
+function unitOf(line: ApiAidTodayLine): readonly [string, string] {
+  if ((line.key as string) === 'over_budget') return ['pool', 'pools']
+  if (line.key === 'form_intake') return ['person', 'people']
+  return UNIT[line.item_kind]
+}
+
 export function countWords(line: ApiAidTodayLine): string {
-  // Finance's synthetic Over budget line counts pools, not lines.
-  const [one, many] =
-    (line.key as string) === 'over_budget' ? ['pool', 'pools'] : UNIT[line.item_kind]
+  const [one, many] = unitOf(line)
   const main = `${String(line.items)} ${line.items === 1 ? one : many}`
   return line.families !== null && line.item_kind === 'requests'
     ? `${main} · ${String(line.families)} fam`
@@ -132,8 +140,7 @@ export function countWords(line: ApiAidTodayLine): string {
 
 /** The count cell's parts (audit R4, spec §5): each figure bold, its unit muted, "31 req 23 fam". */
 export function countParts(line: ApiAidTodayLine): Array<{ figure: string; unit: string }> {
-  const [one, many] =
-    (line.key as string) === 'over_budget' ? ['pool', 'pools'] : UNIT[line.item_kind]
+  const [one, many] = unitOf(line)
   const parts = [{ figure: String(line.items), unit: line.items === 1 ? one : many }]
   if (line.families !== null && line.item_kind === 'requests')
     parts.push({ figure: String(line.families), unit: 'fam' })
@@ -486,6 +493,13 @@ const REASON_WORDS: Readonly<Record<string, string>> = {
   enrolled_no_request: 'enrolled, no request',
   session_unclear: 'session unclear',
   registration_ask_unreviewed: 'reg. ask to review',
+  // The adult aid form's (adult aid form design §10)
+  form_response_to_link: 'responses to link',
+  form_response_deleted: 'response deleted in Google',
+  form_response_unlinked: 'response no longer linked',
+  form_changed_after_decision: 'second response after a decision',
+  form_pull_refused: 'read from Google refused',
+  form_choice_unclear: 'program choice unclear',
 }
 const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1)
 
