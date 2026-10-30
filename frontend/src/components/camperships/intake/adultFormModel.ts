@@ -173,11 +173,39 @@ const REGISTERED: Readonly<Record<string, string>> = {
   incomplete: 'incomplete',
 }
 
-/** A candidate whose email matched someone else in their household: a tie-break, never a match (design §5). */
-export function candidateNote(c: FormCandidateOut): string {
-  return c.household_email === true
-    ? "the typed email is someone else's in their household (a tie-break, never a match)"
-    : ''
+const clueWords = (n: number) => `${countWords(n)} ${n === 1 ? 'clue' : 'clues'}`
+
+/**
+ * What several candidates match on, true of every one of them: the clues when they all matched the same ones
+ * ("name only"), else how many each matched. Listing only the clues they share undersold them: two people on name and
+ * email and on name and birthdate read "name only" (owner, 2026-10-29).
+ */
+function severalMatch(candidates: readonly FormCandidateOut[]): {
+  verb: string
+  clues: string
+  tail: string
+  why: string
+} {
+  const sets = candidates.map(signalsOf)
+  const [one = []] = sets
+  if (sets.every((s) => signalWords(s) === signalWords(one))) {
+    const tail = one.length === 1 ? ' only' : ''
+    return { verb: 'match on ', clues: signalWords(one), tail, why: `${signalWords(one)}${tail}` }
+  }
+  const counts = [...new Set(sets.map((s) => s.length))].sort((a, b) => b - a)
+  const [only] = counts
+  if (counts.length === 1 && only !== undefined) {
+    return {
+      verb: 'each match ',
+      clues: clueWords(only),
+      tail: '',
+      why: `each match ${clueWords(only)}`,
+    }
+  }
+  const clues = counts
+    .map((n) => `${countWords(sets.filter((s) => s.length === n).length)} on ${clueWords(n)}`)
+    .join(', ')
+  return { verb: 'match: ', clues, tail: '', why: clues }
 }
 
 export function matchEvidence(
@@ -189,23 +217,18 @@ export function matchEvidence(
   switch (r.match_status) {
     case 'suggested': {
       if (candidates.length > 1) {
-        const common = SIGNAL_ORDER.filter((s) => candidates.every((c) => signalsOf(c).includes(s)))
-        const tie = candidates.find((c) => c.household_email === true)
+        const m = severalMatch(candidates)
         return {
           segs: [
             { text: 'Suggested: ' },
             { text: `${countWords(candidates.length)} people`, bold: true },
-            { text: ` registered for ${weekendShort(weekendOf(r), names)} match on ` },
-            { text: signalWords(common), bold: true },
-            { text: common.length === 1 ? ' only' : '' },
+            { text: ` registered for ${weekendShort(weekendOf(r), names)} ${m.verb}` },
+            { text: m.clues, bold: true },
+            { text: m.tail },
           ],
-          muted:
-            tie === undefined
-              ? ''
-              : `· the email belongs to someone in ${wordsOr(tie.camper_name, 'one')}'s household (a tie-break, never a match)`,
+          muted: '',
         }
       }
-      const note = first === undefined ? '' : candidateNote(first)
       return {
         segs: [
           { text: 'Suggested: ' },
@@ -213,7 +236,7 @@ export function matchEvidence(
           { text: ` (${tinyName(firstSession(first), names)}) matches on ` },
           { text: signalWords(signalsOf(first)), bold: true },
         ],
-        muted: note ? `· ${note}` : '',
+        muted: '',
       }
     }
     case 'registered_elsewhere':
@@ -374,12 +397,12 @@ export function responseBecame(
     case 'suggested': {
       const people = candidates.map((c) => wordsOr(c.camper_name, 'someone')).join(' or ')
       if (candidates.length > 1) {
-        const common = SIGNAL_ORDER.filter((s) => candidates.every((c) => signalsOf(c).includes(s)))
+        const m = severalMatch(candidates)
         return {
           tone: 'amber',
           words: 'Suggested',
-          why: `${people} · ${signalWords(common)}${common.length === 1 ? ' only' : ''}`,
-          title: `Suggested: ${countWords(candidates.length)} people registered for ${weekendShort(weekendOf(r), names)} match on ${signalWords(common)}${common.length === 1 ? ' only' : ''}. Link… shows them with their evidence.`,
+          why: `${people} · ${m.why}`,
+          title: `Suggested: ${countWords(candidates.length)} people registered for ${weekendShort(weekendOf(r), names)} ${m.verb}${m.clues}${m.tail}. Link… shows them with their evidence.`,
         }
       }
       return {

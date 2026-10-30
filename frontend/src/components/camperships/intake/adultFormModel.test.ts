@@ -22,12 +22,12 @@ import {
   LAST_READ,
   LIN,
   NOAH,
+  RACHEL_LEE,
   REFUSED,
   response,
 } from './adultFormFixtures'
 import {
   alsoLine,
-  candidateNote,
   figureRows,
   gridCounts,
   gridRows,
@@ -179,10 +179,29 @@ describe('matchEvidence (the Match panel)', () => {
       'Suggested: two people registered for Family Camp 4 match on name only'
     )
     expect(bold(m.segs)).toEqual(['two people', 'name'])
-    // The typed email is someone else's in the first one's household: a tie-break, said as one.
-    expect(m.muted).toBe(
-      "· the email belongs to someone in Dana Okafor's household (a tie-break, never a match)"
+    // No household-email tie-break (Q1 = strict): nothing else to say.
+    expect(m.muted).toBe('')
+  })
+
+  it('suggested with two people on different clues: each match two, never "name only"', () => {
+    const m = matchEvidence(RACHEL_LEE, names)
+    expect(text(m.segs)).toBe(
+      'Suggested: two people registered for Family Camp 4 each match two clues'
     )
+    expect(bold(m.segs)).toEqual(['two people', 'two clues'])
+    expect(m.muted).toBe('')
+  })
+
+  it('suggested with people on different numbers of clues: how many match how many', () => {
+    const third = { ...RACHEL_LEE.candidates![1]!, person_cm_id: 1000181, signals: ['birthdate'] }
+    const m = matchEvidence(
+      { ...RACHEL_LEE, candidates: [...RACHEL_LEE.candidates!, third] },
+      names
+    )
+    expect(text(m.segs)).toBe(
+      'Suggested: three people registered for Family Camp 4 match: two on two clues, one on one clue'
+    )
+    expect(bold(m.segs)).toEqual(['three people', 'two on two clues, one on one clue'])
   })
 
   it('suggested with one person: who, their session and the clue', () => {
@@ -274,6 +293,17 @@ describe('responseBecame (the Became cell of a response with no person)', () => 
       why: 'Dana Okafor or Dana Okafor-Reyes · name only',
     })
     expect(responseBecame(NOAH, names).why).toBe('Noah Johnson · name')
+  })
+
+  it('suggested on different clues: says each matched two, not the one they share', () => {
+    expect(responseBecame(RACHEL_LEE, names)).toMatchObject({
+      why: 'Rachel Lee or Rachel Lee · each match two clues',
+      title:
+        'Suggested: two people registered for Family Camp 4 each match two clues. Link… shows them with their evidence.',
+    })
+    expect(responseBecame(DANA, names).title).toBe(
+      'Suggested: two people registered for Family Camp 4 match on name only. Link… shows them with their evidence.'
+    )
   })
 
   it('registered elsewhere: amber, the weekend chosen and the one registered for, tiny', () => {
@@ -412,15 +442,6 @@ describe('Ignore…', () => {
       kind: 'not asking for 2027 aid',
       reason: "Called: says she doesn't need aid this year",
     })
-  })
-})
-
-describe("candidateNote (Link…'s Also column)", () => {
-  it('says when the typed email is someone else in their household', () => {
-    expect(candidateNote(DANA.candidates![0]!)).toBe(
-      "the typed email is someone else's in their household (a tie-break, never a match)"
-    )
-    expect(candidateNote(DANA.candidates![1]!)).toBe('')
   })
 })
 

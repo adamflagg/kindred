@@ -147,8 +147,6 @@ const DANA_OKAFOR: FormCandidateOut = {
   signals: ['name'],
   session_cm_ids: [FC4A],
   registration_status: 'enrolled',
-  // The typed email is someone else's in her household: a tie-break, never a match.
-  household_email: true,
 }
 const DANA_OKAFOR_REYES: FormCandidateOut = {
   person_cm_id: 1000131,
@@ -180,6 +178,43 @@ export const DANA = response({
     total_medical_expenses: 6400,
   }),
   candidates: [DANA_OKAFOR, DANA_OKAFOR_REYES],
+})
+
+/** Suggested with two candidates who each match two clues, but not the same two (the questions mock's Rachel Lee):
+ *  the first on name and the family's shared email, the second on name and birthdate. */
+export const RACHEL_LEE = response({
+  id: 'rec000000000012',
+  response_id: 'resp-rachel-lee',
+  match_status: 'suggested',
+  to_link: true,
+  row_key: '',
+  name_typed: 'Rachel Lee',
+  program_key: 'family_camp',
+  program_choice: 'Family Camp 4: Labor Day (Sep 3-6)',
+  weekend_session_cm_id: FC4,
+  ask: 600,
+  submitted_at: '2026-10-24T18:00:00Z',
+  signature_typed: 'Rachel Lee',
+  candidates: [
+    {
+      person_cm_id: 1000161,
+      household_cm_id: 1000016,
+      camper_name: 'Rachel Lee',
+      household_label: 'Rachel & Sam Lee',
+      signals: ['name', 'email'],
+      session_cm_ids: [FC4A],
+      registration_status: 'enrolled',
+    },
+    {
+      person_cm_id: 1000171,
+      household_cm_id: 1000017,
+      camper_name: 'Rachel Lee',
+      household_label: 'Rachel Lee',
+      signals: ['name', 'birthdate'],
+      session_cm_ids: [FC4A],
+      registration_status: 'applied',
+    },
+  ],
 })
 
 /** Suggested with one candidate, the birthdate's day and month swapped (the mock's Noah). */

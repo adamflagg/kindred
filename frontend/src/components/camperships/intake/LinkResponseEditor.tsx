@@ -1,7 +1,6 @@
 import { useId, useMemo, useRef, useState } from 'react'
 
 import { AidTable, type AidColumn } from '../kit/AidTable'
-import { Cut } from '../kit/Cut'
 import {
   CS_AMBER_NOTE,
   CS_BODY,
@@ -15,7 +14,7 @@ import {
 import { EditorActions, EditorForm } from '../kit/EditorLayout'
 import { Effects } from '../kit/Effects'
 import { CS_OK_INK } from '../kit/kitStyles'
-import { candidateNote, linkEffects, registrationYear, typedLine } from './adultFormModel'
+import { linkEffects, registrationYear, typedLine } from './adultFormModel'
 import type {
   FormResponseOut,
   LinkCandidatesOut,
@@ -168,17 +167,9 @@ export function LinkResponseEditor({
       {
         key: 'email',
         header: 'Email',
-        width: 210,
+        flex: true,
         value: (c) => c.email ?? '',
         render: (c) => <Clue hit={hit(c, 'email')}>{c.email ?? ''}</Clue>,
-      },
-      {
-        key: 'also',
-        header: 'Also',
-        flex: true,
-        value: (c) => candidateNote(c),
-        // One line, as the mock's: the full words in the title.
-        render: (c) => <Cut text={candidateNote(c)} className={MUTED} />,
       },
     ],
     [pick, names, year]

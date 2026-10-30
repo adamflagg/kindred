@@ -85,9 +85,9 @@ describe('Link…', () => {
     expect(within(first).getByText('FC4 Adults · enrolled')).toBeInTheDocument()
     expect(first).toHaveTextContent('✓ name')
     expect(first).toHaveTextContent('✗ 1985-09-30')
-    expect(first).toHaveTextContent(
-      "the typed email is someone else's in their household (a tie-break, never a match)"
-    )
+    // Q1 = strict (owner, 2026-10-29): no household-email tie-break, so no Also column to say one.
+    expect(screen.queryByText('Also')).not.toBeInTheDocument()
+    expect(first).not.toHaveTextContent('tie-break')
     expect(rowOf(1000131)).toHaveTextContent('FC4 Adults · applied')
   })
 
