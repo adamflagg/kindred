@@ -31,6 +31,7 @@ from api.services.financial_aid_today import _form_intake_line
 from tests.unit.api.services.financial_aid_fakes import FakeAidStore, fa_row
 from tests.unit.api.services.financial_aid_gform_fakes import (
     ADULT_WEEKEND_A,
+    ADULT_WEEKEND_B,
     RACHEL,
     RACHEL_HOUSEHOLD,
     enrolled,
@@ -325,3 +326,41 @@ async def test_an_ignored_response_shows_its_kind() -> None:
     out = await _forms(store)
     (listed,) = out.form_responses
     assert listed.ignored_kind == "duplicate"
+
+
+# -- PR 3: what the Form intake screen draws from a response it cannot link on its own -------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_candidate_is_named_with_its_household_and_registration() -> None:
+    """The Responses to link row names who it may be ("Suggested: Camper 1000091 · name and birthdate"), so each
+    candidate carries their name, household and how they are registered; never their birthdate or email."""
+    candidates = ({"person_cm_id": RACHEL, "household_cm_id": RACHEL_HOUSEHOLD, "signals": ["name", "birthdate"],
+                   "session_cm_ids": [ADULT_WEEKEND_A]},)  # fmt: skip
+    store = _registration_only_rachel(form_response(match_status="suggested", candidates=candidates))
+    store.attendees = enrolled(RACHEL, RACHEL_HOUSEHOLD, ADULT_WEEKEND_A, status=4)
+    out = await _forms(store)
+    (candidate,) = out.form_responses[0].candidates
+    assert (candidate.camper_name, candidate.household_label, candidate.registration_status) == (
+        f"Camper {RACHEL}",
+        f"Family {RACHEL_HOUSEHOLD}",
+        "applied",
+    )
+    dumped = out.model_dump(mode="json")["form_responses"][0]["candidates"][0]
+    assert "birthdate" not in dumped
+    assert "email" not in dumped
+
+
+@pytest.mark.asyncio
+async def test_the_sessions_name_every_weekend_a_response_or_candidate_names() -> None:
+    """A registered-elsewhere response chose one weekend and its candidate registered for another; no Form intake row
+    references either, yet the screen names both ("Chose AW B, registered for AW A")."""
+    candidates = ({"person_cm_id": RACHEL, "household_cm_id": RACHEL_HOUSEHOLD, "signals": ["name", "birthdate"],
+                   "session_cm_ids": [ADULT_WEEKEND_B], "elsewhere": True},)  # fmt: skip
+    store = gform_store(
+        form_response(match_status="registered_elsewhere", weekend=ADULT_WEEKEND_A, candidates=candidates),
+        attendees=enrolled(RACHEL, RACHEL_HOUSEHOLD, ADULT_WEEKEND_B),
+    )
+    out = await _forms(store)
+    named = {s.session_cm_id for s in out.sessions}
+    assert {ADULT_WEEKEND_A, ADULT_WEEKEND_B} <= named

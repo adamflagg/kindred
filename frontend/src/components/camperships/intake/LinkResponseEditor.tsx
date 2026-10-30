@@ -1,18 +1,26 @@
 import { useId, useMemo, useRef, useState } from 'react'
 
 import { AidTable, type AidColumn } from '../kit/AidTable'
-import { CS_AMBER_NOTE, CS_BTN, CS_BTN2, CS_FIELD, CS_PHEAD, CS_POPEN_META } from '../kit/csType'
-import { formatCampDateTime } from '../kit/dates'
+import {
+  CS_AMBER_NOTE,
+  CS_BODY,
+  CS_BTN,
+  CS_BTN2,
+  CS_FIELD,
+  CS_PHEAD,
+  CS_POPEN_META,
+  CS_SMALL,
+} from '../kit/csType'
 import { EditorActions, EditorForm } from '../kit/EditorLayout'
 import { Effects } from '../kit/Effects'
 import { CS_OK_INK } from '../kit/kitStyles'
-import { linkEffects, registrationYear, typedLine } from './adultFormModel'
+import { candidateNote, linkEffects, registrationYear, typedLine } from './adultFormModel'
 import type {
-  FormResponseView,
-  LinkCandidatesView,
-  LinkCandidateView,
+  FormResponseOut,
+  LinkCandidatesOut,
+  LinkCandidateOut,
   MatchSignal,
-} from './adultFormTypes'
+} from './intakeTypes'
 import { tinyName, type SessionIndex } from './intakeModel'
 
 const KEYS = 'Enter saves · Esc cancels'
@@ -26,9 +34,9 @@ function Clue({ hit, children }: { hit: boolean; children: string }) {
     </span>
   )
 }
-const hit = (c: LinkCandidateView, s: MatchSignal) => c.signals.includes(s)
+const hit = (c: LinkCandidateOut, s: MatchSignal) => (c.signals ?? []).includes(s)
 
-function heading(r: FormResponseView, n: number): string {
+function heading(r: FormResponseOut, n: number): string {
   const where = r.match_status === 'registered_elsewhere' ? 'another weekend' : 'the weekend chosen'
   const who =
     r.match_status === 'ignored' ? 'Who it matches' : n === 1 ? 'The suggestion' : 'The suggestions'
@@ -49,18 +57,19 @@ export function LinkResponseEditor({
   onCancel,
   search,
 }: {
-  response: FormResponseView
+  response: FormResponseOut
   /** Link…'s own read: the typed answers and the candidates with their birthdate and email. */
-  link: LinkCandidatesView
+  link: LinkCandidatesOut
   names: SessionIndex
   onLink: (personCmId: number) => Promise<unknown>
   onCancel: () => void
   /** Someone else: a name, birthdate or CampMinder id among this season's registrations. */
-  search: (query: string) => Promise<readonly LinkCandidateView[]>
+  search: (query: string) => Promise<readonly LinkCandidateOut[]>
 }) {
-  const [found, setFound] = useState<readonly LinkCandidateView[]>([])
+  const [found, setFound] = useState<readonly LinkCandidateOut[]>([])
   const [query, setQuery] = useState('')
-  const [pick, setPick] = useState<number | null>(link.candidates[0]?.person_cm_id ?? null)
+  const offered = useMemo(() => link.candidates ?? [], [link.candidates])
+  const [pick, setPick] = useState<number | null>(offered[0]?.person_cm_id ?? null)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const inFlight = useRef(false)
@@ -68,9 +77,9 @@ export function LinkResponseEditor({
   const year = registrationYear(response)
 
   const people = useMemo(() => {
-    const seen = new Set(link.candidates.map((c) => c.person_cm_id))
-    return [...link.candidates, ...found.filter((c) => !seen.has(c.person_cm_id))]
-  }, [link.candidates, found])
+    const seen = new Set(offered.map((c) => c.person_cm_id))
+    return [...offered, ...found.filter((c) => !seen.has(c.person_cm_id))]
+  }, [offered, found])
   const picked = people.find((c) => c.person_cm_id === pick) ?? null
 
   const save = async () => {
@@ -98,7 +107,7 @@ export function LinkResponseEditor({
   }
 
   const columns = useMemo(
-    (): Array<AidColumn<LinkCandidateView>> => [
+    (): Array<AidColumn<LinkCandidateOut>> => [
       {
         key: 'pick',
         header: '',
@@ -125,7 +134,7 @@ export function LinkResponseEditor({
         render: (c) => (
           <span className="block truncate">
             <b className="font-semibold">{c.camper_name}</b>
-            <span className={`${MUTED} ml-1 text-xs`}>{`⌂ ${c.household_label ?? ''}`}</span>
+            <span className={`${CS_SMALL} ml-1`}>{`⌂ ${c.household_label ?? ''}`}</span>
           </span>
         ),
       },
@@ -165,8 +174,8 @@ export function LinkResponseEditor({
         key: 'also',
         header: 'Also',
         flex: true,
-        value: (c) => c.note ?? '',
-        render: (c) => <span className={MUTED}>{c.note ?? ''}</span>,
+        value: (c) => candidateNote(c),
+        render: (c) => <span className={MUTED}>{candidateNote(c)}</span>,
       },
     ],
     [pick, names, year]
@@ -182,9 +191,6 @@ export function LinkResponseEditor({
     ),
     then: e.then,
   }))
-  const checked = response.checked_at
-    ? ` Checked every hour, last at ${formatCampDateTime(response.checked_at).split(' ')[2] ?? ''}.`
-    : ''
 
   const lead = (
     <>
@@ -198,16 +204,16 @@ export function LinkResponseEditor({
       </p>
       {people.length === 0 ? (
         <div
-          className={`${MUTED} border-border bg-card rounded-lg border border-dashed px-2.5 py-1.5 text-[13px]`}
+          className={`${MUTED} border-border bg-card rounded-lg border border-dashed px-2.5 py-1.5 ${CS_BODY}`}
         >
-          {`No ${String(year)} registration matches “${link.name_typed}” by name, birthdate or email.${checked}`}
+          {`No ${String(year)} registration matches “${link.name_typed ?? ''}” by name, birthdate or email. Checked every hour.`}
         </div>
       ) : (
         <>
           <span className={`${CS_PHEAD} mt-0.5 mb-[3px] block`}>
-            {heading(response, link.candidates.length)}
+            {heading(response, offered.length)}
           </span>
-          <AidTable<LinkCandidateView>
+          <AidTable<LinkCandidateOut>
             rows={people}
             columns={columns}
             rowKey={(c) => String(c.person_cm_id)}
@@ -243,7 +249,7 @@ export function LinkResponseEditor({
     >
       <EditorForm
         heading="phead"
-        title={`Link a Response · “${link.name_typed}”${response.match_status === 'ignored' ? ' · undoes the ignore' : ''}`}
+        title={`Link a Response · “${link.name_typed ?? ''}”${response.match_status === 'ignored' ? ' · undoes the ignore' : ''}`}
         lead={lead}
         side={<Effects items={effects} />}
         actions={

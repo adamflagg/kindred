@@ -8,18 +8,19 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { LinkCandidatesView } from './adultFormTypes'
+import type { LinkCandidatesOut } from './intakeTypes'
 import { ADULT_SESSIONS, CASEY, DANA, DANA_LINK, FC4A, LIN } from './adultFormFixtures'
 import { sessionIndex } from './intakeModel'
 import { LinkResponseEditor } from './LinkResponseEditor'
 
 const names = sessionIndex(ADULT_SESSIONS)
-const NOBODY: LinkCandidatesView = {
+const NOBODY: LinkCandidatesOut = {
   id: CASEY.id,
+  response_id: CASEY.response_id,
   name_typed: 'Casey Sam',
   birthdate_typed: '1977-12-02',
   respondent_email: 'csam@example.com',
-  program_choice: CASEY.program_choice,
+  program_choice: "Women's Weekend (Oct 14-17)",
   candidates: [],
 }
 
@@ -84,7 +85,9 @@ describe('Link…', () => {
     expect(within(first).getByText('FC4 Adults · enrolled')).toBeInTheDocument()
     expect(first).toHaveTextContent('✓ name')
     expect(first).toHaveTextContent('✗ 1985-09-30')
-    expect(first).toHaveTextContent("the typed email is Sam Lee's, in her household")
+    expect(first).toHaveTextContent(
+      "the typed email is someone else's in their household (a tie-break, never a match)"
+    )
     expect(rowOf(1000131)).toHaveTextContent('FC4 Adults · applied')
   })
 
@@ -111,7 +114,7 @@ describe('Link…', () => {
     renderEditor({ response: CASEY, link: NOBODY })
     expect(
       screen.getByText(
-        'No 2027 registration matches “Casey Sam” by name, birthdate or email. Checked every hour, last at 14:20.'
+        'No 2027 registration matches “Casey Sam” by name, birthdate or email. Checked every hour.'
       )
     ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Link Response' })).toBeDisabled()
@@ -125,7 +128,7 @@ describe('Link…', () => {
         ...DANA_LINK,
         id: LIN.id,
         name_typed: 'Lin Chen',
-        candidates: [DANA_LINK.candidates[0]!],
+        candidates: [DANA_LINK.candidates![0]!],
       },
     })
     expect(screen.getByText('Link a Response · “Lin Chen” · undoes the ignore')).toBeInTheDocument()

@@ -225,15 +225,17 @@ class FormCandidateOut(BaseModel):
     signals: list[str] = Field(default_factory=list)
     session_cm_ids: list[int] = Field(default_factory=list)
     elsewhere: bool = False  # registered for another weekend than the response chose
-
-
-class LinkCandidateOut(FormCandidateOut):
-    """A candidate on Link…'s dialog: named, with their household, registration and CampMinder birthdate and email
-    beside the response's own (this read only; the Form intake list never carries them)."""
-
+    # Named, so the Responses to link row says who it may be (PR 3): their name, household and best registration in
+    # the sessions the evidence names. Never their birthdate or email: only Link…'s own read carries those.
     camper_name: str = ""
     household_label: str = ""
     registration_status: Literal["", "enrolled", "applied", "waitlisted", "incomplete"] = ""
+
+
+class LinkCandidateOut(FormCandidateOut):
+    """A candidate on Link…'s dialog: as the list names them, plus their CampMinder birthdate and email beside the
+    response's own (this read only; the Form intake list never carries them)."""
+
     birthdate: str = ""
     email: str = ""
 

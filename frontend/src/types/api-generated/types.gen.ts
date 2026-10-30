@@ -5486,6 +5486,18 @@ export type FormCandidateOut = {
    * Elsewhere
    */
   elsewhere?: boolean
+  /**
+   * Camper Name
+   */
+  camper_name?: string
+  /**
+   * Household Label
+   */
+  household_label?: string
+  /**
+   * Registration Status
+   */
+  registration_status?: '' | 'enrolled' | 'applied' | 'waitlisted' | 'incomplete'
 }
 
 /**
@@ -8761,6 +8773,18 @@ export type HouseholdRequestOut = {
    */
   duplicates_waiting?: Array<DuplicateWaitingOut>
   addition?: RequestAdditionOut | null
+  /**
+   * Answers Source
+   */
+  answers_source?: '' | 'google_form'
+  /**
+   * Own Answers
+   */
+  own_answers?: Array<AnswerOut> | null
+  /**
+   * Form Submitted At
+   */
+  form_submitted_at?: string
 }
 
 /**
@@ -10066,8 +10090,8 @@ export type LeverEffectOut = {
 /**
  * LinkCandidateOut
  *
- * A candidate on Link…'s dialog: named, with their household, registration and CampMinder birthdate and email
- * beside the response's own (this read only; the Form intake list never carries them).
+ * A candidate on Link…'s dialog: as the list names them, plus their CampMinder birthdate and email beside the
+ * response's own (this read only; the Form intake list never carries them).
  */
 export type LinkCandidateOut = {
   /**
@@ -22311,6 +22335,18 @@ export type HouseholdRequestOutWritable = {
    */
   duplicates_waiting?: Array<DuplicateWaitingOut>
   addition?: RequestAdditionOut | null
+  /**
+   * Answers Source
+   */
+  answers_source?: '' | 'google_form'
+  /**
+   * Own Answers
+   */
+  own_answers?: Array<AnswerOut> | null
+  /**
+   * Form Submitted At
+   */
+  form_submitted_at?: string
 }
 
 /**

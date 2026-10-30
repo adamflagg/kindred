@@ -11,7 +11,7 @@ import {
   IGNORE_KINDS,
   type IgnoreDraft,
 } from './adultFormModel'
-import type { FormResponseView, IgnoreKind } from './adultFormTypes'
+import type { FormResponseOut, IgnoreKind } from './intakeTypes'
 
 const KEYS = 'Enter saves · Esc cancels'
 
@@ -27,7 +27,7 @@ export function IgnoreResponseEditor({
   onIgnore,
   onCancel,
 }: {
-  response: FormResponseView
+  response: FormResponseOut
   year: number
   /** The write; its refusal shows beside the buttons. */
   onIgnore: (body: { kind: IgnoreKind; reason: string }) => Promise<unknown>

@@ -96,7 +96,9 @@ export const CS_PANEL_HEAD = 'text-muted-foreground text-[11.5px] leading-[1.5] 
 export const CS_PHEAD =
   'text-muted-foreground text-[11px] leading-[15px] font-bold tracking-[.05em] uppercase'
 /** The opened row's and the editors' meta, the mock's `.cf-pmeta` 12.5/18 (CS_PMETA's 12px stays elsewhere). */
-export const CS_POPEN_META = 'text-muted-foreground text-[12.5px] leading-[18px]'
+/** The opened row's own text size, 12.5/18 in the foreground (the adult aid form's three panels). */
+export const CS_POPEN_TEXT = 'text-[12.5px] leading-[18px]'
+export const CS_POPEN_META = `text-muted-foreground ${CS_POPEN_TEXT}`
 /** cs-panel 14/20 400 (also cs-td's size): an opened row's panels, the History box's words, the Season notice. */
 export const CS_PANEL = 'text-sm'
 

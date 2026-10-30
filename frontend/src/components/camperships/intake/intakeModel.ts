@@ -21,7 +21,6 @@ import type {
   IntakeSessionOut,
   RegistrationAskOut,
 } from './intakeTypes'
-import type { FormAnswerView } from './adultFormTypes'
 
 // ── sessions ────────────────────────────────────────────────────────────────────────────────
 
@@ -192,8 +191,7 @@ export function answerProgram(
 }
 
 /** An answer's form: CampMinder's own, unless the read marks it the adult aid form (PR 2's `form_source`). */
-export const answerSource = (a: FormAnswerOut): FormSource =>
-  (a as FormAnswerView).form_source ?? 'campminder'
+export const answerSource = (a: FormAnswerOut): FormSource => a.form_source ?? 'campminder'
 
 /**
  * An adult aid form answer's weekend in the cell (mock v2, callout 2): the short form with no subtitle ("Family Camp

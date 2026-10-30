@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest'
 import {
   ADULT_SESSIONS,
   ANA,
+  ANA_CHANGE,
   CASEY,
   DANA,
   DANA_LINK,
@@ -15,6 +16,7 @@ import {
   GRACE,
   HANNAH,
   JORDAN,
+  JORDAN_CHANGE,
   LAST_READ,
   LIN,
   NOAH,
@@ -23,6 +25,7 @@ import {
 } from './adultFormFixtures'
 import {
   alsoLine,
+  candidateNote,
   figureRows,
   gridCounts,
   gridRows,
@@ -36,7 +39,7 @@ import {
   linkEffects,
   matchEvidence,
   noteParts,
-  pulledWords,
+  PULLED_WORDS,
   refusedBand,
   responseBecame,
   responseCamper,
@@ -75,7 +78,7 @@ describe('figureRows (the opened row: five priced figures, the parse note beside
     })
   })
 
-  it("puts each hedged figure's own note beside it, and a rule's note after a parse note", () => {
+  it("puts each hedged figure's own note beside it; a figure read cleanly has none", () => {
     expect(figureRows(GRACE, 2027).map((f) => f.note)).toEqual([
       '',
       'read “approx 85k” as $85,000',
@@ -83,7 +86,12 @@ describe('figureRows (the opened row: five priced figures, the parse note beside
       'read “none” as $0, reported',
       '',
     ])
-    expect(figureRows(DANA, 2027)[4]?.note).toBe('above $5,000: $1,400 is subtracted')
+    // The rules' own words ("above $5,000: …") are not in the read: no note is made up.
+    expect(figureRows(DANA, 2027)[4]).toEqual({
+      label: 'Medical out of pocket',
+      value: '$6,400',
+      note: '',
+    })
   })
 })
 
@@ -113,11 +121,9 @@ describe('alsoLine (the answers that price nothing, on one muted line)', () => {
   })
 
   it('says one dependent, and unknown for an answer not read', () => {
-    const one = response({
-      figures: response().figures.map((f) => (f.field === 'num_children' ? { ...f, value: 1 } : f)),
-      unemployment: null,
-    })
+    const one = response({ num_children: 1, unemployment: null })
     expect(alsoLine(one)).toContain('1 dependent · unemployment unknown')
+    expect(alsoLine(response({ num_children: null }))).toContain('dependents unknown')
   })
 })
 
@@ -162,12 +168,16 @@ describe('matchEvidence (the Match panel)', () => {
       'Suggested: two people registered for Family Camp 4 match on name only'
     )
     expect(bold(m.segs)).toEqual(['two people', 'name'])
+    // The typed email is someone else's in the first one's household: a tie-break, said as one.
+    expect(m.muted).toBe(
+      "· the email belongs to someone in Dana Okafor's household (a tie-break, never a match)"
+    )
   })
 
-  it('suggested with one person: who, their session, the clue, and the near miss', () => {
+  it('suggested with one person: who, their session and the clue', () => {
     const m = matchEvidence(NOAH, names)
     expect(text(m.segs)).toBe('Suggested: Noah Johnson (FC6 Adults) matches on name')
-    expect(m.muted).toBe('· birthdate: day and month swapped')
+    expect(m.muted).toBe('')
   })
 
   it('registered elsewhere: the weekend chosen, and the one registered for', () => {
@@ -176,10 +186,10 @@ describe('matchEvidence (the Match panel)', () => {
     expect(m.muted).toBe('· Emma Johnson matches on name, birthdate and email, in another weekend')
   })
 
-  it('not registered: no registration found, and when the hourly read last checked', () => {
+  it('not registered: no registration found, checked every hour', () => {
     const m = matchEvidence(CASEY, names)
     expect(text(m.segs)).toBe('No 2027 registration found')
-    expect(m.muted).toBe('· checked every hour, last at 14:20')
+    expect(m.muted).toBe('· checked every hour')
   })
 
   it('ignored: no match was tried after the ignore', () => {
@@ -204,19 +214,25 @@ describe('responseLines (the Responses panel)', () => {
     ])
   })
 
-  it('a second response after a decision: flagged, not applied; this one prices the request', () => {
-    expect(responseLines(JORDAN)).toEqual([
+  it("a second response after a decision (its request's form change): flagged, not applied; this one prices the request", () => {
+    expect(responseLines(JORDAN, JORDAN_CHANGE)).toEqual([
       { text: 'This response, Nov 4 · prices the request', current: true },
-      {
-        text: 'Second response, Nov 10, after a decision (2026 gross $58,000): flagged, not applied',
-        current: false,
-      },
+      { text: 'Second response, Nov 10, after a decision: flagged, not applied', current: false },
     ])
   })
 
-  it('a response deleted in Google is kept here', () => {
-    expect(responseLines(ANA)).toEqual([
+  it('a response deleted in Google is kept here, with the day its request learned it', () => {
+    expect(responseLines(ANA, ANA_CHANGE)).toEqual([
       { text: 'This response, Nov 4 · deleted in Google Nov 11, kept here', current: true },
+    ])
+    expect(responseLines(ANA)).toEqual([
+      { text: 'This response, Nov 4 · deleted in Google, kept here', current: true },
+    ])
+  })
+
+  it('a reviewed change is history: no flagged line', () => {
+    expect(responseLines(JORDAN, { ...JORDAN_CHANGE, reviewed: true })).toEqual([
+      { text: 'This response, Nov 4', current: true },
     ])
   })
 })
@@ -239,9 +255,7 @@ describe('responseBecame (the Became cell of a response with no person)', () => 
       words: 'Suggested',
       why: 'Dana Okafor or Dana Okafor-Reyes · name only',
     })
-    expect(responseBecame(NOAH, names).why).toBe(
-      'Noah Johnson · name; birthdate: day and month swapped'
-    )
+    expect(responseBecame(NOAH, names).why).toBe('Noah Johnson · name')
   })
 
   it('registered elsewhere: amber, the weekend chosen and the one registered for, tiny', () => {
@@ -299,7 +313,7 @@ describe('the K4 status slot: Last read from Google, beside Pull Now', () => {
     expect(lastReadWords(REFUSED)).toEqual({
       text: '⚠ Read refused 14:20',
       title:
-        'The 14:20 read from Google was refused: it returned 0 of 12 responses, so nothing was removed. Last good read 13:20.',
+        'The 14:20 read from Google was refused: it returned 0 of 12 responses, so nothing was removed.',
       tone: 'warn',
     })
   })
@@ -308,11 +322,8 @@ describe('the K4 status slot: Last read from Google, beside Pull Now', () => {
     expect(lastReadWords(null)).toBeNull()
   })
 
-  it("Pull Now's result: the counts when the read ran, else that it started", () => {
-    expect(pulledWords({ status: 'done', responses: 12, new: 1, at: '2026-11-12T22:26:00Z' })).toBe(
-      '✓ Read from Google: 12 responses, 1 new (14:26)'
-    )
-    expect(pulledWords({ status: 'started' })).toBe(
+  it("Pull Now's result: the read started, and the list refreshes when it lands", () => {
+    expect(PULLED_WORDS).toBe(
       '✓ Reading the adult aid form from Google: the list refreshes when it lands'
     )
   })
@@ -322,15 +333,17 @@ describe('refusedBand (the warn row on the grid, in every segment)', () => {
   it('says what was refused and why nothing was removed, then what happens next', () => {
     expect(refusedBand(REFUSED)).toEqual({
       lead: '⚠ The 14:20 read was refused: Google returned 0 of 12 responses, so nothing was removed.',
-      meta: 'Every response here is as of 13:20. The hourly read tries again; Pull Now tries now.',
+      meta: 'The hourly read tries again; Pull Now tries now.',
     })
   })
 
   it('falls back to the status words when the counts are not sent, and draws nothing for a good read', () => {
     expect(
       refusedBand({
-        last_pulled_at: REFUSED.last_pulled_at,
+        last_pulled_at: '2026-11-12T22:20:00Z',
         refused: true,
+        returned: null,
+        expected: null,
         last_pull_status: 'refused: 4 of 6 responses missing',
       })?.lead
     ).toBe('⚠ The 14:20 read was refused (4 of 6 responses missing), so nothing was removed.')
@@ -384,6 +397,15 @@ describe('Ignore…', () => {
   })
 })
 
+describe("candidateNote (Link…'s Also column)", () => {
+  it('says when the typed email is someone else in their household', () => {
+    expect(candidateNote(DANA.candidates![0]!)).toBe(
+      "the typed email is someone else's in their household (a tie-break, never a match)"
+    )
+    expect(candidateNote(DANA.candidates![1]!)).toBe('')
+  })
+})
+
 describe('Link…', () => {
   it('the typed line: what the response says, the respondent email only here', () => {
     expect(typedLine(DANA_LINK)).toEqual([
@@ -395,7 +417,7 @@ describe('Link…', () => {
   })
 
   it('with a pick: links, makes the request priced from this form, never re-matched, logged', () => {
-    expect(linkEffects(DANA, DANA.candidates[0] ?? null, names)).toEqual([
+    expect(linkEffects(DANA, DANA.candidates?.[0] ?? null, names)).toEqual([
       {
         sym: 'ok',
         lead: 'Links the response to Dana Okafor',
@@ -412,7 +434,7 @@ describe('Link…', () => {
   })
 
   it('registered elsewhere: the request follows the registration, noted', () => {
-    const fx = linkEffects(EMMA_GF, EMMA_GF.candidates[0] ?? null, names)
+    const fx = linkEffects(EMMA_GF, EMMA_GF.candidates?.[0] ?? null, names)
     expect(fx[1]).toEqual({
       sym: 'hand',
       lead: '',
@@ -424,7 +446,7 @@ describe('Link…', () => {
   it('on an ignored response: undoes the ignore first', () => {
     const fx = linkEffects(
       LIN,
-      { ...EMMA_GF.candidates[0]!, camper_name: 'Lin Chen', session_cm_ids: [FC4A] },
+      { ...EMMA_GF.candidates![0]!, camper_name: 'Lin Chen', session_cm_ids: [FC4A] },
       names
     )
     expect(fx[0]).toEqual({
@@ -492,5 +514,55 @@ describe('became helpers stay compatible with 2026 rows (no source, no flags)', 
   it('a 2026 became has no adult-form flag', async () => {
     const { becameFlag } = await import('./adultFormModel')
     expect(becameFlag(became({}))).toBeNull()
+  })
+})
+
+describe('the segments with Responses to link (mock v2 step 5)', () => {
+  it('puts Responses to link second, titled as the mock does', async () => {
+    const { GRID_SEGMENTS } = await import('./adultFormModel')
+    expect(GRID_SEGMENTS.map((s) => s.label)).toEqual([
+      'Needs a look',
+      'Responses to link',
+      'Registration ask only',
+      'All forms',
+    ])
+    expect(GRID_SEGMENTS[0]?.title).toContain('an adult aid form response deleted in Google')
+    expect(GRID_SEGMENTS[1]?.title).toContain('Link… or Ignore… each')
+    expect(GRID_SEGMENTS[3]?.title).toContain('Ignored responses show here, with the reason')
+  })
+
+  it('reads ?show=link, and the default otherwise', async () => {
+    const { readGridSegment } = await import('./adultFormModel')
+    expect(readGridSegment('link')).toBe('link')
+    expect(readGridSegment('reg')).toBe('reg')
+    expect(readGridSegment(null)).toBe('look')
+    expect(readGridSegment('nope', true)).toBe('all')
+  })
+})
+
+describe('gridFooterWords (a response with no person counts as its own family)', () => {
+  it('counts rows and families, a response no person holds as one each', async () => {
+    const { gridFooterWords, gridRows: build } = await import('./adultFormModel')
+    expect(gridFooterWords(build([], [DANA, CASEY]))).toBe('2 rows · 2 families')
+  })
+})
+
+const PROGRAMS = { family_camp: 'Family Camp' }
+
+describe('responseAsked (Form asked for a response no person holds: the weekend chosen and its ask)', () => {
+  it('names the weekend the short way, no program prefix (callout 2)', async () => {
+    const { responseAsked } = await import('./adultFormModel')
+    expect(responseAsked(DANA, names, PROGRAMS).main).toBe('Family Camp 4 · $600')
+    expect(responseAsked(DANA, names, PROGRAMS).title).toBe(
+      'Family Camp “Family Camp 4: Labor Day (Sep 3-6)” · $600 · the adult aid form (the Google form)'
+    )
+  })
+
+  it('a choice that names no session keeps what was typed; an unread ask is unknown, never $0', async () => {
+    const { responseAsked } = await import('./adultFormModel')
+    const odd = { ...DANA, weekend_session_cm_id: 0, ask: null }
+    expect(responseAsked(odd, names, PROGRAMS).main).toBe(
+      'Family Camp 4: Labor Day (Sep 3-6) · ask unknown'
+    )
   })
 })

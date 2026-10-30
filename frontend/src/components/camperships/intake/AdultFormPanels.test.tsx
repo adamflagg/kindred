@@ -7,7 +7,7 @@ import { render, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
 import { AdultFormPanels } from './AdultFormPanels'
-import { ADULT_SESSIONS, GRACE, HANNAH, JORDAN, response } from './adultFormFixtures'
+import { ADULT_SESSIONS, GRACE, HANNAH, JORDAN, JORDAN_CHANGE, response } from './adultFormFixtures'
 import { sessionIndex } from './intakeModel'
 
 const names = sessionIndex(ADULT_SESSIONS)
@@ -61,13 +61,13 @@ describe('AdultFormPanels', () => {
   })
 
   it('the match evidence with its clues in bold, and every response, this one in plain ink', () => {
-    render(<AdultFormPanels response={JORDAN} year={2027} names={names} />)
+    render(<AdultFormPanels response={JORDAN} year={2027} names={names} change={JORDAN_CHANGE} />)
     const right = panels()[2]!
     expect(within(right).getByText('name, birthdate and email').tagName).toBe('B')
     const items = within(right).getAllByRole('listitem')
     expect(items.map((li) => li.textContent)).toEqual([
       'This response, Nov 4 · prices the request',
-      'Second response, Nov 10, after a decision (2026 gross $58,000): flagged, not applied',
+      'Second response, Nov 10, after a decision: flagged, not applied',
     ])
     expect(items[1]?.className).toContain('text-muted-foreground')
   })

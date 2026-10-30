@@ -1,4 +1,4 @@
-import { CS_PANEL_RULE, CS_PHEAD } from '../kit/csType'
+import { CS_PANEL_RULE, CS_PHEAD, CS_POPEN_TEXT } from '../kit/csType'
 import { formatShortDate } from '../kit/dates'
 import { POOL_NEGATIVE_INK } from '../kit/aidStyles'
 import {
@@ -11,7 +11,7 @@ import {
   signedLine,
   type Seg,
 } from './adultFormModel'
-import type { FormResponseView } from './adultFormTypes'
+import type { FormChangeOut, FormResponseOut } from './intakeTypes'
 import type { SessionIndex } from './intakeModel'
 
 const MUTED = 'text-muted-foreground'
@@ -19,7 +19,7 @@ const MUTED = 'text-muted-foreground'
  * The opened row's three panels (the mock's `.cf-detail .cf-open`): 5 : 4 : 5 under a dashed amber rule, divided by
  * the same rule, at the opened row's 12.5/18. The same grid as To place's opened row.
  */
-const PANELS = `mt-[7px] grid grid-cols-[minmax(0,5fr)_minmax(0,4fr)_minmax(0,5fr)] border-t pt-[7px] text-[12.5px] leading-[18px] ${CS_PANEL_RULE}`
+const PANELS = `mt-[7px] grid grid-cols-[minmax(0,5fr)_minmax(0,4fr)_minmax(0,5fr)] border-t pt-[7px] ${CS_POPEN_TEXT} ${CS_PANEL_RULE}`
 const LEFT = `flex min-w-0 flex-col items-start gap-0.5 pr-3.5`
 const MIDDLE = `flex min-w-0 flex-col items-start gap-0.5 border-l px-3.5 ${CS_PANEL_RULE}`
 const RIGHT = `flex min-w-0 flex-col items-start gap-0.5 border-l pl-3.5 ${CS_PANEL_RULE}`
@@ -63,10 +63,13 @@ export function AdultFormPanels({
   response,
   year,
   names,
+  change = null,
 }: {
-  response: FormResponseView
+  response: FormResponseOut
   year: number
   names: SessionIndex
+  /** The form change on the request this response prices (its Became's), for the Responses panel (GF-4). */
+  change?: FormChangeOut | null
 }) {
   const evidence = matchEvidence(response, names)
   return (
@@ -74,7 +77,7 @@ export function AdultFormPanels({
       <div className={LEFT}>
         <span
           className={CS_PHEAD}
-        >{`Adult aid form · ${formatShortDate(response.submitted_at)}`}</span>
+        >{`Adult aid form · ${formatShortDate(response.submitted_at ?? '')}`}</span>
         <div className={FIGS}>
           {figureRows(response, year).map((f, i) => (
             <div key={f.label} data-figure={PRICED_FIELDS[i]} className="contents">
@@ -93,7 +96,7 @@ export function AdultFormPanels({
       </div>
       <div className={MIDDLE}>
         <span className={CS_PHEAD}>Special circumstances</span>
-        {response.special_circumstances.trim() === '' ? (
+        {(response.special_circumstances ?? '').trim() === '' ? (
           <span className={MUTED}>Left blank</span>
         ) : (
           <span className="text-foreground italic">{`“${response.special_circumstances}”`}</span>
@@ -108,7 +111,7 @@ export function AdultFormPanels({
         </span>
         <span className={`${CS_PHEAD} mt-[7px]`}>Responses</span>
         <ul className="m-0 list-none p-0">
-          {responseLines(response).map((line) => (
+          {responseLines(response, change).map((line) => (
             <li key={line.text} className={line.current ? 'text-foreground' : MUTED}>
               {line.text}
             </li>

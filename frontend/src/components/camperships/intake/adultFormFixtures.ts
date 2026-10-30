@@ -3,12 +3,13 @@
  * time). Fictional names (tests/CLAUDE.md's set and the mock's), generic ids, example.com addresses.
  */
 import type {
-  FormResponseView,
-  GoogleFormStatusView,
-  LinkCandidatesView,
-  ResponseCandidateView,
-  ResponseFigureView,
-} from './adultFormTypes'
+  FormChangeOut,
+  FormResponseOut,
+  GoogleFormStatusOut,
+  LinkCandidatesOut,
+  FormCandidateOut,
+  FormFigureOut,
+} from './intakeTypes'
 import type { IntakeSessionOut } from './intakeTypes'
 
 export const WW = 1000301
@@ -79,10 +80,10 @@ export const ADULT_SESSIONS: IntakeSessionOut[] = [
   },
 ]
 
-/** The five priced figures and the four that are not, every one read cleanly unless a test says otherwise. */
+/** The five priced figures and three that are not, every one read cleanly unless a test says otherwise. */
 export function figures(
-  over: Readonly<Record<string, Partial<ResponseFigureView> | number | null>> = {}
-): ResponseFigureView[] {
+  over: Readonly<Record<string, Partial<FormFigureOut> | number | null>> = {}
+): FormFigureOut[] {
   const base: Record<string, number | null> = {
     ask: 400,
     total_gross_income: 80000,
@@ -92,7 +93,6 @@ export function figures(
     total_housing_expenses: 0,
     total_rent: 2200,
     student_debt: 250,
-    num_children: 0,
   }
   return Object.entries(base).map(([field, value]) => {
     const o = over[field]
@@ -102,7 +102,7 @@ export function figures(
   })
 }
 
-export function response(over: Partial<FormResponseView> = {}): FormResponseView {
+export function response(over: Partial<FormResponseOut> = {}): FormResponseOut {
   return {
     id: 'rec000000000001',
     response_id: 'resp-rachel',
@@ -118,6 +118,7 @@ export function response(over: Partial<FormResponseView> = {}): FormResponseView
     submitted_at: '2026-11-05T17:00:00Z',
     figures: figures(),
     unemployment: false,
+    num_children: 0,
     special_circumstances: 'I lost my job in June and started a new one in September.',
     signature_typed: 'Rachel Garcia',
     agreement_date: '2026-11-05',
@@ -134,12 +135,11 @@ export function response(over: Partial<FormResponseView> = {}): FormResponseView
       },
     ],
     look_reasons: [],
-    checked_at: '2026-11-12T22:20:00Z',
     ...over,
   }
 }
 
-const DANA_OKAFOR: ResponseCandidateView = {
+const DANA_OKAFOR: FormCandidateOut = {
   person_cm_id: 1000121,
   household_cm_id: 1000012,
   camper_name: 'Dana Okafor',
@@ -147,9 +147,10 @@ const DANA_OKAFOR: ResponseCandidateView = {
   signals: ['name'],
   session_cm_ids: [FC4A],
   registration_status: 'enrolled',
-  note: "the typed email is Sam Lee's, in her household",
+  // The typed email is someone else's in her household: a tie-break, never a match.
+  household_email: true,
 }
-const DANA_OKAFOR_REYES: ResponseCandidateView = {
+const DANA_OKAFOR_REYES: FormCandidateOut = {
   person_cm_id: 1000131,
   household_cm_id: 1000013,
   camper_name: 'Dana Okafor-Reyes',
@@ -176,7 +177,7 @@ export const DANA = response({
   special_circumstances: '',
   figures: figures({
     ask: 600,
-    total_medical_expenses: { value: 6400, rule_note: 'above $5,000: $1,400 is subtracted' },
+    total_medical_expenses: 6400,
   }),
   candidates: [DANA_OKAFOR, DANA_OKAFOR_REYES],
 })
@@ -202,7 +203,6 @@ export const NOAH = response({
       signals: ['name'],
       session_cm_ids: [FC6A],
       registration_status: 'enrolled',
-      note: 'birthdate: day and month swapped',
     },
   ],
 })
@@ -335,20 +335,7 @@ export const JORDAN = response({
   weekend_session_cm_id: FC4,
   ask: 600,
   submitted_at: '2026-11-04T18:00:00Z',
-  figures: figures({
-    ask: 600,
-    total_gross_income: {
-      value: 62000,
-      note: 'the Nov 10 response says “$58,000”: flagged, not applied',
-    },
-  }),
-  flagged: [
-    {
-      response_id: 'resp-jordan-2',
-      submitted_at: '2026-11-10T18:00:00Z',
-      total_gross_income: 58000,
-    },
-  ],
+  figures: figures({ ask: 600, total_gross_income: 62000 }),
   look_reasons: ['form_changed_after_decision'],
 })
 
@@ -361,30 +348,42 @@ export const ANA = response({
   ask: 350,
   submitted_at: '2026-11-04T18:00:00Z',
   form_status: 'deleted',
-  deleted_at: '2026-11-11T18:00:00Z',
   look_reasons: ['form_response_deleted'],
 })
 
-export const LAST_READ: GoogleFormStatusView = {
+export const LAST_READ: GoogleFormStatusOut = {
   last_pulled_at: '2026-11-12T22:20:00Z',
   refused: false,
 }
-export const REFUSED: GoogleFormStatusView = {
+export const REFUSED: GoogleFormStatusOut = {
   last_pulled_at: '2026-11-12T22:20:00Z',
   refused: true,
   returned: 0,
   expected: 12,
-  last_good_at: '2026-11-12T21:20:00Z',
-  last_pull_status: 'refused: 0 of 12 responses returned',
+  last_pull_status: 'refused: 12 of 12 responses missing · 0 responses',
+}
+
+/** The change a decided request's response made (GF-4), as its Became carries it: Jordan's second response. */
+export const JORDAN_CHANGE: FormChangeOut = {
+  kind: 'changed_after_decision',
+  at: '2026-11-10T18:00:00Z',
+  reviewed: false,
+}
+/** Ana's response deleted in Google. */
+export const ANA_CHANGE: FormChangeOut = {
+  kind: 'deleted',
+  at: '2026-11-11T18:00:00Z',
+  reviewed: false,
 }
 
 /** Link…'s read for Dana: the respondent email is here and nowhere else. */
-export const DANA_LINK: LinkCandidatesView = {
+export const DANA_LINK: LinkCandidatesOut = {
   id: DANA.id,
+  response_id: DANA.response_id,
   name_typed: 'Dana Okafor',
   birthdate_typed: '1986-03-12',
   respondent_email: 'sam.lee@example.com',
-  program_choice: DANA.program_choice,
+  program_choice: 'Family Camp 4: Labor Day (Sep 3-6)',
   candidates: [
     { ...DANA_OKAFOR, birthdate: '1985-09-30', email: 'dana.okafor@example.com' },
     { ...DANA_OKAFOR_REYES, birthdate: '1979-01-14', email: 'dokreyes@example.com' },

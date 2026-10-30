@@ -103,8 +103,13 @@ import type {
   AddedRequestOut,
   AdditionCreateIn,
   AidOnNoRequestResponse,
+  FormChangeReviewedOut,
   FormIntakeResponse,
   FormIntakeSummaryOut,
+  FormResponseActionOut,
+  FormResponseIgnore,
+  FormResponseLink,
+  LinkCandidatesOut,
   UnlistedResponse,
 } from '../../components/camperships/intake/intakeTypes'
 import { ApiError, readErrorDetail, toApiError } from '../apiError'
@@ -1567,5 +1572,86 @@ export function retireAidAddition(
     `${BASE}/requests/${String(year)}/additions/${encodeURIComponent(additionId)}/retire`,
     { reason },
     "Couldn't remove the request"
+  )
+}
+
+// --- Form intake: the adult aid Google Form (adult aid form design §5, §10; PR 3) ------------------------------
+
+const formResponse = (year: number, recordId: string, action: string) =>
+  `${BASE}/intake/${String(year)}/form-responses/${encodeURIComponent(recordId)}/${action}`
+
+/** Link…'s own read: the typed answers, the respondent email and the candidates; with `q`, a search instead. */
+export function fetchAidLinkCandidates(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  recordId: string,
+  q: string
+): Promise<LinkCandidatesOut> {
+  return fetchAidIntake(
+    fetchWithAuth,
+    `${String(year)}/form-responses/${encodeURIComponent(recordId)}/candidates`,
+    "Couldn't read who the response matches",
+    q === '' ? {} : { q }
+  )
+}
+
+/** Link… (casework): the response becomes this person's; on an ignored one it undoes the ignore. */
+export function linkAidFormResponse(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  recordId: string,
+  body: FormResponseLink
+): Promise<FormResponseActionOut> {
+  return send<FormResponseActionOut>(
+    fetchWithAuth,
+    'POST',
+    formResponse(year, recordId, 'link'),
+    body,
+    "Couldn't link the response"
+  )
+}
+
+/** Ignore… (casework): never matched again; Other needs a reason. */
+export function ignoreAidFormResponse(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  recordId: string,
+  body: FormResponseIgnore
+): Promise<FormResponseActionOut> {
+  return send<FormResponseActionOut>(
+    fetchWithAuth,
+    'POST',
+    formResponse(year, recordId, 'ignore'),
+    body,
+    "Couldn't ignore the response"
+  )
+}
+
+/** Pull Now (casework): starts a read of the form from Google (202); the read lands on its own. */
+export function pullAidGoogleForm(
+  fetchWithAuth: FetchWithAuth,
+  year: number
+): Promise<{ status: string }> {
+  return send<{ status: string }>(
+    fetchWithAuth,
+    'POST',
+    `${BASE}/intake/${String(year)}/form-responses/pull`,
+    undefined,
+    "Couldn't start the read from Google"
+  )
+}
+
+/** Mark Reviewed (owner Q2, casework): a request whose form was deleted or changed after a decision stays as it is. */
+export function reviewAidFormChange(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  requestId: string
+): Promise<FormChangeReviewedOut> {
+  return send<FormChangeReviewedOut>(
+    fetchWithAuth,
+    'POST',
+    `${BASE}/requests/${String(year)}/form-changes/${encodeURIComponent(requestId)}/review`,
+    undefined,
+    "Couldn't mark it reviewed"
   )
 }

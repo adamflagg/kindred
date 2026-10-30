@@ -844,6 +844,20 @@ def session_priced(session_cm_id: int, sessions: Mapping[int, SessionRow], rules
     return False
 
 
+# attendees.status_id -> the word a candidate's registration reads (the registered statuses intake reads).
+_REGISTRATION_WORDS: Final[dict[int, str]] = {2: "enrolled", 4: "applied", 8: "waitlisted", 512: "incomplete"}
+
+
+def registration_status(rows: Sequence[AttendeeRow], session_cm_ids: Collection[int]) -> str:
+    """A candidate's best registration status in the sessions the evidence names (else any of theirs): enrolled
+    before applied, waitlisted, incomplete."""
+    named = [a for a in rows if a.session_cm_id in session_cm_ids] or list(rows)
+    for status in (2, 4, 8, 512):
+        if any(a.status_id == status for a in named):
+            return _REGISTRATION_WORDS[status]
+    return ""
+
+
 def candidate_out(raw: Mapping[str, Any]) -> FormCandidateOut:
     return FormCandidateOut(
         person_cm_id=int(raw.get("person_cm_id") or 0),
@@ -944,6 +958,18 @@ def google_form_out(season: _Season) -> GoogleFormStatusOut | None:
         returned=int(returned.group(1)) if returned else None,
         expected=int(expected.group(1)) if expected else None,
     )
+
+
+def _response_sessions(responses: Iterable[FormResponseOut]) -> set[int]:
+    """The weekends the adult aid form's responses chose and their candidates registered for (PR 3), so the screen
+    names a response no row holds."""
+    out: set[int] = set()
+    for r in responses:
+        out.add(r.weekend_session_cm_id)
+        for c in r.candidates:
+            out.update(c.session_cm_ids)
+    out.discard(0)
+    return out
 
 
 def _referenced(rows: Iterable[FormIntakeRowOut]) -> set[int]:
@@ -1087,6 +1113,36 @@ class FormIntakeService:
             )
         return sorted(named, key=lambda r: ((r.camper_name or r.household_label).casefold(), r.key))
 
+    async def _named_candidates(
+        self, year: int, season: _Season, responses: list[FormResponseOut]
+    ) -> list[FormResponseOut]:
+        """Each response's candidates named as the rows are (PR 3): their name, household label and best
+        registration, so Responses to link says who a response may be."""
+        found = [c for r in responses for c in r.candidates]
+        if not found:
+            return responses
+        households = {c.household_cm_id for c in found if c.household_cm_id > 0}
+        people = {c.person_cm_id for c in found if c.person_cm_id > 0}
+        family_names, camper_names = await self._store.fetch_names(year, households, people)
+        labels = await self._labels(year, households) if self._labels is not None and households else {}
+        registered: dict[int, list[AttendeeRow]] = defaultdict(list)
+        for a in season.attendees:
+            if a.person_cm_id in people:
+                registered[a.person_cm_id].append(a)
+
+        def named(c: FormCandidateOut) -> FormCandidateOut:
+            label = labels.get(c.household_cm_id)
+            return c.model_copy(
+                update={
+                    "camper_name": camper_names.get(c.person_cm_id, ""),
+                    "household_label": (label.label if label is not None and label.label else "")
+                    or family_names.get(c.household_cm_id, ""),
+                    "registration_status": registration_status(registered[c.person_cm_id], c.session_cm_ids),
+                }
+            )
+
+        return [r.model_copy(update={"candidates": [named(c) for c in r.candidates]}) for r in responses]
+
     @staticmethod
     def _sessions(season: _Season, ids: Iterable[int]) -> list[IntakeSessionOut]:
         key = _session_key(season.by_id)
@@ -1117,13 +1173,14 @@ class FormIntakeService:
         # A done season's outside grants wait for no camper (nothing here needs doing).
         waiting = await self._grants_waiting(year) if self._grants_waiting is not None and not done else 0
         responses, pull = self._form(season, done)
+        responses = await self._named_candidates(year, season, responses)
         return FormIntakeResponse(
             year=year,
             rows=named,
             counts=_counts(named, responses, pull is not None and pull.refused),
             form_responses=responses,
             google_form=pull,
-            sessions=self._sessions(season, _referenced(named)),
+            sessions=self._sessions(season, _referenced(named) | _response_sessions(responses)),
             grants_waiting_for_camper=waiting,
             campminder_aid_on_no_request=float(sum((a.line.amount for a in season.no_request), Decimal(0))),
             season_done=done,
