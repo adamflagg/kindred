@@ -511,7 +511,7 @@ describe('TodayTodos', () => {
     )
   })
 
-  it('draws the Form intake line, counted in campers, opening Requests › Form intake (PR 3)', () => {
+  it('draws the Form intake line, counted in people (owner Q4, 10-29), opening Requests › Form intake (PR 3)', () => {
     const intake = line('form_intake', 5, {
       item_kind: 'campers',
       families: 4,
@@ -520,7 +520,7 @@ describe('TodayTodos', () => {
     wrap(<TodayTodos lines={[intake]} rest={[]} view={VIEW} empty="" />)
     const r = row(0)
     expect(within(r).getByTestId('todo-label')).toHaveTextContent('Form intake: needs a look')
-    expect(within(r).getAllByRole('cell')[2]).toHaveTextContent(/^5 campers$/)
+    expect(within(r).getAllByRole('cell')[2]).toHaveTextContent(/^5 people$/)
     expect(within(r).getByRole('link', { name: 'Open ›' })).toHaveAttribute(
       'href',
       '/aid/requests/intake?year=2027'

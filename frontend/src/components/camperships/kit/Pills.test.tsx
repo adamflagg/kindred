@@ -4,7 +4,15 @@ import { describe, expect, it } from 'vitest'
 import type { ConfirmationOut } from '../../../types/api-generated'
 import { CM_PENDING_WORD } from '../requests/views'
 import { PILL, STATUS_TONE } from './kitStyles'
-import { CancelMark, ConfirmationState, HouseholdChip, IdChip, OverPill, StatusPill } from './Pills'
+import {
+  CancelMark,
+  ConfirmationState,
+  FormSourceMark,
+  HouseholdChip,
+  IdChip,
+  OverPill,
+  StatusPill,
+} from './Pills'
 
 function confirmation(over: Partial<ConfirmationOut>): ConfirmationOut {
   return {
@@ -200,5 +208,20 @@ describe('PILL.amber', () => {
   it('fills at 30% in dark', () => {
     expect(PILL.amber).toContain('dark:bg-amber-900/30')
     expect(PILL.amber).not.toContain('dark:bg-amber-900/50')
+  })
+})
+
+describe('FormSourceMark (design-language rule 9: which form a figure came from)', () => {
+  // Adult aid form mock K1 (a), owner 10-29: an outlined chip, the one mark Form intake and the household page share.
+  it('marks the adult aid form as an outlined chip, its title saying which form it is', () => {
+    render(<FormSourceMark source="google_form" title="The adult aid form, filed Nov 5" />)
+    const mark = screen.getByText('adult aid form')
+    expect(mark.className).toBe(`${PILL.line} cursor-help`)
+    expect(mark).toHaveAttribute('title', 'The adult aid form, filed Nov 5')
+  })
+
+  it("names CampMinder's form in chip words (CM, never CampMinder, in a chip)", () => {
+    render(<FormSourceMark source="campminder" />)
+    expect(screen.getByText('CM form').className).toBe(PILL.line)
   })
 })

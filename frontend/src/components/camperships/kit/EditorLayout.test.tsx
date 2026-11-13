@@ -216,3 +216,30 @@ describe('EditorForm in a narrow container', () => {
     expect(screen.getByText('fields').parentElement).toHaveClass('@max-[40rem]:pr-0')
   })
 })
+
+describe('EditorForm lead (Link… a Response: the people span the editor, adult aid form mock v2 K3 a)', () => {
+  it('draws the lead across the card, above the two columns', () => {
+    render(
+      <EditorForm
+        title="Link a Response"
+        lead={<table data-testid="people" />}
+        side={<span>effects</span>}
+        actions={<button type="button">Link Response</button>}
+      >
+        <span>search</span>
+      </EditorForm>
+    )
+    const lead = screen.getByTestId('aid-editor-lead')
+    expect(lead).toContainElement(screen.getByTestId('people'))
+    expect(lead.nextElementSibling).toBe(screen.getByTestId('aid-editor-form'))
+  })
+
+  it('draws no lead box without one', () => {
+    render(
+      <EditorForm title="New Funder">
+        <span>fields</span>
+      </EditorForm>
+    )
+    expect(screen.queryByTestId('aid-editor-lead')).toBeNull()
+  })
+})

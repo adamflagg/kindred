@@ -2160,3 +2160,52 @@ async def test_an_added_request_cancelled_in_kindred_says_so_on_its_addition() -
     found = cards[EMMA].addition
     assert found is not None
     assert found.cancelled is True
+
+
+class _AdultFormCasework(_Casework):
+    """Emma's request is priced from her own adult aid form response (GF-2 = B), not the Johnsons' CampMinder form."""
+
+    async def application_detail(self, year: int, household_cm_id: int) -> ApplicationDetailResponse:
+        detail = await super().application_detail(year, household_cm_id)
+        own = _ask("104000").model_copy(update={"field": "total_gross_income"})
+        return detail.model_copy(
+            update={
+                "requests": [
+                    r.model_copy(
+                        update={
+                            "form_source": "google_form",
+                            "answers_source": "google_form",
+                            "answers": [own],
+                            "form_response_id": "resp-emma-1",
+                            "form_submitted_at": "2026-11-05T17:00:00Z",
+                        }
+                    )
+                    if r.id == EMMA
+                    else r
+                    for r in detail.requests
+                ]
+            }
+        )
+
+
+@pytest.mark.asyncio
+async def test_a_request_priced_by_its_own_adult_aid_form_carries_that_answer_set() -> None:
+    """PR 3 (GF-2 = B): the household page's Income shows one answer set per form, so a request priced by an adult aid
+    form response carries that set, its source and when it was filed. Every other request carries none."""
+    store = _family()
+    service = HouseholdPageService(
+        store=store,
+        pricing=FakeRules(approved()),
+        grants=_Grants(),
+        casework=_AdultFormCasework(store),
+        ledger=_Ledger(),
+        history=_History(),
+        clock=lambda: T0,
+    )
+    page = await service.read(YEAR, JOHNSON)
+    by_id = {r.row.request_id: r for r in page.requests}
+    emma = by_id[EMMA]
+    assert (emma.answers_source, emma.form_submitted_at) == ("google_form", "2026-11-05T17:00:00Z")
+    assert [(a.field, a.effective) for a in emma.own_answers or []] == [("total_gross_income", "104000")]
+    liam = by_id[LIAM]
+    assert (liam.answers_source, liam.own_answers, liam.form_submitted_at) == ("", None, "")

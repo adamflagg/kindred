@@ -22,12 +22,14 @@ import {
   aidOnNoRequestRead,
   became,
 } from './intakeFixtures'
+import { ADULT_SESSIONS, FC4 } from './adultFormFixtures'
 import {
   addBody,
   addEffects,
   addProblem,
   addedStatus,
   amberAid,
+  askedParts,
   askedTitle,
   askedWords,
   becameAside,
@@ -528,5 +530,42 @@ describe('registration ask only, per kind of program (IN-BUCKETS)', () => {
         words
       )?.long
     ).toContain('They asked for financial assistance when registering, but')
+  })
+})
+
+describe('Form asked for the adult aid form (adult aid form mock v2, K1 a and callout 2)', () => {
+  const adultNames = sessionIndex([...SESSIONS, ...ADULT_SESSIONS])
+  const words = { ...programs, adult_weekend: 'Adult Weekends' }
+  const grace = {
+    ...EMMA,
+    registration_ask: null,
+    answers: [
+      {
+        program_key: 'family_camp',
+        option_text: 'Family Camp 4: Labor Day (Sep 3-6)',
+        ask: 700,
+        named_session_cm_id: FC4,
+        form_source: 'google_form' as const,
+      },
+    ],
+  }
+
+  it('drops the program prefix (the chip names the form), the weekend in its short form, and marks the source', () => {
+    expect(askedParts(grace, adultNames, words)).toEqual({
+      main: 'Family Camp 4 · $700',
+      reg: null,
+      muted: false,
+      source: 'google_form',
+    })
+  })
+
+  it("keeps the prefix in the title, and says it is the adult aid form's", () => {
+    expect(askedTitle(grace, adultNames, words)).toBe(
+      'Family Camp: Family Camp 4: Labor Day Weekend · $700 · the adult aid form (the Google form)'
+    )
+  })
+
+  it('a CampMinder row is unmarked, as it always was', () => {
+    expect(askedParts(OLIVIA, names, programs).source).toBe('campminder')
   })
 })
