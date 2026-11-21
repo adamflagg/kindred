@@ -861,8 +861,13 @@ class HouseholdPageService:
 
         def request_out(row: GridRowOut) -> HouseholdRequestOut:
             counted, applied, beyond = request_grants(row, band)
+            own = asks.get(row.request_id)
+            priced_by_own = own is not None and own.answers_source == "google_form"
             return HouseholdRequestOut(
                 row=row,
+                answers_source="google_form" if priced_by_own else "",
+                own_answers=own.answers if own is not None and priced_by_own else None,
+                form_submitted_at=own.form_submitted_at if own is not None and priced_by_own else "",
                 ask=asks[row.request_id].ask if row.request_id in asks else None,
                 payer_share_status=asks[row.request_id].payer_share_status if row.request_id in asks else "",
                 shares=share_lines(row, season.shares.get(row.request_id, ()), chips),

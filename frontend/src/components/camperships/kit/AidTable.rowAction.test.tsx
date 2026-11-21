@@ -131,3 +131,34 @@ describe('AidColumn.sortable', () => {
     expect(screen.getByRole('columnheader', { name: 'Gap' })).toBeInTheDocument()
   })
 })
+
+describe('aidActionColumn with two actions (Form intake: Link… · Ignore…, adult aid form mock v2)', () => {
+  it('draws both row buttons side by side, the cell titled with both', () => {
+    const onLink = vi.fn()
+    const columns: Array<AidColumn<Row>> = [
+      { key: 'camper', header: 'Camper', width: 150, value: (r) => r.camper },
+      aidActionColumn<Row>({
+        width: 132,
+        action: (r) =>
+          r.gap
+            ? [
+                { label: 'Link…', title: 'Pick the registration', onClick: () => onLink(r.id) },
+                { label: 'Ignore…', title: 'A test or junk response', onClick: vi.fn() },
+              ]
+            : null,
+      }),
+    ]
+    render(
+      <MemoryRouter>
+        <AidTable<Row> rows={ROWS} columns={columns} rowKey={(r) => r.id} csvFilename="x.csv" />
+      </MemoryRouter>
+    )
+    const buttons = within(rowOf('a')).getAllByRole('button')
+    expect(buttons.map((b) => b.textContent)).toEqual(['Link…', 'Ignore…'])
+    expect(buttons[0]?.className).toBe(cs.CS_ROW_BTN)
+    expect(buttons[0]?.parentElement?.className).toContain('gap-1')
+    fireEvent.click(buttons[0]!)
+    expect(onLink).toHaveBeenCalledWith('a')
+    expect(within(rowOf('b')).queryAllByRole('button')).toHaveLength(0)
+  })
+})

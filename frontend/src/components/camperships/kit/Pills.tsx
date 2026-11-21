@@ -5,7 +5,7 @@ import { householdChipClass, ID_CHIP, PILL, type PillTone } from './kitStyles'
 import { formatShortDate } from './dates'
 import { CM_PENDING_WORD } from '../requests/views'
 import { formatGap, formatMoney } from './money'
-import { ORIGIN_WORDS, type RequestOrigin } from './words'
+import { FORM_SOURCE_WORDS, ORIGIN_WORDS, type FormSource, type RequestOrigin } from './words'
 
 /**
  * A chip (design-language §11): one line, always. In a narrow column it truncates, and `title`
@@ -42,6 +42,25 @@ export function OriginMark({
   return (
     <StatusPill tone={origin === 'reg_ask_review' ? 'amber' : 'line'} title={title}>
       {ORIGIN_WORDS[origin]}
+    </StatusPill>
+  )
+}
+
+/**
+ * Which aid form a figure or an ask came from (design-language rule 9): one outlined `line` chip, the same mark on
+ * Form intake's Form asked and on the household page's answer sets. Form intake marks only the adult aid form (CampMinder
+ * rows have always been unmarked); the household page names both. It sits before text that may cut, so it never cuts.
+ */
+export function FormSourceMark({
+  source,
+  title,
+}: {
+  source: FormSource
+  title?: string | undefined
+}) {
+  return (
+    <StatusPill tone="line" title={title}>
+      {FORM_SOURCE_WORDS[source]}
     </StatusPill>
   )
 }
