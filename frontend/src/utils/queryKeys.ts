@@ -865,6 +865,9 @@ export const queryKeys = {
     ['financial-aid', 'intake', year, 'aid-on-no-request'] as const,
   aidIntakeUnlisted: (year: number, q: string) =>
     ['financial-aid', 'intake', year, 'unlisted', q] as const,
+  /** Link…'s own read (the adult aid form): the response's candidates, or with `q` a search of the registrations. */
+  aidIntakeLinkCandidates: (year: number, recordId: string, q: string) =>
+    ['financial-aid', 'intake', year, 'form-responses', recordId, 'candidates', q] as const,
   /** One report read: its season, which report, and the exact query it sends (controls and as-of). */
   aidReport: (year: number, report: AidReportKey, params: Readonly<Record<string, string>>) =>
     ['financial-aid', 'reports', year, report, params] as const,

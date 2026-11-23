@@ -5486,6 +5486,18 @@ export type FormCandidateOut = {
    * Elsewhere
    */
   elsewhere?: boolean
+  /**
+   * Camper Name
+   */
+  camper_name?: string
+  /**
+   * Household Label
+   */
+  household_label?: string
+  /**
+   * Registration Status
+   */
+  registration_status?: '' | 'enrolled' | 'applied' | 'waitlisted' | 'incomplete'
 }
 
 /**
@@ -5499,9 +5511,17 @@ export type FormChangeOut = {
    */
   kind: 'deleted' | 'changed_after_decision'
   /**
+   * Cause
+   */
+  cause?: 'deleted_in_google' | 'unlinked' | null
+  /**
    * At
    */
   at?: string
+  /**
+   * Decided Response Id
+   */
+  decided_response_id?: string
   /**
    * Reviewed
    */
@@ -5711,6 +5731,7 @@ export type FormIntakeRowOut = {
     | 'registration_ask_unreviewed'
     | 'form_changed_after_decision'
     | 'form_response_deleted'
+    | 'form_response_unlinked'
     | 'form_choice_unclear'
     | 'form_pull_refused'
   >
@@ -6017,6 +6038,7 @@ export type FormResponseOut = {
     | 'registration_ask_unreviewed'
     | 'form_changed_after_decision'
     | 'form_response_deleted'
+    | 'form_response_unlinked'
     | 'form_choice_unclear'
     | 'form_pull_refused'
   >
@@ -8761,6 +8783,18 @@ export type HouseholdRequestOut = {
    */
   duplicates_waiting?: Array<DuplicateWaitingOut>
   addition?: RequestAdditionOut | null
+  /**
+   * Answers Source
+   */
+  answers_source?: '' | 'google_form'
+  /**
+   * Own Answers
+   */
+  own_answers?: Array<AnswerOut> | null
+  /**
+   * Form Submitted At
+   */
+  form_submitted_at?: string
 }
 
 /**
@@ -10066,8 +10100,8 @@ export type LeverEffectOut = {
 /**
  * LinkCandidateOut
  *
- * A candidate on Link…'s dialog: named, with their household, registration and CampMinder birthdate and email
- * beside the response's own (this read only; the Form intake list never carries them).
+ * A candidate on Link…'s dialog: as the list names them, plus their CampMinder birthdate and email beside the
+ * response's own (this read only; the Form intake list never carries them).
  */
 export type LinkCandidateOut = {
   /**
@@ -22311,6 +22345,18 @@ export type HouseholdRequestOutWritable = {
    */
   duplicates_waiting?: Array<DuplicateWaitingOut>
   addition?: RequestAdditionOut | null
+  /**
+   * Answers Source
+   */
+  answers_source?: '' | 'google_form'
+  /**
+   * Own Answers
+   */
+  own_answers?: Array<AnswerOut> | null
+  /**
+   * Form Submitted At
+   */
+  form_submitted_at?: string
 }
 
 /**

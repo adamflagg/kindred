@@ -25,6 +25,9 @@ import {
  * `onWhite` (owner 10-10: "white on not white, and green on white"): the card is white wherever it sits
  * on a surface that is not white (the page, an opened row's cream, a popover). Inside a white card it
  * takes the band tint instead. The prop swaps only the colour classes; it is the same card.
+ *
+ * `lead` spans the card above the two columns: what the editor chooses among, when it is wider than a field (Link…
+ * a Response's people, adult aid form mock K3 a). The editor stays wide and short.
  */
 export function EditorForm({
   title,
@@ -34,7 +37,10 @@ export function EditorForm({
   className,
   heading = 'card',
   onWhite = false,
+  lead,
 }: {
+  /** Spans the card above the fields and the dependent column. */
+  readonly lead?: ReactNode
   readonly heading?: 'card' | 'phead'
   /** The editor sits on a WHITE surface (inside a white card): the band tint, not the card white. */
   readonly onWhite?: boolean
@@ -54,6 +60,11 @@ export function EditorForm({
         ) : (
           <h3 className={CS_CARD_HEADING}>{title}</h3>
         ))}
+      {lead !== undefined && (
+        <div data-testid="aid-editor-lead" className="mb-1.5 min-w-0">
+          {lead}
+        </div>
+      )}
       <div data-testid="aid-editor-form" className={side !== undefined ? CS_FORM2 : undefined}>
         <div className={side !== undefined ? CS_FORM2_MAIN : undefined}>{children}</div>
         {side !== undefined && <div className={CS_FORM2_SIDE}>{side}</div>}

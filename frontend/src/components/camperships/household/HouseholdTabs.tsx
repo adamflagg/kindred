@@ -211,7 +211,14 @@ function Tabs({
       </div>
       {open !== null && (
         <div data-testid="tab-panel" className="border-border mt-2.5 border-t pt-2">
-          {open === 'income' && <IncomePanel page={page} correct={correct} formStrip={formStrip} />}
+          {open === 'income' && (
+            <IncomePanel
+              page={page}
+              correct={correct}
+              formStrip={formStrip}
+              programs={programNames}
+            />
+          )}
           {open === 'grants' && (
             <GrantsPostingsPanel page={page} programNames={programNames} grantForms={grantForms} />
           )}

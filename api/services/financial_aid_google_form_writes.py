@@ -29,7 +29,7 @@ from api.schemas.financial_aid_form_intake import (
     LinkCandidatesOut,
 )
 from api.services.financial_aid_casework_service import CaseworkNotFoundError, CaseworkValidationError
-from api.services.financial_aid_form_intake import candidate_out
+from api.services.financial_aid_form_intake import candidate_out, registration_status
 from api.services.financial_aid_google_form import (
     FORM_CHANGE_FLAGS,
     FORM_PROGRAMS,
@@ -84,18 +84,6 @@ class FormResponseStore(Protocol):
 IGNORE_OTHER: Final = "other"
 IGNORE_KINDS: Final = frozenset({"test", "duplicate", "not_asking", IGNORE_OTHER})
 CANDIDATES_MAX: Final = 25
-# attendees.status_id -> the word Link… shows (the registered statuses intake reads).
-_STATUS_WORDS: Final[dict[int, str]] = {2: "enrolled", 4: "applied", 8: "waitlisted", 512: "incomplete"}
-
-
-def _registration_status(rows: Sequence[AttendeeRow], candidate: LinkCandidateOut) -> str:
-    """The candidate's best registration status in the sessions the evidence names (else any of theirs): enrolled
-    before applied, waitlisted, incomplete."""
-    named = [a for a in rows if a.session_cm_id in candidate.session_cm_ids] or list(rows)
-    for status in (2, 4, 8, 512):
-        if any(a.status_id == status for a in named):
-            return _STATUS_WORDS[status]
-    return ""
 
 
 def _now() -> str:
@@ -231,7 +219,9 @@ class FormResponseCaseworkService:
                     update={
                         "camper_name": names.get(c.person_cm_id, ""),
                         "household_label": households.get(c.household_cm_id, ""),
-                        "registration_status": _registration_status(registered.get(c.person_cm_id, []), c),
+                        "registration_status": registration_status(
+                            registered.get(c.person_cm_id, []), c.session_cm_ids
+                        ),
                         "birthdate": contacts.get(c.person_cm_id, ("", ""))[0],
                         "email": contacts.get(c.person_cm_id, ("", ""))[1],
                     }

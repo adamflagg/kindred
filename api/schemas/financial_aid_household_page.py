@@ -180,6 +180,11 @@ class HouseholdRequestOut(BaseModel):
     # PR 3: the addition behind an added or rule-made request (who added it, why, Mark Reviewed, the posted rounds
     # Remove… pre-checks); None for a request the aid form made. Built as Form intake's Became builds it.
     addition: RequestAdditionOut | None = None
+    # Adult aid form PR 3 (GF-2 = B): a request priced by its own adult aid form response carries that answer set, so
+    # Income shows one labelled set per form. "" / None / "" for every request the household application prices.
+    answers_source: Literal["", "google_form"] = ""
+    own_answers: list[AnswerOut] | None = None
+    form_submitted_at: str = ""
 
 
 class FormPersonOut(BaseModel):
