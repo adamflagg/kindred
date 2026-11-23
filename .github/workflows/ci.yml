@@ -690,7 +690,7 @@ jobs:
     # scratch pocketbase binary via pb_harness_build_binary, so Go is a real
     # dependency of this job, not an unused setup step.
     - name: Setup Go
-      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
       with:
         # go_minor, not a literal -- see the Go Lint job for why.
         go-version: ${{ needs.detect-changes.outputs.go_minor }}
@@ -747,7 +747,7 @@ jobs:
         python-version-file: '.python-version'
 
     - name: Install uv
-      uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
       with:
         enable-cache: true
         # v9 flipped this default to false. Unpruned, the uv cache grows from
@@ -804,7 +804,7 @@ jobs:
         cache-dependency-path: pocketbase/package-lock.json
 
     - name: Setup Go
-      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
       with:
         # The minor from pocketbase/go.mod (detect-changes' `go` step), never a
         # literal: setup-go pins GOTOOLCHAIN=local, so the runner CANNOT fetch a
@@ -1006,7 +1006,7 @@ jobs:
         python-version-file: '.python-version'
 
     - name: Install uv
-      uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
       with:
         enable-cache: true
         prune-cache: true
@@ -1036,7 +1036,7 @@ jobs:
         persist-credentials: false
 
     - name: Setup Go
-      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
       with:
         # go_minor, not a literal -- see the Go Lint job for why.
         go-version: ${{ needs.detect-changes.outputs.go_minor }}
@@ -1155,7 +1155,7 @@ jobs:
       contents: read
     steps:
     - name: Harden runner
-      uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+      uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
       with:
         egress-policy: block
         allowed-endpoints: >
@@ -1165,7 +1165,7 @@ jobs:
           productionresultssa*.blob.core.windows.net:443
 
     - name: Dependency review
-      uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+      uses: actions/dependency-review-action@bbc44d14a204704ccc493733616cd1e93a0321ec # v5.0.1
       with:
         fail-on-severity: high
         # Default is runtime only; dev tooling (vite, vitest) is attack surface too.
@@ -1193,7 +1193,7 @@ jobs:
         python-version-file: '.python-version'
 
     - name: Install uv
-      uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
       with:
         enable-cache: true
         # v9 flipped this default to false. Unpruned, the uv cache grows from
@@ -1278,7 +1278,7 @@ jobs:
         persist-credentials: false
 
     - name: Setup Go
-      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
       with:
         # The minor from pocketbase/go.mod (detect-changes' `go` step), never a
         # literal: setup-go pins GOTOOLCHAIN=local, so the runner CANNOT fetch a
@@ -1316,7 +1316,7 @@ jobs:
         persist-credentials: false
 
     - name: Setup Go
-      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
       with:
         # The minor from pocketbase/go.mod (detect-changes' `go` step), never a
         # literal: setup-go pins GOTOOLCHAIN=local, so the runner CANNOT fetch a
